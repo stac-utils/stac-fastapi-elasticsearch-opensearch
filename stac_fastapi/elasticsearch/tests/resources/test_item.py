@@ -354,6 +354,7 @@ def test_item_search_spatial_query_post(app_client, load_test_data):
         json=test_item,
     )
 
+
 @pytest.mark.skip(reason="failed to find type for field [geometry]")
 def test_item_search_temporal_query_post(app_client, load_test_data):
     """Test POST search with single-tailed spatio-temporal query (core)"""
