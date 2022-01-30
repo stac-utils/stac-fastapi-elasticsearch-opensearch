@@ -20,9 +20,14 @@ jobs:
           - 27018:27017
 
       elasticsearch_db_service:
-        image: docker.elastic.co/elasticsearch/elasticsearch:7.11.0
+        image: docker.elastic.co/elasticsearch/elasticsearch:7.14.2
         env:
-          "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+          node.name: es01
+          cluster.name: stac-cluster
+          discovery.type: single-node
+          network.host: 0.0.0.0
+          http.port: 9200
+          ES_JAVA_OPTS: -Xms512m -Xmx512m
         ports:
           - 9200:9200
       
@@ -56,12 +61,6 @@ jobs:
           cd stac_fastapi/mongo && pipenv run pytest -svvv
         env:
           ENVIRONMENT: testing
-          # POSTGRES_USER: username
-          # POSTGRES_PASS: password
-          # POSTGRES_DBNAME: postgis
-          # POSTGRES_HOST_READER: localhost
-          # POSTGRES_HOST_WRITER: localhost
-          # POSTGRES_PORT: 5432
           MONGO_USER: dev
           MONGO_PASS: stac
           MONGO_PORT: 27018
@@ -76,10 +75,3 @@ jobs:
           ES_PASS: stac
           ES_PORT: 9200
           ES_HOST: 172.17.0.1
-          
-  # test-docs:
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v2
-  #     - name: Test generating docs
-  #       run: make docs
