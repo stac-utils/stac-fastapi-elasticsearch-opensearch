@@ -17,7 +17,4 @@ COPY . /app
 ENV PATH=$PATH:/install/bin
 
 RUN mkdir -p /install && \
-    pip install -e ./stac_fastapi/types[dev] && \
-    pip install -e ./stac_fastapi/api[dev] && \
-    pip install -e ./stac_fastapi/extensions[dev] && \
     pip install -e ./stac_fastapi/elasticsearch[dev,server]
