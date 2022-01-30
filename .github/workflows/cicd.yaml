@@ -1,4 +1,4 @@
-name: stac-fastapi
+name: stac-fastapi-nosql
 on:
   push:
     branches: [ master ]
