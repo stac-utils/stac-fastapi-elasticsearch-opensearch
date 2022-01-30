@@ -9,12 +9,13 @@ install_requires = [
     "attrs",
     "pydantic[dotenv]",
     "stac_pydantic==2.0.*",
-    "stac-fastapi.types",
-    "stac-fastapi.api",
-    "stac-fastapi.extensions",
+    "stac-fastapi.types==2.3.0",
+    "stac-fastapi.api==2.3.0",
+    "stac-fastapi.extensions==2.3.0",
     "fastapi-utils",
     "elasticsearch[async]",
     "elasticsearch-dsl",
+    "pystac[validation]",
 ]
 
 extra_reqs = {
