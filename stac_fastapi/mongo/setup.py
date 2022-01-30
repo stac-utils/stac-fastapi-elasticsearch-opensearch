@@ -14,7 +14,7 @@ install_requires = [
     "stac-fastapi.extensions==2.3.0",
     "fastapi-utils",
     "pymongo",
-    "pystac[validation]"
+    "pystac[validation]",
 ]
 
 extra_reqs = {
