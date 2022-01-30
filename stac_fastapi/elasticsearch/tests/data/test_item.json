@@ -1,0 +1,86 @@
+{
+  "type": "Feature",
+  "id": "test-item",
+  "stac_version": "1.0.0",
+  "stac_extensions": [
+    "https://stac-extensions.github.io/eo/v1.0.0/schema.json",
+    "https://stac-extensions.github.io/projection/v1.0.0/schema.json"
+  ],
+  "geometry": {
+    "coordinates": [
+      [
+        [
+          152.15052873427666,
+          -33.82243006904891
+        ],
+        [
+          150.1000346138806,
+          -34.257132625788756
+        ],
+        [
+          149.5776607193635,
+          -32.514709769700254
+        ],
+        [
+          151.6262528041627,
+          -32.08081674221862
+        ],
+        [
+          152.15052873427666,
+          -33.82243006904891
+        ]
+      ]
+    ],
+    "type": "Polygon"
+  },
+  "properties": {
+    "datetime": "2020-02-12T12:30:22Z",
+    "landsat:scene_id": "LC82081612020043LGN00",
+    "landsat:row": "161",
+    "gsd": 15,
+    "landsat:revision": "00",
+    "view:sun_azimuth": -148.83296771,
+    "instrument": "OLI_TIRS",
+    "landsat:product_id": "LC08_L1GT_208161_20200212_20200212_01_RT",
+    "eo:cloud_cover": 0,
+    "landsat:tier": "RT",
+    "landsat:processing_level": "L1GT",
+    "landsat:column": "208",
+    "platform": "landsat-8",
+    "proj:epsg": 32756,
+    "view:sun_elevation": -37.30791534,
+    "view:off_nadir": 0,
+    "height": 2500,
+    "width": 2500
+  },
+  "bbox": [
+    149.57574,
+    -34.25796,
+    152.15194,
+    -32.07915
+  ],
+  "collection": "test-collection",
+  "assets": {},
+  "links": [
+    {
+      "href": "http://localhost:8081/collections/landsat-8-l1/items/LC82081612020043",
+      "rel": "self",
+      "type": "application/geo+json"
+    },
+    {
+      "href": "http://localhost:8081/collections/landsat-8-l1",
+      "rel": "parent",
+      "type": "application/json"
+    },
+    {
+      "href": "http://localhost:8081/collections/landsat-8-l1",
+      "rel": "collection",
+      "type": "application/json"
+    },
+    {
+      "href": "http://localhost:8081/",
+      "rel": "root",
+      "type": "application/json"
+    }
+  ]
+}
