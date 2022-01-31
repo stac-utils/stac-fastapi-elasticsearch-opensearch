@@ -51,6 +51,25 @@ class TransactionsClient(BaseTransactionsClient):
         if "created" not in model["properties"]:
             model["properties"]["created"] = str(now)
 
+        mapping = {
+            "mappings": {
+                "properties": {
+                    "geometry": {"type": "geo_shape"},
+                    "id": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+                    "properties__datetime": {
+                        "type": "text",
+                        "fields": {"keyword": {"type": "keyword"}},
+                    },
+                }
+            }
+        }
+
+        index = self.client.indices.create(
+            index="stac_items",
+            body=mapping,
+            ignore=400,  # ignore 400 already exists code
+        )
+
         self.client.index(
             index="stac_items", doc_type="_doc", id=model["id"], document=model
         )

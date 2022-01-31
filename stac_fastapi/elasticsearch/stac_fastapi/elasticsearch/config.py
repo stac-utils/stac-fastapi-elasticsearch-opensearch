@@ -24,30 +24,4 @@ class ElasticsearchSettings(ApiSettings):
         """Create es client."""
         # try:
         client = Elasticsearch([{"host": str(DOMAIN), "port": str(PORT)}])
-
-        mapping = {
-            "mappings": {
-                "properties": {
-                    "geometry": {"type": "geo_shape"},
-                    "id": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
-                    "properties__datetime": {
-                        "type": "text",
-                        "fields": {"keyword": {"type": "keyword"}},
-                    },
-                }
-            }
-        }
-
-        _ = client.indices.create(
-            index="stac_items",
-            mappings=mapping,
-            ignore=400,  # ignore 400 already exists code
-        )
-
-        _ = client.indices.create(
-            index="stac_collections",
-            mappings={},
-            ignore=400,  # ignore 400 already exists code
-        )
-
         return client
