@@ -64,7 +64,7 @@ class TransactionsClient(BaseTransactionsClient):
             }
         }
 
-        index = self.client.indices.create(
+        _ = self.client.indices.create(
             index="stac_items",
             body=mapping,
             ignore=400,  # ignore 400 already exists code
