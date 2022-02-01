@@ -39,6 +39,14 @@ class TransactionsClient(BaseTransactionsClient):
         ).create_links()
         model["links"] = item_links
 
+        # elasticsearch doesn't like the fact that some values are float and some were int
+        if "eo:bands" in model["properties"]:
+            for wave in model["properties"]["eo:bands"]:
+                for k, v in wave.items():
+                    if type(v) != str:
+                        v = float(v)
+                        wave.update({k: v})
+
         if not self.client.exists(index="stac_collections", id=model["collection"]):
             raise ForeignKeyError(f"Collection {model['collection']} does not exist")
 
