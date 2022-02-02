@@ -17,10 +17,6 @@ jobs:
       with:
         python-version: 3.8
 
-    - name: Go in mongo folder
-      run: >-
-        cd stac_fastapi/mongo
-
     - name: Install pypa/build
       run: >-
         python -m
@@ -34,6 +30,7 @@ jobs:
         --sdist
         --wheel
         --outdir dist/
+        stac_fastapi/mongo
     - name: Publish distribution to Test PyPI
       # if: startsWith(github.ref, 'refs/tags')
       uses: pypa/gh-action-pypi-publish@v1.4.2
