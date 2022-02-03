@@ -63,6 +63,9 @@ class CollectionSerializer(Serializer):
         if original_links:
             collection_links += resolve_links(original_links, base_url)
 
+        if "providers" not in collection:
+            collection["providers"] = {}
+
         return stac_types.Collection(
             type="Collection",
             id=collection["id"],
