@@ -1,8 +1,8 @@
+import time
 import uuid
 from copy import deepcopy
 from typing import Callable
 
-import time
 import pytest
 from stac_pydantic import Item
 from tests.conftest import MockStarletteRequest

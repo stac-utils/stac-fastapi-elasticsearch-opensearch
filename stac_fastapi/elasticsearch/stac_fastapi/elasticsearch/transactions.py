@@ -207,7 +207,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
                         v = float(v)
                         wave.update({k: v})
         return model
-    
+
     def bulk_item_insert(self, items: Items, **kwargs) -> str:
         """Bulk item insertion using es."""
         self._create_item_index()
@@ -228,10 +228,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
 
         def bulk_sync(processed_items):
             actions = [
-                {
-                    "_index": "stac_items",
-                    "_source": item
-                } for item in processed_items
+                {"_index": "stac_items", "_source": item} for item in processed_items
             ]
 
             helpers.bulk(self.client, actions)
