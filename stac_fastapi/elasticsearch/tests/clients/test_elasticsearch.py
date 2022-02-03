@@ -30,16 +30,12 @@ def test_create_collection(
     es_transactions.delete_collection(data["id"], request=MockStarletteRequest)
 
 
-@pytest.mark.skip(reason="passing but messing up the next test")
 def test_create_collection_already_exists(
     es_transactions: TransactionsClient,
     load_test_data: Callable,
 ):
     data = load_test_data("test_collection.json")
     es_transactions.create_collection(data, request=MockStarletteRequest)
-
-    # change id to avoid mongo duplicate key error
-    data["_id"] = str(uuid.uuid4())
 
     with pytest.raises(ConflictError):
         es_transactions.create_collection(data, request=MockStarletteRequest)
@@ -51,6 +47,11 @@ def test_update_collection(
     load_test_data: Callable,
 ):
     data = load_test_data("test_collection.json")
+
+    try:
+        es_transactions.delete_collection(data["id"], request=MockStarletteRequest)
+    except Exception:
+        pass
 
     es_transactions.create_collection(data, request=MockStarletteRequest)
     data["keywords"].append("new keyword")
@@ -114,13 +115,18 @@ def test_get_item(
     )
 
 
-@pytest.mark.skip(reason="unknown")
+# @pytest.mark.skip(reason="unknown")
 def test_get_collection_items(
     es_core: CoreCrudClient,
     es_transactions: TransactionsClient,
     load_test_data: Callable,
 ):
     coll = load_test_data("test_collection.json")
+    try:
+        es_transactions.delete_collection(coll["id"], request=MockStarletteRequest)
+    except Exception:
+        pass
+
     es_transactions.create_collection(coll, request=MockStarletteRequest)
 
     item = load_test_data("test_item.json")
