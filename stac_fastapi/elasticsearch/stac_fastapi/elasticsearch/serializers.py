@@ -63,6 +63,11 @@ class CollectionSerializer(Serializer):
         if original_links:
             collection_links += resolve_links(original_links, base_url)
 
+        if "providers" in collection:
+            providers = collection["providers"]
+        else:
+            providers = None
+
         return stac_types.Collection(
             type="Collection",
             id=collection["id"],
@@ -72,7 +77,7 @@ class CollectionSerializer(Serializer):
             description=collection["description"],
             keywords=collection["keywords"],
             license=collection["license"],
-            providers=collection["providers"],
+            providers=providers,
             summaries=collection["summaries"],
             extent=collection["extent"],
             links=collection_links,
