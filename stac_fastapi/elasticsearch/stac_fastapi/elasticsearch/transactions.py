@@ -31,6 +31,26 @@ class TransactionsClient(BaseTransactionsClient):
     settings = ElasticsearchSettings()
     client = settings.create_client
 
+    def _create_item_index(self):
+        mapping = {
+            "mappings": {
+                "properties": {
+                    "geometry": {"type": "geo_shape"},
+                    "id": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+                    "properties__datetime": {
+                        "type": "text",
+                        "fields": {"keyword": {"type": "keyword"}},
+                    },
+                }
+            }
+        }
+
+        _ = self.client.indices.create(
+            index="stac_items",
+            body=mapping,
+            ignore=400,  # ignore 400 already exists code
+        )
+
     def create_item(self, model: stac_types.Item, **kwargs):
         """Create item."""
         base_url = str(kwargs["request"].base_url)
@@ -59,24 +79,7 @@ class TransactionsClient(BaseTransactionsClient):
         if "created" not in model["properties"]:
             model["properties"]["created"] = str(now)
 
-        mapping = {
-            "mappings": {
-                "properties": {
-                    "geometry": {"type": "geo_shape"},
-                    "id": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
-                    "properties__datetime": {
-                        "type": "text",
-                        "fields": {"keyword": {"type": "keyword"}},
-                    },
-                }
-            }
-        }
-
-        _ = self.client.indices.create(
-            index="stac_items",
-            body=mapping,
-            ignore=400,  # ignore 400 already exists code
-        )
+        self._create_item_index()
 
         self.client.index(
             index="stac_items", doc_type="_doc", id=model["id"], document=model
@@ -90,6 +93,8 @@ class TransactionsClient(BaseTransactionsClient):
             collection_id=model["id"], base_url=base_url
         ).create_links()
         model["links"] = collection_links
+
+        self._create_item_index()
 
         if self.client.exists(index="stac_collections", id=model["id"]):
             raise ConflictError(f"Collection {model['id']} already exists")
@@ -155,6 +160,26 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         settings = ElasticsearchSettings()
         self.client = settings.create_client
 
+    def _create_item_index(self):
+        mapping = {
+            "mappings": {
+                "properties": {
+                    "geometry": {"type": "geo_shape"},
+                    "id": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
+                    "properties__datetime": {
+                        "type": "text",
+                        "fields": {"keyword": {"type": "keyword"}},
+                    },
+                }
+            }
+        }
+
+        _ = self.client.indices.create(
+            index="stac_items",
+            body=mapping,
+            ignore=400,  # ignore 400 already exists code
+        )
+
     def _preprocess_item(self, model: stac_types.Item, base_url) -> stac_types.Item:
         """Preprocess items to match data model."""
         item_links = ItemLinks(
@@ -162,32 +187,55 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         ).create_links()
         model["links"] = item_links
 
-        # with self.client.start_session(causal_consistency=True) as session:
-        #     error_check = ErrorChecks(session=session, client=self.client)
-        #     error_check._check_collection_foreign_key(model)
-        #     error_check._check_item_conflict(model)
-        #     now = datetime.utcnow().strftime(DATETIME_RFC339)
-        #     if "created" not in model["properties"]:
-        #         model["properties"]["created"] = str(now)
-        #     return model
+        if not self.client.exists(index="stac_collections", id=model["collection"]):
+            raise ForeignKeyError(f"Collection {model['collection']} does not exist")
 
+        if self.client.exists(index="stac_items", id=model["id"]):
+            raise ConflictError(
+                f"Item {model['id']} in collection {model['collection']} already exists"
+            )
+
+        now = datetime.utcnow().strftime(DATETIME_RFC339)
+        if "created" not in model["properties"]:
+            model["properties"]["created"] = str(now)
+
+        # elasticsearch doesn't like the fact that some values are float and some were int
+        if "eo:bands" in model["properties"]:
+            for wave in model["properties"]["eo:bands"]:
+                for k, v in wave.items():
+                    if type(v) != str:
+                        v = float(v)
+                        wave.update({k: v})
+        return model
+    
     def bulk_item_insert(self, items: Items, **kwargs) -> str:
         """Bulk item insertion using es."""
+        self._create_item_index()
         try:
             base_url = str(kwargs["request"].base_url)
         except Exception:
             base_url = ""
         processed_items = [self._preprocess_item(item, base_url) for item in items]
         return_msg = f"Successfully added {len(processed_items)} items."
-        # with self.client.start_session(causal_consistency=True) as session:
-        #     self.item_table.insert_many(processed_items, session=session)
-        #     return return_msg
 
-        helpers.bulk(
-            self.client,
-            processed_items,
-            index="stac_items",
-            doc_type="_doc",
-            request_timeout=200,
-        )
+        # helpers.bulk(
+        #     self.client,
+        #     processed_items,
+        #     index="stac_items",
+        #     doc_type="_doc",
+        #     request_timeout=200,
+        # )
+
+        def bulk_sync(processed_items):
+            actions = [
+                {
+                    "_index": "stac_items",
+                    "_source": item
+                } for item in processed_items
+            ]
+
+            helpers.bulk(self.client, actions)
+
+        bulk_sync(processed_items)
+
         return return_msg
