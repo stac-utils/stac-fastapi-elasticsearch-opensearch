@@ -94,7 +94,7 @@ class CoreCrudClient(BaseCoreClient):
         return self.collection_serializer.db_to_stac(collection["_source"], base_url)
 
     def item_collection(
-        self, collection_id: str, limit: int = 10, token: str = None, **kwargs
+        self, collection_id: str, limit: int = 10, **kwargs
     ) -> ItemCollection:
         """Read an item collection from the database."""
         links = []

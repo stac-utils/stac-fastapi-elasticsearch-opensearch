@@ -37,15 +37,17 @@ class ItemSerializer(Serializer):
 
         return stac_types.Item(
             type="Feature",
-            stac_version=item["stac_version"],
-            stac_extensions=item["stac_extensions"] or [],
-            id=item["id"],
-            collection=item["collection"],
-            geometry=item["geometry"],
-            bbox=item["bbox"],
-            properties=item["properties"],
-            links=item_links,
-            assets=item["assets"],
+            stac_version=item["stac_version"] if "stac_version" in item else "",
+            stac_extensions=item["stac_extensions"]
+            if "stac_extensions" in item
+            else [],
+            id=item_id,
+            collection=item["collection"] if "collection" in item else "",
+            geometry=item["geometry"] if "geometry" in item else {},
+            bbox=item["bbox"] if "bbox" in item else [],
+            properties=item["properties"] if "properties" in item else {},
+            links=item_links if "links" in item else [],
+            assets=item["assets"] if "assets" in item else {},
         )
 
 
@@ -66,14 +68,20 @@ class CollectionSerializer(Serializer):
         return stac_types.Collection(
             type="Collection",
             id=collection["id"],
-            stac_extensions=collection["stac_extensions"] or [],
-            stac_version=collection["stac_version"],
-            title=collection["title"],
-            description=collection["description"],
-            keywords=collection["keywords"],
-            license=collection["license"],
-            providers=collection["providers"],
-            summaries=collection["summaries"],
-            extent=collection["extent"],
+            stac_extensions=collection["stac_extensions"]
+            if "stac_extensions" in collection
+            else [],
+            stac_version=collection["stac_version"]
+            if "stac_version" in collection
+            else "",
+            title=collection["title"] if "title" in collection else "",
+            description=collection["description"]
+            if "description" in collection
+            else "",
+            keywords=collection["keywords"] if "keywords" in collection else [],
+            license=collection["license"] if "license" in collection else "",
+            providers=collection["providers"] if "providers" in collection else {},
+            summaries=collection["summaries"] if "summaries" in collection else {},
+            extent=collection["extent"] if "extent" in collection else {},
             links=collection_links,
         )
