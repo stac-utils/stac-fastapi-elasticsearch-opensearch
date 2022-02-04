@@ -38,7 +38,9 @@ class ItemSerializer(Serializer):
         return stac_types.Item(
             type="Feature",
             stac_version=item["stac_version"] if "stac_version" in item else "",
-            stac_extensions=item["stac_extensions"] if "stac_extensions" in item else [],
+            stac_extensions=item["stac_extensions"]
+            if "stac_extensions" in item
+            else [],
             id=item_id,
             collection=item["collection"] if "collection" in item else "",
             geometry=item["geometry"] if "geometry" in item else {},
@@ -66,10 +68,16 @@ class CollectionSerializer(Serializer):
         return stac_types.Collection(
             type="Collection",
             id=collection["id"],
-            stac_extensions=collection["stac_extensions"] if "stac_extensions" in collection else [],
-            stac_version=collection["stac_version"] if "stac_version" in collection else "",
+            stac_extensions=collection["stac_extensions"]
+            if "stac_extensions" in collection
+            else [],
+            stac_version=collection["stac_version"]
+            if "stac_version" in collection
+            else "",
             title=collection["title"] if "title" in collection else "",
-            description=collection["description"] if "description" in collection else "",
+            description=collection["description"]
+            if "description" in collection
+            else "",
             keywords=collection["keywords"] if "keywords" in collection else [],
             license=collection["license"] if "license" in collection else "",
             providers=collection["providers"] if "providers" in collection else {},
