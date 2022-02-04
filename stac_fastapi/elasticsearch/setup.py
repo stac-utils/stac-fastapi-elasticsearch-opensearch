@@ -16,6 +16,7 @@ install_requires = [
     "elasticsearch[async]",
     "elasticsearch-dsl",
     "pystac[validation]",
+    "uvicorn",
 ]
 
 extra_reqs = {

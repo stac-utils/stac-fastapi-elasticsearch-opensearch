@@ -15,6 +15,7 @@ install_requires = [
     "fastapi-utils",
     "pymongo",
     "pystac[validation]",
+    "uvicorn",
 ]
 
 extra_reqs = {
