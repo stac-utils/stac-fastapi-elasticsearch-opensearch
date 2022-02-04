@@ -47,7 +47,7 @@ setup(
     keywords="STAC FastAPI COG",
     author=u"Arturo Engineering",
     author_email="engineering@arturo.ai",
-    url="https://github.com/stac-utils/stac-fastapi",
+    url="https://github.com/jonhealy1/stac-fastapi-nosql",
     license="MIT",
     packages=find_namespace_packages(exclude=["alembic", "tests", "scripts"]),
     zip_safe=False,
