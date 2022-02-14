@@ -105,9 +105,11 @@ class CoreCrudClient(BaseCoreClient):
         with self.client.start_session() as session:
             collection_children = self.item_table.find(
                 {"collection": collection_id}, session=session
-            ).sort(
+            ).limit(limit).sort(
                 [("properties.datetime", pymongo.ASCENDING), ("id", pymongo.ASCENDING)]
             )
+
+            matched = self.item_table.count_documents({"collection": collection_id})
 
             for item in collection_children:
                 response_features.append(
@@ -120,7 +122,7 @@ class CoreCrudClient(BaseCoreClient):
             context_obj = {
                 "returned": count if count <= 10 else limit,
                 "limit": limit,
-                "matched": len(response_features) or None,
+                "matched": matched or None,
             }
 
         return ItemCollection(
@@ -296,6 +298,8 @@ class CoreCrudClient(BaseCoreClient):
                 .sort(sort_list)
             )
 
+            matched = self.item_table.count_documents(queries)
+
             results = []
             links = []
 
@@ -329,7 +333,7 @@ class CoreCrudClient(BaseCoreClient):
             context_obj = {
                 "returned": count if count <= 10 else search_request.limit,
                 "limit": search_request.limit,
-                "matched": len(results) or None,
+                "matched": matched or None,
             }
 
         return ItemCollection(
