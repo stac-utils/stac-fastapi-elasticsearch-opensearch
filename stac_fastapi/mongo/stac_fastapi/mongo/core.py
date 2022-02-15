@@ -103,10 +103,15 @@ class CoreCrudClient(BaseCoreClient):
         base_url = str(kwargs["request"].base_url)
 
         with self.client.start_session() as session:
-            collection_children = self.item_table.find(
-                {"collection": collection_id}, session=session
-            ).limit(limit).sort(
-                [("properties.datetime", pymongo.ASCENDING), ("id", pymongo.ASCENDING)]
+            collection_children = (
+                self.item_table.find({"collection": collection_id}, session=session)
+                .limit(limit)
+                .sort(
+                    [
+                        ("properties.datetime", pymongo.ASCENDING),
+                        ("id", pymongo.ASCENDING),
+                    ]
+                )
             )
 
             matched = self.item_table.count_documents({"collection": collection_id})
