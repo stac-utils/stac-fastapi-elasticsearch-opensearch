@@ -308,7 +308,10 @@ class CoreCrudClient(BaseCoreClient):
                 search = search.sort({field: {"order": sort.direction}})
 
         # search = search.sort({"id.keyword" : {"order" : "asc"}})
+        search = search.query()[0:search_request.limit]
         response = search.execute().to_dict()
+
+        count = search.count()
 
         if len(response["hits"]["hits"]) > 0:
             response_features = [
@@ -347,7 +350,6 @@ class CoreCrudClient(BaseCoreClient):
         limit = 10
         context_obj = None
         if self.extension_is_enabled("ContextExtension"):
-            count = len(response_features)
             context_obj = {
                 "returned": count if count <= 10 else limit,
                 "limit": limit,
