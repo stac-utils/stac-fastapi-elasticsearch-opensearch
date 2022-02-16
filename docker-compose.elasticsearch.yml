@@ -24,6 +24,7 @@ services:
     volumes:
       - ./stac_fastapi:/app/stac_fastapi
       - ./scripts:/app/scripts
+      - ./esdata:/usr/share/elasticsearch/data
     depends_on:
       - elasticsearch
     command:
@@ -44,4 +45,4 @@ services:
 
 networks:
   default:
-    name: stac-fastapi-network
+    name: stac-fastapi-es-network
