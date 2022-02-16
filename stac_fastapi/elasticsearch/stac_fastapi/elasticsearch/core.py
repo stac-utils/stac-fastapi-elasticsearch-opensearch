@@ -102,7 +102,9 @@ class CoreCrudClient(BaseCoreClient):
 
         search = Search(using=self.client, index="stac_items")
 
-        collection_filter = Q("bool", should=[Q("match_phrase", **{"collection": collection_id})])
+        collection_filter = Q(
+            "bool", should=[Q("match_phrase", **{"collection": collection_id})]
+        )
         search = search.query(collection_filter)
 
         count = search.count()
@@ -117,7 +119,11 @@ class CoreCrudClient(BaseCoreClient):
 
         context_obj = None
         if self.extension_is_enabled("ContextExtension"):
-            context_obj = {"returned": count if count < limit else limit, "limit": limit, "matched": count}
+            context_obj = {
+                "returned": count if count < limit else limit,
+                "limit": limit,
+                "matched": count,
+            }
 
         return ItemCollection(
             type="FeatureCollection",
@@ -312,9 +318,8 @@ class CoreCrudClient(BaseCoreClient):
 
         count = search.count()
         # search = search.sort({"id.keyword" : {"order" : "asc"}})
-        search = search.query()[0:search_request.limit]
+        search = search.query()[0 : search_request.limit]
         response = search.execute().to_dict()
-
 
         if len(response["hits"]["hits"]) > 0:
             response_features = [
