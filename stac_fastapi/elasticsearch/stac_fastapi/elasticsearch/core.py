@@ -100,11 +100,17 @@ class CoreCrudClient(BaseCoreClient):
         links = []
         base_url = str(kwargs["request"].base_url)
 
-        collection_children = self.client.search(
-            index="stac_items",
-            doc_type="_doc",
-            query={"match_phrase": {"collection": collection_id}},
+        search = Search(using=self.client, index="stac_items")
+
+        collection_filter = Q(
+            "bool", should=[Q("match_phrase", **{"collection": collection_id})]
         )
+        search = search.query(collection_filter)
+
+        count = search.count()
+        # search = search.sort({"id.keyword" : {"order" : "asc"}})
+        search = search.query()[0:limit]
+        collection_children = search.execute().to_dict()
 
         serialized_children = [
             self.item_serializer.db_to_stac(item["_source"], base_url=base_url)
@@ -113,8 +119,11 @@ class CoreCrudClient(BaseCoreClient):
 
         context_obj = None
         if self.extension_is_enabled("ContextExtension"):
-            count = len(serialized_children)
-            context_obj = {"returned": count, "limit": limit, "matched": count}
+            context_obj = {
+                "returned": count if count < limit else limit,
+                "limit": limit,
+                "matched": count,
+            }
 
         return ItemCollection(
             type="FeatureCollection",
@@ -307,7 +316,9 @@ class CoreCrudClient(BaseCoreClient):
                 field = sort.field + ".keyword"
                 search = search.sort({field: {"order": sort.direction}})
 
+        count = search.count()
         # search = search.sort({"id.keyword" : {"order" : "asc"}})
+        search = search.query()[0 : search_request.limit]
         response = search.execute().to_dict()
 
         if len(response["hits"]["hits"]) > 0:
@@ -347,9 +358,8 @@ class CoreCrudClient(BaseCoreClient):
         limit = 10
         context_obj = None
         if self.extension_is_enabled("ContextExtension"):
-            count = len(response_features)
             context_obj = {
-                "returned": count if count <= 10 else limit,
+                "returned": count if count < limit else limit,
                 "limit": limit,
                 "matched": count,
             }
