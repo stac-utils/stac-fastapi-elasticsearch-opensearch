@@ -7,7 +7,7 @@ services:
     restart: always
     build:
       context: .
-      dockerfile: Dockerfile.elasticsearch
+      dockerfile: Dockerfile
     platform: linux/amd64
     environment:
       - APP_HOST=0.0.0.0

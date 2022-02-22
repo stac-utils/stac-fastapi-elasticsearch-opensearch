@@ -1,6 +1,6 @@
 """common error checks."""
 
-## todo: create this client for Elasticsearch
+# todo: create this client for Elasticsearch
 
 # import attr
 # from pymongo import MongoClient

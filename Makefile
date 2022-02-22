@@ -3,7 +3,7 @@ APP_HOST ?= 0.0.0.0
 APP_PORT ?= 8080
 EXTERNAL_APP_PORT ?= ${APP_PORT}
 
-run_es = docker-compose -f docker-compose.elasticsearch.yml \
+run_es = docker-compose -f docker-compose.yml \
 				run \
 				-p ${EXTERNAL_APP_PORT}:${APP_PORT} \
 				-e PY_IGNORE_IMPORTMISMATCH=1 \
@@ -13,7 +13,7 @@ run_es = docker-compose -f docker-compose.elasticsearch.yml \
 
 .PHONY: es-image
 es-image:
-	docker-compose -f docker-compose.elasticsearch.yml build
+	docker-compose -f docker-compose.yml build
 
 .PHONY: docker-run-es
 docker-run-es: es-image
@@ -29,7 +29,7 @@ test-es:
 
 .PHONY: run-es-database
 run-es-database:
-	docker-compose -f docker-compose.elasticsearch.yml run --rm elasticsearch
+	docker-compose -f docker-compose.yml run --rm elasticsearch
 
 .PHONY: test
 test: test-elasticsearch
