@@ -128,9 +128,6 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-# mongo db data
-/mongo_data
-
 /esdata
 
 # Virtualenv
