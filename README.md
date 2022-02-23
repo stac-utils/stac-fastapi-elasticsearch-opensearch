@@ -4,12 +4,30 @@ Elasticsearch backend for stac-fastapi.
 
 **WIP** This backend is not yet stable (notice no releases yet), so use the pgstac backend instead.
 
-------
-#### Running API on localhost:8083
+## Development Environment Setup
 
-```docker-compose up```
+Install [pre-commit](https://pre-commit.com/#install).
 
-------
-#### Testing
+Prior to commit, run:
 
-```make test-es```
+```
+pre-commit run --all-files`
+```
+
+## Building
+
+```
+docker-compose build
+```
+
+## Running API on localhost:8083
+
+```
+docker-compose up
+```
+
+## Testing
+
+```
+make test
+```
