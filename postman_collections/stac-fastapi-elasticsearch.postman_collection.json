@@ -1,0 +1,321 @@
+{
+	"info": {
+		"_postman_id": "ca9d0979-4035-45ad-bfba-582a680a05ab",
+		"name": "stac-fastapi-elasticsearch",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+	},
+	"item": [
+		{
+			"name": "GET root catalog",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8083/",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8083",
+					"path": [
+						""
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "GET collections",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8083/collections",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8083",
+					"path": [
+						"collections"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "DELETE collection",
+			"request": {
+				"method": "DELETE",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8083/collections/test-collection",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8083",
+					"path": [
+						"collections",
+						"test-collection"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "DELETE item",
+			"request": {
+				"method": "DELETE",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8083/collections/test-collection/items/test-item",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8083",
+					"path": [
+						"collections",
+						"test-collection",
+						"items",
+						"test-item"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "GET collection",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8083/collections/test-collection",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8083",
+					"path": [
+						"collections",
+						"test-collection"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "GET item collection",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8083/collections/test-collection/items",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8083",
+					"path": [
+						"collections",
+						"test-collection",
+						"items"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "GET item",
+			"request": {
+				"method": "GET",
+				"header": [],
+				"url": {
+					"raw": "http://localhost:8083/collections/test-collection/items/test-item",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8083",
+					"path": [
+						"collections",
+						"test-collection",
+						"items",
+						"test-item"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "CREATE new collection",
+			"protocolProfileBehavior": {
+				"disabledSystemHeaders": {
+					"content-type": true
+				}
+			},
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "default"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"id\": \"test-collection\",\n  \"stac_extensions\": [\"https://stac-extensions.github.io/eo/v1.0.0/schema.json\"],\n  \"type\": \"Collection\",\n  \"description\": \"Landat 8 imagery radiometrically calibrated and orthorectified using gound points and Digital Elevation Model (DEM) data to correct relief displacement.\",\n  \"stac_version\": \"1.0.0\",\n  \"summaries\": {\n    \"platform\": [\"landsat-8\"],\n    \"instruments\": [\"oli\", \"tirs\"],\n    \"gsd\": [30]\n  },\n  \"extent\": {\n    \"spatial\": {\n      \"bbox\": [\n        [\n          -180.0,\n          -90.0,\n          180.0,\n          90.0\n        ]\n      ]\n    },\n    \"temporal\": {\n      \"interval\": [\n        [\n          \"2013-06-01\",\n          null\n        ]\n      ]\n    }\n  },\n  \"links\": [\n    {\n      \"href\": \"http://localhost:8081/collections/landsat-8-l1\",\n      \"rel\": \"self\",\n      \"type\": \"application/json\"\n    },\n    {\n      \"href\": \"http://localhost:8081/\",\n      \"rel\": \"parent\",\n      \"type\": \"application/json\"\n    },\n    {\n      \"href\": \"http://localhost:8081/collections/landsat-8-l1/items\",\n      \"rel\": \"item\",\n      \"type\": \"application/geo+json\"\n    },\n    {\n      \"href\": \"http://localhost:8081/\",\n      \"rel\": \"root\",\n      \"type\": \"application/json\"\n    }\n  ],\n  \"title\": \"Landsat 8 L1\",\n  \"keywords\": [\n    \"landsat\",\n    \"earth observation\",\n    \"usgs\"\n  ]\n}"
+				},
+				"url": {
+					"raw": "http://localhost:8083/collections",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8083",
+					"path": [
+						"collections"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "CREATE new item",
+			"protocolProfileBehavior": {
+				"disabledSystemHeaders": {
+					"content-type": true
+				}
+			},
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "default"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"type\": \"Feature\",\n  \"id\": \"test-item\",\n  \"stac_version\": \"1.0.0\",\n  \"stac_extensions\": [\n    \"https://stac-extensions.github.io/eo/v1.0.0/schema.json\",\n    \"https://stac-extensions.github.io/projection/v1.0.0/schema.json\"\n  ],\n  \"geometry\": {\n    \"coordinates\": [\n      [\n        [\n          152.15052873427666,\n          -33.82243006904891\n        ],\n        [\n          150.1000346138806,\n          -34.257132625788756\n        ],\n        [\n          149.5776607193635,\n          -32.514709769700254\n        ],\n        [\n          151.6262528041627,\n          -32.08081674221862\n        ],\n        [\n          152.15052873427666,\n          -33.82243006904891\n        ]\n      ]\n    ],\n    \"type\": \"Polygon\"\n  },\n  \"properties\": {\n    \"datetime\": \"2018-02-12T12:30:22Z\",\n    \"landsat:scene_id\": \"LC82081612020043LGN00\",\n    \"landsat:row\": \"161\",\n    \"gsd\": 15,\n    \"landsat:revision\": \"00\",\n    \"view:sun_azimuth\": -148.83296771,\n    \"instrument\": \"OLI_TIRS\",\n    \"landsat:product_id\": \"LC08_L1GT_208161_20200212_20200212_01_RT\",\n    \"eo:cloud_cover\": 0,\n    \"landsat:tier\": \"RT\",\n    \"landsat:processing_level\": \"L1GT\",\n    \"landsat:column\": \"208\",\n    \"platform\": \"landsat-8\",\n    \"proj:epsg\": 32756,\n    \"view:sun_elevation\": -37.30791534,\n    \"view:off_nadir\": 0,\n    \"height\": 2500,\n    \"width\": 2500\n  },\n  \"bbox\": [\n    149.57574,\n    -34.25796,\n    152.15194,\n    -32.07915\n  ],\n  \"collection\": \"test-collection\",\n  \"assets\": {},\n  \"links\": [\n    {\n      \"href\": \"http://localhost:8081/collections/landsat-8-l1/items/LC82081612020043\",\n      \"rel\": \"self\",\n      \"type\": \"application/geo+json\"\n    },\n    {\n      \"href\": \"http://localhost:8081/collections/landsat-8-l1\",\n      \"rel\": \"parent\",\n      \"type\": \"application/json\"\n    },\n    {\n      \"href\": \"http://localhost:8081/collections/landsat-8-l1\",\n      \"rel\": \"collection\",\n      \"type\": \"application/json\"\n    },\n    {\n      \"href\": \"http://localhost:8081/\",\n      \"rel\": \"root\",\n      \"type\": \"application/json\"\n    }\n  ]\n}"
+				},
+				"url": {
+					"raw": "http://localhost:8083/collections/test-collection/items",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8083",
+					"path": [
+						"collections",
+						"test-collection",
+						"items"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "POST search <point intersection>",
+			"protocolProfileBehavior": {
+				"disabledSystemHeaders": {
+					"content-type": true
+				}
+			},
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "default"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"collections\":[\"test-collection\"],\n    \"intersects\":{\"type\": \"Point\", \"coordinates\": [150.04, -33.14]}\n}"
+				},
+				"url": {
+					"raw": "http://localhost:8083/search",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8083",
+					"path": [
+						"search"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "POST search <bbox>",
+			"protocolProfileBehavior": {
+				"disabledSystemHeaders": {
+					"content-type": true
+				}
+			},
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "default"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"collections\":[\"sentinel-s2-l2a\"],\n    \"bbox\": [-69.433594,-10.660608,-47.285156,3.513421]\n}"
+				},
+				"url": {
+					"raw": "http://localhost:8083/search",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8083",
+					"path": [
+						"search"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "GET search <query gsd>",
+			"request": {
+				"method": "GET",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "default"
+					}
+				],
+				"url": {
+					"raw": "http://localhost:8083/search?query={\"gsd\": {\"gt\": 14}}",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8083",
+					"path": [
+						"search"
+					],
+					"query": [
+						{
+							"key": "query",
+							"value": "{\"gsd\": {\"gt\": 14}}"
+						}
+					]
+				}
+			},
+			"response": []
+		}
+	]
+}
