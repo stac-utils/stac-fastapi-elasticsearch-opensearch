@@ -7,7 +7,7 @@ Elasticsearch backend for stac-fastapi.
 ------
 #### Running API on localhost:8083
 
-```docker-compose -f docker-compose.yml up```
+```docker-compose up```
 
 ------
 #### Testing
