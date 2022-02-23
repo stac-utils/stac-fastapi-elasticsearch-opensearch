@@ -11,28 +11,25 @@ run_es = docker-compose \
 	-e APP_PORT=${APP_PORT} \
 	app-elasticsearch
 
-.PHONY: es-image
-es-image:
+.PHONY: image
+image:
 	docker-compose build
 
-.PHONY: docker-run-es
-docker-run-es: es-image
+.PHONY: docker-run
+docker-run: image
 	$(run_es)
 
-.PHONY: docker-shell-es
-docker-shell-es:
+.PHONY: docker-shell
+docker-shell:
 	$(run_es) /bin/bash
 
-.PHONY: test-es
-test-es:
-	$(run_es) /bin/bash -c 'export && ./scripts/wait-for-it.sh elasticsearch:9200 && cd /app/stac_fastapi/elasticsearch/tests/ && pytest'
-
-.PHONY: run-es-database
-run-es-database:
-	docker-compose run --rm elasticsearch
-
 .PHONY: test
-test: test-elasticsearch
+test:
+	$(run_es) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd /app/stac_fastapi/elasticsearch/tests/ && pytest'
+
+.PHONY: run-database
+run-database:
+	docker-compose run --rm elasticsearch
 
 .PHONY: pybase-install
 pybase-install:
@@ -41,8 +38,8 @@ pybase-install:
 	pip install -e ./stac_fastapi/types[dev] && \
 	pip install -e ./stac_fastapi/extensions[dev]
 
-.PHONY: es-install
-es-install: pybase-install
+.PHONY: install
+install: pybase-install
 	pip install -e ./stac_fastapi/elasticsearch[dev,server]
 
 .PHONY: docs-image
