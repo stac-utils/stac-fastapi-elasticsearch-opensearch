@@ -1,1 +1,1 @@
-"""stac_fastapi.mongo.models module."""
+"""stac_fastapi.elasticsearch.models module."""

@@ -1,4 +1,4 @@
-"""mongo extensions modifications."""
+"""elasticsearch extensions modifications."""
 
 from .query import Operator, QueryableTypes, QueryExtension
 

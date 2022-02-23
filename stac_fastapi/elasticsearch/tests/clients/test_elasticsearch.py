@@ -39,7 +39,7 @@ def test_create_collection_already_exists(
     data = load_test_data("test_collection.json")
     es_transactions.create_collection(data, request=MockStarletteRequest)
 
-    # change id to avoid mongo duplicate key error
+    # change id to avoid elasticsearch duplicate key error
     data["_id"] = str(uuid.uuid4())
 
     with pytest.raises(ConflictError):

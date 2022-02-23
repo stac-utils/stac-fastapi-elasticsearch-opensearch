@@ -11,13 +11,6 @@ jobs:
     timeout-minutes: 10
 
     services:
-      mongo_db_service:
-        image: mongo:3.6
-        env:
-          MONGO_INITDB_ROOT_USERNAME: dev
-          MONGO_INITDB_ROOT_PASSWORD: stac
-        ports:
-          - 27018:27017
 
       elasticsearch_db_service:
         image: docker.elastic.co/elasticsearch/elasticsearch:7.14.2
@@ -48,23 +41,9 @@ jobs:
         run: |
           python -m pip install --upgrade pipenv wheel
 
-      - name: Install mongo stac-fastapi
-        run: |
-          pip install ./stac_fastapi/mongo[dev,server]
-
       - name: Install elasticsearch stac-fastapi
         run: |
           pip install ./stac_fastapi/elasticsearch[dev,server]
-
-      - name: Run test suite
-        run: |
-          cd stac_fastapi/mongo && pipenv run pytest -svvv
-        env:
-          ENVIRONMENT: testing
-          MONGO_USER: dev
-          MONGO_PASS: stac
-          MONGO_PORT: 27018
-          MONGO_HOST: localhost
       
       - name: Run test suite
         run: |

@@ -1,3 +1,3 @@
 # Requirements
 
-The Mongo backend requires **mongodb**.
+The Elasticsearch backend requires **elasticsearch**.
