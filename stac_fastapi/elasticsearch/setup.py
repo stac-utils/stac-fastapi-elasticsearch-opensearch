@@ -33,7 +33,7 @@ extra_reqs = {
 
 
 setup(
-    name="stac-fastapi.nosql.elasticsearch",
+    name="stac-fastapi.elasticsearch",
     description="An implementation of STAC API based on the FastAPI framework.",
     long_description=desc,
     long_description_content_type="text/markdown",
