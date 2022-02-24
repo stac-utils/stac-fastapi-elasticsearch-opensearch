@@ -41,7 +41,7 @@ def load_items():
         try:
             feature["stac_extensions"] = []
             feature["stac_version"] = "1.0.0"
-            feature["collection"] = "test-collection"
+            feature["collection"] = collection
             resp = requests.post(
                 f"{STAC_API_BASE_URL}/collections/{collection}/items", json=feature
             )
