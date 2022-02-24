@@ -31,3 +31,9 @@ docker-compose up
 ```
 make test
 ```
+
+## Ingest sample data
+
+```
+make ingest
+```
