@@ -13,10 +13,9 @@ from stac_fastapi.elasticsearch.transactions import (
     BulkTransactionsClient,
     TransactionsClient,
 )
+from stac_fastapi.extensions.third_party.bulk_transactions import Items
 from stac_fastapi.types.errors import ConflictError, NotFoundError
-from stac_fastapi.extensions.third_party.bulk_transactions import (
-    Items,
-)
+
 
 def test_create_collection(
     es_core: CoreCrudClient,
