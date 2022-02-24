@@ -1,3 +1,4 @@
+"""Database ingestion script."""
 import json
 import os
 
