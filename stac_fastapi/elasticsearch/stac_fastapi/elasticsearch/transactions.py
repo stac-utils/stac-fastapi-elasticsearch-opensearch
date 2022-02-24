@@ -215,7 +215,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
             base_url = str(kwargs["request"].base_url)
         except Exception:
             base_url = ""
-        processed_items = [self._preprocess_item(item, base_url) for item in items]
+        processed_items = [self._preprocess_item(item, base_url) for item in items.items.values()]
         return_msg = f"Successfully added {len(processed_items)} items."
 
         # helpers.bulk(
