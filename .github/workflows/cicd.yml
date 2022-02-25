@@ -1,4 +1,4 @@
-name: stac-fastapi-nosql
+name: stac-fastapi-elasticsearch
 on:
   push:
     branches: [ main, dev ]
