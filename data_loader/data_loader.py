@@ -39,13 +39,10 @@ def load_items():
 
     for feature in feature_collection["features"]:
         try:
-            feature["stac_extensions"] = []
-            feature["stac_version"] = "1.0.0"
             feature["collection"] = collection
             resp = requests.post(
                 f"{STAC_API_BASE_URL}/collections/{collection}/items", json=feature
             )
-
             if resp.status_code == 200:
                 print(f"Status code: {resp.status_code}")
                 print(f"Added item: {feature['id']}")
