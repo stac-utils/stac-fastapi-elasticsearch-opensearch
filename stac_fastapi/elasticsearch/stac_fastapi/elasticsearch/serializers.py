@@ -21,6 +21,9 @@ class Serializer(abc.ABC):
 
 class ItemSerializer(Serializer):
     """Serialization methods for STAC items."""
+    @classmethod
+    def stac_to_db(cls, stac_data: TypedDict) -> stac_types.Item:
+        return stac_data
 
     @classmethod
     def db_to_stac(cls, item: dict, base_url: str) -> stac_types.Item:

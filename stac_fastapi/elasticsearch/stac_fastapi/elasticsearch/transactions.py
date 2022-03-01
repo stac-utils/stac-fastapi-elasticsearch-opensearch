@@ -81,8 +81,10 @@ class TransactionsClient(BaseTransactionsClient):
 
         self._create_item_index()
 
+        data = ItemSerializer.stac_to_db(model)
+
         self.client.index(
-            index="stac_items", doc_type="_doc", id=model["id"], document=model
+            index="stac_items", doc_type="_doc", id=model["id"], document=data
         )
         return ItemSerializer.db_to_stac(model, base_url)
 
