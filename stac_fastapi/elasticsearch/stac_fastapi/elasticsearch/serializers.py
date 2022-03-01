@@ -6,6 +6,8 @@ import attr
 
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.links import CollectionLinks, ItemLinks, resolve_links
+from datetime import datetime
+from stac_pydantic.shared import DATETIME_RFC339
 
 
 @attr.s  # type:ignore
@@ -22,7 +24,24 @@ class Serializer(abc.ABC):
 class ItemSerializer(Serializer):
     """Serialization methods for STAC items."""
     @classmethod
-    def stac_to_db(cls, stac_data: TypedDict) -> stac_types.Item:
+    def stac_to_db(cls, stac_data: TypedDict, base_url: str) -> stac_types.Item:
+        item_links = ItemLinks(
+            collection_id=stac_data["collection"], item_id=stac_data["id"], base_url=base_url
+        ).create_links()
+        stac_data["links"] = item_links
+
+        # elasticsearch doesn't like the fact that some values are float and some were int
+        if "eo:bands" in stac_data["properties"]:
+            for wave in stac_data["properties"]["eo:bands"]:
+                for k, v in wave.items():
+                    if type(v) != str:
+                        v = float(v)
+                        wave.update({k: v})
+
+        now = datetime.utcnow().strftime(DATETIME_RFC339)
+        if "created" not in stac_data["properties"]:
+            stac_data["properties"]["created"] = str(now)
+        stac_data["properties"]["updated"] = str(now)
         return stac_data
 
     @classmethod
