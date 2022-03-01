@@ -320,7 +320,11 @@ class CoreCrudClient(BaseCoreClient):
                 field = sort.field + ".keyword"
                 search = search.sort({field: {"order": sort.direction}})
 
-        count = search.count()
+        try:
+            count = search.count()
+        except elasticsearch.exceptions.NotFoundError:
+            raise NotFoundError("No items have been added to the database yet")
+
         # search = search.sort({"id.keyword" : {"order" : "asc"}})
         search = search.query()[0 : search_request.limit]
         response = search.execute().to_dict()
