@@ -18,7 +18,7 @@ from stac_fastapi.extensions.third_party.bulk_transactions import (
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.core import BaseTransactionsClient
 from stac_fastapi.types.errors import ConflictError, ForeignKeyError, NotFoundError
-from stac_fastapi.types.links import CollectionLinks, ItemLinks
+from stac_fastapi.types.links import CollectionLinks
 
 logger = logging.getLogger(__name__)
 

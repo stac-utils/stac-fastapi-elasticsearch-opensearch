@@ -1,13 +1,13 @@
 """Serializers."""
 import abc
+from datetime import datetime
 from typing import TypedDict
 
 import attr
+from stac_pydantic.shared import DATETIME_RFC339
 
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.links import CollectionLinks, ItemLinks, resolve_links
-from datetime import datetime
-from stac_pydantic.shared import DATETIME_RFC339
 
 
 @attr.s  # type:ignore
@@ -23,10 +23,14 @@ class Serializer(abc.ABC):
 
 class ItemSerializer(Serializer):
     """Serialization methods for STAC items."""
+
     @classmethod
     def stac_to_db(cls, stac_data: TypedDict, base_url: str) -> stac_types.Item:
+        """Transform stac item to database ready stac item."""
         item_links = ItemLinks(
-            collection_id=stac_data["collection"], item_id=stac_data["id"], base_url=base_url
+            collection_id=stac_data["collection"],
+            item_id=stac_data["id"],
+            base_url=base_url,
         ).create_links()
         stac_data["links"] = item_links
 
