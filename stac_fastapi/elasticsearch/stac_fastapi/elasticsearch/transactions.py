@@ -53,6 +53,9 @@ class TransactionsClient(BaseTransactionsClient):
 
     def create_item(self, model: stac_types.Item, **kwargs):
         """Create item."""
+        # If a feature collection is posted
+        if model["type"] == "FeatureCollection":
+            return "featue collection"
         base_url = str(kwargs["request"].base_url)
         item_links = ItemLinks(
             collection_id=model["collection"], item_id=model["id"], base_url=base_url
@@ -219,14 +222,6 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
             self._preprocess_item(item, base_url) for item in items.items.values()
         ]
         return_msg = f"Successfully added {len(processed_items)} items."
-
-        # helpers.bulk(
-        #     self.client,
-        #     processed_items,
-        #     index="stac_items",
-        #     doc_type="_doc",
-        #     request_timeout=200,
-        # )
 
         def bulk_sync(processed_items):
             actions = [
