@@ -60,7 +60,8 @@ class TransactionsClient(BaseTransactionsClient):
         if model["type"] == "FeatureCollection":
             bulk_client = BulkTransactionsClient()
             processed_items = [
-                bulk_client._preprocess_item(item, base_url) for item in model["features"]
+                bulk_client._preprocess_item(item, base_url)
+                for item in model["features"]
             ]
             return_msg = f"Successfully added {len(processed_items)} items."
             bulk_client.bulk_sync(processed_items)
@@ -222,6 +223,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         return model
 
     def bulk_sync(self, processed_items):
+        """Elasticsearch bulk insertion."""
         actions = [
             {"_index": "stac_items", "_source": item} for item in processed_items
         ]

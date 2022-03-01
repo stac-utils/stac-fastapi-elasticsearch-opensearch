@@ -289,6 +289,7 @@ def test_bulk_item_insert(
     #         item["id"], item["collection"], request=MockStarletteRequest
     #     )
 
+
 def test_feature_collection_insert(
     es_core: CoreCrudClient,
     es_transactions: TransactionsClient,
@@ -299,22 +300,20 @@ def test_feature_collection_insert(
     es_transactions.create_collection(coll, request=MockStarletteRequest)
 
     item = load_test_data("test_item.json")
- 
+
     features = []
     for _ in range(10):
         _item = deepcopy(item)
         _item["id"] = str(uuid.uuid4())
         features.append(_item)
 
-    feature_collection = {
-        "type": "FeatureCollection",
-        "features": features
-    }
+    feature_collection = {"type": "FeatureCollection", "features": features}
 
     es_transactions.create_item(feature_collection, request=MockStarletteRequest)
     time.sleep(3)
     fc = es_core.item_collection(coll["id"], request=MockStarletteRequest)
     assert len(fc["features"]) >= 10
+
 
 @pytest.mark.skip(reason="Not working")
 def test_landing_page_no_collection_title(
