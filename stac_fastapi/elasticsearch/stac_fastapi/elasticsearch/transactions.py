@@ -53,10 +53,21 @@ class TransactionsClient(BaseTransactionsClient):
 
     def create_item(self, model: stac_types.Item, **kwargs):
         """Create item."""
+        base_url = str(kwargs["request"].base_url)
+        self._create_item_index()
+
         # If a feature collection is posted
         if model["type"] == "FeatureCollection":
-            return "featue collection"
-        base_url = str(kwargs["request"].base_url)
+            bulk_client = BulkTransactionsClient()
+            processed_items = [
+                bulk_client._preprocess_item(item, base_url) for item in model["features"]
+            ]
+            return_msg = f"Successfully added {len(processed_items)} items."
+            bulk_client.bulk_sync(processed_items)
+
+            return return_msg
+
+        # If a single item is posted
         item_links = ItemLinks(
             collection_id=model["collection"], item_id=model["id"], base_url=base_url
         ).create_links()
@@ -81,8 +92,6 @@ class TransactionsClient(BaseTransactionsClient):
         now = datetime.utcnow().strftime(DATETIME_RFC339)
         if "created" not in model["properties"]:
             model["properties"]["created"] = str(now)
-
-        self._create_item_index()
 
         self.client.index(
             index="stac_items", doc_type="_doc", id=model["id"], document=model
@@ -211,6 +220,12 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
                         wave.update({k: v})
         return model
 
+    def bulk_sync(self, processed_items):
+        actions = [
+            {"_index": "stac_items", "_source": item} for item in processed_items
+        ]
+        helpers.bulk(self.client, actions)
+
     def bulk_item_insert(self, items: Items, **kwargs) -> str:
         """Bulk item insertion using es."""
         self._create_item_index()
@@ -223,13 +238,6 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         ]
         return_msg = f"Successfully added {len(processed_items)} items."
 
-        def bulk_sync(processed_items):
-            actions = [
-                {"_index": "stac_items", "_source": item} for item in processed_items
-            ]
-
-            helpers.bulk(self.client, actions)
-
-        bulk_sync(processed_items)
+        self.bulk_sync(processed_items)
 
         return return_msg
