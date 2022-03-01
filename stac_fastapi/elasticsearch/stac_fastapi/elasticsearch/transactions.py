@@ -18,7 +18,7 @@ from stac_fastapi.extensions.third_party.bulk_transactions import (
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.core import BaseTransactionsClient
 from stac_fastapi.types.errors import ConflictError, ForeignKeyError, NotFoundError
-from stac_fastapi.types.links import CollectionLinks, ItemLinks
+from stac_fastapi.types.links import CollectionLinks
 
 logger = logging.getLogger(__name__)
 
@@ -69,19 +69,6 @@ class TransactionsClient(BaseTransactionsClient):
             return return_msg
 
         # If a single item is posted
-        item_links = ItemLinks(
-            collection_id=model["collection"], item_id=model["id"], base_url=base_url
-        ).create_links()
-        model["links"] = item_links
-
-        # elasticsearch doesn't like the fact that some values are float and some were int
-        if "eo:bands" in model["properties"]:
-            for wave in model["properties"]["eo:bands"]:
-                for k, v in wave.items():
-                    if type(v) != str:
-                        v = float(v)
-                        wave.update({k: v})
-
         if not self.client.exists(index="stac_collections", id=model["collection"]):
             raise ForeignKeyError(f"Collection {model['collection']} does not exist")
 
@@ -90,12 +77,10 @@ class TransactionsClient(BaseTransactionsClient):
                 f"Item {model['id']} in collection {model['collection']} already exists"
             )
 
-        now = datetime.utcnow().strftime(DATETIME_RFC339)
-        if "created" not in model["properties"]:
-            model["properties"]["created"] = str(now)
+        data = ItemSerializer.stac_to_db(model, base_url)
 
         self.client.index(
-            index="stac_items", doc_type="_doc", id=model["id"], document=model
+            index="stac_items", doc_type="_doc", id=model["id"], document=data
         )
         return ItemSerializer.db_to_stac(model, base_url)
 
@@ -174,33 +159,8 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         settings = ElasticsearchSettings()
         self.client = settings.create_client
 
-    def _create_item_index(self):
-        mapping = {
-            "mappings": {
-                "properties": {
-                    "geometry": {"type": "geo_shape"},
-                    "id": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
-                    "properties__datetime": {
-                        "type": "text",
-                        "fields": {"keyword": {"type": "keyword"}},
-                    },
-                }
-            }
-        }
-
-        _ = self.client.indices.create(
-            index="stac_items",
-            body=mapping,
-            ignore=400,  # ignore 400 already exists code
-        )
-
     def _preprocess_item(self, model: stac_types.Item, base_url) -> stac_types.Item:
         """Preprocess items to match data model."""
-        item_links = ItemLinks(
-            collection_id=model["collection"], item_id=model["id"], base_url=base_url
-        ).create_links()
-        model["links"] = item_links
-
         if not self.client.exists(index="stac_collections", id=model["collection"]):
             raise ForeignKeyError(f"Collection {model['collection']} does not exist")
 
@@ -209,18 +169,8 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
                 f"Item {model['id']} in collection {model['collection']} already exists"
             )
 
-        now = datetime.utcnow().strftime(DATETIME_RFC339)
-        if "created" not in model["properties"]:
-            model["properties"]["created"] = str(now)
-
-        # elasticsearch doesn't like the fact that some values are float and some were int
-        if "eo:bands" in model["properties"]:
-            for wave in model["properties"]["eo:bands"]:
-                for k, v in wave.items():
-                    if type(v) != str:
-                        v = float(v)
-                        wave.update({k: v})
-        return model
+        item = ItemSerializer.stac_to_db(model, base_url)
+        return item
 
     def bulk_sync(self, processed_items):
         """Elasticsearch bulk insertion."""
@@ -231,7 +181,8 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
 
     def bulk_item_insert(self, items: Items, **kwargs) -> str:
         """Bulk item insertion using es."""
-        self._create_item_index()
+        transactions_client = TransactionsClient()
+        transactions_client._create_item_index()
         try:
             base_url = str(kwargs["request"].base_url)
         except Exception:
