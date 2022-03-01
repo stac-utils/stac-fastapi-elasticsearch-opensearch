@@ -52,9 +52,12 @@ class CoreCrudClient(BaseCoreClient):
     def all_collections(self, **kwargs) -> Collections:
         """Read all collections from the database."""
         base_url = str(kwargs["request"].base_url)
-        collections = self.client.search(
-            index="stac_collections", doc_type="_doc", query={"match_all": {}}
-        )
+        try:
+            collections = self.client.search(
+                index="stac_collections", doc_type="_doc", query={"match_all": {}}
+            )
+        except elasticsearch.exceptions.NotFoundError:
+            raise NotFoundError(f"No collections exist in the database yet")
         serialized_collections = [
             self.collection_serializer.db_to_stac(
                 collection["_source"], base_url=base_url
