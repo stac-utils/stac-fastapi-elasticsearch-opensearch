@@ -57,7 +57,7 @@ class CoreCrudClient(BaseCoreClient):
                 index="stac_collections", doc_type="_doc", query={"match_all": {}}
             )
         except elasticsearch.exceptions.NotFoundError:
-            raise NotFoundError("No collections exist in the database yet")
+            raise NotFoundError("No collections exist")
         serialized_collections = [
             self.collection_serializer.db_to_stac(
                 collection["_source"], base_url=base_url
@@ -111,7 +111,7 @@ class CoreCrudClient(BaseCoreClient):
         try:
             count = search.count()
         except elasticsearch.exceptions.NotFoundError:
-            raise NotFoundError("No items exist for this collection yet")
+            raise NotFoundError("No items exist")
         # search = search.sort({"id.keyword" : {"order" : "asc"}})
         search = search.query()[0:limit]
         collection_children = search.execute().to_dict()
@@ -325,7 +325,7 @@ class CoreCrudClient(BaseCoreClient):
         try:
             count = search.count()
         except elasticsearch.exceptions.NotFoundError:
-            raise NotFoundError("No items have been added to the database yet")
+            raise NotFoundError("No items exist")
 
         # search = search.sort({"id.keyword" : {"order" : "asc"}})
         search = search.query()[0 : search_request.limit]
