@@ -113,6 +113,7 @@ class TransactionsClient(BaseTransactionsClient):
         self.client.index(
             index="stac_collections", doc_type="_doc", id=model["id"], document=model
         )
+        return CollectionSerializer.db_to_stac(model, base_url)
 
     def update_item(self, model: stac_types.Item, **kwargs):
         """Update item."""
