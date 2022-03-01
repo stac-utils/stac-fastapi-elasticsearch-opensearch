@@ -54,6 +54,21 @@ class TransactionsClient(BaseTransactionsClient):
     def create_item(self, model: stac_types.Item, **kwargs):
         """Create item."""
         base_url = str(kwargs["request"].base_url)
+        self._create_item_index()
+
+        # If a feature collection is posted
+        if model["type"] == "FeatureCollection":
+            bulk_client = BulkTransactionsClient()
+            processed_items = [
+                bulk_client._preprocess_item(item, base_url)
+                for item in model["features"]
+            ]
+            return_msg = f"Successfully added {len(processed_items)} items."
+            bulk_client.bulk_sync(processed_items)
+
+            return return_msg
+
+        # If a single item is posted
         item_links = ItemLinks(
             collection_id=model["collection"], item_id=model["id"], base_url=base_url
         ).create_links()
@@ -79,8 +94,6 @@ class TransactionsClient(BaseTransactionsClient):
         if "created" not in model["properties"]:
             model["properties"]["created"] = str(now)
 
-        self._create_item_index()
-
         self.client.index(
             index="stac_items", doc_type="_doc", id=model["id"], document=model
         )
@@ -101,6 +114,7 @@ class TransactionsClient(BaseTransactionsClient):
         self.client.index(
             index="stac_collections", doc_type="_doc", id=model["id"], document=model
         )
+        return CollectionSerializer.db_to_stac(model, base_url)
 
     def update_item(self, model: stac_types.Item, **kwargs):
         """Update item."""
@@ -208,6 +222,13 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
                         wave.update({k: v})
         return model
 
+    def bulk_sync(self, processed_items):
+        """Elasticsearch bulk insertion."""
+        actions = [
+            {"_index": "stac_items", "_source": item} for item in processed_items
+        ]
+        helpers.bulk(self.client, actions)
+
     def bulk_item_insert(self, items: Items, **kwargs) -> str:
         """Bulk item insertion using es."""
         self._create_item_index()
@@ -220,21 +241,6 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         ]
         return_msg = f"Successfully added {len(processed_items)} items."
 
-        # helpers.bulk(
-        #     self.client,
-        #     processed_items,
-        #     index="stac_items",
-        #     doc_type="_doc",
-        #     request_timeout=200,
-        # )
-
-        def bulk_sync(processed_items):
-            actions = [
-                {"_index": "stac_items", "_source": item} for item in processed_items
-            ]
-
-            helpers.bulk(self.client, actions)
-
-        bulk_sync(processed_items)
+        self.bulk_sync(processed_items)
 
         return return_msg
