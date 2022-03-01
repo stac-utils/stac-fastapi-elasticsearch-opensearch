@@ -54,9 +54,21 @@ class TransactionsClient(BaseTransactionsClient):
     def create_item(self, model: stac_types.Item, **kwargs):
         """Create item."""
         base_url = str(kwargs["request"].base_url)
-
         self._create_item_index()
 
+        # If a feature collection is posted
+        if model["type"] == "FeatureCollection":
+            bulk_client = BulkTransactionsClient()
+            processed_items = [
+                bulk_client._preprocess_item(item, base_url)
+                for item in model["features"]
+            ]
+            return_msg = f"Successfully added {len(processed_items)} items."
+            bulk_client.bulk_sync(processed_items)
+
+            return return_msg
+
+        # If a single item is posted
         if not self.client.exists(index="stac_collections", id=model["collection"]):
             raise ForeignKeyError(f"Collection {model['collection']} does not exist")
 
