@@ -146,33 +146,8 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         settings = ElasticsearchSettings()
         self.client = settings.create_client
 
-    # def _create_item_index(self):
-    #     mapping = {
-    #         "mappings": {
-    #             "properties": {
-    #                 "geometry": {"type": "geo_shape"},
-    #                 "id": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
-    #                 "properties__datetime": {
-    #                     "type": "text",
-    #                     "fields": {"keyword": {"type": "keyword"}},
-    #                 },
-    #             }
-    #         }
-    #     }
-
-    #     _ = self.client.indices.create(
-    #         index="stac_items",
-    #         body=mapping,
-    #         ignore=400,  # ignore 400 already exists code
-    #     )
-
     def _preprocess_item(self, model: stac_types.Item, base_url) -> stac_types.Item:
         """Preprocess items to match data model."""
-        item_links = ItemLinks(
-            collection_id=model["collection"], item_id=model["id"], base_url=base_url
-        ).create_links()
-        model["links"] = item_links
-
         if not self.client.exists(index="stac_collections", id=model["collection"]):
             raise ForeignKeyError(f"Collection {model['collection']} does not exist")
 
@@ -181,18 +156,8 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
                 f"Item {model['id']} in collection {model['collection']} already exists"
             )
 
-        now = datetime.utcnow().strftime(DATETIME_RFC339)
-        if "created" not in model["properties"]:
-            model["properties"]["created"] = str(now)
-
-        # elasticsearch doesn't like the fact that some values are float and some were int
-        if "eo:bands" in model["properties"]:
-            for wave in model["properties"]["eo:bands"]:
-                for k, v in wave.items():
-                    if type(v) != str:
-                        v = float(v)
-                        wave.update({k: v})
-        return model
+        item = ItemSerializer.stac_to_db(model, base_url)
+        return item
 
     def bulk_item_insert(self, items: Items, **kwargs) -> str:
         """Bulk item insertion using es."""
@@ -206,14 +171,6 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
             self._preprocess_item(item, base_url) for item in items.items.values()
         ]
         return_msg = f"Successfully added {len(processed_items)} items."
-
-        # helpers.bulk(
-        #     self.client,
-        #     processed_items,
-        #     index="stac_items",
-        #     doc_type="_doc",
-        #     request_timeout=200,
-        # )
 
         def bulk_sync(processed_items):
             actions = [
