@@ -53,7 +53,7 @@ class TransactionsClient(BaseTransactionsClient):
 
     def create_item(self, model: stac_types.Item, **kwargs):
         """Create item."""
-        base_url = str(kwargs["request"].base_url
+        base_url = str(kwargs["request"].base_url)
 
         self._create_item_index()
 
