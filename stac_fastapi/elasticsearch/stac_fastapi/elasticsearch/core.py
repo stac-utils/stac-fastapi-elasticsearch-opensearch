@@ -52,9 +52,12 @@ class CoreCrudClient(BaseCoreClient):
     def all_collections(self, **kwargs) -> Collections:
         """Read all collections from the database."""
         base_url = str(kwargs["request"].base_url)
-        collections = self.client.search(
-            index="stac_collections", doc_type="_doc", query={"match_all": {}}
-        )
+        try:
+            collections = self.client.search(
+                index="stac_collections", doc_type="_doc", query={"match_all": {}}
+            )
+        except elasticsearch.exceptions.NotFoundError:
+            raise NotFoundError("No collections exist")
         serialized_collections = [
             self.collection_serializer.db_to_stac(
                 collection["_source"], base_url=base_url
@@ -99,15 +102,16 @@ class CoreCrudClient(BaseCoreClient):
         """Read an item collection from the database."""
         links = []
         base_url = str(kwargs["request"].base_url)
-
         search = Search(using=self.client, index="stac_items")
 
         collection_filter = Q(
             "bool", should=[Q("match_phrase", **{"collection": collection_id})]
         )
         search = search.query(collection_filter)
-
-        count = search.count()
+        try:
+            count = search.count()
+        except elasticsearch.exceptions.NotFoundError:
+            raise NotFoundError("No items exist")
         # search = search.sort({"id.keyword" : {"order" : "asc"}})
         search = search.query()[0:limit]
         collection_children = search.execute().to_dict()
@@ -138,7 +142,9 @@ class CoreCrudClient(BaseCoreClient):
         try:
             item = self.client.get(index="stac_items", id=item_id)
         except elasticsearch.exceptions.NotFoundError:
-            raise NotFoundError
+            raise NotFoundError(
+                f"Item {item_id} does not exist in Collection {collection_id}"
+            )
         return self.item_serializer.db_to_stac(item["_source"], base_url)
 
     def _return_date(self, datetime):
@@ -316,7 +322,11 @@ class CoreCrudClient(BaseCoreClient):
                 field = sort.field + ".keyword"
                 search = search.sort({field: {"order": sort.direction}})
 
-        count = search.count()
+        try:
+            count = search.count()
+        except elasticsearch.exceptions.NotFoundError:
+            raise NotFoundError("No items exist")
+
         # search = search.sort({"id.keyword" : {"order" : "asc"}})
         search = search.query()[0 : search_request.limit]
         response = search.execute().to_dict()
