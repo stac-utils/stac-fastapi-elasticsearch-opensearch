@@ -1,12 +1,11 @@
 """transactions extension client."""
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 
 import attr
 import elasticsearch
 from elasticsearch import helpers
-from stac_pydantic.shared import DATETIME_RFC339
 
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
 from stac_fastapi.elasticsearch.serializers import CollectionSerializer, ItemSerializer
@@ -104,7 +103,7 @@ class TransactionsClient(BaseTransactionsClient):
     def update_item(self, model: stac_types.Item, **kwargs):
         """Update item."""
         base_url = str(kwargs["request"].base_url)
-        now = datetime.utcnow().strftime(DATETIME_RFC339)
+        now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         model["properties"]["updated"] = str(now)
 
         if not self.client.exists(index="stac_collections", id=model["collection"]):
