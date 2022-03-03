@@ -1,11 +1,10 @@
 """Serializers."""
 import abc
-from datetime import datetime
 from typing import TypedDict
 
 import attr
-from stac_pydantic.shared import DATETIME_RFC339
 
+from stac_fastapi.elasticsearch.utils import now_to_rfc3339_str
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.links import CollectionLinks, ItemLinks, resolve_links
 
@@ -42,7 +41,7 @@ class ItemSerializer(Serializer):
                         v = float(v)
                         wave.update({k: v})
 
-        now = datetime.utcnow().strftime(DATETIME_RFC339)
+        now = now_to_rfc3339_str()
         if "created" not in stac_data["properties"]:
             stac_data["properties"]["created"] = str(now)
         stac_data["properties"]["updated"] = str(now)
