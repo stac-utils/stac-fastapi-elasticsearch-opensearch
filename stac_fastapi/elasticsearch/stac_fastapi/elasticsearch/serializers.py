@@ -43,8 +43,8 @@ class ItemSerializer(Serializer):
 
         now = now_to_rfc3339_str()
         if "created" not in stac_data["properties"]:
-            stac_data["properties"]["created"] = str(now)
-        stac_data["properties"]["updated"] = str(now)
+            stac_data["properties"]["created"] = now
+        stac_data["properties"]["updated"] = now
         return stac_data
 
     @classmethod
