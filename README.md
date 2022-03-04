@@ -14,6 +14,11 @@ Prior to commit, run:
 pre-commit run --all-files`
 ```
 
+```shell
+cd stac_fastapi/elasticsearch
+pip install .[dev]
+```
+
 ## Building
 
 ```
@@ -37,3 +42,7 @@ make test
 ```
 make ingest
 ```
+
+## Elasticsearch Mappings
+
+Mappings apply to search index, not source. 

@@ -24,7 +24,7 @@ class ItemSerializer(Serializer):
     """Serialization methods for STAC items."""
 
     @classmethod
-    def stac_to_db(cls, stac_data: TypedDict, base_url: str) -> stac_types.Item:
+    def stac_to_db(cls, stac_data: stac_types.Item, base_url: str) -> stac_types.Item:
         """Transform STAC Item to database-ready STAC Item."""
         item_links = ItemLinks(
             collection_id=stac_data["collection"],

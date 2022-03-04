@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import attr
 import elasticsearch
 from elasticsearch import helpers
+from overrides import overrides
 
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
 from stac_fastapi.elasticsearch.serializers import CollectionSerializer, ItemSerializer
@@ -30,26 +31,87 @@ class TransactionsClient(BaseTransactionsClient):
     settings = ElasticsearchSettings()
     client = settings.create_client
 
-    def _create_item_index(self):
-        mapping = {
-            "mappings": {
-                "properties": {
-                    "geometry": {"type": "geo_shape"},
-                    "id": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
-                    "properties__datetime": {
-                        "type": "text",
-                        "fields": {"keyword": {"type": "keyword"}},
-                    },
-                }
+    dynamicTemplates = [
+        # Common https://github.com/radiantearth/stac-spec/blob/master/item-spec/common-metadata.md
+        {
+            "descriptions": {
+                "match_mapping_type": "string",
+                "match": "description",
+                "mapping": {"type": "text"},
             }
-        }
+        },
+        {
+            "titles": {
+                "match_mapping_type": "string",
+                "match": "title",
+                "mapping": {"type": "text"},
+            }
+        },
+        # Projection Extension https://github.com/stac-extensions/projection
+        {"proj_epsg": {"match": "proj:epsg", "mapping": {"type": "integer"}}},
+        {
+            "proj_projjson": {
+                "match": "proj:projjson",
+                "mapping": {"type": "object", "enabled": False},
+            }
+        },
+        {
+            "proj_centroid": {
+                "match_mapping_type": "string",
+                "match": "proj:centroid",
+                "mapping": {"type": "geo_point"},
+            }
+        },
+        {
+            "proj_geometry": {
+                "match_mapping_type": "string",
+                "match": "proj:geometry",
+                "mapping": {"type": "geo_shape"},
+            }
+        },
+        {
+            "no_index_href": {
+                "match": "href",
+                "mapping": {"type": "text", "index": False},
+            }
+        },
+        # Default all other strings not otherwise specified to keyword
+        {"strings": {"match_mapping_type": "string", "mapping": {"type": "keyword"}}},
+        {"numerics": {"match_mapping_type": "long", "mapping": {"type": "float"}}},
+    ]
 
-        _ = self.client.indices.create(
+    mappings = {
+        "numeric_detection": False,
+        "dynamic_templates": dynamicTemplates,
+        "properties": {
+            "geometry": {"type": "geo_shape"},
+            "assets": {"type": "object", "enabled": False},
+            "links": {"type": "object", "enabled": False},
+            "properties": {
+                "type": "object",
+                "properties": {
+                    # Common https://github.com/radiantearth/stac-spec/blob/master/item-spec/common-metadata.md
+                    "datetime": {"type": "date"},
+                    "start_datetime": {"type": "date"},
+                    "end_datetime": {"type": "date"},
+                    "created": {"type": "date"},
+                    "updated": {"type": "date"},
+                    # Satellite Extension https://github.com/stac-extensions/sat
+                    "sat:absolute_orbit": {"type": "integer"},
+                    "sat:relative_orbit": {"type": "integer"},
+                },
+            },
+        },
+    }
+
+    def _create_item_index(self):
+        self.client.indices.create(
             index="stac_items",
-            body=mapping,
+            body=self.mappings,
             ignore=400,  # ignore 400 already exists code
         )
 
+    @overrides
     def create_item(self, model: stac_types.Item, **kwargs):
         """Create item."""
         base_url = str(kwargs["request"].base_url)
@@ -83,6 +145,7 @@ class TransactionsClient(BaseTransactionsClient):
         )
         return ItemSerializer.db_to_stac(model, base_url)
 
+    @overrides
     def create_collection(self, model: stac_types.Collection, **kwargs):
         """Create collection."""
         base_url = str(kwargs["request"].base_url)
@@ -100,6 +163,7 @@ class TransactionsClient(BaseTransactionsClient):
         )
         return CollectionSerializer.db_to_stac(model, base_url)
 
+    @overrides
     def update_item(self, model: stac_types.Item, **kwargs):
         """Update item."""
         base_url = str(kwargs["request"].base_url)
@@ -118,6 +182,7 @@ class TransactionsClient(BaseTransactionsClient):
         #         body=model)
         return ItemSerializer.db_to_stac(model, base_url)
 
+    @overrides
     def update_collection(self, model: stac_types.Collection, **kwargs):
         """Update collection."""
         base_url = str(kwargs["request"].base_url)
@@ -130,6 +195,7 @@ class TransactionsClient(BaseTransactionsClient):
 
         return CollectionSerializer.db_to_stac(model, base_url)
 
+    @overrides
     def delete_item(self, item_id: str, collection_id: str, **kwargs):
         """Delete item."""
         try:
@@ -138,6 +204,7 @@ class TransactionsClient(BaseTransactionsClient):
             raise NotFoundError(f"Item {item_id} not found")
         self.client.delete(index="stac_items", doc_type="_doc", id=item_id)
 
+    @overrides
     def delete_collection(self, collection_id: str, **kwargs):
         """Delete collection."""
         try:
@@ -178,6 +245,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         ]
         helpers.bulk(self.client, actions)
 
+    @overrides
     def bulk_item_insert(self, items: Items, **kwargs) -> str:
         """Bulk item insertion using es."""
         transactions_client = TransactionsClient()
