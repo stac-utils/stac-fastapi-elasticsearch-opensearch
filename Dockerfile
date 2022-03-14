@@ -14,10 +14,9 @@ ARG install_dev_dependencies=true
 
 WORKDIR /app
 
-# Install stac_fastapi.types
 COPY . /app
 
 ENV PATH=$PATH:/install/bin
 
-RUN mkdir -p /install && \
-    pip install --no-cache-dir -e ./stac_fastapi/elasticsearch[dev,server]
+RUN mkdir -p /install
+RUN pip install --no-cache-dir -e ./stac_fastapi/elasticsearch[dev,server]

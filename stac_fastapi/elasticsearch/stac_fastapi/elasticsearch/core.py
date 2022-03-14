@@ -227,7 +227,8 @@ class CoreCrudClient(BaseCoreClient):
 
         return resp
 
-    def bbox2poly(self, b0, b1, b2, b3):
+    @staticmethod
+    def bbox2poly(b0, b1, b2, b3):
         """Transform bbox to polygon."""
         poly = [[[b0, b1], [b2, b1], [b2, b3], [b0, b3], [b0, b1]]]
         return poly

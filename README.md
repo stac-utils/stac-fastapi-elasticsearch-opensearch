@@ -10,7 +10,7 @@ Install [pre-commit](https://pre-commit.com/#install).
 
 Prior to commit, run:
 
-```
+```shell
 pre-commit run --all-files`
 ```
 
@@ -21,25 +21,25 @@ pip install .[dev]
 
 ## Building
 
-```
+```shell
 docker-compose build
 ```
 
 ## Running API on localhost:8083
 
-```
+```shell
 docker-compose up
 ```
 
 ## Testing
 
-```
+```shell
 make test
 ```
 
 ## Ingest sample data
 
-```
+```shell
 make ingest
 ```
 
