@@ -31,6 +31,18 @@ docker-compose build
 docker-compose up
 ```
 
+To create a new Collection:
+
+```shell
+curl -X "POST" "http://localhost:8083/collections" \
+     -H 'Content-Type: application/json; charset=utf-8' \
+     -d $'{
+  "id": "my_collection"
+}'
+```
+
+Note: this "Collections Transaction" behavior is not part of the STAC API, but may be soon.
+
 ## Testing
 
 ```shell
