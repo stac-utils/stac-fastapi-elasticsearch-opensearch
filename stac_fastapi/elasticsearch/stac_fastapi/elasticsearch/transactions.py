@@ -32,7 +32,7 @@ class TransactionsClient(BaseTransactionsClient):
     settings = ElasticsearchSettings()
     client = settings.create_client
 
-    dynamicTemplates = [
+    ES_MAPPINGS_DYNAMIC_TEMPLATES = [
         # Common https://github.com/radiantearth/stac-spec/blob/master/item-spec/common-metadata.md
         {
             "descriptions": {
@@ -81,9 +81,9 @@ class TransactionsClient(BaseTransactionsClient):
         {"numerics": {"match_mapping_type": "long", "mapping": {"type": "float"}}},
     ]
 
-    mappings = {
+    ES_MAPPINGS = {
         "numeric_detection": False,
-        "dynamic_templates": dynamicTemplates,
+        "dynamic_templates": ES_MAPPINGS_DYNAMIC_TEMPLATES,
         "properties": {
             "geometry": {"type": "geo_shape"},
             "assets": {"type": "object", "enabled": False},
@@ -109,7 +109,7 @@ class TransactionsClient(BaseTransactionsClient):
         """Create the index for Items."""
         self.client.indices.create(
             index="stac_items",
-            body={"mappings": self.mappings},
+            body={"mappings": self.ES_MAPPINGS},
             ignore=400,  # ignore 400 already exists code
         )
 
