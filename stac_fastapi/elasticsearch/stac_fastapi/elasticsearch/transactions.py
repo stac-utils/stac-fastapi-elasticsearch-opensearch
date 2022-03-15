@@ -58,14 +58,12 @@ class TransactionsClient(BaseTransactionsClient):
         },
         {
             "proj_centroid": {
-                "match_mapping_type": "string",
                 "match": "proj:centroid",
                 "mapping": {"type": "geo_point"},
             }
         },
         {
             "proj_geometry": {
-                "match_mapping_type": "string",
                 "match": "proj:geometry",
                 "mapping": {"type": "geo_shape"},
             }
