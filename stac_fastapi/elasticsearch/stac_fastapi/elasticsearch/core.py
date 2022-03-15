@@ -1,7 +1,7 @@
 """Item crud client."""
 import json
 import logging
-from datetime import datetime
+from datetime import datetime as datetime_type
 from typing import List, Optional, Type, Union
 from urllib.parse import urljoin
 
@@ -147,15 +147,16 @@ class CoreCrudClient(BaseCoreClient):
             )
         return self.item_serializer.db_to_stac(item["_source"], base_url)
 
-    def _return_date(self, datetime):
-        datetime = datetime.split("/")
-        if len(datetime) == 1:
-            datetime = datetime[0][0:19] + "Z"
+    @staticmethod
+    def _return_date(interval_str):
+        intervals = interval_str.split("/")
+        if len(intervals) == 1:
+            datetime = intervals[0][0:19] + "Z"
             return {"eq": datetime}
         else:
-            start_date = datetime[0]
-            end_date = datetime[1]
-            if ".." not in datetime:
+            start_date = intervals[0]
+            end_date = intervals[1]
+            if ".." not in intervals:
                 start_date = start_date[0:19] + "Z"
                 end_date = end_date[0:19] + "Z"
             elif start_date != "..":
@@ -175,7 +176,7 @@ class CoreCrudClient(BaseCoreClient):
         collections: Optional[List[str]] = None,
         ids: Optional[List[str]] = None,
         bbox: Optional[List[NumType]] = None,
-        datetime: Optional[Union[str, datetime]] = None,
+        datetime: Optional[Union[str, datetime_type]] = None,
         limit: Optional[int] = 10,
         query: Optional[str] = None,
         token: Optional[str] = None,
@@ -238,7 +239,16 @@ class CoreCrudClient(BaseCoreClient):
     ) -> ItemCollection:
         """POST search catalog."""
         base_url = str(kwargs["request"].base_url)
-        search = Search(using=self.client, index="stac_items")
+        search = (
+            Search()
+            .using(self.client)
+            .index("stac_items")
+            .sort(
+                {"properties.datetime": {"order": "desc"}},
+                {"id": {"order": "desc"}},
+                {"collection": {"order": "desc"}},
+            )
+        )
 
         if search_request.query:
             if type(search_request.query) == str:
