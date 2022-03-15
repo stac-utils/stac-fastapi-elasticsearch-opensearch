@@ -42,7 +42,7 @@ jobs:
 
       # Setup Python (faster than using Python container)
       - name: Setup Python
-        uses: actions/setup-python@v2
+        uses: actions/setup-python@v3
         with:
           python-version: "3.8"
 
