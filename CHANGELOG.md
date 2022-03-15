@@ -18,3 +18,5 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Elasticsearch index mappings updated to be more thorough.
 
 ### Removed
+
+[Unreleased]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/main>
