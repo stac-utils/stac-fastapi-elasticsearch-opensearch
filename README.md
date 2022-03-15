@@ -33,12 +33,14 @@ docker-compose build
 docker-compose up
 ```
 
-By default, docker-compose uses Elasticsearch 8.x. If you wish to use a different version, put the following in a 
+By default, docker-compose uses Elasticsearch 7.x. If you wish to use a different version, put the following in a 
 file named `.env` in the same directory you run docker-compose from:
 
 ```shell
-ELASTICSEARCH_VERSION=7.17.1
+ELASTICSEARCH_VERSION=7.12.0
 ```
+
+TBD: how to run this with 8.x with a password enabled and TLS.
 
 To create a new Collection:
 
