@@ -56,7 +56,10 @@ jobs:
       - name: Install elasticsearch stac-fastapi
         run: |
           pip install ./stac_fastapi/elasticsearch[dev,server]
-      
+
+      - run: |
+          sleep 45
+
       - name: Run test suite against Elasticsearch 7.x
         run: |
           cd stac_fastapi/elasticsearch && pipenv run pytest -svvv
