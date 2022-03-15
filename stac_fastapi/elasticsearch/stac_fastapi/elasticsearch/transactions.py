@@ -32,22 +32,82 @@ class TransactionsClient(BaseTransactionsClient):
     settings = ElasticsearchSettings()
     client = settings.create_client
 
-    mappings = {
+    ES_MAPPINGS_DYNAMIC_TEMPLATES = [
+        # Common https://github.com/radiantearth/stac-spec/blob/master/item-spec/common-metadata.md
+        {
+            "descriptions": {
+                "match_mapping_type": "string",
+                "match": "description",
+                "mapping": {"type": "text"},
+            }
+        },
+        {
+            "titles": {
+                "match_mapping_type": "string",
+                "match": "title",
+                "mapping": {"type": "text"},
+            }
+        },
+        # Projection Extension https://github.com/stac-extensions/projection
+        {"proj_epsg": {"match": "proj:epsg", "mapping": {"type": "integer"}}},
+        {
+            "proj_projjson": {
+                "match": "proj:projjson",
+                "mapping": {"type": "object", "enabled": False},
+            }
+        },
+        {
+            "proj_centroid": {
+                "match": "proj:centroid",
+                "mapping": {"type": "geo_point"},
+            }
+        },
+        {
+            "proj_geometry": {
+                "match": "proj:geometry",
+                "mapping": {"type": "geo_shape"},
+            }
+        },
+        {
+            "no_index_href": {
+                "match": "href",
+                "mapping": {"type": "text", "index": False},
+            }
+        },
+        # Default all other strings not otherwise specified to keyword
+        {"strings": {"match_mapping_type": "string", "mapping": {"type": "keyword"}}},
+        {"numerics": {"match_mapping_type": "long", "mapping": {"type": "float"}}},
+    ]
+
+    ES_MAPPINGS = {
+        "numeric_detection": False,
+        "dynamic_templates": ES_MAPPINGS_DYNAMIC_TEMPLATES,
         "properties": {
             "geometry": {"type": "geo_shape"},
-            "id": {"type": "text", "fields": {"keyword": {"type": "keyword"}}},
-            "properties__datetime": {
-                "type": "text",
-                "fields": {"keyword": {"type": "keyword"}},
+            "assets": {"type": "object", "enabled": False},
+            "links": {"type": "object", "enabled": False},
+            "properties": {
+                "type": "object",
+                "properties": {
+                    # Common https://github.com/radiantearth/stac-spec/blob/master/item-spec/common-metadata.md
+                    "datetime": {"type": "date"},
+                    "start_datetime": {"type": "date"},
+                    "end_datetime": {"type": "date"},
+                    "created": {"type": "date"},
+                    "updated": {"type": "date"},
+                    # Satellite Extension https://github.com/stac-extensions/sat
+                    "sat:absolute_orbit": {"type": "integer"},
+                    "sat:relative_orbit": {"type": "integer"},
+                },
             },
-        }
+        },
     }
 
     def create_item_index(self):
         """Create the index for Items."""
         self.client.indices.create(
             index="stac_items",
-            body={"mappings": self.mappings},
+            body={"mappings": self.ES_MAPPINGS},
             ignore=400,  # ignore 400 already exists code
         )
 

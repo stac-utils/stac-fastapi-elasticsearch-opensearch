@@ -4,6 +4,8 @@ Elasticsearch backend for stac-fastapi.
 
 **WIP** This backend is not yet stable (notice no releases yet), so use the pgstac backend instead.
 
+For changes, see the [Changelog](CHANGELOG.md).
+
 ## Development Environment Setup
 
 Install [pre-commit](https://pre-commit.com/#install).
