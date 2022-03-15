@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Changed
 
 - Elasticsearch index mappings updated to be more thorough.
+- Endpoints that return items (e.g., /search) now sort the results by 'properties.datetime,id,collection'.
+  Previously, there was no sort order defined.
 
 ### Removed
 
