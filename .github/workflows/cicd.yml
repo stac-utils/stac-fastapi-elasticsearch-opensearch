@@ -11,9 +11,21 @@ jobs:
     timeout-minutes: 10
 
     services:
+#
+#      elasticsearch_7_svc:
+#        image: docker.elastic.co/elasticsearch/elasticsearch:7.17.1
+#        env:
+#          node.name: es01
+#          cluster.name: stac-cluster
+#          discovery.type: single-node
+#          network.host: 0.0.0.0
+#          http.port: 9200
+#          ES_JAVA_OPTS: -Xms512m -Xmx512m
+#        ports:
+#          - 9200:9200
 
-      elasticsearch_7_svc:
-        image: docker.elastic.co/elasticsearch/elasticsearch:7.17.1
+      elasticsearch_8_svc:
+        image: docker.elastic.co/elasticsearch/elasticsearch:8.1.0
         env:
           node.name: es01
           cluster.name: stac-cluster
@@ -23,18 +35,6 @@ jobs:
           ES_JAVA_OPTS: -Xms512m -Xmx512m
         ports:
           - 9200:9200
-
-      elasticsearch_8_svc:
-        image: docker.elastic.co/elasticsearch/elasticsearch:8.1.0
-        env:
-          node.name: es01
-          cluster.name: stac-cluster
-          discovery.type: single-node
-          network.host: 0.0.0.0
-          http.port: 9400
-          ES_JAVA_OPTS: -Xms512m -Xmx512m
-        ports:
-          - 9400:9400
 
     steps:
       - name: Check out repository code
@@ -66,13 +66,13 @@ jobs:
           ES_PASS: stac
           ES_PORT: 9200
           ES_HOST: 172.17.0.1
-
-      - name: Run test suite against Elasticsearch 8.x
-        run: |
-          cd stac_fastapi/elasticsearch && pipenv run pytest -svvv
-        env:
-          ENVIRONMENT: testing
-          ES_USER: dev
-          ES_PASS: stac
-          ES_PORT: 9400
-          ES_HOST: 172.17.0.1
+#
+#      - name: Run test suite against Elasticsearch 8.x
+#        run: |
+#          cd stac_fastapi/elasticsearch && pipenv run pytest -svvv
+#        env:
+#          ENVIRONMENT: testing
+#          ES_USER: dev
+#          ES_PASS: stac
+#          ES_PORT: 9400
+#          ES_HOST: 172.17.0.1
