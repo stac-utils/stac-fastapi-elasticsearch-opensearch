@@ -22,6 +22,7 @@ class ElasticsearchSettings(ApiSettings):
     @property
     def create_client(self):
         """Create es client."""
-        # try:
-        client = Elasticsearch([{"host": str(DOMAIN), "port": str(PORT)}])
-        return client
+        return Elasticsearch(
+            [{"host": str(DOMAIN), "port": str(PORT)}],
+            headers={"accept": "application/vnd.elasticsearch+json; compatible-with=7"},
+        )

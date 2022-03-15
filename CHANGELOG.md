@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Support for Elasticsearch 7.x or 8.x
+
 ### Fixed
 
 ### Changed
@@ -18,5 +20,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Elasticsearch index mappings updated to be more thorough.
 
 ### Removed
+
 
 [Unreleased]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/main>
