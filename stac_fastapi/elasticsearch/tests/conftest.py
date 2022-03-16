@@ -153,7 +153,10 @@ def app_client(api_client, load_test_data):
     try:
         client.create_collection(coll, request=MockStarletteRequest)
     except ConflictError:
-        pass
+        try:
+            client.delete_item("test-item", "test-collection")
+        except Exception:
+            pass
 
     with TestClient(api_client.app) as test_app:
         yield test_app

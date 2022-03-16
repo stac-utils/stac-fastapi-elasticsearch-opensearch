@@ -143,6 +143,8 @@ def test_update_item_missing_collection(app_client, load_test_data):
 def test_update_item_geometry(app_client, load_test_data):
     test_item = load_test_data("test_item.json")
 
+    test_item["id"] = "update_test_item_1"
+
     # Create the item
     resp = app_client.post(
         f"/collections/{test_item['collection']}/items", json=test_item

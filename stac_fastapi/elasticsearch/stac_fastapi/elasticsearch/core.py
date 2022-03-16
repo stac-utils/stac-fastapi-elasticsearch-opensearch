@@ -33,6 +33,11 @@ ITEMS_INDEX = "stac_items"
 COLLECTIONS_INDEX = "stac_collections"
 
 
+def mk_item_id(item_id: str, collection_id: str):
+    """Make the Elasticsearch document _id value from the Item id and collection."""
+    return f"{item_id}|{collection_id}"
+
+
 @attr.s
 class CoreCrudClient(BaseCoreClient):
     """Client for core endpoints defined by stac."""
@@ -142,7 +147,9 @@ class CoreCrudClient(BaseCoreClient):
         """Get item by item id, collection id."""
         base_url = str(kwargs["request"].base_url)
         try:
-            item = self.client.get(index=ITEMS_INDEX, id=item_id)
+            item = self.client.get(
+                index=ITEMS_INDEX, id=mk_item_id(item_id, collection_id)
+            )
         except elasticsearch.exceptions.NotFoundError:
             raise NotFoundError(
                 f"Item {item_id} does not exist in Collection {collection_id}"

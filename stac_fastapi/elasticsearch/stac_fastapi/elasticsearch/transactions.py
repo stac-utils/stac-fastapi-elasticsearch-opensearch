@@ -10,7 +10,7 @@ from elasticsearch import helpers
 from overrides import overrides
 
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
-from stac_fastapi.elasticsearch.core import COLLECTIONS_INDEX, ITEMS_INDEX
+from stac_fastapi.elasticsearch.core import COLLECTIONS_INDEX, ITEMS_INDEX, mk_item_id
 from stac_fastapi.elasticsearch.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.elasticsearch.session import Session
 from stac_fastapi.extensions.third_party.bulk_transactions import (
@@ -42,29 +42,39 @@ class TransactionsClient(BaseTransactionsClient):
         if item["type"] == "FeatureCollection":
             bulk_client = BulkTransactionsClient()
             processed_items = [
-                bulk_client._preprocess_item(item, base_url)
-                for item in item["features"]
+                bulk_client.preprocess_item(item, base_url) for item in item["features"]
             ]
             return_msg = f"Successfully added {len(processed_items)} items."
             bulk_client.bulk_sync(processed_items)
 
             return return_msg
+        else:
+            # TODO
+            if self.client.exists(
+                index=ITEMS_INDEX, id=mk_item_id(item["id"], item["collection"])
+            ):
+                raise ConflictError(
+                    f"Item {item['id']} in collection {item['collection']} already exists"
+                )
 
-        # If a single item is posted
-        if not self.client.exists(index=COLLECTIONS_INDEX, id=item["collection"]):
-            raise ForeignKeyError(f"Collection {item['collection']} does not exist")
+            # todo: check if collection exists, but cache
+            if not self.client.exists(index=COLLECTIONS_INDEX, id=item["collection"]):
+                raise ForeignKeyError(f"Collection {item['collection']} does not exist")
 
-        if self.client.exists(index=ITEMS_INDEX, id=item["id"]):
-            raise ConflictError(
-                f"Item {item['id']} in collection {item['collection']} already exists"
+            item = BulkTransactionsClient().preprocess_item(item, base_url)
+
+            es_resp = self.client.index(
+                index=ITEMS_INDEX,
+                id=mk_item_id(item["id"], item["collection"]),
+                document=item,
             )
 
-        data = ItemSerializer.stac_to_db(item, base_url)
+            if (meta := es_resp.get("meta")) and meta.get("status") == 409:
+                raise ConflictError(
+                    f"Item {item['id']} in collection {item['collection']} already exists"
+                )
 
-        self.client.index(
-            index=ITEMS_INDEX, doc_type="_doc", id=item["id"], document=data
-        )
-        return ItemSerializer.db_to_stac(item, base_url)
+            return item
 
     @overrides
     def update_item(self, item: stac_types.Item, **kwargs) -> stac_types.Item:
@@ -75,14 +85,11 @@ class TransactionsClient(BaseTransactionsClient):
 
         if not self.client.exists(index=COLLECTIONS_INDEX, id=item["collection"]):
             raise ForeignKeyError(f"Collection {item['collection']} does not exist")
-        if not self.client.exists(index=ITEMS_INDEX, id=item["id"]):
-            raise NotFoundError(
-                f"Item {item['id']} in collection {item['collection']} doesn't exist"
-            )
+
+        # todo: index instead of delete and create
         self.delete_item(item["id"], item["collection"])
         self.create_item(item, **kwargs)
-        # self.client.update(index=ITEMS_INDEX,doc_type='_doc',id=model["id"],
-        #         body=model)
+        # self.client.update(index=ITEMS_INDEX,id=item["id"], body=item)
         return ItemSerializer.db_to_stac(item, base_url)
 
     @overrides
@@ -91,10 +98,12 @@ class TransactionsClient(BaseTransactionsClient):
     ) -> stac_types.Item:
         """Delete item."""
         try:
-            _ = self.client.get(index=ITEMS_INDEX, id=item_id)
+            self.client.delete(index=ITEMS_INDEX, id=mk_item_id(item_id, collection_id))
         except elasticsearch.exceptions.NotFoundError:
-            raise NotFoundError(f"Item {item_id} not found")
-        self.client.delete(index=ITEMS_INDEX, doc_type="_doc", id=item_id)
+            raise NotFoundError(
+                f"Item {item_id} in collection {collection_id} not found"
+            )
+        return None
 
     @overrides
     def create_collection(
@@ -109,9 +118,9 @@ class TransactionsClient(BaseTransactionsClient):
 
         if self.client.exists(index=COLLECTIONS_INDEX, id=collection["id"]):
             raise ConflictError(f"Collection {collection['id']} already exists")
+
         self.client.index(
             index=COLLECTIONS_INDEX,
-            doc_type="_doc",
             id=collection["id"],
             document=collection,
         )
@@ -139,7 +148,8 @@ class TransactionsClient(BaseTransactionsClient):
             _ = self.client.get(index=COLLECTIONS_INDEX, id=collection_id)
         except elasticsearch.exceptions.NotFoundError:
             raise NotFoundError(f"Collection {collection_id} not found")
-        self.client.delete(index=COLLECTIONS_INDEX, doc_type="_doc", id=collection_id)
+        self.client.delete(index=COLLECTIONS_INDEX, id=collection_id)
+        return None
 
 
 @attr.s
@@ -153,22 +163,28 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         settings = ElasticsearchSettings()
         self.client = settings.create_client
 
-    def _preprocess_item(self, model: stac_types.Item, base_url) -> stac_types.Item:
+    def preprocess_item(self, item: stac_types.Item, base_url) -> stac_types.Item:
         """Preprocess items to match data model."""
-        if not self.client.exists(index=COLLECTIONS_INDEX, id=model["collection"]):
-            raise ForeignKeyError(f"Collection {model['collection']} does not exist")
+        if not self.client.exists(index=COLLECTIONS_INDEX, id=item["collection"]):
+            raise ForeignKeyError(f"Collection {item['collection']} does not exist")
 
-        if self.client.exists(index=ITEMS_INDEX, id=model["id"]):
+        if self.client.exists(index=ITEMS_INDEX, id=item["id"]):
             raise ConflictError(
-                f"Item {model['id']} in collection {model['collection']} already exists"
+                f"Item {item['id']} in collection {item['collection']} already exists"
             )
 
-        item = ItemSerializer.stac_to_db(model, base_url)
-        return item
+        return ItemSerializer.stac_to_db(item, base_url)
 
     def bulk_sync(self, processed_items):
         """Elasticsearch bulk insertion."""
-        actions = [{"_index": ITEMS_INDEX, "_source": item} for item in processed_items]
+        actions = [
+            {
+                "_index": ITEMS_INDEX,
+                "_id": mk_item_id(item["id"], item["collection"]),
+                "_source": item,
+            }
+            for item in processed_items
+        ]
         helpers.bulk(self.client, actions)
 
     @overrides
@@ -176,15 +192,16 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         self, items: Items, chunk_size: Optional[int] = None, **kwargs
     ) -> str:
         """Bulk item insertion using es."""
-        try:
-            base_url = str(kwargs["request"].base_url)
-        except Exception:
+        request = kwargs.get("request")
+        if request:
+            base_url = str(request.base_url)
+        else:
             base_url = ""
+
         processed_items = [
-            self._preprocess_item(item, base_url) for item in items.items.values()
+            self.preprocess_item(item, base_url) for item in items.items.values()
         ]
-        return_msg = f"Successfully added {len(processed_items)} items."
 
         self.bulk_sync(processed_items)
 
-        return return_msg
+        return f"Successfully added {len(processed_items)} Items."
