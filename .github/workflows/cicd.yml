@@ -1,9 +1,12 @@
 name: stac-fastapi-elasticsearch
 on:
   push:
-    branches: [ main, dev ]
+    branches:
+      - main
   pull_request:
-    branches: [ main, dev ]
+    branches:
+      - main
+      - features/**
 
 jobs:
   test:
