@@ -49,17 +49,16 @@ class TransactionsClient(BaseTransactionsClient):
 
             return return_msg
         else:
-            # TODO
+            # todo: check if collection exists, but cache
+            if not self.client.exists(index=COLLECTIONS_INDEX, id=item["collection"]):
+                raise ForeignKeyError(f"Collection {item['collection']} does not exist")
+
             if self.client.exists(
                 index=ITEMS_INDEX, id=mk_item_id(item["id"], item["collection"])
             ):
                 raise ConflictError(
                     f"Item {item['id']} in collection {item['collection']} already exists"
                 )
-
-            # todo: check if collection exists, but cache
-            if not self.client.exists(index=COLLECTIONS_INDEX, id=item["collection"]):
-                raise ForeignKeyError(f"Collection {item['collection']} does not exist")
 
             item = BulkTransactionsClient().preprocess_item(item, base_url)
 
