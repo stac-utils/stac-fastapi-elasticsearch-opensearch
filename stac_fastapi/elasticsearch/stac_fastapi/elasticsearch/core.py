@@ -9,6 +9,7 @@ import attr
 import elasticsearch
 from elasticsearch_dsl import Q, Search
 from fastapi import HTTPException
+from overrides import overrides
 
 # from geojson_pydantic.geometries import Polygon
 from pydantic import ValidationError
@@ -22,12 +23,14 @@ from stac_fastapi.elasticsearch.session import Session
 # from stac_fastapi.elasticsearch.types.error_checks import ErrorChecks
 from stac_fastapi.types.core import BaseCoreClient
 from stac_fastapi.types.errors import NotFoundError
-from stac_fastapi.types.search import BaseSearchPostRequest
 from stac_fastapi.types.stac import Collection, Collections, Item, ItemCollection
 
 logger = logging.getLogger(__name__)
 
 NumType = Union[float, int]
+
+ITEMS_INDEX = "stac_items"
+COLLECTIONS_INDEX = "stac_collections"
 
 
 @attr.s
@@ -44,17 +47,13 @@ class CoreCrudClient(BaseCoreClient):
     settings = ElasticsearchSettings()
     client = settings.create_client
 
-    @staticmethod
-    def _lookup_id(id: str, table, session):
-        """Lookup row by id."""
-        pass
-
+    @overrides
     def all_collections(self, **kwargs) -> Collections:
         """Read all collections from the database."""
         base_url = str(kwargs["request"].base_url)
         try:
             collections = self.client.search(
-                index="stac_collections", doc_type="_doc", query={"match_all": {}}
+                index=COLLECTIONS_INDEX, query={"match_all": {}}
             )
         except elasticsearch.exceptions.NotFoundError:
             raise NotFoundError("No collections exist")
@@ -86,18 +85,20 @@ class CoreCrudClient(BaseCoreClient):
         )
         return collection_list
 
+    @overrides
     def get_collection(self, collection_id: str, **kwargs) -> Collection:
         """Get collection by id."""
         base_url = str(kwargs["request"].base_url)
         try:
-            collection = self.client.get(index="stac_collections", id=collection_id)
+            collection = self.client.get(index=COLLECTIONS_INDEX, id=collection_id)
         except elasticsearch.exceptions.NotFoundError:
             raise NotFoundError(f"Collection {collection_id} not found")
 
         return self.collection_serializer.db_to_stac(collection["_source"], base_url)
 
+    @overrides
     def item_collection(
-        self, collection_id: str, limit: int = 10, **kwargs
+        self, collection_id: str, limit: int = 10, token: str = None, **kwargs
     ) -> ItemCollection:
         """Read an item collection from the database."""
         links = []
@@ -136,11 +137,12 @@ class CoreCrudClient(BaseCoreClient):
             context=context_obj,
         )
 
+    @overrides
     def get_item(self, item_id: str, collection_id: str, **kwargs) -> Item:
         """Get item by item id, collection id."""
         base_url = str(kwargs["request"].base_url)
         try:
-            item = self.client.get(index="stac_items", id=item_id)
+            item = self.client.get(index=ITEMS_INDEX, id=item_id)
         except elasticsearch.exceptions.NotFoundError:
             raise NotFoundError(
                 f"Item {item_id} does not exist in Collection {collection_id}"
@@ -171,6 +173,7 @@ class CoreCrudClient(BaseCoreClient):
 
             return {"lte": end_date, "gte": start_date}
 
+    @overrides
     def get_search(
         self,
         collections: Optional[List[str]] = None,
@@ -234,15 +237,13 @@ class CoreCrudClient(BaseCoreClient):
         poly = [[[b0, b1], [b2, b1], [b2, b3], [b0, b3], [b0, b1]]]
         return poly
 
-    def post_search(
-        self, search_request: BaseSearchPostRequest, **kwargs
-    ) -> ItemCollection:
+    def post_search(self, search_request: Search, **kwargs) -> ItemCollection:
         """POST search catalog."""
         base_url = str(kwargs["request"].base_url)
         search = (
             Search()
             .using(self.client)
-            .index("stac_items")
+            .index(ITEMS_INDEX)
             .sort(
                 {"properties.datetime": {"order": "desc"}},
                 {"id": {"order": "desc"}},
