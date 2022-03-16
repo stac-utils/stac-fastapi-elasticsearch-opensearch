@@ -4,6 +4,7 @@ from stac_fastapi.api.models import create_get_request_model, create_post_reques
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
 from stac_fastapi.elasticsearch.core import CoreCrudClient
 from stac_fastapi.elasticsearch.extensions import QueryExtension
+from stac_fastapi.elasticsearch.indexes import IndexesClient
 from stac_fastapi.elasticsearch.session import Session
 from stac_fastapi.elasticsearch.transactions import (
     BulkTransactionsClient,
@@ -41,6 +42,11 @@ api = StacApi(
     search_post_request_model=post_request_model,
 )
 app = api.app
+
+
+@app.on_event("startup")
+async def _startup_event():
+    IndexesClient().create_indexes()
 
 
 def run():

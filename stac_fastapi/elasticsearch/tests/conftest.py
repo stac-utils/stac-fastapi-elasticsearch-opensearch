@@ -10,6 +10,7 @@ from stac_fastapi.api.models import create_request_model
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
 from stac_fastapi.elasticsearch.core import CoreCrudClient
 from stac_fastapi.elasticsearch.extensions import QueryExtension
+from stac_fastapi.elasticsearch.indexes import IndexesClient
 from stac_fastapi.elasticsearch.transactions import (
     BulkTransactionsClient,
     TransactionsClient,
@@ -143,6 +144,8 @@ def api_client():
 
 @pytest.fixture
 def app_client(api_client, load_test_data):
+    IndexesClient().create_indexes()
+
     coll = load_test_data("test_collection.json")
     client = TransactionsClient(
         session=None,
