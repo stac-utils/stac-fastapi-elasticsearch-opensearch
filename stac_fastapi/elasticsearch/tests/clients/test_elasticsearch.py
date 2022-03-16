@@ -100,19 +100,19 @@ def test_get_item(
     item_data = load_test_data("test_item.json")
     es_transactions.create_collection(collection_data, request=MockStarletteRequest)
     es_transactions.create_item(item_data, request=MockStarletteRequest)
-    coll = es_core.get_item(
+    got_item = es_core.get_item(
         item_id=item_data["id"],
         collection_id=item_data["collection"],
         request=MockStarletteRequest,
     )
-    assert coll["id"] == item_data["id"]
-    assert coll["collection"] == item_data["collection"]
+    assert got_item["id"] == item_data["id"]
+    assert got_item["collection"] == item_data["collection"]
 
     es_transactions.delete_collection(
         collection_data["id"], request=MockStarletteRequest
     )
     es_transactions.delete_item(
-        item_data["id"], coll["id"], request=MockStarletteRequest
+        item_data["id"], item_data["collection"], request=MockStarletteRequest
     )
 
 
