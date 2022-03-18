@@ -331,7 +331,7 @@ class CoreCrudClient(BaseCoreClient):
         #     raise NotFoundError(
         #         f"Item {item_id} does not exist in Collection {collection_id}"
         #     )
-        item = self.database.get_one_item()
+        item = self.database.get_one_item(item_id=item_id, collection_id=collection_id)
         return self.item_serializer.db_to_stac(item["_source"], base_url)
 
     @staticmethod
@@ -443,10 +443,10 @@ class CoreCrudClient(BaseCoreClient):
                     # else:
                     #     search = search.query("match_phrase", **{field: value})
 
-                    search = self.database.create_query_filter(op=op, field=field, value=value)
+                    search = self.database.create_query_filter(search=search, op=op, field=field, value=value)
 
         if search_request.ids:
-            search = self.database.search_ids(search_request.ids)
+            search = self.database.search_ids(search=search, item_ids=search_request.ids)
             # id_list = []
             
             # for item_id in search_request.ids:
