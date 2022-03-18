@@ -1,0 +1,221 @@
+"""Item crud client."""
+import json
+import logging
+from datetime import datetime as datetime_type
+from typing import List, Optional, Type, Union
+
+import attr
+import elasticsearch
+from elasticsearch_dsl import Q, Search
+
+from stac_fastapi.elasticsearch import serializers
+from stac_fastapi.elasticsearch.config import ElasticsearchSettings
+
+from stac_fastapi.types.errors import NotFoundError
+from stac_fastapi.types.stac import Collection, Collections, Item, ItemCollection
+
+logger = logging.getLogger(__name__)
+
+NumType = Union[float, int]
+
+ITEMS_INDEX = "stac_items"
+COLLECTIONS_INDEX = "stac_collections"
+
+def mk_item_id(item_id: str, collection_id: str):
+    """Make the Elasticsearch document _id value from the Item id and collection."""
+    return f"{item_id}|{collection_id}"
+
+@attr.s
+class CoreDatabaseLogic():
+    """Core database logic."""
+    settings = ElasticsearchSettings()
+    client = settings.create_client
+    item_serializer: Type[serializers.Serializer] = attr.ib(
+        default=serializers.ItemSerializer
+    )
+    collection_serializer: Type[serializers.Serializer] = attr.ib(
+        default=serializers.CollectionSerializer
+    )
+
+    @staticmethod
+    def bbox2poly(b0, b1, b2, b3):
+        """Transform bbox to polygon."""
+        poly = [[[b0, b1], [b2, b1], [b2, b3], [b0, b3], [b0, b1]]]
+        return poly
+
+    def get_all_collections(self, base_url: str) -> Collections:
+        """Database logic to retrieve a list of all collections."""
+        try:
+            collections = self.client.search(
+                index=COLLECTIONS_INDEX, query={"match_all": {}}
+            )
+        except elasticsearch.exceptions.NotFoundError:
+            raise NotFoundError("No collections exist")
+
+        serialized_collections = [
+            self.collection_serializer.db_to_stac(
+                collection["_source"], base_url=base_url
+            )
+            for collection in collections["hits"]["hits"]
+        ]
+
+        return serialized_collections
+
+    def get_one_collection(self, collection_id: str) -> Collection:
+        try:
+            collection = self.client.get(index=COLLECTIONS_INDEX, id=collection_id)
+        except elasticsearch.exceptions.NotFoundError:
+            raise NotFoundError(f"Collection {collection_id} not found")
+
+        return collection["_source"]
+
+    def get_item_collection(self, collection_id: str, limit: int, base_url: str):
+        search = Search(using=self.client, index="stac_items")
+
+        collection_filter = Q(
+            "bool", should=[Q("match_phrase", **{"collection": collection_id})]
+        )
+        search = search.query(collection_filter)
+        try:
+            count = search.count()
+        except elasticsearch.exceptions.NotFoundError:
+            raise NotFoundError("No items exist")
+        # search = search.sort({"id.keyword" : {"order" : "asc"}})
+        search = search.query()[0:limit]
+        collection_children = search.execute().to_dict()
+
+        serialized_children = [
+            self.item_serializer.db_to_stac(item["_source"], base_url=base_url)
+            for item in collection_children["hits"]["hits"]
+        ]
+
+        return serialized_children, count
+
+    def get_one_item(self, collection_id: str, item_id: str):
+        try:
+            item = self.client.get(
+                index=ITEMS_INDEX, id=mk_item_id(item_id, collection_id)
+            )
+        except elasticsearch.exceptions.NotFoundError:
+            raise NotFoundError(
+                f"Item {item_id} does not exist in Collection {collection_id}"
+            )
+        return item["_source"]
+
+    def create_search_object(self):
+        search = (
+            Search()
+            .using(self.client)
+            .index(ITEMS_INDEX)
+            .sort(
+                {"properties.datetime": {"order": "desc"}},
+                {"id": {"order": "desc"}},
+                {"collection": {"order": "desc"}},
+            )
+        )
+
+        return search
+
+    def create_query_filter(self, search, op: str, field: str, value: float):
+        if op != "eq":
+            key_filter = {field: {f"{op}": value}}
+            search = search.query(Q("range", **key_filter))
+        else:
+            search = search.query("match_phrase", **{field: value})
+
+        return search
+
+    def search_ids(self, search, item_ids: List):
+        id_list = []   
+        for item_id in item_ids:
+            id_list.append(Q("match_phrase", **{"id": item_id}))
+        id_filter = Q("bool", should=id_list)
+        search = search.query(id_filter)
+
+        return search
+
+    def search_collections(self, search, collection_ids: List):
+        collection_list = []
+        for collection_id in collection_ids:
+            collection_list.append(
+                Q("match_phrase", **{"collection": collection_id})
+            )
+        collection_filter = Q("bool", should=collection_list)
+        search = search.query(collection_filter)
+
+        return search
+
+    def search_datetime(self, search, datetime_search):
+        if "eq" in datetime_search:
+            search = search.query(
+                "match_phrase", **{"properties__datetime": datetime_search["eq"]}
+            )
+        else:
+            search = search.filter(
+                "range", properties__datetime={"lte": datetime_search["lte"]}
+            )
+            search = search.filter(
+                "range", properties__datetime={"gte": datetime_search["gte"]}
+            )
+        return search
+
+    def search_bbox(self, search, bbox: List):
+        poly = self.bbox2poly(bbox[0], bbox[1], bbox[2], bbox[3])
+        bbox_filter = Q(
+            {
+                "geo_shape": {
+                    "geometry": {
+                        "shape": {"type": "polygon", "coordinates": poly},
+                        "relation": "intersects",
+                    }
+                }
+            }
+        )
+        search = search.query(bbox_filter)
+        return search
+
+    def search_intersects(self, search, intersects: dict):
+        """Database logic to search a geojson object."""
+        intersect_filter = Q(
+            {
+                "geo_shape": {
+                    "geometry": {
+                        "shape": {
+                            "type": intersects.type.lower(),
+                            "coordinates": intersects.coordinates,
+                        },
+                        "relation": "intersects",
+                    }
+                }
+            }
+        )
+        search = search.query(intersect_filter)
+        return search
+
+    def sort_field(self, search, field, direction):
+        search = search.sort({field: {"order": direction}})
+        return search
+
+    def search_count(self, search):
+        try:
+            count = search.count()
+        except elasticsearch.exceptions.NotFoundError:
+            raise NotFoundError("No items exist")
+        
+        return count
+
+    def execute_search(self, search, limit: int, base_url: str) -> dict:
+        """Database logic to execute search with limit."""
+        search = search.query()[0 : limit]
+        response = search.execute().to_dict()
+
+        if len(response["hits"]["hits"]) > 0:
+            response_features = [
+                self.item_serializer.db_to_stac(item["_source"], base_url=base_url)
+                for item in response["hits"]["hits"]
+            ]
+        else:
+            response_features = []
+
+        return response_features
+        
