@@ -37,6 +37,131 @@ def mk_item_id(item_id: str, collection_id: str):
     """Make the Elasticsearch document _id value from the Item id and collection."""
     return f"{item_id}|{collection_id}"
 
+class DatabaseLogic():
+    """Core database logic."""
+    settings = ElasticsearchSettings()
+    client = settings.create_client
+
+    def get_all_collections(self):
+        try:
+            collections = self.client.search(
+                index=COLLECTIONS_INDEX, query={"match_all": {}}
+            )
+        except elasticsearch.exceptions.NotFoundError:
+            raise NotFoundError("No collections exist")
+
+        return collections
+
+    def get_one_collection(self, collection_id: str):
+        try:
+            collection = self.client.get(index=COLLECTIONS_INDEX, id=collection_id)
+        except elasticsearch.exceptions.NotFoundError:
+            raise NotFoundError(f"Collection {collection_id} not found")
+
+        return collection
+
+    def get_item_collection(self, collection_id: str, limit: int):
+        search = Search(using=self.client, index="stac_items")
+
+        collection_filter = Q(
+            "bool", should=[Q("match_phrase", **{"collection": collection_id})]
+        )
+        search = search.query(collection_filter)
+        try:
+            count = search.count()
+        except elasticsearch.exceptions.NotFoundError:
+            raise NotFoundError("No items exist")
+        # search = search.sort({"id.keyword" : {"order" : "asc"}})
+        search = search.query()[0:limit]
+        collection_children = search.execute().to_dict()
+
+        return collection_children, count
+
+    def get_one_item(self, collection_id: str, item_id: str):
+        try:
+            item = self.client.get(
+                index=ITEMS_INDEX, id=mk_item_id(item_id, collection_id)
+            )
+        except elasticsearch.exceptions.NotFoundError:
+            raise NotFoundError(
+                f"Item {item_id} does not exist in Collection {collection_id}"
+            )
+        return item
+
+    def create_search_object(self):
+        search = (
+            Search()
+            .using(self.client)
+            .index(ITEMS_INDEX)
+            .sort(
+                {"properties.datetime": {"order": "desc"}},
+                {"id": {"order": "desc"}},
+                {"collection": {"order": "desc"}},
+            )
+        )
+
+        return search
+
+    def create_query_filter(self, op: str, field: str, value: float):
+        if op != "eq":
+            key_filter = {field: {f"{op}": value}}
+            search = search.query(Q("range", **key_filter))
+        else:
+            search = search.query("match_phrase", **{field: value})
+
+        return search
+
+    def search_ids(self, item_ids: List):
+        id_list = []   
+        for item_id in item_ids:
+            id_list.append(Q("match_phrase", **{"id": item_id}))
+        id_filter = Q("bool", should=id_list)
+        search = search.query(id_filter)
+
+        return search
+
+    def search_collections(self, collection_ids: List):
+        collection_list = []
+        for collection_id in collection_ids:
+            collection_list.append(
+                Q("match_phrase", **{"collection": collection_id})
+            )
+        collection_filter = Q("bool", should=collection_list)
+        search = search.query(collection_filter)
+
+        return search
+
+    def search_datetime(self, datetime_search):
+        if "eq" in datetime_search:
+            search = search.query(
+                "match_phrase", **{"properties__datetime": datetime_search["eq"]}
+            )
+        else:
+            search = search.filter(
+                "range", properties__datetime={"lte": datetime_search["lte"]}
+            )
+            search = search.filter(
+                "range", properties__datetime={"gte": datetime_search["gte"]}
+            )
+
+    def search_bbox(self, poly: List):
+        bbox_filter = Q(
+            {
+                "geo_shape": {
+                    "geometry": {
+                        "shape": {"type": "polygon", "coordinates": poly},
+                        "relation": "intersects",
+                    }
+                }
+            }
+        )
+        search = search.query(bbox_filter)
+        
+
+    
+
+    
+
 
 @attr.s
 class CoreCrudClient(BaseCoreClient):
@@ -51,17 +176,19 @@ class CoreCrudClient(BaseCoreClient):
     )
     settings = ElasticsearchSettings()
     client = settings.create_client
+    database = DatabaseLogic()
 
     @overrides
     def all_collections(self, **kwargs) -> Collections:
         """Read all collections from the database."""
         base_url = str(kwargs["request"].base_url)
-        try:
-            collections = self.client.search(
-                index=COLLECTIONS_INDEX, query={"match_all": {}}
-            )
-        except elasticsearch.exceptions.NotFoundError:
-            raise NotFoundError("No collections exist")
+        collections = self.database.get_all_collections()
+        # try:
+        #     collections = self.client.search(
+        #         index=COLLECTIONS_INDEX, query={"match_all": {}}
+        #     )
+        # except elasticsearch.exceptions.NotFoundError:
+        #     raise NotFoundError("No collections exist")
         serialized_collections = [
             self.collection_serializer.db_to_stac(
                 collection["_source"], base_url=base_url
@@ -94,11 +221,11 @@ class CoreCrudClient(BaseCoreClient):
     def get_collection(self, collection_id: str, **kwargs) -> Collection:
         """Get collection by id."""
         base_url = str(kwargs["request"].base_url)
-        try:
-            collection = self.client.get(index=COLLECTIONS_INDEX, id=collection_id)
-        except elasticsearch.exceptions.NotFoundError:
-            raise NotFoundError(f"Collection {collection_id} not found")
-
+        # try:
+        #     collection = self.client.get(index=COLLECTIONS_INDEX, id=collection_id)
+        # except elasticsearch.exceptions.NotFoundError:
+        #     raise NotFoundError(f"Collection {collection_id} not found")
+        collection = self.database.get_one_collection(collection_id)
         return self.collection_serializer.db_to_stac(collection["_source"], base_url)
 
     @overrides
@@ -108,19 +235,21 @@ class CoreCrudClient(BaseCoreClient):
         """Read an item collection from the database."""
         links = []
         base_url = str(kwargs["request"].base_url)
-        search = Search(using=self.client, index="stac_items")
+        # search = Search(using=self.client, index="stac_items")
 
-        collection_filter = Q(
-            "bool", should=[Q("match_phrase", **{"collection": collection_id})]
-        )
-        search = search.query(collection_filter)
-        try:
-            count = search.count()
-        except elasticsearch.exceptions.NotFoundError:
-            raise NotFoundError("No items exist")
-        # search = search.sort({"id.keyword" : {"order" : "asc"}})
-        search = search.query()[0:limit]
-        collection_children = search.execute().to_dict()
+        # collection_filter = Q(
+        #     "bool", should=[Q("match_phrase", **{"collection": collection_id})]
+        # )
+        # search = search.query(collection_filter)
+        # try:
+        #     count = search.count()
+        # except elasticsearch.exceptions.NotFoundError:
+        #     raise NotFoundError("No items exist")
+        # # search = search.sort({"id.keyword" : {"order" : "asc"}})
+        # search = search.query()[0:limit]
+        # collection_children = search.execute().to_dict()
+
+        collection_children, count = self.database.get_item_collection(collection_id, limit)
 
         serialized_children = [
             self.item_serializer.db_to_stac(item["_source"], base_url=base_url)
@@ -146,14 +275,15 @@ class CoreCrudClient(BaseCoreClient):
     def get_item(self, item_id: str, collection_id: str, **kwargs) -> Item:
         """Get item by item id, collection id."""
         base_url = str(kwargs["request"].base_url)
-        try:
-            item = self.client.get(
-                index=ITEMS_INDEX, id=mk_item_id(item_id, collection_id)
-            )
-        except elasticsearch.exceptions.NotFoundError:
-            raise NotFoundError(
-                f"Item {item_id} does not exist in Collection {collection_id}"
-            )
+        # try:
+        #     item = self.client.get(
+        #         index=ITEMS_INDEX, id=mk_item_id(item_id, collection_id)
+        #     )
+        # except elasticsearch.exceptions.NotFoundError:
+        #     raise NotFoundError(
+        #         f"Item {item_id} does not exist in Collection {collection_id}"
+        #     )
+        item = self.database.get_one_item()
         return self.item_serializer.db_to_stac(item["_source"], base_url)
 
     @staticmethod
@@ -247,16 +377,17 @@ class CoreCrudClient(BaseCoreClient):
     def post_search(self, search_request: Search, **kwargs) -> ItemCollection:
         """POST search catalog."""
         base_url = str(kwargs["request"].base_url)
-        search = (
-            Search()
-            .using(self.client)
-            .index(ITEMS_INDEX)
-            .sort(
-                {"properties.datetime": {"order": "desc"}},
-                {"id": {"order": "desc"}},
-                {"collection": {"order": "desc"}},
-            )
-        )
+        # search = (
+        #     Search()
+        #     .using(self.client)
+        #     .index(ITEMS_INDEX)
+        #     .sort(
+        #         {"properties.datetime": {"order": "desc"}},
+        #         {"id": {"order": "desc"}},
+        #         {"collection": {"order": "desc"}},
+        #     )
+        # )
+        search = self.database.create_search_object()
 
         if search_request.query:
             if type(search_request.query) == str:
@@ -264,41 +395,51 @@ class CoreCrudClient(BaseCoreClient):
             for (field_name, expr) in search_request.query.items():
                 field = "properties__" + field_name
                 for (op, value) in expr.items():
-                    if op != "eq":
-                        key_filter = {field: {f"{op}": value}}
-                        search = search.query(Q("range", **key_filter))
-                    else:
-                        search = search.query("match_phrase", **{field: value})
+                    # if op != "eq":
+                    #     key_filter = {field: {f"{op}": value}}
+                    #     search = search.query(Q("range", **key_filter))
+                    # else:
+                    #     search = search.query("match_phrase", **{field: value})
+
+                    search = self.database.create_query_filter(op=op, field=field, value=value)
 
         if search_request.ids:
-            id_list = []
-            for item_id in search_request.ids:
-                id_list.append(Q("match_phrase", **{"id": item_id}))
-            id_filter = Q("bool", should=id_list)
-            search = search.query(id_filter)
+            search = self.database.search_ids(search_request.ids)
+            # id_list = []
+            
+            # for item_id in search_request.ids:
+            #     id_list.append(Q("match_phrase", **{"id": item_id}))
+            # id_filter = Q("bool", should=id_list)
+            # search = search.query(id_filter)
+
+
 
         if search_request.collections:
-            collection_list = []
-            for collection_id in search_request.collections:
-                collection_list.append(
-                    Q("match_phrase", **{"collection": collection_id})
-                )
-            collection_filter = Q("bool", should=collection_list)
-            search = search.query(collection_filter)
+            search = self.database.search_ids(search_request.collections)
+            # collection_list = []
+            # for collection_id in search_request.collections:
+            #     collection_list.append(
+            #         Q("match_phrase", **{"collection": collection_id})
+            #     )
+            # collection_filter = Q("bool", should=collection_list)
+            # search = search.query(collection_filter)
 
         if search_request.datetime:
             datetime_search = self._return_date(search_request.datetime)
-            if "eq" in datetime_search:
-                search = search.query(
-                    "match_phrase", **{"properties__datetime": datetime_search["eq"]}
-                )
-            else:
-                search = search.filter(
-                    "range", properties__datetime={"lte": datetime_search["lte"]}
-                )
-                search = search.filter(
-                    "range", properties__datetime={"gte": datetime_search["gte"]}
-                )
+            search = self.database.search_datetime(datetime_search)
+
+
+            # if "eq" in datetime_search:
+            #     search = search.query(
+            #         "match_phrase", **{"properties__datetime": datetime_search["eq"]}
+            #     )
+            # else:
+            #     search = search.filter(
+            #         "range", properties__datetime={"lte": datetime_search["lte"]}
+            #     )
+            #     search = search.filter(
+            #         "range", properties__datetime={"gte": datetime_search["gte"]}
+            #     )
 
         if search_request.bbox:
             bbox = search_request.bbox
@@ -306,17 +447,19 @@ class CoreCrudClient(BaseCoreClient):
                 bbox = [bbox[0], bbox[1], bbox[3], bbox[4]]
             poly = self.bbox2poly(bbox[0], bbox[1], bbox[2], bbox[3])
 
-            bbox_filter = Q(
-                {
-                    "geo_shape": {
-                        "geometry": {
-                            "shape": {"type": "polygon", "coordinates": poly},
-                            "relation": "intersects",
-                        }
-                    }
-                }
-            )
-            search = search.query(bbox_filter)
+            self.database.search_bbox(poly=poly)
+
+            # bbox_filter = Q(
+            #     {
+            #         "geo_shape": {
+            #             "geometry": {
+            #                 "shape": {"type": "polygon", "coordinates": poly},
+            #                 "relation": "intersects",
+            #             }
+            #         }
+            #     }
+            # )
+            # search = search.query(bbox_filter)
 
         if search_request.intersects:
             intersect_filter = Q(
@@ -384,7 +527,7 @@ class CoreCrudClient(BaseCoreClient):
         else:
             limit = 10
             response_features = response_features[0:limit]
-        limit = 10
+
         context_obj = None
         if self.extension_is_enabled("ContextExtension"):
             context_obj = {
