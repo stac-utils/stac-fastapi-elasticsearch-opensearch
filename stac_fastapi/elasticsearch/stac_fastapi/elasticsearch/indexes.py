@@ -5,7 +5,7 @@ import logging
 import attr
 
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
-from stac_fastapi.elasticsearch.core import COLLECTIONS_INDEX, ITEMS_INDEX
+from stac_fastapi.elasticsearch.database_logic import COLLECTIONS_INDEX, ITEMS_INDEX
 from stac_fastapi.elasticsearch.session import Session
 
 logger = logging.getLogger(__name__)
