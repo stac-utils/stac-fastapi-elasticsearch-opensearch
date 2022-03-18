@@ -48,7 +48,8 @@ class DatabaseLogic():
         poly = [[[b0, b1], [b2, b1], [b2, b3], [b0, b3], [b0, b1]]]
         return poly
 
-    def get_all_collections(self):
+    def get_all_collections(self) -> List:
+        """Database logic to retrieve a list of all collections."""
         try:
             collections = self.client.search(
                 index=COLLECTIONS_INDEX, query={"match_all": {}}
@@ -108,7 +109,7 @@ class DatabaseLogic():
 
         return search
 
-    def create_query_filter(self, op: str, field: str, value: float):
+    def create_query_filter(self, search, op: str, field: str, value: float):
         if op != "eq":
             key_filter = {field: {f"{op}": value}}
             search = search.query(Q("range", **key_filter))
@@ -117,7 +118,7 @@ class DatabaseLogic():
 
         return search
 
-    def search_ids(self, item_ids: List):
+    def search_ids(self, search, item_ids: List):
         id_list = []   
         for item_id in item_ids:
             id_list.append(Q("match_phrase", **{"id": item_id}))
@@ -126,7 +127,7 @@ class DatabaseLogic():
 
         return search
 
-    def search_collections(self, collection_ids: List):
+    def search_collections(self, search, collection_ids: List):
         collection_list = []
         for collection_id in collection_ids:
             collection_list.append(
@@ -137,7 +138,7 @@ class DatabaseLogic():
 
         return search
 
-    def search_datetime(self, datetime_search):
+    def search_datetime(self, search, datetime_search):
         if "eq" in datetime_search:
             search = search.query(
                 "match_phrase", **{"properties__datetime": datetime_search["eq"]}
@@ -151,7 +152,7 @@ class DatabaseLogic():
             )
         return search
 
-    def search_bbox(self, bbox: List):
+    def search_bbox(self, search, bbox: List):
         poly = self.bbox2poly(bbox[0], bbox[1], bbox[2], bbox[3])
         bbox_filter = Q(
             {
@@ -166,7 +167,7 @@ class DatabaseLogic():
         search = search.query(bbox_filter)
         return search
 
-    def search_intersects(self, intersects: dict):
+    def search_intersects(self, search, intersects: dict):
         """Database logic to search a geojson object."""
         intersect_filter = Q(
             {
@@ -186,10 +187,14 @@ class DatabaseLogic():
 
     def sort_field(self, search, field, direction):
         search = search.sort({field: {"order": direction}})
-        return 
+        return search
 
     def search_count(self, search):
-        count = search.count()
+        try:
+            count = search.count()
+        except elasticsearch.exceptions.NotFoundError:
+            raise NotFoundError("No items exist")
+        
         return count
         
         
@@ -515,11 +520,11 @@ class CoreCrudClient(BaseCoreClient):
                 search = self.database.sort_field(search=search, field=field, direction=sort.direction)
                 # search = search.sort({field: {"order": sort.direction}})
 
-        try:
-            # count = search.count()
-            count = self.database.search_count(search=search)
-        except elasticsearch.exceptions.NotFoundError:
-            raise NotFoundError("No items exist")
+        count = self.database.search_count(search=search)
+        # try:
+        #     count = search.count()
+        # except elasticsearch.exceptions.NotFoundError:
+        #     raise NotFoundError("No items exist")
 
         # search = search.sort({"id.keyword" : {"order" : "asc"}})
         search = search.query()[0 : search_request.limit]
