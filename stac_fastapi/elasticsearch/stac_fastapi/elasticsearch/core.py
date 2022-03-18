@@ -37,10 +37,17 @@ def mk_item_id(item_id: str, collection_id: str):
     """Make the Elasticsearch document _id value from the Item id and collection."""
     return f"{item_id}|{collection_id}"
 
+@attr.s
 class DatabaseLogic():
     """Core database logic."""
     settings = ElasticsearchSettings()
     client = settings.create_client
+    item_serializer: Type[serializers.Serializer] = attr.ib(
+        default=serializers.ItemSerializer
+    )
+    collection_serializer: Type[serializers.Serializer] = attr.ib(
+        default=serializers.CollectionSerializer
+    )
 
     @staticmethod
     def bbox2poly(b0, b1, b2, b3):
@@ -48,7 +55,7 @@ class DatabaseLogic():
         poly = [[[b0, b1], [b2, b1], [b2, b3], [b0, b3], [b0, b1]]]
         return poly
 
-    def get_all_collections(self) -> List:
+    def get_all_collections(self, base_url: str) -> List:
         """Database logic to retrieve a list of all collections."""
         try:
             collections = self.client.search(
@@ -57,7 +64,14 @@ class DatabaseLogic():
         except elasticsearch.exceptions.NotFoundError:
             raise NotFoundError("No collections exist")
 
-        return collections
+        serialized_collections = [
+            self.collection_serializer.db_to_stac(
+                collection["_source"], base_url=base_url
+            )
+            for collection in collections["hits"]["hits"]
+        ]
+
+        return serialized_collections
 
     def get_one_collection(self, collection_id: str):
         try:
@@ -65,9 +79,9 @@ class DatabaseLogic():
         except elasticsearch.exceptions.NotFoundError:
             raise NotFoundError(f"Collection {collection_id} not found")
 
-        return collection
+        return collection["_source"]
 
-    def get_item_collection(self, collection_id: str, limit: int):
+    def get_item_collection(self, collection_id: str, limit: int, base_url: str):
         search = Search(using=self.client, index="stac_items")
 
         collection_filter = Q(
@@ -82,7 +96,12 @@ class DatabaseLogic():
         search = search.query()[0:limit]
         collection_children = search.execute().to_dict()
 
-        return collection_children, count
+        serialized_children = [
+            self.item_serializer.db_to_stac(item["_source"], base_url=base_url)
+            for item in collection_children["hits"]["hits"]
+        ]
+
+        return serialized_children, count
 
     def get_one_item(self, collection_id: str, item_id: str):
         try:
@@ -93,7 +112,7 @@ class DatabaseLogic():
             raise NotFoundError(
                 f"Item {item_id} does not exist in Collection {collection_id}"
             )
-        return item
+        return item["_source"]
 
     def create_search_object(self):
         search = (
@@ -197,20 +216,24 @@ class DatabaseLogic():
         
         return count
 
-    def execute_search(self, search, limit: int) -> dict:
+    def execute_search(self, search, limit: int, base_url: str) -> dict:
         """Database logic to execute search with limit."""
         search = search.query()[0 : limit]
         response = search.execute().to_dict()
 
-        return response
+        if len(response["hits"]["hits"]) > 0:
+            response_features = [
+                self.item_serializer.db_to_stac(item["_source"], base_url=base_url)
+                for item in response["hits"]["hits"]
+            ]
+        else:
+            response_features = []
+
+        return response_features
         
         
 
     
-
-    
-
-
 @attr.s
 class CoreCrudClient(BaseCoreClient):
     """Client for core endpoints defined by stac."""
@@ -230,19 +253,8 @@ class CoreCrudClient(BaseCoreClient):
     def all_collections(self, **kwargs) -> Collections:
         """Read all collections from the database."""
         base_url = str(kwargs["request"].base_url)
-        collections = self.database.get_all_collections()
-        # try:
-        #     collections = self.client.search(
-        #         index=COLLECTIONS_INDEX, query={"match_all": {}}
-        #     )
-        # except elasticsearch.exceptions.NotFoundError:
-        #     raise NotFoundError("No collections exist")
-        serialized_collections = [
-            self.collection_serializer.db_to_stac(
-                collection["_source"], base_url=base_url
-            )
-            for collection in collections["hits"]["hits"]
-        ]
+        serialized_collections = self.database.get_all_collections(base_url=base_url)
+
         links = [
             {
                 "rel": Relations.root.value,
@@ -269,12 +281,8 @@ class CoreCrudClient(BaseCoreClient):
     def get_collection(self, collection_id: str, **kwargs) -> Collection:
         """Get collection by id."""
         base_url = str(kwargs["request"].base_url)
-        # try:
-        #     collection = self.client.get(index=COLLECTIONS_INDEX, id=collection_id)
-        # except elasticsearch.exceptions.NotFoundError:
-        #     raise NotFoundError(f"Collection {collection_id} not found")
         collection = self.database.get_one_collection(collection_id)
-        return self.collection_serializer.db_to_stac(collection["_source"], base_url)
+        return self.collection_serializer.db_to_stac(collection, base_url)
 
     @overrides
     def item_collection(
@@ -283,26 +291,8 @@ class CoreCrudClient(BaseCoreClient):
         """Read an item collection from the database."""
         links = []
         base_url = str(kwargs["request"].base_url)
-        # search = Search(using=self.client, index="stac_items")
 
-        # collection_filter = Q(
-        #     "bool", should=[Q("match_phrase", **{"collection": collection_id})]
-        # )
-        # search = search.query(collection_filter)
-        # try:
-        #     count = search.count()
-        # except elasticsearch.exceptions.NotFoundError:
-        #     raise NotFoundError("No items exist")
-        # # search = search.sort({"id.keyword" : {"order" : "asc"}})
-        # search = search.query()[0:limit]
-        # collection_children = search.execute().to_dict()
-
-        collection_children, count = self.database.get_item_collection(collection_id, limit)
-
-        serialized_children = [
-            self.item_serializer.db_to_stac(item["_source"], base_url=base_url)
-            for item in collection_children["hits"]["hits"]
-        ]
+        serialized_children, count = self.database.get_item_collection(collection_id=collection_id, limit=limit, base_url=base_url)
 
         context_obj = None
         if self.extension_is_enabled("ContextExtension"):
@@ -323,16 +313,8 @@ class CoreCrudClient(BaseCoreClient):
     def get_item(self, item_id: str, collection_id: str, **kwargs) -> Item:
         """Get item by item id, collection id."""
         base_url = str(kwargs["request"].base_url)
-        # try:
-        #     item = self.client.get(
-        #         index=ITEMS_INDEX, id=mk_item_id(item_id, collection_id)
-        #     )
-        # except elasticsearch.exceptions.NotFoundError:
-        #     raise NotFoundError(
-        #         f"Item {item_id} does not exist in Collection {collection_id}"
-        #     )
         item = self.database.get_one_item(item_id=item_id, collection_id=collection_id)
-        return self.item_serializer.db_to_stac(item["_source"], base_url)
+        return self.item_serializer.db_to_stac(item, base_url)
 
     @staticmethod
     def _return_date(interval_str):
@@ -504,20 +486,6 @@ class CoreCrudClient(BaseCoreClient):
 
         if search_request.intersects:
             self.database.search_intersects(search_request.intersects)
-            # intersect_filter = Q(
-            #     {
-            #         "geo_shape": {
-            #             "geometry": {
-            #                 "shape": {
-            #                     "type": search_request.intersects.type.lower(),
-            #                     "coordinates": search_request.intersects.coordinates,
-            #                 },
-            #                 "relation": "intersects",
-            #             }
-            #         }
-            #     }
-            # )
-            # search = search.query(intersect_filter)
 
         if search_request.sortby:
             for sort in search_request.sortby:
@@ -528,24 +496,8 @@ class CoreCrudClient(BaseCoreClient):
                 # search = search.sort({field: {"order": sort.direction}})
 
         count = self.database.search_count(search=search)
-        # try:
-        #     count = search.count()
-        # except elasticsearch.exceptions.NotFoundError:
-        #     raise NotFoundError("No items exist")
 
-        # search = search.sort({"id.keyword" : {"order" : "asc"}})
-
-        response = self.database.execute_search(search=search, limit=search_request.limit)
-        # search = search.query()[0 : search_request.limit]
-        # response = search.execute().to_dict()
-
-        if len(response["hits"]["hits"]) > 0:
-            response_features = [
-                self.item_serializer.db_to_stac(item["_source"], base_url=base_url)
-                for item in response["hits"]["hits"]
-            ]
-        else:
-            response_features = []
+        response_features = self.database.execute_search(search=search, limit=search_request.limit, base_url=base_url)
 
         # if self.extension_is_enabled("FieldsExtension"):
         #     if search_request.query is not None:
