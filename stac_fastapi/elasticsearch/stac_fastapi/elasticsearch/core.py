@@ -16,8 +16,8 @@ from stac_pydantic.shared import MimeTypes
 
 from stac_fastapi.elasticsearch import serializers
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
-from stac_fastapi.elasticsearch.session import Session
 from stac_fastapi.elasticsearch.database_logic import CoreDatabaseLogic
+from stac_fastapi.elasticsearch.session import Session
 
 # from stac_fastapi.elasticsearch.types.error_checks import ErrorChecks
 from stac_fastapi.types.core import BaseCoreClient
@@ -26,6 +26,7 @@ from stac_fastapi.types.stac import Collection, Collections, Item, ItemCollectio
 logger = logging.getLogger(__name__)
 
 NumType = Union[float, int]
+
 
 @attr.s
 class CoreCrudClient(BaseCoreClient):
@@ -85,7 +86,9 @@ class CoreCrudClient(BaseCoreClient):
         links = []
         base_url = str(kwargs["request"].base_url)
 
-        serialized_children, count = self.database.get_item_collection(collection_id=collection_id, limit=limit, base_url=base_url)
+        serialized_children, count = self.database.get_item_collection(
+            collection_id=collection_id, limit=limit, base_url=base_url
+        )
 
         context_obj = None
         if self.extension_is_enabled("ContextExtension"):
@@ -202,10 +205,14 @@ class CoreCrudClient(BaseCoreClient):
             for (field_name, expr) in search_request.query.items():
                 field = "properties__" + field_name
                 for (op, value) in expr.items():
-                    search = self.database.create_query_filter(search=search, op=op, field=field, value=value)
+                    search = self.database.create_query_filter(
+                        search=search, op=op, field=field, value=value
+                    )
 
         if search_request.ids:
-            search = self.database.search_ids(search=search, item_ids=search_request.ids)
+            search = self.database.search_ids(
+                search=search, item_ids=search_request.ids
+            )
 
         if search_request.collections:
             search = self.database.search_ids(search_request.collections)
@@ -229,11 +236,15 @@ class CoreCrudClient(BaseCoreClient):
                 if sort.field == "datetime":
                     sort.field = "properties__datetime"
                 field = sort.field + ".keyword"
-                search = self.database.sort_field(search=search, field=field, direction=sort.direction)
+                search = self.database.sort_field(
+                    search=search, field=field, direction=sort.direction
+                )
 
         count = self.database.search_count(search=search)
 
-        response_features = self.database.execute_search(search=search, limit=search_request.limit, base_url=base_url)
+        response_features = self.database.execute_search(
+            search=search, limit=search_request.limit, base_url=base_url
+        )
 
         # if self.extension_is_enabled("FieldsExtension"):
         #     if search_request.query is not None:

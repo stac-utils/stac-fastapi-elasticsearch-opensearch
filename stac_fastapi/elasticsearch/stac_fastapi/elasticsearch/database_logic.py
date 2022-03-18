@@ -8,7 +8,6 @@ from elasticsearch_dsl import Q, Search
 
 from stac_fastapi.elasticsearch import serializers
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
-
 from stac_fastapi.types.errors import NotFoundError
 from stac_fastapi.types.stac import Collection, Collections, Item, ItemCollection
 
@@ -19,13 +18,16 @@ NumType = Union[float, int]
 ITEMS_INDEX = "stac_items"
 COLLECTIONS_INDEX = "stac_collections"
 
+
 def mk_item_id(item_id: str, collection_id: str):
     """Make the Elasticsearch document _id value from the Item id and collection."""
     return f"{item_id}|{collection_id}"
 
+
 @attr.s
-class CoreDatabaseLogic():
+class CoreDatabaseLogic:
     """Core database logic."""
+
     settings = ElasticsearchSettings()
     client = settings.create_client
     item_serializer: Type[serializers.Serializer] = attr.ib(
@@ -68,7 +70,9 @@ class CoreDatabaseLogic():
 
         return collection["_source"]
 
-    def get_item_collection(self, collection_id: str, limit: int, base_url: str) -> ItemCollection:
+    def get_item_collection(
+        self, collection_id: str, limit: int, base_url: str
+    ) -> ItemCollection:
         """Database logic to retrieve an ItemCollection and a count of items contained."""
         search = Search(using=self.client, index="stac_items")
 
@@ -129,7 +133,7 @@ class CoreDatabaseLogic():
 
     def search_ids(self, search, item_ids: List):
         """Database logic to search a list of STAC item ids."""
-        id_list = []   
+        id_list = []
         for item_id in item_ids:
             id_list.append(Q("match_phrase", **{"id": item_id}))
         id_filter = Q("bool", should=id_list)
@@ -141,9 +145,7 @@ class CoreDatabaseLogic():
         """Database logic to search a list of STAC collection ids."""
         collection_list = []
         for collection_id in collection_ids:
-            collection_list.append(
-                Q("match_phrase", **{"collection": collection_id})
-            )
+            collection_list.append(Q("match_phrase", **{"collection": collection_id}))
         collection_filter = Q("bool", should=collection_list)
         search = search.query(collection_filter)
 
@@ -209,12 +211,12 @@ class CoreDatabaseLogic():
             count = search.count()
         except elasticsearch.exceptions.NotFoundError:
             raise NotFoundError("No items exist")
-        
+
         return count
 
     def execute_search(self, search, limit: int, base_url: str) -> List:
         """Database logic to execute search with limit."""
-        search = search.query()[0 : limit]
+        search = search.query()[0:limit]
         response = search.execute().to_dict()
 
         if len(response["hits"]["hits"]) > 0:
@@ -226,4 +228,3 @@ class CoreDatabaseLogic():
             response_features = []
 
         return response_features
-        
