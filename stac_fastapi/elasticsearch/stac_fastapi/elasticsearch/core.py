@@ -42,6 +42,12 @@ class DatabaseLogic():
     settings = ElasticsearchSettings()
     client = settings.create_client
 
+    @staticmethod
+    def bbox2poly(b0, b1, b2, b3):
+        """Transform bbox to polygon."""
+        poly = [[[b0, b1], [b2, b1], [b2, b3], [b0, b3], [b0, b1]]]
+        return poly
+
     def get_all_collections(self):
         try:
             collections = self.client.search(
@@ -143,8 +149,10 @@ class DatabaseLogic():
             search = search.filter(
                 "range", properties__datetime={"gte": datetime_search["gte"]}
             )
+        return search
 
-    def search_bbox(self, poly: List):
+    def search_bbox(self, bbox: List):
+        poly = self.bbox2poly(bbox[0], bbox[1], bbox[2], bbox[3])
         bbox_filter = Q(
             {
                 "geo_shape": {
@@ -156,6 +164,26 @@ class DatabaseLogic():
             }
         )
         search = search.query(bbox_filter)
+        return search
+
+    def search_intersects(self, intersects: dict):
+        """Database logic to search a geojson object."""
+        intersect_filter = Q(
+            {
+                "geo_shape": {
+                    "geometry": {
+                        "shape": {
+                            "type": intersects.type.lower(),
+                            "coordinates": intersects.coordinates,
+                        },
+                        "relation": "intersects",
+                    }
+                }
+            }
+        )
+        search = search.query(intersect_filter)
+        return search
+        
         
 
     
@@ -368,12 +396,6 @@ class CoreCrudClient(BaseCoreClient):
 
         return resp
 
-    @staticmethod
-    def bbox2poly(b0, b1, b2, b3):
-        """Transform bbox to polygon."""
-        poly = [[[b0, b1], [b2, b1], [b2, b3], [b0, b3], [b0, b1]]]
-        return poly
-
     def post_search(self, search_request: Search, **kwargs) -> ItemCollection:
         """POST search catalog."""
         base_url = str(kwargs["request"].base_url)
@@ -445,9 +467,8 @@ class CoreCrudClient(BaseCoreClient):
             bbox = search_request.bbox
             if len(bbox) == 6:
                 bbox = [bbox[0], bbox[1], bbox[3], bbox[4]]
-            poly = self.bbox2poly(bbox[0], bbox[1], bbox[2], bbox[3])
 
-            self.database.search_bbox(poly=poly)
+            search = self.database.search_bbox(bbox=bbox)
 
             # bbox_filter = Q(
             #     {
@@ -462,20 +483,21 @@ class CoreCrudClient(BaseCoreClient):
             # search = search.query(bbox_filter)
 
         if search_request.intersects:
-            intersect_filter = Q(
-                {
-                    "geo_shape": {
-                        "geometry": {
-                            "shape": {
-                                "type": search_request.intersects.type.lower(),
-                                "coordinates": search_request.intersects.coordinates,
-                            },
-                            "relation": "intersects",
-                        }
-                    }
-                }
-            )
-            search = search.query(intersect_filter)
+            self.database.search_intersects(search_request.intersects)
+            # intersect_filter = Q(
+            #     {
+            #         "geo_shape": {
+            #             "geometry": {
+            #                 "shape": {
+            #                     "type": search_request.intersects.type.lower(),
+            #                     "coordinates": search_request.intersects.coordinates,
+            #                 },
+            #                 "relation": "intersects",
+            #             }
+            #         }
+            #     }
+            # )
+            # search = search.query(intersect_filter)
 
         if search_request.sortby:
             for sort in search_request.sortby:
