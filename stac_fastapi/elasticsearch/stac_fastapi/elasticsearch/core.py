@@ -215,21 +215,27 @@ class CoreCrudClient(BaseCoreClient):
             )
 
         if search_request.collections:
-            search = self.database.search_ids(search_request.collections)
+            search = self.database.search_collections(
+                search=search, collection_ids=search_request.collections
+            )
 
         if search_request.datetime:
             datetime_search = self._return_date(search_request.datetime)
-            search = self.database.search_datetime(datetime_search)
+            search = self.database.search_datetime(
+                search=search, datetime_search=datetime_search
+            )
 
         if search_request.bbox:
             bbox = search_request.bbox
             if len(bbox) == 6:
                 bbox = [bbox[0], bbox[1], bbox[3], bbox[4]]
 
-            search = self.database.search_bbox(bbox=bbox)
+            search = self.database.search_bbox(search=search, bbox=bbox)
 
         if search_request.intersects:
-            self.database.search_intersects(search_request.intersects)
+            self.database.search_intersects(
+                search=search, intersects=search_request.intersects
+            )
 
         if search_request.sortby:
             for sort in search_request.sortby:
