@@ -1,8 +1,6 @@
-"""Item crud client."""
-import json
+"""Database logic."""
 import logging
-from datetime import datetime as datetime_type
-from typing import List, Optional, Type, Union
+from typing import List, Type, Union
 
 import attr
 import elasticsearch
@@ -62,6 +60,7 @@ class CoreDatabaseLogic():
         return serialized_collections
 
     def get_one_collection(self, collection_id: str) -> Collection:
+        """Database logic to retrieve a single collection."""
         try:
             collection = self.client.get(index=COLLECTIONS_INDEX, id=collection_id)
         except elasticsearch.exceptions.NotFoundError:
@@ -69,7 +68,8 @@ class CoreDatabaseLogic():
 
         return collection["_source"]
 
-    def get_item_collection(self, collection_id: str, limit: int, base_url: str):
+    def get_item_collection(self, collection_id: str, limit: int, base_url: str) -> ItemCollection:
+        """Database logic to retrieve an ItemCollection and a count of items contained."""
         search = Search(using=self.client, index="stac_items")
 
         collection_filter = Q(
@@ -91,7 +91,8 @@ class CoreDatabaseLogic():
 
         return serialized_children, count
 
-    def get_one_item(self, collection_id: str, item_id: str):
+    def get_one_item(self, collection_id: str, item_id: str) -> Item:
+        """Database logic to retrieve a single item."""
         try:
             item = self.client.get(
                 index=ITEMS_INDEX, id=mk_item_id(item_id, collection_id)
@@ -103,6 +104,7 @@ class CoreDatabaseLogic():
         return item["_source"]
 
     def create_search_object(self):
+        """Database logic to create a nosql Search instance."""
         search = (
             Search()
             .using(self.client)
@@ -113,10 +115,10 @@ class CoreDatabaseLogic():
                 {"collection": {"order": "desc"}},
             )
         )
-
         return search
 
     def create_query_filter(self, search, op: str, field: str, value: float):
+        """Database logic to perform query for search endpoint."""
         if op != "eq":
             key_filter = {field: {f"{op}": value}}
             search = search.query(Q("range", **key_filter))
@@ -126,6 +128,7 @@ class CoreDatabaseLogic():
         return search
 
     def search_ids(self, search, item_ids: List):
+        """Database logic to search a list of STAC item ids."""
         id_list = []   
         for item_id in item_ids:
             id_list.append(Q("match_phrase", **{"id": item_id}))
@@ -135,6 +138,7 @@ class CoreDatabaseLogic():
         return search
 
     def search_collections(self, search, collection_ids: List):
+        """Database logic to search a list of STAC collection ids."""
         collection_list = []
         for collection_id in collection_ids:
             collection_list.append(
@@ -146,6 +150,7 @@ class CoreDatabaseLogic():
         return search
 
     def search_datetime(self, search, datetime_search):
+        """Database logic to search datetime field."""
         if "eq" in datetime_search:
             search = search.query(
                 "match_phrase", **{"properties__datetime": datetime_search["eq"]}
@@ -160,6 +165,7 @@ class CoreDatabaseLogic():
         return search
 
     def search_bbox(self, search, bbox: List):
+        """Database logic to search on bounding box."""
         poly = self.bbox2poly(bbox[0], bbox[1], bbox[2], bbox[3])
         bbox_filter = Q(
             {
@@ -193,10 +199,12 @@ class CoreDatabaseLogic():
         return search
 
     def sort_field(self, search, field, direction):
+        """Database logic to sort nosql search instance."""
         search = search.sort({field: {"order": direction}})
         return search
 
-    def search_count(self, search):
+    def search_count(self, search) -> int:
+        """Database logic to count search results."""
         try:
             count = search.count()
         except elasticsearch.exceptions.NotFoundError:
@@ -204,7 +212,7 @@ class CoreDatabaseLogic():
         
         return count
 
-    def execute_search(self, search, limit: int, base_url: str) -> dict:
+    def execute_search(self, search, limit: int, base_url: str) -> List:
         """Database logic to execute search with limit."""
         search = search.query()[0 : limit]
         response = search.execute().to_dict()
