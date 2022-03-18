@@ -196,6 +196,13 @@ class DatabaseLogic():
             raise NotFoundError("No items exist")
         
         return count
+
+    def execute_search(self, search, limit: int) -> dict:
+        """Database logic to execute search with limit."""
+        search = search.query()[0 : limit]
+        response = search.execute().to_dict()
+
+        return response
         
         
 
@@ -527,8 +534,10 @@ class CoreCrudClient(BaseCoreClient):
         #     raise NotFoundError("No items exist")
 
         # search = search.sort({"id.keyword" : {"order" : "asc"}})
-        search = search.query()[0 : search_request.limit]
-        response = search.execute().to_dict()
+
+        response = self.database.execute_search(search=search, limit=search_request.limit)
+        # search = search.query()[0 : search_request.limit]
+        # response = search.execute().to_dict()
 
         if len(response["hits"]["hits"]) > 0:
             response_features = [
