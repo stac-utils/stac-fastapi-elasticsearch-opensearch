@@ -8,7 +8,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    platform: linux/amd64
     environment:
       - APP_HOST=0.0.0.0
       - APP_PORT=8083
@@ -32,7 +31,7 @@ services:
 
   elasticsearch:
     container_name: es-container
-    image: docker.elastic.co/elasticsearch/elasticsearch:${ELASTICSEARCH_VERSION:-7.17.1}
+    image: docker.elastic.co/elasticsearch/elasticsearch:7.14.2
     environment:
       node.name: es01
       cluster.name: stac-cluster
