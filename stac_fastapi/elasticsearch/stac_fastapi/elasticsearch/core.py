@@ -6,8 +6,6 @@ from typing import List, Optional, Type, Union
 from urllib.parse import urljoin
 
 import attr
-import elasticsearch
-from elasticsearch_dsl import Q, Search
 from fastapi import HTTPException
 from overrides import overrides
 
@@ -23,16 +21,12 @@ from stac_fastapi.elasticsearch.database_logic import CoreDatabaseLogic
 
 # from stac_fastapi.elasticsearch.types.error_checks import ErrorChecks
 from stac_fastapi.types.core import BaseCoreClient
-from stac_fastapi.types.errors import NotFoundError
 from stac_fastapi.types.stac import Collection, Collections, Item, ItemCollection
 
 logger = logging.getLogger(__name__)
 
 NumType = Union[float, int]
 
-ITEMS_INDEX = "stac_items"
-COLLECTIONS_INDEX = "stac_collections"
-    
 @attr.s
 class CoreCrudClient(BaseCoreClient):
     """Client for core endpoints defined by stac."""
@@ -197,7 +191,7 @@ class CoreCrudClient(BaseCoreClient):
 
         return resp
 
-    def post_search(self, search_request: Search, **kwargs) -> ItemCollection:
+    def post_search(self, search_request, **kwargs) -> ItemCollection:
         """POST search catalog."""
         base_url = str(kwargs["request"].base_url)
         search = self.database.create_search_object()
