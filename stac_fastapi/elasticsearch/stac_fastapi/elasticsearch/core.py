@@ -15,7 +15,6 @@ from stac_pydantic.links import Relations
 from stac_pydantic.shared import MimeTypes
 
 from stac_fastapi.elasticsearch import serializers
-from stac_fastapi.elasticsearch.config import ElasticsearchSettings
 from stac_fastapi.elasticsearch.database_logic import CoreDatabaseLogic
 from stac_fastapi.elasticsearch.session import Session
 
@@ -39,8 +38,6 @@ class CoreCrudClient(BaseCoreClient):
     collection_serializer: Type[serializers.Serializer] = attr.ib(
         default=serializers.CollectionSerializer
     )
-    settings = ElasticsearchSettings()
-    client = settings.create_client
     database = CoreDatabaseLogic()
 
     @overrides
