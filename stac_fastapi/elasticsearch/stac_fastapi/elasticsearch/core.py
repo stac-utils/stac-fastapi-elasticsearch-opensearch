@@ -183,6 +183,14 @@ class DatabaseLogic():
         )
         search = search.query(intersect_filter)
         return search
+
+    def sort_field(self, search, field, direction):
+        search = search.sort({field: {"order": direction}})
+        return 
+
+    def search_count(self, search):
+        count = search.count()
+        return count
         
         
 
@@ -504,10 +512,12 @@ class CoreCrudClient(BaseCoreClient):
                 if sort.field == "datetime":
                     sort.field = "properties__datetime"
                 field = sort.field + ".keyword"
-                search = search.sort({field: {"order": sort.direction}})
+                search = self.database.sort_field(search=search, field=field, direction=sort.direction)
+                # search = search.sort({field: {"order": sort.direction}})
 
         try:
-            count = search.count()
+            # count = search.count()
+            count = self.database.search_count(search=search)
         except elasticsearch.exceptions.NotFoundError:
             raise NotFoundError("No items exist")
 
