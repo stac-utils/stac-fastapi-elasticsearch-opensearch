@@ -9,7 +9,6 @@ from overrides import overrides
 
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
 from stac_fastapi.elasticsearch.database_logic import DatabaseLogic
-
 from stac_fastapi.elasticsearch.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.elasticsearch.session import Session
 from stac_fastapi.extensions.third_party.bulk_transactions import (
@@ -26,6 +25,7 @@ logger = logging.getLogger(__name__)
 @attr.s
 class TransactionsClient(BaseTransactionsClient):
     """Transactions extension specific CRUD operations."""
+
     session: Session = attr.ib(default=attr.Factory(Session.create_from_env))
     database = DatabaseLogic()
 
@@ -60,7 +60,7 @@ class TransactionsClient(BaseTransactionsClient):
         # todo: index instead of delete and create
         self.delete_item(item_id=item["id"], collection_id=item["collection"])
         self.create_item(item=item, **kwargs)
-        
+
         return ItemSerializer.db_to_stac(item, base_url)
 
     @overrides
@@ -91,7 +91,7 @@ class TransactionsClient(BaseTransactionsClient):
     ) -> stac_types.Collection:
         """Update collection."""
         base_url = str(kwargs["request"].base_url)
-        
+
         self.database.prep_update_collection(collection_id=collection["id"])
         self.delete_collection(collection["id"])
         self.create_collection(collection, **kwargs)

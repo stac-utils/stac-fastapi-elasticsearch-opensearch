@@ -4,15 +4,14 @@ from typing import List, Type, Union
 
 import attr
 import elasticsearch
-from elasticsearch_dsl import Q, Search
 from elasticsearch import helpers
+from elasticsearch_dsl import Q, Search
 
 from stac_fastapi.elasticsearch import serializers
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
 from stac_fastapi.types import stac as stac_types
-from stac_fastapi.types.errors import NotFoundError
-from stac_fastapi.types.stac import Collection, Collections, Item, ItemCollection
 from stac_fastapi.types.errors import ConflictError, ForeignKeyError, NotFoundError
+from stac_fastapi.types.stac import Collection, Collections, Item, ItemCollection
 
 logger = logging.getLogger(__name__)
 
@@ -315,4 +314,3 @@ class DatabaseLogic:
             for item in processed_items
         ]
         helpers.bulk(self.client, actions)
-
