@@ -260,3 +260,8 @@ class DatabaseLogic:
             raise ConflictError(
                 f"Item {item['id']} in collection {item['collection']} already exists"
             )
+
+    def prep_update_item(self, item: stac_types.Item):
+        if not self.client.exists(index=COLLECTIONS_INDEX, id=item["collection"]):
+            raise ForeignKeyError(f"Collection {item['collection']} does not exist")
+

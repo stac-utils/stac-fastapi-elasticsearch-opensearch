@@ -66,13 +66,11 @@ class TransactionsClient(BaseTransactionsClient):
         now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         item["properties"]["updated"] = str(now)
 
-        if not self.client.exists(index=COLLECTIONS_INDEX, id=item["collection"]):
-            raise ForeignKeyError(f"Collection {item['collection']} does not exist")
-
+        self.database.prep_update_item(item=item)
         # todo: index instead of delete and create
         self.delete_item(item["id"], item["collection"])
         self.create_item(item, **kwargs)
-        # self.client.update(index=ITEMS_INDEX,id=item["id"], body=item)
+        
         return ItemSerializer.db_to_stac(item, base_url)
 
     @overrides
