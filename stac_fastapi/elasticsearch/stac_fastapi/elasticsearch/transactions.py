@@ -91,15 +91,8 @@ class TransactionsClient(BaseTransactionsClient):
             collection_id=collection["id"], base_url=base_url
         ).create_links()
         collection["links"] = collection_links
+        self.database.create_collection(collection=collection)
 
-        if self.client.exists(index=COLLECTIONS_INDEX, id=collection["id"]):
-            raise ConflictError(f"Collection {collection['id']} already exists")
-
-        self.client.index(
-            index=COLLECTIONS_INDEX,
-            id=collection["id"],
-            document=collection,
-        )
         return CollectionSerializer.db_to_stac(collection, base_url)
 
     @overrides

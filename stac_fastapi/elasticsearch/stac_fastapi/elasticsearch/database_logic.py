@@ -273,3 +273,13 @@ class DatabaseLogic:
                 f"Item {item_id} in collection {collection_id} not found"
             )
 
+    def create_collection(self, collection: stac_types.Collection):
+        if self.client.exists(index=COLLECTIONS_INDEX, id=collection["id"]):
+            raise ConflictError(f"Collection {collection['id']} already exists")
+
+        self.client.index(
+            index=COLLECTIONS_INDEX,
+            id=collection["id"],
+            document=collection,
+        )
+
