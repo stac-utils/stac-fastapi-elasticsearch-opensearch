@@ -330,7 +330,7 @@ def test_item_search_by_id_post(app_client, load_test_data):
         )
         assert resp.status_code == 200
 
-    time.sleep(1)
+    time.sleep(2)
 
     params = {"collections": [test_item["collection"]], "ids": ids}
     resp = app_client.post("/search", json=params)
@@ -511,7 +511,6 @@ def test_item_search_by_id_get(app_client, load_test_data):
     assert set([feat["id"] for feat in resp_json["features"]]) == set(ids)
 
 
-@pytest.mark.skip(reason="unknown")
 def test_item_search_bbox_get(app_client, load_test_data):
     """Test GET search with spatial query (core)"""
     test_item = load_test_data("test_item.json")
@@ -519,6 +518,8 @@ def test_item_search_bbox_get(app_client, load_test_data):
         f"/collections/{test_item['collection']}/items", json=test_item
     )
     assert resp.status_code == 200
+
+    time.sleep(1)
 
     params = {
         "collections": test_item["collection"],
