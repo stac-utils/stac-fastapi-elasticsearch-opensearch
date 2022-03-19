@@ -5,8 +5,6 @@ from datetime import datetime, timezone
 from typing import Optional
 
 import attr
-import elasticsearch
-from elasticsearch import helpers
 from overrides import overrides
 
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
@@ -111,11 +109,7 @@ class TransactionsClient(BaseTransactionsClient):
     @overrides
     def delete_collection(self, collection_id: str, **kwargs) -> stac_types.Collection:
         """Delete collection."""
-        try:
-            _ = self.client.get(index=COLLECTIONS_INDEX, id=collection_id)
-        except elasticsearch.exceptions.NotFoundError:
-            raise NotFoundError(f"Collection {collection_id} not found")
-        self.client.delete(index=COLLECTIONS_INDEX, id=collection_id)
+        self.database.delete_collection(collection_id=collection_id)
         return None
 
 
@@ -136,18 +130,6 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         item = self.database.prep_create_item(item=item, base_url=base_url)
         return item
 
-    def bulk_sync(self, processed_items):
-        """Elasticsearch bulk insertion."""
-        actions = [
-            {
-                "_index": ITEMS_INDEX,
-                "_id": mk_item_id(item["id"], item["collection"]),
-                "_source": item,
-            }
-            for item in processed_items
-        ]
-        helpers.bulk(self.client, actions)
-
     @overrides
     def bulk_item_insert(
         self, items: Items, chunk_size: Optional[int] = None, **kwargs
@@ -163,6 +145,6 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
             self.preprocess_item(item, base_url) for item in items.items.values()
         ]
 
-        self.bulk_sync(processed_items)
+        self.database.bulk_sync(processed_items)
 
         return f"Successfully added {len(processed_items)} Items."

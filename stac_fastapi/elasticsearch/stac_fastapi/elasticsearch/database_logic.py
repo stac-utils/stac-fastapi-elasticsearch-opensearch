@@ -5,6 +5,7 @@ from typing import List, Type, Union
 import attr
 import elasticsearch
 from elasticsearch_dsl import Q, Search
+from elasticsearch import helpers
 
 from stac_fastapi.elasticsearch import serializers
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
@@ -288,4 +289,23 @@ class DatabaseLogic:
             _ = self.client.get(index=COLLECTIONS_INDEX, id=collection_id)
         except elasticsearch.exceptions.NotFoundError:
             raise NotFoundError(f"Collection {collection_id} not found")
+
+    def delete_collection(self, collection_id: str):
+        try:
+            _ = self.client.get(index=COLLECTIONS_INDEX, id=collection_id)
+        except elasticsearch.exceptions.NotFoundError:
+            raise NotFoundError(f"Collection {collection_id} not found")
+        self.client.delete(index=COLLECTIONS_INDEX, id=collection_id)
+
+     def bulk_sync(self, processed_items):
+        """Database logic for bulk insertion."""
+        actions = [
+            {
+                "_index": ITEMS_INDEX,
+                "_id": mk_item_id(item["id"], item["collection"]),
+                "_source": item,
+            }
+            for item in processed_items
+        ]
+        helpers.bulk(self.client, actions)
 
