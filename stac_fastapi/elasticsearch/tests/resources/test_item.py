@@ -246,7 +246,7 @@ def test_get_item_collection(app_client, load_test_data):
         )
         assert resp.status_code == 200
 
-    time.sleep(1)
+    time.sleep(2)
     resp = app_client.get(f"/collections/{test_item['collection']}/items")
     assert resp.status_code == 200
 
@@ -378,7 +378,7 @@ def test_item_search_temporal_query_post(app_client, load_test_data):
     )
     assert resp.status_code == 200
 
-    time.sleep(1)
+    time.sleep(2)
 
     item_date = rfc3339_str_to_datetime(test_item["properties"]["datetime"])
     item_date = item_date + timedelta(seconds=1)
@@ -406,7 +406,7 @@ def test_item_search_temporal_window_post(app_client, load_test_data):
     )
     assert resp.status_code == 200
 
-    time.sleep(1)
+    time.sleep(2)
 
     item_date = rfc3339_str_to_datetime(test_item["properties"]["datetime"])
     item_date_before = item_date - timedelta(seconds=1)
