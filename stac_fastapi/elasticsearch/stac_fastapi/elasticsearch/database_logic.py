@@ -44,7 +44,7 @@ class DatabaseLogic:
         poly = [[[b0, b1], [b2, b1], [b2, b3], [b0, b3], [b0, b1]]]
         return poly
 
-    # Core Logic
+    """CORE LOGIC"""
 
     def get_all_collections(self, base_url: str) -> Collections:
         """Database logic to retrieve a list of all collections."""
@@ -53,7 +53,7 @@ class DatabaseLogic:
                 index=COLLECTIONS_INDEX, query={"match_all": {}}
             )
         except elasticsearch.exceptions.NotFoundError:
-            raise NotFoundError("No collections exist")
+            return []
 
         serialized_collections = [
             self.collection_serializer.db_to_stac(
@@ -222,7 +222,7 @@ class DatabaseLogic:
 
         return response_features
 
-    # Transaction Logic
+    """ TRANSACTION LOGIC """
 
     def check_collection_exists(self, collection_id: str):
         """Database logic to check if a collection exists."""
