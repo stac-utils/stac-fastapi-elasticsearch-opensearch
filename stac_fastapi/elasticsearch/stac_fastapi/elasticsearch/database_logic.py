@@ -283,3 +283,9 @@ class DatabaseLogic:
             document=collection,
         )
 
+    def prep_update_collection(self, collection_id: str):
+        try:
+            _ = self.client.get(index=COLLECTIONS_INDEX, id=collection_id)
+        except elasticsearch.exceptions.NotFoundError:
+            raise NotFoundError(f"Collection {collection_id} not found")
+

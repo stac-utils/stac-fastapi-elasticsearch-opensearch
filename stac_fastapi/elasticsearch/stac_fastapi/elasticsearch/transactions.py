@@ -101,10 +101,8 @@ class TransactionsClient(BaseTransactionsClient):
     ) -> stac_types.Collection:
         """Update collection."""
         base_url = str(kwargs["request"].base_url)
-        try:
-            _ = self.client.get(index=COLLECTIONS_INDEX, id=collection["id"])
-        except elasticsearch.exceptions.NotFoundError:
-            raise NotFoundError(f"Collection {collection['id']} not found")
+        
+        self.database.prep_update_collection(collection_id=collection["id"])
         self.delete_collection(collection["id"])
         self.create_collection(collection, **kwargs)
 
