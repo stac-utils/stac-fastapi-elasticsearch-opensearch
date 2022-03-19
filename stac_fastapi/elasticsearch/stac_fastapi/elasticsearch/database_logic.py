@@ -84,10 +84,9 @@ class DatabaseLogic:
             "bool", should=[Q("match_phrase", **{"collection": collection_id})]
         )
         search = search.query(collection_filter)
-        try:
-            count = search.count()
-        except elasticsearch.exceptions.NotFoundError:
-            raise NotFoundError("No items exist")
+
+        count = self.search_count(search)
+       
         # search = search.sort({"id.keyword" : {"order" : "asc"}})
         search = search.query()[0:limit]
         collection_children = search.execute().to_dict()
