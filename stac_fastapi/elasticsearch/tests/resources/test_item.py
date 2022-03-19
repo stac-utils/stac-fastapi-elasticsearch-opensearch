@@ -22,7 +22,7 @@ def rfc3339_str_to_datetime(s: str) -> datetime:
     return ciso8601.parse_rfc3339(s)
 
 
-@pytest.mark.skip(reason="unknown")
+# @pytest.mark.skip(reason="unknown")
 def test_create_and_delete_item(app_client, load_test_data):
     """Test creation and deletion of a single item (transactions extension)"""
     test_item = load_test_data("test_item.json")
@@ -184,6 +184,14 @@ def test_update_item_geometry(app_client, load_test_data):
 def test_get_item(app_client, load_test_data):
     """Test read an item by id (core)"""
     test_item = load_test_data("test_item.json")
+
+    try:
+        resp = app_client.delete(
+        f"/collections/{test_item['collection']}/items/{test_item['id']}"
+    )
+    except Exception:
+        pass
+
     resp = app_client.post(
         f"/collections/{test_item['collection']}/items", json=test_item
     )
@@ -226,7 +234,7 @@ def test_returns_valid_item(app_client, load_test_data):
     )
 
 
-@pytest.mark.skip(reason="unknown")
+# @pytest.mark.skip(reason="unknown")
 def test_get_item_collection(app_client, load_test_data):
     """Test read an item collection (core)"""
     item_count = randint(1, 4)
@@ -239,13 +247,13 @@ def test_get_item_collection(app_client, load_test_data):
             f"/collections/{test_item['collection']}/items", json=_test_item
         )
         assert resp.status_code == 200
-
+  
+    time.sleep(1)
     resp = app_client.get(f"/collections/{test_item['collection']}/items")
     assert resp.status_code == 200
 
     item_collection = resp.json()
     assert item_collection["context"]["matched"] == len(range(item_count))
-
     app_client.delete(
         f"/collections/{test_item['collection']}/items/{test_item['id']}",
         json=test_item,
