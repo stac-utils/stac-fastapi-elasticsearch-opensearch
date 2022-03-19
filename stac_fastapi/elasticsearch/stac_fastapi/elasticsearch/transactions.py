@@ -56,7 +56,7 @@ class TransactionsClient(BaseTransactionsClient):
         now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         item["properties"]["updated"] = str(now)
 
-        self.database.prep_update_item(item=item)
+        self.database.check_collection_exists(collection_id=item["collection"])
         # todo: index instead of delete and create
         self.delete_item(item_id=item["id"], collection_id=item["collection"])
         self.create_item(item=item, **kwargs)
@@ -92,7 +92,7 @@ class TransactionsClient(BaseTransactionsClient):
         """Update collection."""
         base_url = str(kwargs["request"].base_url)
 
-        self.database.prep_update_collection(collection_id=collection["id"])
+        self.database.find_collection(collection_id=collection["id"])
         self.delete_collection(collection["id"])
         self.create_collection(collection, **kwargs)
 

@@ -9,7 +9,6 @@ from elasticsearch_dsl import Q, Search
 
 from stac_fastapi.elasticsearch import serializers
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
-from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.errors import ConflictError, ForeignKeyError, NotFoundError
 from stac_fastapi.types.stac import Collection, Collections, Item, ItemCollection
 
@@ -64,11 +63,6 @@ class DatabaseLogic:
         ]
 
         return serialized_collections
-
-    def get_one_collection(self, collection_id: str) -> Collection:
-        """Database logic to retrieve a single collection."""
-        collection = self.find_collection(collection_id=collection_id)
-        return collection["_source"]
 
     def get_item_collection(
         self, collection_id: str, limit: int, base_url: str
@@ -235,7 +229,7 @@ class DatabaseLogic:
         if not self.client.exists(index=COLLECTIONS_INDEX, id=collection_id):
             raise ForeignKeyError(f"Collection {collection_id} does not exist")
 
-    def prep_create_item(self, item: stac_types.Item, base_url: str) -> stac_types.Item:
+    def prep_create_item(self, item: Item, base_url: str) -> Item:
         """Database logic for prepping an item for insertion."""
         self.check_collection_exists(collection_id=item["collection"])
 
@@ -248,7 +242,7 @@ class DatabaseLogic:
 
         return self.item_serializer.stac_to_db(item, base_url)
 
-    def create_item(self, item: stac_types.Item, base_url: str):
+    def create_item(self, item: Item, base_url: str):
         """Database logic for creating one item."""
         # todo: check if collection exists, but cache
         es_resp = self.client.index(
@@ -262,10 +256,6 @@ class DatabaseLogic:
                 f"Item {item['id']} in collection {item['collection']} already exists"
             )
 
-    def prep_update_item(self, item: stac_types.Item):
-        """Database logic for prepping an item for updating."""
-        self.check_collection_exists(collection_id=item["collection"])
-
     def delete_item(self, item_id: str, collection_id: str):
         """Database logic for deleting one item."""
         try:
@@ -275,7 +265,7 @@ class DatabaseLogic:
                 f"Item {item_id} in collection {collection_id} not found"
             )
 
-    def create_collection(self, collection: stac_types.Collection):
+    def create_collection(self, collection: Collection):
         """Database logic for creating one collection."""
         if self.client.exists(index=COLLECTIONS_INDEX, id=collection["id"]):
             raise ConflictError(f"Collection {collection['id']} already exists")
@@ -286,7 +276,7 @@ class DatabaseLogic:
             document=collection,
         )
 
-    def find_collection(self, collection_id: str) -> stac_types.Collection:
+    def find_collection(self, collection_id: str) -> Collection:
         """Database logic to find and return a collection."""
         try:
             collection = self.client.get(index=COLLECTIONS_INDEX, id=collection_id)
@@ -294,10 +284,6 @@ class DatabaseLogic:
             raise NotFoundError(f"Collection {collection_id} not found")
 
         return collection
-
-    def prep_update_collection(self, collection_id: str):
-        """Database logic for prepping a collection for updating."""
-        _ = self.find_collection(collection_id=collection_id)
 
     def delete_collection(self, collection_id: str):
         """Database logic for deleting one collection."""
