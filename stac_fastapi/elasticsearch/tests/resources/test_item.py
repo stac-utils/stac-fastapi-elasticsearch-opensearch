@@ -187,8 +187,8 @@ def test_get_item(app_client, load_test_data):
 
     try:
         resp = app_client.delete(
-        f"/collections/{test_item['collection']}/items/{test_item['id']}"
-    )
+            f"/collections/{test_item['collection']}/items/{test_item['id']}"
+        )
     except Exception:
         pass
 
@@ -247,7 +247,7 @@ def test_get_item_collection(app_client, load_test_data):
             f"/collections/{test_item['collection']}/items", json=_test_item
         )
         assert resp.status_code == 200
-  
+
     time.sleep(1)
     resp = app_client.get(f"/collections/{test_item['collection']}/items")
     assert resp.status_code == 200
