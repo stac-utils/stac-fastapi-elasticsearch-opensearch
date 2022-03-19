@@ -55,30 +55,8 @@ class TransactionsClient(BaseTransactionsClient):
 
             return return_msg
         else:
-            # todo: check if collection exists, but cache
-            if not self.client.exists(index=COLLECTIONS_INDEX, id=item["collection"]):
-                raise ForeignKeyError(f"Collection {item['collection']} does not exist")
-
-            if self.client.exists(
-                index=ITEMS_INDEX, id=mk_item_id(item["id"], item["collection"])
-            ):
-                raise ConflictError(
-                    f"Item {item['id']} in collection {item['collection']} already exists"
-                )
-
-            item = BulkTransactionsClient().preprocess_item(item, base_url)
-
-            es_resp = self.client.index(
-                index=ITEMS_INDEX,
-                id=mk_item_id(item["id"], item["collection"]),
-                document=item,
-            )
-
-            if (meta := es_resp.get("meta")) and meta.get("status") == 409:
-                raise ConflictError(
-                    f"Item {item['id']} in collection {item['collection']} already exists"
-                )
-
+            item = self.database.prep_create_item(item=item, base_url=base_url)
+            self.database.create_item(item=item, base_url=base_url)
             return item
 
     @overrides
@@ -171,8 +149,8 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
 
     def preprocess_item(self, item: stac_types.Item, base_url) -> stac_types.Item:
         """Preprocess items to match data model."""
-        self.database.preprocess_bulk_transactions(item=item, base_url=base_url)
-        return ItemSerializer.stac_to_db(item, base_url)
+        item = self.database.prep_create_item(item=item, base_url=base_url)
+        return item
 
     def bulk_sync(self, processed_items):
         """Elasticsearch bulk insertion."""

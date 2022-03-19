@@ -235,12 +235,28 @@ class DatabaseLogic:
 
     # Transaction Logic
 
-    def preprocess_bulk_transactions(self, item: stac_types.Item, base_url: str):
+    def prep_create_item(self, item: stac_types.Item, base_url: str):
         if not self.client.exists(index=COLLECTIONS_INDEX, id=item["collection"]):
             raise ForeignKeyError(f"Collection {item['collection']} does not exist")
 
-        if self.client.exists(index=ITEMS_INDEX, id=item["id"]):
+        if self.client.exists(
+            index=ITEMS_INDEX, id=mk_item_id(item["id"], item["collection"])
+        ):
             raise ConflictError(
                 f"Item {item['id']} in collection {item['collection']} already exists"
             )
 
+        return self.item_serializer.stac_to_db(item, base_url)
+
+    def create_item(self, item: stac_types.Item, base_url: str):
+        # todo: check if collection exists, but cache
+        es_resp = self.client.index(
+            index=ITEMS_INDEX,
+            id=mk_item_id(item["id"], item["collection"]),
+            document=item,
+        )
+
+        if (meta := es_resp.get("meta")) and meta.get("status") == 409:
+            raise ConflictError(
+                f"Item {item['id']} in collection {item['collection']} already exists"
+            )
