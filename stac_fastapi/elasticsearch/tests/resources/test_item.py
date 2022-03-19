@@ -462,6 +462,8 @@ def test_item_search_sort_post(app_client, load_test_data):
     )
     assert resp.status_code == 200
 
+    time.sleep(1)
+
     second_item = load_test_data("test_item.json")
     second_item["id"] = "another-item"
     another_item_date = item_date - timedelta(days=1)
@@ -470,6 +472,8 @@ def test_item_search_sort_post(app_client, load_test_data):
         f"/collections/{second_item['collection']}/items", json=second_item
     )
     assert resp.status_code == 200
+
+    time.sleep(1)
 
     params = {
         "collections": [first_item["collection"]],
@@ -486,7 +490,6 @@ def test_item_search_sort_post(app_client, load_test_data):
     )
 
 
-@pytest.mark.skip(reason="unknown")
 def test_item_search_by_id_get(app_client, load_test_data):
     """Test GET search by item id (core)"""
     ids = ["test1", "test2", "test3"]
@@ -497,6 +500,8 @@ def test_item_search_by_id_get(app_client, load_test_data):
             f"/collections/{test_item['collection']}/items", json=test_item
         )
         assert resp.status_code == 200
+
+    time.sleep(2)
 
     params = {"collections": test_item["collection"], "ids": ",".join(ids)}
     resp = app_client.get("/search", params=params)
