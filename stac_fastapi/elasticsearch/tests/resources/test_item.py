@@ -536,7 +536,6 @@ def test_item_search_bbox_get(app_client, load_test_data):
     )
 
 
-@pytest.mark.skip(reason="failed to find type for field [geometry]")
 def test_item_search_get_without_collections(app_client, load_test_data):
     """Test GET search without specifying collections"""
     test_item = load_test_data("test_item.json")
@@ -544,6 +543,8 @@ def test_item_search_get_without_collections(app_client, load_test_data):
         f"/collections/{test_item['collection']}/items", json=test_item
     )
     assert resp.status_code == 200
+
+    time.sleep(1)
 
     params = {
         "bbox": ",".join([str(coord) for coord in test_item["bbox"]]),
