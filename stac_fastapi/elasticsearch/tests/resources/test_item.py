@@ -321,7 +321,6 @@ def test_item_timestamps(app_client, load_test_data):
     )
 
 
-@pytest.mark.skip(reason="unknown")
 def test_item_search_by_id_post(app_client, load_test_data):
     """Test POST search by item id (core)"""
     ids = ["test1", "test2", "test3"]
@@ -332,6 +331,8 @@ def test_item_search_by_id_post(app_client, load_test_data):
             f"/collections/{test_item['collection']}/items", json=test_item
         )
         assert resp.status_code == 200
+
+    time.sleep(1)
 
     params = {"collections": [test_item["collection"]], "ids": ids}
     resp = app_client.post("/search", json=params)
@@ -346,7 +347,6 @@ def test_item_search_by_id_post(app_client, load_test_data):
     )
 
 
-@pytest.mark.skip(reason="unknown")
 def test_item_search_spatial_query_post(app_client, load_test_data):
     """Test POST search with spatial query (core)"""
     test_item = load_test_data("test_item.json")
@@ -354,6 +354,8 @@ def test_item_search_spatial_query_post(app_client, load_test_data):
         f"/collections/{test_item['collection']}/items", json=test_item
     )
     assert resp.status_code == 200
+
+    time.sleep(1)
 
     params = {
         "collections": [test_item["collection"]],
