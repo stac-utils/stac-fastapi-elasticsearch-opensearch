@@ -237,6 +237,7 @@ class DatabaseLogic:
     # Transaction Logic
 
     def prep_create_item(self, item: stac_types.Item, base_url: str):
+        """Database logic for prepping an item for insertion."""
         if not self.client.exists(index=COLLECTIONS_INDEX, id=item["collection"]):
             raise ForeignKeyError(f"Collection {item['collection']} does not exist")
 
@@ -250,6 +251,7 @@ class DatabaseLogic:
         return self.item_serializer.stac_to_db(item, base_url)
 
     def create_item(self, item: stac_types.Item, base_url: str):
+        """Database logic for creating one item."""
         # todo: check if collection exists, but cache
         es_resp = self.client.index(
             index=ITEMS_INDEX,
@@ -263,10 +265,12 @@ class DatabaseLogic:
             )
 
     def prep_update_item(self, item: stac_types.Item):
+        """Database logic for prepping an item for updating."""
         if not self.client.exists(index=COLLECTIONS_INDEX, id=item["collection"]):
             raise ForeignKeyError(f"Collection {item['collection']} does not exist")
 
     def delete_item(self, item_id: str, collection_id: str):
+        """Database logic for deleting one item."""
         try:
             self.client.delete(index=ITEMS_INDEX, id=mk_item_id(item_id, collection_id))
         except elasticsearch.exceptions.NotFoundError:
@@ -286,7 +290,7 @@ class DatabaseLogic:
         )
 
     def prep_update_collection(self, collection_id: str):
-        """Database logic for updating a collection."""
+        """Database logic for prepping a collection for updating."""
         try:
             _ = self.client.get(index=COLLECTIONS_INDEX, id=collection_id)
         except elasticsearch.exceptions.NotFoundError:
