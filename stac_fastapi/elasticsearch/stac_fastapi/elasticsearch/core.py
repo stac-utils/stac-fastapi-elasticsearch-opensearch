@@ -72,9 +72,7 @@ class CoreCrudClient(BaseCoreClient):
     def get_collection(self, collection_id: str, **kwargs) -> Collection:
         """Get collection by id."""
         base_url = str(kwargs["request"].base_url)
-        collection = self.database.find_collection(collection_id=collection_id)[
-            "_source"
-        ]
+        collection = self.database.find_collection(collection_id=collection_id)
         return self.collection_serializer.db_to_stac(collection, base_url)
 
     @overrides

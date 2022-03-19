@@ -283,7 +283,7 @@ class DatabaseLogic:
         except elasticsearch.exceptions.NotFoundError:
             raise NotFoundError(f"Collection {collection_id} not found")
 
-        return collection
+        return collection["_source"]
 
     def delete_collection(self, collection_id: str):
         """Database logic for deleting one collection."""
