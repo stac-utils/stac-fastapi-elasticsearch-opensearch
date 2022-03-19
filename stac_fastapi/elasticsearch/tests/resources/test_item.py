@@ -370,7 +370,7 @@ def test_item_search_spatial_query_post(app_client, load_test_data):
     )
 
 
-@pytest.mark.skip(reason="failed to find type for field [geometry]")
+# @pytest.mark.skip(reason="failed to find type for field [geometry]")
 def test_item_search_temporal_query_post(app_client, load_test_data):
     """Test POST search with single-tailed spatio-temporal query (core)"""
     test_item = load_test_data("test_item.json")
@@ -378,6 +378,8 @@ def test_item_search_temporal_query_post(app_client, load_test_data):
         f"/collections/{test_item['collection']}/items", json=test_item
     )
     assert resp.status_code == 200
+
+    time.sleep(1)
 
     item_date = rfc3339_str_to_datetime(test_item["properties"]["datetime"])
     item_date = item_date + timedelta(seconds=1)
@@ -395,7 +397,6 @@ def test_item_search_temporal_query_post(app_client, load_test_data):
         f"/collections/{test_item['collection']}/items/{test_item['id']}",
         json=test_item,
     )
-
 
 @pytest.mark.skip(reason="unknown")
 def test_item_search_temporal_window_post(app_client, load_test_data):
