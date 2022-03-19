@@ -265,3 +265,11 @@ class DatabaseLogic:
         if not self.client.exists(index=COLLECTIONS_INDEX, id=item["collection"]):
             raise ForeignKeyError(f"Collection {item['collection']} does not exist")
 
+    def delete_item(self, item_id: str, collection_id: str):
+        try:
+            self.client.delete(index=ITEMS_INDEX, id=mk_item_id(item_id, collection_id))
+        except elasticsearch.exceptions.NotFoundError:
+            raise NotFoundError(
+                f"Item {item_id} in collection {collection_id} not found"
+            )
+

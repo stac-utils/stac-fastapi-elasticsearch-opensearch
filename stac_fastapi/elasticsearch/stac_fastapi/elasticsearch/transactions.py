@@ -68,8 +68,8 @@ class TransactionsClient(BaseTransactionsClient):
 
         self.database.prep_update_item(item=item)
         # todo: index instead of delete and create
-        self.delete_item(item["id"], item["collection"])
-        self.create_item(item, **kwargs)
+        self.delete_item(item_id=item["id"], collection_id=item["collection"])
+        self.create_item(item=item, **kwargs)
         
         return ItemSerializer.db_to_stac(item, base_url)
 
@@ -78,12 +78,7 @@ class TransactionsClient(BaseTransactionsClient):
         self, item_id: str, collection_id: str, **kwargs
     ) -> stac_types.Item:
         """Delete item."""
-        try:
-            self.client.delete(index=ITEMS_INDEX, id=mk_item_id(item_id, collection_id))
-        except elasticsearch.exceptions.NotFoundError:
-            raise NotFoundError(
-                f"Item {item_id} in collection {collection_id} not found"
-            )
+        self.database.delete_item(item_id=item_id, collection_id=collection_id)
         return None
 
     @overrides
