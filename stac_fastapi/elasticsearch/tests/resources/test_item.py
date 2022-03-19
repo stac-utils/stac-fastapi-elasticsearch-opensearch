@@ -674,7 +674,6 @@ def test_item_search_properties_field(app_client, load_test_data):
     app_client.delete(f"/collections/{test_item['collection']}/items/{test_item['id']}")
 
 
-@pytest.mark.skip(reason="unknown")
 def test_item_search_get_query_extension(app_client, load_test_data):
     """Test GET search with JSONB query (query extension)"""
     test_item = load_test_data("test_item.json")
@@ -682,6 +681,8 @@ def test_item_search_get_query_extension(app_client, load_test_data):
         f"/collections/{test_item['collection']}/items", json=test_item
     )
     assert resp.status_code == 200
+
+    time.sleep(1)
 
     # EPSG is a JSONB key
     params = {
