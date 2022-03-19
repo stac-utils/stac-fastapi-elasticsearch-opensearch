@@ -46,9 +46,14 @@ class TransactionsClient(BaseTransactionsClient):
 
         # If a feature collection is posted
         if item["type"] == "FeatureCollection":
-            return self.database.items_from_feature_collection(
-                item=item, base_url=base_url
-            )
+            bulk_client = BulkTransactionsClient()
+            processed_items = [
+                bulk_client.preprocess_item(item, base_url) for item in item["features"]
+            ]
+            return_msg = f"Successfully added {len(processed_items)} items."
+            bulk_client.bulk_sync(processed_items)
+
+            return return_msg
         else:
             # todo: check if collection exists, but cache
             if not self.client.exists(index=COLLECTIONS_INDEX, id=item["collection"]):
@@ -157,6 +162,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
     """Postgres bulk transactions."""
 
     session: Session = attr.ib(default=attr.Factory(Session.create_from_env))
+    database = DatabaseLogic()
 
     def __attrs_post_init__(self):
         """Create es engine."""
@@ -165,14 +171,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
 
     def preprocess_item(self, item: stac_types.Item, base_url) -> stac_types.Item:
         """Preprocess items to match data model."""
-        if not self.client.exists(index=COLLECTIONS_INDEX, id=item["collection"]):
-            raise ForeignKeyError(f"Collection {item['collection']} does not exist")
-
-        if self.client.exists(index=ITEMS_INDEX, id=item["id"]):
-            raise ConflictError(
-                f"Item {item['id']} in collection {item['collection']} already exists"
-            )
-
+        self.database.preprocess_bulk_transactions(item=item, base_url=base_url)
         return ItemSerializer.stac_to_db(item, base_url)
 
     def bulk_sync(self, processed_items):

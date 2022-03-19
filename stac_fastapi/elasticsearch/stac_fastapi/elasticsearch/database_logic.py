@@ -8,10 +8,10 @@ from elasticsearch_dsl import Q, Search
 
 from stac_fastapi.elasticsearch import serializers
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
-from stac_fastapi.elasticsearch.transactions import BulkTransactionsClient
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.errors import NotFoundError
 from stac_fastapi.types.stac import Collection, Collections, Item, ItemCollection
+from stac_fastapi.types.errors import ConflictError, ForeignKeyError, NotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -235,13 +235,12 @@ class DatabaseLogic:
 
     # Transaction Logic
 
-    def items_from_feature_collection(self, item: stac_types.Item, base_url: str):
-        """Database logic to create items from a feature collection."""
-        bulk_client = BulkTransactionsClient()
-        processed_items = [
-            bulk_client.preprocess_item(item, base_url) for item in item["features"]
-        ]
-        return_msg = f"Successfully added {len(processed_items)} items."
-        bulk_client.bulk_sync(processed_items)
+    def preprocess_bulk_transactions(self, item: stac_types.Item, base_url: str):
+        if not self.client.exists(index=COLLECTIONS_INDEX, id=item["collection"]):
+            raise ForeignKeyError(f"Collection {item['collection']} does not exist")
 
-        return return_msg
+        if self.client.exists(index=ITEMS_INDEX, id=item["id"]):
+            raise ConflictError(
+                f"Item {item['id']} in collection {item['collection']} already exists"
+            )
+
