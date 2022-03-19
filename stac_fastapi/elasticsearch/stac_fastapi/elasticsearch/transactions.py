@@ -13,6 +13,7 @@ from stac_fastapi.elasticsearch.config import ElasticsearchSettings
 from stac_fastapi.elasticsearch.database_logic import (
     COLLECTIONS_INDEX,
     ITEMS_INDEX,
+    DatabaseLogic,
     mk_item_id,
 )
 from stac_fastapi.elasticsearch.serializers import CollectionSerializer, ItemSerializer
@@ -36,6 +37,7 @@ class TransactionsClient(BaseTransactionsClient):
     session: Session = attr.ib(default=attr.Factory(Session.create_from_env))
     settings = ElasticsearchSettings()
     client = settings.create_client
+    database = DatabaseLogic()
 
     @overrides
     def create_item(self, item: stac_types.Item, **kwargs) -> stac_types.Item:
@@ -44,14 +46,9 @@ class TransactionsClient(BaseTransactionsClient):
 
         # If a feature collection is posted
         if item["type"] == "FeatureCollection":
-            bulk_client = BulkTransactionsClient()
-            processed_items = [
-                bulk_client.preprocess_item(item, base_url) for item in item["features"]
-            ]
-            return_msg = f"Successfully added {len(processed_items)} items."
-            bulk_client.bulk_sync(processed_items)
-
-            return return_msg
+            return self.database.items_from_feature_collection(
+                item=item, base_url=base_url
+            )
         else:
             # todo: check if collection exists, but cache
             if not self.client.exists(index=COLLECTIONS_INDEX, id=item["collection"]):

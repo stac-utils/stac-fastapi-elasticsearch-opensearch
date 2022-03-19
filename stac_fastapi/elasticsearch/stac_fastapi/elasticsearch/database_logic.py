@@ -8,6 +8,8 @@ from elasticsearch_dsl import Q, Search
 
 from stac_fastapi.elasticsearch import serializers
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
+from stac_fastapi.elasticsearch.transactions import BulkTransactionsClient
+from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.errors import NotFoundError
 from stac_fastapi.types.stac import Collection, Collections, Item, ItemCollection
 
@@ -25,8 +27,8 @@ def mk_item_id(item_id: str, collection_id: str):
 
 
 @attr.s
-class CoreDatabaseLogic:
-    """Core database logic."""
+class DatabaseLogic:
+    """Database logic."""
 
     settings = ElasticsearchSettings()
     client = settings.create_client
@@ -42,6 +44,8 @@ class CoreDatabaseLogic:
         """Transform bbox to polygon."""
         poly = [[[b0, b1], [b2, b1], [b2, b3], [b0, b3], [b0, b1]]]
         return poly
+
+    # Core Logic
 
     def get_all_collections(self, base_url: str) -> Collections:
         """Database logic to retrieve a list of all collections."""
@@ -228,3 +232,16 @@ class CoreDatabaseLogic:
             response_features = []
 
         return response_features
+
+    # Transaction Logic
+
+    def items_from_feature_collection(self, item: stac_types.Item, base_url: str):
+        """Database logic to create items from a feature collection."""
+        bulk_client = BulkTransactionsClient()
+        processed_items = [
+            bulk_client.preprocess_item(item, base_url) for item in item["features"]
+        ]
+        return_msg = f"Successfully added {len(processed_items)} items."
+        bulk_client.bulk_sync(processed_items)
+
+        return return_msg

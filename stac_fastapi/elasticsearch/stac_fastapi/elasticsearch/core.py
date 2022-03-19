@@ -15,7 +15,7 @@ from stac_pydantic.links import Relations
 from stac_pydantic.shared import MimeTypes
 
 from stac_fastapi.elasticsearch import serializers
-from stac_fastapi.elasticsearch.database_logic import CoreDatabaseLogic
+from stac_fastapi.elasticsearch.database_logic import DatabaseLogic
 from stac_fastapi.elasticsearch.session import Session
 
 # from stac_fastapi.elasticsearch.types.error_checks import ErrorChecks
@@ -38,7 +38,7 @@ class CoreCrudClient(BaseCoreClient):
     collection_serializer: Type[serializers.Serializer] = attr.ib(
         default=serializers.CollectionSerializer
     )
-    database = CoreDatabaseLogic()
+    database = DatabaseLogic()
 
     @overrides
     def all_collections(self, **kwargs) -> Collections:
