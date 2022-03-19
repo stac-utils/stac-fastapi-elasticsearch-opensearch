@@ -82,7 +82,7 @@ class DatabaseLogic:
         search = search.query(collection_filter)
 
         count = self.search_count(search)
-       
+
         # search = search.sort({"id.keyword" : {"order" : "asc"}})
         search = search.query()[0:limit]
         collection_children = search.execute().to_dict()
@@ -230,10 +230,14 @@ class DatabaseLogic:
 
     # Transaction Logic
 
-    def prep_create_item(self, item: stac_types.Item, base_url: str):
+    def check_collection_exists(self, collection_id: str):
+        """Database logic to check if a collection exists."""
+        if not self.client.exists(index=COLLECTIONS_INDEX, id=collection_id):
+            raise ForeignKeyError(f"Collection {collection_id} does not exist")
+
+    def prep_create_item(self, item: stac_types.Item, base_url: str) -> stac_types.Item:
         """Database logic for prepping an item for insertion."""
-        if not self.client.exists(index=COLLECTIONS_INDEX, id=item["collection"]):
-            raise ForeignKeyError(f"Collection {item['collection']} does not exist")
+        self.check_collection_exists(collection_id=item["collection"])
 
         if self.client.exists(
             index=ITEMS_INDEX, id=mk_item_id(item["id"], item["collection"])
@@ -260,8 +264,7 @@ class DatabaseLogic:
 
     def prep_update_item(self, item: stac_types.Item):
         """Database logic for prepping an item for updating."""
-        if not self.client.exists(index=COLLECTIONS_INDEX, id=item["collection"]):
-            raise ForeignKeyError(f"Collection {item['collection']} does not exist")
+        self.check_collection_exists(collection_id=item["collection"])
 
     def delete_item(self, item_id: str, collection_id: str):
         """Database logic for deleting one item."""
