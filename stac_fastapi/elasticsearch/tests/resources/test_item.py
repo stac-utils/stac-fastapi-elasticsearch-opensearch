@@ -22,7 +22,6 @@ def rfc3339_str_to_datetime(s: str) -> datetime:
     return ciso8601.parse_rfc3339(s)
 
 
-# @pytest.mark.skip(reason="unknown")
 def test_create_and_delete_item(app_client, load_test_data):
     """Test creation and deletion of a single item (transactions extension)"""
     test_item = load_test_data("test_item.json")
@@ -234,7 +233,6 @@ def test_returns_valid_item(app_client, load_test_data):
     )
 
 
-# @pytest.mark.skip(reason="unknown")
 def test_get_item_collection(app_client, load_test_data):
     """Test read an item collection (core)"""
     item_count = randint(1, 4)
