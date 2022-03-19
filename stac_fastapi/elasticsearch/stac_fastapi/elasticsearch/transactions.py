@@ -8,12 +8,8 @@ import attr
 from overrides import overrides
 
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
-from stac_fastapi.elasticsearch.database_logic import (
-    COLLECTIONS_INDEX,
-    ITEMS_INDEX,
-    DatabaseLogic,
-    mk_item_id,
-)
+from stac_fastapi.elasticsearch.database_logic import DatabaseLogic
+
 from stac_fastapi.elasticsearch.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.elasticsearch.session import Session
 from stac_fastapi.extensions.third_party.bulk_transactions import (
@@ -22,7 +18,6 @@ from stac_fastapi.extensions.third_party.bulk_transactions import (
 )
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.core import BaseTransactionsClient
-from stac_fastapi.types.errors import ConflictError, ForeignKeyError, NotFoundError
 from stac_fastapi.types.links import CollectionLinks
 
 logger = logging.getLogger(__name__)
@@ -31,10 +26,7 @@ logger = logging.getLogger(__name__)
 @attr.s
 class TransactionsClient(BaseTransactionsClient):
     """Transactions extension specific CRUD operations."""
-
     session: Session = attr.ib(default=attr.Factory(Session.create_from_env))
-    settings = ElasticsearchSettings()
-    client = settings.create_client
     database = DatabaseLogic()
 
     @overrides
