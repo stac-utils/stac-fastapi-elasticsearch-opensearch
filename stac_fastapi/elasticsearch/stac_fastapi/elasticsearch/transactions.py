@@ -49,7 +49,7 @@ class TransactionsClient(BaseTransactionsClient):
                 bulk_client.preprocess_item(item, base_url) for item in item["features"]
             ]
             return_msg = f"Successfully added {len(processed_items)} items."
-            bulk_client.bulk_sync(processed_items)
+            self.database.bulk_sync(processed_items)
 
             return return_msg
         else:

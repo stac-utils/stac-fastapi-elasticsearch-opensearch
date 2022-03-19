@@ -275,6 +275,7 @@ class DatabaseLogic:
             )
 
     def create_collection(self, collection: stac_types.Collection):
+        """Database logic for creating one collection."""
         if self.client.exists(index=COLLECTIONS_INDEX, id=collection["id"]):
             raise ConflictError(f"Collection {collection['id']} already exists")
 
@@ -285,20 +286,22 @@ class DatabaseLogic:
         )
 
     def prep_update_collection(self, collection_id: str):
+        """Database logic for updating a collection."""
         try:
             _ = self.client.get(index=COLLECTIONS_INDEX, id=collection_id)
         except elasticsearch.exceptions.NotFoundError:
             raise NotFoundError(f"Collection {collection_id} not found")
 
     def delete_collection(self, collection_id: str):
+        """Database logic for deleting one collection."""
         try:
             _ = self.client.get(index=COLLECTIONS_INDEX, id=collection_id)
         except elasticsearch.exceptions.NotFoundError:
             raise NotFoundError(f"Collection {collection_id} not found")
         self.client.delete(index=COLLECTIONS_INDEX, id=collection_id)
 
-     def bulk_sync(self, processed_items):
-        """Database logic for bulk insertion."""
+    def bulk_sync(self, processed_items):
+        """Database logic for bulk item insertion."""
         actions = [
             {
                 "_index": ITEMS_INDEX,
