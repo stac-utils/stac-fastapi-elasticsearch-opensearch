@@ -613,7 +613,6 @@ def test_item_search_sort_get(app_client, load_test_data):
     assert resp_json["features"][1]["id"] == second_item["id"]
 
 
-@pytest.mark.skip(reason="failed to find type for field [geometry]")
 def test_item_search_post_without_collection(app_client, load_test_data):
     """Test POST search without specifying a collection"""
     test_item = load_test_data("test_item.json")
@@ -621,6 +620,8 @@ def test_item_search_post_without_collection(app_client, load_test_data):
         f"/collections/{test_item['collection']}/items", json=test_item
     )
     assert resp.status_code == 200
+
+    time.sleep(1)
 
     params = {
         "bbox": test_item["bbox"],
