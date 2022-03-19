@@ -67,11 +67,7 @@ class DatabaseLogic:
 
     def get_one_collection(self, collection_id: str) -> Collection:
         """Database logic to retrieve a single collection."""
-        try:
-            collection = self.client.get(index=COLLECTIONS_INDEX, id=collection_id)
-        except elasticsearch.exceptions.NotFoundError:
-            raise NotFoundError(f"Collection {collection_id} not found")
-
+        collection = self.find_collection(collection_id=collection_id)
         return collection["_source"]
 
     def get_item_collection(
@@ -287,19 +283,22 @@ class DatabaseLogic:
             document=collection,
         )
 
-    def prep_update_collection(self, collection_id: str):
-        """Database logic for prepping a collection for updating."""
+    def find_collection(self, collection_id: str) -> stac_types.Collection:
+        """Database logic to find and return a collection."""
         try:
-            _ = self.client.get(index=COLLECTIONS_INDEX, id=collection_id)
+            collection = self.client.get(index=COLLECTIONS_INDEX, id=collection_id)
         except elasticsearch.exceptions.NotFoundError:
             raise NotFoundError(f"Collection {collection_id} not found")
 
+        return collection
+
+    def prep_update_collection(self, collection_id: str):
+        """Database logic for prepping a collection for updating."""
+        _ = self.find_collection(collection_id=collection_id)
+
     def delete_collection(self, collection_id: str):
         """Database logic for deleting one collection."""
-        try:
-            _ = self.client.get(index=COLLECTIONS_INDEX, id=collection_id)
-        except elasticsearch.exceptions.NotFoundError:
-            raise NotFoundError(f"Collection {collection_id} not found")
+        _ = self.find_collection(collection_id=collection_id)
         self.client.delete(index=COLLECTIONS_INDEX, id=collection_id)
 
     def bulk_sync(self, processed_items):
