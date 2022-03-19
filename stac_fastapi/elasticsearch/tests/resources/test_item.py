@@ -289,6 +289,7 @@ def test_item_timestamps(app_client, load_test_data):
     resp = app_client.post(
         f"/collections/{test_item['collection']}/items", json=test_item
     )
+    time.sleep(1)
     item = resp.json()
     created_dt = item["properties"]["created"]
     time.sleep(1)
