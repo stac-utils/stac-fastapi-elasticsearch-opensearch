@@ -269,11 +269,12 @@ def test_search_invalid_date(load_test_data, app_client, es_transactions):
     )
 
 
-@pytest.mark.skip(reason="assert 0 == 1")
+# @pytest.mark.skip(reason="assert 0 == 1")
 def test_search_point_intersects(load_test_data, app_client, es_transactions):
     item = load_test_data("test_item.json")
     es_transactions.create_item(item, request=MockStarletteRequest)
 
+    time.sleep(1)
     point = [150.04, -33.14]
     intersects = {"type": "Point", "coordinates": point}
 
