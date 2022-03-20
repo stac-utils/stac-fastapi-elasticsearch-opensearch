@@ -1,3 +1,4 @@
+import time
 from datetime import datetime, timedelta
 
 import pytest
@@ -94,7 +95,7 @@ def test_app_search_response(load_test_data, app_client, es_transactions):
     )
 
 
-@pytest.mark.skip(reason="this all passes manually?? assert 0 == 1")
+# @pytest.mark.skip(reason="this all passes manually?? assert 0 == 1")
 def test_app_context_extension(load_test_data, app_client, es_transactions, es_core):
     item = load_test_data("test_item.json")
     collection = load_test_data("test_collection.json")
@@ -103,6 +104,8 @@ def test_app_context_extension(load_test_data, app_client, es_transactions, es_c
     item["collection"] = collection["id"]
     es_transactions.create_collection(collection, request=MockStarletteRequest)
     es_transactions.create_item(item, request=MockStarletteRequest)
+
+    time.sleep(1)
 
     resp = app_client.get(f"/collections/{collection['id']}/items/{item['id']}")
     assert resp.status_code == 200
@@ -115,7 +118,7 @@ def test_app_context_extension(load_test_data, app_client, es_transactions, es_c
     resp_json = resp.json()
     assert resp_json["id"] == collection["id"]
 
-    resp = app_client.post("/search", json={"collections": ["test-collection"]})
+    resp = app_client.post("/search", json={"collections": ["test-collection-2"]})
     assert resp.status_code == 200
     resp_json = resp.json()
     assert len(resp_json["features"]) == 1
