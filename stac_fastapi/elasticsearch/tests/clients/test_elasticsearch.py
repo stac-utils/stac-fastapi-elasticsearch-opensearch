@@ -32,7 +32,6 @@ def test_create_collection(
     es_transactions.delete_collection(data["id"], request=MockStarletteRequest)
 
 
-# @pytest.mark.skip(reason="passing but messing up the next test")
 def test_create_collection_already_exists(
     es_transactions: TransactionsClient,
     load_test_data: Callable,
@@ -120,7 +119,6 @@ def test_get_item(
     )
 
 
-# @pytest.mark.skip(reason="unknown")
 def test_get_collection_items(
     es_core: CoreCrudClient,
     es_transactions: TransactionsClient,
@@ -264,7 +262,6 @@ def test_delete_item(
         es_core.get_item(item["id"], item["collection"], request=MockStarletteRequest)
 
 
-# @pytest.mark.skip(reason="might need a larger timeout")
 def test_bulk_item_insert(
     es_core: CoreCrudClient,
     es_transactions: TransactionsClient,
@@ -321,7 +318,6 @@ def test_feature_collection_insert(
     assert len(fc["features"]) >= 10
 
 
-# @pytest.mark.skip(reason="Not working")
 def test_landing_page_no_collection_title(
     es_core: CoreCrudClient,
     es_transactions: TransactionsClient,
