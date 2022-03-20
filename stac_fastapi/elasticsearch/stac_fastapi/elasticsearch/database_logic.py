@@ -93,9 +93,9 @@ class DatabaseLogic:
             )
         return item["_source"]
 
-    def create_search_object(self):
+    def create_search_object(self) -> Search:
         """Database logic to create a nosql Search instance."""
-        search = (
+        return (
             Search()
                 .using(self.client)
                 .index(ITEMS_INDEX)
@@ -105,10 +105,9 @@ class DatabaseLogic:
                 {"collection": {"order": "desc"}},
             )
         )
-        return search
 
     @staticmethod
-    def create_query_filter(search, op: str, field: str, value: float):
+    def create_query_filter(search, op: str, field: str, value: float) -> Search:
         """Database logic to perform query for search endpoint."""
         if op != "eq":
             key_filter = {field: {f"{op}": value}}
@@ -202,19 +201,20 @@ class DatabaseLogic:
         """Database logic to sort nosql search instance."""
         return search.sort({field: {"order": direction}})
 
-    @staticmethod
-    async def search_count(search) -> int:
+    async def search_count(self, search: Search) -> int:
         """Database logic to count search results."""
         try:
-            return await search.count()
+            return (await self.client.count(index=ITEMS_INDEX, body=search.to_dict()))["count"]
         except elasticsearch.exceptions.NotFoundError:
             raise NotFoundError("No items exist")
 
-    def execute_search(self, search, limit: int, base_url: str) -> List:
+    async def execute_search(self, search, limit: int, base_url: str) -> List:
         """Database logic to execute search with limit."""
         search = search.query()[0:limit]
-        response = search.execute().to_dict()
+        response = await self.client.search(index=ITEMS_INDEX, body=search.to_dict())
 
+        # todo: will hits hits exist in the response if no results? maybe can just be
+        # reduced to a list comp.
         if len(response["hits"]["hits"]) > 0:
             response_features = [
                 self.item_serializer.db_to_stac(item["_source"], base_url=base_url)

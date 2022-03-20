@@ -185,7 +185,7 @@ class CoreCrudClient(AsyncBaseCoreClient):
             search_request = self.post_request_model(**base_args)
         except ValidationError:
             raise HTTPException(status_code=400, detail="Invalid parameters provided")
-        resp = self.post_search(search_request, request=kwargs["request"])
+        resp = await self.post_search(search_request, request=kwargs["request"])
 
         return resp
 
@@ -241,9 +241,9 @@ class CoreCrudClient(AsyncBaseCoreClient):
                     search=search, field=field, direction=sort.direction
                 )
 
-        count = self.database.search_count(search=search)
+        count = await self.database.search_count(search=search)
 
-        response_features = self.database.execute_search(
+        response_features = await self.database.execute_search(
             search=search, limit=search_request.limit, base_url=base_url
         )
 
