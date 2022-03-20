@@ -70,14 +70,13 @@ def test_app_transaction_extension(app_client, load_test_data, es_transactions):
     item = load_test_data("test_item.json")
     resp = app_client.post(f"/collections/{item['collection']}/items", json=item)
     assert resp.status_code == 200
-
+    time.sleep(1)
     es_transactions.delete_item(
         item["id"], item["collection"], request=MockStarletteRequest
     )
 
 
 def test_app_search_response(load_test_data, app_client, es_transactions):
-
     item = load_test_data("test_item.json")
     es_transactions.create_item(item, request=MockStarletteRequest)
 
@@ -161,7 +160,6 @@ def test_app_query_extension_gt(load_test_data, app_client, es_transactions):
     )
 
 
-# @pytest.mark.skip(reason="assert 0 == 1")
 def test_app_query_extension_gte(load_test_data, app_client, es_transactions):
     test_item = load_test_data("test_item.json")
     es_transactions.create_item(test_item, request=MockStarletteRequest)
@@ -273,7 +271,7 @@ def test_search_point_intersects(load_test_data, app_client, es_transactions):
     item = load_test_data("test_item.json")
     es_transactions.create_item(item, request=MockStarletteRequest)
 
-    time.sleep(1)
+    time.sleep(2)
     point = [150.04, -33.14]
     intersects = {"type": "Point", "coordinates": point}
 
@@ -341,7 +339,7 @@ def test_bbox_3d(load_test_data, app_client, es_transactions):
 def test_search_line_string_intersects(load_test_data, app_client, es_transactions):
     item = load_test_data("test_item.json")
     es_transactions.create_item(item, request=MockStarletteRequest)
-    time.sleep(1)
+    time.sleep(2)
 
     line = [[150.04, -33.14], [150.22, -33.89]]
     intersects = {"type": "LineString", "coordinates": line}

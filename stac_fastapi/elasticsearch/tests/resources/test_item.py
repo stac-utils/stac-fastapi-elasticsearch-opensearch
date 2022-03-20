@@ -566,7 +566,7 @@ def test_item_search_temporal_window_get(app_client, load_test_data):
     )
     assert resp.status_code == 200
 
-    time.sleep(1)
+    time.sleep(2)
 
     item_date = rfc3339_str_to_datetime(test_item["properties"]["datetime"])
     item_date_before = item_date - timedelta(seconds=1)
@@ -682,7 +682,7 @@ def test_item_search_get_query_extension(app_client, load_test_data):
     )
     assert resp.status_code == 200
 
-    time.sleep(1)
+    time.sleep(2)
 
     # EPSG is a JSONB key
     params = {
