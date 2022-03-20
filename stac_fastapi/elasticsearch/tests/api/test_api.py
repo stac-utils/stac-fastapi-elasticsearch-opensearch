@@ -212,7 +212,9 @@ def test_app_query_extension_limit_10000(load_test_data, app_client, es_transact
     )
 
 
-@pytest.mark.skip(reason="No mapping found for [properties__datetime.keyword] in order to sort on")
+@pytest.mark.skip(
+    reason="No mapping found for [properties__datetime.keyword] in order to sort on"
+)
 def test_app_sort_extension(load_test_data, app_client, es_transactions):
     first_item = load_test_data("test_item.json")
     item_date = datetime.strptime(
