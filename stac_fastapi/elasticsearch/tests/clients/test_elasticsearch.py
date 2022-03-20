@@ -321,7 +321,7 @@ def test_feature_collection_insert(
     assert len(fc["features"]) >= 10
 
 
-@pytest.mark.skip(reason="Not working")
+# @pytest.mark.skip(reason="Not working")
 def test_landing_page_no_collection_title(
     es_core: CoreCrudClient,
     es_transactions: TransactionsClient,
