@@ -32,7 +32,6 @@ def test_create_collection(
     es_transactions.delete_collection(data["id"], request=MockStarletteRequest)
 
 
-@pytest.mark.skip(reason="passing but messing up the next test")
 def test_create_collection_already_exists(
     es_transactions: TransactionsClient,
     load_test_data: Callable,
@@ -40,11 +39,15 @@ def test_create_collection_already_exists(
     data = load_test_data("test_collection.json")
     es_transactions.create_collection(data, request=MockStarletteRequest)
 
+    time.sleep(1)
+
     # change id to avoid elasticsearch duplicate key error
     data["_id"] = str(uuid.uuid4())
 
     with pytest.raises(ConflictError):
         es_transactions.create_collection(data, request=MockStarletteRequest)
+
+    es_transactions.delete_collection(data["id"], request=MockStarletteRequest)
 
 
 def test_update_collection(
@@ -116,7 +119,6 @@ def test_get_item(
     )
 
 
-@pytest.mark.skip(reason="unknown")
 def test_get_collection_items(
     es_core: CoreCrudClient,
     es_transactions: TransactionsClient,
@@ -130,6 +132,8 @@ def test_get_collection_items(
     for _ in range(5):
         item["id"] = str(uuid.uuid4())
         es_transactions.create_item(item, request=MockStarletteRequest)
+
+    time.sleep(2)
 
     fc = es_core.item_collection(coll["id"], request=MockStarletteRequest)
     assert len(fc["features"]) == 5
@@ -258,7 +262,6 @@ def test_delete_item(
         es_core.get_item(item["id"], item["collection"], request=MockStarletteRequest)
 
 
-# @pytest.mark.skip(reason="might need a larger timeout")
 def test_bulk_item_insert(
     es_core: CoreCrudClient,
     es_transactions: TransactionsClient,
@@ -315,7 +318,6 @@ def test_feature_collection_insert(
     assert len(fc["features"]) >= 10
 
 
-@pytest.mark.skip(reason="Not working")
 def test_landing_page_no_collection_title(
     es_core: CoreCrudClient,
     es_transactions: TransactionsClient,

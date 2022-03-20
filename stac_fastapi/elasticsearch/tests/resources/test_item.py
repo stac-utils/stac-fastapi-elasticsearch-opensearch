@@ -22,7 +22,6 @@ def rfc3339_str_to_datetime(s: str) -> datetime:
     return ciso8601.parse_rfc3339(s)
 
 
-@pytest.mark.skip(reason="unknown")
 def test_create_and_delete_item(app_client, load_test_data):
     """Test creation and deletion of a single item (transactions extension)"""
     test_item = load_test_data("test_item.json")
@@ -184,6 +183,14 @@ def test_update_item_geometry(app_client, load_test_data):
 def test_get_item(app_client, load_test_data):
     """Test read an item by id (core)"""
     test_item = load_test_data("test_item.json")
+
+    try:
+        resp = app_client.delete(
+            f"/collections/{test_item['collection']}/items/{test_item['id']}"
+        )
+    except Exception:
+        pass
+
     resp = app_client.post(
         f"/collections/{test_item['collection']}/items", json=test_item
     )
@@ -226,7 +233,6 @@ def test_returns_valid_item(app_client, load_test_data):
     )
 
 
-@pytest.mark.skip(reason="unknown")
 def test_get_item_collection(app_client, load_test_data):
     """Test read an item collection (core)"""
     item_count = randint(1, 4)
@@ -240,12 +246,12 @@ def test_get_item_collection(app_client, load_test_data):
         )
         assert resp.status_code == 200
 
+    time.sleep(2)
     resp = app_client.get(f"/collections/{test_item['collection']}/items")
     assert resp.status_code == 200
 
     item_collection = resp.json()
     assert item_collection["context"]["matched"] == len(range(item_count))
-
     app_client.delete(
         f"/collections/{test_item['collection']}/items/{test_item['id']}",
         json=test_item,
@@ -313,7 +319,6 @@ def test_item_timestamps(app_client, load_test_data):
     )
 
 
-@pytest.mark.skip(reason="unknown")
 def test_item_search_by_id_post(app_client, load_test_data):
     """Test POST search by item id (core)"""
     ids = ["test1", "test2", "test3"]
@@ -324,6 +329,8 @@ def test_item_search_by_id_post(app_client, load_test_data):
             f"/collections/{test_item['collection']}/items", json=test_item
         )
         assert resp.status_code == 200
+
+    time.sleep(2)
 
     params = {"collections": [test_item["collection"]], "ids": ids}
     resp = app_client.post("/search", json=params)
@@ -338,7 +345,6 @@ def test_item_search_by_id_post(app_client, load_test_data):
     )
 
 
-@pytest.mark.skip(reason="unknown")
 def test_item_search_spatial_query_post(app_client, load_test_data):
     """Test POST search with spatial query (core)"""
     test_item = load_test_data("test_item.json")
@@ -346,6 +352,8 @@ def test_item_search_spatial_query_post(app_client, load_test_data):
         f"/collections/{test_item['collection']}/items", json=test_item
     )
     assert resp.status_code == 200
+
+    time.sleep(1)
 
     params = {
         "collections": [test_item["collection"]],
@@ -362,7 +370,6 @@ def test_item_search_spatial_query_post(app_client, load_test_data):
     )
 
 
-@pytest.mark.skip(reason="failed to find type for field [geometry]")
 def test_item_search_temporal_query_post(app_client, load_test_data):
     """Test POST search with single-tailed spatio-temporal query (core)"""
     test_item = load_test_data("test_item.json")
@@ -370,6 +377,8 @@ def test_item_search_temporal_query_post(app_client, load_test_data):
         f"/collections/{test_item['collection']}/items", json=test_item
     )
     assert resp.status_code == 200
+
+    time.sleep(2)
 
     item_date = rfc3339_str_to_datetime(test_item["properties"]["datetime"])
     item_date = item_date + timedelta(seconds=1)
@@ -389,7 +398,6 @@ def test_item_search_temporal_query_post(app_client, load_test_data):
     )
 
 
-@pytest.mark.skip(reason="unknown")
 def test_item_search_temporal_window_post(app_client, load_test_data):
     """Test POST search with two-tailed spatio-temporal query (core)"""
     test_item = load_test_data("test_item.json")
@@ -397,6 +405,8 @@ def test_item_search_temporal_window_post(app_client, load_test_data):
         f"/collections/{test_item['collection']}/items", json=test_item
     )
     assert resp.status_code == 200
+
+    time.sleep(2)
 
     item_date = rfc3339_str_to_datetime(test_item["properties"]["datetime"])
     item_date_before = item_date - timedelta(seconds=1)
@@ -417,7 +427,6 @@ def test_item_search_temporal_window_post(app_client, load_test_data):
     )
 
 
-@pytest.mark.skip(reason="unknown")
 def test_item_search_temporal_open_window(app_client, load_test_data):
     """Test POST search with open spatio-temporal query (core)"""
     test_item = load_test_data("test_item.json")
@@ -425,6 +434,8 @@ def test_item_search_temporal_open_window(app_client, load_test_data):
         f"/collections/{test_item['collection']}/items", json=test_item
     )
     assert resp.status_code == 200
+
+    time.sleep(1)
 
     params = {
         "collections": [test_item["collection"]],
@@ -451,6 +462,8 @@ def test_item_search_sort_post(app_client, load_test_data):
     )
     assert resp.status_code == 200
 
+    time.sleep(1)
+
     second_item = load_test_data("test_item.json")
     second_item["id"] = "another-item"
     another_item_date = item_date - timedelta(days=1)
@@ -459,6 +472,8 @@ def test_item_search_sort_post(app_client, load_test_data):
         f"/collections/{second_item['collection']}/items", json=second_item
     )
     assert resp.status_code == 200
+
+    time.sleep(1)
 
     params = {
         "collections": [first_item["collection"]],
@@ -475,7 +490,6 @@ def test_item_search_sort_post(app_client, load_test_data):
     )
 
 
-@pytest.mark.skip(reason="unknown")
 def test_item_search_by_id_get(app_client, load_test_data):
     """Test GET search by item id (core)"""
     ids = ["test1", "test2", "test3"]
@@ -487,6 +501,8 @@ def test_item_search_by_id_get(app_client, load_test_data):
         )
         assert resp.status_code == 200
 
+    time.sleep(2)
+
     params = {"collections": test_item["collection"], "ids": ",".join(ids)}
     resp = app_client.get("/search", params=params)
     assert resp.status_code == 200
@@ -495,7 +511,6 @@ def test_item_search_by_id_get(app_client, load_test_data):
     assert set([feat["id"] for feat in resp_json["features"]]) == set(ids)
 
 
-@pytest.mark.skip(reason="unknown")
 def test_item_search_bbox_get(app_client, load_test_data):
     """Test GET search with spatial query (core)"""
     test_item = load_test_data("test_item.json")
@@ -503,6 +518,8 @@ def test_item_search_bbox_get(app_client, load_test_data):
         f"/collections/{test_item['collection']}/items", json=test_item
     )
     assert resp.status_code == 200
+
+    time.sleep(1)
 
     params = {
         "collections": test_item["collection"],
@@ -519,7 +536,6 @@ def test_item_search_bbox_get(app_client, load_test_data):
     )
 
 
-@pytest.mark.skip(reason="failed to find type for field [geometry]")
 def test_item_search_get_without_collections(app_client, load_test_data):
     """Test GET search without specifying collections"""
     test_item = load_test_data("test_item.json")
@@ -527,6 +543,8 @@ def test_item_search_get_without_collections(app_client, load_test_data):
         f"/collections/{test_item['collection']}/items", json=test_item
     )
     assert resp.status_code == 200
+
+    time.sleep(1)
 
     params = {
         "bbox": ",".join([str(coord) for coord in test_item["bbox"]]),
@@ -540,7 +558,6 @@ def test_item_search_get_without_collections(app_client, load_test_data):
     )
 
 
-@pytest.mark.skip(reason="unknown")
 def test_item_search_temporal_window_get(app_client, load_test_data):
     """Test GET search with spatio-temporal query (core)"""
     test_item = load_test_data("test_item.json")
@@ -548,6 +565,8 @@ def test_item_search_temporal_window_get(app_client, load_test_data):
         f"/collections/{test_item['collection']}/items", json=test_item
     )
     assert resp.status_code == 200
+
+    time.sleep(2)
 
     item_date = rfc3339_str_to_datetime(test_item["properties"]["datetime"])
     item_date_before = item_date - timedelta(seconds=1)
@@ -594,7 +613,6 @@ def test_item_search_sort_get(app_client, load_test_data):
     assert resp_json["features"][1]["id"] == second_item["id"]
 
 
-@pytest.mark.skip(reason="failed to find type for field [geometry]")
 def test_item_search_post_without_collection(app_client, load_test_data):
     """Test POST search without specifying a collection"""
     test_item = load_test_data("test_item.json")
@@ -602,6 +620,8 @@ def test_item_search_post_without_collection(app_client, load_test_data):
         f"/collections/{test_item['collection']}/items", json=test_item
     )
     assert resp.status_code == 200
+
+    time.sleep(1)
 
     params = {
         "bbox": test_item["bbox"],
@@ -654,7 +674,6 @@ def test_item_search_properties_field(app_client, load_test_data):
     app_client.delete(f"/collections/{test_item['collection']}/items/{test_item['id']}")
 
 
-@pytest.mark.skip(reason="unknown")
 def test_item_search_get_query_extension(app_client, load_test_data):
     """Test GET search with JSONB query (query extension)"""
     test_item = load_test_data("test_item.json")
@@ -662,6 +681,8 @@ def test_item_search_get_query_extension(app_client, load_test_data):
         f"/collections/{test_item['collection']}/items", json=test_item
     )
     assert resp.status_code == 200
+
+    time.sleep(2)
 
     # EPSG is a JSONB key
     params = {
