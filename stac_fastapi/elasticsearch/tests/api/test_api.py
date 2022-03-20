@@ -319,7 +319,6 @@ def test_datetime_non_interval(load_test_data, app_client, es_transactions):
     )
 
 
-# @pytest.mark.skip(reason="unknown")
 def test_bbox_3d(load_test_data, app_client, es_transactions):
     item = load_test_data("test_item.json")
     es_transactions.create_item(item, request=MockStarletteRequest)
@@ -339,10 +338,10 @@ def test_bbox_3d(load_test_data, app_client, es_transactions):
     )
 
 
-@pytest.mark.skip(reason="unknown")
 def test_search_line_string_intersects(load_test_data, app_client, es_transactions):
     item = load_test_data("test_item.json")
     es_transactions.create_item(item, request=MockStarletteRequest)
+    time.sleep(1)
 
     line = [[150.04, -33.14], [150.22, -33.89]]
     intersects = {"type": "LineString", "coordinates": line}
