@@ -269,7 +269,6 @@ def test_search_invalid_date(load_test_data, app_client, es_transactions):
     )
 
 
-# @pytest.mark.skip(reason="assert 0 == 1")
 def test_search_point_intersects(load_test_data, app_client, es_transactions):
     item = load_test_data("test_item.json")
     es_transactions.create_item(item, request=MockStarletteRequest)
@@ -283,19 +282,21 @@ def test_search_point_intersects(load_test_data, app_client, es_transactions):
         "collections": [item["collection"]],
     }
     resp = app_client.post("/search", json=params)
-    es_transactions.delete_item(
-        item["id"], item["collection"], request=MockStarletteRequest
-    )
 
     assert resp.status_code == 200
     resp_json = resp.json()
     assert len(resp_json["features"]) == 1
 
+    es_transactions.delete_item(
+        item["id"], item["collection"], request=MockStarletteRequest
+    )
 
-@pytest.mark.skip(reason="unknown")
+
+# @pytest.mark.skip(reason="unknown")
 def test_datetime_non_interval(load_test_data, app_client, es_transactions):
     item = load_test_data("test_item.json")
     es_transactions.create_item(item, request=MockStarletteRequest)
+    time.sleep(2)
     alternate_formats = [
         "2020-02-12T12:30:22+00:00",
         "2020-02-12T12:30:22.00Z",
