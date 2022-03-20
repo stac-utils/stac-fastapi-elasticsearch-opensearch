@@ -95,7 +95,6 @@ def test_app_search_response(load_test_data, app_client, es_transactions):
     )
 
 
-# @pytest.mark.skip(reason="this all passes manually?? assert 0 == 1")
 def test_app_context_extension(load_test_data, app_client, es_transactions, es_core):
     item = load_test_data("test_item.json")
     collection = load_test_data("test_collection.json")
@@ -162,11 +161,11 @@ def test_app_query_extension_gt(load_test_data, app_client, es_transactions):
     )
 
 
-@pytest.mark.skip(reason="assert 0 == 1")
+# @pytest.mark.skip(reason="assert 0 == 1")
 def test_app_query_extension_gte(load_test_data, app_client, es_transactions):
     test_item = load_test_data("test_item.json")
     es_transactions.create_item(test_item, request=MockStarletteRequest)
-
+    time.sleep(1)
     params = {"query": {"proj:epsg": {"gte": test_item["properties"]["proj:epsg"]}}}
     resp = app_client.post("/search", json=params)
     assert resp.status_code == 200
@@ -215,13 +214,15 @@ def test_app_query_extension_limit_10000(load_test_data, app_client, es_transact
     )
 
 
-@pytest.mark.skip(reason="sort not fully implemented")
+@pytest.mark.skip(reason="No mapping found for [properties__datetime.keyword] in order to sort on")
 def test_app_sort_extension(load_test_data, app_client, es_transactions):
     first_item = load_test_data("test_item.json")
     item_date = datetime.strptime(
         first_item["properties"]["datetime"], "%Y-%m-%dT%H:%M:%SZ"
     )
     es_transactions.create_item(first_item, request=MockStarletteRequest)
+
+    time.sleep(1)
 
     second_item = load_test_data("test_item.json")
     second_item["id"] = "another-item"
@@ -230,6 +231,8 @@ def test_app_sort_extension(load_test_data, app_client, es_transactions):
         "%Y-%m-%dT%H:%M:%SZ"
     )
     es_transactions.create_item(second_item, request=MockStarletteRequest)
+
+    time.sleep(1)
 
     params = {
         "collections": [first_item["collection"]],
