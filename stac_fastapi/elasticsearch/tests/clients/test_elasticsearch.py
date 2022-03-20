@@ -120,7 +120,7 @@ def test_get_item(
     )
 
 
-@pytest.mark.skip(reason="unknown")
+# @pytest.mark.skip(reason="unknown")
 def test_get_collection_items(
     es_core: CoreCrudClient,
     es_transactions: TransactionsClient,
@@ -134,6 +134,8 @@ def test_get_collection_items(
     for _ in range(5):
         item["id"] = str(uuid.uuid4())
         es_transactions.create_item(item, request=MockStarletteRequest)
+
+    time.sleep(2)
 
     fc = es_core.item_collection(coll["id"], request=MockStarletteRequest)
     assert len(fc["features"]) == 5
