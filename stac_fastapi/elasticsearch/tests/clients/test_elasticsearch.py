@@ -32,7 +32,7 @@ def test_create_collection(
     es_transactions.delete_collection(data["id"], request=MockStarletteRequest)
 
 
-@pytest.mark.skip(reason="passing but messing up the next test")
+# @pytest.mark.skip(reason="passing but messing up the next test")
 def test_create_collection_already_exists(
     es_transactions: TransactionsClient,
     load_test_data: Callable,
@@ -40,11 +40,15 @@ def test_create_collection_already_exists(
     data = load_test_data("test_collection.json")
     es_transactions.create_collection(data, request=MockStarletteRequest)
 
+    time.sleep(1)
+
     # change id to avoid elasticsearch duplicate key error
     data["_id"] = str(uuid.uuid4())
 
     with pytest.raises(ConflictError):
         es_transactions.create_collection(data, request=MockStarletteRequest)
+
+    es_transactions.delete_collection(data["id"], request=MockStarletteRequest)
 
 
 def test_update_collection(
