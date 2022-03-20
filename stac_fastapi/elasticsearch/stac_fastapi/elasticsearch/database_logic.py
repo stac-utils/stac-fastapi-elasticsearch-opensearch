@@ -8,7 +8,7 @@ from elasticsearch import helpers
 from elasticsearch_dsl import Q, Search
 
 from stac_fastapi.elasticsearch import serializers
-from stac_fastapi.elasticsearch.config import ElasticsearchSettings
+from stac_fastapi.elasticsearch.config import ElasticsearchSettings, AsyncElasticsearchSettings
 from stac_fastapi.types.errors import ConflictError, ForeignKeyError, NotFoundError
 from stac_fastapi.types.stac import Collection, Collections, Item, ItemCollection
 
@@ -29,8 +29,8 @@ def mk_item_id(item_id: str, collection_id: str):
 class DatabaseLogic:
     """Database logic."""
 
-    settings = ElasticsearchSettings()
-    client = settings.create_client
+    client = AsyncElasticsearchSettings().create_client
+    sync_client = ElasticsearchSettings().create_client
     item_serializer: Type[serializers.Serializer] = attr.ib(
         default=serializers.ItemSerializer
     )
@@ -38,18 +38,10 @@ class DatabaseLogic:
         default=serializers.CollectionSerializer
     )
 
-    @staticmethod
-    def bbox2poly(b0, b1, b2, b3):
-        """Transform bbox to polygon."""
-        poly = [[[b0, b1], [b2, b1], [b2, b3], [b0, b3], [b0, b1]]]
-        return poly
-
-    # Core Logic
-
-    def get_all_collections(self, base_url: str) -> Collections:
+    async def get_all_collections(self, base_url: str) -> Collections:
         """Database logic to retrieve a list of all collections."""
         try:
-            collections = self.client.search(
+            collections = await self.client.search(
                 index=COLLECTIONS_INDEX, query={"match_all": {}}
             )
         except elasticsearch.exceptions.NotFoundError:
@@ -64,8 +56,9 @@ class DatabaseLogic:
 
         return serialized_collections
 
-    def get_item_collection(
-        self, collection_id: str, limit: int, base_url: str
+    # todo: rewrite this to use search
+    async def get_item_collection(
+            self, collection_id: str, limit: int, base_url: str
     ) -> ItemCollection:
         """Database logic to retrieve an ItemCollection and a count of items contained."""
         search = Search(using=self.client, index="stac_items")
@@ -75,7 +68,7 @@ class DatabaseLogic:
         )
         search = search.query(collection_filter)
 
-        count = self.search_count(search)
+        count = await self.search_count(search)
 
         # search = search.sort({"id.keyword" : {"order" : "asc"}})
         search = search.query()[0:limit]
@@ -88,10 +81,10 @@ class DatabaseLogic:
 
         return serialized_children, count
 
-    def get_one_item(self, collection_id: str, item_id: str) -> Item:
+    async def get_one_item(self, collection_id: str, item_id: str) -> Item:
         """Database logic to retrieve a single item."""
         try:
-            item = self.client.get(
+            item = await self.client.get(
                 index=ITEMS_INDEX, id=mk_item_id(item_id, collection_id)
             )
         except elasticsearch.exceptions.NotFoundError:
@@ -104,9 +97,9 @@ class DatabaseLogic:
         """Database logic to create a nosql Search instance."""
         search = (
             Search()
-            .using(self.client)
-            .index(ITEMS_INDEX)
-            .sort(
+                .using(self.client)
+                .index(ITEMS_INDEX)
+                .sort(
                 {"properties.datetime": {"order": "desc"}},
                 {"id": {"order": "desc"}},
                 {"collection": {"order": "desc"}},
@@ -114,7 +107,8 @@ class DatabaseLogic:
         )
         return search
 
-    def create_query_filter(self, search, op: str, field: str, value: float):
+    @staticmethod
+    def create_query_filter(search, op: str, field: str, value: float):
         """Database logic to perform query for search endpoint."""
         if op != "eq":
             key_filter = {field: {f"{op}": value}}
@@ -124,7 +118,8 @@ class DatabaseLogic:
 
         return search
 
-    def search_ids(self, search, item_ids: List):
+    @staticmethod
+    def search_ids(search, item_ids: List):
         """Database logic to search a list of STAC item ids."""
         id_list = []
         for item_id in item_ids:
@@ -134,7 +129,8 @@ class DatabaseLogic:
 
         return search
 
-    def search_collections(self, search, collection_ids: List):
+    @staticmethod
+    def search_collections(search, collection_ids: List):
         """Database logic to search a list of STAC collection ids."""
         collection_list = []
         for collection_id in collection_ids:
@@ -144,7 +140,8 @@ class DatabaseLogic:
 
         return search
 
-    def search_datetime(self, search, datetime_search):
+    @staticmethod
+    def search_datetime(search, datetime_search):
         """Database logic to search datetime field."""
         if "eq" in datetime_search:
             search = search.query(
@@ -159,9 +156,15 @@ class DatabaseLogic:
             )
         return search
 
-    def search_bbox(self, search, bbox: List):
+    @staticmethod
+    def bbox2poly(b0, b1, b2, b3):
+        """Transform bbox to polygon."""
+        return [[[b0, b1], [b2, b1], [b2, b3], [b0, b3], [b0, b1]]]
+
+    @staticmethod
+    def search_bbox(search, bbox: List):
         """Database logic to search on bounding box."""
-        poly = self.bbox2poly(bbox[0], bbox[1], bbox[2], bbox[3])
+        poly = DatabaseLogic.bbox2poly(bbox[0], bbox[1], bbox[2], bbox[3])
         bbox_filter = Q(
             {
                 "geo_shape": {
@@ -175,7 +178,8 @@ class DatabaseLogic:
         search = search.query(bbox_filter)
         return search
 
-    def search_intersects(self, search, intersects: dict):
+    @staticmethod
+    def search_intersects(search, intersects: dict):
         """Database logic to search a geojson object."""
         intersect_filter = Q(
             {
@@ -193,19 +197,18 @@ class DatabaseLogic:
         search = search.query(intersect_filter)
         return search
 
-    def sort_field(self, search, field, direction):
+    @staticmethod
+    def sort_field(search, field, direction):
         """Database logic to sort nosql search instance."""
-        search = search.sort({field: {"order": direction}})
-        return search
+        return search.sort({field: {"order": direction}})
 
-    def search_count(self, search) -> int:
+    @staticmethod
+    async def search_count(search) -> int:
         """Database logic to count search results."""
         try:
-            count = search.count()
+            return await search.count()
         except elasticsearch.exceptions.NotFoundError:
             raise NotFoundError("No items exist")
-
-        return count
 
     def execute_search(self, search, limit: int, base_url: str) -> List:
         """Database logic to execute search with limit."""
@@ -224,17 +227,17 @@ class DatabaseLogic:
 
     # Transaction Logic
 
-    def check_collection_exists(self, collection_id: str):
+    async def check_collection_exists(self, collection_id: str):
         """Database logic to check if a collection exists."""
-        if not self.client.exists(index=COLLECTIONS_INDEX, id=collection_id):
+        if not await self.client.exists(index=COLLECTIONS_INDEX, id=collection_id):
             raise ForeignKeyError(f"Collection {collection_id} does not exist")
 
-    def prep_create_item(self, item: Item, base_url: str) -> Item:
+    async def prep_create_item(self, item: Item, base_url: str) -> Item:
         """Database logic for prepping an item for insertion."""
-        self.check_collection_exists(collection_id=item["collection"])
+        await self.check_collection_exists(collection_id=item["collection"])
 
-        if self.client.exists(
-            index=ITEMS_INDEX, id=mk_item_id(item["id"], item["collection"])
+        if await self.client.exists(
+                index=ITEMS_INDEX, id=mk_item_id(item["id"], item["collection"])
         ):
             raise ConflictError(
                 f"Item {item['id']} in collection {item['collection']} already exists"
@@ -242,10 +245,10 @@ class DatabaseLogic:
 
         return self.item_serializer.stac_to_db(item, base_url)
 
-    def create_item(self, item: Item, base_url: str):
+    async def create_item(self, item: Item):
         """Database logic for creating one item."""
         # todo: check if collection exists, but cache
-        es_resp = self.client.index(
+        es_resp = await self.client.index(
             index=ITEMS_INDEX,
             id=mk_item_id(item["id"], item["collection"]),
             document=item,
@@ -256,41 +259,41 @@ class DatabaseLogic:
                 f"Item {item['id']} in collection {item['collection']} already exists"
             )
 
-    def delete_item(self, item_id: str, collection_id: str):
+    async def delete_item(self, item_id: str, collection_id: str):
         """Database logic for deleting one item."""
         try:
-            self.client.delete(index=ITEMS_INDEX, id=mk_item_id(item_id, collection_id))
+            await self.client.delete(index=ITEMS_INDEX, id=mk_item_id(item_id, collection_id))
         except elasticsearch.exceptions.NotFoundError:
             raise NotFoundError(
                 f"Item {item_id} in collection {collection_id} not found"
             )
 
-    def create_collection(self, collection: Collection):
+    async def create_collection(self, collection: Collection):
         """Database logic for creating one collection."""
-        if self.client.exists(index=COLLECTIONS_INDEX, id=collection["id"]):
+        if await self.client.exists(index=COLLECTIONS_INDEX, id=collection["id"]):
             raise ConflictError(f"Collection {collection['id']} already exists")
 
-        self.client.index(
+        await self.client.index(
             index=COLLECTIONS_INDEX,
             id=collection["id"],
             document=collection,
         )
 
-    def find_collection(self, collection_id: str) -> Collection:
+    async def find_collection(self, collection_id: str) -> Collection:
         """Database logic to find and return a collection."""
         try:
-            collection = self.client.get(index=COLLECTIONS_INDEX, id=collection_id)
+            collection = await self.client.get(index=COLLECTIONS_INDEX, id=collection_id)
         except elasticsearch.exceptions.NotFoundError:
             raise NotFoundError(f"Collection {collection_id} not found")
 
         return collection["_source"]
 
-    def delete_collection(self, collection_id: str):
+    async def delete_collection(self, collection_id: str) -> None:
         """Database logic for deleting one collection."""
         _ = self.find_collection(collection_id=collection_id)
-        self.client.delete(index=COLLECTIONS_INDEX, id=collection_id)
+        await self.client.delete(index=COLLECTIONS_INDEX, id=collection_id)
 
-    def bulk_sync(self, processed_items):
+    def bulk_sync(self, processed_items) -> None:
         """Database logic for bulk item insertion."""
         actions = [
             {
@@ -300,4 +303,4 @@ class DatabaseLogic:
             }
             for item in processed_items
         ]
-        helpers.bulk(self.client, actions)
+        helpers.bulk(self.sync_client, actions)

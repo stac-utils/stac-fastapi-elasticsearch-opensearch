@@ -9,7 +9,6 @@ import attr
 from fastapi import HTTPException
 from overrides import overrides
 
-# from geojson_pydantic.geometries import Polygon
 from pydantic import ValidationError
 from stac_pydantic.links import Relations
 from stac_pydantic.shared import MimeTypes
@@ -18,8 +17,7 @@ from stac_fastapi.elasticsearch import serializers
 from stac_fastapi.elasticsearch.database_logic import DatabaseLogic
 from stac_fastapi.elasticsearch.session import Session
 
-# from stac_fastapi.elasticsearch.types.error_checks import ErrorChecks
-from stac_fastapi.types.core import BaseCoreClient
+from stac_fastapi.types.core import AsyncBaseCoreClient
 from stac_fastapi.types.stac import Collection, Collections, Item, ItemCollection
 
 logger = logging.getLogger(__name__)
@@ -28,7 +26,7 @@ NumType = Union[float, int]
 
 
 @attr.s
-class CoreCrudClient(BaseCoreClient):
+class CoreCrudClient(AsyncBaseCoreClient):
     """Client for core endpoints defined by stac."""
 
     session: Session = attr.ib(default=attr.Factory(Session.create_from_env))
@@ -41,10 +39,10 @@ class CoreCrudClient(BaseCoreClient):
     database = DatabaseLogic()
 
     @overrides
-    def all_collections(self, **kwargs) -> Collections:
+    async def all_collections(self, **kwargs) -> Collections:
         """Read all collections from the database."""
         base_url = str(kwargs["request"].base_url)
-        serialized_collections = self.database.get_all_collections(base_url=base_url)
+        serialized_collections = await self.database.get_all_collections(base_url=base_url)
 
         links = [
             {
@@ -69,21 +67,21 @@ class CoreCrudClient(BaseCoreClient):
         return collection_list
 
     @overrides
-    def get_collection(self, collection_id: str, **kwargs) -> Collection:
+    async def get_collection(self, collection_id: str, **kwargs) -> Collection:
         """Get collection by id."""
         base_url = str(kwargs["request"].base_url)
         collection = self.database.find_collection(collection_id=collection_id)
         return self.collection_serializer.db_to_stac(collection, base_url)
 
     @overrides
-    def item_collection(
+    async def item_collection(
         self, collection_id: str, limit: int = 10, token: str = None, **kwargs
     ) -> ItemCollection:
         """Read an item collection from the database."""
         links = []
         base_url = str(kwargs["request"].base_url)
 
-        serialized_children, count = self.database.get_item_collection(
+        serialized_children, count = await self.database.get_item_collection(
             collection_id=collection_id, limit=limit, base_url=base_url
         )
 
@@ -103,10 +101,10 @@ class CoreCrudClient(BaseCoreClient):
         )
 
     @overrides
-    def get_item(self, item_id: str, collection_id: str, **kwargs) -> Item:
+    async def get_item(self, item_id: str, collection_id: str, **kwargs) -> Item:
         """Get item by item id, collection id."""
         base_url = str(kwargs["request"].base_url)
-        item = self.database.get_one_item(item_id=item_id, collection_id=collection_id)
+        item = await self.database.get_one_item(item_id=item_id, collection_id=collection_id)
         return self.item_serializer.db_to_stac(item, base_url)
 
     @staticmethod
@@ -134,7 +132,7 @@ class CoreCrudClient(BaseCoreClient):
             return {"lte": end_date, "gte": start_date}
 
     @overrides
-    def get_search(
+    async def get_search(
         self,
         collections: Optional[List[str]] = None,
         ids: Optional[List[str]] = None,
@@ -191,7 +189,7 @@ class CoreCrudClient(BaseCoreClient):
 
         return resp
 
-    def post_search(self, search_request, **kwargs) -> ItemCollection:
+    async def post_search(self, search_request, **kwargs) -> ItemCollection:
         """POST search catalog."""
         base_url = str(kwargs["request"].base_url)
         search = self.database.create_search_object()

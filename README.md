@@ -17,8 +17,7 @@ pre-commit run --all-files`
 ```
 
 ```shell
-cd stac_fastapi/elasticsearch
-pip install .[dev]
+pip install -e stac_fastapi/elasticsearch[dev]
 ```
 
 ## Building

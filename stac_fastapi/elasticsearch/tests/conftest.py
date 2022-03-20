@@ -25,6 +25,8 @@ from stac_fastapi.extensions.core import (
 from stac_fastapi.types.config import Settings
 from stac_fastapi.types.errors import ConflictError
 from stac_fastapi.types.search import BaseSearchGetRequest, BaseSearchPostRequest
+import pytest_asyncio
+import asyncio
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 
@@ -38,19 +40,19 @@ settings = TestSettings()
 Settings.set(settings)
 
 
-@pytest.fixture(autouse=True)
-def cleanup(es_core: CoreCrudClient, es_transactions: TransactionsClient):
+@pytest_asyncio.fixture(autouse=True)
+async def cleanup(es_core: CoreCrudClient, es_transactions: TransactionsClient):
     yield
-    collections = es_core.all_collections(request=MockStarletteRequest)
+    collections = await es_core.all_collections(request=MockStarletteRequest)
     for coll in collections["collections"]:
         if coll["id"].split("-")[0] == "test":
             # Delete the items
-            items = es_core.item_collection(
+            items = await es_core.item_collection(
                 coll["id"], limit=100, request=MockStarletteRequest
             )
             for feat in items["features"]:
                 try:
-                    es_transactions.delete_item(
+                    await es_transactions.delete_item(
                         feat["id"], feat["collection"], request=MockStarletteRequest
                     )
                 except Exception:
@@ -58,11 +60,13 @@ def cleanup(es_core: CoreCrudClient, es_transactions: TransactionsClient):
 
             # Delete the collection
             try:
-                es_transactions.delete_collection(
+                await es_transactions.delete_collection(
                     coll["id"], request=MockStarletteRequest
                 )
             except Exception:
                 pass
+
+            yield
 
 
 @pytest.fixture
@@ -142,21 +146,27 @@ def api_client():
     )
 
 
-@pytest.fixture
-def app_client(api_client, load_test_data):
+@pytest_asyncio.fixture
+async def app_client(api_client, load_test_data):
     IndexesClient().create_indexes()
 
     coll = load_test_data("test_collection.json")
-    client = TransactionsClient(
-        session=None,
-    )
+    client = TransactionsClient(session=None)
     try:
-        client.create_collection(coll, request=MockStarletteRequest)
+        await client.create_collection(coll, request=MockStarletteRequest)
     except ConflictError:
         try:
-            client.delete_item("test-item", "test-collection")
+            await client.delete_item("test-item", "test-collection")
         except Exception:
             pass
 
     with TestClient(api_client.app) as test_app:
         yield test_app
+
+
+@pytest.fixture(scope="session")
+def event_loop(request):
+    """Create an instance of the default event loop for each test case."""
+    loop = asyncio.get_event_loop_policy().new_event_loop()
+    yield loop
+    loop.close()
