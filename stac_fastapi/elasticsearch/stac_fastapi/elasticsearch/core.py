@@ -1,7 +1,6 @@
 """Item crud client."""
 import json
 import logging
-from datetime import datetime
 from datetime import datetime as datetime_type
 from datetime import timezone
 from typing import List, Optional, Type, Union
@@ -330,7 +329,7 @@ class TransactionsClient(BaseTransactionsClient):
     def update_item(self, item: stac_types.Item, **kwargs) -> stac_types.Item:
         """Update item."""
         base_url = str(kwargs["request"].base_url)
-        now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        now = datetime_type.now(timezone.utc).isoformat().replace("+00:00", "Z")
         item["properties"]["updated"] = str(now)
 
         self.database.check_collection_exists(collection_id=item["collection"])
