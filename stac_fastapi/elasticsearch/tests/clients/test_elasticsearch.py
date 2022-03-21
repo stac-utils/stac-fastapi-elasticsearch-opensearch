@@ -8,9 +8,9 @@ from stac_pydantic import Item
 from tests.conftest import MockStarletteRequest
 
 from stac_fastapi.api.app import StacApi
-from stac_fastapi.elasticsearch.core import CoreCrudClient
-from stac_fastapi.elasticsearch.transactions import (
+from stac_fastapi.elasticsearch.core import (
     BulkTransactionsClient,
+    CoreCrudClient,
     TransactionsClient,
 )
 from stac_fastapi.extensions.third_party.bulk_transactions import Items

@@ -8,13 +8,13 @@ from starlette.testclient import TestClient
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import create_request_model
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
-from stac_fastapi.elasticsearch.core import CoreCrudClient
-from stac_fastapi.elasticsearch.extensions import QueryExtension
-from stac_fastapi.elasticsearch.indexes import IndexesClient
-from stac_fastapi.elasticsearch.transactions import (
+from stac_fastapi.elasticsearch.core import (
     BulkTransactionsClient,
+    CoreCrudClient,
     TransactionsClient,
 )
+from stac_fastapi.elasticsearch.extensions import QueryExtension
+from stac_fastapi.elasticsearch.indexes import IndexesClient
 from stac_fastapi.extensions.core import (
     ContextExtension,
     FieldsExtension,
