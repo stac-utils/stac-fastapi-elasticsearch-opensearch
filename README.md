@@ -8,6 +8,15 @@ For changes, see the [Changelog](CHANGELOG.md).
 
 ## Development Environment Setup
 
+To install the classes in your local Python env, run:
+
+```shell
+cd stac_fastapi/elasticsearch
+pip install -e .[dev]
+```
+
+### Pre-commit
+
 Install [pre-commit](https://pre-commit.com/#install).
 
 Prior to commit, run:
@@ -16,10 +25,6 @@ Prior to commit, run:
 pre-commit run --all-files`
 ```
 
-```shell
-cd stac_fastapi/elasticsearch
-pip install -e .[dev]
-```
 
 ## Building
 
