@@ -2,14 +2,14 @@
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import create_get_request_model, create_post_request_model
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
-from stac_fastapi.elasticsearch.core import CoreCrudClient
+from stac_fastapi.elasticsearch.core import (
+    BulkTransactionsClient,
+    CoreCrudClient,
+    TransactionsClient,
+)
 from stac_fastapi.elasticsearch.extensions import QueryExtension
 from stac_fastapi.elasticsearch.indexes import IndexesClient
 from stac_fastapi.elasticsearch.session import Session
-from stac_fastapi.elasticsearch.transactions import (
-    BulkTransactionsClient,
-    TransactionsClient,
-)
 from stac_fastapi.extensions.core import (
     ContextExtension,
     FieldsExtension,
