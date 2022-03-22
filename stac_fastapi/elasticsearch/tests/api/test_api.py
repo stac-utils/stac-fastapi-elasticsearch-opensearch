@@ -222,7 +222,7 @@ def test_datetime_non_interval(app_client, ctx):
 
     for dt in dt_formats:
         params = {
-            "datetime": ctx.item["properties"]["datetime"],
+            "datetime": dt,
             "collections": [ctx.item["collection"]],
         }
 
