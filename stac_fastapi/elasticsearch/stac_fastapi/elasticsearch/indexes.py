@@ -4,7 +4,7 @@ import logging
 
 import attr
 
-from stac_fastapi.elasticsearch.config import ElasticsearchSettings
+from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
 from stac_fastapi.elasticsearch.database_logic import COLLECTIONS_INDEX, ITEMS_INDEX
 from stac_fastapi.elasticsearch.session import Session
 
@@ -16,7 +16,7 @@ class IndexesClient:
     """Elasticsearch client to handle index creation."""
 
     session: Session = attr.ib(default=attr.Factory(Session.create_from_env))
-    client = ElasticsearchSettings().create_client
+    client = AsyncElasticsearchSettings().create_client
 
     ES_MAPPINGS_DYNAMIC_TEMPLATES = [
         # Common https://github.com/radiantearth/stac-spec/blob/master/item-spec/common-metadata.md
@@ -101,14 +101,14 @@ class IndexesClient:
         },
     }
 
-    def create_indexes(self):
+    async def create_indexes(self):
         """Create the index for Items and Collections."""
-        self.client.indices.create(
+        await self.client.indices.create(
             index=ITEMS_INDEX,
             mappings=self.ES_ITEMS_MAPPINGS,
             ignore=400,  # ignore 400 already exists code
         )
-        self.client.indices.create(
+        await self.client.indices.create(
             index=COLLECTIONS_INDEX,
             mappings=self.ES_COLLECTIONS_MAPPINGS,
             ignore=400,  # ignore 400 already exists code

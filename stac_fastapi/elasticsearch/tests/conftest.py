@@ -1,17 +1,19 @@
+import asyncio
 import copy
 import json
 import os
 from typing import Callable, Dict
 
 import pytest
-from starlette.testclient import TestClient
+import pytest_asyncio
+from httpx import AsyncClient
 
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import create_request_model
-from stac_fastapi.elasticsearch.config import ElasticsearchSettings
+from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
 from stac_fastapi.elasticsearch.core import (
     BulkTransactionsClient,
-    CoreCrudClient,
+    CoreClient,
     TransactionsClient,
 )
 from stac_fastapi.elasticsearch.database_logic import COLLECTIONS_INDEX, ITEMS_INDEX
@@ -30,7 +32,17 @@ from stac_fastapi.types.search import BaseSearchGetRequest, BaseSearchPostReques
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 
 
-class TestSettings(ElasticsearchSettings):
+class Context:
+    def __init__(self, item, collection):
+        self.item = item
+        self.collection = collection
+
+
+class MockRequest:
+    base_url = "http://test-server"
+
+
+class TestSettings(AsyncElasticsearchSettings):
     class Config:
         env_file = ".env.test"
 
@@ -39,18 +51,23 @@ settings = TestSettings()
 Settings.set(settings)
 
 
+@pytest.fixture(scope="session")
+def event_loop():
+    return asyncio.get_event_loop()
+
+
 def _load_file(filename: str) -> Dict:
     with open(os.path.join(DATA_DIR, filename)) as file:
         return json.load(file)
 
 
+_test_item_prototype = _load_file("test_item.json")
+_test_collection_prototype = _load_file("test_collection.json")
+
+
 @pytest.fixture
 def load_test_data() -> Callable[[str], Dict]:
     return _load_file
-
-
-_test_item_prototype = _load_file("test_item.json")
-_test_collection_prototype = _load_file("test_collection.json")
 
 
 @pytest.fixture
@@ -63,82 +80,65 @@ def test_collection() -> Dict:
     return copy.deepcopy(_test_collection_prototype)
 
 
-def create_collection(es_txn_client: TransactionsClient, collection: Dict) -> None:
-    es_txn_client.create_collection(
-        dict(collection), request=MockStarletteRequest, refresh=True
+async def create_collection(txn_client: TransactionsClient, collection: Dict) -> None:
+    await txn_client.create_collection(
+        dict(collection), request=MockRequest, refresh=True
     )
 
 
-def create_item(es_txn_client: TransactionsClient, item: Dict) -> None:
-    es_txn_client.create_item(dict(item), request=MockStarletteRequest, refresh=True)
+async def create_item(txn_client: TransactionsClient, item: Dict) -> None:
+    await txn_client.create_item(item, request=MockRequest, refresh=True)
 
 
-def delete_collections_and_items(es_txn_client: TransactionsClient) -> None:
-    refresh_indices(es_txn_client)
-    # try:
-    es_txn_client.database.delete_items()
-    # except Exception:
-    #     pass
-
-    # try:
-    es_txn_client.database.delete_collections()
-    # except Exception:
-    #     pass
+async def delete_collections_and_items(txn_client: TransactionsClient) -> None:
+    await refresh_indices(txn_client)
+    await txn_client.database.delete_items()
+    await txn_client.database.delete_collections()
 
 
-def refresh_indices(es_txn_client: TransactionsClient) -> None:
+async def refresh_indices(txn_client: TransactionsClient) -> None:
     try:
-        es_txn_client.database.client.indices.refresh(index=ITEMS_INDEX)
+        await txn_client.database.client.indices.refresh(index=ITEMS_INDEX)
     except Exception:
         pass
 
     try:
-        es_txn_client.database.client.indices.refresh(index=COLLECTIONS_INDEX)
+        await txn_client.database.client.indices.refresh(index=COLLECTIONS_INDEX)
     except Exception:
         pass
 
 
-class Context:
-    def __init__(self, item, collection):
-        self.item = item
-        self.collection = collection
-
-
-@pytest.fixture()
-def ctx(es_txn_client: TransactionsClient, test_collection, test_item):
+@pytest_asyncio.fixture()
+async def ctx(txn_client: TransactionsClient, test_collection, test_item):
     # todo remove one of these when all methods use it
-    delete_collections_and_items(es_txn_client)
+    await delete_collections_and_items(txn_client)
 
-    create_collection(es_txn_client, test_collection)
-    create_item(es_txn_client, test_item)
+    await create_collection(txn_client, test_collection)
+    await create_item(txn_client, test_item)
 
     yield Context(item=test_item, collection=test_collection)
 
-    delete_collections_and_items(es_txn_client)
-
-
-class MockStarletteRequest:
-    base_url = "http://test-server"
+    await delete_collections_and_items(txn_client)
 
 
 @pytest.fixture
-def es_core():
-    return CoreCrudClient(session=None)
+def core_client():
+    return CoreClient(session=None)
 
 
 @pytest.fixture
-def es_txn_client():
+def txn_client():
     return TransactionsClient(session=None)
 
 
 @pytest.fixture
-def es_bulk_transactions():
+def bulk_txn_client():
     return BulkTransactionsClient(session=None)
 
 
-@pytest.fixture
-def api_client():
-    settings = ElasticsearchSettings()
+@pytest_asyncio.fixture(scope="session")
+async def app():
+    settings = AsyncElasticsearchSettings()
     extensions = [
         TransactionExtension(
             client=TransactionsClient(session=None), settings=settings
@@ -166,7 +166,7 @@ def api_client():
 
     return StacApi(
         settings=settings,
-        client=CoreCrudClient(
+        client=CoreClient(
             session=None,
             extensions=extensions,
             post_request_model=post_request_model,
@@ -174,12 +174,12 @@ def api_client():
         extensions=extensions,
         search_get_request_model=get_request_model,
         search_post_request_model=post_request_model,
-    )
+    ).app
 
 
-@pytest.fixture
-def app_client(api_client: StacApi):
-    IndexesClient().create_indexes()
+@pytest_asyncio.fixture(scope="session")
+async def app_client(app):
+    await IndexesClient().create_indexes()
 
-    with TestClient(api_client.app) as test_app:
-        yield test_app
+    async with AsyncClient(app=app, base_url="http://test") as c:
+        yield c
