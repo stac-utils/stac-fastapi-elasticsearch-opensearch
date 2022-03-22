@@ -29,6 +29,7 @@ extra_reqs = {
         "requests",
         "ciso8601",
         "overrides",
+        "starlette",
     ],
     "docs": ["mkdocs", "mkdocs-material", "pdocs"],
     "server": ["uvicorn[standard]>=0.12.0,<0.14.0"],

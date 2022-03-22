@@ -1,3 +1,4 @@
+import copy
 import json
 import os
 from typing import Callable, Dict
@@ -13,6 +14,7 @@ from stac_fastapi.elasticsearch.core import (
     CoreCrudClient,
     TransactionsClient,
 )
+from stac_fastapi.elasticsearch.database_logic import COLLECTIONS_INDEX, ITEMS_INDEX
 from stac_fastapi.elasticsearch.extensions import QueryExtension
 from stac_fastapi.elasticsearch.indexes import IndexesClient
 from stac_fastapi.extensions.core import (
@@ -23,7 +25,6 @@ from stac_fastapi.extensions.core import (
     TransactionExtension,
 )
 from stac_fastapi.types.config import Settings
-from stac_fastapi.types.errors import ConflictError
 from stac_fastapi.types.search import BaseSearchGetRequest, BaseSearchPostRequest
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
@@ -38,52 +39,86 @@ settings = TestSettings()
 Settings.set(settings)
 
 
-@pytest.fixture(autouse=True)
-def cleanup(es_core: CoreCrudClient, es_transactions: TransactionsClient):
-    yield
-    collections = es_core.all_collections(request=MockStarletteRequest)
-    for coll in collections["collections"]:
-        if coll["id"].split("-")[0] == "test":
-            # Delete the items
-            items = es_core.item_collection(
-                coll["id"], limit=100, request=MockStarletteRequest
-            )
-            for feat in items["features"]:
-                try:
-                    es_transactions.delete_item(
-                        feat["id"], feat["collection"], request=MockStarletteRequest
-                    )
-                except Exception:
-                    pass
-
-            # Delete the collection
-            try:
-                es_transactions.delete_collection(
-                    coll["id"], request=MockStarletteRequest
-                )
-            except Exception:
-                pass
+def _load_file(filename: str) -> Dict:
+    with open(os.path.join(DATA_DIR, filename)) as file:
+        return json.load(file)
 
 
 @pytest.fixture
 def load_test_data() -> Callable[[str], Dict]:
-    def load_file(filename: str) -> Dict:
-        with open(os.path.join(DATA_DIR, filename)) as file:
-            return json.load(file)
+    return _load_file
 
-    return load_file
+
+_test_item_prototype = _load_file("test_item.json")
+_test_collection_prototype = _load_file("test_collection.json")
+
+
+@pytest.fixture
+def test_item() -> Dict:
+    return copy.deepcopy(_test_item_prototype)
+
+
+@pytest.fixture
+def test_collection() -> Dict:
+    return copy.deepcopy(_test_collection_prototype)
+
+
+def create_collection(es_txn_client: TransactionsClient, collection: Dict) -> None:
+    es_txn_client.create_collection(
+        dict(collection), request=MockStarletteRequest, refresh=True
+    )
+
+
+def create_item(es_txn_client: TransactionsClient, item: Dict) -> None:
+    es_txn_client.create_item(dict(item), request=MockStarletteRequest, refresh=True)
+
+
+def delete_collections_and_items(es_txn_client: TransactionsClient) -> None:
+    refresh_indices(es_txn_client)
+    # try:
+    es_txn_client.database.delete_items()
+    # except Exception:
+    #     pass
+
+    # try:
+    es_txn_client.database.delete_collections()
+    # except Exception:
+    #     pass
+
+
+def refresh_indices(es_txn_client: TransactionsClient) -> None:
+    try:
+        es_txn_client.database.client.indices.refresh(index=ITEMS_INDEX)
+    except Exception:
+        pass
+
+    try:
+        es_txn_client.database.client.indices.refresh(index=COLLECTIONS_INDEX)
+    except Exception:
+        pass
+
+
+class Context:
+    def __init__(self, item, collection):
+        self.item = item
+        self.collection = collection
+
+
+@pytest.fixture()
+def ctx(es_txn_client: TransactionsClient, test_collection, test_item):
+    # todo remove one of these when all methods use it
+    delete_collections_and_items(es_txn_client)
+
+    create_collection(es_txn_client, test_collection)
+    create_item(es_txn_client, test_item)
+
+    yield Context(item=test_item, collection=test_collection)
+
+    delete_collections_and_items(es_txn_client)
 
 
 class MockStarletteRequest:
     base_url = "http://test-server"
-
-
-# @pytest.fixture
-# def db_session() -> Session:
-#     return Session(
-#         reader_conn_string=settings.reader_connection_string,
-#         writer_conn_string=settings.writer_connection_string,
-#     )
 
 
 @pytest.fixture
@@ -92,7 +127,7 @@ def es_core():
 
 
 @pytest.fixture
-def es_transactions():
+def es_txn_client():
     return TransactionsClient(session=None)
 
 
@@ -143,20 +178,8 @@ def api_client():
 
 
 @pytest.fixture
-def app_client(api_client, load_test_data):
+def app_client(api_client: StacApi):
     IndexesClient().create_indexes()
-
-    coll = load_test_data("test_collection.json")
-    client = TransactionsClient(
-        session=None,
-    )
-    try:
-        client.create_collection(coll, request=MockStarletteRequest)
-    except ConflictError:
-        try:
-            client.delete_item("test-item", "test-collection")
-        except Exception:
-            pass
 
     with TestClient(api_client.app) as test_app:
         yield test_app

@@ -105,11 +105,11 @@ class IndexesClient:
         """Create the index for Items and Collections."""
         self.client.indices.create(
             index=ITEMS_INDEX,
-            body={"mappings": self.ES_ITEMS_MAPPINGS},
+            mappings=self.ES_ITEMS_MAPPINGS,
             ignore=400,  # ignore 400 already exists code
         )
         self.client.indices.create(
             index=COLLECTIONS_INDEX,
-            body={"mappings": self.ES_COLLECTIONS_MAPPINGS},
+            mappings=self.ES_COLLECTIONS_MAPPINGS,
             ignore=400,  # ignore 400 already exists code
         )
