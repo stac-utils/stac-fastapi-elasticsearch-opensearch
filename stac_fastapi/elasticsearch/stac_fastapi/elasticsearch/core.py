@@ -95,7 +95,7 @@ class CoreCrudClient(BaseCoreClient):
         context_obj = None
         if self.extension_is_enabled("ContextExtension"):
             context_obj = {
-                "returned": count if count < limit else limit,
+                "returned": count if count is not None and count < limit else limit,
                 "limit": limit,
                 "matched": count,
             }
@@ -243,9 +243,8 @@ class CoreCrudClient(BaseCoreClient):
             for sort in search_request.sortby:
                 if sort.field == "datetime":
                     sort.field = "properties__datetime"
-                field = sort.field + ".keyword"
                 search = self.database.sort_field(
-                    search=search, field=field, direction=sort.direction
+                    search=search, field=sort.field, direction=sort.direction
                 )
 
         count = self.database.search_count(search=search)
@@ -316,13 +315,14 @@ class TransactionsClient(BaseTransactionsClient):
             processed_items = [
                 bulk_client.preprocess_item(item, base_url) for item in item["features"]
             ]
-            return_msg = f"Successfully added {len(processed_items)} items."
-            self.database.bulk_sync(processed_items)
+            self.database.bulk_sync(
+                processed_items, refresh=kwargs.get("refresh", False)
+            )
 
-            return return_msg
+            return None
         else:
             item = self.database.prep_create_item(item=item, base_url=base_url)
-            self.database.create_item(item=item, base_url=base_url)
+            self.database.create_item(item, refresh=kwargs.get("refresh", False))
             return item
 
     @overrides
@@ -413,6 +413,6 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
             self.preprocess_item(item, base_url) for item in items.items.values()
         ]
 
-        self.database.bulk_sync(processed_items)
+        self.database.bulk_sync(processed_items, refresh=kwargs.get("refresh", False))
 
         return f"Successfully added {len(processed_items)} Items."

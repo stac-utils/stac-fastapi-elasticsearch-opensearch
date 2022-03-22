@@ -1,6 +1,5 @@
 import json
 import os
-import time
 import uuid
 from copy import deepcopy
 from datetime import datetime, timedelta
@@ -17,18 +16,17 @@ from stac_fastapi.elasticsearch.core import CoreCrudClient
 from stac_fastapi.elasticsearch.datetime_utils import now_to_rfc3339_str
 from stac_fastapi.types.core import LandingPageMixin
 
+from ..conftest import create_item, refresh_indices
+
 
 def rfc3339_str_to_datetime(s: str) -> datetime:
     return ciso8601.parse_rfc3339(s)
 
 
-def test_create_and_delete_item(app_client, load_test_data):
+def test_create_and_delete_item(app_client, ctx, es_txn_client):
     """Test creation and deletion of a single item (transactions extension)"""
-    test_item = load_test_data("test_item.json")
-    resp = app_client.post(
-        f"/collections/{test_item['collection']}/items", json=test_item
-    )
-    assert resp.status_code == 200
+
+    test_item = ctx.item
 
     resp = app_client.get(
         f"/collections/{test_item['collection']}/items/{test_item['id']}"
@@ -40,34 +38,23 @@ def test_create_and_delete_item(app_client, load_test_data):
     )
     assert resp.status_code == 200
 
+    refresh_indices(es_txn_client)
+
     resp = app_client.get(
         f"/collections/{test_item['collection']}/items/{test_item['id']}"
     )
     assert resp.status_code == 404
 
-    app_client.delete(
-        f"/collections/{test_item['collection']}/items/{test_item['id']}",
-        json=test_item,
-    )
 
-
-def test_create_item_conflict(app_client, load_test_data):
+def test_create_item_conflict(app_client, ctx):
     """Test creation of an item which already exists (transactions extension)"""
-    test_item = load_test_data("test_item.json")
-    resp = app_client.post(
-        f"/collections/{test_item['collection']}/items", json=test_item
-    )
-    assert resp.status_code == 200
+
+    test_item = ctx.item
 
     resp = app_client.post(
         f"/collections/{test_item['collection']}/items", json=test_item
     )
     assert resp.status_code == 409
-
-    app_client.delete(
-        f"/collections/{test_item['collection']}/items/{test_item['id']}",
-        json=test_item,
-    )
 
 
 def test_delete_missing_item(app_client, load_test_data):
@@ -77,76 +64,56 @@ def test_delete_missing_item(app_client, load_test_data):
     assert resp.status_code == 404
 
 
-def test_create_item_missing_collection(app_client, load_test_data):
+def test_create_item_missing_collection(app_client, ctx):
     """Test creation of an item without a parent collection (transactions extension)"""
-    test_item = load_test_data("test_item.json")
-    test_item["collection"] = "stc is cool"
+    ctx.item["collection"] = "stc is cool"
     resp = app_client.post(
-        f"/collections/{test_item['collection']}/items", json=test_item
+        f"/collections/{ctx.item['collection']}/items", json=ctx.item
     )
     assert resp.status_code == 422
 
 
-def test_update_item_already_exists(app_client, load_test_data):
+def test_update_item_already_exists(app_client, ctx):
     """Test updating an item which already exists (transactions extension)"""
-    test_item = load_test_data("test_item.json")
-    resp = app_client.post(
-        f"/collections/{test_item['collection']}/items", json=test_item
-    )
-    assert resp.status_code == 200
 
-    assert test_item["properties"]["gsd"] != 16
-    test_item["properties"]["gsd"] = 16
-    app_client.put(f"/collections/{test_item['collection']}/items", json=test_item)
+    assert ctx.item["properties"]["gsd"] != 16
+    ctx.item["properties"]["gsd"] = 16
+    app_client.put(f"/collections/{ctx.item['collection']}/items", json=ctx.item)
     resp = app_client.get(
-        f"/collections/{test_item['collection']}/items/{test_item['id']}"
+        f"/collections/{ctx.item['collection']}/items/{ctx.item['id']}"
     )
     updated_item = resp.json()
     assert updated_item["properties"]["gsd"] == 16
 
-    app_client.delete(f"/collections/{test_item['collection']}/items/{test_item['id']}")
+    app_client.delete(f"/collections/{ctx.item['collection']}/items/{ctx.item['id']}")
 
 
-def test_update_new_item(app_client, load_test_data):
+def test_update_new_item(app_client, ctx):
     """Test updating an item which does not exist (transactions extension)"""
-    test_item = load_test_data("test_item.json")
+    test_item = ctx.item
+    test_item["id"] = "a"
+
+    # note: this endpoint is wrong in stac-fastapi -- should be /collections/{c_id}/items/{item_id}
     resp = app_client.put(
         f"/collections/{test_item['collection']}/items", json=test_item
     )
     assert resp.status_code == 404
 
 
-def test_update_item_missing_collection(app_client, load_test_data):
+def test_update_item_missing_collection(app_client, ctx):
     """Test updating an item without a parent collection (transactions extension)"""
-    test_item = load_test_data("test_item.json")
-
-    # Create the item
-    resp = app_client.post(
-        f"/collections/{test_item['collection']}/items", json=test_item
-    )
-    assert resp.status_code == 200
-
     # Try to update collection of the item
-    test_item["collection"] = "stac is very cool"
-    resp = app_client.put(
-        f"/collections/{test_item['collection']}/items", json=test_item
-    )
+    ctx.item["collection"] = "stac_is_cool"
+    resp = app_client.put(f"/collections/{ctx.item['collection']}/items", json=ctx.item)
     assert resp.status_code == 422
 
-    app_client.delete(
-        f"/collections/{test_item['collection']}/items/{test_item['id']}",
-        json=test_item,
-    )
 
-
-def test_update_item_geometry(app_client, load_test_data):
-    test_item = load_test_data("test_item.json")
-
-    test_item["id"] = "update_test_item_1"
+def test_update_item_geometry(app_client, ctx):
+    ctx.item["id"] = "update_test_item_1"
 
     # Create the item
     resp = app_client.post(
-        f"/collections/{test_item['collection']}/items", json=test_item
+        f"/collections/{ctx.item['collection']}/items", json=ctx.item
     )
     assert resp.status_code == 200
 
@@ -161,60 +128,29 @@ def test_update_item_geometry(app_client, load_test_data):
     ]
 
     # Update the geometry of the item
-    test_item["geometry"]["coordinates"] = new_coordinates
-    resp = app_client.put(
-        f"/collections/{test_item['collection']}/items", json=test_item
-    )
+    ctx.item["geometry"]["coordinates"] = new_coordinates
+    resp = app_client.put(f"/collections/{ctx.item['collection']}/items", json=ctx.item)
     assert resp.status_code == 200
 
     # Fetch the updated item
     resp = app_client.get(
-        f"/collections/{test_item['collection']}/items/{test_item['id']}"
+        f"/collections/{ctx.item['collection']}/items/{ctx.item['id']}"
     )
     assert resp.status_code == 200
     assert resp.json()["geometry"]["coordinates"] == new_coordinates
 
-    app_client.delete(
-        f"/collections/{test_item['collection']}/items/{test_item['id']}",
-        json=test_item,
-    )
 
-
-def test_get_item(app_client, load_test_data):
+def test_get_item(app_client, ctx):
     """Test read an item by id (core)"""
-    test_item = load_test_data("test_item.json")
-
-    try:
-        resp = app_client.delete(
-            f"/collections/{test_item['collection']}/items/{test_item['id']}"
-        )
-    except Exception:
-        pass
-
-    resp = app_client.post(
-        f"/collections/{test_item['collection']}/items", json=test_item
-    )
-    assert resp.status_code == 200
-
     get_item = app_client.get(
-        f"/collections/{test_item['collection']}/items/{test_item['id']}"
+        f"/collections/{ctx.item['collection']}/items/{ctx.item['id']}"
     )
     assert get_item.status_code == 200
 
-    app_client.delete(
-        f"/collections/{test_item['collection']}/items/{test_item['id']}",
-        json=test_item,
-    )
 
-
-def test_returns_valid_item(app_client, load_test_data):
+def test_returns_valid_item(app_client, ctx):
     """Test validates fetched item with jsonschema"""
-    test_item = load_test_data("test_item.json")
-    resp = app_client.post(
-        f"/collections/{test_item['collection']}/items", json=test_item
-    )
-    assert resp.status_code == 200
-
+    test_item = ctx.item
     get_item = app_client.get(
         f"/collections/{test_item['collection']}/items/{test_item['id']}"
     )
@@ -227,35 +163,20 @@ def test_returns_valid_item(app_client, load_test_data):
     item = pystac.Item.from_dict(item_dict, preserve_dict=False, root=mock_root)
     item.validate()
 
-    app_client.delete(
-        f"/collections/{test_item['collection']}/items/{test_item['id']}",
-        json=test_item,
-    )
 
-
-def test_get_item_collection(app_client, load_test_data):
+def test_get_item_collection(app_client, ctx, es_txn_client):
     """Test read an item collection (core)"""
     item_count = randint(1, 4)
-    test_item = load_test_data("test_item.json")
 
     for idx in range(item_count):
-        _test_item = deepcopy(test_item)
-        _test_item["id"] = test_item["id"] + str(idx)
-        resp = app_client.post(
-            f"/collections/{test_item['collection']}/items", json=_test_item
-        )
-        assert resp.status_code == 200
+        ctx.item["id"] = f'{ctx.item["id"]}{idx}'
+        create_item(es_txn_client, ctx.item)
 
-    time.sleep(2)
-    resp = app_client.get(f"/collections/{test_item['collection']}/items")
+    resp = app_client.get(f"/collections/{ctx.item['collection']}/items")
     assert resp.status_code == 200
 
     item_collection = resp.json()
-    assert item_collection["context"]["matched"] == len(range(item_count))
-    app_client.delete(
-        f"/collections/{test_item['collection']}/items/{test_item['id']}",
-        json=test_item,
-    )
+    assert item_collection["context"]["matched"] == item_count + 1
 
 
 @pytest.mark.skip(reason="Pagination extension not implemented")
@@ -286,74 +207,52 @@ def test_pagination(app_client, load_test_data):
     assert second_page["context"]["returned"] == 3
 
 
-def test_item_timestamps(app_client, load_test_data):
+def test_item_timestamps(app_client, ctx, load_test_data):
     """Test created and updated timestamps (common metadata)"""
-    test_item = load_test_data("test_item.json")
-    start_time = now_to_rfc3339_str()
-    time.sleep(1)
-    # Confirm `created` timestamp
-    resp = app_client.post(
-        f"/collections/{test_item['collection']}/items", json=test_item
-    )
-    time.sleep(1)
-    item = resp.json()
-    created_dt = item["properties"]["created"]
-    time.sleep(1)
-    assert resp.status_code == 200
-    assert start_time < created_dt < now_to_rfc3339_str()
+    # start_time = now_to_rfc3339_str()
 
-    time.sleep(1)
+    created_dt = ctx.item["properties"]["created"]
+
+    # todo, check lower bound
+    # assert start_time < created_dt < now_to_rfc3339_str()
+    assert created_dt < now_to_rfc3339_str()
+
     # Confirm `updated` timestamp
-    item["properties"]["proj:epsg"] = 4326
-    resp = app_client.put(f"/collections/{test_item['collection']}/items", json=item)
+    ctx.item["properties"]["proj:epsg"] = 4326
+    resp = app_client.put(
+        f"/collections/{ctx.item['collection']}/items", json=dict(ctx.item)
+    )
     assert resp.status_code == 200
     updated_item = resp.json()
 
     # Created shouldn't change on update
-    assert item["properties"]["created"] == updated_item["properties"]["created"]
+    assert ctx.item["properties"]["created"] == updated_item["properties"]["created"]
     assert updated_item["properties"]["updated"] > created_dt
 
     app_client.delete(
-        f"/collections/{test_item['collection']}/items/{test_item['id']}",
-        json=test_item,
+        f"/collections/{ctx.item['collection']}/items/{ctx.item['id']}",
+        json=dict(ctx.item),
     )
 
 
-def test_item_search_by_id_post(app_client, load_test_data):
+def test_item_search_by_id_post(app_client, ctx, es_txn_client):
     """Test POST search by item id (core)"""
     ids = ["test1", "test2", "test3"]
-    for id in ids:
-        test_item = load_test_data("test_item.json")
-        test_item["id"] = id
-        resp = app_client.post(
-            f"/collections/{test_item['collection']}/items", json=test_item
-        )
-        assert resp.status_code == 200
+    for _id in ids:
+        ctx.item["id"] = _id
+        create_item(es_txn_client, ctx.item)
 
-    time.sleep(2)
-
-    params = {"collections": [test_item["collection"]], "ids": ids}
+    params = {"collections": [ctx.item["collection"]], "ids": ids}
     resp = app_client.post("/search", json=params)
     assert resp.status_code == 200
     resp_json = resp.json()
     assert len(resp_json["features"]) == len(ids)
     assert set([feat["id"] for feat in resp_json["features"]]) == set(ids)
 
-    app_client.delete(
-        f"/collections/{test_item['collection']}/items/{test_item['id']}",
-        json=test_item,
-    )
 
-
-def test_item_search_spatial_query_post(app_client, load_test_data):
+def test_item_search_spatial_query_post(app_client, ctx):
     """Test POST search with spatial query (core)"""
-    test_item = load_test_data("test_item.json")
-    resp = app_client.post(
-        f"/collections/{test_item['collection']}/items", json=test_item
-    )
-    assert resp.status_code == 200
-
-    time.sleep(1)
+    test_item = ctx.item
 
     params = {
         "collections": [test_item["collection"]],
@@ -364,21 +263,11 @@ def test_item_search_spatial_query_post(app_client, load_test_data):
     resp_json = resp.json()
     assert resp_json["features"][0]["id"] == test_item["id"]
 
-    app_client.delete(
-        f"/collections/{test_item['collection']}/items/{test_item['id']}",
-        json=test_item,
-    )
 
-
-def test_item_search_temporal_query_post(app_client, load_test_data):
+def test_item_search_temporal_query_post(app_client, ctx):
     """Test POST search with single-tailed spatio-temporal query (core)"""
-    test_item = load_test_data("test_item.json")
-    resp = app_client.post(
-        f"/collections/{test_item['collection']}/items", json=test_item
-    )
-    assert resp.status_code == 200
 
-    time.sleep(2)
+    test_item = ctx.item
 
     item_date = rfc3339_str_to_datetime(test_item["properties"]["datetime"])
     item_date = item_date + timedelta(seconds=1)
@@ -392,21 +281,10 @@ def test_item_search_temporal_query_post(app_client, load_test_data):
     resp_json = resp.json()
     assert resp_json["features"][0]["id"] == test_item["id"]
 
-    app_client.delete(
-        f"/collections/{test_item['collection']}/items/{test_item['id']}",
-        json=test_item,
-    )
 
-
-def test_item_search_temporal_window_post(app_client, load_test_data):
+def test_item_search_temporal_window_post(app_client, load_test_data, ctx):
     """Test POST search with two-tailed spatio-temporal query (core)"""
-    test_item = load_test_data("test_item.json")
-    resp = app_client.post(
-        f"/collections/{test_item['collection']}/items", json=test_item
-    )
-    assert resp.status_code == 200
-
-    time.sleep(2)
+    test_item = ctx.item
 
     item_date = rfc3339_str_to_datetime(test_item["properties"]["datetime"])
     item_date_before = item_date - timedelta(seconds=1)
@@ -421,22 +299,10 @@ def test_item_search_temporal_window_post(app_client, load_test_data):
     resp_json = resp.json()
     assert resp_json["features"][0]["id"] == test_item["id"]
 
-    app_client.delete(
-        f"/collections/{test_item['collection']}/items/{test_item['id']}",
-        json=test_item,
-    )
 
-
-def test_item_search_temporal_open_window(app_client, load_test_data):
+def test_item_search_temporal_open_window(app_client, ctx):
     """Test POST search with open spatio-temporal query (core)"""
-    test_item = load_test_data("test_item.json")
-    resp = app_client.post(
-        f"/collections/{test_item['collection']}/items", json=test_item
-    )
-    assert resp.status_code == 200
-
-    time.sleep(1)
-
+    test_item = ctx.item
     params = {
         "collections": [test_item["collection"]],
         "intersects": test_item["geometry"],
@@ -445,11 +311,6 @@ def test_item_search_temporal_open_window(app_client, load_test_data):
     resp = app_client.post("/search", json=params)
     resp_json = resp.json()
     assert resp_json["features"][0]["id"] == test_item["id"]
-
-    app_client.delete(
-        f"/collections/{test_item['collection']}/items/{test_item['id']}",
-        json=test_item,
-    )
 
 
 @pytest.mark.skip(reason="sortby date not implemented")
@@ -462,8 +323,6 @@ def test_item_search_sort_post(app_client, load_test_data):
     )
     assert resp.status_code == 200
 
-    time.sleep(1)
-
     second_item = load_test_data("test_item.json")
     second_item["id"] = "another-item"
     another_item_date = item_date - timedelta(days=1)
@@ -472,8 +331,6 @@ def test_item_search_sort_post(app_client, load_test_data):
         f"/collections/{second_item['collection']}/items", json=second_item
     )
     assert resp.status_code == 200
-
-    time.sleep(1)
 
     params = {
         "collections": [first_item["collection"]],
@@ -490,20 +347,14 @@ def test_item_search_sort_post(app_client, load_test_data):
     )
 
 
-def test_item_search_by_id_get(app_client, load_test_data):
+def test_item_search_by_id_get(app_client, ctx, es_txn_client):
     """Test GET search by item id (core)"""
     ids = ["test1", "test2", "test3"]
-    for id in ids:
-        test_item = load_test_data("test_item.json")
-        test_item["id"] = id
-        resp = app_client.post(
-            f"/collections/{test_item['collection']}/items", json=test_item
-        )
-        assert resp.status_code == 200
+    for _id in ids:
+        ctx.item["id"] = _id
+        create_item(es_txn_client, ctx.item)
 
-    time.sleep(2)
-
-    params = {"collections": test_item["collection"], "ids": ",".join(ids)}
+    params = {"collections": ctx.item["collection"], "ids": ",".join(ids)}
     resp = app_client.get("/search", params=params)
     assert resp.status_code == 200
     resp_json = resp.json()
@@ -511,63 +362,31 @@ def test_item_search_by_id_get(app_client, load_test_data):
     assert set([feat["id"] for feat in resp_json["features"]]) == set(ids)
 
 
-def test_item_search_bbox_get(app_client, load_test_data):
+def test_item_search_bbox_get(app_client, ctx):
     """Test GET search with spatial query (core)"""
-    test_item = load_test_data("test_item.json")
-    resp = app_client.post(
-        f"/collections/{test_item['collection']}/items", json=test_item
-    )
-    assert resp.status_code == 200
-
-    time.sleep(1)
-
     params = {
-        "collections": test_item["collection"],
-        "bbox": ",".join([str(coord) for coord in test_item["bbox"]]),
+        "collections": ctx.item["collection"],
+        "bbox": ",".join([str(coord) for coord in ctx.item["bbox"]]),
     }
     resp = app_client.get("/search", params=params)
     assert resp.status_code == 200
     resp_json = resp.json()
-    assert resp_json["features"][0]["id"] == test_item["id"]
-
-    app_client.delete(
-        f"/collections/{test_item['collection']}/items/{test_item['id']}",
-        json=test_item,
-    )
+    assert resp_json["features"][0]["id"] == ctx.item["id"]
 
 
-def test_item_search_get_without_collections(app_client, load_test_data):
+def test_item_search_get_without_collections(app_client, ctx):
     """Test GET search without specifying collections"""
-    test_item = load_test_data("test_item.json")
-    resp = app_client.post(
-        f"/collections/{test_item['collection']}/items", json=test_item
-    )
-    assert resp.status_code == 200
-
-    time.sleep(1)
 
     params = {
-        "bbox": ",".join([str(coord) for coord in test_item["bbox"]]),
+        "bbox": ",".join([str(coord) for coord in ctx.item["bbox"]]),
     }
     resp = app_client.get("/search", params=params)
     assert resp.status_code == 200
 
-    app_client.delete(
-        f"/collections/{test_item['collection']}/items/{test_item['id']}",
-        json=test_item,
-    )
 
-
-def test_item_search_temporal_window_get(app_client, load_test_data):
+def test_item_search_temporal_window_get(app_client, ctx):
     """Test GET search with spatio-temporal query (core)"""
-    test_item = load_test_data("test_item.json")
-    resp = app_client.post(
-        f"/collections/{test_item['collection']}/items", json=test_item
-    )
-    assert resp.status_code == 200
-
-    time.sleep(2)
-
+    test_item = ctx.item
     item_date = rfc3339_str_to_datetime(test_item["properties"]["datetime"])
     item_date_before = item_date - timedelta(seconds=1)
     item_date_after = item_date + timedelta(seconds=1)
@@ -581,30 +400,20 @@ def test_item_search_temporal_window_get(app_client, load_test_data):
     resp_json = resp.json()
     assert resp_json["features"][0]["id"] == test_item["id"]
 
-    app_client.delete(
-        f"/collections/{test_item['collection']}/items/{test_item['id']}",
-        json=test_item,
-    )
-
 
 @pytest.mark.skip(reason="sorting not fully implemented")
-def test_item_search_sort_get(app_client, load_test_data):
+def test_item_search_sort_get(app_client, ctx, es_txn_client):
     """Test GET search with sorting (sort extension)"""
-    first_item = load_test_data("test_item.json")
+    first_item = ctx.item
     item_date = rfc3339_str_to_datetime(first_item["properties"]["datetime"])
-    resp = app_client.post(
-        f"/collections/{first_item['collection']}/items", json=first_item
-    )
-    assert resp.status_code == 200
+    create_item(es_txn_client, ctx.item)
 
-    second_item = load_test_data("test_item.json")
+    second_item = ctx.item.copy()
     second_item["id"] = "another-item"
     another_item_date = item_date - timedelta(days=1)
-    second_item["properties"]["datetime"] = datetime_to_str(another_item_date)
-    resp = app_client.post(
-        f"/collections/{second_item['collection']}/items", json=second_item
-    )
-    assert resp.status_code == 200
+    second_item.update({"properties": {"datetime": datetime_to_str(another_item_date)}})
+    create_item(es_txn_client, second_item)
+
     params = {"collections": [first_item["collection"]], "sortby": "-datetime"}
     resp = app_client.get("/search", params=params)
     assert resp.status_code == 200
@@ -613,36 +422,20 @@ def test_item_search_sort_get(app_client, load_test_data):
     assert resp_json["features"][1]["id"] == second_item["id"]
 
 
-def test_item_search_post_without_collection(app_client, load_test_data):
+def test_item_search_post_without_collection(app_client, ctx):
     """Test POST search without specifying a collection"""
-    test_item = load_test_data("test_item.json")
-    resp = app_client.post(
-        f"/collections/{test_item['collection']}/items", json=test_item
-    )
-    assert resp.status_code == 200
-
-    time.sleep(1)
-
+    test_item = ctx.item
     params = {
         "bbox": test_item["bbox"],
     }
     resp = app_client.post("/search", json=params)
     assert resp.status_code == 200
 
-    app_client.delete(
-        f"/collections/{test_item['collection']}/items/{test_item['id']}",
-        json=test_item,
-    )
 
-
-def test_item_search_properties_es(app_client, load_test_data):
+def test_item_search_properties_es(app_client, ctx):
     """Test POST search with JSONB query (query extension)"""
-    test_item = load_test_data("test_item.json")
-    resp = app_client.post(
-        f"/collections/{test_item['collection']}/items", json=test_item
-    )
-    assert resp.status_code == 200
 
+    test_item = ctx.item
     # EPSG is a JSONB key
     params = {"query": {"proj:epsg": {"gt": test_item["properties"]["proj:epsg"] + 1}}}
     resp = app_client.post("/search", json=params)
@@ -650,19 +443,9 @@ def test_item_search_properties_es(app_client, load_test_data):
     resp_json = resp.json()
     assert len(resp_json["features"]) == 0
 
-    app_client.delete(
-        f"/collections/{test_item['collection']}/items/{test_item['id']}",
-        json=test_item,
-    )
 
-
-def test_item_search_properties_field(app_client, load_test_data):
+def test_item_search_properties_field(app_client, ctx):
     """Test POST search indexed field with query (query extension)"""
-    test_item = load_test_data("test_item.json")
-    resp = app_client.post(
-        f"/collections/{test_item['collection']}/items", json=test_item
-    )
-    assert resp.status_code == 200
 
     # Orientation is an indexed field
     params = {"query": {"orientation": {"eq": "south"}}}
@@ -671,20 +454,12 @@ def test_item_search_properties_field(app_client, load_test_data):
     resp_json = resp.json()
     assert len(resp_json["features"]) == 0
 
-    app_client.delete(f"/collections/{test_item['collection']}/items/{test_item['id']}")
 
-
-def test_item_search_get_query_extension(app_client, load_test_data):
+def test_item_search_get_query_extension(app_client, ctx):
     """Test GET search with JSONB query (query extension)"""
-    test_item = load_test_data("test_item.json")
-    resp = app_client.post(
-        f"/collections/{test_item['collection']}/items", json=test_item
-    )
-    assert resp.status_code == 200
 
-    time.sleep(2)
+    test_item = ctx.item
 
-    # EPSG is a JSONB key
     params = {
         "collections": [test_item["collection"]],
         "query": json.dumps(
