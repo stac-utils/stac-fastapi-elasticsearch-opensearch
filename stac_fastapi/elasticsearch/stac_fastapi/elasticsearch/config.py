@@ -2,7 +2,7 @@
 import os
 from typing import Set
 
-from elasticsearch import Elasticsearch
+from elasticsearch import AsyncElasticsearch, Elasticsearch
 
 from stac_fastapi.types.config import ApiSettings
 
@@ -16,13 +16,25 @@ class ElasticsearchSettings(ApiSettings):
     # Fields which are defined by STAC but not included in the database model
     forbidden_fields: Set[str] = {"type"}
 
-    # Fields which are item properties but indexed as distinct fields in the database model
-    indexed_fields: Set[str] = {"datetime"}
-
     @property
     def create_client(self):
         """Create es client."""
         return Elasticsearch(
+            [{"host": str(DOMAIN), "port": str(PORT)}],
+            headers={"accept": "application/vnd.elasticsearch+json; compatible-with=7"},
+        )
+
+
+class AsyncElasticsearchSettings(ApiSettings):
+    """API settings."""
+
+    # Fields which are defined by STAC but not included in the database model
+    forbidden_fields: Set[str] = {"type"}
+
+    @property
+    def create_client(self):
+        """Create async elasticsearch client."""
+        return AsyncElasticsearch(
             [{"host": str(DOMAIN), "port": str(PORT)}],
             headers={"accept": "application/vnd.elasticsearch+json; compatible-with=7"},
         )

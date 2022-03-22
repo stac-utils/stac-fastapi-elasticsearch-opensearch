@@ -5,208 +5,127 @@ from typing import Callable
 import pytest
 from stac_pydantic import Item
 
-from stac_fastapi.api.app import StacApi
-from stac_fastapi.elasticsearch.core import BulkTransactionsClient, CoreCrudClient
 from stac_fastapi.extensions.third_party.bulk_transactions import Items
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 
-from ..conftest import MockStarletteRequest, create_item
+from ..conftest import MockRequest, create_item
 
 
-def test_create_collection(
-    es_core: CoreCrudClient,
-    es_txn_client,
-    load_test_data: Callable,
-):
-    data = load_test_data("test_collection.json")
-    try:
-        es_txn_client.create_collection(data, request=MockStarletteRequest)
-    except Exception:
-        pass
-    coll = es_core.get_collection(data["id"], request=MockStarletteRequest)
-    assert coll["id"] == data["id"]
-    es_txn_client.delete_collection(data["id"], request=MockStarletteRequest)
+async def test_create_collection(app_client, ctx, core_client, txn_client):
+    in_coll = deepcopy(ctx.collection)
+    in_coll["id"] = str(uuid.uuid4())
+    await txn_client.create_collection(in_coll, request=MockRequest)
+    got_coll = await core_client.get_collection(in_coll["id"], request=MockRequest)
+    assert got_coll["id"] == in_coll["id"]
+    await txn_client.delete_collection(in_coll["id"], request=MockRequest)
 
 
-def test_create_collection_already_exists(
-    es_txn_client,
-    load_test_data: Callable,
-):
-    data = load_test_data("test_collection.json")
-    es_txn_client.create_collection(data, request=MockStarletteRequest)
+async def test_create_collection_already_exists(app_client, ctx, txn_client):
+    data = deepcopy(ctx.collection)
 
     # change id to avoid elasticsearch duplicate key error
     data["_id"] = str(uuid.uuid4())
 
     with pytest.raises(ConflictError):
-        es_txn_client.create_collection(data, request=MockStarletteRequest)
+        await txn_client.create_collection(data, request=MockRequest)
 
-    es_txn_client.delete_collection(data["id"], request=MockStarletteRequest)
+    await txn_client.delete_collection(data["id"], request=MockRequest)
 
 
-def test_update_collection(
-    es_core: CoreCrudClient,
-    es_txn_client,
+async def test_update_collection(
+    core_client,
+    txn_client,
     load_test_data: Callable,
 ):
     data = load_test_data("test_collection.json")
 
-    es_txn_client.create_collection(data, request=MockStarletteRequest)
+    await txn_client.create_collection(data, request=MockRequest)
     data["keywords"].append("new keyword")
-    es_txn_client.update_collection(data, request=MockStarletteRequest)
+    await txn_client.update_collection(data, request=MockRequest)
 
-    coll = es_core.get_collection(data["id"], request=MockStarletteRequest)
+    coll = await core_client.get_collection(data["id"], request=MockRequest)
     assert "new keyword" in coll["keywords"]
 
-    es_txn_client.delete_collection(data["id"], request=MockStarletteRequest)
+    await txn_client.delete_collection(data["id"], request=MockRequest)
 
 
-def test_delete_collection(
-    es_core: CoreCrudClient,
-    es_txn_client,
+async def test_delete_collection(
+    core_client,
+    txn_client,
     load_test_data: Callable,
 ):
     data = load_test_data("test_collection.json")
-    es_txn_client.create_collection(data, request=MockStarletteRequest)
+    await txn_client.create_collection(data, request=MockRequest)
 
-    es_txn_client.delete_collection(data["id"], request=MockStarletteRequest)
+    await txn_client.delete_collection(data["id"], request=MockRequest)
 
     with pytest.raises(NotFoundError):
-        es_core.get_collection(data["id"], request=MockStarletteRequest)
+        await core_client.get_collection(data["id"], request=MockRequest)
 
 
-def test_get_collection(
-    es_core: CoreCrudClient,
-    es_txn_client,
+async def test_get_collection(
+    core_client,
+    txn_client,
     load_test_data: Callable,
 ):
     data = load_test_data("test_collection.json")
-    es_txn_client.create_collection(data, request=MockStarletteRequest)
-    coll = es_core.get_collection(data["id"], request=MockStarletteRequest)
+    await txn_client.create_collection(data, request=MockRequest)
+    coll = await core_client.get_collection(data["id"], request=MockRequest)
     assert coll["id"] == data["id"]
 
-    es_txn_client.delete_collection(data["id"], request=MockStarletteRequest)
+    await txn_client.delete_collection(data["id"], request=MockRequest)
 
 
-def test_get_item(
-    es_core: CoreCrudClient,
-    es_txn_client,
-    load_test_data: Callable,
-):
-    collection_data = load_test_data("test_collection.json")
-    item_data = load_test_data("test_item.json")
-    es_txn_client.create_collection(collection_data, request=MockStarletteRequest)
-    es_txn_client.create_item(item_data, request=MockStarletteRequest)
-    got_item = es_core.get_item(
-        item_id=item_data["id"],
-        collection_id=item_data["collection"],
-        request=MockStarletteRequest,
+async def test_get_item(app_client, ctx, core_client):
+    got_item = await core_client.get_item(
+        item_id=ctx.item["id"],
+        collection_id=ctx.item["collection"],
+        request=MockRequest,
     )
-    assert got_item["id"] == item_data["id"]
-    assert got_item["collection"] == item_data["collection"]
-
-    es_txn_client.delete_collection(collection_data["id"], request=MockStarletteRequest)
-    es_txn_client.delete_item(
-        item_data["id"], item_data["collection"], request=MockStarletteRequest
-    )
+    assert got_item["id"] == ctx.item["id"]
+    assert got_item["collection"] == ctx.item["collection"]
 
 
-def test_get_collection_items(
-    es_core: CoreCrudClient,
-    es_txn_client,
-    load_test_data: Callable,
-):
-    coll = load_test_data("test_collection.json")
-    es_txn_client.create_collection(coll, request=MockStarletteRequest)
-
-    item = load_test_data("test_item.json")
-
-    for _ in range(5):
+async def test_get_collection_items(app_client, ctx, core_client, txn_client):
+    coll = ctx.collection
+    num_of_items_to_create = 5
+    for _ in range(num_of_items_to_create):
+        item = deepcopy(ctx.item)
         item["id"] = str(uuid.uuid4())
-        es_txn_client.create_item(item, request=MockStarletteRequest, refresh=True)
+        await txn_client.create_item(item, request=MockRequest, refresh=True)
 
-    fc = es_core.item_collection(coll["id"], request=MockStarletteRequest)
-    assert len(fc["features"]) == 5
+    fc = await core_client.item_collection(coll["id"], request=MockRequest)
+    assert len(fc["features"]) == num_of_items_to_create + 1  # ctx.item
 
     for item in fc["features"]:
         assert item["collection"] == coll["id"]
 
-    es_txn_client.delete_collection(coll["id"], request=MockStarletteRequest)
-    for item in fc["features"]:
-        es_txn_client.delete_item(item["id"], coll["id"], request=MockStarletteRequest)
 
-
-def test_create_item(
-    es_core: CoreCrudClient,
-    es_txn_client,
-    load_test_data: Callable,
-):
-    coll = load_test_data("test_collection.json")
-    es_txn_client.create_collection(coll, request=MockStarletteRequest)
-    item = load_test_data("test_item.json")
-    es_txn_client.create_item(item, request=MockStarletteRequest, refresh=True)
-    resp = es_core.get_item(
-        item["id"], item["collection"], request=MockStarletteRequest
+async def test_create_item(ctx, core_client, txn_client):
+    resp = await core_client.get_item(
+        ctx.item["id"], ctx.item["collection"], request=MockRequest
     )
-    assert Item(**item).dict(
+    assert Item(**ctx.item).dict(
         exclude={"links": ..., "properties": {"created", "updated"}}
     ) == Item(**resp).dict(exclude={"links": ..., "properties": {"created", "updated"}})
 
-    es_txn_client.delete_collection(coll["id"], request=MockStarletteRequest)
-    es_txn_client.delete_item(item["id"], coll["id"], request=MockStarletteRequest)
 
-
-def test_create_item_already_exists(
-    es_txn_client,
-    load_test_data: Callable,
-):
-    coll = load_test_data("test_collection.json")
-    es_txn_client.create_collection(coll, request=MockStarletteRequest)
-
-    item = load_test_data("test_item.json")
-    es_txn_client.create_item(item, request=MockStarletteRequest, refresh=True)
-
+async def test_create_item_already_exists(ctx, txn_client):
     with pytest.raises(ConflictError):
-        es_txn_client.create_item(item, request=MockStarletteRequest, refresh=True)
-
-    es_txn_client.delete_collection(coll["id"], request=MockStarletteRequest)
-    es_txn_client.delete_item(item["id"], coll["id"], request=MockStarletteRequest)
+        await txn_client.create_item(ctx.item, request=MockRequest, refresh=True)
 
 
-def test_update_item(
-    es_core: CoreCrudClient,
-    es_txn_client,
-    load_test_data: Callable,
-):
-    coll = load_test_data("test_collection.json")
-    es_txn_client.create_collection(coll, request=MockStarletteRequest)
+async def test_update_item(ctx, core_client, txn_client):
+    ctx.item["properties"]["foo"] = "bar"
+    await txn_client.update_item(ctx.item, request=MockRequest)
 
-    item = load_test_data("test_item.json")
-    es_txn_client.create_item(item, request=MockStarletteRequest, refresh=True)
-
-    item["properties"]["foo"] = "bar"
-    es_txn_client.update_item(item, request=MockStarletteRequest)
-
-    updated_item = es_core.get_item(
-        item["id"], item["collection"], request=MockStarletteRequest
+    updated_item = await core_client.get_item(
+        ctx.item["id"], ctx.item["collection"], request=MockRequest
     )
     assert updated_item["properties"]["foo"] == "bar"
 
-    es_txn_client.delete_collection(coll["id"], request=MockStarletteRequest)
-    es_txn_client.delete_item(item["id"], coll["id"], request=MockStarletteRequest)
 
-
-def test_update_geometry(
-    es_core: CoreCrudClient,
-    es_txn_client,
-    load_test_data: Callable,
-):
-    coll = load_test_data("test_collection.json")
-    es_txn_client.create_collection(coll, request=MockStarletteRequest)
-
-    item = load_test_data("test_item.json")
-    es_txn_client.create_item(item, request=MockStarletteRequest, refresh=True)
-
+async def test_update_geometry(ctx, core_client, txn_client):
     new_coordinates = [
         [
             [142.15052873427666, -33.82243006904891],
@@ -217,62 +136,37 @@ def test_update_geometry(
         ]
     ]
 
-    item["geometry"]["coordinates"] = new_coordinates
-    es_txn_client.update_item(item, request=MockStarletteRequest)
+    ctx.item["geometry"]["coordinates"] = new_coordinates
+    await txn_client.update_item(ctx.item, request=MockRequest)
 
-    updated_item = es_core.get_item(
-        item["id"], item["collection"], request=MockStarletteRequest
+    updated_item = await core_client.get_item(
+        ctx.item["id"], ctx.item["collection"], request=MockRequest
     )
     assert updated_item["geometry"]["coordinates"] == new_coordinates
 
-    es_txn_client.delete_collection(coll["id"], request=MockStarletteRequest)
-    es_txn_client.delete_item(item["id"], coll["id"], request=MockStarletteRequest)
 
-
-def test_delete_item(
-    es_core: CoreCrudClient,
-    es_txn_client,
-    load_test_data: Callable,
-):
-    coll = load_test_data("test_collection.json")
-    es_txn_client.create_collection(coll, request=MockStarletteRequest)
-
-    item = load_test_data("test_item.json")
-    es_txn_client.create_item(item, request=MockStarletteRequest, refresh=True)
-
-    es_txn_client.delete_item(
-        item["id"], item["collection"], request=MockStarletteRequest
-    )
-
-    es_txn_client.delete_collection(coll["id"], request=MockStarletteRequest)
+async def test_delete_item(ctx, core_client, txn_client):
+    await txn_client.delete_item(ctx.item["id"], ctx.item["collection"])
 
     with pytest.raises(NotFoundError):
-        es_core.get_item(item["id"], item["collection"], request=MockStarletteRequest)
+        await core_client.get_item(
+            ctx.item["id"], ctx.item["collection"], request=MockRequest
+        )
 
 
-def test_bulk_item_insert(
-    es_core: CoreCrudClient,
-    es_txn_client,
-    es_bulk_transactions: BulkTransactionsClient,
-    load_test_data: Callable,
-):
-    coll = load_test_data("test_collection.json")
-    es_txn_client.create_collection(coll, request=MockStarletteRequest)
-
-    item = load_test_data("test_item.json")
-
+async def test_bulk_item_insert(ctx, core_client, txn_client, bulk_txn_client):
     items = {}
     for _ in range(10):
-        _item = deepcopy(item)
+        _item = deepcopy(ctx.item)
         _item["id"] = str(uuid.uuid4())
         items[_item["id"]] = _item
 
     # fc = es_core.item_collection(coll["id"], request=MockStarletteRequest)
     # assert len(fc["features"]) == 0
 
-    es_bulk_transactions.bulk_item_insert(Items(items=items), refresh=True)
+    bulk_txn_client.bulk_item_insert(Items(items=items), refresh=True)
 
-    fc = es_core.item_collection(coll["id"], request=MockStarletteRequest)
+    fc = await core_client.item_collection(ctx.collection["id"], request=MockRequest)
     assert len(fc["features"]) >= 10
 
     # for item in items:
@@ -281,42 +175,35 @@ def test_bulk_item_insert(
     #     )
 
 
-def test_feature_collection_insert(
-    es_core: CoreCrudClient,
-    es_txn_client,
-    es_bulk_transactions: BulkTransactionsClient,
-    test_item,
-    test_collection,
+async def test_feature_collection_insert(
+    core_client,
+    txn_client,
     ctx,
 ):
     features = []
     for _ in range(10):
-        _item = deepcopy(test_item)
+        _item = deepcopy(ctx.item)
         _item["id"] = str(uuid.uuid4())
         features.append(_item)
 
     feature_collection = {"type": "FeatureCollection", "features": features}
 
-    create_item(es_txn_client, feature_collection)
+    await create_item(txn_client, feature_collection)
 
-    fc = es_core.item_collection(test_collection["id"], request=MockStarletteRequest)
+    fc = await core_client.item_collection(ctx.collection["id"], request=MockRequest)
     assert len(fc["features"]) >= 10
 
 
-def test_landing_page_no_collection_title(
-    es_core: CoreCrudClient,
-    es_txn_client,
-    load_test_data: Callable,
-    api_client: StacApi,
-):
-    class MockStarletteRequestWithApp(MockStarletteRequest):
-        app = api_client.app
+@pytest.mark.skip(reason="app fixture isn't injected or something?")
+async def test_landing_page_no_collection_title(ctx, core_client, txn_client, app):
+    class MockRequestWithApp(MockRequest):
+        app = app
 
-    coll = load_test_data("test_collection.json")
-    del coll["title"]
-    es_txn_client.create_collection(coll, request=MockStarletteRequest)
+    ctx.collection["id"] = "new_id"
+    del ctx.collection["title"]
+    await txn_client.create_collection(ctx.collection, request=MockRequest)
 
-    landing_page = es_core.landing_page(request=MockStarletteRequestWithApp)
+    landing_page = await core_client.landing_page(request=MockRequestWithApp)
     for link in landing_page["links"]:
-        if link["href"].split("/")[-1] == coll["id"]:
+        if link["href"].split("/")[-1] == ctx.collection["id"]:
             assert link["title"]

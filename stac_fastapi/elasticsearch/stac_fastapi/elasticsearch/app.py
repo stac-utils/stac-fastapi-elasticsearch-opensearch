@@ -4,7 +4,7 @@ from stac_fastapi.api.models import create_get_request_model, create_post_reques
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
 from stac_fastapi.elasticsearch.core import (
     BulkTransactionsClient,
-    CoreCrudClient,
+    CoreClient,
     TransactionsClient,
 )
 from stac_fastapi.elasticsearch.extensions import QueryExtension
@@ -37,7 +37,7 @@ post_request_model = create_post_request_model(extensions)
 api = StacApi(
     settings=settings,
     extensions=extensions,
-    client=CoreCrudClient(session=session, post_request_model=post_request_model),
+    client=CoreClient(session=session, post_request_model=post_request_model),
     search_get_request_model=create_get_request_model(extensions),
     search_post_request_model=post_request_model,
 )
