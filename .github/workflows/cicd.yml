@@ -65,11 +65,13 @@ jobs:
           cd stac_fastapi/elasticsearch && pipenv run pytest -svvv
         env:
           ENVIRONMENT: testing
-          ES_USER: dev
-          ES_PASS: stac
+#          ES_USER: dev
+#          ES_PASS: stac
           ES_PORT: 9200
           ES_HOST: 172.17.0.1
-#
+          ES_USE_SSL: false
+          ES_VERIFY_CERTS: false
+
 #      - name: Run test suite against Elasticsearch 8.x
 #        run: |
 #          cd stac_fastapi/elasticsearch && pipenv run pytest -svvv
