@@ -46,7 +46,7 @@ app = api.app
 
 @app.on_event("startup")
 async def _startup_event():
-    IndexesClient().create_indexes()
+    await IndexesClient().create_indexes()
 
 
 def run():

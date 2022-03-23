@@ -118,7 +118,7 @@ async def test_app_fields_extension(load_test_data, app_client, txn_client):
     resp_json = resp.json()
     assert list(resp_json["features"][0]["properties"]) == ["datetime"]
 
-    txn_client.delete_item(item["id"], item["collection"], request=MockRequest)
+    txn_client.delete_item(item["id"], item["collection"])
 
 
 async def test_app_query_extension_gt(app_client, ctx):
