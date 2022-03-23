@@ -32,7 +32,7 @@ pre-commit run --all-files`
 docker-compose build
 ```
 
-## Running API on localhost:8083
+## Running API on localhost:8080
 
 ```shell
 docker-compose up
@@ -50,7 +50,7 @@ TBD: how to run this with 8.x with a password enabled and TLS.
 To create a new Collection:
 
 ```shell
-curl -X "POST" "http://localhost:8083/collections" \
+curl -X "POST" "http://localhost:8080/collections" \
      -H 'Content-Type: application/json; charset=utf-8' \
      -d $'{
   "id": "my_collection"

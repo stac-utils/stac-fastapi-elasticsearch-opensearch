@@ -6,7 +6,7 @@ import click
 import requests
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "setup_data/")
-STAC_API_BASE_URL = "http://localhost:8083"
+STAC_API_BASE_URL = "http://localhost:8080"
 
 
 def load_data(filename):

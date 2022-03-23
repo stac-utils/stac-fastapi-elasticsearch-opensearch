@@ -18,6 +18,7 @@ install_requires = [
     "elasticsearch-dsl==7.4.0",
     "pystac[validation]",
     "uvicorn",
+    "overrides",
 ]
 
 extra_reqs = {
@@ -28,7 +29,6 @@ extra_reqs = {
         "pre-commit",
         "requests",
         "ciso8601",
-        "overrides",
         "httpx",
     ],
     "docs": ["mkdocs", "mkdocs-material", "pdocs"],

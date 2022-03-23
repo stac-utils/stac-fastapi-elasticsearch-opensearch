@@ -17,7 +17,7 @@ async def test_create_collection(app_client, ctx, core_client, txn_client):
     await txn_client.create_collection(in_coll, request=MockRequest)
     got_coll = await core_client.get_collection(in_coll["id"], request=MockRequest)
     assert got_coll["id"] == in_coll["id"]
-    await txn_client.delete_collection(in_coll["id"], request=MockRequest)
+    await txn_client.delete_collection(in_coll["id"])
 
 
 async def test_create_collection_already_exists(app_client, ctx, txn_client):
@@ -29,7 +29,7 @@ async def test_create_collection_already_exists(app_client, ctx, txn_client):
     with pytest.raises(ConflictError):
         await txn_client.create_collection(data, request=MockRequest)
 
-    await txn_client.delete_collection(data["id"], request=MockRequest)
+    await txn_client.delete_collection(data["id"])
 
 
 async def test_update_collection(
@@ -46,7 +46,7 @@ async def test_update_collection(
     coll = await core_client.get_collection(data["id"], request=MockRequest)
     assert "new keyword" in coll["keywords"]
 
-    await txn_client.delete_collection(data["id"], request=MockRequest)
+    await txn_client.delete_collection(data["id"])
 
 
 async def test_delete_collection(
@@ -57,7 +57,7 @@ async def test_delete_collection(
     data = load_test_data("test_collection.json")
     await txn_client.create_collection(data, request=MockRequest)
 
-    await txn_client.delete_collection(data["id"], request=MockRequest)
+    await txn_client.delete_collection(data["id"])
 
     with pytest.raises(NotFoundError):
         await core_client.get_collection(data["id"], request=MockRequest)
@@ -73,7 +73,7 @@ async def test_get_collection(
     coll = await core_client.get_collection(data["id"], request=MockRequest)
     assert coll["id"] == data["id"]
 
-    await txn_client.delete_collection(data["id"], request=MockRequest)
+    await txn_client.delete_collection(data["id"])
 
 
 async def test_get_item(app_client, ctx, core_client):

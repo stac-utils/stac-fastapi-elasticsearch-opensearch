@@ -13,10 +13,24 @@ run_es = docker-compose \
 
 .PHONY: image
 image:
+	docker build -f Dockerfile.deploy -t stac-fastapi-elasticsearch:latest .
+
+.PHONY: run
+run:
+	 docker run -it -p 8080:8080 \
+		-e ENVIRONMENT=local \
+		-e ES_HOST=docker.for.mac.localhost \
+		-e ES_PORT=9200 \
+		-e ES_USER=dev \
+		-e ES_PASS=stac \
+		stac-fastapi-elasticsearch:latest
+
+.PHONY: image-dev
+image-dev:
 	docker-compose build
 
 .PHONY: docker-run
-docker-run: image
+docker-run: image-dev
 	$(run_es)
 
 .PHONY: docker-shell
