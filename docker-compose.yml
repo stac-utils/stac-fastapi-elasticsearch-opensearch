@@ -14,10 +14,12 @@ services:
       - RELOAD=false
       - ENVIRONMENT=local
       - WEB_CONCURRENCY=10
-      - ES_USER=dev
-      - ES_PASS=stac
-      - ES_PORT=9200
       - ES_HOST=172.17.0.1
+      - ES_PORT=9200
+#      - ES_USER=dev
+#      - ES_PASS=stac
+      - ES_USE_SSL=false
+      - ES_VERIFY_CERTS=false
     ports:
       - "8080:8080"
     volumes:

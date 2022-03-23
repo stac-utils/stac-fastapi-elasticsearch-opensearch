@@ -16,7 +16,6 @@ class IndexesClient:
     """Elasticsearch client to handle index creation."""
 
     session: Session = attr.ib(default=attr.Factory(Session.create_from_env))
-    client = AsyncElasticsearchSettings().create_client
 
     ES_MAPPINGS_DYNAMIC_TEMPLATES = [
         # Common https://github.com/radiantearth/stac-spec/blob/master/item-spec/common-metadata.md
@@ -103,12 +102,13 @@ class IndexesClient:
 
     async def create_indexes(self):
         """Create the index for Items and Collections."""
-        await self.client.indices.create(
+        client = AsyncElasticsearchSettings().create_client
+        await client.indices.create(
             index=ITEMS_INDEX,
             mappings=self.ES_ITEMS_MAPPINGS,
             ignore=400,  # ignore 400 already exists code
         )
-        await self.client.indices.create(
+        await client.indices.create(
             index=COLLECTIONS_INDEX,
             mappings=self.ES_COLLECTIONS_MAPPINGS,
             ignore=400,  # ignore 400 already exists code
