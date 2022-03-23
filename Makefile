@@ -3,6 +3,10 @@ APP_HOST ?= 0.0.0.0
 APP_PORT ?= 8080
 EXTERNAL_APP_PORT ?= ${APP_PORT}
 
+APP_PORT ?= 8080
+ES_HOST ?= docker.for.mac.localhost
+ES_PORT ?= 9200
+
 run_es = docker-compose \
 	run \
 	-p ${EXTERNAL_APP_PORT}:${APP_PORT} \
@@ -11,18 +15,17 @@ run_es = docker-compose \
 	-e APP_PORT=${APP_PORT} \
 	app-elasticsearch
 
-.PHONY: image
-image:
+.PHONY: image-deploy
+image-deploy:
 	docker build -f Dockerfile.deploy -t stac-fastapi-elasticsearch:latest .
 
-.PHONY: run
-run:
+.PHONY: run-deploy-locally
+run-deploy-locally:
 	 docker run -it -p 8080:8080 \
-		-e ENVIRONMENT=local \
-		-e ES_HOST=docker.for.mac.localhost \
-		-e ES_PORT=9200 \
-		-e ES_USER=dev \
-		-e ES_PASS=stac \
+		-e ES_HOST=${ES_HOST} \
+		-e ES_PORT=${ES_PORT} \
+		-e ES_USER=${ES_USER} \
+		-e ES_PASS=${ES_PASS} \
 		stac-fastapi-elasticsearch:latest
 
 .PHONY: image-dev
