@@ -450,7 +450,7 @@ async def test_item_search_properties_es(app_client, ctx):
     assert len(resp_json["features"]) == 0
 
 
-async def test_item_search_properties_field(app_client, ctx):
+async def test_item_search_properties_field(app_client):
     """Test POST search indexed field with query (query extension)"""
 
     # Orientation is an indexed field
@@ -493,102 +493,86 @@ async def test_get_missing_item_collection(app_client):
     assert resp.status_code == 200
 
 
-@pytest.mark.skip(reason="Pagination extension not implemented")
-async def test_pagination_item_collection(app_client, load_test_data):
+async def test_pagination_item_collection(app_client, ctx, txn_client):
     """Test item collection pagination links (paging extension)"""
-    test_item = load_test_data("test_item.json")
-    ids = []
+    ids = [ctx.item["id"]]
 
     # Ingest 5 items
-    for idx in range(5):
-        uid = str(uuid.uuid4())
-        test_item["id"] = uid
-        resp = await app_client.post(
-            f"/collections/{test_item['collection']}/items", json=test_item
-        )
-        assert resp.status_code == 200
-        ids.append(uid)
+    for _ in range(5):
+        ctx.item["id"] = str(uuid.uuid4())
+        await create_item(txn_client, ctx.item)
+        ids.append(ctx.item["id"])
 
-    # Paginate through all 5 items with a limit of 1 (expecting 5 requests)
+    # Paginate through all 6 items with a limit of 1 (expecting 7 requests)
     page = await app_client.get(
-        f"/collections/{test_item['collection']}/items", params={"limit": 1}
+        f"/collections/{ctx.item['collection']}/items", params={"limit": 1}
     )
-    idx = 0
+
     item_ids = []
-    while True:
-        idx += 1
+    idx = 0
+    for idx in range(100):
         page_data = page.json()
-        item_ids.append(page_data["features"][0]["id"])
         next_link = list(filter(lambda l: l["rel"] == "next", page_data["links"]))
         if not next_link:
+            assert not page_data["features"]
             break
-        query_params = parse_qs(urlparse(next_link[0]["href"]).query)
-        page = await app_client.get(
-            f"/collections/{test_item['collection']}/items",
-            params=query_params,
-        )
 
-    # Our limit is 1 so we expect len(ids) number of requests before we run out of pages
+        assert len(page_data["features"]) == 1
+        item_ids.append(page_data["features"][0]["id"])
+
+        href = next_link[0]["href"][len("http://test-server") :]
+        page = await app_client.get(href)
+
     assert idx == len(ids)
 
     # Confirm we have paginated through all items
     assert not set(item_ids) - set(ids)
 
 
-@pytest.mark.skip(reason="Pagination extension not implemented")
-async def test_pagination_post(app_client, load_test_data):
+async def test_pagination_post(app_client, ctx, txn_client):
     """Test POST pagination (paging extension)"""
-    test_item = load_test_data("test_item.json")
-    ids = []
+    ids = [ctx.item["id"]]
 
     # Ingest 5 items
-    for idx in range(5):
-        uid = str(uuid.uuid4())
-        test_item["id"] = uid
-        resp = await app_client.post(
-            f"/collections/{test_item['collection']}/items", json=test_item
-        )
-        assert resp.status_code == 200
-        ids.append(uid)
+    for _ in range(5):
+        ctx.item["id"] = str(uuid.uuid4())
+    await create_item(txn_client, ctx.item)
+    ids.append(ctx.item["id"])
 
     # Paginate through all 5 items with a limit of 1 (expecting 5 requests)
     request_body = {"ids": ids, "limit": 1}
     page = await app_client.post("/search", json=request_body)
     idx = 0
     item_ids = []
-    while True:
+    for _ in range(100):
         idx += 1
         page_data = page.json()
-        item_ids.append(page_data["features"][0]["id"])
         next_link = list(filter(lambda l: l["rel"] == "next", page_data["links"]))
         if not next_link:
             break
+
+        item_ids.append(page_data["features"][0]["id"])
+
         # Merge request bodies
         request_body.update(next_link[0]["body"])
         page = await app_client.post("/search", json=request_body)
 
-    # Our limit is 1 so we expect len(ids) number of requests before we run out of pages
-    assert idx == len(ids)
+    # Our limit is 1, so we expect len(ids) number of requests before we run out of pages
+    assert idx == len(ids) + 1
 
     # Confirm we have paginated through all items
     assert not set(item_ids) - set(ids)
 
 
-@pytest.mark.skip(reason="Pagination extension not implemented")
-async def test_pagination_token_idempotent(app_client, load_test_data):
+async def test_pagination_token_idempotent(app_client, ctx, txn_client):
     """Test that pagination tokens are idempotent (paging extension)"""
-    test_item = load_test_data("test_item.json")
-    ids = []
+    ids = [ctx.item["id"]]
 
     # Ingest 5 items
-    for idx in range(5):
-        uid = str(uuid.uuid4())
-        test_item["id"] = uid
-        resp = await app_client.post(
-            f"/collections/{test_item['collection']}/items", json=test_item
-        )
-        assert resp.status_code == 200
-        ids.append(uid)
+    for _ in range(5):
+        ctx.item["id"] = str(uuid.uuid4())
+    await create_item(txn_client, ctx.item)
+    ids.append(ctx.item["id"])
 
     page = await app_client.get("/search", params={"ids": ",".join(ids), "limit": 3})
     page_data = page.json()

@@ -13,10 +13,12 @@ from overrides import overrides
 from pydantic import ValidationError
 from stac_pydantic.links import Relations
 from stac_pydantic.shared import MimeTypes
+from starlette.requests import Request
 
 from stac_fastapi.elasticsearch import serializers
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
 from stac_fastapi.elasticsearch.database_logic import DatabaseLogic
+from stac_fastapi.elasticsearch.models.links import PagingLinks
 from stac_fastapi.elasticsearch.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.elasticsearch.session import Session
 from stac_fastapi.extensions.third_party.bulk_transactions import (
@@ -84,11 +86,17 @@ class CoreClient(AsyncBaseCoreClient):
         self, collection_id: str, limit: int = 10, token: str = None, **kwargs
     ) -> ItemCollection:
         """Read an item collection from the database."""
-        links = []
-        base_url = str(kwargs["request"].base_url)
+        request: Request = kwargs["request"]
+        base_url = str(request.base_url)
 
-        items, maybe_count = await self.database.get_collection_items(
-            collection_id=collection_id, limit=limit, base_url=base_url
+        items, maybe_count, next_token = await self.database.execute_search(
+            search=self.database.apply_collections_filter(
+                self.database.make_search(), [collection_id]
+            ),
+            limit=limit,
+            token=token,
+            sort=None,
+            base_url=base_url,
         )
 
         context_obj = None
@@ -99,6 +107,10 @@ class CoreClient(AsyncBaseCoreClient):
             }
             if maybe_count is not None:
                 context_obj["matched"] = maybe_count
+
+        links = []
+        if next_token:
+            links = await PagingLinks(request=request, next=next_token).get_links()
 
         return ItemCollection(
             type="FeatureCollection",
@@ -203,16 +215,10 @@ class CoreClient(AsyncBaseCoreClient):
         self, search_request: stac_pydantic.api.Search, **kwargs
     ) -> ItemCollection:
         """POST search catalog."""
-        base_url = str(kwargs["request"].base_url)
-        search = self.database.make_search()
+        request: Request = kwargs["request"]
+        base_url = str(request.base_url)
 
-        if search_request.query:
-            for (field_name, expr) in search_request.query.items():
-                field = "properties__" + field_name
-                for (op, value) in expr.items():
-                    search = self.database.apply_stacql_filter(
-                        search=search, op=op, field=field, value=value
-                    )
+        search = self.database.make_search()
 
         if search_request.ids:
             search = self.database.apply_ids_filter(
@@ -242,16 +248,28 @@ class CoreClient(AsyncBaseCoreClient):
                 search=search, intersects=search_request.intersects
             )
 
-        if search_request.sortby:
-            for sort in search_request.sortby:
-                if sort.field == "datetime":
-                    sort.field = "properties__datetime"
-                search = self.database.apply_sort(
-                    search=search, field=sort.field, direction=sort.direction
-                )
+        if search_request.query:
+            for (field_name, expr) in search_request.query.items():
+                field = "properties__" + field_name
+                for (op, value) in expr.items():
+                    search = self.database.apply_stacql_filter(
+                        search=search, op=op, field=field, value=value
+                    )
 
-        response_features, maybe_count = await self.database.execute_search(
-            search=search, limit=search_request.limit, base_url=base_url
+        sort = None
+        if search_request.sortby:
+            sort = self.database.populate_sort(search_request.sortby)
+
+        limit = 10
+        if search_request.limit:
+            limit = search_request.limit
+
+        items, maybe_count, next_token = await self.database.execute_search(
+            search=search,
+            limit=limit,
+            token=search_request.token,  # type: ignore
+            sort=sort,
+            base_url=base_url,
         )
 
         # if self.extension_is_enabled("FieldsExtension"):
@@ -274,26 +292,23 @@ class CoreClient(AsyncBaseCoreClient):
         #         for feat in response_features
         #     ]
 
-        if search_request.limit:
-            limit = search_request.limit
-            response_features = response_features[0:limit]
-        else:
-            limit = 10
-            response_features = response_features[0:limit]
-
         context_obj = None
         if self.extension_is_enabled("ContextExtension"):
             context_obj = {
-                "returned": len(response_features),
+                "returned": len(items),
                 "limit": limit,
             }
             if maybe_count is not None:
                 context_obj["matched"] = maybe_count
 
+        links = []
+        if next_token:
+            links = await PagingLinks(request=request, next=next_token).get_links()
+
         return ItemCollection(
             type="FeatureCollection",
-            features=response_features,
-            links=[],
+            features=items,
+            links=links,
             context=context_obj,
         )
 
