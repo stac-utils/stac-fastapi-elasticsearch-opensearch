@@ -91,17 +91,18 @@ class CoreClient(AsyncBaseCoreClient):
         links = []
         base_url = str(kwargs["request"].base_url)
 
-        serialized_children, count = await self.database.get_item_collection(
+        serialized_children, maybe_count = await self.database.get_collection_items(
             collection_id=collection_id, limit=limit, base_url=base_url
         )
 
         context_obj = None
         if self.extension_is_enabled("ContextExtension"):
             context_obj = {
-                "returned": count if count is not None and count < limit else limit,
+                "returned": len(serialized_children),
                 "limit": limit,
-                "matched": count,
             }
+            if maybe_count is not None:
+                context_obj["matched"] = maybe_count
 
         return ItemCollection(
             type="FeatureCollection",
@@ -207,29 +208,29 @@ class CoreClient(AsyncBaseCoreClient):
     ) -> ItemCollection:
         """POST search catalog."""
         base_url = str(kwargs["request"].base_url)
-        search = self.database.create_search()
+        search = self.database.make_search()
 
         if search_request.query:
             for (field_name, expr) in search_request.query.items():
                 field = "properties__" + field_name
                 for (op, value) in expr.items():
-                    search = self.database.create_query_filter(
+                    search = self.database.apply_stacql_filter(
                         search=search, op=op, field=field, value=value
                     )
 
         if search_request.ids:
-            search = self.database.search_ids(
+            search = self.database.apply_ids_filter(
                 search=search, item_ids=search_request.ids
             )
 
         if search_request.collections:
-            search = self.database.filter_collections(
+            search = self.database.apply_collections_filter(
                 search=search, collection_ids=search_request.collections
             )
 
         if search_request.datetime:
             datetime_search = self._return_date(search_request.datetime)
-            search = self.database.search_datetime(
+            search = self.database.apply_datetime_filter(
                 search=search, datetime_search=datetime_search
             )
 
@@ -238,10 +239,10 @@ class CoreClient(AsyncBaseCoreClient):
             if len(bbox) == 6:
                 bbox = [bbox[0], bbox[1], bbox[3], bbox[4]]
 
-            search = self.database.search_bbox(search=search, bbox=bbox)
+            search = self.database.apply_bbox_filter(search=search, bbox=bbox)
 
         if search_request.intersects:
-            self.database.search_intersects(
+            self.database.apply_intersects_filter(
                 search=search, intersects=search_request.intersects
             )
 
@@ -249,11 +250,11 @@ class CoreClient(AsyncBaseCoreClient):
             for sort in search_request.sortby:
                 if sort.field == "datetime":
                     sort.field = "properties__datetime"
-                search = self.database.sort_field(
+                search = self.database.apply_sort(
                     search=search, field=sort.field, direction=sort.direction
                 )
 
-        count = await self.database.search_count(search=search)
+        maybe_count = await self.database.search_count(search=search)
 
         response_features = await self.database.execute_search(
             search=search, limit=search_request.limit, base_url=base_url
@@ -289,16 +290,16 @@ class CoreClient(AsyncBaseCoreClient):
         context_obj = None
         if self.extension_is_enabled("ContextExtension"):
             context_obj = {
-                "returned": count if count < limit else limit,
+                "returned": len(response_features),
                 "limit": limit,
-                "matched": count,
             }
+            if maybe_count is not None:
+                context_obj["matched"] = maybe_count
 
-        links = []
         return ItemCollection(
             type="FeatureCollection",
             features=response_features,
-            links=links,
+            links=[],
             context=context_obj,
         )
 

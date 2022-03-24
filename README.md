@@ -11,8 +11,7 @@ For changes, see the [Changelog](CHANGELOG.md).
 To install the classes in your local Python env, run:
 
 ```shell
-cd stac_fastapi/elasticsearch
-pip install -e '.[dev]'
+pip install -e 'stac_fastapi/elasticsearch[dev]'
 ```
 
 ### Pre-commit

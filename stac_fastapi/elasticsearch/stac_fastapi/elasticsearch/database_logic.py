@@ -31,6 +31,17 @@ NumType = Union[float, int]
 ITEMS_INDEX = "stac_items"
 COLLECTIONS_INDEX = "stac_collections"
 
+DEFAULT_SORT = {
+    "properties.datetime": {"order": "desc"},
+    "id": {"order": "desc"},
+    "collection": {"order": "desc"},
+}
+
+
+def bbox2polygon(b0, b1, b2, b3):
+    """Transform bbox to polygon."""
+    return [[[b0, b1], [b2, b1], [b2, b3], [b0, b3], [b0, b1]]]
+
 
 def mk_item_id(item_id: str, collection_id: str):
     """Make the Elasticsearch document _id value from the Item id and collection."""
@@ -43,6 +54,7 @@ class DatabaseLogic:
 
     client = AsyncElasticsearchSettings().create_client
     sync_client = SyncElasticsearchSettings().create_client
+
     item_serializer: Type[serializers.ItemSerializer] = attr.ib(
         default=serializers.ItemSerializer
     )
@@ -54,43 +66,30 @@ class DatabaseLogic:
 
     async def get_all_collections(self, base_url: str) -> List[Collection]:
         """Database logic to retrieve a list of all collections."""
-        collections = await self.client.search(
-            index=COLLECTIONS_INDEX, query={"match_all": {}}
-        )
+        # https://github.com/stac-utils/stac-fastapi-elasticsearch/issues/65
+        # collections should be paginated, but at least return more than the default 10 for now
+        collections = await self.client.search(index=COLLECTIONS_INDEX, size=1000)
 
         return [
             self.collection_serializer.db_to_stac(c["_source"], base_url=base_url)
             for c in collections["hits"]["hits"]
         ]
 
-    async def search_count(self, search: Search) -> int:
+    async def search_count(self, search: Search) -> Optional[int]:
         """Database logic to count search results."""
         return (
             await self.client.count(index=ITEMS_INDEX, body=search.to_dict(count=True))
         ).get("count")
 
-    async def get_item_collection(
+    async def get_collection_items(
         self, collection_id: str, limit: int, base_url: str
     ) -> Tuple[List[Item], Optional[int]]:
         """Database logic to retrieve an ItemCollection and a count of items contained."""
-        search = self.create_search()
-        search = search.filter("term", collection=collection_id)
+        search = self.apply_collections_filter(Search(), [collection_id])
+        items = await self.execute_search(search=search, limit=limit, base_url=base_url)
+        maybe_count = await self.search_count(search)
 
-        count = await self.search_count(search)
-
-        search = search.query()[0:limit]
-
-        body = search.to_dict()
-        es_response = await self.client.search(
-            index=ITEMS_INDEX, query=body["query"], sort=body.get("sort")
-        )
-
-        serialized_children = [
-            self.item_serializer.db_to_stac(item["_source"], base_url=base_url)
-            for item in es_response["hits"]["hits"]
-        ]
-
-        return serialized_children, count
+        return items, maybe_count
 
     async def get_one_item(self, collection_id: str, item_id: str) -> Dict:
         """Database logic to retrieve a single item."""
@@ -105,48 +104,26 @@ class DatabaseLogic:
         return item["_source"]
 
     @staticmethod
-    def create_search():
-        """Database logic to create a nosql Search instance."""
-        return Search().sort(
-            {"properties.datetime": {"order": "desc"}},
-            {"id": {"order": "desc"}},
-            {"collection": {"order": "desc"}},
-        )
+    def make_search():
+        """Database logic to create a Search instance."""
+        return Search().sort(*DEFAULT_SORT)
 
     @staticmethod
-    def create_query_filter(search: Search, op: str, field: str, value: float):
-        """Database logic to perform query for search endpoint."""
-        if op != "eq":
-            key_filter = {field: {f"{op}": value}}
-            search = search.query(Q("range", **key_filter))
-        else:
-            search = search.query("match_phrase", **{field: value})
-
-        return search
-
-    @staticmethod
-    def search_ids(search: Search, item_ids: List[str]):
+    def apply_ids_filter(search: Search, item_ids: List[str]):
         """Database logic to search a list of STAC item ids."""
-        return search.query(
-            Q("bool", should=[Q("term", **{"id": i_id}) for i_id in item_ids])
-        )
+        return search.filter("terms", id=item_ids)
 
     @staticmethod
-    def filter_collections(search: Search, collection_ids: List):
+    def apply_collections_filter(search: Search, collection_ids: List[str]):
         """Database logic to search a list of STAC collection ids."""
-        return search.query(
-            Q(
-                "bool",
-                should=[Q("term", **{"collection": c_id}) for c_id in collection_ids],
-            )
-        )
+        return search.filter("terms", collection=collection_ids)
 
     @staticmethod
-    def search_datetime(search: Search, datetime_search):
+    def apply_datetime_filter(search: Search, datetime_search):
         """Database logic to search datetime field."""
         if "eq" in datetime_search:
-            search = search.query(
-                "match_phrase", **{"properties__datetime": datetime_search["eq"]}
+            search = search.filter(
+                "term", **{"properties__datetime": datetime_search["eq"]}
             )
         else:
             search = search.filter(
@@ -158,24 +135,28 @@ class DatabaseLogic:
         return search
 
     @staticmethod
-    def search_bbox(search: Search, bbox: List):
+    def apply_bbox_filter(search: Search, bbox: List):
         """Database logic to search on bounding box."""
-        polygon = DatabaseLogic.bbox2polygon(bbox[0], bbox[1], bbox[2], bbox[3])
-        bbox_filter = Q(
-            {
-                "geo_shape": {
-                    "geometry": {
-                        "shape": {"type": "polygon", "coordinates": polygon},
-                        "relation": "intersects",
+        return search.filter(
+            Q(
+                {
+                    "geo_shape": {
+                        "geometry": {
+                            "shape": {
+                                "type": "polygon",
+                                "coordinates": bbox2polygon(
+                                    bbox[0], bbox[1], bbox[2], bbox[3]
+                                ),
+                            },
+                            "relation": "intersects",
+                        }
                     }
                 }
-            }
+            )
         )
-        search = search.query(bbox_filter)
-        return search
 
     @staticmethod
-    def search_intersects(
+    def apply_intersects_filter(
         search: Search,
         intersects: Union[
             Point,
@@ -188,33 +169,45 @@ class DatabaseLogic:
         ],
     ):
         """Database logic to search a geojson object."""
-        intersect_filter = Q(
-            {
-                "geo_shape": {
-                    "geometry": {
-                        "shape": {
-                            "type": intersects.type.lower(),
-                            "coordinates": intersects.coordinates,
-                        },
-                        "relation": "intersects",
+        return search.filter(
+            Q(
+                {
+                    "geo_shape": {
+                        "geometry": {
+                            "shape": {
+                                "type": intersects.type.lower(),
+                                "coordinates": intersects.coordinates,
+                            },
+                            "relation": "intersects",
+                        }
                     }
                 }
-            }
+            )
         )
-        search = search.query(intersect_filter)
+
+    @staticmethod
+    def apply_stacql_filter(search: Search, op: str, field: str, value: float):
+        """Database logic to perform query for search endpoint."""
+        if op != "eq":
+            key_filter = {field: {f"{op}": value}}
+            search = search.filter(Q("range", **key_filter))
+        else:
+            search = search.filter("term", **{field: value})
+
         return search
 
     @staticmethod
-    def sort_field(search: Search, field, direction):
+    def apply_sort(search: Search, field, direction):
         """Database logic to sort search instance."""
         return search.sort({field: {"order": direction}})
 
-    async def execute_search(self, search, limit: int, base_url: str) -> List:
+    async def execute_search(self, search, limit: int, base_url: str) -> List[Item]:
         """Database logic to execute search with limit."""
-        search = search.query()[0:limit]
+        search = search[0:limit]
         body = search.to_dict()
+
         es_response = await self.client.search(
-            index=ITEMS_INDEX, query=body["query"], sort=body.get("sort")
+            index=ITEMS_INDEX, query=body.get("query"), sort=body.get("sort")
         )
 
         return [
@@ -330,7 +323,8 @@ class DatabaseLogic:
             self.sync_client, self._mk_actions(processed_items), refresh=refresh
         )
 
-    def _mk_actions(self, processed_items):
+    @staticmethod
+    def _mk_actions(processed_items):
         return [
             {
                 "_index": ITEMS_INDEX,
@@ -357,8 +351,3 @@ class DatabaseLogic:
             body={"query": {"match_all": {}}},
             wait_for_completion=True,
         )
-
-    @staticmethod
-    def bbox2polygon(b0, b1, b2, b3):
-        """Transform bbox to polygon."""
-        return [[[b0, b1], [b2, b1], [b2, b3], [b0, b3], [b0, b1]]]
