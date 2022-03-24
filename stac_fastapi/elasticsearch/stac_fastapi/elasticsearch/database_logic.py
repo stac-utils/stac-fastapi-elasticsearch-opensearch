@@ -144,9 +144,7 @@ class DatabaseLogic:
                         "geometry": {
                             "shape": {
                                 "type": "polygon",
-                                "coordinates": bbox2polygon(
-                                    bbox[0], bbox[1], bbox[2], bbox[3]
-                                ),
+                                "coordinates": bbox2polygon(*bbox),
                             },
                             "relation": "intersects",
                         }

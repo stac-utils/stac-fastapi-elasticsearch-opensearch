@@ -50,9 +50,7 @@ class CoreClient(AsyncBaseCoreClient):
     async def all_collections(self, **kwargs) -> Collections:
         """Read all collections from the database."""
         base_url = str(kwargs["request"].base_url)
-        serialized_collections = await self.database.get_all_collections(
-            base_url=base_url
-        )
+        collection_list = await self.database.get_all_collections(base_url=base_url)
 
         links = [
             {
@@ -71,10 +69,8 @@ class CoreClient(AsyncBaseCoreClient):
                 "href": urljoin(base_url, "collections"),
             },
         ]
-        collection_list = Collections(
-            collections=serialized_collections or [], links=links
-        )
-        return collection_list
+
+        return Collections(collections=collection_list, links=links)
 
     @overrides
     async def get_collection(self, collection_id: str, **kwargs) -> Collection:
@@ -91,14 +87,14 @@ class CoreClient(AsyncBaseCoreClient):
         links = []
         base_url = str(kwargs["request"].base_url)
 
-        serialized_children, maybe_count = await self.database.get_collection_items(
+        items, maybe_count = await self.database.get_collection_items(
             collection_id=collection_id, limit=limit, base_url=base_url
         )
 
         context_obj = None
         if self.extension_is_enabled("ContextExtension"):
             context_obj = {
-                "returned": len(serialized_children),
+                "returned": len(items),
                 "limit": limit,
             }
             if maybe_count is not None:
@@ -106,7 +102,7 @@ class CoreClient(AsyncBaseCoreClient):
 
         return ItemCollection(
             type="FeatureCollection",
-            features=serialized_children,
+            features=items,
             links=links,
             context=context_obj,
         )
