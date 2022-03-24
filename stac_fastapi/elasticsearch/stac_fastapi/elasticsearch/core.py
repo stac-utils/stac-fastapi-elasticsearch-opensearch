@@ -250,9 +250,7 @@ class CoreClient(AsyncBaseCoreClient):
                     search=search, field=sort.field, direction=sort.direction
                 )
 
-        maybe_count = await self.database.search_count(search=search)
-
-        response_features = await self.database.execute_search(
+        response_features, maybe_count = await self.database.execute_search(
             search=search, limit=search_request.limit, base_url=base_url
         )
 

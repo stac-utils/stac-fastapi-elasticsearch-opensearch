@@ -75,19 +75,14 @@ class DatabaseLogic:
             for c in collections["hits"]["hits"]
         ]
 
-    async def search_count(self, search: Search) -> Optional[int]:
-        """Database logic to count search results."""
-        return (
-            await self.client.count(index=ITEMS_INDEX, body=search.to_dict(count=True))
-        ).get("count")
-
     async def get_collection_items(
         self, collection_id: str, limit: int, base_url: str
     ) -> Tuple[List[Item], Optional[int]]:
         """Database logic to retrieve an ItemCollection and a count of items contained."""
         search = self.apply_collections_filter(Search(), [collection_id])
-        items = await self.execute_search(search=search, limit=limit, base_url=base_url)
-        maybe_count = await self.search_count(search)
+        items, maybe_count = await self.execute_search(
+            search=search, limit=limit, base_url=base_url
+        )
 
         return items, maybe_count
 
@@ -199,19 +194,27 @@ class DatabaseLogic:
         """Database logic to sort search instance."""
         return search.sort({field: {"order": direction}})
 
-    async def execute_search(self, search, limit: int, base_url: str) -> List[Item]:
+    async def execute_search(
+        self, search, limit: int, base_url: str
+    ) -> Tuple[List[Item], Optional[int]]:
         """Database logic to execute search with limit."""
         search = search[0:limit]
         body = search.to_dict()
+
+        maybe_count = (
+            await self.client.count(index=ITEMS_INDEX, body=search.to_dict(count=True))
+        ).get("count")
 
         es_response = await self.client.search(
             index=ITEMS_INDEX, query=body.get("query"), sort=body.get("sort")
         )
 
-        return [
+        items = [
             self.item_serializer.db_to_stac(hit["_source"], base_url=base_url)
             for hit in es_response["hits"]["hits"]
         ]
+
+        return items, maybe_count
 
     """ TRANSACTION LOGIC """
 
