@@ -180,9 +180,9 @@ class DatabaseLogic:
         return search
 
     @staticmethod
-    def populate_sort(sortby) -> Optional[Dict[str, Dict[str, str]]]:
+    def populate_sort(sortby: List) -> Optional[Dict[str, Dict[str, str]]]:
         """Database logic to sort search instance."""
-        if len(sortby) > 0:
+        if sortby:
             return {s.field: {"order": s.direction} for s in sortby}
         else:
             return None
