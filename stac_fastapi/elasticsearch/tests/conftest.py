@@ -19,9 +19,8 @@ from stac_fastapi.elasticsearch.core import (
 from stac_fastapi.elasticsearch.database_logic import COLLECTIONS_INDEX, ITEMS_INDEX
 from stac_fastapi.elasticsearch.extensions import QueryExtension
 from stac_fastapi.elasticsearch.indexes import IndexesClient
-from stac_fastapi.extensions.core import (
+from stac_fastapi.extensions.core import (  # FieldsExtension,
     ContextExtension,
-    FieldsExtension,
     SortExtension,
     TokenPaginationExtension,
     TransactionExtension,
@@ -152,7 +151,7 @@ async def app():
         ),
         ContextExtension(),
         SortExtension(),
-        FieldsExtension(),
+        # FieldsExtension(),
         QueryExtension(),
         TokenPaginationExtension(),
     ]
