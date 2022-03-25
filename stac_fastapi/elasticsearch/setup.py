@@ -19,6 +19,7 @@ install_requires = [
     "pystac[validation]",
     "uvicorn",
     "overrides",
+    "starlette",
 ]
 
 extra_reqs = {

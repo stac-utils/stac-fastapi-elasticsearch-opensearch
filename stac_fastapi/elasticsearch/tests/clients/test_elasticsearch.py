@@ -94,7 +94,7 @@ async def test_get_collection_items(app_client, ctx, core_client, txn_client):
         item["id"] = str(uuid.uuid4())
         await txn_client.create_item(item, request=MockRequest, refresh=True)
 
-    fc = await core_client.item_collection(coll["id"], request=MockRequest)
+    fc = await core_client.item_collection(coll["id"], request=MockRequest())
     assert len(fc["features"]) == num_of_items_to_create + 1  # ctx.item
 
     for item in fc["features"]:
@@ -166,7 +166,7 @@ async def test_bulk_item_insert(ctx, core_client, txn_client, bulk_txn_client):
 
     bulk_txn_client.bulk_item_insert(Items(items=items), refresh=True)
 
-    fc = await core_client.item_collection(ctx.collection["id"], request=MockRequest)
+    fc = await core_client.item_collection(ctx.collection["id"], request=MockRequest())
     assert len(fc["features"]) >= 10
 
     # for item in items:
@@ -190,20 +190,16 @@ async def test_feature_collection_insert(
 
     await create_item(txn_client, feature_collection)
 
-    fc = await core_client.item_collection(ctx.collection["id"], request=MockRequest)
+    fc = await core_client.item_collection(ctx.collection["id"], request=MockRequest())
     assert len(fc["features"]) >= 10
 
 
-@pytest.mark.skip(reason="app fixture isn't injected or something?")
 async def test_landing_page_no_collection_title(ctx, core_client, txn_client, app):
-    class MockRequestWithApp(MockRequest):
-        app = app
-
     ctx.collection["id"] = "new_id"
     del ctx.collection["title"]
     await txn_client.create_collection(ctx.collection, request=MockRequest)
 
-    landing_page = await core_client.landing_page(request=MockRequestWithApp)
+    landing_page = await core_client.landing_page(request=MockRequest(app=app))
     for link in landing_page["links"]:
         if link["href"].split("/")[-1] == ctx.collection["id"]:
             assert link["title"]

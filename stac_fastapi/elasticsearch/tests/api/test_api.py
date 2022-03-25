@@ -6,31 +6,29 @@ import pytest
 
 from ..conftest import MockRequest, create_collection, create_item
 
-ROUTES = set(
-    [
-        "GET /_mgmt/ping",
-        "GET /docs/oauth2-redirect",
-        "HEAD /docs/oauth2-redirect",
-        "GET /",
-        "GET /conformance",
-        "GET /api",
-        "GET /api.html",
-        "HEAD /api",
-        "HEAD /api.html",
-        "GET /collections",
-        "GET /collections/{collection_id}",
-        "GET /collections/{collection_id}/items",
-        "GET /collections/{collection_id}/items/{item_id}",
-        "GET /search",
-        "POST /search",
-        "DELETE /collections/{collection_id}",
-        "DELETE /collections/{collection_id}/items/{item_id}",
-        "POST /collections",
-        "POST /collections/{collection_id}/items",
-        "PUT /collections",
-        "PUT /collections/{collection_id}/items",
-    ]
-)
+ROUTES = {
+    "GET /_mgmt/ping",
+    "GET /docs/oauth2-redirect",
+    "HEAD /docs/oauth2-redirect",
+    "GET /",
+    "GET /conformance",
+    "GET /api",
+    "GET /api.html",
+    "HEAD /api",
+    "HEAD /api.html",
+    "GET /collections",
+    "GET /collections/{collection_id}",
+    "GET /collections/{collection_id}/items",
+    "GET /collections/{collection_id}/items/{item_id}",
+    "GET /search",
+    "POST /search",
+    "DELETE /collections/{collection_id}",
+    "DELETE /collections/{collection_id}/items/{item_id}",
+    "POST /collections",
+    "POST /collections/{collection_id}/items",
+    "PUT /collections",
+    "PUT /collections/{collection_id}/items",
+}
 
 
 async def test_post_search_content_type(app_client, ctx):
@@ -137,15 +135,15 @@ async def test_app_query_extension_gte(app_client, ctx):
     assert len(resp.json()["features"]) == 1
 
 
-async def test_app_query_extension_limit_lt0(app_client, ctx):
+async def test_app_query_extension_limit_lt0(app_client):
     assert (await app_client.post("/search", json={"limit": -1})).status_code == 400
 
 
-async def test_app_query_extension_limit_gt10000(app_client, ctx):
+async def test_app_query_extension_limit_gt10000(app_client):
     assert (await app_client.post("/search", json={"limit": 10001})).status_code == 400
 
 
-async def test_app_query_extension_limit_10000(app_client, ctx):
+async def test_app_query_extension_limit_10000(app_client):
     params = {"limit": 10000}
     resp = await app_client.post("/search", json=params)
     assert resp.status_code == 200

@@ -2,7 +2,7 @@ import asyncio
 import copy
 import json
 import os
-from typing import Callable, Dict
+from typing import Any, Callable, Dict, Optional
 
 import pytest
 import pytest_asyncio
@@ -40,6 +40,13 @@ class Context:
 
 class MockRequest:
     base_url = "http://test-server"
+
+    def __init__(
+        self, method: str = "GET", url: str = "XXXX", app: Optional[Any] = None
+    ):
+        self.method = method
+        self.url = url
+        self.app = app
 
 
 class TestSettings(AsyncElasticsearchSettings):
@@ -181,5 +188,5 @@ async def app():
 async def app_client(app):
     await IndexesClient().create_indexes()
 
-    async with AsyncClient(app=app, base_url="http://test") as c:
+    async with AsyncClient(app=app, base_url="http://test-server") as c:
         yield c

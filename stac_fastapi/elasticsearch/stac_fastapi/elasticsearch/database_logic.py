@@ -1,5 +1,6 @@
 """Database logic."""
 import logging
+from base64 import urlsafe_b64decode, urlsafe_b64encode
 from typing import Dict, List, Optional, Tuple, Type, Union
 
 import attr
@@ -74,17 +75,6 @@ class DatabaseLogic:
             self.collection_serializer.db_to_stac(c["_source"], base_url=base_url)
             for c in collections["hits"]["hits"]
         ]
-
-    async def get_collection_items(
-        self, collection_id: str, limit: int, base_url: str
-    ) -> Tuple[List[Item], Optional[int]]:
-        """Database logic to retrieve an ItemCollection and a count of items contained."""
-        search = self.apply_collections_filter(Search(), [collection_id])
-        items, maybe_count = await self.execute_search(
-            search=search, limit=limit, base_url=base_url
-        )
-
-        return items, maybe_count
 
     async def get_one_item(self, collection_id: str, item_id: str) -> Dict:
         """Database logic to retrieve a single item."""
@@ -190,31 +180,53 @@ class DatabaseLogic:
         return search
 
     @staticmethod
-    def apply_sort(search: Search, field, direction):
+    def populate_sort(sortby: List) -> Optional[Dict[str, Dict[str, str]]]:
         """Database logic to sort search instance."""
-        return search.sort({field: {"order": direction}})
+        if sortby:
+            return {s.field: {"order": s.direction} for s in sortby}
+        else:
+            return None
 
     async def execute_search(
-        self, search, limit: int, base_url: str
-    ) -> Tuple[List[Item], Optional[int]]:
+        self,
+        search: Search,
+        limit: int,
+        token: Optional[str],
+        sort: Optional[Dict[str, Dict[str, str]]],
+        base_url: str,
+    ) -> Tuple[List[Item], Optional[int], Optional[str]]:
         """Database logic to execute search with limit."""
-        search = search[0:limit]
         body = search.to_dict()
 
         maybe_count = (
             await self.client.count(index=ITEMS_INDEX, body=search.to_dict(count=True))
         ).get("count")
 
+        search_after = None
+        if token:
+            search_after = urlsafe_b64decode(token.encode()).decode().split(",")
+
         es_response = await self.client.search(
-            index=ITEMS_INDEX, query=body.get("query"), sort=body.get("sort")
+            index=ITEMS_INDEX,
+            query=body.get("query"),
+            sort=sort or DEFAULT_SORT,
+            search_after=search_after,
+            size=limit,
         )
 
+        hits = es_response["hits"]["hits"]
         items = [
             self.item_serializer.db_to_stac(hit["_source"], base_url=base_url)
-            for hit in es_response["hits"]["hits"]
+            for hit in hits
         ]
 
-        return items, maybe_count
+        next_token = None
+        if hits and (sort_array := hits[-1].get("sort")):
+            next_token = urlsafe_b64encode(
+                ",".join([str(x) for x in sort_array]).encode()
+            ).decode()
+
+        return items, maybe_count, next_token
 
     """ TRANSACTION LOGIC """
 
