@@ -197,23 +197,27 @@ class DatabaseLogic:
         base_url: str,
     ) -> Tuple[List[Item], Optional[int], Optional[str]]:
         """Database logic to execute search with limit."""
-        body = search.to_dict()
-
-        maybe_count = (
-            await self.client.count(index=ITEMS_INDEX, body=search.to_dict(count=True))
-        ).get("count")
-
         search_after = None
         if token:
             search_after = urlsafe_b64decode(token.encode()).decode().split(",")
 
-        es_response = await self.client.search(
-            index=ITEMS_INDEX,
-            query=body.get("query"),
-            sort=sort or DEFAULT_SORT,
-            search_after=search_after,
-            size=limit,
+        query = search.query.to_dict() if search.query else None
+
+        search_task = asyncio.create_task(
+            self.client.search(
+                index=ITEMS_INDEX,
+                query=query,
+                sort=sort or DEFAULT_SORT,
+                search_after=search_after,
+                size=limit,
+            )
         )
+
+        count_task = asyncio.create_task(
+            self.client.count(index=ITEMS_INDEX, body=search.to_dict(count=True))
+        )
+
+        es_response = await search_task
 
         hits = es_response["hits"]["hits"]
         items = [
@@ -226,6 +230,15 @@ class DatabaseLogic:
             next_token = urlsafe_b64encode(
                 ",".join([str(x) for x in sort_array]).encode()
             ).decode()
+
+        # (1) count should not block returning results, so don't wait for it to be done
+        # (2) don't cancel the task so that it will populate the ES cache for subsequent counts
+        maybe_count = None
+        if count_task.done():
+            try:
+                maybe_count = count_task.result().get("count")
+            except Exception as e:  # type: ignore
+                logger.error(f"Count task failed: {e}")
 
         return items, maybe_count, next_token
 

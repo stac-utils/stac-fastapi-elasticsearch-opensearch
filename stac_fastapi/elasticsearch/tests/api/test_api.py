@@ -103,7 +103,9 @@ async def test_app_context_extension(app_client, ctx, txn_client):
     resp_json = resp.json()
     assert len(resp_json["features"]) == 1
     assert "context" in resp_json
-    assert resp_json["context"]["returned"] == resp_json["context"]["matched"] == 1
+    assert resp_json["context"]["returned"] == 1
+    if matched := resp_json["context"].get("matched"):
+        assert matched == 1
 
 
 @pytest.mark.skip(reason="fields not implemented yet")
