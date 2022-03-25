@@ -1,4 +1,5 @@
 """Database logic."""
+import asyncio
 import logging
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from typing import Dict, List, Optional, Tuple, Type, Union
@@ -325,9 +326,11 @@ class DatabaseLogic:
 
     async def bulk_async(self, processed_items, refresh: bool = False):
         """Database logic for async bulk item insertion."""
-        # todo: wrap as async
-        helpers.bulk(
-            self.sync_client, self._mk_actions(processed_items), refresh=refresh
+        await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: helpers.bulk(
+                self.sync_client, self._mk_actions(processed_items), refresh=refresh
+            ),
         )
 
     def bulk_sync(self, processed_items, refresh: bool = False):
