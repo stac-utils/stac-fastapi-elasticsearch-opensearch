@@ -1,4 +1,4 @@
-# stac-fastapi-elasticsearch
+# STAC FastAPI Elasticsearch
 
 Elasticsearch backend for stac-fastapi. 
 
