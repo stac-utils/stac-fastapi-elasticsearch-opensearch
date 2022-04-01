@@ -2,7 +2,7 @@
 import asyncio
 import logging
 from base64 import urlsafe_b64decode, urlsafe_b64encode
-from typing import Dict, List, Optional, Tuple, Type, Union, Any, Iterable
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Type, Union
 
 import attr
 import elasticsearch
