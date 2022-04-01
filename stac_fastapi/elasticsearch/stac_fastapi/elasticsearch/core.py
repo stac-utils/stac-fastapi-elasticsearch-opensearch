@@ -52,7 +52,11 @@ class CoreClient(AsyncBaseCoreClient):
     async def all_collections(self, **kwargs) -> Collections:
         """Read all collections from the database."""
         base_url = str(kwargs["request"].base_url)
-        collection_list = await self.database.get_all_collections(base_url=base_url)
+        collection_list = await self.database.get_all_collections()
+        collection_list =  [
+            self.collection_serializer.db_to_stac(c, base_url=base_url)
+            for c in collection_list
+        ]
 
         links = [
             {

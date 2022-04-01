@@ -66,15 +66,13 @@ class DatabaseLogic:
 
     """CORE LOGIC"""
 
-    async def get_all_collections(self, base_url: str) -> List[Collection]:
+    async def get_all_collections(self) -> List[Collection]:
         """Database logic to retrieve a list of all collections."""
         # https://github.com/stac-utils/stac-fastapi-elasticsearch/issues/65
         # collections should be paginated, but at least return more than the default 10 for now
         collections = await self.client.search(index=COLLECTIONS_INDEX, size=1000)
-
         return [
-            self.collection_serializer.db_to_stac(c["_source"], base_url=base_url)
-            for c in collections["hits"]["hits"]
+            c["_source"] for c in collections["hits"]["hits"]
         ]
 
     async def get_one_item(self, collection_id: str, item_id: str) -> Dict:
