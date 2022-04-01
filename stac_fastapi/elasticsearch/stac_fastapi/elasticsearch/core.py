@@ -91,6 +91,7 @@ class CoreClient(AsyncBaseCoreClient):
     ) -> ItemCollection:
         """Read an item collection from the database."""
         request: Request = kwargs["request"]
+        base_url = str(kwargs["request"].base_url)
 
         items, maybe_count, next_token = await self.database.execute_search(
             search=self.database.apply_collections_filter(
@@ -100,6 +101,10 @@ class CoreClient(AsyncBaseCoreClient):
             token=token,
             sort=None,
         )
+
+        items = [
+            self.item_serializer.db_to_stac(item, base_url=base_url) for item in items
+        ]
 
         context_obj = None
         if self.extension_is_enabled("ContextExtension"):
