@@ -215,7 +215,7 @@ class DatabaseLogic:
         es_response = await search_task
 
         hits = es_response["hits"]["hits"]
-        items = [hit["_source"] for hit in hits]
+        items = (hit["_source"] for hit in hits)
 
         next_token = None
         if hits and (sort_array := hits[-1].get("sort")):
