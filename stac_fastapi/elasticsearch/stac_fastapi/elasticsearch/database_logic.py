@@ -71,9 +71,7 @@ class DatabaseLogic:
         # https://github.com/stac-utils/stac-fastapi-elasticsearch/issues/65
         # collections should be paginated, but at least return more than the default 10 for now
         collections = await self.client.search(index=COLLECTIONS_INDEX, size=1000)
-        return [
-            c["_source"] for c in collections["hits"]["hits"]
-        ]
+        return [c["_source"] for c in collections["hits"]["hits"]]
 
     async def get_one_item(self, collection_id: str, item_id: str) -> Dict:
         """Database logic to retrieve a single item."""
@@ -192,7 +190,6 @@ class DatabaseLogic:
         limit: int,
         token: Optional[str],
         sort: Optional[Dict[str, Dict[str, str]]],
-        base_url: str,
     ) -> Tuple[List[Item], Optional[int], Optional[str]]:
         """Database logic to execute search with limit."""
         search_after = None
@@ -218,9 +215,7 @@ class DatabaseLogic:
         es_response = await search_task
 
         hits = es_response["hits"]["hits"]
-        items = [
-            hit["_source"] for hit in hits
-        ]
+        items = [hit["_source"] for hit in hits]
 
         next_token = None
         if hits and (sort_array := hits[-1].get("sort")):
