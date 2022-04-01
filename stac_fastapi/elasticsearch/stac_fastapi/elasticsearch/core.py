@@ -272,6 +272,11 @@ class CoreClient(AsyncBaseCoreClient):
             base_url=base_url,
         )
 
+        items = [
+            self.item_serializer.db_to_stac(item, base_url=base_url)
+            for item in items
+        ]
+
         # if self.extension_is_enabled("FieldsExtension"):
         #     if search_request.query is not None:
         #         query_include: Set[str] = set(

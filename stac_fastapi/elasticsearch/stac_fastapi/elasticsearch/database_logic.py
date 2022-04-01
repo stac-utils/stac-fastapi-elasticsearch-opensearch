@@ -221,8 +221,7 @@ class DatabaseLogic:
 
         hits = es_response["hits"]["hits"]
         items = [
-            self.item_serializer.db_to_stac(hit["_source"], base_url=base_url)
-            for hit in hits
+            hit["_source"] for hit in hits
         ]
 
         next_token = None
