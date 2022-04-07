@@ -244,7 +244,7 @@ class CoreClient(AsyncBaseCoreClient):
             search = self.database.apply_bbox_filter(search=search, bbox=bbox)
 
         if search_request.intersects:
-            self.database.apply_intersects_filter(
+            search = self.database.apply_intersects_filter(
                 search=search, intersects=search_request.intersects
             )
 
