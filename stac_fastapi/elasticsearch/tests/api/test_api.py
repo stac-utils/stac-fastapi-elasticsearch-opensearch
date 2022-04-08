@@ -201,6 +201,21 @@ async def test_search_point_intersects(app_client, ctx):
     assert len(resp_json["features"]) == 1
 
 
+async def test_search_point_does_not_intersect(app_client, ctx):
+    point = [15.04, -3.14]
+    intersects = {"type": "Point", "coordinates": point}
+
+    params = {
+        "intersects": intersects,
+        "collections": [ctx.item["collection"]],
+    }
+    resp = await app_client.post("/search", json=params)
+
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["features"]) == 0
+
+
 async def test_datetime_non_interval(app_client, ctx):
     dt_formats = [
         "2020-02-12T12:30:22+00:00",
