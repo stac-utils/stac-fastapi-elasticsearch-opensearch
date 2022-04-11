@@ -52,7 +52,11 @@ class CoreClient(AsyncBaseCoreClient):
     async def all_collections(self, **kwargs) -> Collections:
         """Read all collections from the database."""
         base_url = str(kwargs["request"].base_url)
-        collection_list = await self.database.get_all_collections(base_url=base_url)
+        collection_list = await self.database.get_all_collections()
+        collection_list = [
+            self.collection_serializer.db_to_stac(c, base_url=base_url)
+            for c in collection_list
+        ]
 
         links = [
             {
@@ -87,7 +91,7 @@ class CoreClient(AsyncBaseCoreClient):
     ) -> ItemCollection:
         """Read an item collection from the database."""
         request: Request = kwargs["request"]
-        base_url = str(request.base_url)
+        base_url = str(kwargs["request"].base_url)
 
         items, maybe_count, next_token = await self.database.execute_search(
             search=self.database.apply_collections_filter(
@@ -96,8 +100,11 @@ class CoreClient(AsyncBaseCoreClient):
             limit=limit,
             token=token,
             sort=None,
-            base_url=base_url,
         )
+
+        items = [
+            self.item_serializer.db_to_stac(item, base_url=base_url) for item in items
+        ]
 
         context_obj = None
         if self.extension_is_enabled("ContextExtension"):
@@ -269,8 +276,11 @@ class CoreClient(AsyncBaseCoreClient):
             limit=limit,
             token=search_request.token,  # type: ignore
             sort=sort,
-            base_url=base_url,
         )
+
+        items = [
+            self.item_serializer.db_to_stac(item, base_url=base_url) for item in items
+        ]
 
         # if self.extension_is_enabled("FieldsExtension"):
         #     if search_request.query is not None:

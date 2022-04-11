@@ -2,7 +2,7 @@
 import asyncio
 import logging
 from base64 import urlsafe_b64decode, urlsafe_b64encode
-from typing import Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Type, Union
 
 import attr
 import elasticsearch
@@ -66,16 +66,12 @@ class DatabaseLogic:
 
     """CORE LOGIC"""
 
-    async def get_all_collections(self, base_url: str) -> List[Collection]:
+    async def get_all_collections(self) -> List[Dict[str, Any]]:
         """Database logic to retrieve a list of all collections."""
         # https://github.com/stac-utils/stac-fastapi-elasticsearch/issues/65
         # collections should be paginated, but at least return more than the default 10 for now
         collections = await self.client.search(index=COLLECTIONS_INDEX, size=1000)
-
-        return [
-            self.collection_serializer.db_to_stac(c["_source"], base_url=base_url)
-            for c in collections["hits"]["hits"]
-        ]
+        return (c["_source"] for c in collections["hits"]["hits"])
 
     async def get_one_item(self, collection_id: str, item_id: str) -> Dict:
         """Database logic to retrieve a single item."""
@@ -194,8 +190,7 @@ class DatabaseLogic:
         limit: int,
         token: Optional[str],
         sort: Optional[Dict[str, Dict[str, str]]],
-        base_url: str,
-    ) -> Tuple[List[Item], Optional[int], Optional[str]]:
+    ) -> Tuple[Iterable[Dict[str, Any]], Optional[int], Optional[str]]:
         """Database logic to execute search with limit."""
         search_after = None
         if token:
@@ -220,10 +215,7 @@ class DatabaseLogic:
         es_response = await search_task
 
         hits = es_response["hits"]["hits"]
-        items = [
-            self.item_serializer.db_to_stac(hit["_source"], base_url=base_url)
-            for hit in hits
-        ]
+        items = (hit["_source"] for hit in hits)
 
         next_token = None
         if hits and (sort_array := hits[-1].get("sort")):
