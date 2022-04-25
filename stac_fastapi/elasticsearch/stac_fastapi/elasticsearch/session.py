@@ -1,20 +1,9 @@
 """database session management."""
 import logging
-from contextlib import contextmanager
 
 import attr
-from fastapi_utils.session import FastAPISessionMaker as _FastAPISessionMaker
 
 logger = logging.getLogger(__name__)
-
-
-class FastAPISessionMaker(_FastAPISessionMaker):
-    """FastAPISessionMaker."""
-
-    @contextmanager
-    def context_session(self):
-        """Override base method to include exception handling."""
-        ...
 
 
 @attr.s
