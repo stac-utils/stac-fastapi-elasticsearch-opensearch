@@ -19,7 +19,7 @@ jobs:
         image: docker.elastic.co/elasticsearch/elasticsearch:8.1.3
         env:
           ES_JAVA_OPTS: -Xms512m -Xmx1g
-        options: -v ${{ github.workspace }}/elasticsearch/config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
+        options: -v ${{ github.workspace }}/elasticsearch/config/:/usr/share/elasticsearch/config/
         ports:
           - 9200:9200
 
