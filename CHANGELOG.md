@@ -11,11 +11,24 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
-- Support for Elasticsearch 7.x or 8.x
-
 ### Fixed
 
 - Fixed search intersects query
+
+### Changed
+
+- Default to Python 3.10
+- Default to Elasticsearch 8.x
+
+### Removed
+
+## [0.1.0]
+
+### Deprecated
+
+### Added
+
+### Fixed
 
 ### Changed
 
@@ -28,5 +41,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Removed
 
+## Versions
 
-[Unreleased]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/main>
+- [Unreleased]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v0.1.0...main>
+- [v0.1.0]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v0.1.0>
