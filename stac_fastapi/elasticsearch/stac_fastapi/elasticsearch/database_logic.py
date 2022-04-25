@@ -5,6 +5,8 @@ from base64 import urlsafe_b64decode, urlsafe_b64encode
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Type, Union
 
 import attr
+import elasticsearch
+from elasticsearch import helpers
 from elasticsearch_dsl import Q, Search
 from geojson_pydantic.geometries import (
     GeometryCollection,
@@ -16,8 +18,6 @@ from geojson_pydantic.geometries import (
     Polygon,
 )
 
-import elasticsearch
-from elasticsearch import helpers
 from stac_fastapi.elasticsearch import serializers
 from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
 from stac_fastapi.elasticsearch.config import (

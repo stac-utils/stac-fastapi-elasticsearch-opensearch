@@ -44,14 +44,7 @@ file named `.env` in the same directory you run docker-compose from:
 ELASTICSEARCH_VERSION=7.12.0
 ```
 
-### Generate a keystore and cert
-
-```shell
-docker-compose -f docker-compose.setup.yml run --rm keystore
-docker-compose -f docker-compose.setup.yml run --rm certs
-```
-
-
+TBD: how to run this with 8.x with a password enabled and TLS.
 
 To create a new Collection:
 
