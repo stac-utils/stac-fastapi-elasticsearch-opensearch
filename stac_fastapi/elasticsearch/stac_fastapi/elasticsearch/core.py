@@ -52,31 +52,30 @@ class CoreClient(AsyncBaseCoreClient):
     async def all_collections(self, **kwargs) -> Collections:
         """Read all collections from the database."""
         base_url = str(kwargs["request"].base_url)
-        collection_list = await self.database.get_all_collections()
-        collection_list = [
-            self.collection_serializer.db_to_stac(c, base_url=base_url)
-            for c in collection_list
-        ]
 
-        links = [
-            {
-                "rel": Relations.root.value,
-                "type": MimeTypes.json,
-                "href": base_url,
-            },
-            {
-                "rel": Relations.parent.value,
-                "type": MimeTypes.json,
-                "href": base_url,
-            },
-            {
-                "rel": Relations.self.value,
-                "type": MimeTypes.json,
-                "href": urljoin(base_url, "collections"),
-            },
-        ]
-
-        return Collections(collections=collection_list, links=links)
+        return Collections(
+            collections=[
+                self.collection_serializer.db_to_stac(c, base_url=base_url)
+                for c in await self.database.get_all_collections()
+            ],
+            links=[
+                {
+                    "rel": Relations.root.value,
+                    "type": MimeTypes.json,
+                    "href": base_url,
+                },
+                {
+                    "rel": Relations.parent.value,
+                    "type": MimeTypes.json,
+                    "href": base_url,
+                },
+                {
+                    "rel": Relations.self.value,
+                    "type": MimeTypes.json,
+                    "href": urljoin(base_url, "collections"),
+                },
+            ],
+        )
 
     @overrides
     async def get_collection(self, collection_id: str, **kwargs) -> Collection:
@@ -341,8 +340,11 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             processed_items = [
                 bulk_client.preprocess_item(item, base_url) for item in item["features"]  # type: ignore
             ]
+
+            # not a great way to get the collection_id-- should be part of the method signature
+            collection_id = processed_items[0]["collection"]
             await self.database.bulk_async(
-                processed_items, refresh=kwargs.get("refresh", False)
+                collection_id, processed_items, refresh=kwargs.get("refresh", False)
             )
 
             return None  # type: ignore
@@ -355,12 +357,14 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     async def update_item(self, item: stac_types.Item, **kwargs) -> stac_types.Item:
         """Update item."""
         base_url = str(kwargs["request"].base_url)
+        collection_id = item["collection"]
+
         now = datetime_type.now(timezone.utc).isoformat().replace("+00:00", "Z")
         item["properties"]["updated"] = str(now)
 
-        await self.database.check_collection_exists(collection_id=item["collection"])
+        await self.database.check_collection_exists(collection_id)
         # todo: index instead of delete and create
-        await self.delete_item(item_id=item["id"], collection_id=item["collection"])
+        await self.delete_item(item_id=item["id"], collection_id=collection_id)
         await self.create_item(item=item, **kwargs)
 
         return ItemSerializer.db_to_stac(item, base_url)
@@ -440,6 +444,11 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
             self.preprocess_item(item, base_url) for item in items.items.values()
         ]
 
-        self.database.bulk_sync(processed_items, refresh=kwargs.get("refresh", False))
+        # not a great way to get the collection_id-- should be part of the method signature
+        collection_id = processed_items[0]["collection"]
+
+        self.database.bulk_sync(
+            collection_id, processed_items, refresh=kwargs.get("refresh", False)
+        )
 
         return f"Successfully added {len(processed_items)} Items."

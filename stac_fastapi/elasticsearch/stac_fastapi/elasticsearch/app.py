@@ -7,8 +7,8 @@ from stac_fastapi.elasticsearch.core import (
     CoreClient,
     TransactionsClient,
 )
+from stac_fastapi.elasticsearch.database_logic import create_collection_index
 from stac_fastapi.elasticsearch.extensions import QueryExtension
-from stac_fastapi.elasticsearch.indexes import IndexesClient
 from stac_fastapi.elasticsearch.session import Session
 from stac_fastapi.extensions.core import (  # FieldsExtension,
     ContextExtension,
@@ -45,7 +45,7 @@ app = api.app
 
 @app.on_event("startup")
 async def _startup_event():
-    await IndexesClient().create_indexes()
+    await create_collection_index()
 
 
 def run():
