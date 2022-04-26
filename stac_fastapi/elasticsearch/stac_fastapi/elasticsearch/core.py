@@ -99,6 +99,8 @@ class CoreClient(AsyncBaseCoreClient):
             limit=limit,
             token=token,
             sort=None,
+            collection_ids=[collection_id],
+            ignore_unavailable=False,
         )
 
         items = [
@@ -275,6 +277,7 @@ class CoreClient(AsyncBaseCoreClient):
             limit=limit,
             token=search_request.token,  # type: ignore
             sort=sort,
+            collection_ids=search_request.collections,
         )
 
         items = [

@@ -17,11 +17,17 @@ repos:
           # W503 black conflicts with "line break before operator" rule
           # E203 black conflicts with "whitespace before ':'" rule
           '--ignore=E501,W503,E203,C901' ]
-#  - repo: https://github.com/pre-commit/mirrors-mypy
-#    rev: v0.942
-#    hooks:
-#      - id: mypy
-#        args: [--no-strict-optional, --ignore-missing-imports]
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v0.942
+    hooks:
+      - id: mypy
+        exclude: /tests/
+        # --strict
+        args: [--no-strict-optional, --ignore-missing-imports, --implicit-reexport]
+        additional_dependencies: [
+          "types-attrs",
+          "types-requests"
+        ]
   - repo: https://github.com/PyCQA/pydocstyle
     rev: 6.1.1
     hooks:

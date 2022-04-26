@@ -44,11 +44,11 @@ app = api.app
 
 
 @app.on_event("startup")
-async def _startup_event():
+async def _startup_event() -> None:
     await create_collection_index()
 
 
-def run():
+def run() -> None:
     """Run app from command line using uvicorn if available."""
     try:
         import uvicorn

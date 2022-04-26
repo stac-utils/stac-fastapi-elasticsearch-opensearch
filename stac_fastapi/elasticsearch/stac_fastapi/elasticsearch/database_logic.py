@@ -2,22 +2,12 @@
 import asyncio
 import logging
 from base64 import urlsafe_b64decode, urlsafe_b64encode
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Type, Union
+from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple, Type, Union
 
 import attr
 from elasticsearch_dsl import Q, Search
-from geojson_pydantic.geometries import (
-    GeometryCollection,
-    LineString,
-    MultiLineString,
-    MultiPoint,
-    MultiPolygon,
-    Point,
-    Polygon,
-)
 
-import elasticsearch
-from elasticsearch import helpers
+from elasticsearch import exceptions, helpers  # type: ignore
 from stac_fastapi.elasticsearch import serializers
 from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
 from stac_fastapi.elasticsearch.config import (
@@ -144,13 +134,12 @@ def indices(collection_ids: Optional[List[str]]) -> str:
     if collection_ids is None:
         return DEFAULT_INDICES
     else:
-        return ",".join([f"{ITEMS_INDEX_PREFIX}{c}" for c in collection_ids])
+        return ",".join([f"{ITEMS_INDEX_PREFIX}{c.strip()}" for c in collection_ids])
 
 
-async def create_collection_index():
+async def create_collection_index() -> None:
     """Create the index for Items and Collections."""
-    client = AsyncElasticsearchSettings().create_client
-    await client.indices.create(
+    await AsyncElasticsearchSettings().create_client.indices.create(
         index=COLLECTIONS_INDEX,
         mappings=ES_COLLECTIONS_MAPPINGS,
         ignore=400,  # ignore 400 already exists code
@@ -174,7 +163,7 @@ async def delete_item_index(collection_id: str):
     )
 
 
-def bbox2polygon(b0, b1, b2, b3):
+def bbox2polygon(b0: float, b1: float, b2: float, b3: float) -> List[List[List[float]]]:
     """Transform bbox to polygon."""
     return [[[b0, b1], [b2, b1], [b2, b3], [b0, b3], [b0, b1]]]
 
@@ -194,6 +183,14 @@ def mk_actions(collection_id: str, processed_items: List[Item]):
         }
         for item in processed_items
     ]
+
+
+# stac_pydantic classes extend _GeometryBase, which doesn't have a type field,
+# So create our own Protocol for typing
+# Union[ Point, MultiPoint, LineString, MultiLineString, Polygon, MultiPolygon, GeometryCollection]
+class Geometry(Protocol):  # noqa
+    type: str
+    coordinates: Any
 
 
 @attr.s
@@ -226,7 +223,7 @@ class DatabaseLogic:
                 index=index_by_collection_id(collection_id),
                 id=mk_item_id(item_id, collection_id),
             )
-        except elasticsearch.exceptions.NotFoundError:
+        except exceptions.NotFoundError:
             raise NotFoundError(
                 f"Item {item_id} does not exist in Collection {collection_id}"
             )
@@ -285,15 +282,7 @@ class DatabaseLogic:
     @staticmethod
     def apply_intersects_filter(
         search: Search,
-        intersects: Union[
-            Point,
-            MultiPoint,
-            LineString,
-            MultiLineString,
-            Polygon,
-            MultiPolygon,
-            GeometryCollection,
-        ],
+        intersects: Geometry,
     ):
         """Database logic to search a geojson object."""
         return search.filter(
@@ -337,6 +326,8 @@ class DatabaseLogic:
         limit: int,
         token: Optional[str],
         sort: Optional[Dict[str, Dict[str, str]]],
+        collection_ids: Optional[List[str]],
+        ignore_unavailable: bool = True,
     ) -> Tuple[Iterable[Dict[str, Any]], Optional[int], Optional[str]]:
         """Database logic to execute search with limit."""
         search_after = None
@@ -345,9 +336,12 @@ class DatabaseLogic:
 
         query = search.query.to_dict() if search.query else None
 
+        index_param = indices(collection_ids)
+
         search_task = asyncio.create_task(
             self.client.search(
-                index=indices(None),
+                index=index_param,
+                ignore_unavailable=ignore_unavailable,
                 query=query,
                 sort=sort or DEFAULT_SORT,
                 search_after=search_after,
@@ -356,10 +350,17 @@ class DatabaseLogic:
         )
 
         count_task = asyncio.create_task(
-            self.client.count(index=indices(None), body=search.to_dict(count=True))
+            self.client.count(
+                index=index_param,
+                ignore_unavailable=ignore_unavailable,
+                body=search.to_dict(count=True),
+            )
         )
 
-        es_response = await search_task
+        try:
+            es_response = await search_task
+        except exceptions.NotFoundError:
+            raise NotFoundError(f"Collections '{collection_ids}' do not exist")
 
         hits = es_response["hits"]["hits"]
         items = (hit["_source"] for hit in hits)
@@ -376,7 +377,7 @@ class DatabaseLogic:
         if count_task.done():
             try:
                 maybe_count = count_task.result().get("count")
-            except Exception as e:  # type: ignore
+            except Exception as e:
                 logger.error(f"Count task failed: {e}")
 
         return items, maybe_count, next_token
@@ -446,7 +447,7 @@ class DatabaseLogic:
                 id=mk_item_id(item_id, collection_id),
                 refresh=refresh,
             )
-        except elasticsearch.exceptions.NotFoundError:
+        except exceptions.NotFoundError:
             raise NotFoundError(
                 f"Item {item_id} in collection {collection_id} not found"
             )
@@ -473,7 +474,7 @@ class DatabaseLogic:
             collection = await self.client.get(
                 index=COLLECTIONS_INDEX, id=collection_id
             )
-        except elasticsearch.exceptions.NotFoundError:
+        except exceptions.NotFoundError:
             raise NotFoundError(f"Collection {collection_id} not found")
 
         return collection["_source"]
@@ -488,7 +489,7 @@ class DatabaseLogic:
 
     async def bulk_async(
         self, collection_id: str, processed_items: List[Item], refresh: bool = False
-    ):
+    ) -> None:
         """Database logic for async bulk item insertion."""
         await asyncio.get_event_loop().run_in_executor(
             None,
@@ -501,7 +502,7 @@ class DatabaseLogic:
 
     def bulk_sync(
         self, collection_id: str, processed_items: List[Item], refresh: bool = False
-    ):
+    ) -> None:
         """Database logic for sync bulk item insertion."""
         helpers.bulk(
             self.sync_client,

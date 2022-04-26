@@ -2,7 +2,7 @@
 import os
 from typing import Any, Dict, Set
 
-from elasticsearch import AsyncElasticsearch, Elasticsearch
+from elasticsearch import AsyncElasticsearch, Elasticsearch  # type: ignore
 from stac_fastapi.types.config import ApiSettings
 
 

@@ -391,6 +391,14 @@ async def test_item_search_get_without_collections(app_client, ctx):
     assert resp.status_code == 200
 
 
+async def test_item_search_get_with_non_existent_collections(app_client, ctx):
+    """Test GET search with non-existent collections"""
+
+    params = {"collections": "non-existent-collection,or-this-one"}
+    resp = await app_client.get("/search", params=params)
+    assert resp.status_code == 200
+
+
 async def test_item_search_temporal_window_get(app_client, ctx):
     """Test GET search with spatio-temporal query (core)"""
     test_item = ctx.item
@@ -491,7 +499,7 @@ async def test_item_search_get_query_extension(app_client, ctx):
 async def test_get_missing_item_collection(app_client):
     """Test reading a collection which does not exist"""
     resp = await app_client.get("/collections/invalid-collection/items")
-    assert resp.status_code == 200
+    assert resp.status_code == 404
 
 
 async def test_pagination_item_collection(app_client, ctx, txn_client):
