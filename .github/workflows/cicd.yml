@@ -15,29 +15,42 @@ jobs:
 
     services:
 
-      elasticsearch_7_svc:
-        image: docker.elastic.co/elasticsearch/elasticsearch:7.17.1
+      elasticsearch_8_svc:
+        image: docker.elastic.co/elasticsearch/elasticsearch:8.1.3
         env:
-          node.name: es01
           cluster.name: stac-cluster
-          discovery.type: single-node
+          node.name: es01
           network.host: 0.0.0.0
+          transport.host: 0.0.0.0
+          discovery.type: single-node
           http.port: 9200
-          ES_JAVA_OPTS: -Xms512m -Xmx512m
+          xpack.license.self_generated.type: basic
+          xpack.security.enabled: false
+          xpack.security.transport.ssl.enabled: false
+          ES_JAVA_OPTS: -Xms512m -Xmx1g
         ports:
           - 9200:9200
 
-#      elasticsearch_8_svc:
-#        image: docker.elastic.co/elasticsearch/elasticsearch:8.1.0
-#        env:
-#          node.name: es01
-#          cluster.name: stac-cluster
-#          discovery.type: single-node
-#          network.host: 0.0.0.0
-#          http.port: 9200
-#          ES_JAVA_OPTS: -Xms512m -Xmx512m
-#        ports:
-#          - 9200:9200
+      elasticsearch_7_svc:
+        image: docker.elastic.co/elasticsearch/elasticsearch:7.17.1
+        env:
+          cluster.name: stac-cluster
+          node.name: es01
+          network.host: 0.0.0.0
+          transport.host: 0.0.0.0
+          discovery.type: single-node
+          http.port: 9400
+          xpack.license.self_generated.type: basic
+          xpack.security.enabled: false
+          xpack.security.transport.ssl.enabled: false
+          ES_JAVA_OPTS: -Xms512m -Xmx1g
+        ports:
+          - 9400:9400
+    strategy:
+      matrix:
+        python-version: [ "3.8", "3.9", "3.10" ]
+
+    name: Python ${{ matrix.python-version }} testing
 
     steps:
       - name: Check out repository code
@@ -47,8 +60,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v3
         with:
-          python-version: "3.8"
-
+          python-version: ${{ matrix.python-version }}
       - name: Lint code
         uses: pre-commit/action@v2.0.3
 
@@ -65,19 +77,17 @@ jobs:
           cd stac_fastapi/elasticsearch && pipenv run pytest -svvv
         env:
           ENVIRONMENT: testing
-#          ES_USER: dev
-#          ES_PASS: stac
           ES_PORT: 9200
           ES_HOST: 172.17.0.1
           ES_USE_SSL: false
           ES_VERIFY_CERTS: false
 
-#      - name: Run test suite against Elasticsearch 8.x
-#        run: |
-#          cd stac_fastapi/elasticsearch && pipenv run pytest -svvv
-#        env:
-#          ENVIRONMENT: testing
-#          ES_USER: dev
-#          ES_PASS: stac
-#          ES_PORT: 9400
-#          ES_HOST: 172.17.0.1
+      - name: Run test suite against Elasticsearch 8.x
+        run: |
+          cd stac_fastapi/elasticsearch && pipenv run pytest -svvv
+        env:
+          ENVIRONMENT: testing
+          ES_PORT: 9400
+          ES_HOST: 172.17.0.1
+          ES_USE_SSL: false
+          ES_VERIFY_CERTS: false
