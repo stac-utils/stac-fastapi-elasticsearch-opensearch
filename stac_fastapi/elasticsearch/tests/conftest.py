@@ -16,9 +16,8 @@ from stac_fastapi.elasticsearch.core import (
     CoreClient,
     TransactionsClient,
 )
-from stac_fastapi.elasticsearch.database_logic import COLLECTIONS_INDEX, ITEMS_INDEX
+from stac_fastapi.elasticsearch.database_logic import create_collection_index
 from stac_fastapi.elasticsearch.extensions import QueryExtension
-from stac_fastapi.elasticsearch.indexes import IndexesClient
 from stac_fastapi.extensions.core import (  # FieldsExtension,
     ContextExtension,
     SortExtension,
@@ -104,12 +103,7 @@ async def delete_collections_and_items(txn_client: TransactionsClient) -> None:
 
 async def refresh_indices(txn_client: TransactionsClient) -> None:
     try:
-        await txn_client.database.client.indices.refresh(index=ITEMS_INDEX)
-    except Exception:
-        pass
-
-    try:
-        await txn_client.database.client.indices.refresh(index=COLLECTIONS_INDEX)
+        await txn_client.database.client.indices.refresh(index="_all")
     except Exception:
         pass
 
@@ -185,7 +179,7 @@ async def app():
 
 @pytest_asyncio.fixture(scope="session")
 async def app_client(app):
-    await IndexesClient().create_indexes()
+    await create_collection_index()
 
     async with AsyncClient(app=app, base_url="http://test-server") as c:
         yield c

@@ -1,6 +1,6 @@
 """Serializers."""
 import abc
-from typing import TypedDict
+from typing import Any
 
 import attr
 
@@ -15,7 +15,7 @@ class Serializer(abc.ABC):
 
     @classmethod
     @abc.abstractmethod
-    def db_to_stac(cls, item: dict, base_url: str) -> TypedDict:
+    def db_to_stac(cls, item: dict, base_url: str) -> Any:
         """Transform database model to stac."""
         ...
 
