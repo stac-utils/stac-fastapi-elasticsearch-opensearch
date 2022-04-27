@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 - Default to Python 3.10
 - Default to Elasticsearch 8.x
-- Collection objects are not stored in `collections` rather than `stac_collections`
+- Collection objects are now stored in `collections` index rather than `stac_collections` index
 - Item objects are no longer stored in `stac_items`, but in indices per collection named `items_{collection_id}`
 
 ### Removed
