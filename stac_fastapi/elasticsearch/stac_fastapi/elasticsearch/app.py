@@ -6,6 +6,7 @@ from stac_fastapi.elasticsearch.core import (
     BulkTransactionsClient,
     CoreClient,
     TransactionsClient,
+    EsAsyncBaseFiltersClient
 )
 from stac_fastapi.elasticsearch.database_logic import create_collection_index
 from stac_fastapi.elasticsearch.extensions import QueryExtension
@@ -15,20 +16,51 @@ from stac_fastapi.extensions.core import (  # FieldsExtension,
     SortExtension,
     TokenPaginationExtension,
     TransactionExtension,
+    FilterExtension,
 )
+from typing import List, Optional
+
+import attr
+
 from stac_fastapi.extensions.third_party import BulkTransactionExtension
 
 settings = ElasticsearchSettings()
 session = Session.create_from_settings(settings)
+
+"""sort extension."""
+
+
+@attr.s
+class FixedSortExtension(SortExtension):
+    conformance_classes: List[str] = attr.ib(
+        factory=lambda: ["https://api.stacspec.org/v1.0.0-beta.4/item-search#sort"]
+    )
+
+
+@attr.s
+class FixedFilterExtension(FilterExtension):
+    conformance_classes: List[str] = attr.ib(
+        default=[
+            "https://api.stacspec.org/v1.0.0-rc.1/item-search#filter",
+            "http://www.opengis.net/spec/ogcapi-features-3/1.0/conf/filter",
+            "http://www.opengis.net/spec/ogcapi-features-3/1.0/conf/features-filter",
+            "http://www.opengis.net/spec/cql2/1.0/conf/cql2-json",
+            "http://www.opengis.net/spec/cql2/1.0/conf/basic-cql2",
+            "http://www.opengis.net/spec/cql2/1.0/conf/basic-spatial-operators"
+        ]
+    )
+    client = EsAsyncBaseFiltersClient()
+
 
 extensions = [
     TransactionExtension(client=TransactionsClient(session=session), settings=settings),
     BulkTransactionExtension(client=BulkTransactionsClient(session=session)),
     # FieldsExtension(),
     QueryExtension(),
-    SortExtension(),
+    FixedSortExtension(),
     TokenPaginationExtension(),
     ContextExtension(),
+    FixedFilterExtension()
 ]
 
 post_request_model = create_post_request_model(extensions)

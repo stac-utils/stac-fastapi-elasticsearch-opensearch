@@ -8,6 +8,7 @@ import attr
 from elasticsearch_dsl import Q, Search
 
 from elasticsearch import exceptions, helpers  # type: ignore
+from stac_fastapi.elasticsearch.extensions import filter
 from stac_fastapi.elasticsearch import serializers
 from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
 from stac_fastapi.elasticsearch.config import (
@@ -313,6 +314,17 @@ class DatabaseLogic:
         return search
 
     @staticmethod
+    def apply_cql2_filter(search: Search, _filter: Optional[Dict[str, Any]]):
+        """Database logic to perform query for search endpoint."""
+        if _filter:
+            x = filter.Clause.parse_obj(_filter).to_es()
+            print(x)
+            search = search.filter(x)
+        return search
+
+
+
+    @staticmethod
     def populate_sort(sortby: List) -> Optional[Dict[str, Dict[str, str]]]:
         """Database logic to sort search instance."""
         if sortby:
@@ -497,6 +509,7 @@ class DatabaseLogic:
                 self.sync_client,
                 mk_actions(collection_id, processed_items),
                 refresh=refresh,
+                raise_on_error=False
             ),
         )
 
@@ -508,6 +521,7 @@ class DatabaseLogic:
             self.sync_client,
             mk_actions(collection_id, processed_items),
             refresh=refresh,
+            raise_on_error=False
         )
 
     # DANGER
