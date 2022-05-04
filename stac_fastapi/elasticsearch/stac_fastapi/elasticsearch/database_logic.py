@@ -497,6 +497,7 @@ class DatabaseLogic:
                 self.sync_client,
                 mk_actions(collection_id, processed_items),
                 refresh=refresh,
+                raise_on_error=False,
             ),
         )
 
@@ -508,6 +509,7 @@ class DatabaseLogic:
             self.sync_client,
             mk_actions(collection_id, processed_items),
             refresh=refresh,
+            raise_on_error=False,
         )
 
     # DANGER
