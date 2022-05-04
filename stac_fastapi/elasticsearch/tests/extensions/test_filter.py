@@ -3,20 +3,20 @@ filter_val = {
     "args": [
         {
             "op": "=",
-            "args": [{"property": "id"}, "LC08_L1TP_060247_20180905_20180912_01_T1_L1TP"]
+            "args": [
+                {"property": "id"},
+                "LC08_L1TP_060247_20180905_20180912_01_T1_L1TP",
+            ],
         },
-        {
-            "op": "=",
-            "args": [{"property": "collection"}, "landsat8_l1tp"]
-        },
+        {"op": "=", "args": [{"property": "collection"}, "landsat8_l1tp"]},
         {
             "op": ">",
-            "args": [{"property": "properties.datetime"}, {"timestamp": "2022-04-29T00:00:00Z"}]
+            "args": [
+                {"property": "properties.datetime"},
+                {"timestamp": "2022-04-29T00:00:00Z"},
+            ],
         },
-        {
-            "op": "<",
-            "args": [{"property": "properties.eo:cloud_cover"}, 10]
-        },
+        {"op": "<", "args": [{"property": "properties.eo:cloud_cover"}, 10]},
         {
             "op": "s_intersects",
             "args": [
@@ -29,11 +29,11 @@ filter_val = {
                             [36.320041, 32.288032],
                             [36.320210, 32.288402],
                             [36.320008, 32.288458],
-                            [36.319836, 32.288087]
+                            [36.319836, 32.288087],
                         ]
-                    ]
-                }
-            ]
-        }
-    ]
+                    ],
+                },
+            ],
+        },
+    ],
 }

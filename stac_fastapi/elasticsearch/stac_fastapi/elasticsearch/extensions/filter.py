@@ -1,11 +1,19 @@
 from __future__ import annotations
-from typing import List
-from pydantic import BaseModel
-from enum import Enum
-from typing import Union
-from datetime import datetime, date
-from geojson_pydantic import Point, MultiPoint, LineString, MultiLineString, Polygon, MultiPolygon, GeometryCollection
 
+from datetime import date, datetime
+from enum import Enum
+from typing import List, Union
+
+from geojson_pydantic import (
+    GeometryCollection,
+    LineString,
+    MultiLineString,
+    MultiPoint,
+    MultiPolygon,
+    Point,
+    Polygon,
+)
+from pydantic import BaseModel
 
 # Basic CQL2
 # AND, OR, NOT), comparison operators (=, <>, <, <=, >, >=), and IS NULL.
@@ -13,6 +21,7 @@ from geojson_pydantic import Point, MultiPoint, LineString, MultiLineString, Pol
 
 # Basic Spatial Operators (http://www.opengis.net/spec/cql2/1.0/conf/basic-spatial-operators)
 # defines the intersects operator (S_INTERSECTS).
+
 
 class LogicalOp(str, Enum):
     _and = "and"
@@ -82,10 +91,20 @@ class Clause(BaseModel):
         elif self.op == ComparisonOp.eq:
             return {"term": {to_es(self.args[0]): to_es(self.args[1])}}
         elif self.op == ComparisonOp.neq:
-            return {"bool": {"must_not": [{"term": {to_es(self.args[0]): to_es(self.args[1])}}]}}
-        elif self.op == ComparisonOp.lt or self.op == ComparisonOp.lte or \
-                self.op == ComparisonOp.gt or self.op == ComparisonOp.gte:
-            return {"range": {to_es(self.args[0]): {to_es(self.op): to_es(self.args[1])}}}
+            return {
+                "bool": {
+                    "must_not": [{"term": {to_es(self.args[0]): to_es(self.args[1])}}]
+                }
+            }
+        elif (
+            self.op == ComparisonOp.lt
+            or self.op == ComparisonOp.lte
+            or self.op == ComparisonOp.gt
+            or self.op == ComparisonOp.gte
+        ):
+            return {
+                "range": {to_es(self.args[0]): {to_es(self.op): to_es(self.args[1])}}
+            }
         elif self.op == ComparisonOp.is_null:
             return {"bool": {"must_not": {"exists": {"field": to_es(self.args[0])}}}}
         elif self.op == SpatialIntersectsOp.s_intersects:
@@ -93,15 +112,29 @@ class Clause(BaseModel):
                 "geo_shape": {
                     to_es(self.args[0]): {
                         "shape": to_es(self.args[1]),
-                        "relation": "intersects"
+                        "relation": "intersects",
                     }
                 }
             }
 
 
-Arg = Union[Clause, PropertyReference, Timestamp, Date,
-            Point, MultiPoint, LineString, MultiLineString, Polygon, MultiPolygon, GeometryCollection,
-            int, float, str, bool]
+Arg = Union[
+    Clause,
+    PropertyReference,
+    Timestamp,
+    Date,
+    Point,
+    MultiPoint,
+    LineString,
+    MultiLineString,
+    Polygon,
+    MultiPolygon,
+    GeometryCollection,
+    int,
+    float,
+    str,
+    bool,
+]
 
 
 def to_es(arg: Arg):
@@ -111,7 +144,12 @@ def to_es(arg: Arg):
         return gi
     elif isinstance(arg, GeometryCollection):
         return arg.dict()
-    elif isinstance(arg, int) or isinstance(arg, float) or isinstance(arg, str) or isinstance(arg, bool):
+    elif (
+        isinstance(arg, int)
+        or isinstance(arg, float)
+        or isinstance(arg, str)
+        or isinstance(arg, bool)
+    ):
         return arg
     else:
         raise RuntimeError(f"unknown arg {repr(arg)}")

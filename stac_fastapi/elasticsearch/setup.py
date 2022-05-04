@@ -19,7 +19,7 @@ install_requires = [
     "uvicorn",
     "overrides",
     "starlette",
-    "geojson-pydantic"
+    "geojson-pydantic",
 ]
 
 extra_reqs = {

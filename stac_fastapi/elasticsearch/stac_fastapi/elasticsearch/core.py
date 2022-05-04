@@ -3,9 +3,8 @@ import json
 import logging
 from datetime import datetime as datetime_type
 from datetime import timezone
-from typing import List, Optional, Type, Union, Dict, Any
+from typing import Any, Dict, List, Optional, Type, Union
 from urllib.parse import urljoin
-from stac_fastapi.extensions.core.filter.request import FilterLang
 
 import attr
 import stac_pydantic.api
@@ -22,12 +21,17 @@ from stac_fastapi.elasticsearch.database_logic import DatabaseLogic
 from stac_fastapi.elasticsearch.models.links import PagingLinks
 from stac_fastapi.elasticsearch.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.elasticsearch.session import Session
+from stac_fastapi.extensions.core.filter.request import FilterLang
 from stac_fastapi.extensions.third_party.bulk_transactions import (
     BaseBulkTransactionsClient,
     Items,
 )
 from stac_fastapi.types import stac as stac_types
-from stac_fastapi.types.core import AsyncBaseCoreClient, AsyncBaseTransactionsClient, AsyncBaseFiltersClient
+from stac_fastapi.types.core import (
+    AsyncBaseCoreClient,
+    AsyncBaseFiltersClient,
+    AsyncBaseTransactionsClient,
+)
 from stac_fastapi.types.links import CollectionLinks
 from stac_fastapi.types.stac import Collection, Collections, Item, ItemCollection
 
@@ -87,7 +91,7 @@ class CoreClient(AsyncBaseCoreClient):
 
     @overrides
     async def item_collection(
-            self, collection_id: str, limit: int = 10, token: str = None, **kwargs
+        self, collection_id: str, limit: int = 10, token: str = None, **kwargs
     ) -> ItemCollection:
         """Read an item collection from the database."""
         request: Request = kwargs["request"]
@@ -163,17 +167,17 @@ class CoreClient(AsyncBaseCoreClient):
 
     @overrides
     async def get_search(
-            self,
-            collections: Optional[List[str]] = None,
-            ids: Optional[List[str]] = None,
-            bbox: Optional[List[NumType]] = None,
-            datetime: Optional[Union[str, datetime_type]] = None,
-            limit: Optional[int] = 10,
-            query: Optional[str] = None,
-            token: Optional[str] = None,
-            fields: Optional[List[str]] = None,
-            sortby: Optional[str] = None,
-            **kwargs,
+        self,
+        collections: Optional[List[str]] = None,
+        ids: Optional[List[str]] = None,
+        bbox: Optional[List[NumType]] = None,
+        datetime: Optional[Union[str, datetime_type]] = None,
+        limit: Optional[int] = 10,
+        query: Optional[str] = None,
+        token: Optional[str] = None,
+        fields: Optional[List[str]] = None,
+        sortby: Optional[str] = None,
+        **kwargs,
     ) -> ItemCollection:
         """GET search catalog."""
         base_args = {
@@ -221,7 +225,7 @@ class CoreClient(AsyncBaseCoreClient):
 
     @overrides
     async def post_search(
-            self, search_request: stac_pydantic.api.Search, **kwargs
+        self, search_request: stac_pydantic.api.Search, **kwargs
     ) -> ItemCollection:
         """POST search catalog."""
         request: Request = kwargs["request"]
@@ -269,7 +273,9 @@ class CoreClient(AsyncBaseCoreClient):
 
         filter_lang = getattr(search_request, "filter_lang", None)
 
-        if hasattr(search_request, "filter") and (filter_lang is None or filter_lang == FilterLang.cql2_json):
+        if hasattr(search_request, "filter") and (
+            filter_lang is None or filter_lang == FilterLang.cql2_json
+        ):
             search = self.database.apply_cql2_filter(
                 search, getattr(search_request, "filter", None)
             )
@@ -384,7 +390,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def delete_item(
-            self, item_id: str, collection_id: str, **kwargs
+        self, item_id: str, collection_id: str, **kwargs
     ) -> stac_types.Item:
         """Delete item."""
         await self.database.delete_item(item_id=item_id, collection_id=collection_id)
@@ -392,7 +398,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def create_collection(
-            self, collection: stac_types.Collection, **kwargs
+        self, collection: stac_types.Collection, **kwargs
     ) -> stac_types.Collection:
         """Create collection."""
         base_url = str(kwargs["request"].base_url)
@@ -406,7 +412,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def update_collection(
-            self, collection: stac_types.Collection, **kwargs
+        self, collection: stac_types.Collection, **kwargs
     ) -> stac_types.Collection:
         """Update collection."""
         base_url = str(kwargs["request"].base_url)
@@ -419,7 +425,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def delete_collection(
-            self, collection_id: str, **kwargs
+        self, collection_id: str, **kwargs
     ) -> stac_types.Collection:
         """Delete collection."""
         await self.database.delete_collection(collection_id=collection_id)
@@ -444,7 +450,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
 
     @overrides
     def bulk_item_insert(
-            self, items: Items, chunk_size: Optional[int] = None, **kwargs
+        self, items: Items, chunk_size: Optional[int] = None, **kwargs
     ) -> str:
         """Bulk item insertion using es."""
         request = kwargs.get("request")
@@ -473,7 +479,7 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
 
     # todo: use the ES _mapping endpoint to dynamically find what fields exist
     async def get_queryables(
-            self, collection_id: Optional[str] = None, **kwargs
+        self, collection_id: Optional[str] = None, **kwargs
     ) -> Dict[str, Any]:
         return {
             "$schema": "https://json-schema.org/draft/2019-09/schema",
@@ -484,36 +490,32 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
             "properties": {
                 "id": {
                     "description": "ID",
-                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/id"
+                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/id",
                 },
                 "collection": {
                     "description": "Collection",
-                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/collection"
+                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/collection",
                 },
                 "geometry": {
                     "description": "Geometry",
-                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/geometry"
+                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/geometry",
                 },
                 "datetime": {
                     "description": "Acquisition Timestamp",
-                    "$ref":
-                        "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/datetime.json#/properties/datetime"
+                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/datetime.json#/properties/datetime",
                 },
                 "created": {
                     "description": "Creation Timestamp",
-                    "$ref":
-                        "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/datetime.json#/properties/created"
+                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/datetime.json#/properties/created",
                 },
                 "updated": {
                     "description": "Creation Timestamp",
-                    "$ref":
-                        "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/datetime.json#/properties/updated"
+                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/datetime.json#/properties/updated",
                 },
                 "cloud_cover": {
                     "description": "Cloud Cover",
-                    "$ref":
-                        "https://stac-extensions.github.io/eo/v1.0.0/schema.json#/definitions/fields/properties/eo:cloud_cover"
-                }
+                    "$ref": "https://stac-extensions.github.io/eo/v1.0.0/schema.json#/definitions/fields/properties/eo:cloud_cover",
+                },
             },
-            "additionalProperties": True
+            "additionalProperties": True,
         }

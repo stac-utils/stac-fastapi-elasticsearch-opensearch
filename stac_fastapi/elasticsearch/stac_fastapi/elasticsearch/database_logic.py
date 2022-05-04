@@ -8,12 +8,12 @@ import attr
 from elasticsearch_dsl import Q, Search
 
 from elasticsearch import exceptions, helpers  # type: ignore
-from stac_fastapi.elasticsearch.extensions import filter
 from stac_fastapi.elasticsearch import serializers
 from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
 from stac_fastapi.elasticsearch.config import (
     ElasticsearchSettings as SyncElasticsearchSettings,
 )
+from stac_fastapi.elasticsearch.extensions import filter
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.stac import Collection, Item
 
@@ -322,8 +322,6 @@ class DatabaseLogic:
             search = search.filter(x)
         return search
 
-
-
     @staticmethod
     def populate_sort(sortby: List) -> Optional[Dict[str, Dict[str, str]]]:
         """Database logic to sort search instance."""
@@ -509,7 +507,7 @@ class DatabaseLogic:
                 self.sync_client,
                 mk_actions(collection_id, processed_items),
                 refresh=refresh,
-                raise_on_error=False
+                raise_on_error=False,
             ),
         )
 
@@ -521,7 +519,7 @@ class DatabaseLogic:
             self.sync_client,
             mk_actions(collection_id, processed_items),
             refresh=refresh,
-            raise_on_error=False
+            raise_on_error=False,
         )
 
     # DANGER
