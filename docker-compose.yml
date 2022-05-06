@@ -36,5 +36,6 @@ services:
       ES_JAVA_OPTS: -Xms512m -Xmx1g
     volumes:
       - ./elasticsearch/config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
+      - ./elasticsearch/snapshots:/usr/share/elasticsearch/snapshots
     ports:
       - "9200:9200"
