@@ -46,15 +46,6 @@ class FixedQueryExtension(QueryExtension):
     )
 
 
-@attr.s
-class FixedContextExtension(ContextExtension):
-    """Fixed Context Extension string."""
-
-    conformance_classes: List[str] = attr.ib(
-        factory=lambda: ["https://api.stacspec.org/v1.0.0-beta.4/item-search#context"]
-    )
-
-
 extensions = [
     TransactionExtension(client=TransactionsClient(session=session), settings=settings),
     BulkTransactionExtension(client=BulkTransactionsClient(session=session)),
@@ -62,7 +53,7 @@ extensions = [
     FixedQueryExtension(),
     FixedSortExtension(),
     TokenPaginationExtension(),
-    FixedContextExtension(),
+    ContextExtension(),
 ]
 
 post_request_model = create_post_request_model(extensions)

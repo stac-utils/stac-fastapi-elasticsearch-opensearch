@@ -10,11 +10,7 @@ from httpx import AsyncClient
 
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import create_request_model
-from stac_fastapi.elasticsearch.app import (
-    FixedContextExtension,
-    FixedQueryExtension,
-    FixedSortExtension,
-)
+from stac_fastapi.elasticsearch.app import FixedQueryExtension, FixedSortExtension
 from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
 from stac_fastapi.elasticsearch.core import (
     BulkTransactionsClient,
@@ -23,6 +19,7 @@ from stac_fastapi.elasticsearch.core import (
 )
 from stac_fastapi.elasticsearch.database_logic import create_collection_index
 from stac_fastapi.extensions.core import (  # FieldsExtension,
+    ContextExtension,
     TokenPaginationExtension,
     TransactionExtension,
 )
@@ -145,7 +142,7 @@ async def app():
         TransactionExtension(
             client=TransactionsClient(session=None), settings=settings
         ),
-        FixedContextExtension(),
+        ContextExtension(),
         FixedSortExtension(),
         # FieldsExtension(),
         FixedQueryExtension(),
