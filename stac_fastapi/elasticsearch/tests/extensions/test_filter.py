@@ -1,11 +1,15 @@
 import json
+import os
 from os import listdir
 from os.path import isfile, join
 
+THIS_DIR = os.path.dirname(os.path.abspath(__file__))
+
 
 async def test_search_filters(app_client, ctx):
+
     filters = []
-    pwd = "extensions/cql2"
+    pwd = f"{THIS_DIR}/cql2"
     for fn in [fn for f in listdir(pwd) if isfile(fn := join(pwd, f))]:
         with open(fn) as f:
             filters.append(json.loads(f.read()))
