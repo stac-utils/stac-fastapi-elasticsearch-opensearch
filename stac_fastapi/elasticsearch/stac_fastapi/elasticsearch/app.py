@@ -27,8 +27,6 @@ from stac_fastapi.extensions.third_party import BulkTransactionExtension
 settings = ElasticsearchSettings()
 session = Session.create_from_settings(settings)
 
-"""sort extension."""
-
 
 @attr.s
 class FixedSortExtension(SortExtension):
@@ -57,11 +55,20 @@ class FixedFilterExtension(FilterExtension):
     client = attr.ib(factory=EsAsyncBaseFiltersClient)
 
 
+@attr.s
+class FixedQueryExtension(QueryExtension):
+    """Fixed Query Extension string."""
+
+    conformance_classes: List[str] = attr.ib(
+        factory=lambda: ["https://api.stacspec.org/v1.0.0-beta.4/item-search#query"]
+    )
+
+
 extensions = [
     TransactionExtension(client=TransactionsClient(session=session), settings=settings),
     BulkTransactionExtension(client=BulkTransactionsClient(session=session)),
     # FieldsExtension(),
-    QueryExtension(),
+    FixedQueryExtension(),
     FixedSortExtension(),
     TokenPaginationExtension(),
     ContextExtension(),

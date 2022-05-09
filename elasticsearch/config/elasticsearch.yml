@@ -6,6 +6,10 @@ transport.host: 0.0.0.0
 discovery.type: single-node
 http.port: 9200
 
+path:
+  repo:
+    - /usr/share/elasticsearch/snapshots
+
 ## License
 xpack.license.self_generated.type: basic
 
