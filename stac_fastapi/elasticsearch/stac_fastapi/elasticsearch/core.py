@@ -5,7 +5,6 @@ from datetime import datetime as datetime_type
 from datetime import timezone
 from typing import Any, Dict, List, Optional, Type, Union
 from urllib.parse import urljoin
-import orjson
 
 import attr
 import stac_pydantic.api
@@ -35,8 +34,6 @@ from stac_fastapi.types.core import (
 )
 from stac_fastapi.types.links import CollectionLinks
 from stac_fastapi.types.stac import Collection, Collections, Item, ItemCollection
-from pygeofilter.backends.cql2_json import to_cql2
-from pygeofilter.parsers.cql2_text import parse as parse_cql2_text
 
 logger = logging.getLogger(__name__)
 
@@ -94,7 +91,7 @@ class CoreClient(AsyncBaseCoreClient):
 
     @overrides
     async def item_collection(
-            self, collection_id: str, limit: int = 10, token: str = None, **kwargs
+        self, collection_id: str, limit: int = 10, token: str = None, **kwargs
     ) -> ItemCollection:
         """Read an item collection from the database."""
         request: Request = kwargs["request"]
@@ -170,19 +167,19 @@ class CoreClient(AsyncBaseCoreClient):
 
     @overrides
     async def get_search(
-            self,
-            collections: Optional[List[str]] = None,
-            ids: Optional[List[str]] = None,
-            bbox: Optional[List[NumType]] = None,
-            datetime: Optional[Union[str, datetime_type]] = None,
-            limit: Optional[int] = 10,
-            query: Optional[str] = None,
-            token: Optional[str] = None,
-            fields: Optional[List[str]] = None,
-            sortby: Optional[str] = None,
-            # filter: Optional[str] = None, # todo: requires fastapi > 2.3 unreleased
-            # filter_lang: Optional[str] = None, # todo: requires fastapi > 2.3 unreleased
-            **kwargs,
+        self,
+        collections: Optional[List[str]] = None,
+        ids: Optional[List[str]] = None,
+        bbox: Optional[List[NumType]] = None,
+        datetime: Optional[Union[str, datetime_type]] = None,
+        limit: Optional[int] = 10,
+        query: Optional[str] = None,
+        token: Optional[str] = None,
+        fields: Optional[List[str]] = None,
+        sortby: Optional[str] = None,
+        # filter: Optional[str] = None, # todo: requires fastapi > 2.3 unreleased
+        # filter_lang: Optional[str] = None, # todo: requires fastapi > 2.3 unreleased
+        **kwargs,
     ) -> ItemCollection:
         """GET search catalog."""
         base_args = {
@@ -239,7 +236,7 @@ class CoreClient(AsyncBaseCoreClient):
 
     @overrides
     async def post_search(
-            self, search_request: stac_pydantic.api.Search, **kwargs
+        self, search_request: stac_pydantic.api.Search, **kwargs
     ) -> ItemCollection:
         """POST search catalog."""
         request: Request = kwargs["request"]
@@ -282,7 +279,6 @@ class CoreClient(AsyncBaseCoreClient):
                     search = self.database.apply_stacql_filter(
                         search=search, op=op, field=field, value=value
                     )
-
 
         filter_lang = getattr(search_request, "filter_lang", None)
 
@@ -403,7 +399,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def delete_item(
-            self, item_id: str, collection_id: str, **kwargs
+        self, item_id: str, collection_id: str, **kwargs
     ) -> stac_types.Item:
         """Delete item."""
         await self.database.delete_item(item_id=item_id, collection_id=collection_id)
@@ -411,7 +407,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def create_collection(
-            self, collection: stac_types.Collection, **kwargs
+        self, collection: stac_types.Collection, **kwargs
     ) -> stac_types.Collection:
         """Create collection."""
         base_url = str(kwargs["request"].base_url)
@@ -425,7 +421,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def update_collection(
-            self, collection: stac_types.Collection, **kwargs
+        self, collection: stac_types.Collection, **kwargs
     ) -> stac_types.Collection:
         """Update collection."""
         base_url = str(kwargs["request"].base_url)
@@ -438,7 +434,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def delete_collection(
-            self, collection_id: str, **kwargs
+        self, collection_id: str, **kwargs
     ) -> stac_types.Collection:
         """Delete collection."""
         await self.database.delete_collection(collection_id=collection_id)
@@ -463,7 +459,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
 
     @overrides
     def bulk_item_insert(
-            self, items: Items, chunk_size: Optional[int] = None, **kwargs
+        self, items: Items, chunk_size: Optional[int] = None, **kwargs
     ) -> str:
         """Bulk item insertion using es."""
         request = kwargs.get("request")
@@ -492,8 +488,18 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
 
     # todo: use the ES _mapping endpoint to dynamically find what fields exist
     async def get_queryables(
-            self, collection_id: Optional[str] = None, **kwargs
+        self, collection_id: Optional[str] = None, **kwargs
     ) -> Dict[str, Any]:
+        """Get the queryables available for the given collection_id.
+
+        If collection_id is None, returns the intersection of all
+        queryables over all collections.
+
+        This base implementation returns a blank queryable schema. This is not allowed
+        under OGC CQL but it is allowed by the STAC API Filter Extension
+
+        https://github.com/radiantearth/stac-api-spec/tree/master/fragments/filter#queryables
+        """
         return {
             "$schema": "https://json-schema.org/draft/2019-09/schema",
             "$id": "https://stac-api.example.com/queryables",
@@ -534,7 +540,7 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
                     "title": "Cloud Shadow Percentage",
                     "type": "number",
                     "minimum": 0,
-                    "maximum": 100
+                    "maximum": 100,
                 },
             },
             "additionalProperties": True,

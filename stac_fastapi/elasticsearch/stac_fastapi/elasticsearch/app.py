@@ -1,5 +1,5 @@
 """FastAPI application."""
-from typing import List, Optional
+from typing import List
 
 import attr
 
@@ -32,6 +32,8 @@ session = Session.create_from_settings(settings)
 
 @attr.s
 class FixedSortExtension(SortExtension):
+    """SortExtension class fixed with correct paths, removing extra forward-slash."""
+
     conformance_classes: List[str] = attr.ib(
         factory=lambda: ["https://api.stacspec.org/v1.0.0-beta.4/item-search#sort"]
     )
@@ -39,6 +41,8 @@ class FixedSortExtension(SortExtension):
 
 @attr.s
 class FixedFilterExtension(FilterExtension):
+    """FilterExtension class fixed with correct paths, removing extra forward-slash."""
+
     conformance_classes: List[str] = attr.ib(
         default=[
             "https://api.stacspec.org/v1.0.0-rc.1/item-search#filter",
@@ -50,9 +54,7 @@ class FixedFilterExtension(FilterExtension):
             "http://www.opengis.net/spec/cql2/1.0/conf/basic-spatial-operators",
         ]
     )
-    client = attr.ib(
-        factory=EsAsyncBaseFiltersClient
-    )
+    client = attr.ib(factory=EsAsyncBaseFiltersClient)
 
 
 extensions = [

@@ -1,6 +1,6 @@
+import json
 from os import listdir
 from os.path import isfile, join
-import json
 
 
 async def test_search_filters(app_client, ctx):
@@ -26,14 +26,28 @@ async def test_search_filter_extension_eq(app_client, ctx):
 async def test_search_filter_extension_gte(app_client, ctx):
     # there's one item that can match, so one of these queries should match it and the other shouldn't
     params = {
-        "filter": {"op": "<=", "args": [{"property": "properties.proj:epsg"}, ctx.item["properties"]["proj:epsg"]]}}
+        "filter": {
+            "op": "<=",
+            "args": [
+                {"property": "properties.proj:epsg"},
+                ctx.item["properties"]["proj:epsg"],
+            ],
+        }
+    }
     resp = await app_client.post("/search", json=params)
 
     assert resp.status_code == 200
     assert len(resp.json()["features"]) == 1
 
     params = {
-        "filter": {"op": ">", "args": [{"property": "properties.proj:epsg"}, ctx.item["properties"]["proj:epsg"]]}}
+        "filter": {
+            "op": ">",
+            "args": [
+                {"property": "properties.proj:epsg"},
+                ctx.item["properties"]["proj:epsg"],
+            ],
+        }
+    }
     resp = await app_client.post("/search", json=params)
 
     assert resp.status_code == 200
@@ -42,11 +56,19 @@ async def test_search_filter_extension_gte(app_client, ctx):
 
 async def test_search_filter_ext_and(app_client, ctx):
     params = {
-        "filter": {"op": "and", "args": [
-            {"op": "<=", "args": [{"property": "properties.proj:epsg"}, ctx.item["properties"]["proj:epsg"]]},
-            {"op": "=", "args": [{"property": "id"}, ctx.item["id"]]}
-        ]
-                   }
+        "filter": {
+            "op": "and",
+            "args": [
+                {
+                    "op": "<=",
+                    "args": [
+                        {"property": "properties.proj:epsg"},
+                        ctx.item["properties"]["proj:epsg"],
+                    ],
+                },
+                {"op": "=", "args": [{"property": "id"}, ctx.item["id"]]},
+            ],
+        }
     }
     resp = await app_client.post("/search", json=params)
 

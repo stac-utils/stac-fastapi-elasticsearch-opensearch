@@ -1,6 +1,15 @@
+"""
+Implements Filter Extension.
+
+Basic CQL2 (AND, OR, NOT), comparison operators (=, <>, <, <=, >, >=), and IS NULL.
+The comparison operators are allowed against string, numeric, boolean, date, and datetime types.
+
+Basic Spatial Operators (http://www.opengis.net/spec/cql2/1.0/conf/basic-spatial-operators)
+defines the intersects operator (S_INTERSECTS).
+"""
 from __future__ import annotations
 
-from datetime import date, datetime
+import datetime
 from enum import Enum
 from typing import List, Union
 
@@ -15,14 +24,6 @@ from geojson_pydantic import (
 )
 from pydantic import BaseModel
 
-# Basic CQL2
-# AND, OR, NOT), comparison operators (=, <>, <, <=, >, >=), and IS NULL.
-# The comparison operators are allowed against string, numeric, boolean, date, and datetime types.
-
-# Basic Spatial Operators (http://www.opengis.net/spec/cql2/1.0/conf/basic-spatial-operators)
-# defines the intersects operator (S_INTERSECTS).
-
-
 queryables_mapping = {
     "id": "id",
     "collection": "collection",
@@ -36,12 +37,22 @@ queryables_mapping = {
 
 
 class LogicalOp(str, Enum):
+    """Logical operator.
+
+    CQL2 logical operators and, or, and not.
+    """
+
     _and = "and"
     _or = "or"
     _not = "not"
 
 
 class ComparisonOp(str, Enum):
+    """Comparison operator.
+
+    CQL2 comparison operators =, <>, <, <=, >, >=, and isNull.
+    """
+
     eq = "="
     neq = "<>"
     lt = "<"
@@ -51,6 +62,7 @@ class ComparisonOp(str, Enum):
     is_null = "isNull"
 
     def to_es(self):
+        """Generate an Elasticsearch term operator."""
         if self == ComparisonOp.lt:
             return "lt"
         elif self == ComparisonOp.lte:
@@ -59,30 +71,45 @@ class ComparisonOp(str, Enum):
             return "gt"
         elif self == ComparisonOp.gte:
             return "gte"
+        else:
+            raise RuntimeError(
+                f"Comparison op {self.value} does not have an Elasticsearch term operator equivalent."
+            )
 
 
 class SpatialIntersectsOp(str, Enum):
+    """Spatial intersections operator s_intersects."""
+
     s_intersects = "s_intersects"
 
 
 class PropertyReference(BaseModel):
+    """Property reference."""
+
     property: str
 
     def to_es(self):
+        """Produce a term value for this, possibly mapped by a queryable."""
         return queryables_mapping.get(self.property, self.property)
 
 
 class Timestamp(BaseModel):
-    timestamp: datetime
+    """Representation of an RFC 3339 datetime value object."""
+
+    timestamp: datetime.datetime
 
     def to_es(self):
+        """Produce an RFC 3339 datetime string."""
         return self.timestamp.isoformat()
 
 
 class Date(BaseModel):
-    date: date
+    """Representation of an ISO 8601 date value object."""
+
+    date: datetime.date
 
     def to_es(self):
+        """Produce an ISO 8601 date string."""
         return self.date.isoformat()
 
 
@@ -106,10 +133,13 @@ Arg = Union[
 
 
 class Clause(BaseModel):
+    """Filter extension clause."""
+
     op: Union[LogicalOp, ComparisonOp, SpatialIntersectsOp]
     args: List[Arg]
 
-    def to_es(self, **kwargs):
+    def to_es(self):
+        """Generate an Elasticsearch expression for this Clause."""
         if self.op == LogicalOp._and:
             return {"bool": {"filter": [to_es(arg) for arg in self.args]}}
         elif self.op == LogicalOp._or:
@@ -125,10 +155,10 @@ class Clause(BaseModel):
                 }
             }
         elif (
-                self.op == ComparisonOp.lt
-                or self.op == ComparisonOp.lte
-                or self.op == ComparisonOp.gt
-                or self.op == ComparisonOp.gte
+            self.op == ComparisonOp.lt
+            or self.op == ComparisonOp.lte
+            or self.op == ComparisonOp.gt
+            or self.op == ComparisonOp.gte
         ):
             return {
                 "range": {to_es(self.args[0]): {to_es(self.op): to_es(self.args[1])}}
@@ -147,6 +177,7 @@ class Clause(BaseModel):
 
 
 def to_es(arg: Arg):
+    """Generate an Elasticsearch expression for this Arg."""
     if (to_es_method := getattr(arg, "to_es", None)) and callable(to_es_method):
         return to_es_method()
     elif gi := getattr(arg, "__geo_interface__", None):
@@ -154,10 +185,10 @@ def to_es(arg: Arg):
     elif isinstance(arg, GeometryCollection):
         return arg.dict()
     elif (
-            isinstance(arg, int)
-            or isinstance(arg, float)
-            or isinstance(arg, str)
-            or isinstance(arg, bool)
+        isinstance(arg, int)
+        or isinstance(arg, float)
+        or isinstance(arg, str)
+        or isinstance(arg, bool)
     ):
         return arg
     else:

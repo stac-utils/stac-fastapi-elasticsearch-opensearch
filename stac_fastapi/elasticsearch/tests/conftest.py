@@ -26,7 +26,6 @@ from stac_fastapi.extensions.core import (  # FieldsExtension,
     TransactionExtension,
 )
 from stac_fastapi.types.config import Settings
-from stac_fastapi.types.search import BaseSearchGetRequest, BaseSearchPostRequest
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 
@@ -41,7 +40,7 @@ class MockRequest:
     base_url = "http://test-server"
 
     def __init__(
-            self, method: str = "GET", url: str = "XXXX", app: Optional[Any] = None
+        self, method: str = "GET", url: str = "XXXX", app: Optional[Any] = None
     ):
         self.method = method
         self.url = url
@@ -149,7 +148,7 @@ async def app():
         # FieldsExtension(),
         QueryExtension(),
         TokenPaginationExtension(),
-        FixedFilterExtension()
+        FixedFilterExtension(),
     ]
 
     post_request_model = create_post_request_model(extensions)
