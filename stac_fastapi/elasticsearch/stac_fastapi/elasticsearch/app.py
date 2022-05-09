@@ -1,4 +1,8 @@
 """FastAPI application."""
+from typing import List
+
+import attr
+
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import create_get_request_model, create_post_request_model
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
@@ -21,12 +25,33 @@ from stac_fastapi.extensions.third_party import BulkTransactionExtension
 settings = ElasticsearchSettings()
 session = Session.create_from_settings(settings)
 
+
+# All of these extensions have their conformance class URL
+# incorrect, with an extra `/` before the #
+@attr.s
+class FixedSortExtension(SortExtension):
+    """Fixed Sort Extension string."""
+
+    conformance_classes: List[str] = attr.ib(
+        factory=lambda: ["https://api.stacspec.org/v1.0.0-beta.4/item-search#sort"]
+    )
+
+
+@attr.s
+class FixedQueryExtension(QueryExtension):
+    """Fixed Query Extension string."""
+
+    conformance_classes: List[str] = attr.ib(
+        factory=lambda: ["https://api.stacspec.org/v1.0.0-beta.4/item-search#query"]
+    )
+
+
 extensions = [
     TransactionExtension(client=TransactionsClient(session=session), settings=settings),
     BulkTransactionExtension(client=BulkTransactionsClient(session=session)),
     # FieldsExtension(),
-    QueryExtension(),
-    SortExtension(),
+    FixedQueryExtension(),
+    FixedSortExtension(),
     TokenPaginationExtension(),
     ContextExtension(),
 ]
