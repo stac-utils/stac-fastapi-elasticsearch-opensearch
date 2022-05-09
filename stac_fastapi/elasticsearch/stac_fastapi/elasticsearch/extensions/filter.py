@@ -23,6 +23,18 @@ from pydantic import BaseModel
 # defines the intersects operator (S_INTERSECTS).
 
 
+queryables_mapping = {
+    "id": "id",
+    "collection": "collection",
+    "geometry": "geometry",
+    "datetime": "properties.datetime",
+    "created": "properties.created",
+    "updated": "properties.updated",
+    "cloud_cover": "properties.eo:cloud_cover",
+    "cloud_shadow_percentage": "properties.s2:cloud_shadow_percentage",
+}
+
+
 class LogicalOp(str, Enum):
     _and = "and"
     _or = "or"
@@ -41,14 +53,11 @@ class ComparisonOp(str, Enum):
     def to_es(self):
         if self == ComparisonOp.lt:
             return "lt"
-
-        if self == ComparisonOp.lte:
+        elif self == ComparisonOp.lte:
             return "lte"
-
-        if self == ComparisonOp.gt:
+        elif self == ComparisonOp.gt:
             return "gt"
-
-        if self == ComparisonOp.gte:
+        elif self == ComparisonOp.gte:
             return "gte"
 
 
@@ -60,7 +69,7 @@ class PropertyReference(BaseModel):
     property: str
 
     def to_es(self):
-        return self.property
+        return queryables_mapping.get(self.property, self.property)
 
 
 class Timestamp(BaseModel):
@@ -77,49 +86,8 @@ class Date(BaseModel):
         return self.date.isoformat()
 
 
-class Clause(BaseModel):
-    op: Union[LogicalOp, ComparisonOp, SpatialIntersectsOp]
-    args: List["Arg"]
-
-    def to_es(self, **kwargs):
-        if self.op == LogicalOp._and:
-            return {"bool": {"filter": [to_es(arg) for arg in self.args]}}
-        elif self.op == LogicalOp._or:
-            return {"bool": {"should": [to_es(arg) for arg in self.args]}}
-        elif self.op == LogicalOp._not:
-            return {"bool": {"must_not": [to_es(arg) for arg in self.args]}}
-        elif self.op == ComparisonOp.eq:
-            return {"term": {to_es(self.args[0]): to_es(self.args[1])}}
-        elif self.op == ComparisonOp.neq:
-            return {
-                "bool": {
-                    "must_not": [{"term": {to_es(self.args[0]): to_es(self.args[1])}}]
-                }
-            }
-        elif (
-            self.op == ComparisonOp.lt
-            or self.op == ComparisonOp.lte
-            or self.op == ComparisonOp.gt
-            or self.op == ComparisonOp.gte
-        ):
-            return {
-                "range": {to_es(self.args[0]): {to_es(self.op): to_es(self.args[1])}}
-            }
-        elif self.op == ComparisonOp.is_null:
-            return {"bool": {"must_not": {"exists": {"field": to_es(self.args[0])}}}}
-        elif self.op == SpatialIntersectsOp.s_intersects:
-            return {
-                "geo_shape": {
-                    to_es(self.args[0]): {
-                        "shape": to_es(self.args[1]),
-                        "relation": "intersects",
-                    }
-                }
-            }
-
-
 Arg = Union[
-    Clause,
+    "Clause",
     PropertyReference,
     Timestamp,
     Date,
@@ -137,6 +105,47 @@ Arg = Union[
 ]
 
 
+class Clause(BaseModel):
+    op: Union[LogicalOp, ComparisonOp, SpatialIntersectsOp]
+    args: List[Arg]
+
+    def to_es(self, **kwargs):
+        if self.op == LogicalOp._and:
+            return {"bool": {"filter": [to_es(arg) for arg in self.args]}}
+        elif self.op == LogicalOp._or:
+            return {"bool": {"should": [to_es(arg) for arg in self.args]}}
+        elif self.op == LogicalOp._not:
+            return {"bool": {"must_not": [to_es(arg) for arg in self.args]}}
+        elif self.op == ComparisonOp.eq:
+            return {"term": {to_es(self.args[0]): to_es(self.args[1])}}
+        elif self.op == ComparisonOp.neq:
+            return {
+                "bool": {
+                    "must_not": [{"term": {to_es(self.args[0]): to_es(self.args[1])}}]
+                }
+            }
+        elif (
+                self.op == ComparisonOp.lt
+                or self.op == ComparisonOp.lte
+                or self.op == ComparisonOp.gt
+                or self.op == ComparisonOp.gte
+        ):
+            return {
+                "range": {to_es(self.args[0]): {to_es(self.op): to_es(self.args[1])}}
+            }
+        elif self.op == ComparisonOp.is_null:
+            return {"bool": {"must_not": {"exists": {"field": to_es(self.args[0])}}}}
+        elif self.op == SpatialIntersectsOp.s_intersects:
+            return {
+                "geo_shape": {
+                    to_es(self.args[0]): {
+                        "shape": to_es(self.args[1]),
+                        "relation": "intersects",
+                    }
+                }
+            }
+
+
 def to_es(arg: Arg):
     if (to_es_method := getattr(arg, "to_es", None)) and callable(to_es_method):
         return to_es_method()
@@ -145,10 +154,10 @@ def to_es(arg: Arg):
     elif isinstance(arg, GeometryCollection):
         return arg.dict()
     elif (
-        isinstance(arg, int)
-        or isinstance(arg, float)
-        or isinstance(arg, str)
-        or isinstance(arg, bool)
+            isinstance(arg, int)
+            or isinstance(arg, float)
+            or isinstance(arg, str)
+            or isinstance(arg, bool)
     ):
         return arg
     else:

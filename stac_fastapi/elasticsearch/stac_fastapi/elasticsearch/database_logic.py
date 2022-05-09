@@ -316,10 +316,8 @@ class DatabaseLogic:
     @staticmethod
     def apply_cql2_filter(search: Search, _filter: Optional[Dict[str, Any]]):
         """Database logic to perform query for search endpoint."""
-        if _filter:
-            x = filter.Clause.parse_obj(_filter).to_es()
-            print(x)
-            search = search.filter(x)
+        if _filter is not None:
+            search = search.filter(filter.Clause.parse_obj(_filter).to_es())
         return search
 
     @staticmethod

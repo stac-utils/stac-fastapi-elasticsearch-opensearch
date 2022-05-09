@@ -5,6 +5,7 @@ from datetime import datetime as datetime_type
 from datetime import timezone
 from typing import Any, Dict, List, Optional, Type, Union
 from urllib.parse import urljoin
+import orjson
 
 import attr
 import stac_pydantic.api
@@ -34,6 +35,8 @@ from stac_fastapi.types.core import (
 )
 from stac_fastapi.types.links import CollectionLinks
 from stac_fastapi.types.stac import Collection, Collections, Item, ItemCollection
+from pygeofilter.backends.cql2_json import to_cql2
+from pygeofilter.parsers.cql2_text import parse as parse_cql2_text
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +94,7 @@ class CoreClient(AsyncBaseCoreClient):
 
     @overrides
     async def item_collection(
-        self, collection_id: str, limit: int = 10, token: str = None, **kwargs
+            self, collection_id: str, limit: int = 10, token: str = None, **kwargs
     ) -> ItemCollection:
         """Read an item collection from the database."""
         request: Request = kwargs["request"]
@@ -167,17 +170,19 @@ class CoreClient(AsyncBaseCoreClient):
 
     @overrides
     async def get_search(
-        self,
-        collections: Optional[List[str]] = None,
-        ids: Optional[List[str]] = None,
-        bbox: Optional[List[NumType]] = None,
-        datetime: Optional[Union[str, datetime_type]] = None,
-        limit: Optional[int] = 10,
-        query: Optional[str] = None,
-        token: Optional[str] = None,
-        fields: Optional[List[str]] = None,
-        sortby: Optional[str] = None,
-        **kwargs,
+            self,
+            collections: Optional[List[str]] = None,
+            ids: Optional[List[str]] = None,
+            bbox: Optional[List[NumType]] = None,
+            datetime: Optional[Union[str, datetime_type]] = None,
+            limit: Optional[int] = 10,
+            query: Optional[str] = None,
+            token: Optional[str] = None,
+            fields: Optional[List[str]] = None,
+            sortby: Optional[str] = None,
+            # filter: Optional[str] = None, # todo: requires fastapi > 2.3 unreleased
+            # filter_lang: Optional[str] = None, # todo: requires fastapi > 2.3 unreleased
+            **kwargs,
     ) -> ItemCollection:
         """GET search catalog."""
         base_args = {
@@ -188,8 +193,10 @@ class CoreClient(AsyncBaseCoreClient):
             "token": token,
             "query": json.loads(query) if query else query,
         }
+
         if datetime:
             base_args["datetime"] = datetime
+
         if sortby:
             # https://github.com/radiantearth/stac-spec/tree/master/api-spec/extensions/sort#http-get-or-post-form
             sort_param = []
@@ -201,6 +208,13 @@ class CoreClient(AsyncBaseCoreClient):
                     }
                 )
             base_args["sortby"] = sort_param
+
+        # todo: requires fastapi > 2.3 unreleased
+        # if filter:
+        #     if filter_lang == "cql2-text":
+        #         base_args["filter-lang"] = "cql2-json"
+        #         base_args["filter"] = orjson.loads(to_cql2(parse_cql2_text(filter)))
+        #         print(f'>>> {base_args["filter"]}')
 
         # if fields:
         #     includes = set()
@@ -225,7 +239,7 @@ class CoreClient(AsyncBaseCoreClient):
 
     @overrides
     async def post_search(
-        self, search_request: stac_pydantic.api.Search, **kwargs
+            self, search_request: stac_pydantic.api.Search, **kwargs
     ) -> ItemCollection:
         """POST search catalog."""
         request: Request = kwargs["request"]
@@ -269,16 +283,15 @@ class CoreClient(AsyncBaseCoreClient):
                         search=search, op=op, field=field, value=value
                     )
 
-        print(search_request)
 
         filter_lang = getattr(search_request, "filter_lang", None)
 
-        if hasattr(search_request, "filter") and (
-            filter_lang is None or filter_lang == FilterLang.cql2_json
-        ):
-            search = self.database.apply_cql2_filter(
-                search, getattr(search_request, "filter", None)
-            )
+        if hasattr(search_request, "filter"):
+            cql2_filter = getattr(search_request, "filter", None)
+            if filter_lang in [None, FilterLang.cql2_json]:
+                search = self.database.apply_cql2_filter(search, cql2_filter)
+            else:
+                raise Exception("CQL2-Text is not supported with POST")
 
         sort = None
         if search_request.sortby:
@@ -390,7 +403,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def delete_item(
-        self, item_id: str, collection_id: str, **kwargs
+            self, item_id: str, collection_id: str, **kwargs
     ) -> stac_types.Item:
         """Delete item."""
         await self.database.delete_item(item_id=item_id, collection_id=collection_id)
@@ -398,7 +411,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def create_collection(
-        self, collection: stac_types.Collection, **kwargs
+            self, collection: stac_types.Collection, **kwargs
     ) -> stac_types.Collection:
         """Create collection."""
         base_url = str(kwargs["request"].base_url)
@@ -412,7 +425,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def update_collection(
-        self, collection: stac_types.Collection, **kwargs
+            self, collection: stac_types.Collection, **kwargs
     ) -> stac_types.Collection:
         """Update collection."""
         base_url = str(kwargs["request"].base_url)
@@ -425,7 +438,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def delete_collection(
-        self, collection_id: str, **kwargs
+            self, collection_id: str, **kwargs
     ) -> stac_types.Collection:
         """Delete collection."""
         await self.database.delete_collection(collection_id=collection_id)
@@ -450,7 +463,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
 
     @overrides
     def bulk_item_insert(
-        self, items: Items, chunk_size: Optional[int] = None, **kwargs
+            self, items: Items, chunk_size: Optional[int] = None, **kwargs
     ) -> str:
         """Bulk item insertion using es."""
         request = kwargs.get("request")
@@ -479,7 +492,7 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
 
     # todo: use the ES _mapping endpoint to dynamically find what fields exist
     async def get_queryables(
-        self, collection_id: Optional[str] = None, **kwargs
+            self, collection_id: Optional[str] = None, **kwargs
     ) -> Dict[str, Any]:
         return {
             "$schema": "https://json-schema.org/draft/2019-09/schema",
@@ -515,6 +528,13 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
                 "cloud_cover": {
                     "description": "Cloud Cover",
                     "$ref": "https://stac-extensions.github.io/eo/v1.0.0/schema.json#/definitions/fields/properties/eo:cloud_cover",
+                },
+                "cloud_shadow_percentage": {
+                    "description": "Cloud Shadow Percentage",
+                    "title": "Cloud Shadow Percentage",
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100
                 },
             },
             "additionalProperties": True,

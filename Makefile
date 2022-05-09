@@ -42,7 +42,7 @@ docker-shell:
 
 .PHONY: test
 test:
-	-$(run_es) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd /app/stac_fastapi/elasticsearch/tests/ && pytest'
+	-$(run_es) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd /app/stac_fastapi/elasticsearch/tests/ && pytest extensions/test_filter.py'
 	docker-compose down
 
 .PHONY: run-database

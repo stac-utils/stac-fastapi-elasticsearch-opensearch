@@ -9,7 +9,8 @@ import pytest_asyncio
 from httpx import AsyncClient
 
 from stac_fastapi.api.app import StacApi
-from stac_fastapi.api.models import create_request_model
+from stac_fastapi.api.models import create_get_request_model, create_post_request_model
+from stac_fastapi.elasticsearch.app import FixedFilterExtension
 from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
 from stac_fastapi.elasticsearch.core import (
     BulkTransactionsClient,
@@ -40,7 +41,7 @@ class MockRequest:
     base_url = "http://test-server"
 
     def __init__(
-        self, method: str = "GET", url: str = "XXXX", app: Optional[Any] = None
+            self, method: str = "GET", url: str = "XXXX", app: Optional[Any] = None
     ):
         self.method = method
         self.url = url
@@ -148,21 +149,10 @@ async def app():
         # FieldsExtension(),
         QueryExtension(),
         TokenPaginationExtension(),
+        FixedFilterExtension()
     ]
 
-    get_request_model = create_request_model(
-        "SearchGetRequest",
-        base_model=BaseSearchGetRequest,
-        extensions=extensions,
-        request_type="GET",
-    )
-
-    post_request_model = create_request_model(
-        "SearchPostRequest",
-        base_model=BaseSearchPostRequest,
-        extensions=extensions,
-        request_type="POST",
-    )
+    post_request_model = create_post_request_model(extensions)
 
     return StacApi(
         settings=settings,
@@ -172,7 +162,7 @@ async def app():
             post_request_model=post_request_model,
         ),
         extensions=extensions,
-        search_get_request_model=get_request_model,
+        search_get_request_model=create_get_request_model(extensions),
         search_post_request_model=post_request_model,
     ).app
 

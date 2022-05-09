@@ -44,12 +44,15 @@ class FixedFilterExtension(FilterExtension):
             "https://api.stacspec.org/v1.0.0-rc.1/item-search#filter",
             "http://www.opengis.net/spec/ogcapi-features-3/1.0/conf/filter",
             "http://www.opengis.net/spec/ogcapi-features-3/1.0/conf/features-filter",
+            "http://www.opengis.net/spec/cql2/1.0/conf/cql2-text",
             "http://www.opengis.net/spec/cql2/1.0/conf/cql2-json",
             "http://www.opengis.net/spec/cql2/1.0/conf/basic-cql2",
             "http://www.opengis.net/spec/cql2/1.0/conf/basic-spatial-operators",
         ]
     )
-    client = EsAsyncBaseFiltersClient()
+    client = attr.ib(
+        factory=EsAsyncBaseFiltersClient
+    )
 
 
 extensions = [
