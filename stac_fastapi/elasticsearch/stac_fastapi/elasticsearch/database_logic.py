@@ -13,6 +13,7 @@ from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
 from stac_fastapi.elasticsearch.config import (
     ElasticsearchSettings as SyncElasticsearchSettings,
 )
+from stac_fastapi.elasticsearch.extensions import filter
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.stac import Collection, Item
 
@@ -310,6 +311,13 @@ class DatabaseLogic:
         else:
             search = search.filter("term", **{field: value})
 
+        return search
+
+    @staticmethod
+    def apply_cql2_filter(search: Search, _filter: Optional[Dict[str, Any]]):
+        """Database logic to perform query for search endpoint."""
+        if _filter is not None:
+            search = search.filter(filter.Clause.parse_obj(_filter).to_es())
         return search
 
     @staticmethod

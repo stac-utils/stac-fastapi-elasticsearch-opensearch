@@ -1,0 +1,41 @@
+{
+  "op": "and",
+  "args": [
+    {
+      "op": ">=",
+      "args": [
+        {
+          "property": "cloud_cover"
+        },
+        0.1
+      ]
+    },
+    {
+      "op": "<=",
+      "args": [
+        {
+          "property": "cloud_cover"
+        },
+        0.2
+      ]
+    },
+    {
+      "op": "=",
+      "args": [
+        {
+          "property": "landsat:wrs_row"
+        },
+        28
+      ]
+    },
+    {
+      "op": "=",
+      "args": [
+        {
+          "property": "landsat:wrs_path"
+        },
+        203
+      ]
+    }
+  ]
+}

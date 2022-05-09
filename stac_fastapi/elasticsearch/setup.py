@@ -19,6 +19,8 @@ install_requires = [
     "uvicorn",
     "overrides",
     "starlette",
+    "geojson-pydantic",
+    "pygeofilter==0.1.2",
 ]
 
 extra_reqs = {

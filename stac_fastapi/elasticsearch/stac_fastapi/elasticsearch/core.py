@@ -3,7 +3,7 @@ import json
 import logging
 from datetime import datetime as datetime_type
 from datetime import timezone
-from typing import List, Optional, Type, Union
+from typing import Any, Dict, List, Optional, Type, Union
 from urllib.parse import urljoin
 
 import attr
@@ -21,12 +21,17 @@ from stac_fastapi.elasticsearch.database_logic import DatabaseLogic
 from stac_fastapi.elasticsearch.models.links import PagingLinks
 from stac_fastapi.elasticsearch.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.elasticsearch.session import Session
+from stac_fastapi.extensions.core.filter.request import FilterLang
 from stac_fastapi.extensions.third_party.bulk_transactions import (
     BaseBulkTransactionsClient,
     Items,
 )
 from stac_fastapi.types import stac as stac_types
-from stac_fastapi.types.core import AsyncBaseCoreClient, AsyncBaseTransactionsClient
+from stac_fastapi.types.core import (
+    AsyncBaseCoreClient,
+    AsyncBaseFiltersClient,
+    AsyncBaseTransactionsClient,
+)
 from stac_fastapi.types.links import CollectionLinks
 from stac_fastapi.types.stac import Collection, Collections, Item, ItemCollection
 
@@ -172,6 +177,8 @@ class CoreClient(AsyncBaseCoreClient):
         token: Optional[str] = None,
         fields: Optional[List[str]] = None,
         sortby: Optional[str] = None,
+        # filter: Optional[str] = None, # todo: requires fastapi > 2.3 unreleased
+        # filter_lang: Optional[str] = None, # todo: requires fastapi > 2.3 unreleased
         **kwargs,
     ) -> ItemCollection:
         """GET search catalog."""
@@ -183,8 +190,10 @@ class CoreClient(AsyncBaseCoreClient):
             "token": token,
             "query": json.loads(query) if query else query,
         }
+
         if datetime:
             base_args["datetime"] = datetime
+
         if sortby:
             # https://github.com/radiantearth/stac-spec/tree/master/api-spec/extensions/sort#http-get-or-post-form
             sort_param = []
@@ -196,6 +205,13 @@ class CoreClient(AsyncBaseCoreClient):
                     }
                 )
             base_args["sortby"] = sort_param
+
+        # todo: requires fastapi > 2.3 unreleased
+        # if filter:
+        #     if filter_lang == "cql2-text":
+        #         base_args["filter-lang"] = "cql2-json"
+        #         base_args["filter"] = orjson.loads(to_cql2(parse_cql2_text(filter)))
+        #         print(f'>>> {base_args["filter"]}')
 
         # if fields:
         #     includes = set()
@@ -263,6 +279,15 @@ class CoreClient(AsyncBaseCoreClient):
                     search = self.database.apply_stacql_filter(
                         search=search, op=op, field=field, value=value
                     )
+
+        filter_lang = getattr(search_request, "filter_lang", None)
+
+        if hasattr(search_request, "filter"):
+            cql2_filter = getattr(search_request, "filter", None)
+            if filter_lang in [None, FilterLang.cql2_json]:
+                search = self.database.apply_cql2_filter(search, cql2_filter)
+            else:
+                raise Exception("CQL2-Text is not supported with POST")
 
         sort = None
         if search_request.sortby:
@@ -455,3 +480,68 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         )
 
         return f"Successfully added {len(processed_items)} Items."
+
+
+@attr.s
+class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
+    """Defines a pattern for implementing the STAC filter extension."""
+
+    # todo: use the ES _mapping endpoint to dynamically find what fields exist
+    async def get_queryables(
+        self, collection_id: Optional[str] = None, **kwargs
+    ) -> Dict[str, Any]:
+        """Get the queryables available for the given collection_id.
+
+        If collection_id is None, returns the intersection of all
+        queryables over all collections.
+
+        This base implementation returns a blank queryable schema. This is not allowed
+        under OGC CQL but it is allowed by the STAC API Filter Extension
+
+        https://github.com/radiantearth/stac-api-spec/tree/master/fragments/filter#queryables
+        """
+        return {
+            "$schema": "https://json-schema.org/draft/2019-09/schema",
+            "$id": "https://stac-api.example.com/queryables",
+            "type": "object",
+            "title": "Queryables for Example STAC API",
+            "description": "Queryable names for the example STAC API Item Search filter.",
+            "properties": {
+                "id": {
+                    "description": "ID",
+                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/id",
+                },
+                "collection": {
+                    "description": "Collection",
+                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/collection",
+                },
+                "geometry": {
+                    "description": "Geometry",
+                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/geometry",
+                },
+                "datetime": {
+                    "description": "Acquisition Timestamp",
+                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/datetime.json#/properties/datetime",
+                },
+                "created": {
+                    "description": "Creation Timestamp",
+                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/datetime.json#/properties/created",
+                },
+                "updated": {
+                    "description": "Creation Timestamp",
+                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/datetime.json#/properties/updated",
+                },
+                "cloud_cover": {
+                    "description": "Cloud Cover",
+                    "$ref": "https://stac-extensions.github.io/eo/v1.0.0/schema.json#/definitions/fields/properties/eo:cloud_cover",
+                },
+                "cloud_shadow_percentage": {
+                    "description": "Cloud Shadow Percentage",
+                    "title": "Cloud Shadow Percentage",
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100,
+                },
+            },
+            "additionalProperties": True,
+        }

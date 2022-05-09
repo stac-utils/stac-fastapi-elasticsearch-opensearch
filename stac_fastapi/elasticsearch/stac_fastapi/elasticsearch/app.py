@@ -9,6 +9,7 @@ from stac_fastapi.elasticsearch.config import ElasticsearchSettings
 from stac_fastapi.elasticsearch.core import (
     BulkTransactionsClient,
     CoreClient,
+    EsAsyncBaseFiltersClient,
     TransactionsClient,
 )
 from stac_fastapi.elasticsearch.database_logic import create_collection_index
@@ -16,6 +17,7 @@ from stac_fastapi.elasticsearch.extensions import QueryExtension
 from stac_fastapi.elasticsearch.session import Session
 from stac_fastapi.extensions.core import (  # FieldsExtension,
     ContextExtension,
+    FilterExtension,
     SortExtension,
     TokenPaginationExtension,
     TransactionExtension,
@@ -26,15 +28,31 @@ settings = ElasticsearchSettings()
 session = Session.create_from_settings(settings)
 
 
-# All of these extensions have their conformance class URL
-# incorrect, with an extra `/` before the #
 @attr.s
 class FixedSortExtension(SortExtension):
-    """Fixed Sort Extension string."""
+    """SortExtension class fixed with correct paths, removing extra forward-slash."""
 
     conformance_classes: List[str] = attr.ib(
         factory=lambda: ["https://api.stacspec.org/v1.0.0-beta.4/item-search#sort"]
     )
+
+
+@attr.s
+class FixedFilterExtension(FilterExtension):
+    """FilterExtension class fixed with correct paths, removing extra forward-slash."""
+
+    conformance_classes: List[str] = attr.ib(
+        default=[
+            "https://api.stacspec.org/v1.0.0-rc.1/item-search#filter",
+            "http://www.opengis.net/spec/ogcapi-features-3/1.0/conf/filter",
+            "http://www.opengis.net/spec/ogcapi-features-3/1.0/conf/features-filter",
+            "http://www.opengis.net/spec/cql2/1.0/conf/cql2-text",
+            "http://www.opengis.net/spec/cql2/1.0/conf/cql2-json",
+            "http://www.opengis.net/spec/cql2/1.0/conf/basic-cql2",
+            "http://www.opengis.net/spec/cql2/1.0/conf/basic-spatial-operators",
+        ]
+    )
+    client = attr.ib(factory=EsAsyncBaseFiltersClient)
 
 
 @attr.s
@@ -54,6 +72,7 @@ extensions = [
     FixedSortExtension(),
     TokenPaginationExtension(),
     ContextExtension(),
+    FixedFilterExtension(),
 ]
 
 post_request_model = create_post_request_model(extensions)

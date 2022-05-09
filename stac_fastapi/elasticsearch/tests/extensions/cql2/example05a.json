@@ -1,0 +1,23 @@
+{
+  "op": "or",
+  "args": [
+    {
+      "op": "=",
+      "args": [
+        {
+          "property": "cloud_cover"
+        },
+        0.1
+      ]
+    },
+    {
+      "op": "=",
+      "args": [
+        {
+          "property": "cloud_cover"
+        },
+        0.2
+      ]
+    }
+  ]
+}

@@ -23,7 +23,7 @@ def rfc3339_str_to_datetime(s: str) -> datetime:
     return ciso8601.parse_rfc3339(s)
 
 
-async def test_create_and_delete_item(app_client, ctx, txn_client, event_loop):
+async def test_create_and_delete_item(app_client, ctx, txn_client):
     """Test creation and deletion of a single item (transactions extension)"""
 
     test_item = ctx.item
