@@ -509,15 +509,15 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
             "properties": {
                 "id": {
                     "description": "ID",
-                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/id",
+                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/definitions/core/allOf/2/properties/id",
                 },
                 "collection": {
                     "description": "Collection",
-                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/collection",
+                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/definitions/core/allOf/2/then/properties/collection",
                 },
                 "geometry": {
                     "description": "Geometry",
-                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/geometry",
+                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/definitions/core/allOf/1/oneOf/0/properties/geometry",
                 },
                 "datetime": {
                     "description": "Acquisition Timestamp",
@@ -538,6 +538,13 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
                 "cloud_shadow_percentage": {
                     "description": "Cloud Shadow Percentage",
                     "title": "Cloud Shadow Percentage",
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 100,
+                },
+                "nodata_pixel_percentage": {
+                    "description": "No Data Pixel Percentage",
+                    "title": "No Data Pixel Percentage",
                     "type": "number",
                     "minimum": 0,
                     "maximum": 100,

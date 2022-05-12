@@ -33,6 +33,7 @@ queryables_mapping = {
     "updated": "properties.updated",
     "cloud_cover": "properties.eo:cloud_cover",
     "cloud_shadow_percentage": "properties.s2:cloud_shadow_percentage",
+    "nodata_pixel_percentage": "properties.s2:nodata_pixel_percentage",
 }
 
 
