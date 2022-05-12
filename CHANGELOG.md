@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [v0.2.0]
 
 ### Deprecated
 
@@ -31,7 +31,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Removed
 
-## [0.1.0]
+## [v0.1.0]
 
 ### Deprecated
 
@@ -52,5 +52,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## Versions
 
-- [Unreleased]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v0.1.0...main>
+- [Unreleased]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v0.2.0...main>
+- [v0.2.0]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v0.1.0...v0.2.0>
 - [v0.1.0]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v0.1.0>
