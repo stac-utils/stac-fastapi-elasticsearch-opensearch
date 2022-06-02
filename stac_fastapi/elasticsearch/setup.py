@@ -13,7 +13,7 @@ install_requires = [
     "stac-fastapi.types==2.3.0",
     "stac-fastapi.api==2.3.0",
     "stac-fastapi.extensions==2.3.0",
-    "elasticsearch[async]==7.17.3",
+    "elasticsearch[async]==7.17.4",
     "elasticsearch-dsl==7.4.0",
     "pystac[validation]",
     "uvicorn",
