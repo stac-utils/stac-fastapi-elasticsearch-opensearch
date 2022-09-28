@@ -214,9 +214,9 @@ class DatabaseLogic:
     async def get_all_collections(self, page: int = 1) -> Iterable[Dict[str, Any]]:
         """Database logic to retrieve a list of all collections."""
         results_after = (page - 1) * COLLECTIONS_PAGE_SIZE
-        collections = await self.client.search(index=COLLECTIONS_INDEX,
-                                               size=COLLECTIONS_PAGE_SIZE,
-                                               from_=results_after)
+        collections = await self.client.search(
+            index=COLLECTIONS_INDEX, size=COLLECTIONS_PAGE_SIZE, from_=results_after
+        )
         return (c["_source"] for c in collections["hits"]["hits"])
 
     async def get_one_item(self, collection_id: str, item_id: str) -> Dict:
@@ -447,9 +447,7 @@ class DatabaseLogic:
                 f"Item {item_id} in collection {collection_id} already exists"
             )
 
-    async def delete_item(
-        self, item_id: str, collection_id: str, refresh: bool = True
-    ):
+    async def delete_item(self, item_id: str, collection_id: str, refresh: bool = True):
         """Database logic for deleting one item."""
         try:
             await self.client.delete(

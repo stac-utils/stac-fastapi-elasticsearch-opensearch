@@ -59,12 +59,12 @@ class CoreClient(AsyncBaseCoreClient):
         base_url = str(kwargs["request"].base_url)
         request = kwargs["request"]
         page_str = None
-        if(request.query_params is not None):
-            page_str = request.query_params.get('page')
+        if request.query_params is not None:
+            page_str = request.query_params.get("page")
         pageint = 1
-        if(page_str is not None):
+        if page_str is not None:
             pageint = int(page_str)
-        if (pageint<1):
+        if pageint < 1:
             pageint = 1
 
         return Collections(
