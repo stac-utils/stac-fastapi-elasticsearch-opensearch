@@ -57,11 +57,20 @@ class CoreClient(AsyncBaseCoreClient):
     async def all_collections(self, **kwargs) -> Collections:
         """Read all collections from the database."""
         base_url = str(kwargs["request"].base_url)
+        request = kwargs["request"]
+        page_str = None
+        if(request.query_params is not None):
+            page_str = request.query_params.get('page')
+        pageint = 1
+        if(page_str is not None):
+            pageint = int(page_str)
+        if (pageint<1):
+            pageint = 1
 
         return Collections(
             collections=[
                 self.collection_serializer.db_to_stac(c, base_url=base_url)
-                for c in await self.database.get_all_collections()
+                for c in await self.database.get_all_collections(page=pageint)
             ],
             links=[
                 {
@@ -378,7 +387,8 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             return None  # type: ignore
         else:
             item = await self.database.prep_create_item(item=item, base_url=base_url)
-            await self.database.create_item(item, refresh=kwargs.get("refresh", False))
+            # await self.database.create_item(item, refresh=kwargs.get("refresh", False))
+            await self.database.create_item(item, refresh=True)
             return item
 
     @overrides

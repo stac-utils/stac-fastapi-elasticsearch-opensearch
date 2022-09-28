@@ -1,5 +1,6 @@
 import pystac
-
+import pytest
+import json
 
 async def test_create_and_delete_collection(app_client, load_test_data):
     """Test creation and deletion of a collection"""
@@ -11,6 +12,28 @@ async def test_create_and_delete_collection(app_client, load_test_data):
 
     resp = await app_client.delete(f"/collections/{test_collection['id']}")
     assert resp.status_code == 200
+
+@pytest.mark.skip(reason="paginating collections takes a long time to test, skip it if you haven't changed anything")
+async def test_create_paginate_collections(app_client, load_test_data):
+    """Test creation and pagination of collections"""
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = "test"
+
+    for i in range(1, 1005):
+        test_collection["id"] = "test_" + str(i)
+        resp = await app_client.post("/collections", json=test_collection)
+        assert resp.status_code == 200
+
+    resp = await app_client.get("/collections?page=2")#, params={"page": 2})
+    resp_json = resp.json()
+    collcount = len(resp_json["collections"])
+    assert collcount == 4
+
+    """ this many deletes all at once tends to error out after a certain point """
+#    for i in range(1, 1005):
+#        test_id = "test_" + str(i)
+#        resp = await app_client.delete(f"/collections/{test_id}")
+#        assert resp.status_code == 200
 
 
 async def test_create_collection_conflict(app_client, ctx):

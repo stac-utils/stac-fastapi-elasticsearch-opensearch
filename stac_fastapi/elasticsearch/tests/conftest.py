@@ -40,6 +40,7 @@ class Context:
 
 class MockRequest:
     base_url = "http://test-server"
+    query_params = None
 
     def __init__(
         self, method: str = "GET", url: str = "XXXX", app: Optional[Any] = None

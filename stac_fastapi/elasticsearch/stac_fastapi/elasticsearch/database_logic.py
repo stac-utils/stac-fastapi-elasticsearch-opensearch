@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 NumType = Union[float, int]
 
 COLLECTIONS_INDEX = "collections"
+COLLECTIONS_PAGE_SIZE = 1000
 ITEMS_INDEX_PREFIX = "items_"
 
 DEFAULT_INDICES = f"*,-*kibana*,-{COLLECTIONS_INDEX}"
@@ -210,11 +211,12 @@ class DatabaseLogic:
 
     """CORE LOGIC"""
 
-    async def get_all_collections(self) -> Iterable[Dict[str, Any]]:
+    async def get_all_collections(self, page: int = 1) -> Iterable[Dict[str, Any]]:
         """Database logic to retrieve a list of all collections."""
-        # https://github.com/stac-utils/stac-fastapi-elasticsearch/issues/65
-        # collections should be paginated, but at least return more than the default 10 for now
-        collections = await self.client.search(index=COLLECTIONS_INDEX, size=1000)
+        results_after = (page - 1) * COLLECTIONS_PAGE_SIZE
+        collections = await self.client.search(index=COLLECTIONS_INDEX,
+                                               size=COLLECTIONS_PAGE_SIZE,
+                                               from_=results_after)
         return (c["_source"] for c in collections["hits"]["hits"])
 
     async def get_one_item(self, collection_id: str, item_id: str) -> Dict:
@@ -428,7 +430,7 @@ class DatabaseLogic:
 
         return self.item_serializer.stac_to_db(item, base_url)
 
-    async def create_item(self, item: Item, refresh: bool = False):
+    async def create_item(self, item: Item, refresh: bool = True):
         """Database logic for creating one item."""
         # todo: check if collection exists, but cache
         item_id = item["id"]
@@ -446,7 +448,7 @@ class DatabaseLogic:
             )
 
     async def delete_item(
-        self, item_id: str, collection_id: str, refresh: bool = False
+        self, item_id: str, collection_id: str, refresh: bool = True
     ):
         """Database logic for deleting one item."""
         try:
@@ -460,7 +462,7 @@ class DatabaseLogic:
                 f"Item {item_id} in collection {collection_id} not found"
             )
 
-    async def create_collection(self, collection: Collection, refresh: bool = False):
+    async def create_collection(self, collection: Collection, refresh: bool = True):
         """Database logic for creating one collection."""
         collection_id = collection["id"]
 
@@ -487,7 +489,7 @@ class DatabaseLogic:
 
         return collection["_source"]
 
-    async def delete_collection(self, collection_id: str, refresh: bool = False):
+    async def delete_collection(self, collection_id: str, refresh: bool = True):
         """Database logic for deleting one collection."""
         await self.find_collection(collection_id=collection_id)
         await self.client.delete(
