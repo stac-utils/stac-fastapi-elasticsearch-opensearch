@@ -1,5 +1,3 @@
-import json
-
 import pystac
 import pytest
 
