@@ -387,8 +387,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             return None  # type: ignore
         else:
             item = await self.database.prep_create_item(item=item, base_url=base_url)
-            # await self.database.create_item(item, refresh=kwargs.get("refresh", False))
-            await self.database.create_item(item, refresh=True)
+            await self.database.create_item(item, refresh=kwargs.get("refresh", False))
             return item
 
     @overrides
