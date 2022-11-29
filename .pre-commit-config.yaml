@@ -23,7 +23,12 @@ repos:
       - id: mypy
         exclude: /tests/
         # --strict
-        args: [--no-strict-optional, --ignore-missing-imports, --implicit-reexport]
+        args: [
+          --no-strict-optional,
+          --ignore-missing-imports,
+          --implicit-reexport,
+          --explicit-package-bases,
+        ]
         additional_dependencies: [
           "types-attrs",
           "types-requests"
