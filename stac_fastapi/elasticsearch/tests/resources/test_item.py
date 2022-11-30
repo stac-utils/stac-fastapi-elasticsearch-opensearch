@@ -521,7 +521,7 @@ async def test_pagination_item_collection(app_client, ctx, txn_client):
     idx = 0
     for idx in range(100):
         page_data = page.json()
-        next_link = list(filter(lambda l: l["rel"] == "next", page_data["links"]))
+        next_link = list(filter(lambda link: link["rel"] == "next", page_data["links"]))
         if not next_link:
             assert not page_data["features"]
             break
@@ -556,7 +556,7 @@ async def test_pagination_post(app_client, ctx, txn_client):
     for _ in range(100):
         idx += 1
         page_data = page.json()
-        next_link = list(filter(lambda l: l["rel"] == "next", page_data["links"]))
+        next_link = list(filter(lambda link: link["rel"] == "next", page_data["links"]))
         if not next_link:
             break
 
@@ -585,7 +585,7 @@ async def test_pagination_token_idempotent(app_client, ctx, txn_client):
 
     page = await app_client.get("/search", params={"ids": ",".join(ids), "limit": 3})
     page_data = page.json()
-    next_link = list(filter(lambda l: l["rel"] == "next", page_data["links"]))
+    next_link = list(filter(lambda link: link["rel"] == "next", page_data["links"]))
 
     # Confirm token is idempotent
     resp1 = await app_client.get(
