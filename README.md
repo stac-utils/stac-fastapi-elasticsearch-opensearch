@@ -21,7 +21,7 @@ Install [pre-commit](https://pre-commit.com/#install).
 Prior to commit, run:
 
 ```shell
-pre-commit run --all-files`
+pre-commit run --all-files
 ```
 
 
@@ -81,7 +81,7 @@ Create a snapshot repository. This puts the files in the `elasticsearch/snapshot
 the elasticsearch.yml and docker-compose files create a mapping from that directory to 
 `/usr/share/elasticsearch/snapshots` within the Elasticsearch container and grant permissions on using it.
 
-```
+```shell
 curl -X "PUT" "http://localhost:9200/_snapshot/my_fs_backup" \
      -H 'Content-Type: application/json; charset=utf-8' \
      -d $'{
@@ -97,7 +97,7 @@ a snapshot named `my_snapshot_2` and waits for the action to be completed before
 asynchronously, and queried for status. The `indices` parameter determines which indices are snapshotted, and
 can include wildcards.
 
-```
+```shell
 curl -X "PUT" "http://localhost:9200/_snapshot/my_fs_backup/my_snapshot_2?wait_for_completion=true" \
      -H 'Content-Type: application/json; charset=utf-8' \
      -d $'{
@@ -113,20 +113,20 @@ curl -X "PUT" "http://localhost:9200/_snapshot/my_fs_backup/my_snapshot_2?wait_f
 
 To see the status of this snapshot:
 
-```
+```shell
 curl http://localhost:9200/_snapshot/my_fs_backup/my_snapshot_2
 ```
 
 To see all the snapshots:
 
-```
+```shell
 curl http://localhost:9200/_snapshot/my_fs_backup/_all
 ```
 
 To restore a snapshot, run something similar to the following. This specific command will restore any indices that
 match `items_*` and rename them so that the new index name will be suffixed with `-copy`.
 
-```
+```shell
 curl -X "POST" "http://localhost:9200/_snapshot/my_fs_backup/my_snapshot_2/_restore?wait_for_completion=true" \
      -H 'Content-Type: application/json; charset=utf-8' \
      -d $'{
@@ -137,7 +137,6 @@ curl -X "POST" "http://localhost:9200/_snapshot/my_fs_backup/my_snapshot_2/_rest
   "indices": "items_*",
   "rename_pattern": "items_(.+)"
 }'
-
 ```
 
 Now the item documents have been restored in to the new index (e.g., `my-collection-copy`), but the value of the
@@ -145,7 +144,7 @@ Now the item documents have been restored in to the new index (e.g., `my-collect
 new collection name, run the following Elasticsearch Update By Query command, substituting the old collection name
 into the term filter and the new collection name into the script parameter:
 
-```
+```shell
 curl -X "POST" "http://localhost:9200/items_my-collection-copy/_update_by_query" \
      -H 'Content-Type: application/json; charset=utf-8' \
      -d $'{
@@ -164,7 +163,7 @@ curl -X "POST" "http://localhost:9200/items_my-collection-copy/_update_by_query"
 
 Then, create a new collection through the api with the new name for each of the restored indices:
 
-```
+```shell
 curl -X "POST" "http://localhost:8080/collections" \
      -H 'Content-Type: application/json' \
      -d $'{
