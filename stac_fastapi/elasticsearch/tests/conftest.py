@@ -94,10 +94,21 @@ async def create_collection(txn_client: TransactionsClient, collection: Dict) ->
 
 
 async def create_item(txn_client: TransactionsClient, item: Dict) -> None:
-    if 'collection' in item:
-        await txn_client.create_item(collection_id=item["collection"], item=item, request=MockRequest, refresh=True)
+    if "collection" in item:
+        await txn_client.create_item(
+            collection_id=item["collection"],
+            item=item,
+            request=MockRequest,
+            refresh=True,
+        )
     else:
-        await txn_client.create_item(collection_id=item['features'][0]["collection"], item=item, request=MockRequest, refresh=True)
+        await txn_client.create_item(
+            collection_id=item["features"][0]["collection"],
+            item=item,
+            request=MockRequest,
+            refresh=True,
+        )
+
 
 async def delete_collections_and_items(txn_client: TransactionsClient) -> None:
     await refresh_indices(txn_client)

@@ -80,7 +80,9 @@ async def test_update_item_already_exists(app_client, ctx):
 
     assert ctx.item["properties"]["gsd"] != 16
     ctx.item["properties"]["gsd"] = 16
-    await app_client.put(f"/collections/{ctx.item['collection']}/items/{ctx.item['id']}", json=ctx.item)
+    await app_client.put(
+        f"/collections/{ctx.item['collection']}/items/{ctx.item['id']}", json=ctx.item
+    )
     resp = await app_client.get(
         f"/collections/{ctx.item['collection']}/items/{ctx.item['id']}"
     )
@@ -99,7 +101,8 @@ async def test_update_new_item(app_client, ctx):
 
     # note: this endpoint is wrong in stac-fastapi -- should be /collections/{c_id}/items/{item_id}
     resp = await app_client.put(
-        f"/collections/{test_item['collection']}/items/{test_item['id']}", json=test_item
+        f"/collections/{test_item['collection']}/items/{test_item['id']}",
+        json=test_item,
     )
     assert resp.status_code == 404
 
@@ -229,7 +232,8 @@ async def test_item_timestamps(app_client, ctx, load_test_data):
     # Confirm `updated` timestamp
     ctx.item["properties"]["proj:epsg"] = 4326
     resp = await app_client.put(
-        f"/collections/{ctx.item['collection']}/items/{ctx.item['id']}", json=dict(ctx.item)
+        f"/collections/{ctx.item['collection']}/items/{ctx.item['id']}",
+        json=dict(ctx.item),
     )
     assert resp.status_code == 200
     updated_item = resp.json()
