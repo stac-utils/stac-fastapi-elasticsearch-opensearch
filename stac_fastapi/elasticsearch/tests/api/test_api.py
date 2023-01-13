@@ -29,7 +29,7 @@ ROUTES = {
     "POST /collections",
     "POST /collections/{collection_id}/items",
     "PUT /collections",
-    "PUT /collections/{collection_id}/items",
+    "PUT /collections/{collection_id}/items/{item_id}",
 }
 
 
