@@ -1,4 +1,5 @@
 """Database logic."""
+import os
 import asyncio
 import logging
 from base64 import urlsafe_b64decode, urlsafe_b64encode
@@ -21,8 +22,8 @@ logger = logging.getLogger(__name__)
 
 NumType = Union[float, int]
 
-COLLECTIONS_INDEX = "collections"
-ITEMS_INDEX_PREFIX = "items_"
+COLLECTIONS_INDEX = os.getenv("STAC_COLLECTIONS_INDEX", "collections")
+ITEMS_INDEX_PREFIX = os.getenv("STAC_ITEMS_INDEX_PREFIX", "items_")
 
 DEFAULT_INDICES = f"*,-*kibana*,-{COLLECTIONS_INDEX}"
 
