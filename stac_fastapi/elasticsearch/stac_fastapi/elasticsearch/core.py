@@ -34,6 +34,7 @@ from stac_fastapi.types.core import (
 )
 from stac_fastapi.types.links import CollectionLinks
 from stac_fastapi.types.stac import Collection, Collections, Item, ItemCollection
+from stac_fastapi.types.search import BaseSearchPostRequest
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +92,13 @@ class CoreClient(AsyncBaseCoreClient):
 
     @overrides
     async def item_collection(
-        self, collection_id: str, limit: int = 10, token: str = None, **kwargs
+        self, 
+        collection_id: str,
+        bbox: Optional[List[NumType]] = None,
+        datetime: Union[str, datetime_type, None] = None,
+        limit: int = 10, 
+        token: str = None, 
+        **kwargs
     ) -> ItemCollection:
         """Read an item collection from the database."""
         request: Request = kwargs["request"]
@@ -236,7 +243,7 @@ class CoreClient(AsyncBaseCoreClient):
 
     @overrides
     async def post_search(
-        self, search_request: stac_pydantic.api.Search, **kwargs
+        self, search_request: BaseSearchPostRequest, **kwargs
     ) -> ItemCollection:
         """POST search catalog."""
         request: Request = kwargs["request"]
@@ -286,8 +293,8 @@ class CoreClient(AsyncBaseCoreClient):
             cql2_filter = getattr(search_request, "filter", None)
             if filter_lang in [None, FilterLang.cql2_json]:
                 search = self.database.apply_cql2_filter(search, cql2_filter)
-            else:
-                raise Exception("CQL2-Text is not supported with POST")
+            # else:
+                # raise Exception("CQL2-Text is not supported with POST")
 
         sort = None
         if search_request.sortby:
@@ -358,7 +365,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     database = DatabaseLogic()
 
     @overrides
-    async def create_item(self, item: stac_types.Item, **kwargs) -> stac_types.Item:
+    async def create_item(self, collection_id: str, item: stac_types.Item, **kwargs) -> stac_types.Item:
         """Create item."""
         base_url = str(kwargs["request"].base_url)
 
@@ -368,9 +375,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             processed_items = [
                 bulk_client.preprocess_item(item, base_url) for item in item["features"]  # type: ignore
             ]
-
-            # not a great way to get the collection_id-- should be part of the method signature
-            collection_id = processed_items[0]["collection"]
+          
             await self.database.bulk_async(
                 collection_id, processed_items, refresh=kwargs.get("refresh", False)
             )
@@ -382,18 +387,17 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             return item
 
     @overrides
-    async def update_item(self, item: stac_types.Item, **kwargs) -> stac_types.Item:
+    async def update_item(self, collection_id: str, item_id: str, item: stac_types.Item, **kwargs) -> stac_types.Item:
         """Update item."""
         base_url = str(kwargs["request"].base_url)
-        collection_id = item["collection"]
 
         now = datetime_type.now(timezone.utc).isoformat().replace("+00:00", "Z")
         item["properties"]["updated"] = str(now)
 
         await self.database.check_collection_exists(collection_id)
         # todo: index instead of delete and create
-        await self.delete_item(item_id=item["id"], collection_id=collection_id)
-        await self.create_item(item=item, **kwargs)
+        await self.delete_item(item_id=item_id, collection_id=collection_id)
+        await self.create_item(collection_id=collection_id, item=item, **kwargs)
 
         return ItemSerializer.db_to_stac(item, base_url)
 
