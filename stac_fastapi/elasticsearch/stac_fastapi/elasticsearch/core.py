@@ -103,12 +103,14 @@ class CoreClient(AsyncBaseCoreClient):
         request: Request = kwargs["request"]
         base_url = str(request.base_url)
 
-        collection = await self.get_collection(collection_id=collection_id, request=request)
+        collection = await self.get_collection(
+            collection_id=collection_id, request=request
+        )
         try:
             collection_id = collection["id"]
-        except:
+        except Exception:
             raise HTTPException(status_code=404, detail="Collection not found")
- 
+
         search = self.database.make_search()
         search = self.database.apply_collections_filter(
             search=search, collection_ids=[collection_id]
@@ -124,7 +126,7 @@ class CoreClient(AsyncBaseCoreClient):
             bbox = [float(x) for x in bbox]
             if len(bbox) == 6:
                 bbox = [bbox[0], bbox[1], bbox[3], bbox[4]]
-        
+
             search = self.database.apply_bbox_filter(search=search, bbox=bbox)
 
         items, maybe_count, next_token = await self.database.execute_search(

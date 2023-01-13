@@ -196,13 +196,17 @@ async def test_item_collection_filter_bbox(app_client, ctx):
     collection = item["collection"]
 
     bbox = "100,-50,170,-20"
-    resp = await app_client.get(f"/collections/{collection}/items", params={"bbox": bbox})
+    resp = await app_client.get(
+        f"/collections/{collection}/items", params={"bbox": bbox}
+    )
     assert resp.status_code == 200
     resp_json = resp.json()
     assert len(resp_json["features"]) == 1
 
     bbox = "1,2,3,4"
-    resp = await app_client.get(f"/collections/{collection}/items", params={"bbox": bbox})
+    resp = await app_client.get(
+        f"/collections/{collection}/items", params={"bbox": bbox}
+    )
     assert resp.status_code == 200
     resp_json = resp.json()
     assert len(resp_json["features"]) == 0
