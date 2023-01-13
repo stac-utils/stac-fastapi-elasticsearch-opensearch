@@ -7,8 +7,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
-- The default collection objects index can be overridden by the `STAC_COLLECTIONS_INDEX` environment variable.
-- The Item objects index prefix can be overridden by the `STAC_ITEMS_INDEX_PREFIX` environment variable.
+- The default Collection objects index can be overridden by the `STAC_COLLECTIONS_INDEX` environment variable.
+- The defualt Item objects index prefix can be overridden by the `STAC_ITEMS_INDEX_PREFIX` environment variable.
 
 ## [v0.2.0]
 
