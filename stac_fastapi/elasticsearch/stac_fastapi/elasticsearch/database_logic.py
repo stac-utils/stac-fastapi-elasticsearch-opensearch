@@ -1,7 +1,7 @@
 """Database logic."""
-import os
 import asyncio
 import logging
+import os
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple, Type, Union
 
