@@ -191,7 +191,7 @@ async def test_get_item_collection(app_client, ctx, txn_client):
         assert matched == item_count + 1
 
 
-async def test_item_collection_filter_bbox(app_client, ctx, txn_client):
+async def test_item_collection_filter_bbox(app_client, ctx):
     item = ctx.item
     collection = item["collection"]
 
@@ -208,30 +208,26 @@ async def test_item_collection_filter_bbox(app_client, ctx, txn_client):
     assert len(resp_json["features"]) == 0
 
 
-# def test_item_collection_filter_datetime(
-#     load_test_data, app_client, postgres_transactions
-# ):
-#     item = load_test_data("test_item.json")
-#     collection = item["collection"]
-#     postgres_transactions.create_item(
-#         item["collection"], item, request=MockStarletteRequest
-#     )
+async def test_item_collection_filter_datetime(app_client, ctx):
+    item = ctx.item
+    collection = item["collection"]
 
-#     datetime_range = "2020-01-01T00:00:00.00Z/.."
-#     resp = app_client.get(
-#         f"/collections/{collection}/items", params={"datetime": datetime_range}
-#     )
-#     assert resp.status_code == 200
-#     resp_json = resp.json()
-#     assert len(resp_json["features"]) == 1
+    datetime_range = "2020-01-01T00:00:00.00Z/.."
+    resp = await app_client.get(
+        f"/collections/{collection}/items", params={"datetime": datetime_range}
+    )
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["features"]) == 1
 
-#     datetime_range = "2018-01-01T00:00:00.00Z/2019-01-01T00:00:00.00Z"
-#     resp = app_client.get(
-#         f"/collections/{collection}/items", params={"datetime": datetime_range}
-#     )
-#     assert resp.status_code == 200
-#     resp_json = resp.json()
-#     assert len(resp_json["features"]) == 0
+    datetime_range = "2018-01-01T00:00:00.00Z/2019-01-01T00:00:00.00Z"
+    resp = await app_client.get(
+        f"/collections/{collection}/items", params={"datetime": datetime_range}
+    )
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["features"]) == 0
+
 
 @pytest.mark.skip(reason="Pagination extension not implemented")
 async def test_pagination(app_client, load_test_data):
