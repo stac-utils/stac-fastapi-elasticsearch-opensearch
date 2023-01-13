@@ -101,17 +101,38 @@ class CoreClient(AsyncBaseCoreClient):
     ) -> ItemCollection:
         """Read an item collection from the database."""
         request: Request = kwargs["request"]
-        base_url = str(kwargs["request"].base_url)
+        base_url = str(request.base_url)
+
+        collection = await self.get_collection(collection_id=collection_id, request=request)
+        try:
+            collection_id = collection["id"]
+        except:
+            raise HTTPException(status_code=404, detail="Collection not found")
+ 
+        search = self.database.make_search()
+        search = self.database.apply_collections_filter(
+            search=search, collection_ids=[collection_id]
+        )
+
+        if datetime:
+            datetime_search = self._return_date(datetime)
+            search = self.database.apply_datetime_filter(
+                search=search, datetime_search=datetime_search
+            )
+
+        if bbox:
+            bbox = [float(x) for x in bbox]
+            if len(bbox) == 6:
+                bbox = [bbox[0], bbox[1], bbox[3], bbox[4]]
+        
+            search = self.database.apply_bbox_filter(search=search, bbox=bbox)
 
         items, maybe_count, next_token = await self.database.execute_search(
-            search=self.database.apply_collections_filter(
-                self.database.make_search(), [collection_id]
-            ),
+            search=search,
             limit=limit,
-            token=token,
             sort=None,
+            token=token,  # type: ignore
             collection_ids=[collection_id],
-            ignore_unavailable=False,
         )
 
         items = [
