@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Added bbox and datetime parameters and functionality to item_collection https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/127
 - Added collection_id parameter to create_item function https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/127
 - Added item_id and collection_id to update_item https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/127
+- The default Collection objects index can be overridden by the `STAC_COLLECTIONS_INDEX` environment variable.
+- The default Item objects index prefix can be overridden by the `STAC_ITEMS_INDEX_PREFIX` environment variable.
+
 
 ### Changed
 
@@ -23,7 +26,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
-- Filter Extension as GET with CQL2-Text and POST with CQL2-JSON, 
+- Filter Extension as GET with CQL2-Text and POST with CQL2-JSON,
   supporting the Basic CQL2 and Basic Spatial Operators conformance classes.
 - Added Elasticsearch local config to support snapshot/restore to local filesystem
 
@@ -56,7 +59,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Elasticsearch index mappings updated to be more thorough.
 - Endpoints that return items (e.g., /search) now sort the results by 'properties.datetime,id,collection'.
   Previously, there was no sort order defined.
-- Db_to_stac serializer moved to core.py for consistency as it existed in both core and database_logic previously. 
+- Db_to_stac serializer moved to core.py for consistency as it existed in both core and database_logic previously.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
