@@ -9,16 +9,17 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
-- Added bbox and datetime parameters and functionality to item_collection https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/127
-- Added collection_id parameter to create_item function https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/127
-- Added item_id and collection_id to update_item https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/127
-- The default Collection objects index can be overridden by the `STAC_COLLECTIONS_INDEX` environment variable.
-- The default Item objects index prefix can be overridden by the `STAC_ITEMS_INDEX_PREFIX` environment variable.
+- Added bbox and datetime parameters and functionality to item_collection [#127](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/127)
+- Added collection_id parameter to create_item function [#127](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/127)
+- Added item_id and collection_id to update_item [#127](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/127)
+- The default Collection objects index can be overridden by the `STAC_COLLECTIONS_INDEX` environment variable [#128](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/128)
+- The default Item objects index prefix can be overridden by the `STAC_ITEMS_INDEX_PREFIX` environment variable [#128](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/128)
+- Fields Extension [#129](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/129)
 
 
 ### Changed
 
-- Updated core stac-fastapi libraries to 2.4.3 from 2.3.0 https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/127
+- Updated core stac-fastapi libraries to 2.4.3 from 2.3.0 [#127](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/127)
 
 ## [v0.2.0]
 
