@@ -115,6 +115,28 @@ async def test_app_fields_extension(app_client, ctx, txn_client):
     assert list(resp_json["features"][0]["properties"]) == ["datetime"]
 
 
+async def test_app_fields_extension_no_properties_get(app_client, ctx, txn_client):
+    resp = await app_client.get(
+        "/search", params={"collections": ["test-collection"], "fields": "-properties"}
+    )
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert "properties" not in resp_json["features"][0]
+
+
+async def test_app_fields_extension_no_properties_post(app_client, ctx, txn_client):
+    resp = await app_client.post(
+        "/search",
+        json={
+            "collections": ["test-collection"],
+            "fields": {"exclude": ["properties"]},
+        },
+    )
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert "properties" not in resp_json["features"][0]
+
+
 async def test_app_fields_extension_return_all_properties(app_client, ctx, txn_client):
     item = ctx.item
     resp = await app_client.get(
