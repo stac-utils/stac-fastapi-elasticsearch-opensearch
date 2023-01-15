@@ -26,6 +26,7 @@ from stac_fastapi.extensions.core import (  # FieldsExtension,
     ContextExtension,
     TokenPaginationExtension,
     TransactionExtension,
+    FieldsExtension,
 )
 from stac_fastapi.types.config import Settings
 
@@ -160,7 +161,7 @@ async def app():
         ),
         ContextExtension(),
         FixedSortExtension(),
-        # FieldsExtension(),
+        FieldsExtension(),
         FixedQueryExtension(),
         TokenPaginationExtension(),
         FixedFilterExtension(),
