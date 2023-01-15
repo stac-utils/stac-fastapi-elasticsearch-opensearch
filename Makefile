@@ -60,16 +60,6 @@ pybase-install:
 install: pybase-install
 	pip install -e ./stac_fastapi/elasticsearch[dev,server]
 
-.PHONY: docs-image
-docs-image:
-	docker-compose -f docker-compose.docs.yml \
-		build
-
-.PHONY: docs
-docs: docs-image
-	docker-compose -f docker-compose.docs.yml \
-		run docs
-
 .PHONY: ingest
 ingest:
 	python3 data_loader/data_loader.py
