@@ -99,7 +99,6 @@ async def test_update_new_item(app_client, ctx):
     test_item = ctx.item
     test_item["id"] = "a"
 
-    # note: this endpoint is wrong in stac-fastapi -- should be /collections/{c_id}/items/{item_id}
     resp = await app_client.put(
         f"/collections/{test_item['collection']}/items/{test_item['id']}",
         json=test_item,

@@ -43,7 +43,6 @@ async def test_search_filter_extension_gte(app_client, ctx):
     assert resp.status_code == 200
     assert len(resp.json()["features"]) == 1
 
-    # this part fails
     params = {
         "filter": {
             "op": ">",
