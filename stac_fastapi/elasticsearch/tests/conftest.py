@@ -24,9 +24,9 @@ from stac_fastapi.elasticsearch.core import (
 from stac_fastapi.elasticsearch.database_logic import create_collection_index
 from stac_fastapi.extensions.core import (  # FieldsExtension,
     ContextExtension,
+    FieldsExtension,
     TokenPaginationExtension,
     TransactionExtension,
-    FieldsExtension,
 )
 from stac_fastapi.types.config import Settings
 

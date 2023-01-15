@@ -2,9 +2,7 @@ import copy
 import uuid
 from datetime import datetime, timedelta
 
-import pytest
-
-from ..conftest import MockRequest, create_collection, create_item
+from ..conftest import create_collection, create_item
 
 ROUTES = {
     "GET /_mgmt/ping",
