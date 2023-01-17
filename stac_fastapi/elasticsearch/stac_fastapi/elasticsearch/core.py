@@ -106,9 +106,8 @@ class CoreClient(AsyncBaseCoreClient):
         collection = await self.get_collection(
             collection_id=collection_id, request=request
         )
-        try:
-            collection_id = collection["id"]
-        except Exception:
+        collection_id = collection.get("id")
+        if collection_id is None:
             raise HTTPException(status_code=404, detail="Collection not found")
 
         search = self.database.make_search()
