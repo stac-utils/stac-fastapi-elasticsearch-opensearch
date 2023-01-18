@@ -7,7 +7,6 @@ from typing import Any, Dict, List, Optional, Type, Union
 from urllib.parse import urljoin
 
 import attr
-import stac_pydantic.api
 from fastapi import HTTPException
 from overrides import overrides
 from pydantic import ValidationError
@@ -21,7 +20,6 @@ from stac_fastapi.elasticsearch.database_logic import DatabaseLogic
 from stac_fastapi.elasticsearch.models.links import PagingLinks
 from stac_fastapi.elasticsearch.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.elasticsearch.session import Session
-from stac_fastapi.extensions.core.filter.request import FilterLang
 from stac_fastapi.extensions.third_party.bulk_transactions import (
     BaseBulkTransactionsClient,
     Items,
@@ -33,6 +31,7 @@ from stac_fastapi.types.core import (
     AsyncBaseTransactionsClient,
 )
 from stac_fastapi.types.links import CollectionLinks
+from stac_fastapi.types.search import BaseSearchPostRequest
 from stac_fastapi.types.stac import Collection, Collections, Item, ItemCollection
 
 logger = logging.getLogger(__name__)
@@ -91,21 +90,49 @@ class CoreClient(AsyncBaseCoreClient):
 
     @overrides
     async def item_collection(
-        self, collection_id: str, limit: int = 10, token: str = None, **kwargs
+        self,
+        collection_id: str,
+        bbox: Optional[List[NumType]] = None,
+        datetime: Union[str, datetime_type, None] = None,
+        limit: int = 10,
+        token: str = None,
+        **kwargs,
     ) -> ItemCollection:
         """Read an item collection from the database."""
         request: Request = kwargs["request"]
-        base_url = str(kwargs["request"].base_url)
+        base_url = str(request.base_url)
+
+        collection = await self.get_collection(
+            collection_id=collection_id, request=request
+        )
+        collection_id = collection.get("id")
+        if collection_id is None:
+            raise HTTPException(status_code=404, detail="Collection not found")
+
+        search = self.database.make_search()
+        search = self.database.apply_collections_filter(
+            search=search, collection_ids=[collection_id]
+        )
+
+        if datetime:
+            datetime_search = self._return_date(datetime)
+            search = self.database.apply_datetime_filter(
+                search=search, datetime_search=datetime_search
+            )
+
+        if bbox:
+            bbox = [float(x) for x in bbox]
+            if len(bbox) == 6:
+                bbox = [bbox[0], bbox[1], bbox[3], bbox[4]]
+
+            search = self.database.apply_bbox_filter(search=search, bbox=bbox)
 
         items, maybe_count, next_token = await self.database.execute_search(
-            search=self.database.apply_collections_filter(
-                self.database.make_search(), [collection_id]
-            ),
+            search=search,
             limit=limit,
-            token=token,
             sort=None,
+            token=token,  # type: ignore
             collection_ids=[collection_id],
-            ignore_unavailable=False,
         )
 
         items = [
@@ -236,7 +263,7 @@ class CoreClient(AsyncBaseCoreClient):
 
     @overrides
     async def post_search(
-        self, search_request: stac_pydantic.api.Search, **kwargs
+        self, search_request: BaseSearchPostRequest, **kwargs
     ) -> ItemCollection:
         """POST search catalog."""
         request: Request = kwargs["request"]
@@ -280,14 +307,15 @@ class CoreClient(AsyncBaseCoreClient):
                         search=search, op=op, field=field, value=value
                     )
 
-        filter_lang = getattr(search_request, "filter_lang", None)
-
+        # only cql2_json is supported here
         if hasattr(search_request, "filter"):
             cql2_filter = getattr(search_request, "filter", None)
-            if filter_lang in [None, FilterLang.cql2_json]:
+            try:
                 search = self.database.apply_cql2_filter(search, cql2_filter)
-            else:
-                raise Exception("CQL2-Text is not supported with POST")
+            except Exception as e:
+                raise HTTPException(
+                    status_code=400, detail=f"Error with cql2_json filter: {e}"
+                )
 
         sort = None
         if search_request.sortby:
@@ -358,7 +386,9 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     database = DatabaseLogic()
 
     @overrides
-    async def create_item(self, item: stac_types.Item, **kwargs) -> stac_types.Item:
+    async def create_item(
+        self, collection_id: str, item: stac_types.Item, **kwargs
+    ) -> stac_types.Item:
         """Create item."""
         base_url = str(kwargs["request"].base_url)
 
@@ -369,8 +399,6 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 bulk_client.preprocess_item(item, base_url) for item in item["features"]  # type: ignore
             ]
 
-            # not a great way to get the collection_id-- should be part of the method signature
-            collection_id = processed_items[0]["collection"]
             await self.database.bulk_async(
                 collection_id, processed_items, refresh=kwargs.get("refresh", False)
             )
@@ -382,18 +410,19 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             return item
 
     @overrides
-    async def update_item(self, item: stac_types.Item, **kwargs) -> stac_types.Item:
+    async def update_item(
+        self, collection_id: str, item_id: str, item: stac_types.Item, **kwargs
+    ) -> stac_types.Item:
         """Update item."""
         base_url = str(kwargs["request"].base_url)
-        collection_id = item["collection"]
 
         now = datetime_type.now(timezone.utc).isoformat().replace("+00:00", "Z")
         item["properties"]["updated"] = str(now)
 
         await self.database.check_collection_exists(collection_id)
         # todo: index instead of delete and create
-        await self.delete_item(item_id=item["id"], collection_id=collection_id)
-        await self.create_item(item=item, **kwargs)
+        await self.delete_item(item_id=item_id, collection_id=collection_id)
+        await self.create_item(collection_id=collection_id, item=item, **kwargs)
 
         return ItemSerializer.db_to_stac(item, base_url)
 

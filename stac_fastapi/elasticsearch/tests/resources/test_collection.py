@@ -10,7 +10,7 @@ async def test_create_and_delete_collection(app_client, load_test_data):
     assert resp.status_code == 200
 
     resp = await app_client.delete(f"/collections/{test_collection['id']}")
-    assert resp.status_code == 200
+    assert resp.status_code == 204
 
 
 async def test_create_collection_conflict(app_client, ctx):

@@ -2,7 +2,7 @@
 
 Elasticsearch backend for stac-fastapi. 
 
-**WIP** This backend does not have any production deployments yet, so use the pgstac backend instead if that's what you need.
+Join our [Gitter](https://gitter.im/stac-fastapi-elasticsearch/community) page
 
 For changes, see the [Changelog](CHANGELOG.md).
 
