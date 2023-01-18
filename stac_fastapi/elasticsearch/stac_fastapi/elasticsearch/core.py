@@ -20,7 +20,6 @@ from stac_fastapi.elasticsearch.database_logic import DatabaseLogic
 from stac_fastapi.elasticsearch.models.links import PagingLinks
 from stac_fastapi.elasticsearch.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.elasticsearch.session import Session
-from stac_fastapi.extensions.core.filter.request import FilterLang
 from stac_fastapi.extensions.third_party.bulk_transactions import (
     BaseBulkTransactionsClient,
     Items,
@@ -315,7 +314,9 @@ class CoreClient(AsyncBaseCoreClient):
             try:
                 search = self.database.apply_cql2_filter(search, cql2_filter)
             except Exception:
-                raise HTTPException(status_code=400, detail="Error with cql2_json filter")
+                raise HTTPException(
+                    status_code=400, detail="Error with cql2_json filter"
+                )
 
         sort = None
         if search_request.sortby:
