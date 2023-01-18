@@ -1,14 +1,13 @@
 # STAC FastAPI Elasticsearch
 
 ## Elasticsearch backend for stac-fastapi
------
-
+   
 ### Join our [Gitter](https://gitter.im/stac-fastapi-elasticsearch/community) page
 
 ### Check out the public Postman documentation [Postman](https://documenter.getpostman.com/view/12888943/2s8ZDSdRHA)
 
 ### For changes, see the [Changelog](CHANGELOG.md)
------
+
 
 ## Development Environment Setup
 
@@ -27,14 +26,14 @@ Prior to commit, run:
 ```shell
 pre-commit run --all-files
 ```
------
+
 
 ## Building
 
 ```shell
 docker-compose build
 ```
------
+  
 ## Running API on localhost:8080
 
 ```shell
@@ -61,24 +60,24 @@ curl -X "POST" "http://localhost:8080/collections" \
 
 Note: this "Collections Transaction" behavior is not part of the STAC API, but may be soon.  
    
-------
+
 ## Testing
 
 ```shell
 make test
 ```
------
+   
 ## Ingest sample data
 
 ```shell
 make ingest
 ```
------
+
 ## Elasticsearch Mappings
 
 Mappings apply to search index, not source.  
     
------
+
 ## Managing Elasticsearch Indices
 
 This section covers how to create a snapshot repository and then create and restore snapshots with this.
