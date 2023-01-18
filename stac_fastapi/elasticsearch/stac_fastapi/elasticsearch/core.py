@@ -309,14 +309,13 @@ class CoreClient(AsyncBaseCoreClient):
                         search=search, op=op, field=field, value=value
                     )
 
-        filter_lang = getattr(search_request, "filter_lang", None)
-
+        # only cql2_json is supported here
         if hasattr(search_request, "filter"):
             cql2_filter = getattr(search_request, "filter", None)
-            if filter_lang == FilterLang.cql2_text:
-                raise Exception("CQL2-Text is not supported with POST")
-            else:
+            try:
                 search = self.database.apply_cql2_filter(search, cql2_filter)
+            except Exception:
+                raise HTTPException(status_code=400, detail="Error with cql2_json filter")
 
         sort = None
         if search_request.sortby:
