@@ -649,15 +649,8 @@ async def test_pagination_token_idempotent(app_client, ctx, txn_client):
     ]
 
 
-@pytest.mark.skip(reason="fields not implemented")
-async def test_field_extension_get_includes(app_client, load_test_data):
+async def test_field_extension_get_includes(app_client, ctx):
     """Test GET search with included fields (fields extension)"""
-    test_item = load_test_data("test_item.json")
-    resp = await app_client.post(
-        f"/collections/{test_item['collection']}/items", json=test_item
-    )
-    assert resp.status_code == 200
-
     params = {"fields": "+properties.proj:epsg,+properties.gsd"}
     resp = await app_client.get("/search", params=params)
     feat_properties = resp.json()["features"][0]["properties"]
