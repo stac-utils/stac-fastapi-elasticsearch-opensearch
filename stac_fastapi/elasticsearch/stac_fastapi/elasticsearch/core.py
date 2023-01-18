@@ -105,9 +105,8 @@ class CoreClient(AsyncBaseCoreClient):
         collection = await self.get_collection(
             collection_id=collection_id, request=request
         )
-        try:
-            collection_id = collection["id"]
-        except Exception:
+        collection_id = collection.get("id")
+        if collection_id is None:
             raise HTTPException(status_code=404, detail="Collection not found")
 
         search = self.database.make_search()
@@ -313,9 +312,9 @@ class CoreClient(AsyncBaseCoreClient):
             cql2_filter = getattr(search_request, "filter", None)
             try:
                 search = self.database.apply_cql2_filter(search, cql2_filter)
-            except Exception:
+            except Exception as e:
                 raise HTTPException(
-                    status_code=400, detail="Error with cql2_json filter"
+                    status_code=400, detail=f"Error with cql2_json filter: {e}"
                 )
 
         sort = None
