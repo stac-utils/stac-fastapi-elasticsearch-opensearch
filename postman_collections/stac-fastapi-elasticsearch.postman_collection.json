@@ -2,7 +2,8 @@
 	"info": {
 		"_postman_id": "ca9d0979-4035-45ad-bfba-582a680a05ab",
 		"name": "stac-fastapi-elasticsearch",
-		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "12888943"
 	},
 	"item": [
 		{
@@ -16,7 +17,7 @@
 					"host": [
 						"localhost"
 					],
-					"port": "8083",
+					"port": "8080",
 					"path": [
 						""
 					]
@@ -35,7 +36,7 @@
 					"host": [
 						"localhost"
 					],
-					"port": "8083",
+					"port": "8080",
 					"path": [
 						"collections"
 					]
@@ -54,7 +55,7 @@
 					"host": [
 						"localhost"
 					],
-					"port": "8083",
+					"port": "8080",
 					"path": [
 						"collections",
 						"test-collection"
@@ -74,7 +75,7 @@
 					"host": [
 						"localhost"
 					],
-					"port": "8083",
+					"port": "8080",
 					"path": [
 						"collections",
 						"test-collection",
@@ -96,7 +97,7 @@
 					"host": [
 						"localhost"
 					],
-					"port": "8083",
+					"port": "8080",
 					"path": [
 						"collections",
 						"test-collection"
@@ -116,7 +117,7 @@
 					"host": [
 						"localhost"
 					],
-					"port": "8083",
+					"port": "8080",
 					"path": [
 						"collections",
 						"test-collection",
@@ -137,7 +138,7 @@
 					"host": [
 						"localhost"
 					],
-					"port": "8083",
+					"port": "8080",
 					"path": [
 						"collections",
 						"test-collection",
@@ -174,7 +175,7 @@
 					"host": [
 						"localhost"
 					],
-					"port": "8083",
+					"port": "8080",
 					"path": [
 						"collections"
 					]
@@ -208,11 +209,48 @@
 					"host": [
 						"localhost"
 					],
-					"port": "8083",
+					"port": "8080",
 					"path": [
 						"collections",
 						"test-collection",
 						"items"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "UPDATE item",
+			"protocolProfileBehavior": {
+				"disabledSystemHeaders": {
+					"content-type": true
+				}
+			},
+			"request": {
+				"method": "PUT",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "default"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n  \"type\": \"Feature\",\n  \"id\": \"test-item\",\n  \"stac_version\": \"1.0.1\",\n  \"stac_extensions\": [\n    \"https://stac-extensions.github.io/eo/v1.0.0/schema.json\",\n    \"https://stac-extensions.github.io/projection/v1.0.0/schema.json\"\n  ],\n  \"geometry\": {\n    \"coordinates\": [\n      [\n        [\n          152.15052873427666,\n          -33.82243006904891\n        ],\n        [\n          150.1000346138806,\n          -34.257132625788756\n        ],\n        [\n          149.5776607193635,\n          -32.514709769700254\n        ],\n        [\n          151.6262528041627,\n          -32.08081674221862\n        ],\n        [\n          152.15052873427666,\n          -33.82243006904891\n        ]\n      ]\n    ],\n    \"type\": \"Polygon\"\n  },\n  \"properties\": {\n    \"datetime\": \"2018-02-12T12:30:22Z\",\n    \"landsat:scene_id\": \"LC82081612020043LGN00\",\n    \"landsat:row\": \"161\",\n    \"gsd\": 15,\n    \"landsat:revision\": \"00\",\n    \"view:sun_azimuth\": -148.83296771,\n    \"instrument\": \"OLI_TIRS\",\n    \"landsat:product_id\": \"LC08_L1GT_208161_20200212_20200212_01_RT\",\n    \"eo:cloud_cover\": 0,\n    \"landsat:tier\": \"RT\",\n    \"landsat:processing_level\": \"L1GT\",\n    \"landsat:column\": \"208\",\n    \"platform\": \"landsat-8\",\n    \"proj:epsg\": 32756,\n    \"view:sun_elevation\": -37.30791534,\n    \"view:off_nadir\": 0,\n    \"height\": 2500,\n    \"width\": 2500\n  },\n  \"bbox\": [\n    149.57574,\n    -34.25796,\n    152.15194,\n    -32.07915\n  ],\n  \"collection\": \"test-collection\",\n  \"assets\": {},\n  \"links\": [\n    {\n      \"href\": \"http://localhost:8081/collections/landsat-8-l1/items/LC82081612020043\",\n      \"rel\": \"self\",\n      \"type\": \"application/geo+json\"\n    },\n    {\n      \"href\": \"http://localhost:8081/collections/landsat-8-l1\",\n      \"rel\": \"parent\",\n      \"type\": \"application/json\"\n    },\n    {\n      \"href\": \"http://localhost:8081/collections/landsat-8-l1\",\n      \"rel\": \"collection\",\n      \"type\": \"application/json\"\n    },\n    {\n      \"href\": \"http://localhost:8081/\",\n      \"rel\": \"root\",\n      \"type\": \"application/json\"\n    }\n  ]\n}"
+				},
+				"url": {
+					"raw": "http://localhost:8080/collections/test-collection/items/test-item",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"collections",
+						"test-collection",
+						"items",
+						"test-item"
 					]
 				}
 			},
@@ -236,7 +274,7 @@
 				],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"collections\":[\"test-collection\"],\n    \"intersects\":{\"type\": \"Point\", \"coordinates\": [150.04, -33.14]}\n}"
+					"raw": "{\n    \"collections\":[\"test-collection\"],\n    \"limit\": 2,\n    \"intersects\":{\"type\": \"Point\", \"coordinates\": [150.04, -33.14]},\n    \"query\": {\n        \"gsd\":{\"gt\":10}\n    }\n}"
 				},
 				"url": {
 					"raw": "http://localhost:8080/search",
@@ -244,7 +282,41 @@
 					"host": [
 						"localhost"
 					],
-					"port": "8083",
+					"port": "8080",
+					"path": [
+						"search"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "POST search <polygon intersection>",
+			"protocolProfileBehavior": {
+				"disabledSystemHeaders": {
+					"content-type": true
+				}
+			},
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "default"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"collections\":[\"test-collection\"],\n    \"intersects\":{\n        \"type\": \"Polygon\", \n        \"coordinates\": [\n          [\n            [\n              98.0859375,\n              -7.362466865535738\n            ],\n            [\n              95.2734375,\n              -44.33956524809713\n            ],\n            [\n              188.4375,\n              -50.28933925329178\n            ],\n            [\n              168.75,\n              10.487811882056695\n            ],\n            [\n              98.0859375,\n              -7.362466865535738\n            ]\n          ]\n        ]\n    }\n}"
+				},
+				"url": {
+					"raw": "http://localhost:8080/search",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
 					"path": [
 						"search"
 					]
@@ -270,7 +342,7 @@
 				],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n    \"collections\":[\"sentinel-s2-l2a\"],\n    \"bbox\": [-69.433594,-10.660608,-47.285156,3.513421]\n}"
+					"raw": "{\n    \"bbox\": [97.504892,-45.254738,174.321298,-2.431580]\n}"
 				},
 				"url": {
 					"raw": "http://localhost:8080/search",
@@ -278,7 +350,75 @@
 					"host": [
 						"localhost"
 					],
-					"port": "8083",
+					"port": "8080",
+					"path": [
+						"search"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "POST search <bbox> Fields Include",
+			"protocolProfileBehavior": {
+				"disabledSystemHeaders": {
+					"content-type": true
+				}
+			},
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "default"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"bbox\": [97.504892,-45.254738,174.321298,-2.431580],\n    \"fields\": {\n        \"include\": [\"properties.gsd\"]\n    }\n}"
+				},
+				"url": {
+					"raw": "http://localhost:8080/search",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
+					"path": [
+						"search"
+					]
+				}
+			},
+			"response": []
+		},
+		{
+			"name": "POST search <bbox> Fields Exclude",
+			"protocolProfileBehavior": {
+				"disabledSystemHeaders": {
+					"content-type": true
+				}
+			},
+			"request": {
+				"method": "POST",
+				"header": [
+					{
+						"key": "Content-Type",
+						"value": "application/json",
+						"type": "default"
+					}
+				],
+				"body": {
+					"mode": "raw",
+					"raw": "{\n    \"bbox\": [97.504892,-45.254738,174.321298,-2.431580],\n    \"fields\": {\n        \"exclude\": [\"properties\"]\n    }\n}"
+				},
+				"url": {
+					"raw": "http://localhost:8080/search",
+					"protocol": "http",
+					"host": [
+						"localhost"
+					],
+					"port": "8080",
 					"path": [
 						"search"
 					]
@@ -303,7 +443,7 @@
 					"host": [
 						"localhost"
 					],
-					"port": "8083",
+					"port": "8080",
 					"path": [
 						"search"
 					],

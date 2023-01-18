@@ -2,9 +2,7 @@ import copy
 import uuid
 from datetime import datetime, timedelta
 
-import pytest
-
-from ..conftest import MockRequest, create_collection, create_item
+from ..conftest import create_collection, create_item
 
 ROUTES = {
     "GET /_mgmt/ping",
@@ -110,17 +108,49 @@ async def test_app_context_extension(app_client, ctx, txn_client):
         assert matched == 1
 
 
-@pytest.mark.skip(reason="fields not implemented yet")
-async def test_app_fields_extension(load_test_data, app_client, txn_client):
-    item = load_test_data("test_item.json")
-    txn_client.create_item(item, request=MockRequest, refresh=True)
-
+async def test_app_fields_extension(app_client, ctx, txn_client):
     resp = await app_client.get("/search", params={"collections": ["test-collection"]})
     assert resp.status_code == 200
     resp_json = resp.json()
     assert list(resp_json["features"][0]["properties"]) == ["datetime"]
 
-    txn_client.delete_item(item["id"], item["collection"])
+
+async def test_app_fields_extension_no_properties_get(app_client, ctx, txn_client):
+    resp = await app_client.get(
+        "/search", params={"collections": ["test-collection"], "fields": "-properties"}
+    )
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert "properties" not in resp_json["features"][0]
+
+
+async def test_app_fields_extension_no_properties_post(app_client, ctx, txn_client):
+    resp = await app_client.post(
+        "/search",
+        json={
+            "collections": ["test-collection"],
+            "fields": {"exclude": ["properties"]},
+        },
+    )
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert "properties" not in resp_json["features"][0]
+
+
+async def test_app_fields_extension_return_all_properties(app_client, ctx, txn_client):
+    item = ctx.item
+    resp = await app_client.get(
+        "/search", params={"collections": ["test-collection"], "fields": "properties"}
+    )
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    feature = resp_json["features"][0]
+    assert len(feature["properties"]) >= len(item["properties"])
+    for expected_prop, expected_value in item["properties"].items():
+        if expected_prop in ("datetime", "created", "updated"):
+            assert feature["properties"][expected_prop][0:19] == expected_value[0:19]
+        else:
+            assert feature["properties"][expected_prop] == expected_value
 
 
 async def test_app_query_extension_gt(app_client, ctx):

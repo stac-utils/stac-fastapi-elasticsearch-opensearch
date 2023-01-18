@@ -15,8 +15,9 @@ from stac_fastapi.elasticsearch.core import (
 from stac_fastapi.elasticsearch.database_logic import create_collection_index
 from stac_fastapi.elasticsearch.extensions import QueryExtension
 from stac_fastapi.elasticsearch.session import Session
-from stac_fastapi.extensions.core import (  # FieldsExtension,
+from stac_fastapi.extensions.core import (
     ContextExtension,
+    FieldsExtension,
     FilterExtension,
     SortExtension,
     TokenPaginationExtension,
@@ -67,7 +68,7 @@ class FixedQueryExtension(QueryExtension):
 extensions = [
     TransactionExtension(client=TransactionsClient(session=session), settings=settings),
     BulkTransactionExtension(client=BulkTransactionsClient(session=session)),
-    # FieldsExtension(),
+    FieldsExtension(),
     FixedQueryExtension(),
     FixedSortExtension(),
     TokenPaginationExtension(),

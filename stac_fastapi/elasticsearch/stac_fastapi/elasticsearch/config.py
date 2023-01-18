@@ -37,6 +37,7 @@ class ElasticsearchSettings(ApiSettings):
 
     # Fields which are defined by STAC but not included in the database model
     forbidden_fields: Set[str] = _forbidden_fields
+    indexed_fields: Set[str] = {"datetime"}
 
     @property
     def create_client(self):
@@ -49,6 +50,7 @@ class AsyncElasticsearchSettings(ApiSettings):
 
     # Fields which are defined by STAC but not included in the database model
     forbidden_fields: Set[str] = _forbidden_fields
+    indexed_fields: Set[str] = {"datetime"}
 
     @property
     def create_client(self):

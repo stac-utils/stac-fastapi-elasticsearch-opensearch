@@ -24,6 +24,7 @@ from stac_fastapi.elasticsearch.core import (
 from stac_fastapi.elasticsearch.database_logic import create_collection_index
 from stac_fastapi.extensions.core import (  # FieldsExtension,
     ContextExtension,
+    FieldsExtension,
     TokenPaginationExtension,
     TransactionExtension,
 )
@@ -160,7 +161,7 @@ async def app():
         ),
         ContextExtension(),
         FixedSortExtension(),
-        # FieldsExtension(),
+        FieldsExtension(),
         FixedQueryExtension(),
         TokenPaginationExtension(),
         FixedFilterExtension(),

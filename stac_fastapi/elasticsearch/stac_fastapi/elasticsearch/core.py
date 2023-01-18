@@ -3,10 +3,11 @@ import json
 import logging
 from datetime import datetime as datetime_type
 from datetime import timezone
-from typing import Any, Dict, List, Optional, Type, Union
+from typing import Any, Dict, List, Optional, Set, Type, Union
 from urllib.parse import urljoin
 
 import attr
+import stac_pydantic
 from fastapi import HTTPException
 from overrides import overrides
 from pydantic import ValidationError
@@ -25,6 +26,7 @@ from stac_fastapi.extensions.third_party.bulk_transactions import (
     Items,
 )
 from stac_fastapi.types import stac as stac_types
+from stac_fastapi.types.config import Settings
 from stac_fastapi.types.core import (
     AsyncBaseCoreClient,
     AsyncBaseFiltersClient,
@@ -240,17 +242,17 @@ class CoreClient(AsyncBaseCoreClient):
         #         base_args["filter"] = orjson.loads(to_cql2(parse_cql2_text(filter)))
         #         print(f'>>> {base_args["filter"]}')
 
-        # if fields:
-        #     includes = set()
-        #     excludes = set()
-        #     for field in fields:
-        #         if field[0] == "-":
-        #             excludes.add(field[1:])
-        #         elif field[0] == "+":
-        #             includes.add(field[1:])
-        #         else:
-        #             includes.add(field)
-        #     base_args["fields"] = {"include": includes, "exclude": excludes}
+        if fields:
+            includes = set()
+            excludes = set()
+            for field in fields:
+                if field[0] == "-":
+                    excludes.add(field[1:])
+                elif field[0] == "+":
+                    includes.add(field[1:])
+                else:
+                    includes.add(field)
+            base_args["fields"] = {"include": includes, "exclude": excludes}
 
         # Do the request
         try:
@@ -337,25 +339,25 @@ class CoreClient(AsyncBaseCoreClient):
             self.item_serializer.db_to_stac(item, base_url=base_url) for item in items
         ]
 
-        # if self.extension_is_enabled("FieldsExtension"):
-        #     if search_request.query is not None:
-        #         query_include: Set[str] = set(
-        #             [
-        #                 k if k in Settings.get().indexed_fields else f"properties.{k}"
-        #                 for k in search_request.query.keys()
-        #             ]
-        #         )
-        #         if not search_request.fields.include:
-        #             search_request.fields.include = query_include
-        #         else:
-        #             search_request.fields.include.union(query_include)
+        if self.extension_is_enabled("FieldsExtension"):
+            if search_request.query is not None:
+                query_include: Set[str] = set(
+                    [
+                        k if k in Settings.get().indexed_fields else f"properties.{k}"
+                        for k in search_request.query.keys()
+                    ]
+                )
+                if not search_request.fields.include:
+                    search_request.fields.include = query_include
+                else:
+                    search_request.fields.include.union(query_include)
 
-        #     filter_kwargs = search_request.fields.filter_fields
+            filter_kwargs = search_request.fields.filter_fields
 
-        #     response_features = [
-        #         json.loads(stac_pydantic.Item(**feat).json(**filter_kwargs))
-        #         for feat in response_features
-        #     ]
+            items = [
+                json.loads(stac_pydantic.Item(**feat).json(**filter_kwargs))
+                for feat in items
+            ]
 
         context_obj = None
         if self.extension_is_enabled("ContextExtension"):
