@@ -649,7 +649,7 @@ async def test_pagination_token_idempotent(app_client, ctx, txn_client):
     ]
 
 
-async def test_field_extension_get_includes(app_client, ctx):
+async def test_field_extension_get_includes(app_client):
     """Test GET search with included fields (fields extension)"""
     params = {"fields": "+properties.proj:epsg,+properties.gsd"}
     resp = await app_client.get("/search", params=params)
@@ -657,15 +657,8 @@ async def test_field_extension_get_includes(app_client, ctx):
     assert not set(feat_properties) - {"proj:epsg", "gsd", "datetime"}
 
 
-@pytest.mark.skip(reason="fields not implemented")
-async def test_field_extension_get_excludes(app_client, load_test_data):
+async def test_field_extension_get_excludes(app_client):
     """Test GET search with included fields (fields extension)"""
-    test_item = load_test_data("test_item.json")
-    resp = await app_client.post(
-        f"/collections/{test_item['collection']}/items", json=test_item
-    )
-    assert resp.status_code == 200
-
     params = {"fields": "-properties.proj:epsg,-properties.gsd"}
     resp = await app_client.get("/search", params=params)
     resp_json = resp.json()
@@ -673,15 +666,8 @@ async def test_field_extension_get_excludes(app_client, load_test_data):
     assert "gsd" not in resp_json["features"][0]["properties"].keys()
 
 
-@pytest.mark.skip(reason="fields not implemented")
-async def test_field_extension_post(app_client, load_test_data):
+async def test_field_extension_post(app_client):
     """Test POST search with included and excluded fields (fields extension)"""
-    test_item = load_test_data("test_item.json")
-    resp = await app_client.post(
-        f"/collections/{test_item['collection']}/items", json=test_item
-    )
-    assert resp.status_code == 200
-
     body = {
         "fields": {
             "exclude": ["assets.B1"],
@@ -699,15 +685,8 @@ async def test_field_extension_post(app_client, load_test_data):
     }
 
 
-@pytest.mark.skip(reason="fields not implemented")
 async def test_field_extension_exclude_and_include(app_client, load_test_data):
     """Test POST search including/excluding same field (fields extension)"""
-    test_item = load_test_data("test_item.json")
-    resp = await app_client.post(
-        f"/collections/{test_item['collection']}/items", json=test_item
-    )
-    assert resp.status_code == 200
-
     body = {
         "fields": {
             "exclude": ["properties.eo:cloud_cover"],
@@ -720,15 +699,8 @@ async def test_field_extension_exclude_and_include(app_client, load_test_data):
     assert "eo:cloud_cover" not in resp_json["features"][0]["properties"]
 
 
-@pytest.mark.skip(reason="fields not implemented")
 async def test_field_extension_exclude_default_includes(app_client, load_test_data):
     """Test POST search excluding a forbidden field (fields extension)"""
-    test_item = load_test_data("test_item.json")
-    resp = await app_client.post(
-        f"/collections/{test_item['collection']}/items", json=test_item
-    )
-    assert resp.status_code == 200
-
     body = {"fields": {"exclude": ["gsd"]}}
 
     resp = await app_client.post("/search", json=body)
