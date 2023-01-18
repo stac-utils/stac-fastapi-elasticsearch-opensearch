@@ -21,7 +21,6 @@ from stac_fastapi.elasticsearch.database_logic import DatabaseLogic
 from stac_fastapi.elasticsearch.models.links import PagingLinks
 from stac_fastapi.elasticsearch.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.elasticsearch.session import Session
-from stac_fastapi.extensions.core.filter.request import FilterLang
 from stac_fastapi.extensions.third_party.bulk_transactions import (
     BaseBulkTransactionsClient,
     Items,
@@ -108,9 +107,8 @@ class CoreClient(AsyncBaseCoreClient):
         collection = await self.get_collection(
             collection_id=collection_id, request=request
         )
-        try:
-            collection_id = collection["id"]
-        except Exception:
+        collection_id = collection.get("id")
+        if collection_id is None:
             raise HTTPException(status_code=404, detail="Collection not found")
 
         search = self.database.make_search()
@@ -311,14 +309,15 @@ class CoreClient(AsyncBaseCoreClient):
                         search=search, op=op, field=field, value=value
                     )
 
-        filter_lang = getattr(search_request, "filter_lang", None)
-
+        # only cql2_json is supported here
         if hasattr(search_request, "filter"):
             cql2_filter = getattr(search_request, "filter", None)
-            if filter_lang in [None, FilterLang.cql2_json, FilterLang.cql_json]:
+            try:
                 search = self.database.apply_cql2_filter(search, cql2_filter)
-            else:
-                raise Exception("CQL2-Text is not supported with POST")
+            except Exception as e:
+                raise HTTPException(
+                    status_code=400, detail=f"Error with cql2_json filter: {e}"
+                )
 
         sort = None
         if search_request.sortby:
