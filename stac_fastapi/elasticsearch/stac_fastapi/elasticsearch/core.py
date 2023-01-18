@@ -106,8 +106,9 @@ class CoreClient(AsyncBaseCoreClient):
         collection = await self.get_collection(
             collection_id=collection_id, request=request
         )
-        collection_id = collection.get("id")
-        if collection_id is None:
+        try:
+            collection_id = collection["id"]
+        except Exception:
             raise HTTPException(status_code=404, detail="Collection not found")
 
         search = self.database.make_search()
@@ -312,10 +313,10 @@ class CoreClient(AsyncBaseCoreClient):
 
         if hasattr(search_request, "filter"):
             cql2_filter = getattr(search_request, "filter", None)
-            if filter_lang in [None, FilterLang.cql2_json, FilterLang.cql_json]:
-                search = self.database.apply_cql2_filter(search, cql2_filter)
-            else:
+            if filter_lang == FilterLang.cql2_text:
                 raise Exception("CQL2-Text is not supported with POST")
+            else:
+                search = self.database.apply_cql2_filter(search, cql2_filter)
 
         sort = None
         if search_request.sortby:
