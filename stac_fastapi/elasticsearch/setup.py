@@ -34,12 +34,12 @@ extra_reqs = {
         "httpx",
     ],
     "docs": ["mkdocs", "mkdocs-material", "pdocs"],
-    "server": ["uvicorn[standard]>=0.12.0,<0.14.0"],
+    "server": ["uvicorn[standard]==0.19.0"],
 }
 
 setup(
     name="stac-fastapi.elasticsearch",
-    description="An implementation of STAC API based on the FastAPI framework.",
+    description="An implementation of STAC API based on the FastAPI framework with Elasticsearch.",
     long_description=desc,
     long_description_content_type="text/markdown",
     python_requires=">=3.8",
@@ -50,6 +50,7 @@ setup(
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
         "License :: OSI Approved :: MIT License",
     ],
     url="https://github.com/stac-utils/stac-fastapi-elasticsearch",

@@ -2,11 +2,11 @@
 
 ## Elasticsearch backend for stac-fastapi
    
-### Join our [Gitter](https://gitter.im/stac-fastapi-elasticsearch/community) page
+#### Join our [Gitter](https://gitter.im/stac-fastapi-elasticsearch/community) page
 
-### Check out the public Postman documentation [Postman](https://documenter.getpostman.com/view/12888943/2s8ZDSdRHA)
+#### Check out the public Postman documentation [Postman](https://documenter.getpostman.com/view/12888943/2s8ZDSdRHA)
 
-### For changes, see the [Changelog](CHANGELOG.md)
+#### For changes, see the [Changelog](CHANGELOG.md)
 
 
 ## Development Environment Setup
