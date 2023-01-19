@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+### Changed
+### Fixed
+
+## [v0.3.0]
+
+### Added
 
 - Added bbox and datetime parameters and functionality to item_collection [#127](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/127)
 - Added collection_id parameter to create_item function [#127](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/127)
@@ -15,6 +21,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - The default Collection objects index can be overridden by the `STAC_COLLECTIONS_INDEX` environment variable [#128](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/128)
 - The default Item objects index prefix can be overridden by the `STAC_ITEMS_INDEX_PREFIX` environment variable [#128](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/128)
 - Fields Extension [#129](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/129)
+- Support for Python 3.11 [#131](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/131)
 
 
 ### Changed
@@ -22,8 +29,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Updated core stac-fastapi libraries to 2.4.3 from 2.3.0 [#127](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/127)
 
 ## [v0.2.0]
-
-### Deprecated
 
 ### Added
 
@@ -45,15 +50,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - When using bulk ingest, items will continue to be ingested if any of them fail. Previously, the call would fail
   immediately if any items failed.
 
-### Removed
-
 ## [v0.1.0]
-
-### Deprecated
-
-### Added
-
-### Fixed
 
 ### Changed
 
@@ -62,12 +59,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
   Previously, there was no sort order defined.
 - Db_to_stac serializer moved to core.py for consistency as it existed in both core and database_logic previously.
 - Use genexp in execute_search and get_all_collections to return results.
-- Added db_to_stac serializer to item_collection method in core.py.
+- Added db_to_stac serializer to item_collection method in core.py.   
 
-### Removed
-
-## Versions
-
-- [Unreleased]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v0.2.0...main>
-- [v0.2.0]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v0.1.0...v0.2.0>
-- [v0.1.0]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v0.1.0>
+[Unreleased]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v0.3.0...main>
+[v0.3.0]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v0.2.0...v0.3.0>
+[v0.2.0]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v0.1.0...v0.2.0>
+[v0.1.0]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v0.1.0>
