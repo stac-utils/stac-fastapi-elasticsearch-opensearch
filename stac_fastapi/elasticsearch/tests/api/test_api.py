@@ -116,7 +116,13 @@ async def test_app_fields_extension(app_client, ctx, txn_client):
 
 
 async def test_app_fields_extension_query(app_client, ctx, txn_client):
-    resp = await app_client.post("/search", json={"query": {"proj:epsg": {"gte": ctx.item["properties"]["proj:epsg"]}}, "collections": ["test-collection"]})
+    resp = await app_client.post(
+        "/search",
+        json={
+            "query": {"proj:epsg": {"gte": ctx.item["properties"]["proj:epsg"]}},
+            "collections": ["test-collection"],
+        },
+    )
     assert resp.status_code == 200
     resp_json = resp.json()
     assert list(resp_json["features"][0]["properties"]) == ["datetime", "proj:epsg"]
