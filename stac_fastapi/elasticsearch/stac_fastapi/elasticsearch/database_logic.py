@@ -140,29 +140,36 @@ def indices(collection_ids: Optional[List[str]]) -> str:
 
 
 async def create_collection_index() -> None:
-    """Create the index for Items and Collections."""
-    await AsyncElasticsearchSettings().create_client.indices.create(
+    """Create the index for Collections."""
+    client = AsyncElasticsearchSettings().create_client
+
+    await client.indices.create(
         index=COLLECTIONS_INDEX,
         mappings=ES_COLLECTIONS_MAPPINGS,
         ignore=400,  # ignore 400 already exists code
     )
+    await client.close()
 
 
 async def create_item_index(collection_id: str):
-    """Create the index for Items and Collections."""
-    await AsyncElasticsearchSettings().create_client.indices.create(
+    """Create the index for Items."""
+    client = AsyncElasticsearchSettings().create_client
+
+    await client.indices.create(
         index=index_by_collection_id(collection_id),
         mappings=ES_ITEMS_MAPPINGS,
         settings=ES_ITEMS_SETTINGS,
         ignore=400,  # ignore 400 already exists code
     )
+    await client.close()
 
 
 async def delete_item_index(collection_id: str):
-    """Create the index for Items and Collections."""
-    await AsyncElasticsearchSettings().create_client.indices.delete(
-        index=index_by_collection_id(collection_id)
-    )
+    """Delete the index for Items."""
+    client = AsyncElasticsearchSettings().create_client
+
+    await client.indices.delete(index=index_by_collection_id(collection_id))
+    await client.close()
 
 
 def bbox2polygon(b0: float, b1: float, b2: float, b3: float) -> List[List[List[float]]]:
