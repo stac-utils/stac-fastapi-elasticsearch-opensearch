@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Changed
 ### Fixed
 
+- Corrected the closing of client connections in ES index management functions [#132](https://github.com/stac-utils/stac-fastapi-elasticsearch/issues/132)
+
 ## [v0.3.0]
 
 ### Added
@@ -59,7 +61,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
   Previously, there was no sort order defined.
 - Db_to_stac serializer moved to core.py for consistency as it existed in both core and database_logic previously.
 - Use genexp in execute_search and get_all_collections to return results.
-- Added db_to_stac serializer to item_collection method in core.py.   
+- Added db_to_stac serializer to item_collection method in core.py.
 
 [Unreleased]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v0.3.0...main>
 [v0.3.0]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v0.2.0...v0.3.0>
