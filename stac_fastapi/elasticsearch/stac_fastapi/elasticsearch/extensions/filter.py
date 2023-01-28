@@ -114,6 +114,23 @@ class Date(BaseModel):
         return self.date.isoformat()
 
 
+class FloatInt(float):
+    """Representation of Float/Int."""
+
+    @classmethod
+    def __get_validators__(cls):
+        """Return validator to use."""
+        yield cls.validate
+
+    @classmethod
+    def validate(cls, v):
+        """Validate input value."""
+        if isinstance(v, float):
+            return v
+        else:
+            return int(v)
+
+
 Arg = Union[
     "Clause",
     PropertyReference,
@@ -126,8 +143,7 @@ Arg = Union[
     Polygon,
     MultiPolygon,
     GeometryCollection,
-    int,
-    float,
+    FloatInt,
     str,
     bool,
 ]
