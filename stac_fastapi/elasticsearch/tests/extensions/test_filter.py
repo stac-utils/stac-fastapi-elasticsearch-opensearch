@@ -78,3 +78,34 @@ async def test_search_filter_ext_and(app_client, ctx):
 
     assert resp.status_code == 200
     assert len(resp.json()["features"]) == 1
+
+
+async def test_search_filter_extension_floats(app_client, ctx):
+    sun_elevation = ctx.item["properties"]["view:sun_elevation"]
+
+    params = {
+        "filter": {
+            "op": "and",
+            "args": [
+                {"op": "=", "args": [{"property": "id"}, ctx.item["id"]]},
+                {
+                    "op": ">",
+                    "args": [
+                        {"property": "properties.view:sun_elevation"},
+                        sun_elevation - 0.01,
+                    ],
+                },
+                {
+                    "op": "<",
+                    "args": [
+                        {"property": "properties.view:sun_elevation"},
+                        sun_elevation + 0.01,
+                    ],
+                },
+            ],
+        }
+    }
+    resp = await app_client.post("/search", json=params)
+
+    assert resp.status_code == 200
+    assert len(resp.json()["features"]) == 1
