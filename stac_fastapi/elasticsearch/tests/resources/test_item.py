@@ -260,7 +260,7 @@ async def test_pagination(app_client, load_test_data):
     assert second_page["context"]["returned"] == 3
 
 
-async def test_item_timestamps(app_client, ctx, load_test_data):
+async def test_item_timestamps(app_client, ctx):
     """Test created and updated timestamps (common metadata)"""
     # start_time = now_to_rfc3339_str()
 
@@ -335,7 +335,7 @@ async def test_item_search_temporal_query_post(app_client, ctx):
     assert resp_json["features"][0]["id"] == test_item["id"]
 
 
-async def test_item_search_temporal_window_post(app_client, load_test_data, ctx):
+async def test_item_search_temporal_window_post(app_client, ctx):
     """Test POST search with two-tailed spatio-temporal query (core)"""
     test_item = ctx.item
 
@@ -649,30 +649,40 @@ async def test_pagination_token_idempotent(app_client, ctx, txn_client):
     ]
 
 
-async def test_field_extension_get_includes(app_client):
+async def test_field_extension_get_includes(app_client, ctx):
     """Test GET search with included fields (fields extension)"""
-    params = {"fields": "+properties.proj:epsg,+properties.gsd"}
+    test_item = ctx.item
+    params = {
+        "ids": [test_item["id"]],
+        "fields": "+properties.proj:epsg,+properties.gsd",
+    }
     resp = await app_client.get("/search", params=params)
     feat_properties = resp.json()["features"][0]["properties"]
     assert not set(feat_properties) - {"proj:epsg", "gsd", "datetime"}
 
 
-async def test_field_extension_get_excludes(app_client):
+async def test_field_extension_get_excludes(app_client, ctx):
     """Test GET search with included fields (fields extension)"""
-    params = {"fields": "-properties.proj:epsg,-properties.gsd"}
+    test_item = ctx.item
+    params = {
+        "ids": [test_item["id"]],
+        "fields": "-properties.proj:epsg,-properties.gsd",
+    }
     resp = await app_client.get("/search", params=params)
     resp_json = resp.json()
     assert "proj:epsg" not in resp_json["features"][0]["properties"].keys()
     assert "gsd" not in resp_json["features"][0]["properties"].keys()
 
 
-async def test_field_extension_post(app_client):
+async def test_field_extension_post(app_client, ctx):
     """Test POST search with included and excluded fields (fields extension)"""
+    test_item = ctx.item
     body = {
+        "ids": [test_item["id"]],
         "fields": {
             "exclude": ["assets.B1"],
             "include": ["properties.eo:cloud_cover", "properties.orientation"],
-        }
+        },
     }
 
     resp = await app_client.post("/search", json=body)
@@ -685,13 +695,15 @@ async def test_field_extension_post(app_client):
     }
 
 
-async def test_field_extension_exclude_and_include(app_client, load_test_data):
+async def test_field_extension_exclude_and_include(app_client, ctx):
     """Test POST search including/excluding same field (fields extension)"""
+    test_item = ctx.item
     body = {
+        "ids": [test_item["id"]],
         "fields": {
             "exclude": ["properties.eo:cloud_cover"],
             "include": ["properties.eo:cloud_cover"],
-        }
+        },
     }
 
     resp = await app_client.post("/search", json=body)
@@ -699,9 +711,10 @@ async def test_field_extension_exclude_and_include(app_client, load_test_data):
     assert "eo:cloud_cover" not in resp_json["features"][0]["properties"]
 
 
-async def test_field_extension_exclude_default_includes(app_client, load_test_data):
+async def test_field_extension_exclude_default_includes(app_client, ctx):
     """Test POST search excluding a forbidden field (fields extension)"""
-    body = {"fields": {"exclude": ["gsd"]}}
+    test_item = ctx.item
+    body = {"ids": [test_item["id"]], "fields": {"exclude": ["gsd"]}}
 
     resp = await app_client.post("/search", json=body)
     resp_json = resp.json()
