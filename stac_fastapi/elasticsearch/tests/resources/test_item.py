@@ -651,7 +651,8 @@ async def test_pagination_token_idempotent(app_client, ctx, txn_client):
 
 async def test_field_extension_get_includes(app_client, ctx):
     """Test GET search with included fields (fields extension)"""
-    params = {"fields": "+properties.proj:epsg,+properties.gsd"}
+    test_item = ctx.item
+    params = {"ids": [test_item["id"]], "fields": "+properties.proj:epsg,+properties.gsd"}
     resp = await app_client.get("/search", params=params)
     feat_properties = resp.json()["features"][0]["properties"]
     assert not set(feat_properties) - {"proj:epsg", "gsd", "datetime"}
@@ -659,7 +660,8 @@ async def test_field_extension_get_includes(app_client, ctx):
 
 async def test_field_extension_get_excludes(app_client, ctx):
     """Test GET search with included fields (fields extension)"""
-    params = {"fields": "-properties.proj:epsg,-properties.gsd"}
+    test_item = ctx.item
+    params = {"ids": [test_item["id"]], "fields": "-properties.proj:epsg,-properties.gsd"}
     resp = await app_client.get("/search", params=params)
     resp_json = resp.json()
     assert "proj:epsg" not in resp_json["features"][0]["properties"].keys()
@@ -668,7 +670,9 @@ async def test_field_extension_get_excludes(app_client, ctx):
 
 async def test_field_extension_post(app_client, ctx):
     """Test POST search with included and excluded fields (fields extension)"""
+    test_item = ctx.item
     body = {
+        "ids": [test_item["id"]],
         "fields": {
             "exclude": ["assets.B1"],
             "include": ["properties.eo:cloud_cover", "properties.orientation"],
@@ -687,7 +691,9 @@ async def test_field_extension_post(app_client, ctx):
 
 async def test_field_extension_exclude_and_include(app_client, ctx):
     """Test POST search including/excluding same field (fields extension)"""
+    test_item = ctx.item
     body = {
+        "ids": [test_item["id"]],
         "fields": {
             "exclude": ["properties.eo:cloud_cover"],
             "include": ["properties.eo:cloud_cover"],
@@ -701,7 +707,11 @@ async def test_field_extension_exclude_and_include(app_client, ctx):
 
 async def test_field_extension_exclude_default_includes(app_client, ctx):
     """Test POST search excluding a forbidden field (fields extension)"""
-    body = {"fields": {"exclude": ["gsd"]}}
+    test_item = ctx.item
+    body = {
+        "ids": [test_item["id"]],
+        "fields": {"exclude": ["gsd"]}
+    }
 
     resp = await app_client.post("/search", json=body)
     resp_json = resp.json()
