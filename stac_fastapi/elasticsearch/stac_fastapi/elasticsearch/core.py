@@ -456,7 +456,15 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     async def delete_item(
         self, item_id: str, collection_id: str, **kwargs
     ) -> stac_types.Item:
-        """Delete item."""
+        """Delete an item from a collection.
+
+        Args:
+            item_id (str): The identifier of the item to delete.
+            collection_id (str): The identifier of the collection that contains the item.
+
+        Returns:
+            Optional[stac_types.Item]: The deleted item, or `None` if the item was successfully deleted.
+        """
         await self.database.delete_item(item_id=item_id, collection_id=collection_id)
         return None  # type: ignore
 
@@ -464,7 +472,18 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     async def create_collection(
         self, collection: stac_types.Collection, **kwargs
     ) -> stac_types.Collection:
-        """Create collection."""
+        """Create a new collection in the database.
+
+        Args:
+            collection (stac_types.Collection): The collection to be created.
+            kwargs: Additional keyword arguments.
+
+        Returns:
+            stac_types.Collection: The created collection object.
+
+        Raises:
+            ConflictError: If the collection already exists.
+        """
         base_url = str(kwargs["request"].base_url)
         collection_links = CollectionLinks(
             collection_id=collection["id"], base_url=base_url
@@ -478,7 +497,21 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     async def update_collection(
         self, collection: stac_types.Collection, **kwargs
     ) -> stac_types.Collection:
-        """Update collection."""
+        """
+        Update a collection.
+
+        This method updates an existing collection in the database by first finding
+        the collection by its id, then deleting the old version, and finally creating
+        a new version of the updated collection. The updated collection is then returned.
+
+        Args:
+            collection: A STAC collection that needs to be updated.
+            kwargs: Additional keyword arguments.
+
+        Returns:
+            A STAC collection that has been updated in the database.
+
+        """
         base_url = str(kwargs["request"].base_url)
 
         await self.database.find_collection(collection_id=collection["id"])
