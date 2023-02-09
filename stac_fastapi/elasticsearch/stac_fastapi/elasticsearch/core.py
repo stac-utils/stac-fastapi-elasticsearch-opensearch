@@ -231,27 +231,44 @@ class CoreClient(AsyncBaseCoreClient):
 
     @staticmethod
     def _return_date(interval_str):
+        """
+        Convert a date interval string into a dictionary for filtering search results.
+
+        The date interval string should be formatted as either a single date or a range of dates separated
+        by "/". The date format should be ISO-8601 (YYYY-MM-DDTHH:MM:SSZ). If the interval string is a
+        single date, it will be converted to a dictionary with a single "eq" key whose value is the date in
+        the ISO-8601 format. If the interval string is a range of dates, it will be converted to a
+        dictionary with "gte" (greater than or equal to) and "lte" (less than or equal to) keys. If the
+        interval string is a range of dates with ".." instead of "/", the start and end dates will be
+        assigned default values to encompass the entire possible date range.
+
+        Args:
+            interval_str (str): The date interval string to be converted.
+
+        Returns:
+            dict: A dictionary representing the date interval for use in filtering search results.
+        """
         intervals = interval_str.split("/")
         if len(intervals) == 1:
-            datetime = intervals[0][0:19] + "Z"
+            datetime = f"{intervals[0][0:19]}Z"
             return {"eq": datetime}
         else:
             start_date = intervals[0]
             end_date = intervals[1]
             if ".." not in intervals:
-                start_date = start_date[0:19] + "Z"
-                end_date = end_date[0:19] + "Z"
+                start_date = f"{start_date[0:19]}Z"
+                end_date = f"{end_date[0:19]}Z"
             elif start_date != "..":
-                start_date = start_date[0:19] + "Z"
+                start_date = f"{start_date[0:19]}Z"
                 end_date = "2200-12-01T12:31:12Z"
             elif end_date != "..":
                 start_date = "1900-10-01T00:00:00Z"
-                end_date = end_date[0:19] + "Z"
+                end_date = f"{end_date[0:19]}Z"
             else:
                 start_date = "1900-10-01T00:00:00Z"
                 end_date = "2200-12-01T12:31:12Z"
 
-            return {"lte": end_date, "gte": start_date}
+        return {"lte": end_date, "gte": start_date}
 
     @overrides
     async def get_search(
@@ -269,7 +286,26 @@ class CoreClient(AsyncBaseCoreClient):
         # filter_lang: Optional[str] = None, # todo: requires fastapi > 2.3 unreleased
         **kwargs,
     ) -> ItemCollection:
-        """GET search catalog."""
+        """Get search results from the database.
+
+        Args:
+            collections (Optional[List[str]]): List of collection IDs to search in.
+            ids (Optional[List[str]]): List of item IDs to search for.
+            bbox (Optional[List[NumType]]): Bounding box to search in.
+            datetime (Optional[Union[str, datetime_type]]): Filter items based on the datetime field.
+            limit (Optional[int]): Maximum number of results to return.
+            query (Optional[str]): Query string to filter the results.
+            token (Optional[str]): Access token to use when searching the catalog.
+            fields (Optional[List[str]]): Fields to include or exclude from the results.
+            sortby (Optional[str]): Sorting options for the results.
+            kwargs: Additional parameters to be passed to the API.
+
+        Returns:
+            ItemCollection: Collection of `Item` objects representing the search results.
+
+        Raises:
+            HTTPException: If any error occurs while searching the catalog.
+        """
         base_args = {
             "collections": collections,
             "ids": ids,
