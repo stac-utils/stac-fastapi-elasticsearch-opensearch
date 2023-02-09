@@ -74,39 +74,57 @@ class ItemSerializer(Serializer):
             links=item_links if "links" in item else [],
             assets=item["assets"] if "assets" in item else {},
         )
-
+        
 
 class CollectionSerializer(Serializer):
     """Serialization methods for STAC collections."""
 
     @classmethod
     def db_to_stac(cls, collection: dict, base_url: str) -> stac_types.Collection:
-        """Transform database model to stac collection."""
+        """Transform database model to STAC collection.
+        
+        Args:
+            collection (dict): The collection data in dictionary form, extracted from the database.
+            base_url (str): The base URL for the collection.
+        
+        Returns:
+            stac_types.Collection: The STAC collection object.
+        """
+
+        # Use dictionary unpacking to extract values from the collection dictionary
+        collection_id = collection.get("id")
+        stac_extensions = collection.get("stac_extensions", [])
+        stac_version = collection.get("stac_version", "")
+        title = collection.get("title", "")
+        description = collection.get("description", "")
+        keywords = collection.get("keywords", [])
+        license = collection.get("license", "")
+        providers = collection.get("providers", {})
+        summaries = collection.get("summaries", {})
+        extent = collection.get("extent", {})
+
+        # Create the collection links using CollectionLinks
         collection_links = CollectionLinks(
-            collection_id=collection["id"], base_url=base_url
+            collection_id=collection_id, base_url=base_url
         ).create_links()
 
-        original_links = collection["links"]
+        # Add any additional links from the collection dictionary
+        original_links = collection.get("links")
         if original_links:
             collection_links += resolve_links(original_links, base_url)
 
+        # Return the stac_types.Collection object
         return stac_types.Collection(
             type="Collection",
-            id=collection["id"],
-            stac_extensions=collection["stac_extensions"]
-            if "stac_extensions" in collection
-            else [],
-            stac_version=collection["stac_version"]
-            if "stac_version" in collection
-            else "",
-            title=collection["title"] if "title" in collection else "",
-            description=collection["description"]
-            if "description" in collection
-            else "",
-            keywords=collection["keywords"] if "keywords" in collection else [],
-            license=collection["license"] if "license" in collection else "",
-            providers=collection["providers"] if "providers" in collection else {},
-            summaries=collection["summaries"] if "summaries" in collection else {},
-            extent=collection["extent"] if "extent" in collection else {},
+            id=collection_id,
+            stac_extensions=stac_extensions,
+            stac_version=stac_version,
+            title=title,
+            description=description,
+            keywords=keywords,
+            license=license,
+            providers=providers,
+            summaries=summaries,
+            extent=extent,
             links=collection_links,
         )
