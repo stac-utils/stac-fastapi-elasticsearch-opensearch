@@ -524,7 +524,21 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     async def delete_collection(
         self, collection_id: str, **kwargs
     ) -> stac_types.Collection:
-        """Delete collection."""
+        """
+        Delete a collection.
+
+        This method deletes an existing collection in the database.
+
+        Args:
+            collection_id (str): The identifier of the collection that contains the item.
+            kwargs: Additional keyword arguments.
+
+        Returns:
+            None.
+
+        Raises:
+            NotFoundError: If the collection doesn't exist.
+        """
         await self.database.delete_collection(collection_id=collection_id)
         return None  # type: ignore
 
