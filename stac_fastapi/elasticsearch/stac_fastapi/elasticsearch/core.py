@@ -391,7 +391,21 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     async def create_item(
         self, collection_id: str, item: stac_types.Item, **kwargs
     ) -> stac_types.Item:
-        """Create item."""
+        """Create an item in the collection.
+
+        Args:
+            collection_id (str): The id of the collection to add the item to.
+            item (stac_types.Item): The item to be added to the collection.
+            kwargs: Additional keyword arguments.
+
+        Returns:
+            stac_types.Item: The created item.
+
+        Raises:
+            NotFound: If the specified collection is not found in the database.
+            ConflictError: If the item in the specified collection already exists. 
+
+        """
         base_url = str(kwargs["request"].base_url)
 
         # If a feature collection is posted
