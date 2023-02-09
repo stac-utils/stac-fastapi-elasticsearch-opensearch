@@ -412,17 +412,27 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             return item
 
     @overrides
-    async def update_item(
-        self, collection_id: str, item_id: str, item: stac_types.Item, **kwargs
-    ) -> stac_types.Item:
-        """Update item."""
-        base_url = str(kwargs["request"].base_url)
+    async def update_item(self, collection_id: str, item_id: str, item: stac_types.Item, **kwargs) -> stac_types.Item:
+        """Update an item in the collection.
 
+        Args:
+            collection_id (str): The ID of the collection the item belongs to.
+            item_id (str): The ID of the item to be updated.
+            item (stac_types.Item): The new item data.
+            kwargs: Other optional arguments, including the request object.
+
+        Returns:
+            stac_types.Item: The updated item object.
+
+        Raises:
+            NotFound: If the specified collection is not found in the database.
+
+        """
+        base_url = str(kwargs["request"].base_url)
         now = datetime_type.now(timezone.utc).isoformat().replace("+00:00", "Z")
-        item["properties"]["updated"] = str(now)
+        item["properties"]["updated"] = now
 
         await self.database.check_collection_exists(collection_id)
-        # todo: index instead of delete and create
         await self.delete_item(item_id=item_id, collection_id=collection_id)
         await self.create_item(collection_id=collection_id, item=item, **kwargs)
 
