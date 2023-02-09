@@ -195,7 +195,7 @@ async def create_item_index(collection_id: str):
 
 async def delete_item_index(collection_id: str):
     """Delete the index for items in a collection.
-    
+
     Args:
         collection_id (str): The ID of the collection whose items index will be deleted.
     """
@@ -206,14 +206,16 @@ async def delete_item_index(collection_id: str):
 
 
 def bbox2polygon(b0: float, b1: float, b2: float, b3: float) -> List[List[List[float]]]:
-    """
-    Transforms a bounding box represented by its four coordinates `b0`, `b1`, `b2`, and `b3` into a polygon.
-    
-    :param b0: The x-coordinate of the lower-left corner of the bounding box.
-    :param b1: The y-coordinate of the lower-left corner of the bounding box.
-    :param b2: The x-coordinate of the upper-right corner of the bounding box.
-    :param b3: The y-coordinate of the upper-right corner of the bounding box.
-    :return: A polygon represented as a list of lists of coordinates.
+    """Transform a bounding box represented by its four coordinates `b0`, `b1`, `b2`, and `b3` into a polygon.
+
+    Args:
+        b0 (float): The x-coordinate of the lower-left corner of the bounding box.
+        b1 (float): The y-coordinate of the lower-left corner of the bounding box.
+        b2 (float): The x-coordinate of the upper-right corner of the bounding box.
+        b3 (float): The y-coordinate of the upper-right corner of the bounding box.
+
+    Returns:
+        List[List[List[float]]]: A polygon represented as a list of lists of coordinates.
     """
     return [[[b0, b1], [b2, b1], [b2, b3], [b0, b3], [b0, b1]]]
 
@@ -280,14 +282,38 @@ class DatabaseLogic:
     """CORE LOGIC"""
 
     async def get_all_collections(self) -> Iterable[Dict[str, Any]]:
-        """Database logic to retrieve a list of all collections."""
+        """Retrieve a list of all collections from the database.
+
+        Returns:
+            collections (Iterable[Dict[str, Any]]): A list of dictionaries containing the source data for each collection.
+
+        Notes:
+            The collections are retrieved from the Elasticsearch database using the `client.search` method,
+            with the `COLLECTIONS_INDEX` as the target index and `size=1000` to retrieve up to 1000 records.
+            The result is a generator of dictionaries containing the source data for each collection.
+        """
         # https://github.com/stac-utils/stac-fastapi-elasticsearch/issues/65
         # collections should be paginated, but at least return more than the default 10 for now
         collections = await self.client.search(index=COLLECTIONS_INDEX, size=1000)
         return (c["_source"] for c in collections["hits"]["hits"])
 
     async def get_one_item(self, collection_id: str, item_id: str) -> Dict:
-        """Database logic to retrieve a single item."""
+        """Retrieve a single item from the database.
+
+        Args:
+            collection_id (str): The id of the Collection that the Item belongs to.
+            item_id (str): The id of the Item.
+
+        Returns:
+            item (Dict): A dictionary containing the source data for the Item.
+
+        Raises:
+            NotFoundError: If the specified Item does not exist in the Collection.
+
+        Notes:
+            The Item is retrieved from the Elasticsearch database using the `client.get` method,
+            with the index for the Collection as the target index and the combined `mk_item_id` as the document id.
+        """
         try:
             item = await self.client.get(
                 index=index_by_collection_id(collection_id),
@@ -332,7 +358,19 @@ class DatabaseLogic:
 
     @staticmethod
     def apply_bbox_filter(search: Search, bbox: List):
-        """Database logic to search on bounding box."""
+        """Filter search results based on bounding box.
+
+        Args:
+            search (Search): The search object to apply the filter to.
+            bbox (List): The bounding box coordinates, represented as a list of four values [minx, miny, maxx, maxy].
+
+        Returns:
+            search (Search): The search object with the bounding box filter applied.
+
+        Notes:
+            The bounding box is transformed into a polygon using the `bbox2polygon` function and
+            a geo_shape filter is added to the search object, set to intersect with the specified polygon.
+        """
         return search.filter(
             Q(
                 {
