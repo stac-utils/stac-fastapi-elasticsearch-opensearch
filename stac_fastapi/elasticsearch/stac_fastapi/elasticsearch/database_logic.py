@@ -568,7 +568,18 @@ class DatabaseLogic:
             )
 
     async def create_collection(self, collection: Collection, refresh: bool = False):
-        """Database logic for creating one collection."""
+        """Create a single collection in the database.
+
+        Args:
+            collection (Collection): The Collection object to be created.
+            refresh (bool, optional): Whether to refresh the index after the creation. Default is False.
+
+        Raises:
+            ConflictError: If a Collection with the same id already exists in the database.
+
+        Notes:
+            A new index is created for the items in the Collection using the `create_item_index` function.
+        """
         collection_id = collection["id"]
 
         if await self.client.exists(index=COLLECTIONS_INDEX, id=collection_id):
