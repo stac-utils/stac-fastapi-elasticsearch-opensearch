@@ -362,7 +362,19 @@ class CoreClient(AsyncBaseCoreClient):
     async def post_search(
         self, search_request: BaseSearchPostRequest, **kwargs
     ) -> ItemCollection:
-        """POST search catalog."""
+        """
+        Perform a POST search on the catalog.
+
+        Args:
+            search_request (BaseSearchPostRequest): Request object that includes the parameters for the search.
+            kwargs: Keyword arguments passed to the function.
+
+        Returns:
+            ItemCollection: A collection of items matching the search criteria.
+
+        Raises:
+            HTTPException: If there is an error with the cql2_json filter.
+        """
         request: Request = kwargs["request"]
         base_url = str(request.base_url)
 
