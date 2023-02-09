@@ -9,14 +9,39 @@ from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.links import CollectionLinks, ItemLinks, resolve_links
 
 
-@attr.s  # type:ignore
+@attr.s
 class Serializer(abc.ABC):
-    """Defines serialization methods between the API and the data model."""
+    """Defines serialization methods between the API and the data model.
+
+    This class is meant to be subclassed and implemented by specific serializers for different STAC objects (e.g. Item, Collection).
+    """
 
     @classmethod
     @abc.abstractmethod
     def db_to_stac(cls, item: dict, base_url: str) -> Any:
-        """Transform database model to stac."""
+        """Transform database model to STAC object.
+
+        Arguments:
+            item (dict): A dictionary representing the database model.
+            base_url (str): The base URL of the STAC API.
+
+        Returns:
+            Any: A STAC object, e.g. an `Item` or `Collection`, representing the input `item`.
+        """
+        ...
+
+    @classmethod
+    @abc.abstractmethod
+    def stac_to_db(cls, stac_object: Any, base_url: str) -> dict:
+        """Transform STAC object to database model.
+
+        Arguments:
+            stac_object (Any): A STAC object, e.g. an `Item` or `Collection`.
+            base_url (str): The base URL of the STAC API.
+
+        Returns:
+            dict: A dictionary representing the database model.
+        """
         ...
 
 
@@ -25,14 +50,14 @@ class ItemSerializer(Serializer):
 
     @classmethod
     def stac_to_db(cls, stac_data: stac_types.Item, base_url: str) -> stac_types.Item:
-        """Transform STAC Item to database-ready STAC Item.
+        """Transform STAC item to database-ready STAC item.
 
-        :param stac_data: STAC Item object to be transformed.
-        :type stac_data: stac_types.Item
-        :param base_url: Base URL for the STAC API.
-        :type base_url: str
-        :return: A database-ready STAC Item object.
-        :rtype: stac_types.Item
+        Args:
+            stac_data (stac_types.Item): The STAC item object to be transformed.
+            base_url (str): The base URL for the STAC API.
+
+        Returns:
+            stac_types.Item: The database-ready STAC item object.
         """
         item_links = ItemLinks(
             collection_id=stac_data["collection"],
@@ -49,14 +74,14 @@ class ItemSerializer(Serializer):
 
     @classmethod
     def db_to_stac(cls, item: dict, base_url: str) -> stac_types.Item:
-        """Transform database model to STAC item.
+        """Transform database-ready STAC item to STAC item.
 
-        :param item: Database model to be transformed.
-        :type item: dict
-        :param base_url: Base URL for the STAC API.
-        :type base_url: str
-        :return: A STAC Item object.
-        :rtype: stac_types.Item
+        Args:
+            item (dict): The database-ready STAC item to be transformed.
+            base_url (str): The base URL for the STAC API.
+
+        Returns:
+            stac_types.Item: The STAC item object.
         """
         item_id = item["id"]
         collection_id = item["collection"]
@@ -88,15 +113,14 @@ class CollectionSerializer(Serializer):
     @classmethod
     def db_to_stac(cls, collection: dict, base_url: str) -> stac_types.Collection:
         """Transform database model to STAC collection.
-        
+
         Args:
             collection (dict): The collection data in dictionary form, extracted from the database.
             base_url (str): The base URL for the collection.
-        
+
         Returns:
             stac_types.Collection: The STAC collection object.
         """
-
         # Use dictionary unpacking to extract values from the collection dictionary
         collection_id = collection.get("id")
         stac_extensions = collection.get("stac_extensions", [])
