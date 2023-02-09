@@ -43,7 +43,22 @@ NumType = Union[float, int]
 
 @attr.s
 class CoreClient(AsyncBaseCoreClient):
-    """Client for core endpoints defined by stac."""
+    """Client for core endpoints defined by the STAC specification.
+
+    This class is a implementation of `AsyncBaseCoreClient` that implements the core endpoints
+    defined by the STAC specification. It uses the `DatabaseLogic` class to interact with the
+    database, and `ItemSerializer` and `CollectionSerializer` to convert between STAC objects and
+    database records.
+
+    Attributes:
+        session (Session): A requests session instance to be used for all HTTP requests.
+        item_serializer (Type[serializers.ItemSerializer]): A serializer class to be used to convert
+            between STAC items and database records.
+        collection_serializer (Type[serializers.CollectionSerializer]): A serializer class to be
+            used to convert between STAC collections and database records.
+        database (DatabaseLogic): An instance of the `DatabaseLogic` class that is used to interact
+            with the database.
+    """
 
     session: Session = attr.ib(default=attr.Factory(Session.create_from_env))
     item_serializer: Type[serializers.ItemSerializer] = attr.ib(
@@ -56,7 +71,15 @@ class CoreClient(AsyncBaseCoreClient):
 
     @overrides
     async def all_collections(self, **kwargs) -> Collections:
-        """Read all collections from the database."""
+        """Read all collections from the database.
+
+        Returns:
+            Collections: A `Collections` object containing all the collections in the database and
+                links to various resources.
+
+        Raises:
+            Exception: If any error occurs while reading the collections from the database.
+        """
         base_url = str(kwargs["request"].base_url)
 
         return Collections(
@@ -85,7 +108,18 @@ class CoreClient(AsyncBaseCoreClient):
 
     @overrides
     async def get_collection(self, collection_id: str, **kwargs) -> Collection:
-        """Get collection by id."""
+        """Get a collection from the database by its id.
+
+        Args:
+            collection_id (str): The id of the collection to retrieve.
+            kwargs: Additional keyword arguments passed to the API call.
+
+        Returns:
+            Collection: A `Collection` object representing the requested collection.
+
+        Raises:
+            NotFoundError: If the collection with the given id cannot be found in the database.
+        """
         base_url = str(kwargs["request"].base_url)
         collection = await self.database.find_collection(collection_id=collection_id)
         return self.collection_serializer.db_to_stac(collection, base_url)
@@ -100,7 +134,24 @@ class CoreClient(AsyncBaseCoreClient):
         token: str = None,
         **kwargs,
     ) -> ItemCollection:
-        """Read an item collection from the database."""
+        """Read items from a specific collection in the database.
+
+        Args:
+            collection_id (str): The identifier of the collection to read items from.
+            bbox (Optional[List[NumType]]): The bounding box to filter items by.
+            datetime (Union[str, datetime_type, None]): The datetime range to filter items by.
+            limit (int): The maximum number of items to return. The default value is 10.
+            token (str): A token used for pagination.
+            request (Request): The incoming request.
+
+        Returns:
+            ItemCollection: An `ItemCollection` object containing the items from the specified collection that meet
+                the filter criteria and links to various resources.
+
+        Raises:
+            HTTPException: If the specified collection is not found.
+            Exception: If any error occurs while reading the items from the database.
+        """
         request: Request = kwargs["request"]
         base_url = str(request.base_url)
 
@@ -163,7 +214,15 @@ class CoreClient(AsyncBaseCoreClient):
 
     @overrides
     async def get_item(self, item_id: str, collection_id: str, **kwargs) -> Item:
-        """Get item by item id, collection id."""
+        """Get an item from the database based on its id and collection id.
+
+        Returns:
+            Item: An `Item` object representing the requested item.
+
+        Raises:
+            Exception: If any error occurs while getting the item from the database.
+            NotFoundError: If the item does not exist in the specified collection.
+        """
         base_url = str(kwargs["request"].base_url)
         item = await self.database.get_one_item(
             item_id=item_id, collection_id=collection_id
