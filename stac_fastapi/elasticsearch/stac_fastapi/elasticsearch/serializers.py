@@ -25,21 +25,21 @@ class ItemSerializer(Serializer):
 
     @classmethod
     def stac_to_db(cls, stac_data: stac_types.Item, base_url: str) -> stac_types.Item:
-        """Transform STAC Item to database-ready STAC Item."""
+        """Transform STAC Item to database-ready STAC Item.
+
+        :param stac_data: STAC Item object to be transformed.
+        :type stac_data: stac_types.Item
+        :param base_url: Base URL for the STAC API.
+        :type base_url: str
+        :return: A database-ready STAC Item object.
+        :rtype: stac_types.Item
+        """
         item_links = ItemLinks(
             collection_id=stac_data["collection"],
             item_id=stac_data["id"],
             base_url=base_url,
         ).create_links()
         stac_data["links"] = item_links
-
-        # elasticsearch doesn't like the fact that some values are float and some were int
-        if "eo:bands" in stac_data["properties"]:
-            for wave in stac_data["properties"]["eo:bands"]:
-                for k, v in wave.items():
-                    if type(v) != str:
-                        v = float(v)
-                        wave.update({k: v})
 
         now = now_to_rfc3339_str()
         if "created" not in stac_data["properties"]:
@@ -49,32 +49,38 @@ class ItemSerializer(Serializer):
 
     @classmethod
     def db_to_stac(cls, item: dict, base_url: str) -> stac_types.Item:
-        """Transform database model to stac item."""
+        """Transform database model to STAC item.
+
+        :param item: Database model to be transformed.
+        :type item: dict
+        :param base_url: Base URL for the STAC API.
+        :type base_url: str
+        :return: A STAC Item object.
+        :rtype: stac_types.Item
+        """
         item_id = item["id"]
         collection_id = item["collection"]
         item_links = ItemLinks(
             collection_id=collection_id, item_id=item_id, base_url=base_url
         ).create_links()
 
-        original_links = item["links"]
+        original_links = item.get("links", [])
         if original_links:
             item_links += resolve_links(original_links, base_url)
 
         return stac_types.Item(
             type="Feature",
-            stac_version=item["stac_version"] if "stac_version" in item else "",
-            stac_extensions=item["stac_extensions"]
-            if "stac_extensions" in item
-            else [],
+            stac_version=item.get("stac_version", ""),
+            stac_extensions=item.get("stac_extensions", []),
             id=item_id,
-            collection=item["collection"] if "collection" in item else "",
-            geometry=item["geometry"] if "geometry" in item else {},
-            bbox=item["bbox"] if "bbox" in item else [],
-            properties=item["properties"] if "properties" in item else {},
-            links=item_links if "links" in item else [],
-            assets=item["assets"] if "assets" in item else {},
+            collection=item.get("collection", ""),
+            geometry=item.get("geometry", {}),
+            bbox=item.get("bbox", []),
+            properties=item.get("properties", {}),
+            links=item_links,
+            assets=item.get("assets", {}),
         )
-        
+
 
 class CollectionSerializer(Serializer):
     """Serialization methods for STAC collections."""
