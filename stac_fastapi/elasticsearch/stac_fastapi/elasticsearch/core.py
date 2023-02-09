@@ -654,7 +654,12 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
 @attr.s
 class BulkTransactionsClient(BaseBulkTransactionsClient):
-    """Postgres bulk transactions."""
+    """A client for posting bulk transactions to a Postgres database.
+
+    Attributes:
+        session: An instance of `Session` to use for database connection.
+        database: An instance of `DatabaseLogic` to perform database operations.
+    """
 
     session: Session = attr.ib(default=attr.Factory(Session.create_from_env))
     database = DatabaseLogic()
@@ -665,14 +670,31 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         self.client = settings.create_client
 
     def preprocess_item(self, item: stac_types.Item, base_url) -> stac_types.Item:
-        """Preprocess items to match data model."""
+        """Preprocess an item to match the data model.
+
+        Args:
+            item: The item to preprocess.
+            base_url: The base URL of the request.
+
+        Returns:
+            The preprocessed item.
+        """
         return self.database.sync_prep_create_item(item=item, base_url=base_url)
 
     @overrides
     def bulk_item_insert(
         self, items: Items, chunk_size: Optional[int] = None, **kwargs
     ) -> str:
-        """Bulk item insertion using es."""
+        """Perform a bulk insertion of items into the database using Elasticsearch.
+
+        Args:
+            items: The items to insert.
+            chunk_size: The size of each chunk for bulk processing.
+            **kwargs: Additional keyword arguments, such as `request` and `refresh`.
+
+        Returns:
+            A string indicating the number of items successfully added.
+        """
         request = kwargs.get("request")
         if request:
             base_url = str(request.base_url)
@@ -710,6 +732,13 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
         under OGC CQL but it is allowed by the STAC API Filter Extension
 
         https://github.com/radiantearth/stac-api-spec/tree/master/fragments/filter#queryables
+
+        Args:
+            collection_id (str, optional): The id of the collection to get queryables for.
+            **kwargs: additional keyword arguments
+
+        Returns:
+            Dict[str, Any]: A dictionary containing the queryables for the given collection.
         """
         return {
             "$schema": "https://json-schema.org/draft/2019-09/schema",
