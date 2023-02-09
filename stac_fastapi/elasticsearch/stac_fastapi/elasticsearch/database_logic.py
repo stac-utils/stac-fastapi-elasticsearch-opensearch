@@ -127,12 +127,28 @@ ES_COLLECTIONS_MAPPINGS = {
 
 
 def index_by_collection_id(collection_id: str) -> str:
-    """Translate a collection id into an ES index name."""
+    """
+    Translate a collection id into an Elasticsearch index name.
+
+    Args:
+    - collection_id (str): The collection id to translate into an index name.
+
+    Returns:
+    - str: The index name derived from the collection id.
+    """
     return f"{ITEMS_INDEX_PREFIX}{collection_id}"
 
 
 def indices(collection_ids: Optional[List[str]]) -> str:
-    """Get a comma-separated string value of indexes for a given list of collection ids."""
+    """
+    Get a comma-separated string of index names for a given list of collection ids.
+
+    Args:
+    collection_ids: A list of collection ids.
+
+    Returns:
+    A string of comma-separated index names. If `collection_ids` is None, returns the default indices.
+    """
     if collection_ids is None:
         return DEFAULT_INDICES
     else:
@@ -140,7 +156,11 @@ def indices(collection_ids: Optional[List[str]]) -> str:
 
 
 async def create_collection_index() -> None:
-    """Create the index for Collections."""
+    """Create the index for Collections in Elasticsearch.
+
+    This function creates the Elasticsearch index for the `Collections` with the predefined mapping.
+    If the index already exists, the function ignores the error and continues execution.
+    """
     client = AsyncElasticsearchSettings().create_client
 
     await client.indices.create(
@@ -152,7 +172,16 @@ async def create_collection_index() -> None:
 
 
 async def create_item_index(collection_id: str):
-    """Create the index for Items."""
+    """
+    Create the index for Items.
+
+    Args:
+    - collection_id (str): Collection identifier.
+
+    Returns:
+    None
+
+    """
     client = AsyncElasticsearchSettings().create_client
 
     await client.indices.create(
@@ -165,7 +194,11 @@ async def create_item_index(collection_id: str):
 
 
 async def delete_item_index(collection_id: str):
-    """Delete the index for Items."""
+    """Delete the index for items in a collection.
+    
+    Args:
+        collection_id (str): The ID of the collection whose items index will be deleted.
+    """
     client = AsyncElasticsearchSettings().create_client
 
     await client.indices.delete(index=index_by_collection_id(collection_id))
@@ -173,17 +206,45 @@ async def delete_item_index(collection_id: str):
 
 
 def bbox2polygon(b0: float, b1: float, b2: float, b3: float) -> List[List[List[float]]]:
-    """Transform bbox to polygon."""
+    """
+    Transforms a bounding box represented by its four coordinates `b0`, `b1`, `b2`, and `b3` into a polygon.
+    
+    :param b0: The x-coordinate of the lower-left corner of the bounding box.
+    :param b1: The y-coordinate of the lower-left corner of the bounding box.
+    :param b2: The x-coordinate of the upper-right corner of the bounding box.
+    :param b3: The y-coordinate of the upper-right corner of the bounding box.
+    :return: A polygon represented as a list of lists of coordinates.
+    """
     return [[[b0, b1], [b2, b1], [b2, b3], [b0, b3], [b0, b1]]]
 
 
 def mk_item_id(item_id: str, collection_id: str):
-    """Make the Elasticsearch document _id value from the Item id and collection."""
+    """Create the document id for an Item in Elasticsearch.
+
+    Args:
+        item_id (str): The id of the Item.
+        collection_id (str): The id of the Collection that the Item belongs to.
+
+    Returns:
+        str: The document id for the Item, combining the Item id and the Collection id, separated by a `|` character.
+    """
     return f"{item_id}|{collection_id}"
 
 
 def mk_actions(collection_id: str, processed_items: List[Item]):
-    """Make the Elasticsearch bulk action for a list of Items."""
+    """Create Elasticsearch bulk actions for a list of processed items.
+
+    Args:
+        collection_id (str): The identifier for the collection the items belong to.
+        processed_items (List[Item]): The list of processed items to be bulk indexed.
+
+    Returns:
+        List[Dict[str, Union[str, Dict]]]: The list of bulk actions to be executed,
+        each action being a dictionary with the following keys:
+        - `_index`: the index to store the document in.
+        - `_id`: the document's identifier.
+        - `_source`: the source of the document.
+    """
     return [
         {
             "_index": index_by_collection_id(collection_id),
