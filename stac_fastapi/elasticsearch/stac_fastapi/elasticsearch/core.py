@@ -403,7 +403,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         Raises:
             NotFound: If the specified collection is not found in the database.
-            ConflictError: If the item in the specified collection already exists. 
+            ConflictError: If the item in the specified collection already exists.
 
         """
         base_url = str(kwargs["request"].base_url)
@@ -426,7 +426,9 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             return item
 
     @overrides
-    async def update_item(self, collection_id: str, item_id: str, item: stac_types.Item, **kwargs) -> stac_types.Item:
+    async def update_item(
+        self, collection_id: str, item_id: str, item: stac_types.Item, **kwargs
+    ) -> stac_types.Item:
         """Update an item in the collection.
 
         Args:
