@@ -342,7 +342,15 @@ class DatabaseLogic:
 
     @staticmethod
     def apply_datetime_filter(search: Search, datetime_search):
-        """Database logic to search datetime field."""
+        """Apply a filter to search based on datetime field.
+
+        Args:
+            search (Search): The search object to filter.
+            datetime_search (dict): The datetime filter criteria.
+
+        Returns:
+            Search: The filtered search object.
+        """
         if "eq" in datetime_search:
             search = search.filter(
                 "term", **{"properties__datetime": datetime_search["eq"]}
@@ -392,7 +400,18 @@ class DatabaseLogic:
         search: Search,
         intersects: Geometry,
     ):
-        """Database logic to search a geojson object."""
+        """Filter search results based on intersecting geometry.
+
+        Args:
+            search (Search): The search object to apply the filter to.
+            intersects (Geometry): The intersecting geometry, represented as a GeoJSON-like object.
+
+        Returns:
+            search (Search): The search object with the intersecting geometry filter applied.
+
+        Notes:
+            A geo_shape filter is added to the search object, set to intersect with the specified geometry.
+        """
         return search.filter(
             Q(
                 {
@@ -411,7 +430,18 @@ class DatabaseLogic:
 
     @staticmethod
     def apply_stacql_filter(search: Search, op: str, field: str, value: float):
-        """Database logic to perform query for search endpoint."""
+        """Filter search results based on a comparison between a field and a value.
+
+        Args:
+            search (Search): The search object to apply the filter to.
+            op (str): The comparison operator to use. Can be 'eq' (equal), 'gt' (greater than), 'gte' (greater than or equal),
+                'lt' (less than), or 'lte' (less than or equal).
+            field (str): The field to perform the comparison on.
+            value (float): The value to compare the field against.
+
+        Returns:
+            search (Search): The search object with the specified filter applied.
+        """
         if op != "eq":
             key_filter = {field: {f"{op}": value}}
             search = search.filter(Q("range", **key_filter))
@@ -444,7 +474,27 @@ class DatabaseLogic:
         collection_ids: Optional[List[str]],
         ignore_unavailable: bool = True,
     ) -> Tuple[Iterable[Dict[str, Any]], Optional[int], Optional[str]]:
-        """Database logic to execute search with limit."""
+        """Execute a search query with limit and other optional parameters.
+
+        Args:
+            search (Search): The search query to be executed.
+            limit (int): The maximum number of results to be returned.
+            token (Optional[str]): The token used to return the next set of results.
+            sort (Optional[Dict[str, Dict[str, str]]]): Specifies how the results should be sorted.
+            collection_ids (Optional[List[str]]): The collection ids to search.
+            ignore_unavailable (bool, optional): Whether to ignore unavailable collections. Defaults to True.
+
+        Returns:
+            Tuple[Iterable[Dict[str, Any]], Optional[int], Optional[str]]: A tuple containing:
+                - An iterable of search results, where each result is a dictionary with keys and values representing the
+                fields and values of each document.
+                - The total number of results (if the count could be computed), or None if the count could not be
+                computed.
+                - The token to be used to retrieve the next set of results, or None if there are no more results.
+
+        Raises:
+            NotFoundError: If the collections specified in `collection_ids` do not exist.
+        """
         search_after = None
         if token:
             search_after = urlsafe_b64decode(token.encode()).decode().split(",")
@@ -536,7 +586,18 @@ class DatabaseLogic:
         return self.item_serializer.stac_to_db(item, base_url)
 
     async def create_item(self, item: Item, refresh: bool = False):
-        """Database logic for creating one item."""
+        """Database logic for creating one item.
+        
+        Args:
+            item (Item): The item to be created.
+            refresh (bool, optional): Refresh the index after performing the operation. Defaults to False.
+            
+        Raises:
+            ConflictError: If the item already exists in the database.
+            
+        Returns:
+            None
+        """
         # todo: check if collection exists, but cache
         item_id = item["id"]
         collection_id = item["collection"]
@@ -555,7 +616,16 @@ class DatabaseLogic:
     async def delete_item(
         self, item_id: str, collection_id: str, refresh: bool = False
     ):
-        """Database logic for deleting one item."""
+        """Delete a single item from the database.
+
+        Args:
+            item_id (str): The id of the Item to be deleted.
+            collection_id (str): The id of the Collection that the Item belongs to.
+            refresh (bool, optional): Whether to refresh the index after the deletion. Default is False.
+
+        Raises:
+            NotFoundError: If the Item does not exist in the database.
+        """
         try:
             await self.client.delete(
                 index=index_by_collection_id(collection_id),
