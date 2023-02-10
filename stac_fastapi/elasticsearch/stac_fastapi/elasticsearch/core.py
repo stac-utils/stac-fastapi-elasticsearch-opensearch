@@ -43,7 +43,22 @@ NumType = Union[float, int]
 
 @attr.s
 class CoreClient(AsyncBaseCoreClient):
-    """Client for core endpoints defined by stac."""
+    """Client for core endpoints defined by the STAC specification.
+
+    This class is a implementation of `AsyncBaseCoreClient` that implements the core endpoints
+    defined by the STAC specification. It uses the `DatabaseLogic` class to interact with the
+    database, and `ItemSerializer` and `CollectionSerializer` to convert between STAC objects and
+    database records.
+
+    Attributes:
+        session (Session): A requests session instance to be used for all HTTP requests.
+        item_serializer (Type[serializers.ItemSerializer]): A serializer class to be used to convert
+            between STAC items and database records.
+        collection_serializer (Type[serializers.CollectionSerializer]): A serializer class to be
+            used to convert between STAC collections and database records.
+        database (DatabaseLogic): An instance of the `DatabaseLogic` class that is used to interact
+            with the database.
+    """
 
     session: Session = attr.ib(default=attr.Factory(Session.create_from_env))
     item_serializer: Type[serializers.ItemSerializer] = attr.ib(
@@ -56,7 +71,15 @@ class CoreClient(AsyncBaseCoreClient):
 
     @overrides
     async def all_collections(self, **kwargs) -> Collections:
-        """Read all collections from the database."""
+        """Read all collections from the database.
+
+        Returns:
+            Collections: A `Collections` object containing all the collections in the database and
+                links to various resources.
+
+        Raises:
+            Exception: If any error occurs while reading the collections from the database.
+        """
         base_url = str(kwargs["request"].base_url)
 
         return Collections(
@@ -85,7 +108,18 @@ class CoreClient(AsyncBaseCoreClient):
 
     @overrides
     async def get_collection(self, collection_id: str, **kwargs) -> Collection:
-        """Get collection by id."""
+        """Get a collection from the database by its id.
+
+        Args:
+            collection_id (str): The id of the collection to retrieve.
+            kwargs: Additional keyword arguments passed to the API call.
+
+        Returns:
+            Collection: A `Collection` object representing the requested collection.
+
+        Raises:
+            NotFoundError: If the collection with the given id cannot be found in the database.
+        """
         base_url = str(kwargs["request"].base_url)
         collection = await self.database.find_collection(collection_id=collection_id)
         return self.collection_serializer.db_to_stac(collection, base_url)
@@ -100,7 +134,24 @@ class CoreClient(AsyncBaseCoreClient):
         token: str = None,
         **kwargs,
     ) -> ItemCollection:
-        """Read an item collection from the database."""
+        """Read items from a specific collection in the database.
+
+        Args:
+            collection_id (str): The identifier of the collection to read items from.
+            bbox (Optional[List[NumType]]): The bounding box to filter items by.
+            datetime (Union[str, datetime_type, None]): The datetime range to filter items by.
+            limit (int): The maximum number of items to return. The default value is 10.
+            token (str): A token used for pagination.
+            request (Request): The incoming request.
+
+        Returns:
+            ItemCollection: An `ItemCollection` object containing the items from the specified collection that meet
+                the filter criteria and links to various resources.
+
+        Raises:
+            HTTPException: If the specified collection is not found.
+            Exception: If any error occurs while reading the items from the database.
+        """
         request: Request = kwargs["request"]
         base_url = str(request.base_url)
 
@@ -163,7 +214,19 @@ class CoreClient(AsyncBaseCoreClient):
 
     @overrides
     async def get_item(self, item_id: str, collection_id: str, **kwargs) -> Item:
-        """Get item by item id, collection id."""
+        """Get an item from the database based on its id and collection id.
+
+        Args:
+            collection_id (str): The ID of the collection the item belongs to.
+            item_id (str): The ID of the item to be retrieved.
+
+        Returns:
+            Item: An `Item` object representing the requested item.
+
+        Raises:
+            Exception: If any error occurs while getting the item from the database.
+            NotFoundError: If the item does not exist in the specified collection.
+        """
         base_url = str(kwargs["request"].base_url)
         item = await self.database.get_one_item(
             item_id=item_id, collection_id=collection_id
@@ -172,27 +235,44 @@ class CoreClient(AsyncBaseCoreClient):
 
     @staticmethod
     def _return_date(interval_str):
+        """
+        Convert a date interval string into a dictionary for filtering search results.
+
+        The date interval string should be formatted as either a single date or a range of dates separated
+        by "/". The date format should be ISO-8601 (YYYY-MM-DDTHH:MM:SSZ). If the interval string is a
+        single date, it will be converted to a dictionary with a single "eq" key whose value is the date in
+        the ISO-8601 format. If the interval string is a range of dates, it will be converted to a
+        dictionary with "gte" (greater than or equal to) and "lte" (less than or equal to) keys. If the
+        interval string is a range of dates with ".." instead of "/", the start and end dates will be
+        assigned default values to encompass the entire possible date range.
+
+        Args:
+            interval_str (str): The date interval string to be converted.
+
+        Returns:
+            dict: A dictionary representing the date interval for use in filtering search results.
+        """
         intervals = interval_str.split("/")
         if len(intervals) == 1:
-            datetime = intervals[0][0:19] + "Z"
+            datetime = f"{intervals[0][0:19]}Z"
             return {"eq": datetime}
         else:
             start_date = intervals[0]
             end_date = intervals[1]
             if ".." not in intervals:
-                start_date = start_date[0:19] + "Z"
-                end_date = end_date[0:19] + "Z"
+                start_date = f"{start_date[0:19]}Z"
+                end_date = f"{end_date[0:19]}Z"
             elif start_date != "..":
-                start_date = start_date[0:19] + "Z"
+                start_date = f"{start_date[0:19]}Z"
                 end_date = "2200-12-01T12:31:12Z"
             elif end_date != "..":
                 start_date = "1900-10-01T00:00:00Z"
-                end_date = end_date[0:19] + "Z"
+                end_date = f"{end_date[0:19]}Z"
             else:
                 start_date = "1900-10-01T00:00:00Z"
                 end_date = "2200-12-01T12:31:12Z"
 
-            return {"lte": end_date, "gte": start_date}
+        return {"lte": end_date, "gte": start_date}
 
     @overrides
     async def get_search(
@@ -210,7 +290,26 @@ class CoreClient(AsyncBaseCoreClient):
         # filter_lang: Optional[str] = None, # todo: requires fastapi > 2.3 unreleased
         **kwargs,
     ) -> ItemCollection:
-        """GET search catalog."""
+        """Get search results from the database.
+
+        Args:
+            collections (Optional[List[str]]): List of collection IDs to search in.
+            ids (Optional[List[str]]): List of item IDs to search for.
+            bbox (Optional[List[NumType]]): Bounding box to search in.
+            datetime (Optional[Union[str, datetime_type]]): Filter items based on the datetime field.
+            limit (Optional[int]): Maximum number of results to return.
+            query (Optional[str]): Query string to filter the results.
+            token (Optional[str]): Access token to use when searching the catalog.
+            fields (Optional[List[str]]): Fields to include or exclude from the results.
+            sortby (Optional[str]): Sorting options for the results.
+            kwargs: Additional parameters to be passed to the API.
+
+        Returns:
+            ItemCollection: Collection of `Item` objects representing the search results.
+
+        Raises:
+            HTTPException: If any error occurs while searching the catalog.
+        """
         base_args = {
             "collections": collections,
             "ids": ids,
@@ -267,7 +366,19 @@ class CoreClient(AsyncBaseCoreClient):
     async def post_search(
         self, search_request: BaseSearchPostRequest, **kwargs
     ) -> ItemCollection:
-        """POST search catalog."""
+        """
+        Perform a POST search on the catalog.
+
+        Args:
+            search_request (BaseSearchPostRequest): Request object that includes the parameters for the search.
+            kwargs: Keyword arguments passed to the function.
+
+        Returns:
+            ItemCollection: A collection of items matching the search criteria.
+
+        Raises:
+            HTTPException: If there is an error with the cql2_json filter.
+        """
         request: Request = kwargs["request"]
         base_url = str(request.base_url)
 
@@ -391,7 +502,21 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     async def create_item(
         self, collection_id: str, item: stac_types.Item, **kwargs
     ) -> stac_types.Item:
-        """Create item."""
+        """Create an item in the collection.
+
+        Args:
+            collection_id (str): The id of the collection to add the item to.
+            item (stac_types.Item): The item to be added to the collection.
+            kwargs: Additional keyword arguments.
+
+        Returns:
+            stac_types.Item: The created item.
+
+        Raises:
+            NotFound: If the specified collection is not found in the database.
+            ConflictError: If the item in the specified collection already exists.
+
+        """
         base_url = str(kwargs["request"].base_url)
 
         # If a feature collection is posted
@@ -415,14 +540,26 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     async def update_item(
         self, collection_id: str, item_id: str, item: stac_types.Item, **kwargs
     ) -> stac_types.Item:
-        """Update item."""
-        base_url = str(kwargs["request"].base_url)
+        """Update an item in the collection.
 
+        Args:
+            collection_id (str): The ID of the collection the item belongs to.
+            item_id (str): The ID of the item to be updated.
+            item (stac_types.Item): The new item data.
+            kwargs: Other optional arguments, including the request object.
+
+        Returns:
+            stac_types.Item: The updated item object.
+
+        Raises:
+            NotFound: If the specified collection is not found in the database.
+
+        """
+        base_url = str(kwargs["request"].base_url)
         now = datetime_type.now(timezone.utc).isoformat().replace("+00:00", "Z")
-        item["properties"]["updated"] = str(now)
+        item["properties"]["updated"] = now
 
         await self.database.check_collection_exists(collection_id)
-        # todo: index instead of delete and create
         await self.delete_item(item_id=item_id, collection_id=collection_id)
         await self.create_item(collection_id=collection_id, item=item, **kwargs)
 
@@ -432,7 +569,15 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     async def delete_item(
         self, item_id: str, collection_id: str, **kwargs
     ) -> stac_types.Item:
-        """Delete item."""
+        """Delete an item from a collection.
+
+        Args:
+            item_id (str): The identifier of the item to delete.
+            collection_id (str): The identifier of the collection that contains the item.
+
+        Returns:
+            Optional[stac_types.Item]: The deleted item, or `None` if the item was successfully deleted.
+        """
         await self.database.delete_item(item_id=item_id, collection_id=collection_id)
         return None  # type: ignore
 
@@ -440,7 +585,18 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     async def create_collection(
         self, collection: stac_types.Collection, **kwargs
     ) -> stac_types.Collection:
-        """Create collection."""
+        """Create a new collection in the database.
+
+        Args:
+            collection (stac_types.Collection): The collection to be created.
+            kwargs: Additional keyword arguments.
+
+        Returns:
+            stac_types.Collection: The created collection object.
+
+        Raises:
+            ConflictError: If the collection already exists.
+        """
         base_url = str(kwargs["request"].base_url)
         collection_links = CollectionLinks(
             collection_id=collection["id"], base_url=base_url
@@ -454,7 +610,21 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     async def update_collection(
         self, collection: stac_types.Collection, **kwargs
     ) -> stac_types.Collection:
-        """Update collection."""
+        """
+        Update a collection.
+
+        This method updates an existing collection in the database by first finding
+        the collection by its id, then deleting the old version, and finally creating
+        a new version of the updated collection. The updated collection is then returned.
+
+        Args:
+            collection: A STAC collection that needs to be updated.
+            kwargs: Additional keyword arguments.
+
+        Returns:
+            A STAC collection that has been updated in the database.
+
+        """
         base_url = str(kwargs["request"].base_url)
 
         await self.database.find_collection(collection_id=collection["id"])
@@ -467,14 +637,33 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     async def delete_collection(
         self, collection_id: str, **kwargs
     ) -> stac_types.Collection:
-        """Delete collection."""
+        """
+        Delete a collection.
+
+        This method deletes an existing collection in the database.
+
+        Args:
+            collection_id (str): The identifier of the collection that contains the item.
+            kwargs: Additional keyword arguments.
+
+        Returns:
+            None.
+
+        Raises:
+            NotFoundError: If the collection doesn't exist.
+        """
         await self.database.delete_collection(collection_id=collection_id)
         return None  # type: ignore
 
 
 @attr.s
 class BulkTransactionsClient(BaseBulkTransactionsClient):
-    """Postgres bulk transactions."""
+    """A client for posting bulk transactions to a Postgres database.
+
+    Attributes:
+        session: An instance of `Session` to use for database connection.
+        database: An instance of `DatabaseLogic` to perform database operations.
+    """
 
     session: Session = attr.ib(default=attr.Factory(Session.create_from_env))
     database = DatabaseLogic()
@@ -485,14 +674,31 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         self.client = settings.create_client
 
     def preprocess_item(self, item: stac_types.Item, base_url) -> stac_types.Item:
-        """Preprocess items to match data model."""
+        """Preprocess an item to match the data model.
+
+        Args:
+            item: The item to preprocess.
+            base_url: The base URL of the request.
+
+        Returns:
+            The preprocessed item.
+        """
         return self.database.sync_prep_create_item(item=item, base_url=base_url)
 
     @overrides
     def bulk_item_insert(
         self, items: Items, chunk_size: Optional[int] = None, **kwargs
     ) -> str:
-        """Bulk item insertion using es."""
+        """Perform a bulk insertion of items into the database using Elasticsearch.
+
+        Args:
+            items: The items to insert.
+            chunk_size: The size of each chunk for bulk processing.
+            **kwargs: Additional keyword arguments, such as `request` and `refresh`.
+
+        Returns:
+            A string indicating the number of items successfully added.
+        """
         request = kwargs.get("request")
         if request:
             base_url = str(request.base_url)
@@ -530,6 +736,13 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
         under OGC CQL but it is allowed by the STAC API Filter Extension
 
         https://github.com/radiantearth/stac-api-spec/tree/master/fragments/filter#queryables
+
+        Args:
+            collection_id (str, optional): The id of the collection to get queryables for.
+            **kwargs: additional keyword arguments
+
+        Returns:
+            Dict[str, Any]: A dictionary containing the queryables for the given collection.
         """
         return {
             "$schema": "https://json-schema.org/draft/2019-09/schema",

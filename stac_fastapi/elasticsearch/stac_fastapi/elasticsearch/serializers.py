@@ -9,14 +9,39 @@ from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.links import CollectionLinks, ItemLinks, resolve_links
 
 
-@attr.s  # type:ignore
+@attr.s
 class Serializer(abc.ABC):
-    """Defines serialization methods between the API and the data model."""
+    """Defines serialization methods between the API and the data model.
+
+    This class is meant to be subclassed and implemented by specific serializers for different STAC objects (e.g. Item, Collection).
+    """
 
     @classmethod
     @abc.abstractmethod
     def db_to_stac(cls, item: dict, base_url: str) -> Any:
-        """Transform database model to stac."""
+        """Transform database model to STAC object.
+
+        Arguments:
+            item (dict): A dictionary representing the database model.
+            base_url (str): The base URL of the STAC API.
+
+        Returns:
+            Any: A STAC object, e.g. an `Item` or `Collection`, representing the input `item`.
+        """
+        ...
+
+    @classmethod
+    @abc.abstractmethod
+    def stac_to_db(cls, stac_object: Any, base_url: str) -> dict:
+        """Transform STAC object to database model.
+
+        Arguments:
+            stac_object (Any): A STAC object, e.g. an `Item` or `Collection`.
+            base_url (str): The base URL of the STAC API.
+
+        Returns:
+            dict: A dictionary representing the database model.
+        """
         ...
 
 
@@ -25,21 +50,21 @@ class ItemSerializer(Serializer):
 
     @classmethod
     def stac_to_db(cls, stac_data: stac_types.Item, base_url: str) -> stac_types.Item:
-        """Transform STAC Item to database-ready STAC Item."""
+        """Transform STAC item to database-ready STAC item.
+
+        Args:
+            stac_data (stac_types.Item): The STAC item object to be transformed.
+            base_url (str): The base URL for the STAC API.
+
+        Returns:
+            stac_types.Item: The database-ready STAC item object.
+        """
         item_links = ItemLinks(
             collection_id=stac_data["collection"],
             item_id=stac_data["id"],
             base_url=base_url,
         ).create_links()
         stac_data["links"] = item_links
-
-        # elasticsearch doesn't like the fact that some values are float and some were int
-        if "eo:bands" in stac_data["properties"]:
-            for wave in stac_data["properties"]["eo:bands"]:
-                for k, v in wave.items():
-                    if type(v) != str:
-                        v = float(v)
-                        wave.update({k: v})
 
         now = now_to_rfc3339_str()
         if "created" not in stac_data["properties"]:
@@ -49,30 +74,36 @@ class ItemSerializer(Serializer):
 
     @classmethod
     def db_to_stac(cls, item: dict, base_url: str) -> stac_types.Item:
-        """Transform database model to stac item."""
+        """Transform database-ready STAC item to STAC item.
+
+        Args:
+            item (dict): The database-ready STAC item to be transformed.
+            base_url (str): The base URL for the STAC API.
+
+        Returns:
+            stac_types.Item: The STAC item object.
+        """
         item_id = item["id"]
         collection_id = item["collection"]
         item_links = ItemLinks(
             collection_id=collection_id, item_id=item_id, base_url=base_url
         ).create_links()
 
-        original_links = item["links"]
+        original_links = item.get("links", [])
         if original_links:
             item_links += resolve_links(original_links, base_url)
 
         return stac_types.Item(
             type="Feature",
-            stac_version=item["stac_version"] if "stac_version" in item else "",
-            stac_extensions=item["stac_extensions"]
-            if "stac_extensions" in item
-            else [],
+            stac_version=item.get("stac_version", ""),
+            stac_extensions=item.get("stac_extensions", []),
             id=item_id,
-            collection=item["collection"] if "collection" in item else "",
-            geometry=item["geometry"] if "geometry" in item else {},
-            bbox=item["bbox"] if "bbox" in item else [],
-            properties=item["properties"] if "properties" in item else {},
-            links=item_links if "links" in item else [],
-            assets=item["assets"] if "assets" in item else {},
+            collection=item.get("collection", ""),
+            geometry=item.get("geometry", {}),
+            bbox=item.get("bbox", []),
+            properties=item.get("properties", {}),
+            links=item_links,
+            assets=item.get("assets", {}),
         )
 
 
@@ -81,32 +112,49 @@ class CollectionSerializer(Serializer):
 
     @classmethod
     def db_to_stac(cls, collection: dict, base_url: str) -> stac_types.Collection:
-        """Transform database model to stac collection."""
+        """Transform database model to STAC collection.
+
+        Args:
+            collection (dict): The collection data in dictionary form, extracted from the database.
+            base_url (str): The base URL for the collection.
+
+        Returns:
+            stac_types.Collection: The STAC collection object.
+        """
+        # Use dictionary unpacking to extract values from the collection dictionary
+        collection_id = collection.get("id")
+        stac_extensions = collection.get("stac_extensions", [])
+        stac_version = collection.get("stac_version", "")
+        title = collection.get("title", "")
+        description = collection.get("description", "")
+        keywords = collection.get("keywords", [])
+        license = collection.get("license", "")
+        providers = collection.get("providers", {})
+        summaries = collection.get("summaries", {})
+        extent = collection.get("extent", {})
+
+        # Create the collection links using CollectionLinks
         collection_links = CollectionLinks(
-            collection_id=collection["id"], base_url=base_url
+            collection_id=collection_id, base_url=base_url
         ).create_links()
 
-        original_links = collection["links"]
+        # Add any additional links from the collection dictionary
+        original_links = collection.get("links")
         if original_links:
             collection_links += resolve_links(original_links, base_url)
 
+        # Return the stac_types.Collection object
         return stac_types.Collection(
             type="Collection",
-            id=collection["id"],
-            stac_extensions=collection["stac_extensions"]
-            if "stac_extensions" in collection
-            else [],
-            stac_version=collection["stac_version"]
-            if "stac_version" in collection
-            else "",
-            title=collection["title"] if "title" in collection else "",
-            description=collection["description"]
-            if "description" in collection
-            else "",
-            keywords=collection["keywords"] if "keywords" in collection else [],
-            license=collection["license"] if "license" in collection else "",
-            providers=collection["providers"] if "providers" in collection else {},
-            summaries=collection["summaries"] if "summaries" in collection else {},
-            extent=collection["extent"] if "extent" in collection else {},
+            id=collection_id,
+            stac_extensions=stac_extensions,
+            stac_version=stac_version,
+            title=title,
+            description=description,
+            keywords=keywords,
+            license=license,
+            providers=providers,
+            summaries=summaries,
+            extent=extent,
             links=collection_links,
         )
