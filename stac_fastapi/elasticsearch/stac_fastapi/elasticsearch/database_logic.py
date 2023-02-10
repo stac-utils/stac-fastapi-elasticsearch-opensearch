@@ -617,14 +617,14 @@ class DatabaseLogic:
 
     async def create_item(self, item: Item, refresh: bool = False):
         """Database logic for creating one item.
-        
+
         Args:
             item (Item): The item to be created.
             refresh (bool, optional): Refresh the index after performing the operation. Defaults to False.
-            
+
         Raises:
             ConflictError: If the item already exists in the database.
-            
+
         Returns:
             None
         """
