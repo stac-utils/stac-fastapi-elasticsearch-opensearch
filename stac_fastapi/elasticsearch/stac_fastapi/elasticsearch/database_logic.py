@@ -131,10 +131,10 @@ def index_by_collection_id(collection_id: str) -> str:
     Translate a collection id into an Elasticsearch index name.
 
     Args:
-    - collection_id (str): The collection id to translate into an index name.
+        collection_id (str): The collection id to translate into an index name.
 
     Returns:
-    - str: The index name derived from the collection id.
+        str: The index name derived from the collection id.
     """
     return f"{ITEMS_INDEX_PREFIX}{collection_id}"
 
@@ -144,10 +144,10 @@ def indices(collection_ids: Optional[List[str]]) -> str:
     Get a comma-separated string of index names for a given list of collection ids.
 
     Args:
-    collection_ids: A list of collection ids.
+        collection_ids: A list of collection ids.
 
     Returns:
-    A string of comma-separated index names. If `collection_ids` is None, returns the default indices.
+        A string of comma-separated index names. If `collection_ids` is None, returns the default indices.
     """
     if collection_ids is None:
         return DEFAULT_INDICES
@@ -176,10 +176,10 @@ async def create_item_index(collection_id: str):
     Create the index for Items.
 
     Args:
-    - collection_id (str): Collection identifier.
+        collection_id (str): Collection identifier.
 
     Returns:
-    None
+        None
 
     """
     client = AsyncElasticsearchSettings().create_client
@@ -555,7 +555,20 @@ class DatabaseLogic:
             raise NotFoundError(f"Collection {collection_id} does not exist")
 
     async def prep_create_item(self, item: Item, base_url: str) -> Item:
-        """Database logic for prepping an item for insertion."""
+        """
+        Preps an item for insertion into the database.
+
+        Args:
+            item (Item): The item to be prepped for insertion.
+            base_url (str): The base URL used to create the item's self URL.
+
+        Returns:
+            Item: The prepped item.
+
+        Raises:
+            ConflictError: If the item already exists in the database.
+
+        """
         await self.check_collection_exists(collection_id=item["collection"])
 
         if await self.client.exists(
@@ -569,7 +582,24 @@ class DatabaseLogic:
         return self.item_serializer.stac_to_db(item, base_url)
 
     def sync_prep_create_item(self, item: Item, base_url: str) -> Item:
-        """Database logic for prepping an item for insertion."""
+        """
+        Prepare an item for insertion into the database.
+
+        This method performs pre-insertion preparation on the given `item`,
+        such as checking if the collection the item belongs to exists,
+        and verifying that an item with the same ID does not already exist in the database.
+
+        Args:
+            item (Item): The item to be inserted into the database.
+            base_url (str): The base URL used for constructing URLs for the item.
+
+        Returns:
+            Item: The item after preparation is done.
+
+        Raises:
+            NotFoundError: If the collection that the item belongs to does not exist in the database.
+            ConflictError: If an item with the same ID already exists in the collection.
+        """
         item_id = item["id"]
         collection_id = item["collection"]
         if not self.sync_client.exists(index=COLLECTIONS_INDEX, id=collection_id):
