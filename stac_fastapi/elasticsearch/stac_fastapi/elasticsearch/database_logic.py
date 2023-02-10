@@ -695,7 +695,22 @@ class DatabaseLogic:
         await create_item_index(collection_id)
 
     async def find_collection(self, collection_id: str) -> Collection:
-        """Database logic to find and return a collection."""
+        """Find and return a collection from the database.
+
+        Args:
+            self: The instance of the object calling this function.
+            collection_id (str): The ID of the collection to be found.
+
+        Returns:
+            Collection: The found collection, represented as a `Collection` object.
+
+        Raises:
+            NotFoundError: If the collection with the given `collection_id` is not found in the database.
+
+        Notes:
+            This function searches for a collection in the database using the specified `collection_id` and returns the found
+            collection as a `Collection` object. If the collection is not found, a `NotFoundError` is raised.
+        """
         try:
             collection = await self.client.get(
                 index=COLLECTIONS_INDEX, id=collection_id
@@ -706,7 +721,21 @@ class DatabaseLogic:
         return collection["_source"]
 
     async def delete_collection(self, collection_id: str, refresh: bool = False):
-        """Database logic for deleting one collection."""
+        """Delete a collection from the database.
+
+        Parameters:
+            self: The instance of the object calling this function.
+            collection_id (str): The ID of the collection to be deleted.
+            refresh (bool): Whether to refresh the index after the deletion (default: False).
+
+        Raises:
+            NotFoundError: If the collection with the given `collection_id` is not found in the database.
+
+        Notes:
+            This function first verifies that the collection with the specified `collection_id` exists in the database, and then
+            deletes the collection. If `refresh` is set to True, the index is refreshed after the deletion. Additionally, this
+            function also calls `delete_item_index` to delete the index for the items in the collection.
+        """
         await self.find_collection(collection_id=collection_id)
         await self.client.delete(
             index=COLLECTIONS_INDEX, id=collection_id, refresh=refresh
@@ -716,7 +745,20 @@ class DatabaseLogic:
     async def bulk_async(
         self, collection_id: str, processed_items: List[Item], refresh: bool = False
     ) -> None:
-        """Database logic for async bulk item insertion."""
+        """Perform a bulk insert of items into the database asynchronously.
+
+        Args:
+            self: The instance of the object calling this function.
+            collection_id (str): The ID of the collection to which the items belong.
+            processed_items (List[Item]): A list of `Item` objects to be inserted into the database.
+            refresh (bool): Whether to refresh the index after the bulk insert (default: False).
+
+        Notes:
+            This function performs a bulk insert of `processed_items` into the database using the specified `collection_id`. The
+            insert is performed asynchronously, and the event loop is used to run the operation in a separate executor. The
+            `mk_actions` function is called to generate a list of actions for the bulk insert. If `refresh` is set to True, the
+            index is refreshed after the bulk insert. The function does not return any value.
+        """
         await asyncio.get_event_loop().run_in_executor(
             None,
             lambda: helpers.bulk(
@@ -730,7 +772,20 @@ class DatabaseLogic:
     def bulk_sync(
         self, collection_id: str, processed_items: List[Item], refresh: bool = False
     ) -> None:
-        """Database logic for sync bulk item insertion."""
+        """Perform a bulk insert of items into the database synchronously.
+
+        Args:
+            self: The instance of the object calling this function.
+            collection_id (str): The ID of the collection to which the items belong.
+            processed_items (List[Item]): A list of `Item` objects to be inserted into the database.
+            refresh (bool): Whether to refresh the index after the bulk insert (default: False).
+
+        Notes:
+            This function performs a bulk insert of `processed_items` into the database using the specified `collection_id`. The
+            insert is performed synchronously and blocking, meaning that the function does not return until the insert has
+            completed. The `mk_actions` function is called to generate a list of actions for the bulk insert. If `refresh` is set to
+            True, the index is refreshed after the bulk insert. The function does not return any value.
+        """
         helpers.bulk(
             self.sync_client,
             mk_actions(collection_id, processed_items),

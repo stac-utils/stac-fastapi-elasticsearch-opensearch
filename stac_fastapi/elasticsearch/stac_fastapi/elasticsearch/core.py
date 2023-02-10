@@ -216,6 +216,10 @@ class CoreClient(AsyncBaseCoreClient):
     async def get_item(self, item_id: str, collection_id: str, **kwargs) -> Item:
         """Get an item from the database based on its id and collection id.
 
+        Args:
+            collection_id (str): The ID of the collection the item belongs to.
+            item_id (str): The ID of the item to be retrieved.
+
         Returns:
             Item: An `Item` object representing the requested item.
 
