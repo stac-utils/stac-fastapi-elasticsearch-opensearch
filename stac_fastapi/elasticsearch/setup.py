@@ -20,7 +20,7 @@ install_requires = [
     "overrides",
     "starlette",
     "geojson-pydantic",
-    "pygeofilter==0.2.0",
+    "pygeofilter==0.2.1",
 ]
 
 extra_reqs = {
