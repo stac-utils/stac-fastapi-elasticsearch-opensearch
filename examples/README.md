@@ -2,5 +2,6 @@
 
 ## Deploy sfes from pip in docker
 
-```$ cd pip_docker```
-```$ docker-compose up```
+```shell
+cd pip_docker
+docker-compose up
