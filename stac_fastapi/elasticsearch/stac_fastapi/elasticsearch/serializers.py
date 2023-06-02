@@ -158,5 +158,5 @@ class CollectionSerializer(Serializer):
             summaries=summaries,
             extent=extent,
             links=collection_links,
-            assets=collection_assets
+            assets=collection_assets,
         )
