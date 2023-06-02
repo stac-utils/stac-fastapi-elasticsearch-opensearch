@@ -132,6 +132,7 @@ class CollectionSerializer(Serializer):
         providers = collection.get("providers", {})
         summaries = collection.get("summaries", {})
         extent = collection.get("extent", {})
+        collection_assets = collection.get("assets", {})
 
         # Create the collection links using CollectionLinks
         collection_links = CollectionLinks(
@@ -157,4 +158,5 @@ class CollectionSerializer(Serializer):
             summaries=summaries,
             extent=extent,
             links=collection_links,
+            assets=collection_assets
         )
