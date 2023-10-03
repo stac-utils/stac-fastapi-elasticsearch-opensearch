@@ -1,6 +1,4 @@
 """FastAPI application."""
-from typing import List
-
 import attr
 
 from stac_fastapi.api.app import StacApi
@@ -31,6 +29,8 @@ session = Session.create_from_settings(settings)
 
 @attr.s
 class FixedFilterExtension(FilterExtension):
+    """FilterExtension class implementation with EsAsyncBaseFiltersClient."""
+
     client = attr.ib(factory=EsAsyncBaseFiltersClient)
 
 

@@ -189,7 +189,7 @@ async def test_app_query_extension_limit_lt0(app_client):
 async def test_app_query_extension_limit_gt10000(app_client):
     resp = await app_client.post("/search", json={"limit": 10001})
     assert resp.status_code == 200
-    assert resp.json()['context']['limit'] == 10000
+    assert resp.json()["context"]["limit"] == 10000
 
 
 async def test_app_query_extension_limit_10000(app_client):
