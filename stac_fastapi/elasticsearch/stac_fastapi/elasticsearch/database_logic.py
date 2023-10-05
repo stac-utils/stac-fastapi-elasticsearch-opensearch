@@ -25,7 +25,7 @@ NumType = Union[float, int]
 COLLECTIONS_INDEX = os.getenv("STAC_COLLECTIONS_INDEX", "collections")
 ITEMS_INDEX_PREFIX = os.getenv("STAC_ITEMS_INDEX_PREFIX", "items_")
 
-DEFAULT_INDICES = f"*,-*kibana*,-{COLLECTIONS_INDEX}"
+ITEM_INDICES = f"{ITEMS_INDEX_PREFIX}*"
 
 DEFAULT_SORT = {
     "properties.datetime": {"order": "desc"},
@@ -150,7 +150,7 @@ def indices(collection_ids: Optional[List[str]]) -> str:
         A string of comma-separated index names. If `collection_ids` is None, returns the default indices.
     """
     if collection_ids is None:
-        return DEFAULT_INDICES
+        return ITEM_INDICES
     else:
         return ",".join([f"{ITEMS_INDEX_PREFIX}{c.strip()}" for c in collection_ids])
 
@@ -164,7 +164,8 @@ async def create_collection_index() -> None:
     client = AsyncElasticsearchSettings().create_client
 
     await client.indices.create(
-        index=COLLECTIONS_INDEX,
+        index=f"{COLLECTIONS_INDEX}-000001",
+        aliases={COLLECTIONS_INDEX: {}},
         mappings=ES_COLLECTIONS_MAPPINGS,
         ignore=400,  # ignore 400 already exists code
     )
@@ -183,9 +184,11 @@ async def create_item_index(collection_id: str):
 
     """
     client = AsyncElasticsearchSettings().create_client
+    index_name = index_by_collection_id(collection_id)
 
     await client.indices.create(
-        index=index_by_collection_id(collection_id),
+        index=f"{index_by_collection_id(collection_id)}-000001",
+        aliases={index_name: {}},
         mappings=ES_ITEMS_MAPPINGS,
         settings=ES_ITEMS_SETTINGS,
         ignore=400,  # ignore 400 already exists code
@@ -201,7 +204,14 @@ async def delete_item_index(collection_id: str):
     """
     client = AsyncElasticsearchSettings().create_client
 
-    await client.indices.delete(index=index_by_collection_id(collection_id))
+    name = index_by_collection_id(collection_id)
+    resolved = await client.indices.resolve_index(name=name)
+    if "aliases" in resolved and resolved["aliases"]:
+        [alias] = resolved["aliases"]
+        await client.indices.delete_alias(index=alias["indices"], name=alias["name"])
+        await client.indices.delete(index=alias["indices"])
+    else:
+        await client.indices.delete(index=name)
     await client.close()
 
 
@@ -759,14 +769,11 @@ class DatabaseLogic:
             `mk_actions` function is called to generate a list of actions for the bulk insert. If `refresh` is set to True, the
             index is refreshed after the bulk insert. The function does not return any value.
         """
-        await asyncio.get_event_loop().run_in_executor(
-            None,
-            lambda: helpers.bulk(
-                self.sync_client,
-                mk_actions(collection_id, processed_items),
-                refresh=refresh,
-                raise_on_error=False,
-            ),
+        await helpers.async_bulk(
+            self.client,
+            mk_actions(collection_id, processed_items),
+            refresh=refresh,
+            raise_on_error=False,
         )
 
     def bulk_sync(
@@ -797,7 +804,7 @@ class DatabaseLogic:
     async def delete_items(self) -> None:
         """Danger. this is only for tests."""
         await self.client.delete_by_query(
-            index=DEFAULT_INDICES,
+            index=ITEM_INDICES,
             body={"query": {"match_all": {}}},
             wait_for_completion=True,
         )
