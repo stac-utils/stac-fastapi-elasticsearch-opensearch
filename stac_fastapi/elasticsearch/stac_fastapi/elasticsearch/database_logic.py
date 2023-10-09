@@ -67,13 +67,13 @@ ES_MAPPINGS_DYNAMIC_TEMPLATES = [
     {
         "proj_centroid": {
             "match": "proj:centroid",
-            "mapping": {"type": "geo_point"},
+            "mapping": {"type": "object", "enabled": False},
         }
     },
     {
         "proj_geometry": {
             "match": "proj:geometry",
-            "mapping": {"type": "geo_shape"},
+            "mapping": {"type": "object", "enabled": False},
         }
     },
     {
