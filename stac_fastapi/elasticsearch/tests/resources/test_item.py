@@ -75,6 +75,18 @@ async def test_create_item_missing_collection(app_client, ctx):
     assert resp.status_code == 404
 
 
+async def test_create_uppercase_collection_with_item(app_client, ctx, txn_client):
+    """Test creation of a collection and item with uppercase collection ID (transactions extension)"""
+    collection_id = "UPPERCASE"
+    ctx.item["collection"] = collection_id
+    ctx.collection["id"] = collection_id
+    resp = await app_client.post("/collections", json=ctx.collection)
+    assert resp.status_code == 200
+    await refresh_indices(txn_client)
+    resp = await app_client.post(f"/collections/{collection_id}/items", json=ctx.item)
+    assert resp.status_code == 200
+
+
 async def test_update_item_already_exists(app_client, ctx):
     """Test updating an item which already exists (transactions extension)"""
 
