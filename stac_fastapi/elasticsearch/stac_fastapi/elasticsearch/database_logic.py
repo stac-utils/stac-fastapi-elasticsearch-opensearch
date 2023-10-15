@@ -24,6 +24,20 @@ NumType = Union[float, int]
 
 COLLECTIONS_INDEX = os.getenv("STAC_COLLECTIONS_INDEX", "collections")
 ITEMS_INDEX_PREFIX = os.getenv("STAC_ITEMS_INDEX_PREFIX", "items_")
+ES_INDEX_NAME_UNSUPPORTED_CHARS = {
+    "\\",
+    "/",
+    "*",
+    "?",
+    '"',
+    "<",
+    ">",
+    "|",
+    " ",
+    ",",
+    "#",
+    ":",
+}
 
 DEFAULT_INDICES = f"*,-*kibana*,-{COLLECTIONS_INDEX}"
 
@@ -136,7 +150,7 @@ def index_by_collection_id(collection_id: str) -> str:
     Returns:
         str: The index name derived from the collection id.
     """
-    return f"{ITEMS_INDEX_PREFIX}{collection_id}"
+    return f"{ITEMS_INDEX_PREFIX}{''.join(c for c in collection_id.lower() if c not in ES_INDEX_NAME_UNSUPPORTED_CHARS)}"
 
 
 def indices(collection_ids: Optional[List[str]]) -> str:
@@ -152,7 +166,7 @@ def indices(collection_ids: Optional[List[str]]) -> str:
     if collection_ids is None:
         return DEFAULT_INDICES
     else:
-        return ",".join([f"{ITEMS_INDEX_PREFIX}{c.strip()}" for c in collection_ids])
+        return ",".join([index_by_collection_id(c) for c in collection_ids])
 
 
 async def create_collection_index() -> None:
