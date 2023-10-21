@@ -4,7 +4,7 @@ import logging
 from datetime import datetime as datetime_type
 from datetime import timezone
 from typing import Any, Dict, List, Optional, Set, Type, Union
-from urllib.parse import urljoin
+from urllib.parse import unquote_plus, urljoin
 
 import attr
 import stac_pydantic
@@ -325,7 +325,7 @@ class CoreClient(AsyncBaseCoreClient):
             base_args["datetime"] = datetime
 
         if intersects:
-            base_args["intersects"] = intersects
+            base_args["intersects"] = json.loads(unquote_plus(intersects))
 
         if sortby:
             # https://github.com/radiantearth/stac-spec/tree/master/api-spec/extensions/sort#http-get-or-post-form

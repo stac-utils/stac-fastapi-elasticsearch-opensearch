@@ -233,7 +233,18 @@ async def test_search_invalid_date(app_client, ctx):
     assert resp.status_code == 400
 
 
-async def test_search_point_intersects(app_client, ctx):
+async def test_search_point_intersects_get(app_client, ctx):
+    point = [150.04, -33.14]
+    resp = await app_client.get(
+        f"/search?intersects={'type':'Point','coordinates':{point}}"
+    )
+
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["features"]) == 1
+
+
+async def test_search_point_intersects_post(app_client, ctx):
     point = [150.04, -33.14]
     intersects = {"type": "Point", "coordinates": point}
 
