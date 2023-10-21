@@ -10,11 +10,6 @@ from httpx import AsyncClient
 
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import create_get_request_model, create_post_request_model
-from stac_fastapi.elasticsearch.app import (
-    FixedFilterExtension,
-    FixedQueryExtension,
-    FixedSortExtension,
-)
 from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
 from stac_fastapi.elasticsearch.core import (
     BulkTransactionsClient,
@@ -22,9 +17,12 @@ from stac_fastapi.elasticsearch.core import (
     TransactionsClient,
 )
 from stac_fastapi.elasticsearch.database_logic import create_collection_index
+from stac_fastapi.elasticsearch.extensions import QueryExtension
 from stac_fastapi.extensions.core import (  # FieldsExtension,
     ContextExtension,
     FieldsExtension,
+    FilterExtension,
+    SortExtension,
     TokenPaginationExtension,
     TransactionExtension,
 )
@@ -162,11 +160,11 @@ async def app():
             client=TransactionsClient(session=None), settings=settings
         ),
         ContextExtension(),
-        FixedSortExtension(),
+        SortExtension(),
         FieldsExtension(),
-        FixedQueryExtension(),
+        QueryExtension(),
         TokenPaginationExtension(),
-        FixedFilterExtension(),
+        FilterExtension(),
     ]
 
     post_request_model = create_post_request_model(extensions)

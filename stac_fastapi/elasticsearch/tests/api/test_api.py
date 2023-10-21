@@ -205,7 +205,9 @@ async def test_app_query_extension_limit_lt0(app_client):
 
 @pytest.mark.asyncio
 async def test_app_query_extension_limit_gt10000(app_client):
-    assert (await app_client.post("/search", json={"limit": 10001})).status_code == 400
+    resp = await app_client.post("/search", json={"limit": 10001})
+    assert resp.status_code == 200
+    assert resp.json()["context"]["limit"] == 10000
 
 
 @pytest.mark.asyncio
