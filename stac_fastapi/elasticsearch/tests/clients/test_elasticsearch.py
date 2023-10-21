@@ -11,6 +11,7 @@ from stac_fastapi.types.errors import ConflictError, NotFoundError
 from ..conftest import MockRequest, create_item
 
 
+@pytest.mark.asyncio
 async def test_create_collection(app_client, ctx, core_client, txn_client):
     in_coll = deepcopy(ctx.collection)
     in_coll["id"] = str(uuid.uuid4())
@@ -20,6 +21,7 @@ async def test_create_collection(app_client, ctx, core_client, txn_client):
     await txn_client.delete_collection(in_coll["id"])
 
 
+@pytest.mark.asyncio
 async def test_create_collection_already_exists(app_client, ctx, txn_client):
     data = deepcopy(ctx.collection)
 
@@ -32,6 +34,7 @@ async def test_create_collection_already_exists(app_client, ctx, txn_client):
     await txn_client.delete_collection(data["id"])
 
 
+@pytest.mark.asyncio
 async def test_update_collection(
     core_client,
     txn_client,
@@ -49,6 +52,7 @@ async def test_update_collection(
     await txn_client.delete_collection(data["id"])
 
 
+@pytest.mark.asyncio
 async def test_delete_collection(
     core_client,
     txn_client,
@@ -63,6 +67,7 @@ async def test_delete_collection(
         await core_client.get_collection(data["id"], request=MockRequest)
 
 
+@pytest.mark.asyncio
 async def test_get_collection(
     core_client,
     txn_client,
@@ -76,6 +81,7 @@ async def test_get_collection(
     await txn_client.delete_collection(data["id"])
 
 
+@pytest.mark.asyncio
 async def test_get_item(app_client, ctx, core_client):
     got_item = await core_client.get_item(
         item_id=ctx.item["id"],
@@ -86,6 +92,7 @@ async def test_get_item(app_client, ctx, core_client):
     assert got_item["collection"] == ctx.item["collection"]
 
 
+@pytest.mark.asyncio
 async def test_get_collection_items(app_client, ctx, core_client, txn_client):
     coll = ctx.collection
     num_of_items_to_create = 5
@@ -106,6 +113,7 @@ async def test_get_collection_items(app_client, ctx, core_client, txn_client):
         assert item["collection"] == coll["id"]
 
 
+@pytest.mark.asyncio
 async def test_create_item(ctx, core_client, txn_client):
     resp = await core_client.get_item(
         ctx.item["id"], ctx.item["collection"], request=MockRequest
@@ -115,6 +123,7 @@ async def test_create_item(ctx, core_client, txn_client):
     ) == Item(**resp).dict(exclude={"links": ..., "properties": {"created", "updated"}})
 
 
+@pytest.mark.asyncio
 async def test_create_item_already_exists(ctx, txn_client):
     with pytest.raises(ConflictError):
         await txn_client.create_item(
@@ -125,6 +134,7 @@ async def test_create_item_already_exists(ctx, txn_client):
         )
 
 
+@pytest.mark.asyncio
 async def test_update_item(ctx, core_client, txn_client):
     ctx.item["properties"]["foo"] = "bar"
     collection_id = ctx.item["collection"]
@@ -139,6 +149,7 @@ async def test_update_item(ctx, core_client, txn_client):
     assert updated_item["properties"]["foo"] == "bar"
 
 
+@pytest.mark.asyncio
 async def test_update_geometry(ctx, core_client, txn_client):
     new_coordinates = [
         [
@@ -163,6 +174,7 @@ async def test_update_geometry(ctx, core_client, txn_client):
     assert updated_item["geometry"]["coordinates"] == new_coordinates
 
 
+@pytest.mark.asyncio
 async def test_delete_item(ctx, core_client, txn_client):
     await txn_client.delete_item(ctx.item["id"], ctx.item["collection"])
 
@@ -172,6 +184,7 @@ async def test_delete_item(ctx, core_client, txn_client):
         )
 
 
+@pytest.mark.asyncio
 async def test_bulk_item_insert(ctx, core_client, txn_client, bulk_txn_client):
     items = {}
     for _ in range(10):
@@ -193,6 +206,7 @@ async def test_bulk_item_insert(ctx, core_client, txn_client, bulk_txn_client):
     #     )
 
 
+@pytest.mark.asyncio
 async def test_feature_collection_insert(
     core_client,
     txn_client,
@@ -212,6 +226,7 @@ async def test_feature_collection_insert(
     assert len(fc["features"]) >= 10
 
 
+@pytest.mark.asyncio
 async def test_landing_page_no_collection_title(ctx, core_client, txn_client, app):
     ctx.collection["id"] = "new_id"
     del ctx.collection["title"]
