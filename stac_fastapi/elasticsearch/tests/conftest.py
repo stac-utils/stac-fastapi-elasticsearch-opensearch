@@ -61,7 +61,9 @@ Settings.set(settings)
 
 @pytest.fixture(scope="session")
 def event_loop():
-    return asyncio.get_event_loop()
+    loop = asyncio.new_event_loop()
+    yield loop
+    loop.close()
 
 
 def _load_file(filename: str) -> Dict:
