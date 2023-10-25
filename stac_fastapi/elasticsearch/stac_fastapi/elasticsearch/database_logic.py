@@ -87,7 +87,7 @@ ES_MAPPINGS_DYNAMIC_TEMPLATES = [
     {
         "proj_geometry": {
             "match": "proj:geometry",
-            "mapping": {"type": "geo_shape"},
+            "mapping": {"type": "object", "enabled": False},
         }
     },
     {

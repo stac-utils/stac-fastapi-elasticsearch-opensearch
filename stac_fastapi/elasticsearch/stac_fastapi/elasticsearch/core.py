@@ -286,6 +286,7 @@ class CoreClient(AsyncBaseCoreClient):
         token: Optional[str] = None,
         fields: Optional[List[str]] = None,
         sortby: Optional[str] = None,
+        intersects: Optional[str] = None,
         # filter: Optional[str] = None, # todo: requires fastapi > 2.3 unreleased
         # filter_lang: Optional[str] = None, # todo: requires fastapi > 2.3 unreleased
         **kwargs,
@@ -302,6 +303,7 @@ class CoreClient(AsyncBaseCoreClient):
             token (Optional[str]): Access token to use when searching the catalog.
             fields (Optional[List[str]]): Fields to include or exclude from the results.
             sortby (Optional[str]): Sorting options for the results.
+            intersects (Optional[str]): GeoJSON geometry to search in.
             kwargs: Additional parameters to be passed to the API.
 
         Returns:
@@ -321,6 +323,9 @@ class CoreClient(AsyncBaseCoreClient):
 
         if datetime:
             base_args["datetime"] = datetime
+
+        if intersects:
+            base_args["intersects"] = intersects
 
         if sortby:
             # https://github.com/radiantearth/stac-spec/tree/master/api-spec/extensions/sort#http-get-or-post-form
