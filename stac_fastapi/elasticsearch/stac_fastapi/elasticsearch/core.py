@@ -1,20 +1,20 @@
 """Item crud client."""
 import json
 import logging
+from base64 import urlsafe_b64encode
 from datetime import datetime as datetime_type
 from datetime import timezone
 from typing import Any, Dict, List, Optional, Set, Type, Union
-from base64 import urlsafe_b64encode
+from urllib.parse import urljoin
 
 import attr
 import stac_pydantic
 from fastapi import HTTPException
 from overrides import overrides
 from pydantic import ValidationError
-from starlette.requests import Request
 from stac_pydantic.links import Relations
 from stac_pydantic.shared import MimeTypes
-from urllib.parse import urljoin
+from starlette.requests import Request
 
 from stac_fastapi.elasticsearch import serializers
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
@@ -71,12 +71,7 @@ class CoreClient(AsyncBaseCoreClient):
     database = DatabaseLogic()
 
     @overrides
-    async def all_collections(
-        self, 
-        limit: Optional[int] = 10,
-        token: Optional[str] = None,
-        **kwargs
-    ) -> Collections:
+    async def all_collections(self, **kwargs) -> Collections:
         """Read all collections from the database.
 
         Returns:
@@ -89,20 +84,23 @@ class CoreClient(AsyncBaseCoreClient):
         request: Request = kwargs["request"]
         base_url = str(kwargs["request"].base_url)
 
-        hits = self.database.get_all_collections(limit=limit, token=token)
+        limit = int(request.query_params["limit"]) if "limit" in request.query_params else 10
+        token = request.query_params["token"] if "token" in request.query_params else None
+
+        hits = await self.database.get_all_collections(limit=limit, token=token)
 
         next_search_after = None
         next_link = None
         if len(hits) == limit:
             last_hit = hits[-1]
-            next_search_after = last_hit['sort']
-            next_token = urlsafe_b64encode(','.join(map(str, next_search_after)).encode()).decode()
-            paging_links = PagingLinks(
-                next=next_token, request=request
-            )
+            next_search_after = last_hit["sort"]
+            next_token = urlsafe_b64encode(
+                ",".join(map(str, next_search_after)).encode()
+            ).decode()
+            paging_links = PagingLinks(next=next_token, request=request)
             next_link = paging_links.link_next()
 
-        links=[
+        links = [
             {
                 "rel": Relations.root.value,
                 "type": MimeTypes.json,
@@ -117,18 +115,18 @@ class CoreClient(AsyncBaseCoreClient):
                 "rel": Relations.self.value,
                 "type": MimeTypes.json,
                 "href": urljoin(base_url, "collections"),
-            }
+            },
         ]
 
         if next_link:
             links.append(next_link)
-        
+
         return Collections(
             collections=[
                 self.collection_serializer.db_to_stac(c["_source"], base_url=base_url)
                 for c in hits
             ],
-            links=links
+            links=links,
         )
 
     @overrides
