@@ -84,8 +84,14 @@ class CoreClient(AsyncBaseCoreClient):
         request: Request = kwargs["request"]
         base_url = str(kwargs["request"].base_url)
 
-        limit = int(request.query_params["limit"]) if "limit" in request.query_params else 10
-        token = request.query_params["token"] if "token" in request.query_params else None
+        limit = (
+            int(request.query_params["limit"])
+            if "limit" in request.query_params
+            else 10
+        )
+        token = (
+            request.query_params["token"] if "token" in request.query_params else None
+        )
 
         hits = await self.database.get_all_collections(limit=limit, token=token)
 

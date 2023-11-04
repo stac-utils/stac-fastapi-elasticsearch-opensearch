@@ -316,7 +316,10 @@ class DatabaseLogic:
         if token:
             search_after = urlsafe_b64decode(token.encode()).decode().split(",")
         collections = await self.client.search(
-            index=COLLECTIONS_INDEX, search_after=search_after, size=limit, sort={"id": {"order": "asc"}}
+            index=COLLECTIONS_INDEX,
+            search_after=search_after,
+            size=limit,
+            sort={"id": {"order": "asc"}},
         )
         hits = collections["hits"]["hits"]
         return hits
