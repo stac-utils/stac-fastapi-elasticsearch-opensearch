@@ -61,7 +61,19 @@ curl -X "POST" "http://localhost:8080/collections" \
 ```
 
 Note: this "Collections Transaction" behavior is not part of the STAC API, but may be soon.  
+
+
+## Collection pagination
+
+The collections route handles optional `limit` and `page` parameters. The `links` field that is
+returned from the `/collections` route contains a `next` link that can be used to get the next page
+of results.
    
+```shell
+curl -X "GET" "http://localhost:8080/collections?limit=1&page=2" \
+     -H 'Content-Type: application/json; charset=utf-8'
+}'
+```
 
 ## Testing
 
