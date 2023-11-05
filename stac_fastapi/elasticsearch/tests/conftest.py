@@ -45,7 +45,7 @@ class MockRequest:
         method: str = "GET",
         url: str = "XXXX",
         app: Optional[Any] = None,
-        query_params: dict[str, Any] = {"limit": "10"},
+        query_params: Dict[str, Any] = {"limit": "10"},
     ):
         self.method = method
         self.url = url
