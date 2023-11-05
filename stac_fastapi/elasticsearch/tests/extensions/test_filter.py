@@ -3,9 +3,12 @@ import os
 from os import listdir
 from os.path import isfile, join
 
+import pytest
+
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
+@pytest.mark.asyncio
 async def test_search_filters(app_client, ctx):
 
     filters = []
@@ -19,6 +22,7 @@ async def test_search_filters(app_client, ctx):
         assert resp.status_code == 200
 
 
+@pytest.mark.asyncio
 async def test_search_filter_extension_eq(app_client, ctx):
     params = {"filter": {"op": "=", "args": [{"property": "id"}, ctx.item["id"]]}}
     resp = await app_client.post("/search", json=params)
@@ -27,6 +31,7 @@ async def test_search_filter_extension_eq(app_client, ctx):
     assert len(resp_json["features"]) == 1
 
 
+@pytest.mark.asyncio
 async def test_search_filter_extension_gte(app_client, ctx):
     # there's one item that can match, so one of these queries should match it and the other shouldn't
     params = {
@@ -58,6 +63,7 @@ async def test_search_filter_extension_gte(app_client, ctx):
     assert len(resp.json()["features"]) == 0
 
 
+@pytest.mark.asyncio
 async def test_search_filter_ext_and(app_client, ctx):
     params = {
         "filter": {
@@ -80,6 +86,7 @@ async def test_search_filter_ext_and(app_client, ctx):
     assert len(resp.json()["features"]) == 1
 
 
+@pytest.mark.asyncio
 async def test_search_filter_extension_floats(app_client, ctx):
     sun_elevation = ctx.item["properties"]["view:sun_elevation"]
 

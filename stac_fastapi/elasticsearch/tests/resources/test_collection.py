@@ -3,9 +3,10 @@ import uuid
 import pystac
 import pytest
 
-from ..conftest import create_collection
+from ..conftest import create_collection, delete_collections_and_items, refresh_indices
 
 
+@pytest.mark.asyncio
 async def test_create_and_delete_collection(app_client, load_test_data):
     """Test creation and deletion of a collection"""
     test_collection = load_test_data("test_collection.json")
@@ -18,6 +19,7 @@ async def test_create_and_delete_collection(app_client, load_test_data):
     assert resp.status_code == 204
 
 
+@pytest.mark.asyncio
 async def test_create_collection_conflict(app_client, ctx):
     """Test creation of a collection which already exists"""
     # This collection ID is created in the fixture, so this should be a conflict
@@ -25,12 +27,14 @@ async def test_create_collection_conflict(app_client, ctx):
     assert resp.status_code == 409
 
 
+@pytest.mark.asyncio
 async def test_delete_missing_collection(app_client):
     """Test deletion of a collection which does not exist"""
     resp = await app_client.delete("/collections/missing-collection")
     assert resp.status_code == 404
 
 
+@pytest.mark.asyncio
 async def test_update_collection_already_exists(ctx, app_client):
     """Test updating a collection which already exists"""
     ctx.collection["keywords"].append("test")
@@ -43,6 +47,7 @@ async def test_update_collection_already_exists(ctx, app_client):
     assert "test" in resp_json["keywords"]
 
 
+@pytest.mark.asyncio
 async def test_update_new_collection(app_client, load_test_data):
     """Test updating a collection which does not exist (same as creation)"""
     test_collection = load_test_data("test_collection.json")
@@ -52,12 +57,14 @@ async def test_update_new_collection(app_client, load_test_data):
     assert resp.status_code == 404
 
 
+@pytest.mark.asyncio
 async def test_collection_not_found(app_client):
     """Test read a collection which does not exist"""
     resp = await app_client.get("/collections/does-not-exist")
     assert resp.status_code == 404
 
 
+@pytest.mark.asyncio
 async def test_returns_valid_collection(ctx, app_client):
     """Test validates fetched collection with jsonschema"""
     resp = await app_client.put("/collections", json=ctx.collection)
@@ -80,33 +87,37 @@ async def test_returns_valid_collection(ctx, app_client):
 @pytest.mark.asyncio
 async def test_pagination_collection(app_client, ctx, txn_client):
     """Test collection pagination links"""
-    ids = [ctx.collection["id"]]
 
-    # Ingest 5 collections
-    for _ in range(5):
+    # Clear existing collections if necessary
+    await delete_collections_and_items(txn_client)
+
+    # Ingest 6 collections
+    ids = set()
+    for _ in range(6):
         ctx.collection["id"] = str(uuid.uuid4())
         await create_collection(txn_client, collection=ctx.collection)
-        ids.append(ctx.collection["id"])
+        ids.add(ctx.collection["id"])
 
-    # Paginate through all 6 collections with a limit of 1 (expecting 7 requests)
+    await refresh_indices(txn_client)
+
+    # Paginate through all 6 collections with a limit of 1
+    collection_ids = set()
     page = await app_client.get("/collections", params={"limit": 1})
-
-    collection_ids = []
-    idx = 0
-    for idx in range(100):
+    while True:
         page_data = page.json()
-        next_link = list(filter(lambda link: link["rel"] == "next", page_data["links"]))
+        assert (
+            len(page_data["collections"]) <= 1
+        )  # Each page should have 1 or 0 collections
+        collection_ids.update(coll["id"] for coll in page_data["collections"])
+
+        next_link = next(
+            (link for link in page_data["links"] if link["rel"] == "next"), None
+        )
         if not next_link:
-            assert not page_data["collections"]
-            break
+            break  # No more pages
 
-        assert len(page_data["collections"]) == 1
-        collection_ids.append(page_data["collections"][0]["id"])
-
-        href = next_link[0]["href"][len("http://test-server") :]
+        href = next_link["href"][len("http://test-server") :]
         page = await app_client.get(href)
 
-    assert idx == len(ids)
-
     # Confirm we have paginated through all collections
-    assert not set(collection_ids) - set(ids)
+    assert collection_ids == ids
