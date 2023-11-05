@@ -1,7 +1,10 @@
+import uuid
+
 import pystac
 import pytest
-import uuid
+
 from ..conftest import create_collection
+
 
 async def test_create_and_delete_collection(app_client, load_test_data):
     """Test creation and deletion of a collection"""
@@ -73,6 +76,7 @@ async def test_returns_valid_collection(ctx, app_client):
     )
     collection.validate()
 
+
 @pytest.mark.asyncio
 async def test_pagination_collection(app_client, ctx, txn_client):
     """Test collection pagination links"""
@@ -85,9 +89,7 @@ async def test_pagination_collection(app_client, ctx, txn_client):
         ids.append(ctx.collection["id"])
 
     # Paginate through all 6 collections with a limit of 1 (expecting 7 requests)
-    page = await app_client.get(
-        f"/collections", params={"limit": 1}
-    )
+    page = await app_client.get("/collections", params={"limit": 1})
 
     collection_ids = []
     idx = 0
