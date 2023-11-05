@@ -41,11 +41,16 @@ class MockRequest:
     base_url = "http://test-server"
 
     def __init__(
-        self, method: str = "GET", url: str = "XXXX", app: Optional[Any] = None
+        self,
+        method: str = "GET",
+        url: str = "XXXX",
+        app: Optional[Any] = None,
+        query_params: dict[str, Any] = {"limit": "10"},
     ):
         self.method = method
         self.url = url
         self.app = app
+        self.query_params = query_params or {}
 
 
 class TestSettings(AsyncElasticsearchSettings):

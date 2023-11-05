@@ -212,6 +212,7 @@ async def test_feature_collection_insert(
     assert len(fc["features"]) >= 10
 
 
+@pytest.mark.asyncio
 async def test_landing_page_no_collection_title(ctx, core_client, txn_client, app):
     ctx.collection["id"] = "new_id"
     del ctx.collection["title"]
