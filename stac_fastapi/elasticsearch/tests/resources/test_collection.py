@@ -1,5 +1,7 @@
 import pystac
-
+import pytest
+import uuid
+from ..conftest import create_collection
 
 async def test_create_and_delete_collection(app_client, load_test_data):
     """Test creation and deletion of a collection"""
@@ -70,3 +72,39 @@ async def test_returns_valid_collection(ctx, app_client):
         resp_json, root=mock_root, preserve_dict=False
     )
     collection.validate()
+
+@pytest.mark.asyncio
+async def test_pagination_collection(app_client, ctx, txn_client):
+    """Test collection pagination links"""
+    ids = [ctx.collection["id"]]
+
+    # Ingest 5 collections
+    for _ in range(5):
+        ctx.collection["id"] = str(uuid.uuid4())
+        await create_collection(txn_client, collection=ctx.collection)
+        ids.append(ctx.collection["id"])
+
+    # Paginate through all 6 collections with a limit of 1 (expecting 7 requests)
+    page = await app_client.get(
+        f"/collections", params={"limit": 1}
+    )
+
+    collection_ids = []
+    idx = 0
+    for idx in range(100):
+        page_data = page.json()
+        next_link = list(filter(lambda link: link["rel"] == "next", page_data["links"]))
+        if not next_link:
+            assert not page_data["collections"]
+            break
+
+        assert len(page_data["collections"]) == 1
+        collection_ids.append(page_data["collections"][0]["id"])
+
+        href = next_link[0]["href"][len("http://test-server") :]
+        page = await app_client.get(href)
+
+    assert idx == len(ids)
+
+    # Confirm we have paginated through all collections
+    assert not set(collection_ids) - set(ids)
