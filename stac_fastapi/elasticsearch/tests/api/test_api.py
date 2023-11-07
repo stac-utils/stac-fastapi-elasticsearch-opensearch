@@ -218,7 +218,77 @@ async def test_app_query_extension_limit_10000(app_client):
 
 
 @pytest.mark.asyncio
-async def test_app_sort_extension(app_client, txn_client, ctx):
+async def test_app_sort_extension_get_asc(app_client, txn_client, ctx):
+    first_item = ctx.item
+    item_date = datetime.strptime(
+        first_item["properties"]["datetime"], "%Y-%m-%dT%H:%M:%SZ"
+    )
+
+    second_item = dict(first_item)
+    second_item["id"] = "another-item"
+    another_item_date = item_date - timedelta(days=1)
+    second_item["properties"]["datetime"] = another_item_date.strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+    await create_item(txn_client, second_item)
+
+    resp = await app_client.get("/search?sortby=+properties.datetime")
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert resp_json["features"][1]["id"] == first_item["id"]
+    assert resp_json["features"][0]["id"] == second_item["id"]
+
+
+@pytest.mark.asyncio
+async def test_app_sort_extension_get_desc(app_client, txn_client, ctx):
+    first_item = ctx.item
+    item_date = datetime.strptime(
+        first_item["properties"]["datetime"], "%Y-%m-%dT%H:%M:%SZ"
+    )
+
+    second_item = dict(first_item)
+    second_item["id"] = "another-item"
+    another_item_date = item_date - timedelta(days=1)
+    second_item["properties"]["datetime"] = another_item_date.strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+    await create_item(txn_client, second_item)
+
+    resp = await app_client.get("/search?sortby=-properties.datetime")
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert resp_json["features"][0]["id"] == first_item["id"]
+    assert resp_json["features"][1]["id"] == second_item["id"]
+
+
+@pytest.mark.asyncio
+async def test_app_sort_extension_post_asc(app_client, txn_client, ctx):
+    first_item = ctx.item
+    item_date = datetime.strptime(
+        first_item["properties"]["datetime"], "%Y-%m-%dT%H:%M:%SZ"
+    )
+
+    second_item = dict(first_item)
+    second_item["id"] = "another-item"
+    another_item_date = item_date - timedelta(days=1)
+    second_item["properties"]["datetime"] = another_item_date.strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+    await create_item(txn_client, second_item)
+
+    params = {
+        "collections": [first_item["collection"]],
+        "sortby": [{"field": "properties.datetime", "direction": "asc"}],
+    }
+    resp = await app_client.post("/search", json=params)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert resp_json["features"][1]["id"] == first_item["id"]
+    assert resp_json["features"][0]["id"] == second_item["id"]
+
+
+@pytest.mark.asyncio
+async def test_app_sort_extension_post_desc(app_client, txn_client, ctx):
     first_item = ctx.item
     item_date = datetime.strptime(
         first_item["properties"]["datetime"], "%Y-%m-%dT%H:%M:%SZ"

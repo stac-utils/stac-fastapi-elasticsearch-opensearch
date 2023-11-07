@@ -372,9 +372,10 @@ class CoreClient(AsyncBaseCoreClient):
                 sort_param.append(
                     {
                         "field": sort[1:],
-                        "direction": "asc" if sort[0] == "+" else "desc",
+                        "direction": "desc" if sort[0] == "-" else "asc",
                     }
                 )
+            print(sort_param)
             base_args["sortby"] = sort_param
 
         if filter:

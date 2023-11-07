@@ -258,6 +258,7 @@ async def test_item_collection_filter_datetime(app_client, ctx):
     assert len(resp_json["features"]) == 0
 
 
+@pytest.mark.asyncio
 @pytest.mark.skip(reason="Pagination extension not implemented")
 async def test_pagination(app_client, load_test_data):
     """Test item collection pagination (paging extension)"""
@@ -384,6 +385,7 @@ async def test_item_search_temporal_window_post(app_client, ctx):
     assert resp_json["features"][0]["id"] == test_item["id"]
 
 
+@pytest.mark.asyncio
 @pytest.mark.skip(reason="KeyError: 'features")
 async def test_item_search_temporal_open_window(app_client, ctx):
     """Test POST search with open spatio-temporal query (core)"""
@@ -396,39 +398,6 @@ async def test_item_search_temporal_open_window(app_client, ctx):
     resp = await app_client.post("/search", json=params)
     resp_json = resp.json()
     assert resp_json["features"][0]["id"] == test_item["id"]
-
-
-@pytest.mark.skip(reason="sortby date not implemented")
-async def test_item_search_sort_post(app_client, load_test_data):
-    """Test POST search with sorting (sort extension)"""
-    first_item = load_test_data("test_item.json")
-    item_date = rfc3339_str_to_datetime(first_item["properties"]["datetime"])
-    resp = await app_client.post(
-        f"/collections/{first_item['collection']}/items", json=first_item
-    )
-    assert resp.status_code == 200
-
-    second_item = load_test_data("test_item.json")
-    second_item["id"] = "another-item"
-    another_item_date = item_date - timedelta(days=1)
-    second_item["properties"]["datetime"] = datetime_to_str(another_item_date)
-    resp = await app_client.post(
-        f"/collections/{second_item['collection']}/items", json=second_item
-    )
-    assert resp.status_code == 200
-
-    params = {
-        "collections": [first_item["collection"]],
-        "sortby": [{"field": "datetime", "direction": "desc"}],
-    }
-    resp = await app_client.post("/search", json=params)
-    assert resp.status_code == 200
-    resp_json = resp.json()
-    assert resp_json["features"][0]["id"] == first_item["id"]
-    assert resp_json["features"][1]["id"] == second_item["id"]
-    await app_client.delete(
-        f"/collections/{first_item['collection']}/items/{first_item['id']}"
-    )
 
 
 @pytest.mark.asyncio
@@ -496,27 +465,6 @@ async def test_item_search_temporal_window_get(app_client, ctx):
     resp = await app_client.get("/search", params=params)
     resp_json = resp.json()
     assert resp_json["features"][0]["id"] == test_item["id"]
-
-
-@pytest.mark.skip(reason="sorting not fully implemented")
-async def test_item_search_sort_get(app_client, ctx, txn_client):
-    """Test GET search with sorting (sort extension)"""
-    first_item = ctx.item
-    item_date = rfc3339_str_to_datetime(first_item["properties"]["datetime"])
-    await create_item(txn_client, ctx.item)
-
-    second_item = ctx.item.copy()
-    second_item["id"] = "another-item"
-    another_item_date = item_date - timedelta(days=1)
-    second_item.update({"properties": {"datetime": datetime_to_str(another_item_date)}})
-    await create_item(txn_client, second_item)
-
-    params = {"collections": [first_item["collection"]], "sortby": "-datetime"}
-    resp = await app_client.get("/search", params=params)
-    assert resp.status_code == 200
-    resp_json = resp.json()
-    assert resp_json["features"][0]["id"] == first_item["id"]
-    assert resp_json["features"][1]["id"] == second_item["id"]
 
 
 @pytest.mark.asyncio
@@ -742,6 +690,7 @@ async def test_field_extension_post(app_client, ctx):
     }
 
 
+@pytest.mark.asyncio
 async def test_field_extension_exclude_and_include(app_client, ctx):
     """Test POST search including/excluding same field (fields extension)"""
     test_item = ctx.item
@@ -758,6 +707,7 @@ async def test_field_extension_exclude_and_include(app_client, ctx):
     assert "eo:cloud_cover" not in resp_json["features"][0]["properties"]
 
 
+@pytest.mark.asyncio
 async def test_field_extension_exclude_default_includes(app_client, ctx):
     """Test POST search excluding a forbidden field (fields extension)"""
     test_item = ctx.item
@@ -768,6 +718,7 @@ async def test_field_extension_exclude_default_includes(app_client, ctx):
     assert "gsd" not in resp_json["features"][0]
 
 
+@pytest.mark.asyncio
 async def test_search_intersects_and_bbox(app_client):
     """Test POST search intersects and bbox are mutually exclusive (core)"""
     bbox = [-118, 34, -117, 35]
@@ -777,6 +728,7 @@ async def test_search_intersects_and_bbox(app_client):
     assert resp.status_code == 400
 
 
+@pytest.mark.asyncio
 async def test_get_missing_item(app_client, load_test_data):
     """Test read item which does not exist (transactions extension)"""
     test_coll = load_test_data("test_collection.json")
@@ -784,6 +736,7 @@ async def test_get_missing_item(app_client, load_test_data):
     assert resp.status_code == 404
 
 
+@pytest.mark.asyncio
 @pytest.mark.skip(reason="invalid queries not implemented")
 async def test_search_invalid_query_field(app_client):
     body = {"query": {"gsd": {"lt": 100}, "invalid-field": {"eq": 50}}}
@@ -791,6 +744,7 @@ async def test_search_invalid_query_field(app_client):
     assert resp.status_code == 400
 
 
+@pytest.mark.asyncio
 async def test_search_bbox_errors(app_client):
     body = {"query": {"bbox": [0]}}
     resp = await app_client.post("/search", json=body)
@@ -805,6 +759,7 @@ async def test_search_bbox_errors(app_client):
     assert resp.status_code == 400
 
 
+@pytest.mark.asyncio
 async def test_conformance_classes_configurable():
     """Test conformance class configurability"""
     landing = LandingPageMixin()
@@ -822,6 +777,7 @@ async def test_conformance_classes_configurable():
     assert client.conformance_classes()[0] == "this is a test"
 
 
+@pytest.mark.asyncio
 async def test_search_datetime_validation_errors(app_client):
     bad_datetimes = [
         "37-01-01T12:00:27.87Z",
