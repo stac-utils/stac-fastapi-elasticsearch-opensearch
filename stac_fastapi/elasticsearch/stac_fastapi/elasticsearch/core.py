@@ -335,7 +335,7 @@ class CoreClient(AsyncBaseCoreClient):
             base_args["datetime"] = datetime
 
         if intersects:
-            base_args["intersects"] = intersects
+            base_args["intersects"] = json.loads(unquote_plus(intersects))
 
         if sortby:
             sort_param = []
