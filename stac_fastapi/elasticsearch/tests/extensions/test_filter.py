@@ -9,7 +9,7 @@ THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 @pytest.mark.asyncio
-async def test_search_filters(app_client, ctx):
+async def test_search_filters_post(app_client, ctx):
 
     filters = []
     pwd = f"{THIS_DIR}/cql2"
@@ -23,7 +23,17 @@ async def test_search_filters(app_client, ctx):
 
 
 @pytest.mark.asyncio
-async def test_search_filter_extension_eq(app_client, ctx):
+async def test_search_filter_extension_eq_get(app_client, ctx):
+    resp = await app_client.get(
+        '/search?filter-lang=cql2-json&filter={"op":"=","args":[{"property":"id"},"test-item"]}'
+    )
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["features"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_filter_extension_eq_post(app_client, ctx):
     params = {"filter": {"op": "=", "args": [{"property": "id"}, ctx.item["id"]]}}
     resp = await app_client.post("/search", json=params)
     assert resp.status_code == 200
@@ -32,7 +42,25 @@ async def test_search_filter_extension_eq(app_client, ctx):
 
 
 @pytest.mark.asyncio
-async def test_search_filter_extension_gte(app_client, ctx):
+async def test_search_filter_extension_gte_get(app_client, ctx):
+    # there's one item that can match, so one of these queries should match it and the other shouldn't
+    resp = await app_client.get(
+        '/search?filter-lang=cql2-json&filter={"op":"<=","args":[{"property": "properties.proj:epsg"},32756]}'
+    )
+
+    assert resp.status_code == 200
+    assert len(resp.json()["features"]) == 1
+
+    resp = await app_client.get(
+        '/search?filter-lang=cql2-json&filter={"op":">","args":[{"property": "properties.proj:epsg"},32756]}'
+    )
+
+    assert resp.status_code == 200
+    assert len(resp.json()["features"]) == 0
+
+
+@pytest.mark.asyncio
+async def test_search_filter_extension_gte_post(app_client, ctx):
     # there's one item that can match, so one of these queries should match it and the other shouldn't
     params = {
         "filter": {
@@ -64,7 +92,52 @@ async def test_search_filter_extension_gte(app_client, ctx):
 
 
 @pytest.mark.asyncio
-async def test_search_filter_ext_and(app_client, ctx):
+async def test_search_filter_ext_and_get(app_client, ctx):
+    resp = await app_client.get(
+        '/search?filter-lang=cql2-json&filter={"op":"and","args":[{"op":"<=","args":[{"property":"properties.proj:epsg"},32756]},{"op":"=","args":[{"property":"id"},"test-item"]}]}'
+    )
+
+    assert resp.status_code == 200
+    assert len(resp.json()["features"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_filter_ext_and_get_cql2text_id(app_client, ctx):
+    collection = ctx.item["collection"]
+    id = ctx.item["id"]
+    filter = f"id='{id}' AND collection='{collection}'"
+    resp = await app_client.get(f"/search?filter-lang=cql2-text&filter={filter}")
+
+    assert resp.status_code == 200
+    assert len(resp.json()["features"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_filter_ext_and_get_cql2text_cloud_cover(app_client, ctx):
+    collection = ctx.item["collection"]
+    cloud_cover = ctx.item["properties"]["eo:cloud_cover"]
+    filter = f"cloud_cover={cloud_cover} AND collection='{collection}'"
+    resp = await app_client.get(f"/search?filter-lang=cql2-text&filter={filter}")
+
+    assert resp.status_code == 200
+    assert len(resp.json()["features"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_filter_ext_and_get_cql2text_cloud_cover_no_results(
+    app_client, ctx
+):
+    collection = ctx.item["collection"]
+    cloud_cover = ctx.item["properties"]["eo:cloud_cover"] + 1
+    filter = f"cloud_cover={cloud_cover} AND collection='{collection}'"
+    resp = await app_client.get(f"/search?filter-lang=cql2-text&filter={filter}")
+
+    assert resp.status_code == 200
+    assert len(resp.json()["features"]) == 0
+
+
+@pytest.mark.asyncio
+async def test_search_filter_ext_and_post(app_client, ctx):
     params = {
         "filter": {
             "op": "and",
@@ -87,7 +160,31 @@ async def test_search_filter_ext_and(app_client, ctx):
 
 
 @pytest.mark.asyncio
-async def test_search_filter_extension_floats(app_client, ctx):
+async def test_search_filter_extension_floats_get(app_client, ctx):
+    resp = await app_client.get(
+        """/search?filter={"op":"and","args":[{"op":"=","args":[{"property":"id"},"test-item"]},{"op":">","args":[{"property":"properties.view:sun_elevation"},"-37.30891534"]},{"op":"<","args":[{"property":"properties.view:sun_elevation"},"-37.30691534"]}]}"""
+    )
+
+    assert resp.status_code == 200
+    assert len(resp.json()["features"]) == 1
+
+    resp = await app_client.get(
+        """/search?filter={"op":"and","args":[{"op":"=","args":[{"property":"id"},"test-item-7"]},{"op":">","args":[{"property":"properties.view:sun_elevation"},"-37.30891534"]},{"op":"<","args":[{"property":"properties.view:sun_elevation"},"-37.30691534"]}]}"""
+    )
+
+    assert resp.status_code == 200
+    assert len(resp.json()["features"]) == 0
+
+    resp = await app_client.get(
+        """/search?filter={"op":"and","args":[{"op":"=","args":[{"property":"id"},"test-item"]},{"op":">","args":[{"property":"properties.view:sun_elevation"},"-37.30591534"]},{"op":"<","args":[{"property":"properties.view:sun_elevation"},"-37.30491534"]}]}"""
+    )
+
+    assert resp.status_code == 200
+    assert len(resp.json()["features"]) == 0
+
+
+@pytest.mark.asyncio
+async def test_search_filter_extension_floats_post(app_client, ctx):
     sun_elevation = ctx.item["properties"]["view:sun_elevation"]
 
     params = {
