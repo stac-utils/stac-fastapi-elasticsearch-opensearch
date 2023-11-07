@@ -1,6 +1,7 @@
 """Item crud client."""
 import logging
 import re
+from base64 import urlsafe_b64encode
 from datetime import datetime as datetime_type
 from datetime import timezone
 from typing import Any, Dict, List, Optional, Set, Type, Union
@@ -82,30 +83,58 @@ class CoreClient(AsyncBaseCoreClient):
         Raises:
             Exception: If any error occurs while reading the collections from the database.
         """
+        request: Request = kwargs["request"]
         base_url = str(kwargs["request"].base_url)
+
+        limit = (
+            int(request.query_params["limit"])
+            if "limit" in request.query_params
+            else 10
+        )
+        token = (
+            request.query_params["token"] if "token" in request.query_params else None
+        )
+
+        hits = await self.database.get_all_collections(limit=limit, token=token)
+
+        next_search_after = None
+        next_link = None
+        if len(hits) == limit:
+            last_hit = hits[-1]
+            next_search_after = last_hit["sort"]
+            next_token = urlsafe_b64encode(
+                ",".join(map(str, next_search_after)).encode()
+            ).decode()
+            paging_links = PagingLinks(next=next_token, request=request)
+            next_link = paging_links.link_next()
+
+        links = [
+            {
+                "rel": Relations.root.value,
+                "type": MimeTypes.json,
+                "href": base_url,
+            },
+            {
+                "rel": Relations.parent.value,
+                "type": MimeTypes.json,
+                "href": base_url,
+            },
+            {
+                "rel": Relations.self.value,
+                "type": MimeTypes.json,
+                "href": urljoin(base_url, "collections"),
+            },
+        ]
+
+        if next_link:
+            links.append(next_link)
 
         return Collections(
             collections=[
-                self.collection_serializer.db_to_stac(c, base_url=base_url)
-                for c in await self.database.get_all_collections()
+                self.collection_serializer.db_to_stac(c["_source"], base_url=base_url)
+                for c in hits
             ],
-            links=[
-                {
-                    "rel": Relations.root.value,
-                    "type": MimeTypes.json,
-                    "href": base_url,
-                },
-                {
-                    "rel": Relations.parent.value,
-                    "type": MimeTypes.json,
-                    "href": base_url,
-                },
-                {
-                    "rel": Relations.self.value,
-                    "type": MimeTypes.json,
-                    "href": urljoin(base_url, "collections"),
-                },
-            ],
+            links=links,
         )
 
     @overrides

@@ -305,21 +305,34 @@ class DatabaseLogic:
 
     """CORE LOGIC"""
 
-    async def get_all_collections(self) -> Iterable[Dict[str, Any]]:
+    async def get_all_collections(
+        self, token: Optional[str], limit: int
+    ) -> Iterable[Dict[str, Any]]:
         """Retrieve a list of all collections from the database.
+
+        Args:
+            token (Optional[str]): The token used to return the next set of results.
+            limit (int): Number of results to return
 
         Returns:
             collections (Iterable[Dict[str, Any]]): A list of dictionaries containing the source data for each collection.
 
         Notes:
             The collections are retrieved from the Elasticsearch database using the `client.search` method,
-            with the `COLLECTIONS_INDEX` as the target index and `size=1000` to retrieve up to 1000 records.
+            with the `COLLECTIONS_INDEX` as the target index and `size=limit` to retrieve records.
             The result is a generator of dictionaries containing the source data for each collection.
         """
-        # https://github.com/stac-utils/stac-fastapi-elasticsearch/issues/65
-        # collections should be paginated, but at least return more than the default 10 for now
-        collections = await self.client.search(index=COLLECTIONS_INDEX, size=1000)
-        return (c["_source"] for c in collections["hits"]["hits"])
+        search_after = None
+        if token:
+            search_after = urlsafe_b64decode(token.encode()).decode().split(",")
+        collections = await self.client.search(
+            index=COLLECTIONS_INDEX,
+            search_after=search_after,
+            size=limit,
+            sort={"id": {"order": "asc"}},
+        )
+        hits = collections["hits"]["hits"]
+        return hits
 
     async def get_one_item(self, collection_id: str, item_id: str) -> Dict:
         """Retrieve a single item from the database.
