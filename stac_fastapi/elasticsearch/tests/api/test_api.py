@@ -255,7 +255,28 @@ async def test_search_invalid_date(app_client, ctx):
 
 
 @pytest.mark.asyncio
-async def test_search_point_intersects(app_client, ctx):
+async def test_search_point_intersects_get(app_client, ctx):
+    resp = await app_client.get(
+        '/search?intersects={"type":"Point","coordinates":[150.04,-33.14]}'
+    )
+
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["features"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_polygon_intersects_get(app_client, ctx):
+    resp = await app_client.get(
+        '/search?intersects={"type":"Polygon","coordinates":[[[149.04, -34.14],[149.04, -32.14],[151.04, -32.14],[151.04, -34.14],[149.04, -34.14]]]}'
+    )
+
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["features"]) == 1
+
+
+async def test_search_point_intersects_post(app_client, ctx):
     point = [150.04, -33.14]
     intersects = {"type": "Point", "coordinates": point}
 

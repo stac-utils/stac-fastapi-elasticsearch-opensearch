@@ -1,20 +1,22 @@
 """Item crud client."""
-import json
 import logging
 from base64 import urlsafe_b64encode
+import re
 from datetime import datetime as datetime_type
 from datetime import timezone
 from typing import Any, Dict, List, Optional, Set, Type, Union
-from urllib.parse import urljoin
+from urllib.parse import unquote_plus, urljoin
 
 import attr
+import orjson
 import stac_pydantic
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from overrides import overrides
 from pydantic import ValidationError
+from pygeofilter.backends.cql2_json import to_cql2
+from pygeofilter.parsers.cql2_text import parse as parse_cql2_text
 from stac_pydantic.links import Relations
 from stac_pydantic.shared import MimeTypes
-from starlette.requests import Request
 
 from stac_fastapi.elasticsearch import serializers
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
@@ -303,9 +305,9 @@ class CoreClient(AsyncBaseCoreClient):
 
         return {"lte": end_date, "gte": start_date}
 
-    @overrides
     async def get_search(
         self,
+        request: Request,
         collections: Optional[List[str]] = None,
         ids: Optional[List[str]] = None,
         bbox: Optional[List[NumType]] = None,
@@ -316,8 +318,8 @@ class CoreClient(AsyncBaseCoreClient):
         fields: Optional[List[str]] = None,
         sortby: Optional[str] = None,
         intersects: Optional[str] = None,
-        # filter: Optional[str] = None, # todo: requires fastapi > 2.3 unreleased
-        # filter_lang: Optional[str] = None, # todo: requires fastapi > 2.3 unreleased
+        filter: Optional[str] = None,
+        filter_lang: Optional[str] = None,
         **kwargs,
     ) -> ItemCollection:
         """Get search results from the database.
@@ -347,17 +349,24 @@ class CoreClient(AsyncBaseCoreClient):
             "bbox": bbox,
             "limit": limit,
             "token": token,
-            "query": json.loads(query) if query else query,
+            "query": orjson.loads(query) if query else query,
         }
+
+        # this is borrowed from stac-fastapi-pgstac
+        # Kludgy fix because using factory does not allow alias for filter-lan
+        query_params = str(request.query_params)
+        if filter_lang is None:
+            match = re.search(r"filter-lang=([a-z0-9-]+)", query_params, re.IGNORECASE)
+            if match:
+                filter_lang = match.group(1)
 
         if datetime:
             base_args["datetime"] = datetime
 
         if intersects:
-            base_args["intersects"] = intersects
+            base_args["intersects"] = orjson.loads(unquote_plus(intersects))
 
         if sortby:
-            # https://github.com/radiantearth/stac-spec/tree/master/api-spec/extensions/sort#http-get-or-post-form
             sort_param = []
             for sort in sortby:
                 sort_param.append(
@@ -368,12 +377,13 @@ class CoreClient(AsyncBaseCoreClient):
                 )
             base_args["sortby"] = sort_param
 
-        # todo: requires fastapi > 2.3 unreleased
-        # if filter:
-        #     if filter_lang == "cql2-text":
-        #         base_args["filter-lang"] = "cql2-json"
-        #         base_args["filter"] = orjson.loads(to_cql2(parse_cql2_text(filter)))
-        #         print(f'>>> {base_args["filter"]}')
+        if filter:
+            if filter_lang == "cql2-text":
+                base_args["filter-lang"] = "cql2-json"
+                base_args["filter"] = orjson.loads(to_cql2(parse_cql2_text(filter)))
+            else:
+                base_args["filter-lang"] = "cql2-json"
+                base_args["filter"] = orjson.loads(unquote_plus(filter))
 
         if fields:
             includes = set()
@@ -392,13 +402,12 @@ class CoreClient(AsyncBaseCoreClient):
             search_request = self.post_request_model(**base_args)
         except ValidationError:
             raise HTTPException(status_code=400, detail="Invalid parameters provided")
-        resp = await self.post_search(search_request, request=kwargs["request"])
+        resp = await self.post_search(search_request=search_request, request=request)
 
         return resp
 
-    @overrides
     async def post_search(
-        self, search_request: BaseSearchPostRequest, **kwargs
+        self, search_request: BaseSearchPostRequest, request: Request
     ) -> ItemCollection:
         """
         Perform a POST search on the catalog.
@@ -413,7 +422,6 @@ class CoreClient(AsyncBaseCoreClient):
         Raises:
             HTTPException: If there is an error with the cql2_json filter.
         """
-        request: Request = kwargs["request"]
         base_url = str(request.base_url)
 
         search = self.database.make_search()
@@ -500,7 +508,7 @@ class CoreClient(AsyncBaseCoreClient):
             filter_kwargs = search_request.fields.filter_fields
 
             items = [
-                json.loads(stac_pydantic.Item(**feat).json(**filter_kwargs))
+                orjson.loads(stac_pydantic.Item(**feat).json(**filter_kwargs))
                 for feat in items
             ]
 

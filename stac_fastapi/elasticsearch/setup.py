@@ -17,6 +17,7 @@ install_requires = [
     "elasticsearch-dsl==7.4.1",
     "pystac[validation]",
     "uvicorn",
+    "orjson",
     "overrides",
     "starlette",
     "geojson-pydantic",
