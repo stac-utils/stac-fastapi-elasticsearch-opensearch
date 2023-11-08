@@ -38,6 +38,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Remove unsupported characters from Elasticsearch index names [#153](https://github.com/stac-utils/stac-fastapi-elasticsearch/issues/153)
 - Fixed GET /search sortby requests [#25](https://github.com/stac-utils/stac-fastapi-elasticsearch/issues/25)
 
+
 ## [v0.3.0]
 
 ### Added
@@ -50,10 +51,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Fields Extension [#129](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/129)
 - Support for Python 3.11 [#131](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/131)
 
-
 ### Changed
 
 - Updated core stac-fastapi libraries to 2.4.3 from 2.3.0 [#127](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/127)
+
 
 ## [v0.2.0]
 
@@ -77,6 +78,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - When using bulk ingest, items will continue to be ingested if any of them fail. Previously, the call would fail
   immediately if any items failed.
 
+
 ## [v0.1.0]
 
 ### Changed
@@ -87,6 +89,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Db_to_stac serializer moved to core.py for consistency as it existed in both core and database_logic previously.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
+
 
 [Unreleased]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v1.0.0...main>
 [v1.0.0]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v0.3.0...v1.0.0>
