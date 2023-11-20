@@ -509,7 +509,9 @@ class CoreClient(AsyncBaseCoreClient):
             filter_kwargs = search_request.fields.filter_fields
 
             items = [
-                orjson.loads(stac_pydantic.Item(**feat).json(**filter_kwargs))
+                orjson.loads(
+                    stac_pydantic.Item(**feat).json(**filter_kwargs, exclude_unset=True)
+                )
                 for feat in items
             ]
 

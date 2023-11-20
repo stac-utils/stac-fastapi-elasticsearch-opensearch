@@ -164,6 +164,23 @@ async def test_app_fields_extension_no_properties_post(app_client, ctx, txn_clie
 
 
 @pytest.mark.asyncio
+async def test_app_fields_extension_no_null_fields(app_client, ctx, txn_client):
+    resp = await app_client.get("/search", params={"collections": ["test-collection"]})
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    # check if no null fields: https://github.com/stac-utils/stac-fastapi-elasticsearch/issues/166
+    for feature in resp_json["features"]:
+        # assert "bbox" not in feature["geometry"]
+        for link in feature["links"]:
+            assert all(a not in link or link[a] is not None for a in ("title", "asset"))
+        for asset in feature["assets"]:
+            assert all(
+                a not in asset or asset[a] is not None
+                for a in ("start_datetime", "created")
+            )
+
+
+@pytest.mark.asyncio
 async def test_app_fields_extension_return_all_properties(app_client, ctx, txn_client):
     item = ctx.item
     resp = await app_client.get(
