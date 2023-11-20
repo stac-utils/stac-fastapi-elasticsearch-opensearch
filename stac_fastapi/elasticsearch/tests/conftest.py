@@ -16,7 +16,7 @@ from stac_fastapi.elasticsearch.core import (
     CoreClient,
     TransactionsClient,
 )
-from stac_fastapi.elasticsearch.database_logic import create_collection_index
+from stac_fastapi.elasticsearch.database_elasticsearch.database_logic import create_collection_index
 from stac_fastapi.elasticsearch.extensions import QueryExtension
 from stac_fastapi.extensions.core import (  # FieldsExtension,
     ContextExtension,

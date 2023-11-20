@@ -8,7 +8,7 @@ from stac_fastapi.elasticsearch.core import (
     EsAsyncBaseFiltersClient,
     TransactionsClient,
 )
-from stac_fastapi.elasticsearch.database_logic import create_collection_index
+from stac_fastapi.elasticsearch.database_elasticsearch.database_logic import create_collection_index
 from stac_fastapi.elasticsearch.extensions import QueryExtension
 from stac_fastapi.elasticsearch.session import Session
 from stac_fastapi.extensions.core import (

@@ -17,6 +17,7 @@ from stac_fastapi.elasticsearch.config import (
 from stac_fastapi.elasticsearch.extensions import filter
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.stac import Collection, Item
+from stac_fastapi.elasticsearch.utilities import bbox2polygon
 
 logger = logging.getLogger(__name__)
 
@@ -227,21 +228,6 @@ async def delete_item_index(collection_id: str):
     else:
         await client.indices.delete(index=name)
     await client.close()
-
-
-def bbox2polygon(b0: float, b1: float, b2: float, b3: float) -> List[List[List[float]]]:
-    """Transform a bounding box represented by its four coordinates `b0`, `b1`, `b2`, and `b3` into a polygon.
-
-    Args:
-        b0 (float): The x-coordinate of the lower-left corner of the bounding box.
-        b1 (float): The y-coordinate of the lower-left corner of the bounding box.
-        b2 (float): The x-coordinate of the upper-right corner of the bounding box.
-        b3 (float): The y-coordinate of the upper-right corner of the bounding box.
-
-    Returns:
-        List[List[List[float]]]: A polygon represented as a list of lists of coordinates.
-    """
-    return [[[b0, b1], [b2, b1], [b2, b3], [b0, b3], [b0, b1]]]
 
 
 def mk_item_id(item_id: str, collection_id: str):
