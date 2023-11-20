@@ -29,6 +29,34 @@ services:
     command:
       bash -c "./scripts/wait-for-it-es.sh es-container:9200 && python -m stac_fastapi.elasticsearch.app"
 
+  app-opensearch:
+    container_name: stac-fastapi-os
+    image: stac-utils/stac-fastapi
+    restart: always
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    environment:
+      - APP_HOST=0.0.0.0
+      - APP_PORT=8080
+      - RELOAD=true
+      - ENVIRONMENT=local
+      - WEB_CONCURRENCY=10
+      - OS_HOST=172.17.0.1
+      - OS_PORT=9200
+      - OS_USE_SSL=false
+      - OS_VERIFY_CERTS=false
+    ports:
+      - "8082:8080"
+    volumes:
+      - ./stac_fastapi:/app/stac_fastapi
+      - ./scripts:/app/scripts
+      - ./osdata:/usr/share/opensearch/data
+    depends_on:
+      - opensearch
+    command:
+      bash -c "./scripts/wait-for-it-os.sh os-container:9200 && python -m stac_fastapi.elasticsearch.app"
+
   elasticsearch:
     container_name: es-container
     image: docker.elastic.co/elasticsearch/elasticsearch:${ELASTICSEARCH_VERSION:-8.10.4}
@@ -39,3 +67,15 @@ services:
       - ./elasticsearch/snapshots:/usr/share/elasticsearch/snapshots
     ports:
       - "9200:9200"
+      
+  opensearch:
+    container_name: os-container
+    image: opensearchproject/opensearch:latest
+    environment:
+      - "discovery.type=single-node"
+      - "plugins.security.disabled=true"
+    volumes:
+      - ./opensearch/config/opensearch.yml:/usr/share/opensearch/config/opensearch.yml
+      - ./opensearch/snapshots:/usr/share/opensearch/snapshots
+    ports:
+      - "9202:9200"
