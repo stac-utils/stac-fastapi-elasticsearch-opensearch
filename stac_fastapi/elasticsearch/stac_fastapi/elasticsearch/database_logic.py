@@ -170,12 +170,19 @@ def indices(collection_ids: Optional[List[str]]) -> str:
 
 
 async def create_collection_index() -> None:
+    """
+    Create the index for a Collection.
+
+    Returns:
+        None
+
+    """
     client = AsyncElasticsearchSettings().create_client
 
     await client.options(ignore_status=400).indices.create(
         index=f"{COLLECTIONS_INDEX}-000001",
         aliases={COLLECTIONS_INDEX: {}},
-        mappings=ES_COLLECTIONS_MAPPINGS
+        mappings=ES_COLLECTIONS_MAPPINGS,
     )
     await client.close()
 

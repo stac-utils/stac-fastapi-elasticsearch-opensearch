@@ -18,7 +18,7 @@ def _es_config() -> Dict[str, Any]:
     # Initialize the configuration dictionary
     config = {
         "hosts": hosts,
-        "headers": {"accept": "application/vnd.elasticsearch+json; compatible-with=7"}
+        "headers": {"accept": "application/vnd.elasticsearch+json; compatible-with=7"},
     }
 
     # Explicitly exclude SSL settings when not using SSL
@@ -26,18 +26,21 @@ def _es_config() -> Dict[str, Any]:
         return config
 
     # Include SSL settings if using https
-    config["ssl_version"] = ssl.TLSVersion.TLSv1_2
-    config["verify_certs"] = os.getenv("ES_VERIFY_CERTS", "true").lower() != "false"
+    config["ssl_version"] = ssl.TLSVersion.TLSv1_2  # type: ignore
+    config["verify_certs"] = os.getenv("ES_VERIFY_CERTS", "true").lower() != "false"  # type: ignore
 
     # Include CA Certificates if verifying certs
     if config["verify_certs"]:
-        config["ca_certs"] = os.getenv("CURL_CA_BUNDLE", "/etc/ssl/certs/ca-certificates.crt")
+        config["ca_certs"] = os.getenv(
+            "CURL_CA_BUNDLE", "/etc/ssl/certs/ca-certificates.crt"
+        )
 
     # Handle authentication
     if (u := os.getenv("ES_USER")) and (p := os.getenv("ES_PASS")):
         config["http_auth"] = (u, p)
 
     return config
+
 
 _forbidden_fields: Set[str] = {"type"}
 
