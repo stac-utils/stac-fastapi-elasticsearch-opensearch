@@ -26,7 +26,7 @@ def _es_config() -> Dict[str, Any]:
         return config
 
     # Include SSL settings if using https
-    config["ssl_version"] = ssl.TLSVersion.TLSv1_2  # type: ignore
+    config["ssl_version"] = ssl.TLSVersion.TLSv1_3  # type: ignore
     config["verify_certs"] = os.getenv("ES_VERIFY_CERTS", "true").lower() != "false"  # type: ignore
 
     # Include CA Certificates if verifying certs
