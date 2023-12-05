@@ -26,7 +26,8 @@ from stac_fastapi.elasticsearch.serializers import CollectionSerializer, ItemSer
 from stac_fastapi.elasticsearch.session import Session
 from stac_fastapi.extensions.third_party.bulk_transactions import (
     BaseBulkTransactionsClient,
-    Items, BulkTransactionMethod,
+    BulkTransactionMethod,
+    Items,
 )
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.config import Settings
@@ -718,7 +719,9 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         settings = ElasticsearchSettings()
         self.client = settings.create_client
 
-    def preprocess_item(self, item: stac_types.Item, base_url, method: BulkTransactionMethod) -> stac_types.Item:
+    def preprocess_item(
+        self, item: stac_types.Item, base_url, method: BulkTransactionMethod
+    ) -> stac_types.Item:
         """Preprocess an item to match the data model.
 
         Args:
@@ -729,8 +732,10 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         Returns:
             The preprocessed item.
         """
-        exist_ok = (method == BulkTransactionMethod.UPSERT)
-        return self.database.sync_prep_create_item(item=item, base_url=base_url, exist_ok=exist_ok)
+        exist_ok = method == BulkTransactionMethod.UPSERT
+        return self.database.sync_prep_create_item(
+            item=item, base_url=base_url, exist_ok=exist_ok
+        )
 
     @overrides
     def bulk_item_insert(
@@ -753,7 +758,8 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
             base_url = ""
 
         processed_items = [
-            self.preprocess_item(item, base_url, items.method) for item in items.items.values()
+            self.preprocess_item(item, base_url, items.method)
+            for item in items.items.values()
         ]
 
         # not a great way to get the collection_id-- should be part of the method signature

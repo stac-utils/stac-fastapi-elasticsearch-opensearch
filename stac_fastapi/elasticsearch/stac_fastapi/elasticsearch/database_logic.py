@@ -591,7 +591,9 @@ class DatabaseLogic:
         if not await self.client.exists(index=COLLECTIONS_INDEX, id=collection_id):
             raise NotFoundError(f"Collection {collection_id} does not exist")
 
-    async def prep_create_item(self, item: Item, base_url: str, exist_ok: bool = False) -> Item:
+    async def prep_create_item(
+        self, item: Item, base_url: str, exist_ok: bool = False
+    ) -> Item:
         """
         Preps an item for insertion into the database.
 
@@ -619,7 +621,9 @@ class DatabaseLogic:
 
         return self.item_serializer.stac_to_db(item, base_url)
 
-    def sync_prep_create_item(self, item: Item, base_url: str, exist_ok: bool = False) -> Item:
+    def sync_prep_create_item(
+        self, item: Item, base_url: str, exist_ok: bool = False
+    ) -> Item:
         """
         Prepare an item for insertion into the database.
 
