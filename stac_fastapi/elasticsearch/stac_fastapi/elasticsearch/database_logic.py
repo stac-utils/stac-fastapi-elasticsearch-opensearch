@@ -629,7 +629,7 @@ class DatabaseLogic:
 
         This method performs pre-insertion preparation on the given `item`,
         such as checking if the collection the item belongs to exists,
-        and verifying that an item with the same ID does not already exist in the database.
+        and optionally verifying that an item with the same ID does not already exist in the database.
 
         Args:
             item (Item): The item to be inserted into the database.
