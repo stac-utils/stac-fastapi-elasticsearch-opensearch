@@ -64,7 +64,14 @@ Settings.set(settings)
 
 @pytest.fixture(scope="session")
 def event_loop():
+    # asyncio.new_event_loop().run_until_complete()
+
+    # loop = asyncio.new_event_loop()
+    # yield loop
+    # loop.close()
+
     loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     yield loop
     loop.close()
 
