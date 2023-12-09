@@ -1,5 +1,6 @@
 """API configuration."""
 import os
+import ssl
 from typing import Any, Dict, Set
 
 from elasticsearch import AsyncElasticsearch, Elasticsearch  # type: ignore
@@ -7,24 +8,36 @@ from stac_fastapi.types.config import ApiSettings
 
 
 def _es_config() -> Dict[str, Any]:
+    # Determine the scheme (http or https)
+    use_ssl = os.getenv("ES_USE_SSL", "true").lower() == "true"
+    scheme = "https" if use_ssl else "http"
+
+    # Configure the hosts parameter with the correct scheme
+    hosts = [f"{scheme}://{os.getenv('ES_HOST')}:{os.getenv('ES_PORT')}"]
+
+    # Initialize the configuration dictionary
     config = {
-        "hosts": [{"host": os.getenv("ES_HOST"), "port": os.getenv("ES_PORT")}],
+        "hosts": hosts,
         "headers": {"accept": "application/vnd.elasticsearch+json; compatible-with=7"},
-        "use_ssl": True,
-        "verify_certs": True,
     }
 
+    # Explicitly exclude SSL settings when not using SSL
+    if not use_ssl:
+        return config
+
+    # Include SSL settings if using https
+    config["ssl_version"] = ssl.TLSVersion.TLSv1_3  # type: ignore
+    config["verify_certs"] = os.getenv("ES_VERIFY_CERTS", "true").lower() != "false"  # type: ignore
+
+    # Include CA Certificates if verifying certs
+    if config["verify_certs"]:
+        config["ca_certs"] = os.getenv(
+            "CURL_CA_BUNDLE", "/etc/ssl/certs/ca-certificates.crt"
+        )
+
+    # Handle authentication
     if (u := os.getenv("ES_USER")) and (p := os.getenv("ES_PASS")):
         config["http_auth"] = (u, p)
-
-    if (v := os.getenv("ES_USE_SSL")) and v == "false":
-        config["use_ssl"] = False
-
-    if (v := os.getenv("ES_VERIFY_CERTS")) and v == "false":
-        config["verify_certs"] = False
-
-    if v := os.getenv("CURL_CA_BUNDLE"):
-        config["ca_certs"] = v
 
     return config
 
