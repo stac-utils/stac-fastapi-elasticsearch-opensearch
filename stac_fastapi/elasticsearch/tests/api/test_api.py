@@ -363,6 +363,7 @@ async def test_search_polygon_intersects_get(app_client, ctx):
     assert len(resp_json["features"]) == 1
 
 
+@pytest.mark.asyncio
 async def test_search_point_intersects_post(app_client, ctx):
     point = [150.04, -33.14]
     intersects = {"type": "Point", "coordinates": point}
