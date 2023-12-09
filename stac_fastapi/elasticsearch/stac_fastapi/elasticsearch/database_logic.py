@@ -170,18 +170,19 @@ def indices(collection_ids: Optional[List[str]]) -> str:
 
 
 async def create_collection_index() -> None:
-    """Create the index for Collections in Elasticsearch.
+    """
+    Create the index for a Collection.
 
-    This function creates the Elasticsearch index for the `Collections` with the predefined mapping.
-    If the index already exists, the function ignores the error and continues execution.
+    Returns:
+        None
+
     """
     client = AsyncElasticsearchSettings().create_client
 
-    await client.indices.create(
+    await client.options(ignore_status=400).indices.create(
         index=f"{COLLECTIONS_INDEX}-000001",
         aliases={COLLECTIONS_INDEX: {}},
         mappings=ES_COLLECTIONS_MAPPINGS,
-        ignore=400,  # ignore 400 already exists code
     )
     await client.close()
 
@@ -200,12 +201,11 @@ async def create_item_index(collection_id: str):
     client = AsyncElasticsearchSettings().create_client
     index_name = index_by_collection_id(collection_id)
 
-    await client.indices.create(
+    await client.options(ignore_status=400).indices.create(
         index=f"{index_by_collection_id(collection_id)}-000001",
         aliases={index_name: {}},
         mappings=ES_ITEMS_MAPPINGS,
         settings=ES_ITEMS_SETTINGS,
-        ignore=400,  # ignore 400 already exists code
     )
     await client.close()
 
