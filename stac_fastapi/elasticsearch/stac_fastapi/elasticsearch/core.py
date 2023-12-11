@@ -413,9 +413,9 @@ class CoreClient(AsyncBaseCoreClient):
             )
 
         if search_request.query:
-            for (field_name, expr) in search_request.query.items():
+            for field_name, expr in search_request.query.items():
                 field = "properties__" + field_name
-                for (op, value) in expr.items():
+                for op, value in expr.items():
                     search = self.database.apply_stacql_filter(
                         search=search, op=op, field=field, value=value
                     )
@@ -627,9 +627,18 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         """
         base_url = str(kwargs["request"].base_url)
 
-        await self.database.find_collection(collection_id=collection["id"])
-        await self.delete_collection(collection["id"])
-        await self.create_collection(collection, **kwargs)
+        collection_id = kwargs["request"].query_params.get(
+            "collection_id", collection["id"]
+        )
+
+        collection_links = CollectionLinks(
+            collection_id=collection["id"], base_url=base_url
+        ).create_links()
+        collection["links"] = collection_links
+
+        await self.database.update_collection(
+            collection_id=collection_id, collection=collection
+        )
 
         return CollectionSerializer.db_to_stac(collection, base_url)
 
