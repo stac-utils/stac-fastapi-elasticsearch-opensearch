@@ -39,7 +39,7 @@ ES_INDEX_NAME_UNSUPPORTED_CHARS = {
     ":",
 }
 
-DEFAULT_INDICES = f"*,-*kibana*,-{COLLECTIONS_INDEX}"
+ITEM_INDICES = f"{ITEMS_INDEX_PREFIX}*,-*kibana*,-{COLLECTIONS_INDEX}*"
 
 DEFAULT_SORT = {
     "properties.datetime": {"order": "desc"},
@@ -87,7 +87,7 @@ ES_MAPPINGS_DYNAMIC_TEMPLATES = [
     {
         "proj_geometry": {
             "match": "proj:geometry",
-            "mapping": {"type": "geo_shape"},
+            "mapping": {"type": "object", "enabled": False},
         }
     },
     {
@@ -164,23 +164,25 @@ def indices(collection_ids: Optional[List[str]]) -> str:
         A string of comma-separated index names. If `collection_ids` is None, returns the default indices.
     """
     if collection_ids is None:
-        return DEFAULT_INDICES
+        return ITEM_INDICES
     else:
         return ",".join([index_by_collection_id(c) for c in collection_ids])
 
 
 async def create_collection_index() -> None:
-    """Create the index for Collections in Elasticsearch.
+    """
+    Create the index for a Collection.
 
-    This function creates the Elasticsearch index for the `Collections` with the predefined mapping.
-    If the index already exists, the function ignores the error and continues execution.
+    Returns:
+        None
+
     """
     client = AsyncElasticsearchSettings().create_client
 
-    await client.indices.create(
-        index=COLLECTIONS_INDEX,
+    await client.options(ignore_status=400).indices.create(
+        index=f"{COLLECTIONS_INDEX}-000001",
+        aliases={COLLECTIONS_INDEX: {}},
         mappings=ES_COLLECTIONS_MAPPINGS,
-        ignore=400,  # ignore 400 already exists code
     )
     await client.close()
 
@@ -197,12 +199,13 @@ async def create_item_index(collection_id: str):
 
     """
     client = AsyncElasticsearchSettings().create_client
+    index_name = index_by_collection_id(collection_id)
 
-    await client.indices.create(
-        index=index_by_collection_id(collection_id),
+    await client.options(ignore_status=400).indices.create(
+        index=f"{index_by_collection_id(collection_id)}-000001",
+        aliases={index_name: {}},
         mappings=ES_ITEMS_MAPPINGS,
         settings=ES_ITEMS_SETTINGS,
-        ignore=400,  # ignore 400 already exists code
     )
     await client.close()
 
@@ -215,7 +218,14 @@ async def delete_item_index(collection_id: str):
     """
     client = AsyncElasticsearchSettings().create_client
 
-    await client.indices.delete(index=index_by_collection_id(collection_id))
+    name = index_by_collection_id(collection_id)
+    resolved = await client.indices.resolve_index(name=name)
+    if "aliases" in resolved and resolved["aliases"]:
+        [alias] = resolved["aliases"]
+        await client.indices.delete_alias(index=alias["indices"], name=alias["name"])
+        await client.indices.delete(index=alias["indices"])
+    else:
+        await client.indices.delete(index=name)
     await client.close()
 
 
@@ -295,21 +305,34 @@ class DatabaseLogic:
 
     """CORE LOGIC"""
 
-    async def get_all_collections(self) -> Iterable[Dict[str, Any]]:
+    async def get_all_collections(
+        self, token: Optional[str], limit: int
+    ) -> Iterable[Dict[str, Any]]:
         """Retrieve a list of all collections from the database.
+
+        Args:
+            token (Optional[str]): The token used to return the next set of results.
+            limit (int): Number of results to return
 
         Returns:
             collections (Iterable[Dict[str, Any]]): A list of dictionaries containing the source data for each collection.
 
         Notes:
             The collections are retrieved from the Elasticsearch database using the `client.search` method,
-            with the `COLLECTIONS_INDEX` as the target index and `size=1000` to retrieve up to 1000 records.
+            with the `COLLECTIONS_INDEX` as the target index and `size=limit` to retrieve records.
             The result is a generator of dictionaries containing the source data for each collection.
         """
-        # https://github.com/stac-utils/stac-fastapi-elasticsearch/issues/65
-        # collections should be paginated, but at least return more than the default 10 for now
-        collections = await self.client.search(index=COLLECTIONS_INDEX, size=1000)
-        return (c["_source"] for c in collections["hits"]["hits"])
+        search_after = None
+        if token:
+            search_after = urlsafe_b64decode(token.encode()).decode().split(",")
+        collections = await self.client.search(
+            index=COLLECTIONS_INDEX,
+            search_after=search_after,
+            size=limit,
+            sort={"id": {"order": "asc"}},
+        )
+        hits = collections["hits"]["hits"]
+        return hits
 
     async def get_one_item(self, collection_id: str, item_id: str) -> Dict:
         """Retrieve a single item from the database.
@@ -568,13 +591,16 @@ class DatabaseLogic:
         if not await self.client.exists(index=COLLECTIONS_INDEX, id=collection_id):
             raise NotFoundError(f"Collection {collection_id} does not exist")
 
-    async def prep_create_item(self, item: Item, base_url: str) -> Item:
+    async def prep_create_item(
+        self, item: Item, base_url: str, exist_ok: bool = False
+    ) -> Item:
         """
         Preps an item for insertion into the database.
 
         Args:
             item (Item): The item to be prepped for insertion.
             base_url (str): The base URL used to create the item's self URL.
+            exist_ok (bool): Indicates whether the item can exist already.
 
         Returns:
             Item: The prepped item.
@@ -585,7 +611,7 @@ class DatabaseLogic:
         """
         await self.check_collection_exists(collection_id=item["collection"])
 
-        if await self.client.exists(
+        if not exist_ok and await self.client.exists(
             index=index_by_collection_id(item["collection"]),
             id=mk_item_id(item["id"], item["collection"]),
         ):
@@ -595,17 +621,20 @@ class DatabaseLogic:
 
         return self.item_serializer.stac_to_db(item, base_url)
 
-    def sync_prep_create_item(self, item: Item, base_url: str) -> Item:
+    def sync_prep_create_item(
+        self, item: Item, base_url: str, exist_ok: bool = False
+    ) -> Item:
         """
         Prepare an item for insertion into the database.
 
         This method performs pre-insertion preparation on the given `item`,
         such as checking if the collection the item belongs to exists,
-        and verifying that an item with the same ID does not already exist in the database.
+        and optionally verifying that an item with the same ID does not already exist in the database.
 
         Args:
             item (Item): The item to be inserted into the database.
             base_url (str): The base URL used for constructing URLs for the item.
+            exist_ok (bool): Indicates whether the item can exist already.
 
         Returns:
             Item: The item after preparation is done.
@@ -619,7 +648,7 @@ class DatabaseLogic:
         if not self.sync_client.exists(index=COLLECTIONS_INDEX, id=collection_id):
             raise NotFoundError(f"Collection {collection_id} does not exist")
 
-        if self.sync_client.exists(
+        if not exist_ok and self.sync_client.exists(
             index=index_by_collection_id(collection_id),
             id=mk_item_id(item_id, collection_id),
         ):
@@ -820,14 +849,11 @@ class DatabaseLogic:
             `mk_actions` function is called to generate a list of actions for the bulk insert. If `refresh` is set to True, the
             index is refreshed after the bulk insert. The function does not return any value.
         """
-        await asyncio.get_event_loop().run_in_executor(
-            None,
-            lambda: helpers.bulk(
-                self.sync_client,
-                mk_actions(collection_id, processed_items),
-                refresh=refresh,
-                raise_on_error=False,
-            ),
+        await helpers.async_bulk(
+            self.client,
+            mk_actions(collection_id, processed_items),
+            refresh=refresh,
+            raise_on_error=False,
         )
 
     def bulk_sync(
@@ -858,7 +884,7 @@ class DatabaseLogic:
     async def delete_items(self) -> None:
         """Danger. this is only for tests."""
         await self.client.delete_by_query(
-            index=DEFAULT_INDICES,
+            index=ITEM_INDICES,
             body={"query": {"match_all": {}}},
             wait_for_completion=True,
         )

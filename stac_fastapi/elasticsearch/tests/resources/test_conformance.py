@@ -20,6 +20,7 @@ def get_link(landing_page, rel_type):
     )
 
 
+@pytest.mark.asyncio
 async def test_landing_page_health(response):
     """Test landing page"""
     assert response.status_code == 200
@@ -39,6 +40,7 @@ link_tests = [
 ]
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize("rel_type,expected_media_type,expected_path", link_tests)
 async def test_landing_page_links(
     response_json, app_client, rel_type, expected_media_type, expected_path
@@ -59,6 +61,7 @@ async def test_landing_page_links(
 # code here seems meaningless since it would be the same as if the endpoint did not exist. Once
 # https://github.com/stac-utils/stac-fastapi/pull/227 has been merged we can add this to the
 # parameterized tests above.
+@pytest.mark.asyncio
 async def test_search_link(response_json):
     search_link = get_link(response_json, "search")
 

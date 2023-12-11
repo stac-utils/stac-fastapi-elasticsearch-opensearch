@@ -10,11 +10,6 @@ from httpx import AsyncClient
 
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import create_get_request_model, create_post_request_model
-from stac_fastapi.elasticsearch.app import (
-    FixedFilterExtension,
-    FixedQueryExtension,
-    FixedSortExtension,
-)
 from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
 from stac_fastapi.elasticsearch.core import (
     BulkTransactionsClient,
@@ -22,9 +17,12 @@ from stac_fastapi.elasticsearch.core import (
     TransactionsClient,
 )
 from stac_fastapi.elasticsearch.database_logic import create_collection_index
+from stac_fastapi.elasticsearch.extensions import QueryExtension
 from stac_fastapi.extensions.core import (  # FieldsExtension,
     ContextExtension,
     FieldsExtension,
+    FilterExtension,
+    SortExtension,
     TokenPaginationExtension,
     TransactionExtension,
 )
@@ -43,11 +41,16 @@ class MockRequest:
     base_url = "http://test-server"
 
     def __init__(
-        self, method: str = "GET", url: str = "XXXX", app: Optional[Any] = None
+        self,
+        method: str = "GET",
+        url: str = "XXXX",
+        app: Optional[Any] = None,
+        query_params: Dict[str, Any] = {"limit": "10"},
     ):
         self.method = method
         self.url = url
         self.app = app
+        self.query_params = query_params or {}
 
 
 class TestSettings(AsyncElasticsearchSettings):
@@ -61,7 +64,10 @@ Settings.set(settings)
 
 @pytest.fixture(scope="session")
 def event_loop():
-    return asyncio.get_event_loop()
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    yield loop
+    loop.close()
 
 
 def _load_file(filename: str) -> Dict:
@@ -160,11 +166,11 @@ async def app():
             client=TransactionsClient(session=None), settings=settings
         ),
         ContextExtension(),
-        FixedSortExtension(),
+        SortExtension(),
         FieldsExtension(),
-        FixedQueryExtension(),
+        QueryExtension(),
         TokenPaginationExtension(),
-        FixedFilterExtension(),
+        FilterExtension(),
     ]
 
     post_request_model = create_post_request_model(extensions)

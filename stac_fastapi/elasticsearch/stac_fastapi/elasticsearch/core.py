@@ -1,19 +1,22 @@
 """Item crud client."""
-import json
 import logging
+import re
+from base64 import urlsafe_b64encode
 from datetime import datetime as datetime_type
 from datetime import timezone
 from typing import Any, Dict, List, Optional, Set, Type, Union
-from urllib.parse import urljoin
+from urllib.parse import unquote_plus, urljoin
 
 import attr
+import orjson
 import stac_pydantic
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from overrides import overrides
 from pydantic import ValidationError
+from pygeofilter.backends.cql2_json import to_cql2
+from pygeofilter.parsers.cql2_text import parse as parse_cql2_text
 from stac_pydantic.links import Relations
 from stac_pydantic.shared import MimeTypes
-from starlette.requests import Request
 
 from stac_fastapi.elasticsearch import serializers
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
@@ -23,6 +26,7 @@ from stac_fastapi.elasticsearch.serializers import CollectionSerializer, ItemSer
 from stac_fastapi.elasticsearch.session import Session
 from stac_fastapi.extensions.third_party.bulk_transactions import (
     BaseBulkTransactionsClient,
+    BulkTransactionMethod,
     Items,
 )
 from stac_fastapi.types import stac as stac_types
@@ -80,30 +84,58 @@ class CoreClient(AsyncBaseCoreClient):
         Raises:
             Exception: If any error occurs while reading the collections from the database.
         """
+        request: Request = kwargs["request"]
         base_url = str(kwargs["request"].base_url)
+
+        limit = (
+            int(request.query_params["limit"])
+            if "limit" in request.query_params
+            else 10
+        )
+        token = (
+            request.query_params["token"] if "token" in request.query_params else None
+        )
+
+        hits = await self.database.get_all_collections(limit=limit, token=token)
+
+        next_search_after = None
+        next_link = None
+        if len(hits) == limit:
+            last_hit = hits[-1]
+            next_search_after = last_hit["sort"]
+            next_token = urlsafe_b64encode(
+                ",".join(map(str, next_search_after)).encode()
+            ).decode()
+            paging_links = PagingLinks(next=next_token, request=request)
+            next_link = paging_links.link_next()
+
+        links = [
+            {
+                "rel": Relations.root.value,
+                "type": MimeTypes.json,
+                "href": base_url,
+            },
+            {
+                "rel": Relations.parent.value,
+                "type": MimeTypes.json,
+                "href": base_url,
+            },
+            {
+                "rel": Relations.self.value,
+                "type": MimeTypes.json,
+                "href": urljoin(base_url, "collections"),
+            },
+        ]
+
+        if next_link:
+            links.append(next_link)
 
         return Collections(
             collections=[
-                self.collection_serializer.db_to_stac(c, base_url=base_url)
-                for c in await self.database.get_all_collections()
+                self.collection_serializer.db_to_stac(c["_source"], base_url=base_url)
+                for c in hits
             ],
-            links=[
-                {
-                    "rel": Relations.root.value,
-                    "type": MimeTypes.json,
-                    "href": base_url,
-                },
-                {
-                    "rel": Relations.parent.value,
-                    "type": MimeTypes.json,
-                    "href": base_url,
-                },
-                {
-                    "rel": Relations.self.value,
-                    "type": MimeTypes.json,
-                    "href": urljoin(base_url, "collections"),
-                },
-            ],
+            links=links,
         )
 
     @overrides
@@ -274,9 +306,9 @@ class CoreClient(AsyncBaseCoreClient):
 
         return {"lte": end_date, "gte": start_date}
 
-    @overrides
     async def get_search(
         self,
+        request: Request,
         collections: Optional[List[str]] = None,
         ids: Optional[List[str]] = None,
         bbox: Optional[List[NumType]] = None,
@@ -286,8 +318,9 @@ class CoreClient(AsyncBaseCoreClient):
         token: Optional[str] = None,
         fields: Optional[List[str]] = None,
         sortby: Optional[str] = None,
-        # filter: Optional[str] = None, # todo: requires fastapi > 2.3 unreleased
-        # filter_lang: Optional[str] = None, # todo: requires fastapi > 2.3 unreleased
+        intersects: Optional[str] = None,
+        filter: Optional[str] = None,
+        filter_lang: Optional[str] = None,
         **kwargs,
     ) -> ItemCollection:
         """Get search results from the database.
@@ -302,6 +335,7 @@ class CoreClient(AsyncBaseCoreClient):
             token (Optional[str]): Access token to use when searching the catalog.
             fields (Optional[List[str]]): Fields to include or exclude from the results.
             sortby (Optional[str]): Sorting options for the results.
+            intersects (Optional[str]): GeoJSON geometry to search in.
             kwargs: Additional parameters to be passed to the API.
 
         Returns:
@@ -316,30 +350,42 @@ class CoreClient(AsyncBaseCoreClient):
             "bbox": bbox,
             "limit": limit,
             "token": token,
-            "query": json.loads(query) if query else query,
+            "query": orjson.loads(query) if query else query,
         }
+
+        # this is borrowed from stac-fastapi-pgstac
+        # Kludgy fix because using factory does not allow alias for filter-lan
+        query_params = str(request.query_params)
+        if filter_lang is None:
+            match = re.search(r"filter-lang=([a-z0-9-]+)", query_params, re.IGNORECASE)
+            if match:
+                filter_lang = match.group(1)
 
         if datetime:
             base_args["datetime"] = datetime
 
+        if intersects:
+            base_args["intersects"] = orjson.loads(unquote_plus(intersects))
+
         if sortby:
-            # https://github.com/radiantearth/stac-spec/tree/master/api-spec/extensions/sort#http-get-or-post-form
             sort_param = []
             for sort in sortby:
                 sort_param.append(
                     {
                         "field": sort[1:],
-                        "direction": "asc" if sort[0] == "+" else "desc",
+                        "direction": "desc" if sort[0] == "-" else "asc",
                     }
                 )
+            print(sort_param)
             base_args["sortby"] = sort_param
 
-        # todo: requires fastapi > 2.3 unreleased
-        # if filter:
-        #     if filter_lang == "cql2-text":
-        #         base_args["filter-lang"] = "cql2-json"
-        #         base_args["filter"] = orjson.loads(to_cql2(parse_cql2_text(filter)))
-        #         print(f'>>> {base_args["filter"]}')
+        if filter:
+            if filter_lang == "cql2-text":
+                base_args["filter-lang"] = "cql2-json"
+                base_args["filter"] = orjson.loads(to_cql2(parse_cql2_text(filter)))
+            else:
+                base_args["filter-lang"] = "cql2-json"
+                base_args["filter"] = orjson.loads(unquote_plus(filter))
 
         if fields:
             includes = set()
@@ -358,13 +404,12 @@ class CoreClient(AsyncBaseCoreClient):
             search_request = self.post_request_model(**base_args)
         except ValidationError:
             raise HTTPException(status_code=400, detail="Invalid parameters provided")
-        resp = await self.post_search(search_request, request=kwargs["request"])
+        resp = await self.post_search(search_request=search_request, request=request)
 
         return resp
 
-    @overrides
     async def post_search(
-        self, search_request: BaseSearchPostRequest, **kwargs
+        self, search_request: BaseSearchPostRequest, request: Request
     ) -> ItemCollection:
         """
         Perform a POST search on the catalog.
@@ -379,7 +424,6 @@ class CoreClient(AsyncBaseCoreClient):
         Raises:
             HTTPException: If there is an error with the cql2_json filter.
         """
-        request: Request = kwargs["request"]
         base_url = str(request.base_url)
 
         search = self.database.make_search()
@@ -466,7 +510,9 @@ class CoreClient(AsyncBaseCoreClient):
             filter_kwargs = search_request.fields.filter_fields
 
             items = [
-                json.loads(stac_pydantic.Item(**feat).json(**filter_kwargs))
+                orjson.loads(
+                    stac_pydantic.Item(**feat).json(**filter_kwargs, exclude_unset=True)
+                )
                 for feat in items
             ]
 
@@ -523,7 +569,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         if item["type"] == "FeatureCollection":
             bulk_client = BulkTransactionsClient()
             processed_items = [
-                bulk_client.preprocess_item(item, base_url) for item in item["features"]  # type: ignore
+                bulk_client.preprocess_item(item, base_url, BulkTransactionMethod.INSERT) for item in item["features"]  # type: ignore
             ]
 
             await self.database.bulk_async(
@@ -682,17 +728,23 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         settings = ElasticsearchSettings()
         self.client = settings.create_client
 
-    def preprocess_item(self, item: stac_types.Item, base_url) -> stac_types.Item:
+    def preprocess_item(
+        self, item: stac_types.Item, base_url, method: BulkTransactionMethod
+    ) -> stac_types.Item:
         """Preprocess an item to match the data model.
 
         Args:
             item: The item to preprocess.
             base_url: The base URL of the request.
+            method: The bulk transaction method.
 
         Returns:
             The preprocessed item.
         """
-        return self.database.sync_prep_create_item(item=item, base_url=base_url)
+        exist_ok = method == BulkTransactionMethod.UPSERT
+        return self.database.sync_prep_create_item(
+            item=item, base_url=base_url, exist_ok=exist_ok
+        )
 
     @overrides
     def bulk_item_insert(
@@ -715,7 +767,8 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
             base_url = ""
 
         processed_items = [
-            self.preprocess_item(item, base_url) for item in items.items.values()
+            self.preprocess_item(item, base_url, items.method)
+            for item in items.items.values()
         ]
 
         # not a great way to get the collection_id-- should be part of the method signature

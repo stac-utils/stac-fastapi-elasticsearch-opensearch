@@ -9,18 +9,39 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
-- Collection-level Assets to the CollectionSerializer [#148](https://github.com/stac-utils/stac-fastapi-elasticsearch/issues/148)
+### Changed
+
+- Elasticsearch drivers from 7.17.9 to 8.11.0 [#169](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/169)
+
+### Fixed
+
+- Exclude unset fields in search response [#166](https://github.com/stac-utils/stac-fastapi-elasticsearch/issues/166)
+- Upgrade stac-fastapi to v2.4.9 [#172](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/172)
+
+## [v1.0.0]
 
 ### Added
 
+- Collection-level Assets to the CollectionSerializer [#148](https://github.com/stac-utils/stac-fastapi-elasticsearch/issues/148)
+- Pagination for /collections - GET all collections - route [#164](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/164)
 - Examples folder with example docker setup for running sfes from pip [#147](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/147)
+- GET /search filter extension queries [#163](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/163)
+- Added support for GET /search intersection queries [#158](https://github.com/stac-utils/stac-fastapi-elasticsearch/issues/158)
 
 ### Changed
+
+- Update elasticsearch version from 8.1.3 to 8.10.4 in cicd, gh actions [#164](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/164)
+- Updated core stac-fastapi libraries to 2.4.8 from 2.4.3 [#151](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/151)
+- Use aliases on Elasticsearch indices, add number suffix in index name. [#152](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/152)
+
 ### Fixed
 
 - Corrected the closing of client connections in ES index management functions [#132](https://github.com/stac-utils/stac-fastapi-elasticsearch/issues/132)
 - Corrected the automatic converstion of float values to int when building Filter Clauses [#135](https://github.com/stac-utils/stac-fastapi-elasticsearch/issues/135)
+- Do not index `proj:geometry` field as geo_shape [#154](https://github.com/stac-utils/stac-fastapi-elasticsearch/issues/154)
 - Remove unsupported characters from Elasticsearch index names [#153](https://github.com/stac-utils/stac-fastapi-elasticsearch/issues/153)
+- Fixed GET /search sortby requests [#25](https://github.com/stac-utils/stac-fastapi-elasticsearch/issues/25)
+
 
 ## [v0.3.0]
 
@@ -34,10 +55,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Fields Extension [#129](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/129)
 - Support for Python 3.11 [#131](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/131)
 
-
 ### Changed
 
 - Updated core stac-fastapi libraries to 2.4.3 from 2.3.0 [#127](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/127)
+
 
 ## [v0.2.0]
 
@@ -61,6 +82,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - When using bulk ingest, items will continue to be ingested if any of them fail. Previously, the call would fail
   immediately if any items failed.
 
+
 ## [v0.1.0]
 
 ### Changed
@@ -72,7 +94,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v0.3.0...main>
+
+[Unreleased]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v1.0.0...main>
+[v1.0.0]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v0.3.0...v1.0.0>
 [v0.3.0]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v0.2.0...v0.3.0>
 [v0.2.0]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v0.1.0...v0.2.0>
 [v0.1.0]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v0.1.0>
