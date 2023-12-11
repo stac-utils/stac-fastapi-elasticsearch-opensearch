@@ -734,6 +734,53 @@ class DatabaseLogic:
 
         return collection["_source"]
 
+    async def update_collection(
+        self, collection_id: str, collection: Collection, refresh: bool = False
+    ):
+        """Update a collection from the database.
+
+        Args:
+            self: The instance of the object calling this function.
+            collection_id (str): The ID of the collection to be updated.
+            collection (Collection): The Collection object to be updated.
+
+        Raises:
+            NotFoundError: If the collection with the given `collection_id` is not
+            found in the database.
+
+        Notes:
+            This function updates the collection in the database using the specified
+            `collection_id` and with the collection specified in the `Collection` object.
+            If the collection is not found, a `NotFoundError` is raised.
+        """
+        await self.find_collection(collection_id=collection_id)
+
+        if collection_id != collection["id"]:
+            await self.create_collection(collection)
+
+            await self.client.reindex(
+                body={
+                    "dest": {"index": f"items_{collection['id']}"},
+                    "source": {"index": f"items_{collection_id}"},
+                    "script": {
+                        "lang": "painless",
+                        "source": f"""ctx._source.collection = '{collection["id"]}'""",
+                    },
+                },
+                wait_for_completion=True,
+                refresh=refresh,
+            )
+
+            await self.delete_collection(collection_id)
+
+        else:
+            await self.client.index(
+                index=COLLECTIONS_INDEX,
+                id=collection_id,
+                document=collection,
+                refresh=refresh,
+            )
+
     async def delete_collection(self, collection_id: str, refresh: bool = False):
         """Delete a collection from the database.
 
