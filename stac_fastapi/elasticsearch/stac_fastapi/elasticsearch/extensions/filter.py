@@ -78,6 +78,15 @@ class ComparisonOp(str, Enum):
             )
 
 
+class AdvancedComparisonOp(str, Enum):
+    """Advanced Comparison operator.
+
+    CQL2 advanced comparison operator like (~).
+    """
+
+    like = "like"
+
+
 class SpatialIntersectsOp(str, Enum):
     """Spatial intersections operator s_intersects."""
 
@@ -152,7 +161,7 @@ Arg = Union[
 class Clause(BaseModel):
     """Filter extension clause."""
 
-    op: Union[LogicalOp, ComparisonOp, SpatialIntersectsOp]
+    op: Union[LogicalOp, ComparisonOp, AdvancedComparisonOp, SpatialIntersectsOp]
     args: List[Arg]
 
     def to_es(self):
@@ -169,6 +178,16 @@ class Clause(BaseModel):
             return {
                 "bool": {
                     "must_not": [{"term": {to_es(self.args[0]): to_es(self.args[1])}}]
+                }
+            }
+        elif self.op == AdvancedComparisonOp.like:
+           return {
+               "wildcard": {
+                   to_es(self.args[0]): {
+                       "value": cql2_like_to_es(str(to_es(self.args[1]))),
+                        "boost": 1.0,
+                        "case_insensitive": "true"
+                    }
                 }
             }
         elif (
@@ -210,3 +229,25 @@ def to_es(arg: Arg):
         return arg
     else:
         raise RuntimeError(f"unknown arg {repr(arg)}")
+    
+
+def cql2_like_to_es(input_string):
+    """
+    Convert arugument in CQL2 ('_' and '%') to Elasticsearch wildcard operators ('?' and '*', respectively). Handle escape characters and 
+    handle Elasticsearch wildcards directly.
+    """
+    es_string = ""
+    escape = False
+
+    for char in input_string:
+        if char == "\\":
+            escape = True
+        elif char == '_' and not escape:
+            es_string += '?'
+        elif char == '%' and not escape:
+            es_string += '*'
+        else:
+            es_string += char
+            escape = False
+
+    return es_string
