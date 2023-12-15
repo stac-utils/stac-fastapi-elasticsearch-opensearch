@@ -4,6 +4,9 @@ Implements Filter Extension.
 Basic CQL2 (AND, OR, NOT), comparison operators (=, <>, <, <=, >, >=), and IS NULL.
 The comparison operators are allowed against string, numeric, boolean, date, and datetime types.
 
+Advanced CQL2 LIKE comparison operator (http://www.opengis.net/spec/cql2/1.0/req/advanced-comparison-operators).
+The LIKE comparison operator is allowed against string types.
+
 Basic Spatial Operators (http://www.opengis.net/spec/cql2/1.0/conf/basic-spatial-operators)
 defines the intersects operator (S_INTERSECTS).
 """
