@@ -19,14 +19,15 @@ from stac_fastapi.extensions.core import (
     TokenPaginationExtension,
     TransactionExtension,
 )
-
 from stac_fastapi.extensions.third_party import BulkTransactionExtension
 
 settings = ElasticsearchSettings()
 session = Session.create_from_settings(settings)
 
 filter_extension = FilterExtension(client=EsAsyncBaseFiltersClient())
-filter_extension.conformance_classes.append("http://www.opengis.net/spec/cql2/1.0/req/advanced-comparison-operators")
+filter_extension.conformance_classes.append(
+    "http://www.opengis.net/spec/cql2/1.0/req/advanced-comparison-operators"
+)
 
 extensions = [
     TransactionExtension(client=TransactionsClient(session=session), settings=settings),
@@ -36,7 +37,7 @@ extensions = [
     SortExtension(),
     TokenPaginationExtension(),
     ContextExtension(),
-    filter_extension
+    filter_extension,
 ]
 
 post_request_model = create_post_request_model(extensions)

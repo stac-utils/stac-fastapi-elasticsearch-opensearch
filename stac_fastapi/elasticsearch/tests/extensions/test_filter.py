@@ -285,7 +285,9 @@ async def test_search_filter_extension_wildcard_es(app_client, ctx):
 
 @pytest.mark.asyncio
 async def test_search_filter_extension_escape_chars(app_client, ctx):
-    esc_chars = ctx.item["properties"]["landsat:product_id"].replace("_", "\_")[:-1] + "_"
+    esc_chars = (
+        ctx.item["properties"]["landsat:product_id"].replace("_", "\\_")[:-1] + "_"
+    )
 
     params = {
         "filter": {
@@ -298,7 +300,7 @@ async def test_search_filter_extension_escape_chars(app_client, ctx):
                         {"property": "properties.landsat:product_id"},
                         esc_chars,
                     ],
-                }
+                },
             ],
         }
     }
