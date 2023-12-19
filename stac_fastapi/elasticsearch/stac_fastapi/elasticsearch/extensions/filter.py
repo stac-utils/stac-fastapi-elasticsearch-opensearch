@@ -4,8 +4,8 @@ Implements Filter Extension.
 Basic CQL2 (AND, OR, NOT), comparison operators (=, <>, <, <=, >, >=), and IS NULL.
 The comparison operators are allowed against string, numeric, boolean, date, and datetime types.
 
-Advanced CQL2 LIKE comparison operator (http://www.opengis.net/spec/cql2/1.0/req/advanced-comparison-operators).
-The LIKE comparison operator is allowed against string types.
+Advanced comparison operators (http://www.opengis.net/spec/cql2/1.0/req/advanced-comparison-operators)
+defines the LIKE, IN, and BETWEEN operators.
 
 Basic Spatial Operators (http://www.opengis.net/spec/cql2/1.0/conf/basic-spatial-operators)
 defines the intersects operator (S_INTERSECTS).
@@ -84,10 +84,12 @@ class ComparisonOp(str, Enum):
 class AdvancedComparisonOp(str, Enum):
     """Advanced Comparison operator.
 
-    CQL2 advanced comparison operator like (~).
+    CQL2 advanced comparison operators like (~), between, and in.
     """
 
     like = "like"
+    between = "between"
+    _in = "in"
 
 
 class SpatialIntersectsOp(str, Enum):
@@ -165,7 +167,7 @@ class Clause(BaseModel):
     """Filter extension clause."""
 
     op: Union[LogicalOp, ComparisonOp, AdvancedComparisonOp, SpatialIntersectsOp]
-    args: List[Arg]
+    args: List[Union[Arg, List[Arg]]]
 
     def to_es(self):
         """Generate an Elasticsearch expression for this Clause."""
@@ -188,10 +190,26 @@ class Clause(BaseModel):
                 "wildcard": {
                     to_es(self.args[0]): {
                         "value": cql2_like_to_es(str(to_es(self.args[1]))),
-                        "boost": 1.0,
                         "case_insensitive": "true",
                     }
                 }
+            }
+        elif self.op == AdvancedComparisonOp.between:
+            if not isinstance(self.args[1], List):
+                raise RuntimeError(f"Arg {self.args[1]} is not a list")
+            return {
+                "range": {
+                    to_es(self.args[0]): {
+                        "gte": to_es(self.args[1][0]),
+                        "lte": to_es(self.args[1][1]),
+                    }
+                }
+            }
+        elif self.op == AdvancedComparisonOp._in:
+            if not isinstance(self.args[1], List):
+                raise RuntimeError(f"Arg {self.args[1]} is not a list")
+            return {
+                "terms": {to_es(self.args[0]): [to_es(arg) for arg in self.args[1]]}
             }
         elif (
             self.op == ComparisonOp.lt

@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
-- LIKE search operator to Filter extension [#178](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/178)
+- Advanced comparison (LIKE, IN, BETWEEN) operators to the Filter extension [#178](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/178)
 
 ### Changed
 

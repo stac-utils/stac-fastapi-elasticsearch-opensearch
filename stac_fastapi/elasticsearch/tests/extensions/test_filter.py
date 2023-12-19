@@ -309,3 +309,110 @@ async def test_search_filter_extension_escape_chars(app_client, ctx):
 
     assert resp.status_code == 200
     assert len(resp.json()["features"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_filter_extension_in(app_client, ctx):
+    product_id = ctx.item["properties"]["landsat:product_id"]
+
+    params = {
+        "filter": {
+            "op": "and",
+            "args": [
+                {"op": "=", "args": [{"property": "id"}, ctx.item["id"]]},
+                {
+                    "op": "in",
+                    "args": [
+                        {"property": "properties.landsat:product_id"},
+                        [product_id],
+                    ],
+                },
+            ],
+        }
+    }
+
+    resp = await app_client.post("/search", json=params)
+
+    assert resp.status_code == 200
+    assert len(resp.json()["features"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_filter_extension_in_no_list(app_client, ctx):
+    product_id = ctx.item["properties"]["landsat:product_id"]
+
+    params = {
+        "filter": {
+            "op": "and",
+            "args": [
+                {"op": "=", "args": [{"property": "id"}, ctx.item["id"]]},
+                {
+                    "op": "in",
+                    "args": [
+                        {"property": "properties.landsat:product_id"},
+                        product_id,
+                    ],
+                },
+            ],
+        }
+    }
+
+    resp = await app_client.post("/search", json=params)
+
+    assert resp.status_code == 400
+    assert resp.json() == {
+        "detail": f"Error with cql2_json filter: Arg {product_id} is not a list"
+    }
+
+
+@pytest.mark.asyncio
+async def test_search_filter_extension_between(app_client, ctx):
+    sun_elevation = ctx.item["properties"]["view:sun_elevation"]
+
+    params = {
+        "filter": {
+            "op": "and",
+            "args": [
+                {"op": "=", "args": [{"property": "id"}, ctx.item["id"]]},
+                {
+                    "op": "between",
+                    "args": [
+                        {"property": "properties.view:sun_elevation"},
+                        [sun_elevation - 0.01, sun_elevation + 0.01],
+                    ],
+                },
+            ],
+        }
+    }
+    resp = await app_client.post("/search", json=params)
+
+    assert resp.status_code == 200
+    assert len(resp.json()["features"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_filter_extension_between_no_list(app_client, ctx):
+    sun_elevation = ctx.item["properties"]["view:sun_elevation"]
+
+    params = {
+        "filter": {
+            "op": "and",
+            "args": [
+                {"op": "=", "args": [{"property": "id"}, ctx.item["id"]]},
+                {
+                    "op": "between",
+                    "args": [
+                        {"property": "properties.view:sun_elevation"},
+                        sun_elevation - 0.01,
+                        sun_elevation + 0.01,
+                    ],
+                },
+            ],
+        }
+    }
+    resp = await app_client.post("/search", json=params)
+
+    assert resp.status_code == 400
+    assert resp.json() == {
+        "detail": f"Error with cql2_json filter: Arg {sun_elevation - 0.01} is not a list"
+    }
