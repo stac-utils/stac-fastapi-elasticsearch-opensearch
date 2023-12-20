@@ -13,6 +13,7 @@ defines the intersects operator (S_INTERSECTS).
 from __future__ import annotations
 
 import datetime
+import re
 from enum import Enum
 from typing import List, Union
 
@@ -252,20 +253,17 @@ def to_es(arg: Arg):
         raise RuntimeError(f"unknown arg {repr(arg)}")
 
 
-def cql2_like_to_es(input_string):
-    """Convert arugument in CQL2 ('_' and '%') to Elasticsearch wildcard operators ('?' and '*', respectively). Handle escape characters and handle Elasticsearch wildcards directly."""
-    es_string = ""
-    escape = False
+def cql2_like_to_es(string):
+    """Convert wildcard characters in CQL2 ('_' and '%') to Elasticsearch wildcard characters ('?' and '*', respectively). Handle escape characters and pass through Elasticsearch wildcards."""
+    percent_pattern = r"(?<!\\)%"
+    underscore_pattern = r"(?<!\\)_"
+    escape_pattern = r"\\(?=[_%])"
 
-    for char in input_string:
-        if char == "\\":
-            escape = True
-        elif char == "_" and not escape:
-            es_string += "?"
-        elif char == "%" and not escape:
-            es_string += "*"
-        else:
-            es_string += char
-            escape = False
+    for pattern in [
+        (percent_pattern, "*"),
+        (underscore_pattern, "?"),
+        (escape_pattern, ""),
+    ]:
+        string = re.sub(pattern[0], pattern[1], string)
 
-    return es_string
+    return string
