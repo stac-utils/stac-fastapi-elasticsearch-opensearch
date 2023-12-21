@@ -378,31 +378,6 @@ async def test_search_filter_extension_between(app_client, ctx):
                     "op": "between",
                     "args": [
                         {"property": "properties.view:sun_elevation"},
-                        [sun_elevation - 0.01, sun_elevation + 0.01],
-                    ],
-                },
-            ],
-        }
-    }
-    resp = await app_client.post("/search", json=params)
-
-    assert resp.status_code == 200
-    assert len(resp.json()["features"]) == 1
-
-
-@pytest.mark.asyncio
-async def test_search_filter_extension_between_no_list(app_client, ctx):
-    sun_elevation = ctx.item["properties"]["view:sun_elevation"]
-
-    params = {
-        "filter": {
-            "op": "and",
-            "args": [
-                {"op": "=", "args": [{"property": "id"}, ctx.item["id"]]},
-                {
-                    "op": "between",
-                    "args": [
-                        {"property": "properties.view:sun_elevation"},
                         sun_elevation - 0.01,
                         sun_elevation + 0.01,
                     ],
@@ -412,7 +387,5 @@ async def test_search_filter_extension_between_no_list(app_client, ctx):
     }
     resp = await app_client.post("/search", json=params)
 
-    assert resp.status_code == 400
-    assert resp.json() == {
-        "detail": f"Error with cql2_json filter: Arg {sun_elevation - 0.01} is not a list"
-    }
+    assert resp.status_code == 200
+    assert len(resp.json()["features"]) == 1

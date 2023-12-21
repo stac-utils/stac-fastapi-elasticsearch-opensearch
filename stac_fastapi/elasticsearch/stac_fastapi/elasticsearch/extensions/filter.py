@@ -191,18 +191,16 @@ class Clause(BaseModel):
                 "wildcard": {
                     to_es(self.args[0]): {
                         "value": cql2_like_to_es(str(to_es(self.args[1]))),
-                        "case_insensitive": "true",
+                        "case_insensitive": "false",
                     }
                 }
             }
         elif self.op == AdvancedComparisonOp.between:
-            if not isinstance(self.args[1], List):
-                raise RuntimeError(f"Arg {self.args[1]} is not a list")
             return {
                 "range": {
                     to_es(self.args[0]): {
-                        "gte": to_es(self.args[1][0]),
-                        "lte": to_es(self.args[1][1]),
+                        "gte": to_es(self.args[1]),
+                        "lte": to_es(self.args[2]),
                     }
                 }
             }

@@ -26,7 +26,7 @@ session = Session.create_from_settings(settings)
 
 filter_extension = FilterExtension(client=EsAsyncBaseFiltersClient())
 filter_extension.conformance_classes.append(
-    "http://www.opengis.net/spec/cql2/1.0/req/advanced-comparison-operators"
+    "http://www.opengis.net/spec/cql2/1.0/conf/advanced-comparison-operators"
 )
 
 extensions = [
