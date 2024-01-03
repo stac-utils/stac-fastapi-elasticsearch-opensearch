@@ -660,8 +660,11 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         Update a collection.
 
         This method updates an existing collection in the database by first finding
-        the collection by its id, then deleting the old version, and finally creating
-        a new version of the updated collection. The updated collection is then returned.
+        the collection by the id given in the keyword argument `collection_id`.
+        If no `collection_id` is given the id of the given collection object is used.
+        If the object and keyword collection ids don't match the sub items
+        collection id is updated else the items are left unchanged.
+        The updated collection is then returned.
 
         Args:
             collection: A STAC collection that needs to be updated.

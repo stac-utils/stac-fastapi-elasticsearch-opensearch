@@ -771,7 +771,7 @@ class DatabaseLogic:
         Args:
             self: The instance of the object calling this function.
             collection_id (str): The ID of the collection to be updated.
-            collection (Collection): The Collection object to be updated.
+            collection (Collection): The Collection object to be used for the update.
 
         Raises:
             NotFoundError: If the collection with the given `collection_id` is not
