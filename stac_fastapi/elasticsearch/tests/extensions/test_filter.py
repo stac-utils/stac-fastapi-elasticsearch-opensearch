@@ -213,3 +213,179 @@ async def test_search_filter_extension_floats_post(app_client, ctx):
 
     assert resp.status_code == 200
     assert len(resp.json()["features"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_filter_extension_wildcard_cql2(app_client, ctx):
+    single_char = ctx.item["id"][:-1] + "_"
+    multi_char = ctx.item["id"][:-3] + "%"
+
+    params = {
+        "filter": {
+            "op": "and",
+            "args": [
+                {"op": "=", "args": [{"property": "id"}, ctx.item["id"]]},
+                {
+                    "op": "like",
+                    "args": [
+                        {"property": "id"},
+                        single_char,
+                    ],
+                },
+                {
+                    "op": "like",
+                    "args": [
+                        {"property": "id"},
+                        multi_char,
+                    ],
+                },
+            ],
+        }
+    }
+
+    resp = await app_client.post("/search", json=params)
+
+    assert resp.status_code == 200
+    assert len(resp.json()["features"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_filter_extension_wildcard_es(app_client, ctx):
+    single_char = ctx.item["id"][:-1] + "?"
+    multi_char = ctx.item["id"][:-3] + "*"
+
+    params = {
+        "filter": {
+            "op": "and",
+            "args": [
+                {"op": "=", "args": [{"property": "id"}, ctx.item["id"]]},
+                {
+                    "op": "like",
+                    "args": [
+                        {"property": "id"},
+                        single_char,
+                    ],
+                },
+                {
+                    "op": "like",
+                    "args": [
+                        {"property": "id"},
+                        multi_char,
+                    ],
+                },
+            ],
+        }
+    }
+
+    resp = await app_client.post("/search", json=params)
+
+    assert resp.status_code == 200
+    assert len(resp.json()["features"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_filter_extension_escape_chars(app_client, ctx):
+    esc_chars = (
+        ctx.item["properties"]["landsat:product_id"].replace("_", "\\_")[:-1] + "_"
+    )
+
+    params = {
+        "filter": {
+            "op": "and",
+            "args": [
+                {"op": "=", "args": [{"property": "id"}, ctx.item["id"]]},
+                {
+                    "op": "like",
+                    "args": [
+                        {"property": "properties.landsat:product_id"},
+                        esc_chars,
+                    ],
+                },
+            ],
+        }
+    }
+
+    resp = await app_client.post("/search", json=params)
+
+    assert resp.status_code == 200
+    assert len(resp.json()["features"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_filter_extension_in(app_client, ctx):
+    product_id = ctx.item["properties"]["landsat:product_id"]
+
+    params = {
+        "filter": {
+            "op": "and",
+            "args": [
+                {"op": "=", "args": [{"property": "id"}, ctx.item["id"]]},
+                {
+                    "op": "in",
+                    "args": [
+                        {"property": "properties.landsat:product_id"},
+                        [product_id],
+                    ],
+                },
+            ],
+        }
+    }
+
+    resp = await app_client.post("/search", json=params)
+
+    assert resp.status_code == 200
+    assert len(resp.json()["features"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_filter_extension_in_no_list(app_client, ctx):
+    product_id = ctx.item["properties"]["landsat:product_id"]
+
+    params = {
+        "filter": {
+            "op": "and",
+            "args": [
+                {"op": "=", "args": [{"property": "id"}, ctx.item["id"]]},
+                {
+                    "op": "in",
+                    "args": [
+                        {"property": "properties.landsat:product_id"},
+                        product_id,
+                    ],
+                },
+            ],
+        }
+    }
+
+    resp = await app_client.post("/search", json=params)
+
+    assert resp.status_code == 400
+    assert resp.json() == {
+        "detail": f"Error with cql2_json filter: Arg {product_id} is not a list"
+    }
+
+
+@pytest.mark.asyncio
+async def test_search_filter_extension_between(app_client, ctx):
+    sun_elevation = ctx.item["properties"]["view:sun_elevation"]
+
+    params = {
+        "filter": {
+            "op": "and",
+            "args": [
+                {"op": "=", "args": [{"property": "id"}, ctx.item["id"]]},
+                {
+                    "op": "between",
+                    "args": [
+                        {"property": "properties.view:sun_elevation"},
+                        sun_elevation - 0.01,
+                        sun_elevation + 0.01,
+                    ],
+                },
+            ],
+        }
+    }
+    resp = await app_client.post("/search", json=params)
+
+    assert resp.status_code == 200
+    assert len(resp.json()["features"]) == 1
