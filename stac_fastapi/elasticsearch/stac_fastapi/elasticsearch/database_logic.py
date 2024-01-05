@@ -388,18 +388,100 @@ class DatabaseLogic:
         Returns:
             Search: The filtered search object.
         """
+        should = []
+
         if "eq" in datetime_search:
-            search = search.filter(
-                "term", **{"properties__datetime": datetime_search["eq"]}
+            should.extend(
+                [
+                    Q(
+                        "bool",
+                        filter=[
+                            Q(
+                                "term",
+                                properties__datetime=datetime_search["eq"],
+                            ),
+                        ],
+                    ),
+                    Q(
+                        "bool",
+                        filter=[
+                            Q(
+                                "range",
+                                properties__start_datetime={
+                                    "lte": datetime_search["eq"],
+                                },
+                            ),
+                            Q(
+                                "range",
+                                properties__end_datetime={
+                                    "gte": datetime_search["eq"],
+                                },
+                            ),
+                        ],
+                    ),
+                ]
             )
+
         else:
-            search = search.filter(
-                "range", properties__datetime={"lte": datetime_search["lte"]}
+            should.extend(
+                [
+                    Q(
+                        "bool",
+                        filter=[
+                            Q(
+                                "range",
+                                properties__datetime={
+                                    "gte": datetime_search["gte"],
+                                    "lte": datetime_search["lte"],
+                                },
+                            ),
+                        ],
+                    ),
+                    Q(
+                        "bool",
+                        filter=[
+                            Q(
+                                "range",
+                                properties__start_datetime={
+                                    "gte": datetime_search["gte"],
+                                    "lte": datetime_search["lte"],
+                                },
+                            ),
+                        ],
+                    ),
+                    Q(
+                        "bool",
+                        filter=[
+                            Q(
+                                "range",
+                                properties__end_datetime={
+                                    "gte": datetime_search["gte"],
+                                    "lte": datetime_search["lte"],
+                                },
+                            ),
+                        ],
+                    ),
+                    Q(
+                        "bool",
+                        filter=[
+                            Q(
+                                "range",
+                                properties__start_datetime={
+                                    "lte": datetime_search["gte"]
+                                },
+                            ),
+                            Q(
+                                "range",
+                                properties__end_datetime={
+                                    "gte": datetime_search["lte"]
+                                },
+                            ),
+                        ],
+                    ),
+                ]
             )
-            search = search.filter(
-                "range", properties__datetime={"gte": datetime_search["gte"]}
-            )
-        return search
+
+        search = search.query(Q("bool", filter=[Q("bool", should=should)]))
 
     @staticmethod
     def apply_bbox_filter(search: Search, bbox: List):
