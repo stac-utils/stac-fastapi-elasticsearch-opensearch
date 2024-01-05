@@ -102,6 +102,17 @@ async def test_search_filter_ext_and_get(app_client, ctx):
 
 
 @pytest.mark.asyncio
+async def test_search_filter_ext_and_get_id(app_client, ctx):
+    collection = ctx.item["collection"]
+    id = ctx.item["id"]
+    filter = f"id='{id}' AND collection='{collection}'"
+    resp = await app_client.get(f"/search?&filter={filter}")
+
+    assert resp.status_code == 200
+    assert len(resp.json()["features"]) == 1
+
+
+@pytest.mark.asyncio
 async def test_search_filter_ext_and_get_cql2text_id(app_client, ctx):
     collection = ctx.item["collection"]
     id = ctx.item["id"]
@@ -162,21 +173,21 @@ async def test_search_filter_ext_and_post(app_client, ctx):
 @pytest.mark.asyncio
 async def test_search_filter_extension_floats_get(app_client, ctx):
     resp = await app_client.get(
-        """/search?filter={"op":"and","args":[{"op":"=","args":[{"property":"id"},"test-item"]},{"op":">","args":[{"property":"properties.view:sun_elevation"},"-37.30891534"]},{"op":"<","args":[{"property":"properties.view:sun_elevation"},"-37.30691534"]}]}"""
+        """/search?filter-lang=cql2-json&filter={"op":"and","args":[{"op":"=","args":[{"property":"id"},"test-item"]},{"op":">","args":[{"property":"properties.view:sun_elevation"},"-37.30891534"]},{"op":"<","args":[{"property":"properties.view:sun_elevation"},"-37.30691534"]}]}"""
     )
 
     assert resp.status_code == 200
     assert len(resp.json()["features"]) == 1
 
     resp = await app_client.get(
-        """/search?filter={"op":"and","args":[{"op":"=","args":[{"property":"id"},"test-item-7"]},{"op":">","args":[{"property":"properties.view:sun_elevation"},"-37.30891534"]},{"op":"<","args":[{"property":"properties.view:sun_elevation"},"-37.30691534"]}]}"""
+        """/search?filter-lang=cql2-json&filter={"op":"and","args":[{"op":"=","args":[{"property":"id"},"test-item-7"]},{"op":">","args":[{"property":"properties.view:sun_elevation"},"-37.30891534"]},{"op":"<","args":[{"property":"properties.view:sun_elevation"},"-37.30691534"]}]}"""
     )
 
     assert resp.status_code == 200
     assert len(resp.json()["features"]) == 0
 
     resp = await app_client.get(
-        """/search?filter={"op":"and","args":[{"op":"=","args":[{"property":"id"},"test-item"]},{"op":">","args":[{"property":"properties.view:sun_elevation"},"-37.30591534"]},{"op":"<","args":[{"property":"properties.view:sun_elevation"},"-37.30491534"]}]}"""
+        """/search?filter-lang=cql2-json&filter={"op":"and","args":[{"op":"=","args":[{"property":"id"},"test-item"]},{"op":">","args":[{"property":"properties.view:sun_elevation"},"-37.30591534"]},{"op":"<","args":[{"property":"properties.view:sun_elevation"},"-37.30491534"]}]}"""
     )
 
     assert resp.status_code == 200
