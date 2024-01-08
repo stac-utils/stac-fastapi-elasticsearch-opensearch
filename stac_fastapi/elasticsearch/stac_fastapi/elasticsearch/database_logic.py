@@ -378,8 +378,8 @@ class DatabaseLogic:
         return search.filter("terms", collection=collection_ids)
 
     @staticmethod
-    def apply_datetime_filter(search: Search, datetime_search):
-        """Apply a filter to search based on datetime field.
+    def apply_datetime_filter(search: Search, datetime_search: dict):
+        """Apply a filter to search on datetime, start_datetime, and end_datetime fields.
 
         Args:
             search (Search): The search object to filter.
