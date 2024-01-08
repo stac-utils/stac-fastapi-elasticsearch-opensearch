@@ -191,7 +191,13 @@ async def test_app_fields_extension_return_all_properties(app_client, ctx, txn_c
     feature = resp_json["features"][0]
     assert len(feature["properties"]) >= len(item["properties"])
     for expected_prop, expected_value in item["properties"].items():
-        if expected_prop in ("datetime", "created", "updated"):
+        if expected_prop in (
+            "datetime",
+            "start_datetime",
+            "end_datetime",
+            "created",
+            "updated",
+        ):
             assert feature["properties"][expected_prop][0:19] == expected_value[0:19]
         else:
             assert feature["properties"][expected_prop] == expected_value
