@@ -483,6 +483,8 @@ class DatabaseLogic:
 
         search = search.query(Q("bool", filter=[Q("bool", should=should)]))
 
+        return search
+
     @staticmethod
     def apply_bbox_filter(search: Search, bbox: List):
         """Filter search results based on bounding box.
