@@ -44,11 +44,10 @@ def _es_config() -> Dict[str, Any]:
             headers = {**config["headers"], "x-api-key": api_key}
 
         else:
-            headers = {"x-api-key": api_key}
+            config["headers"] = {"x-api-key": api_key}
 
         config["headers"] = headers
 
-    print(config)
     return config
 
 
