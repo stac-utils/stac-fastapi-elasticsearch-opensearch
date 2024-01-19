@@ -4,12 +4,16 @@ Implements Filter Extension.
 Basic CQL2 (AND, OR, NOT), comparison operators (=, <>, <, <=, >, >=), and IS NULL.
 The comparison operators are allowed against string, numeric, boolean, date, and datetime types.
 
+Advanced comparison operators (http://www.opengis.net/spec/cql2/1.0/req/advanced-comparison-operators)
+defines the LIKE, IN, and BETWEEN operators.
+
 Basic Spatial Operators (http://www.opengis.net/spec/cql2/1.0/conf/basic-spatial-operators)
 defines the intersects operator (S_INTERSECTS).
 """
 from __future__ import annotations
 
 import datetime
+import re
 from enum import Enum
 from typing import List, Union
 
@@ -76,6 +80,17 @@ class ComparisonOp(str, Enum):
             raise RuntimeError(
                 f"Comparison op {self.value} does not have an Elasticsearch term operator equivalent."
             )
+
+
+class AdvancedComparisonOp(str, Enum):
+    """Advanced Comparison operator.
+
+    CQL2 advanced comparison operators like (~), between, and in.
+    """
+
+    like = "like"
+    between = "between"
+    _in = "in"
 
 
 class SpatialIntersectsOp(str, Enum):
@@ -152,8 +167,8 @@ Arg = Union[
 class Clause(BaseModel):
     """Filter extension clause."""
 
-    op: Union[LogicalOp, ComparisonOp, SpatialIntersectsOp]
-    args: List[Arg]
+    op: Union[LogicalOp, ComparisonOp, AdvancedComparisonOp, SpatialIntersectsOp]
+    args: List[Union[Arg, List[Arg]]]
 
     def to_es(self):
         """Generate an Elasticsearch expression for this Clause."""
@@ -170,6 +185,30 @@ class Clause(BaseModel):
                 "bool": {
                     "must_not": [{"term": {to_es(self.args[0]): to_es(self.args[1])}}]
                 }
+            }
+        elif self.op == AdvancedComparisonOp.like:
+            return {
+                "wildcard": {
+                    to_es(self.args[0]): {
+                        "value": cql2_like_to_es(str(to_es(self.args[1]))),
+                        "case_insensitive": "false",
+                    }
+                }
+            }
+        elif self.op == AdvancedComparisonOp.between:
+            return {
+                "range": {
+                    to_es(self.args[0]): {
+                        "gte": to_es(self.args[1]),
+                        "lte": to_es(self.args[2]),
+                    }
+                }
+            }
+        elif self.op == AdvancedComparisonOp._in:
+            if not isinstance(self.args[1], List):
+                raise RuntimeError(f"Arg {self.args[1]} is not a list")
+            return {
+                "terms": {to_es(self.args[0]): [to_es(arg) for arg in self.args[1]]}
             }
         elif (
             self.op == ComparisonOp.lt
@@ -210,3 +249,19 @@ def to_es(arg: Arg):
         return arg
     else:
         raise RuntimeError(f"unknown arg {repr(arg)}")
+
+
+def cql2_like_to_es(string):
+    """Convert wildcard characters in CQL2 ('_' and '%') to Elasticsearch wildcard characters ('?' and '*', respectively). Handle escape characters and pass through Elasticsearch wildcards."""
+    percent_pattern = r"(?<!\\)%"
+    underscore_pattern = r"(?<!\\)_"
+    escape_pattern = r"\\(?=[_%])"
+
+    for pattern in [
+        (percent_pattern, "*"),
+        (underscore_pattern, "?"),
+        (escape_pattern, ""),
+    ]:
+        string = re.sub(pattern[0], pattern[1], string)
+
+    return string
