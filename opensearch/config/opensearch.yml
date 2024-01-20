@@ -1,6 +1,6 @@
 ## Cluster Settings
 cluster.name: stac-cluster
-node.name: es01
+node.name: os01
 network.host: 0.0.0.0
 transport.host: 0.0.0.0
 discovery.type: single-node

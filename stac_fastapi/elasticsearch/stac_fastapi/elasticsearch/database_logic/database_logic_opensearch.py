@@ -10,8 +10,8 @@ from elasticsearch_dsl import Q, Search
 
 from elasticsearch import exceptions, helpers  # type: ignore
 from stac_fastapi.elasticsearch import serializers
-from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
-from stac_fastapi.elasticsearch.config import (
+from stac_fastapi.elasticsearch.config.config_opensearch import AsyncElasticsearchSettings
+from stac_fastapi.elasticsearch.config.config_opensearch import (
     ElasticsearchSettings as SyncElasticsearchSettings,
 )
 from stac_fastapi.elasticsearch.extensions import filter

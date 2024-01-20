@@ -1,5 +1,8 @@
 elasticsearch/snapshots/
 
+# local testing 
+DEV.ipynb
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

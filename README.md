@@ -42,13 +42,15 @@ docker-compose build
 docker-compose up
 ```
 
-By default, docker-compose uses Elasticsearch 8.x. However, most recent 7.x versions should also work. 
+By default, docker-compose uses Elasticsearch 8.x and OpenSearch 2.11.1. 
 If you wish to use a different version, put the following in a 
 file named `.env` in the same directory you run docker-compose from:
 
 ```shell
 ELASTICSEARCH_VERSION=7.17.1
+OPENSEARCH_VERSION=2.11.0
 ```
+The most recent 7.x versions should also work. See the [opensearch-py docs](https://github.com/opensearch-project/opensearch-py/blob/main/COMPATIBILITY.md) for compatibility information.
 
 To create a new Collection:
 
