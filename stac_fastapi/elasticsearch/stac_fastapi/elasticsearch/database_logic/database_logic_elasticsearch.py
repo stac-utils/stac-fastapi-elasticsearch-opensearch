@@ -10,9 +10,9 @@ from elasticsearch_dsl import Q, Search
 
 from elasticsearch import exceptions, helpers  # type: ignore
 from stac_fastapi.elasticsearch import serializers
-from stac_fastapi.elasticsearch.config.config_elasticsearch import AsyncElasticsearchSettings
+from stac_fastapi.elasticsearch.config.config_elasticsearch import AsyncSearchSettings
 from stac_fastapi.elasticsearch.config.config_elasticsearch import (
-    ElasticsearchSettings as SyncElasticsearchSettings,
+    SearchSettings as SyncSearchSettings,
 )
 from stac_fastapi.elasticsearch.extensions import filter
 from stac_fastapi.types.errors import ConflictError, NotFoundError
@@ -178,7 +178,7 @@ async def create_collection_index() -> None:
         None
 
     """
-    client = AsyncElasticsearchSettings().create_client
+    client = AsyncSearchSettings().create_client
 
     await client.options(ignore_status=400).indices.create(
         index=f"{COLLECTIONS_INDEX}-000001",
@@ -199,7 +199,7 @@ async def create_item_index(collection_id: str):
         None
 
     """
-    client = AsyncElasticsearchSettings().create_client
+    client = AsyncSearchSettings().create_client
     index_name = index_by_collection_id(collection_id)
 
     await client.options(ignore_status=400).indices.create(
@@ -217,7 +217,7 @@ async def delete_item_index(collection_id: str):
     Args:
         collection_id (str): The ID of the collection whose items index will be deleted.
     """
-    client = AsyncElasticsearchSettings().create_client
+    client = AsyncSearchSettings().create_client
 
     name = index_by_collection_id(collection_id)
     resolved = await client.indices.resolve_index(name=name)
@@ -279,8 +279,8 @@ class Geometry(Protocol):  # noqa
 class DatabaseLogic:
     """Database logic."""
 
-    client = AsyncElasticsearchSettings().create_client
-    sync_client = SyncElasticsearchSettings().create_client
+    client = AsyncSearchSettings().create_client
+    sync_client = SyncSearchSettings().create_client
 
     item_serializer: Type[serializers.ItemSerializer] = attr.ib(
         default=serializers.ItemSerializer

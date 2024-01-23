@@ -6,13 +6,13 @@ from base64 import urlsafe_b64decode, urlsafe_b64encode
 from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple, Type, Union
 
 import attr
-from elasticsearch_dsl import Q, Search
+from opensearchpy.helpers.search import Search
 
-from elasticsearch import exceptions, helpers  # type: ignore
+from opensearchpy import helpers, exceptions
 from stac_fastapi.elasticsearch import serializers
-from stac_fastapi.elasticsearch.config.config_opensearch import AsyncElasticsearchSettings
+from stac_fastapi.elasticsearch.config.config_opensearch import AsyncSearchSettings
 from stac_fastapi.elasticsearch.config.config_opensearch import (
-    ElasticsearchSettings as SyncElasticsearchSettings,
+    SearchSettings as SyncSearchSettings,
 )
 from stac_fastapi.elasticsearch.extensions import filter
 from stac_fastapi.types.errors import ConflictError, NotFoundError
@@ -178,12 +178,18 @@ async def create_collection_index() -> None:
         None
 
     """
-    client = AsyncElasticsearchSettings().create_client
+    client = AsyncSearchSettings().create_client
 
-    await client.options(ignore_status=400).indices.create(
-        index=f"{COLLECTIONS_INDEX}-000001",
-        aliases={COLLECTIONS_INDEX: {}},
-        mappings=ES_COLLECTIONS_MAPPINGS,
+    search_body = {
+        "mappings": ES_COLLECTIONS_MAPPINGS,
+        "aliases":{COLLECTIONS_INDEX: {}}
+    }
+
+    index = f"{COLLECTIONS_INDEX}-000001"
+
+    await client.indices.create(
+        index=index,
+        body=search_body
     )
     await client.close()
 
@@ -199,14 +205,17 @@ async def create_item_index(collection_id: str):
         None
 
     """
-    client = AsyncElasticsearchSettings().create_client
+    client = AsyncSearchSettings().create_client
     index_name = index_by_collection_id(collection_id)
+    search_body = {
+        "aliases":{index_name: {}},
+        "mappings":ES_ITEMS_MAPPINGS,
+        "settings":ES_ITEMS_SETTINGS,
+    }
 
-    await client.options(ignore_status=400).indices.create(
+    await client.indices.create(
         index=f"{index_by_collection_id(collection_id)}-000001",
-        aliases={index_name: {}},
-        mappings=ES_ITEMS_MAPPINGS,
-        settings=ES_ITEMS_SETTINGS,
+        body=search_body
     )
     await client.close()
 
@@ -217,7 +226,7 @@ async def delete_item_index(collection_id: str):
     Args:
         collection_id (str): The ID of the collection whose items index will be deleted.
     """
-    client = AsyncElasticsearchSettings().create_client
+    client = AsyncSearchSettings().create_client
 
     name = index_by_collection_id(collection_id)
     resolved = await client.indices.resolve_index(name=name)
@@ -279,8 +288,8 @@ class Geometry(Protocol):  # noqa
 class DatabaseLogic:
     """Database logic."""
 
-    client = AsyncElasticsearchSettings().create_client
-    sync_client = SyncElasticsearchSettings().create_client
+    client = AsyncSearchSettings().create_client
+    sync_client = SyncSearchSettings().create_client
 
     item_serializer: Type[serializers.ItemSerializer] = attr.ib(
         default=serializers.ItemSerializer
@@ -308,12 +317,13 @@ class DatabaseLogic:
             with the `COLLECTIONS_INDEX` as the target index and `size=limit` to retrieve records.
             The result is a generator of dictionaries containing the source data for each collection.
         """
-        search_after = None
+        search_body = {}
         if token:
             search_after = urlsafe_b64decode(token.encode()).decode().split(",")
+            search_body["search_after"] = search_after
         collections = await self.client.search(
             index=COLLECTIONS_INDEX,
-            search_after=search_after,
+            body=search_body,
             size=limit,
             sort={"id": {"order": "asc"}},
         )
@@ -518,11 +528,12 @@ class DatabaseLogic:
         Raises:
             NotFoundError: If the collections specified in `collection_ids` do not exist.
         """
-        search_after = None
+        search_body = {}
+        query = search.query.to_dict() if search.query else None
+        search_body["query"] = query if query else {}
         if token:
             search_after = urlsafe_b64decode(token.encode()).decode().split(",")
-
-        query = search.query.to_dict() if search.query else None
+            search_body["search_after"] = search_after
 
         index_param = indices(collection_ids)
 
@@ -530,9 +541,8 @@ class DatabaseLogic:
             self.client.search(
                 index=index_param,
                 ignore_unavailable=ignore_unavailable,
-                query=query,
+                body=search_body,
                 sort=sort or DEFAULT_SORT,
-                search_after=search_after,
                 size=limit,
             )
         )
@@ -663,7 +673,7 @@ class DatabaseLogic:
         es_resp = await self.client.index(
             index=index_by_collection_id(collection_id),
             id=mk_item_id(item_id, collection_id),
-            document=item,
+            body=item,
             refresh=refresh,
         )
 
@@ -717,7 +727,7 @@ class DatabaseLogic:
         await self.client.index(
             index=COLLECTIONS_INDEX,
             id=collection_id,
-            document=collection,
+            body=collection,
             refresh=refresh,
         )
 

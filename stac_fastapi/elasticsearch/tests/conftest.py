@@ -10,13 +10,20 @@ from httpx import AsyncClient
 
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import create_get_request_model, create_post_request_model
-from stac_fastapi.elasticsearch.config.config_elasticsearch import AsyncElasticsearchSettings
+
+backend = os.getenv("BACKEND", "elasticsearch").lower()
+if backend == "opensearch":
+    from stac_fastapi.elasticsearch.config.config_opensearch import AsyncSearchSettings
+    from stac_fastapi.elasticsearch.database_logic.database_logic_opensearch import create_collection_index
+else:
+    from stac_fastapi.elasticsearch.config.config_elasticsearch import AsyncSearchSettings
+    from stac_fastapi.elasticsearch.database_logic.database_logic_elasticsearch import create_collection_index
+
 from stac_fastapi.elasticsearch.core import (
     BulkTransactionsClient,
     CoreClient,
     TransactionsClient,
 )
-from stac_fastapi.elasticsearch.database_elasticsearch.database_logic.database_logic_elasticsearch import create_collection_index
 from stac_fastapi.elasticsearch.extensions import QueryExtension
 from stac_fastapi.extensions.core import (  # FieldsExtension,
     ContextExtension,
@@ -53,7 +60,7 @@ class MockRequest:
         self.query_params = query_params or {}
 
 
-class TestSettings(AsyncElasticsearchSettings):
+class TestSettings(AsyncSearchSettings):
     class Config:
         env_file = ".env.test"
 
@@ -160,7 +167,7 @@ def bulk_txn_client():
 
 @pytest_asyncio.fixture(scope="session")
 async def app():
-    settings = AsyncElasticsearchSettings()
+    settings = AsyncSearchSettings()
     extensions = [
         TransactionExtension(
             client=TransactionsClient(session=None), settings=settings
