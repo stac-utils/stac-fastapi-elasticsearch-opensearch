@@ -1,4 +1,6 @@
 """FastAPI application."""
+import os
+
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import create_get_request_model, create_post_request_model
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
@@ -8,7 +10,8 @@ from stac_fastapi.elasticsearch.core import (
     EsAsyncBaseFiltersClient,
     TransactionsClient,
 )
-from stac_fastapi.elasticsearch.database_elasticsearch.database_logic import create_collection_index
+# from stac_fastapi.elasticsearch.database_elasticsearch.database_logic import create_collection_index
+# from stac_fastapi.elasticsearch.database_opensearch.database_logic import create_collection_index
 from stac_fastapi.elasticsearch.extensions import QueryExtension
 from stac_fastapi.elasticsearch.session import Session
 from stac_fastapi.extensions.core import (
@@ -20,6 +23,13 @@ from stac_fastapi.extensions.core import (
     TransactionExtension,
 )
 from stac_fastapi.extensions.third_party import BulkTransactionExtension
+
+db_type = os.getenv("DB_TYPE", "elasticsearch").lower()
+
+if db_type == "opensearch":
+    from stac_fastapi.elasticsearch.database_opensearch.database_logic import create_collection_index
+else:
+    from stac_fastapi.elasticsearch.database_elasticsearch.database_logic import create_collection_index
 
 settings = ElasticsearchSettings()
 session = Session.create_from_settings(settings)
@@ -41,11 +51,13 @@ extensions = [
 ]
 
 post_request_model = create_post_request_model(extensions)
+core_client = CoreClient(session=session, post_request_model=post_request_model)
+core_client.set_database_logic(db_type)
 
 api = StacApi(
     settings=settings,
     extensions=extensions,
-    client=CoreClient(session=session, post_request_model=post_request_model),
+    client=core_client,
     search_get_request_model=create_get_request_model(extensions),
     search_post_request_model=post_request_model,
 )

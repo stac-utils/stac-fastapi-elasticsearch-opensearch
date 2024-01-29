@@ -20,7 +20,7 @@ from stac_pydantic.shared import MimeTypes
 
 from stac_fastapi.elasticsearch import serializers
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
-from stac_fastapi.elasticsearch.database_elasticsearch.database_logic import DatabaseLogic
+# from stac_fastapi.elasticsearch.database_elasticsearch.database_logic import DatabaseLogic
 from stac_fastapi.elasticsearch.models.links import PagingLinks
 from stac_fastapi.elasticsearch.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.elasticsearch.session import Session
@@ -71,8 +71,15 @@ class CoreClient(AsyncBaseCoreClient):
     collection_serializer: Type[serializers.CollectionSerializer] = attr.ib(
         default=serializers.CollectionSerializer
     )
-    database = DatabaseLogic()
 
+    def set_database_logic(self, db_type):
+        if db_type == "opensearch":
+            from stac_fastapi.elasticsearch.database_opensearch.database_logic import DatabaseLogic
+        else:
+            from stac_fastapi.elasticsearch.database_elasticsearch.database_logic import DatabaseLogic
+            
+        self.database = DatabaseLogic()
+    
     @overrides
     async def all_collections(self, **kwargs) -> Collections:
         """Read all collections from the database.
