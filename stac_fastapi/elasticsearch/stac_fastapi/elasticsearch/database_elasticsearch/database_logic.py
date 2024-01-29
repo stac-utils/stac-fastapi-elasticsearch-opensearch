@@ -171,18 +171,19 @@ def indices(collection_ids: Optional[List[str]]) -> str:
 
 
 async def create_collection_index() -> None:
-    """Create the index for Collections in Elasticsearch.
+    """
+    Create the index for a Collection.
 
-    This function creates the Elasticsearch index for the `Collections` with the predefined mapping.
-    If the index already exists, the function ignores the error and continues execution.
+    Returns:
+        None
+
     """
     client = AsyncElasticsearchSettings().create_client
 
-    await client.indices.create(
+    await client.options(ignore_status=400).indices.create(
         index=f"{COLLECTIONS_INDEX}-000001",
         aliases={COLLECTIONS_INDEX: {}},
         mappings=ES_COLLECTIONS_MAPPINGS,
-        ignore=400,  # ignore 400 already exists code
     )
     await client.close()
 
@@ -201,12 +202,11 @@ async def create_item_index(collection_id: str):
     client = AsyncElasticsearchSettings().create_client
     index_name = index_by_collection_id(collection_id)
 
-    await client.indices.create(
+    await client.options(ignore_status=400).indices.create(
         index=f"{index_by_collection_id(collection_id)}-000001",
         aliases={index_name: {}},
         mappings=ES_ITEMS_MAPPINGS,
         settings=ES_ITEMS_SETTINGS,
-        ignore=400,  # ignore 400 already exists code
     )
     await client.close()
 
@@ -577,13 +577,16 @@ class DatabaseLogic:
         if not await self.client.exists(index=COLLECTIONS_INDEX, id=collection_id):
             raise NotFoundError(f"Collection {collection_id} does not exist")
 
-    async def prep_create_item(self, item: Item, base_url: str) -> Item:
+    async def prep_create_item(
+        self, item: Item, base_url: str, exist_ok: bool = False
+    ) -> Item:
         """
         Preps an item for insertion into the database.
 
         Args:
             item (Item): The item to be prepped for insertion.
             base_url (str): The base URL used to create the item's self URL.
+            exist_ok (bool): Indicates whether the item can exist already.
 
         Returns:
             Item: The prepped item.
@@ -594,7 +597,7 @@ class DatabaseLogic:
         """
         await self.check_collection_exists(collection_id=item["collection"])
 
-        if await self.client.exists(
+        if not exist_ok and await self.client.exists(
             index=index_by_collection_id(item["collection"]),
             id=mk_item_id(item["id"], item["collection"]),
         ):
@@ -604,17 +607,20 @@ class DatabaseLogic:
 
         return self.item_serializer.stac_to_db(item, base_url)
 
-    def sync_prep_create_item(self, item: Item, base_url: str) -> Item:
+    def sync_prep_create_item(
+        self, item: Item, base_url: str, exist_ok: bool = False
+    ) -> Item:
         """
         Prepare an item for insertion into the database.
 
         This method performs pre-insertion preparation on the given `item`,
         such as checking if the collection the item belongs to exists,
-        and verifying that an item with the same ID does not already exist in the database.
+        and optionally verifying that an item with the same ID does not already exist in the database.
 
         Args:
             item (Item): The item to be inserted into the database.
             base_url (str): The base URL used for constructing URLs for the item.
+            exist_ok (bool): Indicates whether the item can exist already.
 
         Returns:
             Item: The item after preparation is done.
@@ -628,7 +634,7 @@ class DatabaseLogic:
         if not self.sync_client.exists(index=COLLECTIONS_INDEX, id=collection_id):
             raise NotFoundError(f"Collection {collection_id} does not exist")
 
-        if self.sync_client.exists(
+        if not exist_ok and self.sync_client.exists(
             index=index_by_collection_id(collection_id),
             id=mk_item_id(item_id, collection_id),
         ):
