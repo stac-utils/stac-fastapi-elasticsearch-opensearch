@@ -36,6 +36,9 @@ extra_reqs = {
     ],
     "docs": ["mkdocs", "mkdocs-material", "pdocs"],
     "server": ["uvicorn[standard]==0.19.0"],
+    "elasticsearch": [],
+    "opensearch": [],
+
 }
 
 setup(
