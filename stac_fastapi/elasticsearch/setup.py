@@ -38,7 +38,6 @@ extra_reqs = {
     "server": ["uvicorn[standard]==0.19.0"],
     "elasticsearch": [],
     "opensearch": [],
-
 }
 
 setup(

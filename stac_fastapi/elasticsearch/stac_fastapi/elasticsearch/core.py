@@ -20,6 +20,7 @@ from stac_pydantic.shared import MimeTypes
 
 from stac_fastapi.elasticsearch import serializers
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
+
 # from stac_fastapi.elasticsearch.database_elasticsearch.database_logic import DatabaseLogic
 from stac_fastapi.elasticsearch.models.links import PagingLinks
 from stac_fastapi.elasticsearch.serializers import CollectionSerializer, ItemSerializer
@@ -73,13 +74,26 @@ class CoreClient(AsyncBaseCoreClient):
     )
 
     def set_database_logic(self, db_type):
+        """
+        Set the database logic for the CoreClient.
+
+        This method dynamically sets the database logic based on the specified database type.
+        It supports switching between Elasticsearch and OpenSearch databases.
+
+        Args:
+            db_type (str): The database type, either 'elasticsearch' or 'opensearch'.
+        """
         if db_type == "opensearch":
-            from stac_fastapi.elasticsearch.database_opensearch.database_logic import DatabaseLogic
+            from stac_fastapi.elasticsearch.database_opensearch.database_logic import (
+                DatabaseLogic,
+            )
         else:
-            from stac_fastapi.elasticsearch.database_elasticsearch.database_logic import DatabaseLogic
-            
+            from stac_fastapi.elasticsearch.database_elasticsearch.database_logic import (
+                DatabaseLogic,
+            )
+
         self.database = DatabaseLogic()
-    
+
     @overrides
     async def all_collections(self, **kwargs) -> Collections:
         """Read all collections from the database.
@@ -549,7 +563,27 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     """Transactions extension specific CRUD operations."""
 
     session: Session = attr.ib(default=attr.Factory(Session.create_from_env))
-    database = DatabaseLogic()
+
+    def set_database_logic(self, db_type):
+        """
+        Set the database logic for the CoreClient.
+
+        This method dynamically sets the database logic based on the specified database type.
+        It supports switching between Elasticsearch and OpenSearch databases.
+
+        Args:
+            db_type (str): The database type, either 'elasticsearch' or 'opensearch'.
+        """
+        if db_type == "opensearch":
+            from stac_fastapi.elasticsearch.database_opensearch.database_logic import (
+                DatabaseLogic,
+            )
+        else:
+            from stac_fastapi.elasticsearch.database_elasticsearch.database_logic import (
+                DatabaseLogic,
+            )
+
+        self.database = DatabaseLogic()
 
     @overrides
     async def create_item(
@@ -719,7 +753,27 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
     """
 
     session: Session = attr.ib(default=attr.Factory(Session.create_from_env))
-    database = DatabaseLogic()
+
+    def set_database_logic(self, db_type):
+        """
+        Set the database logic for the CoreClient.
+
+        This method dynamically sets the database logic based on the specified database type.
+        It supports switching between Elasticsearch and OpenSearch databases.
+
+        Args:
+            db_type (str): The database type, either 'elasticsearch' or 'opensearch'.
+        """
+        if db_type == "opensearch":
+            from stac_fastapi.elasticsearch.database_opensearch.database_logic import (
+                DatabaseLogic,
+            )
+        else:
+            from stac_fastapi.elasticsearch.database_elasticsearch.database_logic import (
+                DatabaseLogic,
+            )
+
+        self.database = DatabaseLogic()
 
     def __attrs_post_init__(self):
         """Create es engine."""

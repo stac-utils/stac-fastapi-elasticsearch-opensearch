@@ -10,6 +10,7 @@ from stac_fastapi.elasticsearch.core import (
     EsAsyncBaseFiltersClient,
     TransactionsClient,
 )
+
 # from stac_fastapi.elasticsearch.database_elasticsearch.database_logic import create_collection_index
 # from stac_fastapi.elasticsearch.database_opensearch.database_logic import create_collection_index
 from stac_fastapi.elasticsearch.extensions import QueryExtension
@@ -27,9 +28,13 @@ from stac_fastapi.extensions.third_party import BulkTransactionExtension
 db_type = os.getenv("DB_TYPE", "elasticsearch").lower()
 
 if db_type == "opensearch":
-    from stac_fastapi.elasticsearch.database_opensearch.database_logic import create_collection_index
+    from stac_fastapi.elasticsearch.database_opensearch.database_logic import (
+        create_collection_index,
+    )
 else:
-    from stac_fastapi.elasticsearch.database_elasticsearch.database_logic import create_collection_index
+    from stac_fastapi.elasticsearch.database_elasticsearch.database_logic import (
+        create_collection_index,
+    )
 
 settings = ElasticsearchSettings()
 session = Session.create_from_settings(settings)
@@ -39,9 +44,15 @@ filter_extension.conformance_classes.append(
     "http://www.opengis.net/spec/cql2/1.0/conf/advanced-comparison-operators"
 )
 
+transactions_client = TransactionsClient(session=session)
+transactions_client.set_database_logic(db_type)
+
+bulk_transactions_client = BulkTransactionsClient(session=session)
+bulk_transactions_client.set_database_logic(db_type)
+
 extensions = [
-    TransactionExtension(client=TransactionsClient(session=session), settings=settings),
-    BulkTransactionExtension(client=BulkTransactionsClient(session=session)),
+    TransactionExtension(client=transactions_client, settings=settings),
+    BulkTransactionExtension(client=bulk_transactions_client),
     FieldsExtension(),
     QueryExtension(),
     SortExtension(),
