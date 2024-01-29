@@ -10,16 +10,16 @@ from httpx import AsyncClient
 
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import create_get_request_model, create_post_request_model
-from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
-from stac_fastapi.elasticsearch.core import (
+from elastic_search.config import AsyncElasticsearchSettings
+from common.core import (
     BulkTransactionsClient,
     CoreClient,
     TransactionsClient,
 )
-from stac_fastapi.elasticsearch.database_elasticsearch.database_logic import (
+from elastic_search.database_logic import (
     create_collection_index,
 )
-from stac_fastapi.elasticsearch.extensions import QueryExtension
+from common.extensions import QueryExtension
 from stac_fastapi.extensions.core import (  # FieldsExtension,
     ContextExtension,
     FieldsExtension,

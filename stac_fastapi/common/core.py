@@ -1,6 +1,5 @@
 """Item crud client."""
 import logging
-import os
 import re
 from base64 import urlsafe_b64encode
 from datetime import datetime as datetime_type
@@ -11,6 +10,7 @@ from urllib.parse import unquote_plus, urljoin
 import attr
 import orjson
 import stac_pydantic
+from elastic_search.database_logic import DatabaseLogic as BaseDatabaseLogic
 from fastapi import HTTPException, Request
 from overrides import overrides
 from pydantic import ValidationError
@@ -19,11 +19,11 @@ from pygeofilter.parsers.cql2_text import parse as parse_cql2_text
 from stac_pydantic.links import Relations
 from stac_pydantic.shared import MimeTypes
 
-from stac_fastapi.elasticsearch import serializers
-from stac_fastapi.elasticsearch.config import ElasticsearchSettings
-from stac_fastapi.elasticsearch.models.links import PagingLinks
-from stac_fastapi.elasticsearch.serializers import CollectionSerializer, ItemSerializer
-from stac_fastapi.elasticsearch.session import Session
+from elastic_search import serializers
+from elastic_search.config import ElasticsearchSettings
+from common.models.links import PagingLinks
+from elastic_search.serializers import CollectionSerializer, ItemSerializer
+from elastic_search.session import Session
 from stac_fastapi.extensions.third_party.bulk_transactions import (
     BaseBulkTransactionsClient,
     BulkTransactionMethod,
@@ -71,26 +71,7 @@ class CoreClient(AsyncBaseCoreClient):
     collection_serializer: Type[serializers.CollectionSerializer] = attr.ib(
         default=serializers.CollectionSerializer
     )
-
-    def __attrs_post_init__(self):
-        """
-        Post-initialization method for CoreClient.
-
-        This method is automatically called after the CoreClient instance is initialized.
-        It sets the 'database' attribute based on the DB_TYPE environment variable,
-        choosing between Elasticsearch and OpenSearch database logic.
-        """
-        db_type = os.getenv("DB_TYPE", "elasticsearch").lower()
-        if db_type == "opensearch":
-            from stac_fastapi.elasticsearch.database_opensearch.database_logic import (
-                DatabaseLogic,
-            )
-        else:
-            from stac_fastapi.elasticsearch.database_elasticsearch.database_logic import (
-                DatabaseLogic,
-            )
-
-        self.database = DatabaseLogic()
+    database = BaseDatabaseLogic()
 
     @overrides
     async def all_collections(self, **kwargs) -> Collections:
@@ -561,26 +542,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     """Transactions extension specific CRUD operations."""
 
     session: Session = attr.ib(default=attr.Factory(Session.create_from_env))
-
-    def __attrs_post_init__(self):
-        """
-        Post-initialization method for CoreClient.
-
-        This method is automatically called after the CoreClient instance is initialized.
-        It sets the 'database' attribute based on the DB_TYPE environment variable,
-        choosing between Elasticsearch and OpenSearch database logic.
-        """
-        db_type = os.getenv("DB_TYPE", "elasticsearch").lower()
-        if db_type == "opensearch":
-            from stac_fastapi.elasticsearch.database_opensearch.database_logic import (
-                DatabaseLogic,
-            )
-        else:
-            from stac_fastapi.elasticsearch.database_elasticsearch.database_logic import (
-                DatabaseLogic,
-            )
-
-        self.database = DatabaseLogic()
+    database = BaseDatabaseLogic()
 
     @overrides
     async def create_item(
@@ -750,23 +712,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
     """
 
     session: Session = attr.ib(default=attr.Factory(Session.create_from_env))
-
-    def __attrs_post_init__(self):
-        """Create es engine, database logic type."""
-        settings = ElasticsearchSettings()
-        self.client = settings.create_client
-
-        db_type = os.getenv("DB_TYPE", "elasticsearch").lower()
-        if db_type == "opensearch":
-            from stac_fastapi.elasticsearch.database_opensearch.database_logic import (
-                DatabaseLogic,
-            )
-        else:
-            from stac_fastapi.elasticsearch.database_elasticsearch.database_logic import (
-                DatabaseLogic,
-            )
-
-        self.database = DatabaseLogic()
+    database = BaseDatabaseLogic()
 
     def preprocess_item(
         self, item: stac_types.Item, base_url, method: BulkTransactionMethod

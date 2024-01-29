@@ -1,17 +1,17 @@
 """FastAPI application."""
-import os
-
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import create_get_request_model, create_post_request_model
-from stac_fastapi.elasticsearch.config import ElasticsearchSettings
-from stac_fastapi.elasticsearch.core import (
+from elastic_search.config import ElasticsearchSettings
+from stac_fastapi.common.core import (
     BulkTransactionsClient,
     CoreClient,
     EsAsyncBaseFiltersClient,
     TransactionsClient,
 )
-from stac_fastapi.elasticsearch.extensions import QueryExtension
-from stac_fastapi.elasticsearch.session import Session
+from elastic_search.database_logic import DatabaseLogic
+from stac_fastapi.common.extensions import QueryExtension
+from elastic_search.session import Session
+from elastic_search.database_logic import create_collection_index
 from stac_fastapi.extensions.core import (
     ContextExtension,
     FieldsExtension,
@@ -22,17 +22,6 @@ from stac_fastapi.extensions.core import (
 )
 from stac_fastapi.extensions.third_party import BulkTransactionExtension
 
-db_type = os.getenv("DB_TYPE", "elasticsearch").lower()
-
-if db_type == "opensearch":
-    from stac_fastapi.elasticsearch.database_opensearch.database_logic import (
-        create_collection_index,
-    )
-else:
-    from stac_fastapi.elasticsearch.database_elasticsearch.database_logic import (
-        create_collection_index,
-    )
-
 settings = ElasticsearchSettings()
 session = Session.create_from_settings(settings)
 
@@ -40,6 +29,8 @@ filter_extension = FilterExtension(client=EsAsyncBaseFiltersClient())
 filter_extension.conformance_classes.append(
     "http://www.opengis.net/spec/cql2/1.0/conf/advanced-comparison-operators"
 )
+
+database_logic = DatabaseLogic()
 
 extensions = [
     TransactionExtension(client=TransactionsClient(session=session), settings=settings),
@@ -75,7 +66,7 @@ def run() -> None:
         import uvicorn
 
         uvicorn.run(
-            "stac_fastapi.elasticsearch.app:app",
+            "stac_fastapi.elastic_search.app:app",
             host=settings.app_host,
             port=settings.app_port,
             log_level="info",

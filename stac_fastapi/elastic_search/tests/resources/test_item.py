@@ -12,8 +12,8 @@ import pytest
 from geojson_pydantic.geometries import Polygon
 from pystac.utils import datetime_to_str
 
-from stac_fastapi.elasticsearch.core import CoreClient
-from stac_fastapi.elasticsearch.datetime_utils import now_to_rfc3339_str
+from stac_fastapi.common.core import CoreClient
+from common.datetime_utils import now_to_rfc3339_str
 from stac_fastapi.types.core import LandingPageMixin
 
 from ..conftest import create_item, refresh_indices
