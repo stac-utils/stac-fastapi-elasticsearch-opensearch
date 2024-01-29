@@ -18,6 +18,7 @@ services:
       - ES_PORT=9200
       - ES_USE_SSL=false
       - ES_VERIFY_CERTS=false
+      - DB_TYPE=elasticsearch
     ports:
       - "8080:8080"
     volumes:
@@ -42,10 +43,11 @@ services:
       - RELOAD=true
       - ENVIRONMENT=local
       - WEB_CONCURRENCY=10
-      - OS_HOST=172.17.0.1
-      - OS_PORT=9200
-      - OS_USE_SSL=false
-      - OS_VERIFY_CERTS=false
+      - ES_HOST=172.17.0.1
+      - ES_PORT=9200
+      - ES_USE_SSL=false
+      - ES_VERIFY_CERTS=false
+      - DB_TYPE=opensearch
     ports:
       - "8082:8080"
     volumes:
