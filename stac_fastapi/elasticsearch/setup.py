@@ -1,4 +1,4 @@
-"""stac_fastapi: elasticsearch module."""
+"""stac_fastapi: elasticsearch. opensearch module."""
 
 from setuptools import find_namespace_packages, setup
 
@@ -8,13 +8,13 @@ with open("README.md") as f:
 install_requires = [
     "fastapi",
     "attrs",
+    "elasticsearch[async]==8.11.0",
+    "elasticsearch-dsl==8.11.0",
     "pydantic[dotenv]<2",
     "stac_pydantic==2.0.*",
     "stac-fastapi.types==2.4.9",
     "stac-fastapi.api==2.4.9",
     "stac-fastapi.extensions==2.4.9",
-    "elasticsearch[async]==8.11.0",
-    "elasticsearch-dsl==8.11.0",
     "pystac[validation]",
     "uvicorn",
     "orjson",
@@ -36,8 +36,7 @@ extra_reqs = {
     ],
     "docs": ["mkdocs", "mkdocs-material", "pdocs"],
     "server": ["uvicorn[standard]==0.19.0"],
-    "elasticsearch": [],
-    "opensearch": [],
+    "opensearch": ["opensearch-py==2.4.2"],
 }
 
 setup(
