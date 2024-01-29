@@ -10,9 +10,6 @@ from stac_fastapi.elasticsearch.core import (
     EsAsyncBaseFiltersClient,
     TransactionsClient,
 )
-
-# from stac_fastapi.elasticsearch.database_elasticsearch.database_logic import create_collection_index
-# from stac_fastapi.elasticsearch.database_opensearch.database_logic import create_collection_index
 from stac_fastapi.elasticsearch.extensions import QueryExtension
 from stac_fastapi.elasticsearch.session import Session
 from stac_fastapi.extensions.core import (
@@ -44,15 +41,9 @@ filter_extension.conformance_classes.append(
     "http://www.opengis.net/spec/cql2/1.0/conf/advanced-comparison-operators"
 )
 
-transactions_client = TransactionsClient(session=session)
-transactions_client.set_database_logic(db_type)
-
-bulk_transactions_client = BulkTransactionsClient(session=session)
-bulk_transactions_client.set_database_logic(db_type)
-
 extensions = [
-    TransactionExtension(client=transactions_client, settings=settings),
-    BulkTransactionExtension(client=bulk_transactions_client),
+    TransactionExtension(client=TransactionsClient(session=session), settings=settings),
+    BulkTransactionExtension(client=BulkTransactionsClient(session=session)),
     FieldsExtension(),
     QueryExtension(),
     SortExtension(),
@@ -62,13 +53,11 @@ extensions = [
 ]
 
 post_request_model = create_post_request_model(extensions)
-core_client = CoreClient(session=session, post_request_model=post_request_model)
-core_client.set_database_logic(db_type)
 
 api = StacApi(
     settings=settings,
     extensions=extensions,
-    client=core_client,
+    client=CoreClient(session=session, post_request_model=post_request_model),
     search_get_request_model=create_get_request_model(extensions),
     search_post_request_model=post_request_model,
 )

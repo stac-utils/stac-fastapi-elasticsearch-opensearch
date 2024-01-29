@@ -1,5 +1,6 @@
 """Item crud client."""
 import logging
+import os
 import re
 from base64 import urlsafe_b64encode
 from datetime import datetime as datetime_type
@@ -20,8 +21,6 @@ from stac_pydantic.shared import MimeTypes
 
 from stac_fastapi.elasticsearch import serializers
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
-
-# from stac_fastapi.elasticsearch.database_elasticsearch.database_logic import DatabaseLogic
 from stac_fastapi.elasticsearch.models.links import PagingLinks
 from stac_fastapi.elasticsearch.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.elasticsearch.session import Session
@@ -73,16 +72,15 @@ class CoreClient(AsyncBaseCoreClient):
         default=serializers.CollectionSerializer
     )
 
-    def set_database_logic(self, db_type):
+    def __attrs_post_init__(self):
         """
-        Set the database logic for the CoreClient.
+        Post-initialization method for CoreClient.
 
-        This method dynamically sets the database logic based on the specified database type.
-        It supports switching between Elasticsearch and OpenSearch databases.
-
-        Args:
-            db_type (str): The database type, either 'elasticsearch' or 'opensearch'.
+        This method is automatically called after the CoreClient instance is initialized.
+        It sets the 'database' attribute based on the DB_TYPE environment variable,
+        choosing between Elasticsearch and OpenSearch database logic.
         """
+        db_type = os.getenv("DB_TYPE", "elasticsearch").lower()
         if db_type == "opensearch":
             from stac_fastapi.elasticsearch.database_opensearch.database_logic import (
                 DatabaseLogic,
@@ -564,16 +562,15 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     session: Session = attr.ib(default=attr.Factory(Session.create_from_env))
 
-    def set_database_logic(self, db_type):
+    def __attrs_post_init__(self):
         """
-        Set the database logic for the CoreClient.
+        Post-initialization method for CoreClient.
 
-        This method dynamically sets the database logic based on the specified database type.
-        It supports switching between Elasticsearch and OpenSearch databases.
-
-        Args:
-            db_type (str): The database type, either 'elasticsearch' or 'opensearch'.
+        This method is automatically called after the CoreClient instance is initialized.
+        It sets the 'database' attribute based on the DB_TYPE environment variable,
+        choosing between Elasticsearch and OpenSearch database logic.
         """
+        db_type = os.getenv("DB_TYPE", "elasticsearch").lower()
         if db_type == "opensearch":
             from stac_fastapi.elasticsearch.database_opensearch.database_logic import (
                 DatabaseLogic,
@@ -754,16 +751,12 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
 
     session: Session = attr.ib(default=attr.Factory(Session.create_from_env))
 
-    def set_database_logic(self, db_type):
-        """
-        Set the database logic for the CoreClient.
+    def __attrs_post_init__(self):
+        """Create es engine, database logic type."""
+        settings = ElasticsearchSettings()
+        self.client = settings.create_client
 
-        This method dynamically sets the database logic based on the specified database type.
-        It supports switching between Elasticsearch and OpenSearch databases.
-
-        Args:
-            db_type (str): The database type, either 'elasticsearch' or 'opensearch'.
-        """
+        db_type = os.getenv("DB_TYPE", "elasticsearch").lower()
         if db_type == "opensearch":
             from stac_fastapi.elasticsearch.database_opensearch.database_logic import (
                 DatabaseLogic,
@@ -774,11 +767,6 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
             )
 
         self.database = DatabaseLogic()
-
-    def __attrs_post_init__(self):
-        """Create es engine."""
-        settings = ElasticsearchSettings()
-        self.client = settings.create_client
 
     def preprocess_item(
         self, item: stac_types.Item, base_url, method: BulkTransactionMethod
