@@ -14,7 +14,7 @@ services:
       - RELOAD=true
       - ENVIRONMENT=local
       - WEB_CONCURRENCY=10
-      - ES_HOST=172.17.0.1
+      - ES_HOST=elasticsearch
       - ES_PORT=9200
       - ES_USE_SSL=false
       - ES_VERIFY_CERTS=false
@@ -32,6 +32,7 @@ services:
   elasticsearch:
     container_name: es-container
     image: docker.elastic.co/elasticsearch/elasticsearch:${ELASTICSEARCH_VERSION:-8.11.0}
+    hostname: elasticsearch
     environment:
       ES_JAVA_OPTS: -Xms512m -Xmx1g
     volumes:

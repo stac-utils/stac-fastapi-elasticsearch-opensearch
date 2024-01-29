@@ -785,15 +785,15 @@ class DatabaseLogic:
         await self.find_collection(collection_id=collection_id)
 
         if collection_id != collection["id"]:
-            await self.create_collection(collection)
+            await self.create_collection(collection, refresh=refresh)
 
             await self.client.reindex(
                 body={
-                    "dest": {"index": f"items_{collection['id']}"},
-                    "source": {"index": f"items_{collection_id}"},
+                    "dest": {"index": f"{ITEMS_INDEX_PREFIX}{collection['id']}"},
+                    "source": {"index": f"{ITEMS_INDEX_PREFIX}{collection_id}"},
                     "script": {
                         "lang": "painless",
-                        "source": f"""ctx._source.collection = '{collection["id"]}'""",
+                        "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection["id"]}'); ctx._source.collection = '{collection["id"]}' ;""",
                     },
                 },
                 wait_for_completion=True,

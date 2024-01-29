@@ -40,16 +40,90 @@ async def test_update_collection(
     txn_client,
     load_test_data: Callable,
 ):
-    data = load_test_data("test_collection.json")
+    collection_data = load_test_data("test_collection.json")
+    item_data = load_test_data("test_item.json")
 
-    await txn_client.create_collection(data, request=MockRequest)
-    data["keywords"].append("new keyword")
-    await txn_client.update_collection(data, request=MockRequest)
+    await txn_client.create_collection(collection_data, request=MockRequest)
+    await txn_client.create_item(
+        collection_id=collection_data["id"],
+        item=item_data,
+        request=MockRequest,
+        refresh=True,
+    )
 
-    coll = await core_client.get_collection(data["id"], request=MockRequest)
+    collection_data["keywords"].append("new keyword")
+    await txn_client.update_collection(collection_data, request=MockRequest)
+
+    coll = await core_client.get_collection(collection_data["id"], request=MockRequest)
     assert "new keyword" in coll["keywords"]
 
-    await txn_client.delete_collection(data["id"])
+    item = await core_client.get_item(
+        item_id=item_data["id"],
+        collection_id=collection_data["id"],
+        request=MockRequest,
+    )
+    assert item["id"] == item_data["id"]
+    assert item["collection"] == item_data["collection"]
+
+    await txn_client.delete_collection(collection_data["id"])
+
+
+@pytest.mark.asyncio
+async def test_update_collection_id(
+    core_client,
+    txn_client,
+    load_test_data: Callable,
+):
+    collection_data = load_test_data("test_collection.json")
+    item_data = load_test_data("test_item.json")
+    new_collection_id = "new-test-collection"
+
+    await txn_client.create_collection(collection_data, request=MockRequest)
+    await txn_client.create_item(
+        collection_id=collection_data["id"],
+        item=item_data,
+        request=MockRequest,
+        refresh=True,
+    )
+
+    old_collection_id = collection_data["id"]
+    collection_data["id"] = new_collection_id
+
+    await txn_client.update_collection(
+        collection=collection_data,
+        request=MockRequest(
+            query_params={
+                "collection_id": old_collection_id,
+                "limit": "10",
+            }
+        ),
+        refresh=True,
+    )
+
+    with pytest.raises(NotFoundError):
+        await core_client.get_collection(old_collection_id, request=MockRequest)
+
+    coll = await core_client.get_collection(collection_data["id"], request=MockRequest)
+    assert coll["id"] == new_collection_id
+
+    with pytest.raises(NotFoundError):
+        await core_client.get_item(
+            item_id=item_data["id"],
+            collection_id=old_collection_id,
+            request=MockRequest,
+        )
+
+    item = await core_client.get_item(
+        item_id=item_data["id"],
+        collection_id=collection_data["id"],
+        request=MockRequest,
+        refresh=True,
+    )
+
+    assert item["id"] == item_data["id"]
+    assert item["collection"] == new_collection_id
+
+    await txn_client.delete_collection(collection_data["id"])
 
 
 @pytest.mark.asyncio
