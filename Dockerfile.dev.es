@@ -13,6 +13,7 @@ ENV CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
 
 WORKDIR /app
 
-COPY /stac_fastapi /app
+COPY ./stac_fastapi/common /app/common
+COPY ./stac_fastapi/elastic_search /app/elastic_search
 
 RUN pip install --no-cache-dir -e ./elastic_search[dev,server]
