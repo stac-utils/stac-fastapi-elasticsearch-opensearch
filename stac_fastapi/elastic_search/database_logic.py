@@ -9,13 +9,13 @@ import attr
 from elasticsearch_dsl import Q, Search
 
 from elasticsearch import exceptions, helpers  # type: ignore
-from stac_fastapi.common.extensions import filter
-from stac_fastapi.elastic_search import serializers
-from stac_fastapi.elastic_search.config import AsyncElasticsearchSettings
-from stac_fastapi.elastic_search.config import (
+from common.extensions import filter
+from elastic_search import serializers
+from elastic_search.config import AsyncElasticsearchSettings
+from elastic_search.config import (
     ElasticsearchSettings as SyncElasticsearchSettings,
 )
-from stac_fastapi.elastic_search.utilities import bbox2polygon
+from elastic_search.utilities import bbox2polygon
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.stac import Collection, Item
 
