@@ -70,7 +70,7 @@ jobs:
 
       - name: Install elasticsearch stac-fastapi
         run: |
-          pip install ./stac_fastapi/elasticsearch[dev,server]
+          pip install ./stac_fastapi/elastic_search[dev,server]
 
       - name: Run test suite against Elasticsearch 7.x
         run: |
