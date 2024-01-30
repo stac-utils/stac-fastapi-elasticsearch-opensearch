@@ -7,8 +7,9 @@ from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple, Type, U
 
 import attr
 from opensearchpy.helpers.search import Search
-
 from opensearchpy import helpers, exceptions
+from opensearchpy.exceptions import TransportError
+
 from stac_fastapi.elasticsearch import serializers
 from stac_fastapi.elasticsearch.config.config_opensearch import AsyncSearchSettings
 from stac_fastapi.elasticsearch.config.config_opensearch import (
@@ -187,10 +188,17 @@ async def create_collection_index() -> None:
 
     index = f"{COLLECTIONS_INDEX}-000001"
 
-    await client.indices.create(
-        index=index,
-        body=search_body
-    )
+    try:
+        await client.indices.create(
+            index=index,
+            body=search_body
+        )
+    except TransportError as e:
+        if e.status_code == 400:
+            pass  # Ignore 400 status codes
+        else:
+            raise e 
+        
     await client.close()
 
 
@@ -213,10 +221,17 @@ async def create_item_index(collection_id: str):
         "settings":ES_ITEMS_SETTINGS,
     }
 
-    await client.indices.create(
-        index=f"{index_by_collection_id(collection_id)}-000001",
-        body=search_body
-    )
+    try:
+        await client.indices.create(
+            index=f"{index_name}-000001",
+            body=search_body
+        )
+    except TransportError as e:
+        if e.status_code == 400:
+            pass  # Ignore 400 status codes
+        else:
+            raise e 
+        
     await client.close()
 
 

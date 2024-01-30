@@ -59,12 +59,16 @@ test:
 
 .PHONY: test-opensearch
 test-opensearch:
-	-$(run_os) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh opensearch:9202 && cd /app/stac_fastapi/elasticsearch/tests/clients && pytest'
+	-$(run_os) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh opensearch:9202 && cd /app/stac_fastapi/elasticsearch/tests/ && pytest'
 	docker-compose down
 
-.PHONY: run-database
-run-database:
+.PHONY: run-database-es
+run-database-es:
 	docker-compose run --rm elasticsearch
+
+.PHONY: run-database-os
+run-database-os:
+	docker-compose run --rm opensearch
 
 .PHONY: pybase-install
 pybase-install:
