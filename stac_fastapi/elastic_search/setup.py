@@ -57,12 +57,14 @@ setup(
     url="https://github.com/stac-utils/stac-fastapi-elasticsearch",
     license="MIT",
     packages=find_namespace_packages(
-        include=["elasticsearch", "elasticsearch.*", "common", "common.*"],
+        include=["elastic_search", "elastic_search.*", "common", "common.*"],
         exclude=["tests", "scripts"],
     ),
     zip_safe=False,
     install_requires=install_requires,
     tests_require=extra_reqs["dev"],
     extras_require=extra_reqs,
-    entry_points={"console_scripts": ["stac-fastapi-elasticsearch=app:run"]},
+    entry_points={
+        "console_scripts": ["stac-fastapi-elasticsearch=elastic_search.app:run"]
+    },
 )

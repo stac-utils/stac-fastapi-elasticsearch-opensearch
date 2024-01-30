@@ -1,7 +1,5 @@
 """FastAPI application."""
-from elastic_search.config import ElasticsearchSettings
-from elastic_search.database_logic import create_collection_index
-from elastic_search.session import Session
+import sys
 
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import create_get_request_model, create_post_request_model
@@ -12,6 +10,9 @@ from stac_fastapi.common.core import (
     TransactionsClient,
 )
 from stac_fastapi.common.extensions import QueryExtension
+from stac_fastapi.elastic_search.config import ElasticsearchSettings
+from stac_fastapi.elastic_search.database_logic import create_collection_index
+from stac_fastapi.elastic_search.session import Session
 from stac_fastapi.extensions.core import (
     ContextExtension,
     FieldsExtension,
@@ -21,6 +22,8 @@ from stac_fastapi.extensions.core import (
     TransactionExtension,
 )
 from stac_fastapi.extensions.third_party import BulkTransactionExtension
+
+print("API sys.path:", sys.path)
 
 settings = ElasticsearchSettings()
 session = Session.create_from_settings(settings)
@@ -46,7 +49,7 @@ post_request_model = create_post_request_model(extensions)
 api = StacApi(
     settings=settings,
     extensions=extensions,
-    client=CoreClient(session=session),
+    client=CoreClient(session=session, post_request_model=post_request_model),
     search_get_request_model=create_get_request_model(extensions),
     search_post_request_model=post_request_model,
 )

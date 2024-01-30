@@ -11,11 +11,6 @@ from urllib.parse import unquote_plus, urljoin
 import attr
 import orjson
 import stac_pydantic
-from common.base_database_logic import BaseDatabaseLogic
-from common.models.links import PagingLinks
-from elastic_search import serializers
-from elastic_search.serializers import CollectionSerializer, ItemSerializer
-from elastic_search.session import Session
 from fastapi import HTTPException, Request
 from overrides import overrides
 from pydantic import ValidationError
@@ -24,6 +19,11 @@ from pygeofilter.parsers.cql2_text import parse as parse_cql2_text
 from stac_pydantic.links import Relations
 from stac_pydantic.shared import MimeTypes
 
+# from common.base_database_logic import BaseDatabaseLogic
+from stac_fastapi.common.models.links import PagingLinks
+from stac_fastapi.elastic_search import serializers
+from stac_fastapi.elastic_search.serializers import CollectionSerializer, ItemSerializer
+from stac_fastapi.elastic_search.session import Session
 from stac_fastapi.extensions.third_party.bulk_transactions import (
     BaseBulkTransactionsClient,
     BulkTransactionMethod,
@@ -66,12 +66,12 @@ class CoreClient(AsyncBaseCoreClient):
 
     session: Session = attr.ib(default=attr.Factory(Session.create_from_env))
     item_serializer: Type[serializers.ItemSerializer] = attr.ib(
-        default=serializers.ItemSerializer
+        default=serializers.ItemSerializer  # type: ignore
     )
     collection_serializer: Type[serializers.CollectionSerializer] = attr.ib(
-        default=serializers.CollectionSerializer
+        default=serializers.CollectionSerializer  # type: ignore
     )
-    database: BaseDatabaseLogic = attr.ib(init=False)
+    post_request_model = attr.ib(default=BaseSearchPostRequest)
 
     def __attrs_post_init__(self):
         """
@@ -84,11 +84,15 @@ class CoreClient(AsyncBaseCoreClient):
         """
         try:
             # Dynamically import the database logic based on installed package
-            database_module = importlib.import_module("elastic_search.database_logic")
+            database_module = importlib.import_module(
+                "stac_fastapi.elastic_search.database_logic"
+            )
             DatabaseLogicClass = getattr(database_module, "DatabaseLogic")
         except ImportError:
             # Fall back to OpenSearch if Elasticsearch is not available
-            database_module = importlib.import_module("open_search.database_logic")
+            database_module = importlib.import_module(
+                "stac_fastapi.open_search.database_logic"
+            )
             DatabaseLogicClass = getattr(database_module, "DatabaseLogic")
 
         self.database = DatabaseLogicClass()
@@ -562,7 +566,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     """Transactions extension specific CRUD operations."""
 
     session: Session = attr.ib(default=attr.Factory(Session.create_from_env))
-    database: BaseDatabaseLogic = attr.ib(init=False)
+    # database: BaseDatabaseLogic = attr.ib(init=False)
 
     def __attrs_post_init__(self):
         """
@@ -575,11 +579,15 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         """
         try:
             # Dynamically import the database logic based on installed package
-            database_module = importlib.import_module("elastic_search.database_logic")
+            database_module = importlib.import_module(
+                "stac_fastapi.elastic_search.database_logic"
+            )
             DatabaseLogicClass = getattr(database_module, "DatabaseLogic")
         except ImportError:
             # Fall back to OpenSearch if Elasticsearch is not available
-            database_module = importlib.import_module("opensearch.database_logic")
+            database_module = importlib.import_module(
+                "stac_fastapi.opensearch.database_logic"
+            )
             DatabaseLogicClass = getattr(database_module, "DatabaseLogic")
 
         self.database = DatabaseLogicClass()
@@ -752,7 +760,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
     """
 
     session: Session = attr.ib(default=attr.Factory(Session.create_from_env))
-    database: BaseDatabaseLogic = attr.ib(init=False)
+    # database: BaseDatabaseLogic = attr.ib(init=False)
 
     def __attrs_post_init__(self):
         """
@@ -765,11 +773,15 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         """
         try:
             # Dynamically import the database logic based on installed package
-            database_module = importlib.import_module("elastic_search.database_logic")
+            database_module = importlib.import_module(
+                "stac_fastapi.elastic_search.database_logic"
+            )
             DatabaseLogicClass = getattr(database_module, "DatabaseLogic")
         except ImportError:
             # Fall back to OpenSearch if Elasticsearch is not available
-            database_module = importlib.import_module("opensearch.database_logic")
+            database_module = importlib.import_module(
+                "stac_fastapi.opensearch.database_logic"
+            )
             DatabaseLogicClass = getattr(database_module, "DatabaseLogic")
 
         self.database = DatabaseLogicClass()

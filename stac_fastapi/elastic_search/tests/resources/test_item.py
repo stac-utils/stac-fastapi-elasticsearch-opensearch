@@ -9,11 +9,11 @@ from urllib.parse import parse_qs, urlparse, urlsplit
 import ciso8601
 import pystac
 import pytest
+from common.core import CoreClient
 from common.datetime_utils import now_to_rfc3339_str
 from geojson_pydantic.geometries import Polygon
 from pystac.utils import datetime_to_str
 
-from stac_fastapi.common.core import CoreClient
 from stac_fastapi.types.core import LandingPageMixin
 
 from ..conftest import create_item, refresh_indices
