@@ -6,16 +6,14 @@ from base64 import urlsafe_b64decode, urlsafe_b64encode
 from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple, Type, Union
 
 import attr
+from common.extensions import filter
+from elastic_search import serializers
+from elastic_search.config import AsyncElasticsearchSettings
+from elastic_search.config import ElasticsearchSettings as SyncElasticsearchSettings
+from elastic_search.utilities import bbox2polygon
 from elasticsearch_dsl import Q, Search
 
 from elasticsearch import exceptions, helpers  # type: ignore
-from elastic_search import serializers
-from elastic_search.config import AsyncElasticsearchSettings
-from elastic_search.config import (
-    ElasticsearchSettings as SyncElasticsearchSettings,
-)
-from common.extensions import filter
-from elastic_search.utilities import bbox2polygon
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.stac import Collection, Item
 

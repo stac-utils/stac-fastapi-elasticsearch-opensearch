@@ -1,4 +1,5 @@
 """Item crud client."""
+import importlib
 import logging
 import re
 from base64 import urlsafe_b64encode
@@ -10,7 +11,11 @@ from urllib.parse import unquote_plus, urljoin
 import attr
 import orjson
 import stac_pydantic
-from elastic_search.database_logic import DatabaseLogic as BaseDatabaseLogic
+from common.base_database_logic import BaseDatabaseLogic
+from common.models.links import PagingLinks
+from elastic_search import serializers
+from elastic_search.serializers import CollectionSerializer, ItemSerializer
+from elastic_search.session import Session
 from fastapi import HTTPException, Request
 from overrides import overrides
 from pydantic import ValidationError
@@ -19,11 +24,6 @@ from pygeofilter.parsers.cql2_text import parse as parse_cql2_text
 from stac_pydantic.links import Relations
 from stac_pydantic.shared import MimeTypes
 
-from elastic_search import serializers
-from elastic_search.config import ElasticsearchSettings
-from common.models.links import PagingLinks
-from elastic_search.serializers import CollectionSerializer, ItemSerializer
-from elastic_search.session import Session
 from stac_fastapi.extensions.third_party.bulk_transactions import (
     BaseBulkTransactionsClient,
     BulkTransactionMethod,
@@ -71,7 +71,27 @@ class CoreClient(AsyncBaseCoreClient):
     collection_serializer: Type[serializers.CollectionSerializer] = attr.ib(
         default=serializers.CollectionSerializer
     )
-    database = BaseDatabaseLogic()
+    database: BaseDatabaseLogic = attr.ib(init=False)
+
+    def __attrs_post_init__(self):
+        """
+        Post-initialization method for CoreClient.
+
+        This method is automatically called after CoreClient's instance is initialized.
+        It's responsible for setting up the database logic dynamically based on the
+        environment or configuration, ensuring that the appropriate database logic
+        (Elasticsearch or OpenSearch) is used.
+        """
+        try:
+            # Dynamically import the database logic based on installed package
+            database_module = importlib.import_module("elastic_search.database_logic")
+            DatabaseLogicClass = getattr(database_module, "DatabaseLogic")
+        except ImportError:
+            # Fall back to OpenSearch if Elasticsearch is not available
+            database_module = importlib.import_module("open_search.database_logic")
+            DatabaseLogicClass = getattr(database_module, "DatabaseLogic")
+
+        self.database = DatabaseLogicClass()
 
     @overrides
     async def all_collections(self, **kwargs) -> Collections:
@@ -542,7 +562,27 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     """Transactions extension specific CRUD operations."""
 
     session: Session = attr.ib(default=attr.Factory(Session.create_from_env))
-    database = BaseDatabaseLogic()
+    database: BaseDatabaseLogic = attr.ib(init=False)
+
+    def __attrs_post_init__(self):
+        """
+        Post-initialization method for TransactionsClient.
+
+        This method is automatically called after the instance is initialized.
+        It's responsible for setting up the database logic dynamically based on the
+        environment or configuration, ensuring that the appropriate database logic
+        (Elasticsearch or OpenSearch) is used.
+        """
+        try:
+            # Dynamically import the database logic based on installed package
+            database_module = importlib.import_module("elastic_search.database_logic")
+            DatabaseLogicClass = getattr(database_module, "DatabaseLogic")
+        except ImportError:
+            # Fall back to OpenSearch if Elasticsearch is not available
+            database_module = importlib.import_module("opensearch.database_logic")
+            DatabaseLogicClass = getattr(database_module, "DatabaseLogic")
+
+        self.database = DatabaseLogicClass()
 
     @overrides
     async def create_item(
@@ -712,7 +752,27 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
     """
 
     session: Session = attr.ib(default=attr.Factory(Session.create_from_env))
-    database = BaseDatabaseLogic()
+    database: BaseDatabaseLogic = attr.ib(init=False)
+
+    def __attrs_post_init__(self):
+        """
+        Post-initialization method for BulkTransactionsClient.
+
+        This method is automatically called after the instance is initialized.
+        It's responsible for setting up the database logic dynamically based on the
+        environment or configuration, ensuring that the appropriate database logic
+        (Elasticsearch or OpenSearch) is used.
+        """
+        try:
+            # Dynamically import the database logic based on installed package
+            database_module = importlib.import_module("elastic_search.database_logic")
+            DatabaseLogicClass = getattr(database_module, "DatabaseLogic")
+        except ImportError:
+            # Fall back to OpenSearch if Elasticsearch is not available
+            database_module = importlib.import_module("opensearch.database_logic")
+            DatabaseLogicClass = getattr(database_module, "DatabaseLogic")
+
+        self.database = DatabaseLogicClass()
 
     def preprocess_item(
         self, item: stac_types.Item, base_url, method: BulkTransactionMethod

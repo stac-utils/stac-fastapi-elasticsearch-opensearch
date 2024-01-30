@@ -6,20 +6,14 @@ from typing import Any, Callable, Dict, Optional
 
 import pytest
 import pytest_asyncio
+from common.core import BulkTransactionsClient, CoreClient, TransactionsClient
+from common.extensions import QueryExtension
+from elastic_search.config import AsyncElasticsearchSettings
+from elastic_search.database_logic import create_collection_index
 from httpx import AsyncClient
 
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import create_get_request_model, create_post_request_model
-from elastic_search.config import AsyncElasticsearchSettings
-from common.core import (
-    BulkTransactionsClient,
-    CoreClient,
-    TransactionsClient,
-)
-from elastic_search.database_logic import (
-    create_collection_index,
-)
-from common.extensions import QueryExtension
 from stac_fastapi.extensions.core import (  # FieldsExtension,
     ContextExtension,
     FieldsExtension,

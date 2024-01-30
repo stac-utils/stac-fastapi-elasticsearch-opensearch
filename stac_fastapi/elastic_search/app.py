@@ -1,17 +1,17 @@
 """FastAPI application."""
+from elastic_search.config import ElasticsearchSettings
+from elastic_search.database_logic import create_collection_index
+from elastic_search.session import Session
+
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import create_get_request_model, create_post_request_model
-from elastic_search.config import ElasticsearchSettings
 from stac_fastapi.common.core import (
     BulkTransactionsClient,
     CoreClient,
     EsAsyncBaseFiltersClient,
     TransactionsClient,
 )
-from elastic_search.database_logic import DatabaseLogic
 from stac_fastapi.common.extensions import QueryExtension
-from elastic_search.session import Session
-from elastic_search.database_logic import create_collection_index
 from stac_fastapi.extensions.core import (
     ContextExtension,
     FieldsExtension,
@@ -30,8 +30,6 @@ filter_extension.conformance_classes.append(
     "http://www.opengis.net/spec/cql2/1.0/conf/advanced-comparison-operators"
 )
 
-database_logic = DatabaseLogic()
-
 extensions = [
     TransactionExtension(client=TransactionsClient(session=session), settings=settings),
     BulkTransactionExtension(client=BulkTransactionsClient(session=session)),
@@ -48,7 +46,7 @@ post_request_model = create_post_request_model(extensions)
 api = StacApi(
     settings=settings,
     extensions=extensions,
-    client=CoreClient(session=session, post_request_model=post_request_model),
+    client=CoreClient(session=session),
     search_get_request_model=create_get_request_model(extensions),
     search_post_request_model=post_request_model,
 )
