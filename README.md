@@ -80,11 +80,19 @@ curl -X "GET" "http://localhost:8080/collections?limit=1&token=example_token"
 ```shell
 make test
 ```
+Test against OpenSearch only
 
 ```shell
 make test-opensearch
 ```
-   
+
+Test against Elasticsearch only
+
+```shell
+make test-elasticsearch
+```  
+
+
 ## Ingest sample data
 
 ```shell

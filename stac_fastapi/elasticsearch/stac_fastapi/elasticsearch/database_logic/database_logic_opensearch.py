@@ -7,6 +7,7 @@ from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple, Type, U
 
 import attr
 from opensearchpy.helpers.search import Search
+from opensearchpy.helpers.query import Q
 from opensearchpy import helpers, exceptions
 from opensearchpy.exceptions import TransportError
 
@@ -336,11 +337,12 @@ class DatabaseLogic:
         if token:
             search_after = urlsafe_b64decode(token.encode()).decode().split(",")
             search_body["search_after"] = search_after
+        search_body["sort"] = {"id": {"order": "asc"}}
+        
         collections = await self.client.search(
             index=COLLECTIONS_INDEX,
             body=search_body,
-            size=limit,
-            sort={"id": {"order": "asc"}},
+            size=limit
         )
         hits = collections["hits"]["hits"]
         return hits
@@ -545,10 +547,12 @@ class DatabaseLogic:
         """
         search_body = {}
         query = search.query.to_dict() if search.query else None
-        search_body["query"] = query if query else {}
+        if query:
+            search_body["query"] = query 
         if token:
             search_after = urlsafe_b64decode(token.encode()).decode().split(",")
             search_body["search_after"] = search_after
+        search_body["sort"]  = sort if sort else DEFAULT_SORT
 
         index_param = indices(collection_ids)
 
@@ -557,8 +561,7 @@ class DatabaseLogic:
                 index=index_param,
                 ignore_unavailable=ignore_unavailable,
                 body=search_body,
-                sort=sort or DEFAULT_SORT,
-                size=limit,
+                size=limit
             )
         )
 

@@ -52,13 +52,21 @@ docker-run: image-dev
 docker-shell:
 	$(run_es) /bin/bash
 
-.PHONY: test
+.PHONY: test-elasticsearch
 test:
 	-$(run_es) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd /app/stac_fastapi/elasticsearch/tests/ && pytest'
 	docker-compose down
 
 .PHONY: test-opensearch
 test-opensearch:
+	-$(run_os) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh opensearch:9202 && cd /app/stac_fastapi/elasticsearch/tests/ && pytest'
+	docker-compose down
+
+.PHONY: test
+test:
+	-$(run_es) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd /app/stac_fastapi/elasticsearch/tests/ && pytest'
+	docker-compose down
+
 	-$(run_os) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh opensearch:9202 && cd /app/stac_fastapi/elasticsearch/tests/ && pytest'
 	docker-compose down
 
