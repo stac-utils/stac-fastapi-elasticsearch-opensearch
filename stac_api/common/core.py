@@ -20,10 +20,10 @@ from stac_pydantic.links import Relations
 from stac_pydantic.shared import MimeTypes
 
 # from common.base_database_logic import BaseDatabaseLogic
-from stac_fastapi.common.models.links import PagingLinks
-from stac_fastapi.elastic_search import serializers
-from stac_fastapi.elastic_search.serializers import CollectionSerializer, ItemSerializer
-from stac_fastapi.elastic_search.session import Session
+from stac_api.common.models.links import PagingLinks
+from stac_api.elastic_search import serializers
+from stac_api.elastic_search.serializers import CollectionSerializer, ItemSerializer
+from stac_api.elastic_search.session import Session
 from stac_fastapi.extensions.third_party.bulk_transactions import (
     BaseBulkTransactionsClient,
     BulkTransactionMethod,
@@ -85,13 +85,13 @@ class CoreClient(AsyncBaseCoreClient):
         try:
             # Dynamically import the database logic based on installed package
             database_module = importlib.import_module(
-                "stac_fastapi.elastic_search.database_logic"
+                "stac_api.elastic_search.database_logic"
             )
             DatabaseLogicClass = getattr(database_module, "DatabaseLogic")
         except ImportError:
             # Fall back to OpenSearch if Elasticsearch is not available
             database_module = importlib.import_module(
-                "stac_fastapi.open_search.database_logic"
+                "stac_api.open_search.database_logic"
             )
             DatabaseLogicClass = getattr(database_module, "DatabaseLogic")
 
@@ -580,13 +580,13 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         try:
             # Dynamically import the database logic based on installed package
             database_module = importlib.import_module(
-                "stac_fastapi.elastic_search.database_logic"
+                "stac_api.elastic_search.database_logic"
             )
             DatabaseLogicClass = getattr(database_module, "DatabaseLogic")
         except ImportError:
             # Fall back to OpenSearch if Elasticsearch is not available
             database_module = importlib.import_module(
-                "stac_fastapi.opensearch.database_logic"
+                "stac_api.opensearch.database_logic"
             )
             DatabaseLogicClass = getattr(database_module, "DatabaseLogic")
 
@@ -774,13 +774,13 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         try:
             # Dynamically import the database logic based on installed package
             database_module = importlib.import_module(
-                "stac_fastapi.elastic_search.database_logic"
+                "stac_api.elastic_search.database_logic"
             )
             DatabaseLogicClass = getattr(database_module, "DatabaseLogic")
         except ImportError:
             # Fall back to OpenSearch if Elasticsearch is not available
             database_module = importlib.import_module(
-                "stac_fastapi.opensearch.database_logic"
+                "stac_api.opensearch.database_logic"
             )
             DatabaseLogicClass = getattr(database_module, "DatabaseLogic")
 

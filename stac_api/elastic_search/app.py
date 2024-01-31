@@ -3,16 +3,16 @@ import sys
 
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import create_get_request_model, create_post_request_model
-from stac_fastapi.common.core import (
+from stac_api.common.core import (
     BulkTransactionsClient,
     CoreClient,
     EsAsyncBaseFiltersClient,
     TransactionsClient,
 )
-from stac_fastapi.common.extensions import QueryExtension
-from stac_fastapi.elastic_search.config import ElasticsearchSettings
-from stac_fastapi.elastic_search.database_logic import create_collection_index
-from stac_fastapi.elastic_search.session import Session
+from stac_api.common.extensions import QueryExtension
+from stac_api.elastic_search.config import ElasticsearchSettings
+from stac_api.elastic_search.database_logic import create_collection_index
+from stac_api.elastic_search.session import Session
 from stac_fastapi.extensions.core import (
     ContextExtension,
     FieldsExtension,
@@ -67,7 +67,7 @@ def run() -> None:
         import uvicorn
 
         uvicorn.run(
-            "stac_fastapi.elastic_search.app:app",
+            "stac_api.elastic_search.app:app",
             host=settings.app_host,
             port=settings.app_port,
             log_level="info",

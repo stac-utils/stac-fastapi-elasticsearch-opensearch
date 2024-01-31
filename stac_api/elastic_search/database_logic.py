@@ -9,13 +9,13 @@ import attr
 from elasticsearch_dsl import Q, Search
 
 from elasticsearch import exceptions, helpers  # type: ignore
-from common.extensions import filter
-from elastic_search import serializers
-from elastic_search.config import AsyncElasticsearchSettings
-from elastic_search.config import (
+from stac_api.common.extensions import filter
+from stac_api.elastic_search import serializers
+from stac_api.elastic_search.config import AsyncElasticsearchSettings
+from stac_api.elastic_search.config import (
     ElasticsearchSettings as SyncElasticsearchSettings,
 )
-from elastic_search.utilities import bbox2polygon
+from stac_api.elastic_search.utilities import bbox2polygon
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.stac import Collection, Item
 
@@ -283,10 +283,10 @@ class DatabaseLogic:
     sync_client = SyncElasticsearchSettings().create_client
 
     item_serializer: Type[serializers.ItemSerializer] = attr.ib(
-        default=serializers.ItemSerializer  # type: ignore
+        default=serializers.ItemSerializer # type: ignore
     )
     collection_serializer: Type[serializers.CollectionSerializer] = attr.ib(
-        default=serializers.CollectionSerializer  # type: ignore
+        default=serializers.CollectionSerializer # type: ignore
     )
 
     """CORE LOGIC"""

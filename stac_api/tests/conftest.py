@@ -1,6 +1,6 @@
-# import sys
+import sys
 
-# sys.path.insert(0, "/app")
+sys.path.insert(0, "/app")
 
 import asyncio
 import copy
@@ -10,18 +10,18 @@ from typing import Any, Callable, Dict, Optional
 
 import pytest
 import pytest_asyncio
-from elastic_search.config import AsyncElasticsearchSettings
-from elastic_search.database_logic import create_collection_index
+from stac_api.elastic_search.config import AsyncElasticsearchSettings
+from stac_api.elastic_search.database_logic import create_collection_index
 from httpx import AsyncClient
 
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import create_get_request_model, create_post_request_model
-from stac_fastapi.common.core import (
+from stac_api.common.core import (
     BulkTransactionsClient,
     CoreClient,
     TransactionsClient,
 )
-from stac_fastapi.common.extensions import QueryExtension
+from stac_api.common.extensions import QueryExtension
 from stac_fastapi.extensions.core import (  # FieldsExtension,
     ContextExtension,
     FieldsExtension,

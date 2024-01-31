@@ -22,14 +22,15 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./stac_fastapi/elastic_search:/app/stac_fastapi/elastic_search
-      - ./stac_fastapi/common:/app/stac_fastapi/common
+      - ./stac_api/elastic_search:/app/stac_api/elastic_search
+      - ./stac_api/common:/app/stac_api/common
+      - ./stac_api/tests:/app/stac_api/tests
       - ./scripts:/app/scripts
       - ./esdata:/usr/share/elasticsearch/data
     depends_on:
       - elasticsearch
     command:
-      bash -c "./scripts/wait-for-it-es.sh es-container:9200 && python -m stac_fastapi.elastic_search.app"
+      bash -c "./scripts/wait-for-it-es.sh es-container:9200 && python -m stac_api.elastic_search.app"
 
   app-opensearch:
     container_name: stac-fastapi-os

@@ -13,8 +13,9 @@ ENV CURL_CA BUNDLE=/etc/ssl/certs/ca-certificates.crt
 WORKDIR /app
 
 # Copy the contents of common and elastic_search directories directly into /app
-COPY ./stac_fastapi/common /app/stac_fastapi/common
-COPY ./stac_fastapi/elastic_search /app/stac_fastapi/elastic_search
+COPY ./stac_api/common /app/stac_api/common
+COPY ./stac_api/elastic_search /app/stac_api/elastic_search
+COPY ./stac_api/tests /app/stac_api/tests
 
 # Install dependencies
-RUN pip install --no-cache-dir -e ./stac_fastapi/elastic_search[dev,server]
+RUN pip install --no-cache-dir -e ./stac_api/elastic_search[dev,server]

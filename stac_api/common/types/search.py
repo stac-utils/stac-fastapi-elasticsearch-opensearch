@@ -8,7 +8,7 @@ from typing import Dict, Optional, Set, Union
 
 from stac_pydantic.api.extensions.fields import FieldsExtension as FieldsBase
 
-from stac_fastapi.types.config import Settings
+from stac_api.types.config import Settings
 
 logger = logging.getLogger("uvicorn")
 logger.setLevel(logging.INFO)
