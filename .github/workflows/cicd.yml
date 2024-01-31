@@ -70,11 +70,11 @@ jobs:
 
       - name: Install elasticsearch stac-fastapi
         run: |
-          pip install ./stac_fastapi/elastic_search[dev,server]
+          pip install ./stac_api/elastic_search[dev,server]
 
       - name: Run test suite against Elasticsearch 7.x
         run: |
-          cd stac_fastapi/elastic_search && pipenv run pytest -svvv
+          cd stac_api && pipenv run pytest -svvv
         env:
           ENVIRONMENT: testing
           ES_PORT: 9200
@@ -84,7 +84,7 @@ jobs:
 
       - name: Run test suite against Elasticsearch 8.x
         run: |
-          cd stac_fastapi/elastic_search && pipenv run pytest -svvv
+          cd stac_api && pipenv run pytest -svvv
         env:
           ENVIRONMENT: testing
           ES_PORT: 9400

@@ -283,10 +283,10 @@ class DatabaseLogic:
     sync_client = SyncElasticsearchSettings().create_client
 
     item_serializer: Type[serializers.ItemSerializer] = attr.ib(
-        default=serializers.ItemSerializer # type: ignore
+        default=serializers.ItemSerializer  # type: ignore
     )
     collection_serializer: Type[serializers.CollectionSerializer] = attr.ib(
-        default=serializers.CollectionSerializer # type: ignore
+        default=serializers.CollectionSerializer  # type: ignore
     )
 
     """CORE LOGIC"""
