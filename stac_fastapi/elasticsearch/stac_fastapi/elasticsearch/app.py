@@ -36,7 +36,9 @@ database_logic = DatabaseLogic()
 
 extensions = [
     TransactionExtension(
-        client=TransactionsClient(database=database_logic, session=session),
+        client=TransactionsClient(
+            database=database_logic, session=session, settings=settings
+        ),
         settings=settings,
     ),
     BulkTransactionExtension(

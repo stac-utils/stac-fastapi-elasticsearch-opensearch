@@ -17,13 +17,18 @@ from pygeofilter.backends.cql2_json import to_cql2
 from pygeofilter.parsers.cql2_text import parse as parse_cql2_text
 from stac_pydantic.links import Relations
 from stac_pydantic.shared import MimeTypes
+from stac_pydantic.version import STAC_VERSION
 
-# from stac_fastapi.elasticsearch.config import ElasticsearchSettings
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.models.links import PagingLinks
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.session import Session
+from stac_fastapi.core.types.core import (
+    AsyncBaseCoreClient,
+    AsyncBaseFiltersClient,
+    AsyncBaseTransactionsClient,
+)
 from stac_fastapi.extensions.third_party.bulk_transactions import (
     BaseBulkTransactionsClient,
     BulkTransactionMethod,
@@ -31,12 +36,10 @@ from stac_fastapi.extensions.third_party.bulk_transactions import (
 )
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.config import Settings
-from stac_fastapi.types.core import (
-    AsyncBaseCoreClient,
-    AsyncBaseFiltersClient,
-    AsyncBaseTransactionsClient,
-)
+from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
+from stac_fastapi.types.extension import ApiExtension
 from stac_fastapi.types.links import CollectionLinks
+from stac_fastapi.types.requests import get_base_url
 from stac_fastapi.types.search import BaseSearchPostRequest
 from stac_fastapi.types.stac import Collection, Collections, Item, ItemCollection
 
@@ -65,14 +68,128 @@ class CoreClient(AsyncBaseCoreClient):
     """
 
     database: BaseDatabaseLogic = attr.ib()
+    base_conformance_classes: List[str] = attr.ib(
+        factory=lambda: BASE_CONFORMANCE_CLASSES
+    )
+    extensions: List[ApiExtension] = attr.ib(default=attr.Factory(list))
 
     session: Session = attr.ib(default=attr.Factory(Session.create_from_env))
     item_serializer: Type[ItemSerializer] = attr.ib(default=ItemSerializer)
     collection_serializer: Type[CollectionSerializer] = attr.ib(
         default=CollectionSerializer
     )
+    post_request_model = attr.ib(default=BaseSearchPostRequest)
+    stac_version: str = attr.ib(default=STAC_VERSION)
+    landing_page_id: str = attr.ib(default="stac-fastapi")
+    title: str = attr.ib(default="stac-fastapi")
+    description: str = attr.ib(default="stac-fastapi")
 
-    @overrides
+    def _landing_page(
+        self,
+        base_url: str,
+        conformance_classes: List[str],
+        extension_schemas: List[str],
+    ) -> stac_types.LandingPage:
+        landing_page = stac_types.LandingPage(
+            type="Catalog",
+            id=self.landing_page_id,
+            title=self.title,
+            description=self.description,
+            stac_version=self.stac_version,
+            conformsTo=conformance_classes,
+            links=[
+                {
+                    "rel": Relations.self.value,
+                    "type": MimeTypes.json,
+                    "href": base_url,
+                },
+                {
+                    "rel": Relations.root.value,
+                    "type": MimeTypes.json,
+                    "href": base_url,
+                },
+                {
+                    "rel": "data",
+                    "type": MimeTypes.json,
+                    "href": urljoin(base_url, "collections"),
+                },
+                {
+                    "rel": Relations.conformance.value,
+                    "type": MimeTypes.json,
+                    "title": "STAC/WFS3 conformance classes implemented by this server",
+                    "href": urljoin(base_url, "conformance"),
+                },
+                {
+                    "rel": Relations.search.value,
+                    "type": MimeTypes.geojson,
+                    "title": "STAC search",
+                    "href": urljoin(base_url, "search"),
+                    "method": "GET",
+                },
+                {
+                    "rel": Relations.search.value,
+                    "type": MimeTypes.geojson,
+                    "title": "STAC search",
+                    "href": urljoin(base_url, "search"),
+                    "method": "POST",
+                },
+            ],
+            stac_extensions=extension_schemas,
+        )
+        return landing_page
+
+    async def landing_page(self, **kwargs) -> stac_types.LandingPage:
+        """Landing page.
+
+        Called with `GET /`.
+
+        Returns:
+            API landing page, serving as an entry point to the API.
+        """
+        request: Request = kwargs["request"]
+        base_url = get_base_url(request)
+        landing_page = self._landing_page(
+            base_url=base_url,
+            conformance_classes=self.conformance_classes(),
+            extension_schemas=[],
+        )
+        collections = await self.all_collections(request=kwargs["request"])
+        for collection in collections["collections"]:
+            landing_page["links"].append(
+                {
+                    "rel": Relations.child.value,
+                    "type": MimeTypes.json.value,
+                    "title": collection.get("title") or collection.get("id"),
+                    "href": urljoin(base_url, f"collections/{collection['id']}"),
+                }
+            )
+
+        # Add OpenAPI URL
+        landing_page["links"].append(
+            {
+                "rel": "service-desc",
+                "type": "application/vnd.oai.openapi+json;version=3.0",
+                "title": "OpenAPI service description",
+                "href": urljoin(
+                    str(request.base_url), request.app.openapi_url.lstrip("/")
+                ),
+            }
+        )
+
+        # Add human readable service-doc
+        landing_page["links"].append(
+            {
+                "rel": "service-doc",
+                "type": "text/html",
+                "title": "OpenAPI service documentation",
+                "href": urljoin(
+                    str(request.base_url), request.app.docs_url.lstrip("/")
+                ),
+            }
+        )
+
+        return landing_page
+
     async def all_collections(self, **kwargs) -> Collections:
         """Read all collections from the database.
 
@@ -137,7 +254,6 @@ class CoreClient(AsyncBaseCoreClient):
             links=links,
         )
 
-    @overrides
     async def get_collection(self, collection_id: str, **kwargs) -> Collection:
         """Get a collection from the database by its id.
 
@@ -155,7 +271,6 @@ class CoreClient(AsyncBaseCoreClient):
         collection = await self.database.find_collection(collection_id=collection_id)
         return self.collection_serializer.db_to_stac(collection, base_url)
 
-    @overrides
     async def item_collection(
         self,
         collection_id: str,
@@ -243,7 +358,6 @@ class CoreClient(AsyncBaseCoreClient):
             context=context_obj,
         )
 
-    @overrides
     async def get_item(self, item_id: str, collection_id: str, **kwargs) -> Item:
         """Get an item from the database based on its id and collection id.
 

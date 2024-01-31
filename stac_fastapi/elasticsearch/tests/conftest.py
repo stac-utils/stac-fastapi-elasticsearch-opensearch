@@ -10,13 +10,19 @@ from httpx import AsyncClient
 
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import create_get_request_model, create_post_request_model
-from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
-from stac_fastapi.elasticsearch.core import (
+from stac_fastapi.core.core import (
     BulkTransactionsClient,
     CoreClient,
     TransactionsClient,
 )
-from stac_fastapi.elasticsearch.database_logic import create_collection_index
+from stac_fastapi.elasticsearch.config import (
+    AsyncElasticsearchSettings,
+    ElasticsearchSettings,
+)
+from stac_fastapi.elasticsearch.database_logic import (
+    DatabaseLogic,
+    create_collection_index,
+)
 from stac_fastapi.elasticsearch.extensions import QueryExtension
 from stac_fastapi.extensions.core import (  # FieldsExtension,
     ContextExtension,
@@ -143,19 +149,23 @@ async def ctx(txn_client: TransactionsClient, test_collection, test_item):
     await delete_collections_and_items(txn_client)
 
 
+database = DatabaseLogic()
+settings = ElasticsearchSettings()
+
+
 @pytest.fixture
 def core_client():
-    return CoreClient(session=None)
+    return CoreClient(database=database, session=None)
 
 
 @pytest.fixture
 def txn_client():
-    return TransactionsClient(session=None)
+    return TransactionsClient(database=database, session=None, settings=settings)
 
 
 @pytest.fixture
 def bulk_txn_client():
-    return BulkTransactionsClient(session=None)
+    return BulkTransactionsClient(database=database, session=None, settings=settings)
 
 
 @pytest_asyncio.fixture(scope="session")
@@ -163,7 +173,10 @@ async def app():
     settings = AsyncElasticsearchSettings()
     extensions = [
         TransactionExtension(
-            client=TransactionsClient(session=None), settings=settings
+            client=TransactionsClient(
+                database=database, session=None, settings=settings
+            ),
+            settings=settings,
         ),
         ContextExtension(),
         SortExtension(),
@@ -178,6 +191,7 @@ async def app():
     return StacApi(
         settings=settings,
         client=CoreClient(
+            database=database,
             session=None,
             extensions=extensions,
             post_request_model=post_request_model,
