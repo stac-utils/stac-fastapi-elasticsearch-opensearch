@@ -7,8 +7,8 @@ import click
 import requests
 
 if len(sys.argv) != 2:
-        print("Usage: python data_loader.py <opensearch|elasticsearch>")
-        sys.exit(1)
+    print("Usage: python data_loader.py <opensearch|elasticsearch>")
+    sys.exit(1)
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "setup_data/")
 
@@ -18,7 +18,7 @@ if backend == "opensearch":
 elif backend == "elasticsearch":
     STAC_API_BASE_URL = "http://localhost:8080"
 else:
-    print("Invalid backend tag. Enter either 'opensearch' or 'elasticsearch'.")  
+    print("Invalid backend tag. Enter either 'opensearch' or 'elasticsearch'.")
 
 
 def load_data(filename):

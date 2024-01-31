@@ -1,7 +1,7 @@
 """Item crud client."""
 import logging
-import re
 import os
+import re
 from base64 import urlsafe_b64encode
 from datetime import datetime as datetime_type
 from datetime import timezone
@@ -19,14 +19,16 @@ from pygeofilter.parsers.cql2_text import parse as parse_cql2_text
 from stac_pydantic.links import Relations
 from stac_pydantic.shared import MimeTypes
 
-backend = os.getenv("BACKEND", "elasticsearch").lower()
-if backend == "opensearch":
-    from stac_fastapi.elasticsearch.database_logic.database_logic_opensearch import DatabaseLogic
+if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
     from stac_fastapi.elasticsearch.config.config_opensearch import SearchSettings
+    from stac_fastapi.elasticsearch.database_logic.database_logic_opensearch import (
+        DatabaseLogic,
+    )
 else:
-    from stac_fastapi.elasticsearch.database_logic.database_logic_elasticsearch import DatabaseLogic
+    from stac_fastapi.elasticsearch.database_logic.database_logic_elasticsearch import (
+        DatabaseLogic,
+    )
     from stac_fastapi.elasticsearch.config.config_elasticsearch import SearchSettings
-
 
 from stac_fastapi.elasticsearch import serializers
 from stac_fastapi.elasticsearch.models.links import PagingLinks

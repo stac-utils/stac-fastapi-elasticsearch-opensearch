@@ -1,4 +1,6 @@
 """FastAPI application."""
+import os
+
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import create_get_request_model, create_post_request_model
 from stac_fastapi.elasticsearch.core import (
@@ -7,15 +9,17 @@ from stac_fastapi.elasticsearch.core import (
     EsAsyncBaseFiltersClient,
     TransactionsClient,
 )
-import os
 
-backend = os.getenv("BACKEND", "elasticsearch").lower()
-if backend == "opensearch":
+if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
     from stac_fastapi.elasticsearch.config.config_opensearch import SearchSettings
-    from stac_fastapi.elasticsearch.database_logic.database_logic_opensearch import create_collection_index
+    from stac_fastapi.elasticsearch.database_logic.database_logic_opensearch import (
+        create_collection_index,
+    )
 else:
     from stac_fastapi.elasticsearch.config.config_elasticsearch import SearchSettings
-    from stac_fastapi.elasticsearch.database_logic.database_logic_elasticsearch import create_collection_index
+    from stac_fastapi.elasticsearch.database_logic.database_logic_elasticsearch import (
+        create_collection_index,
+    )
 
 from stac_fastapi.elasticsearch.extensions import QueryExtension
 from stac_fastapi.elasticsearch.session import Session

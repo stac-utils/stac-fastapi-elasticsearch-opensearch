@@ -15,9 +15,9 @@ from stac_fastapi.elasticsearch.config.config_elasticsearch import (
     SearchSettings as SyncSearchSettings,
 )
 from stac_fastapi.elasticsearch.extensions import filter
+from stac_fastapi.elasticsearch.utilities import bbox2polygon
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.stac import Collection, Item
-from stac_fastapi.elasticsearch.utilities import bbox2polygon
 
 logger = logging.getLogger(__name__)
 

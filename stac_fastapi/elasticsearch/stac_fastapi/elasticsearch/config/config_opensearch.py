@@ -4,6 +4,7 @@ import ssl
 from typing import Any, Dict, Set
 
 from opensearchpy import AsyncOpenSearch, OpenSearch
+
 from stac_fastapi.types.config import ApiSettings
 
 

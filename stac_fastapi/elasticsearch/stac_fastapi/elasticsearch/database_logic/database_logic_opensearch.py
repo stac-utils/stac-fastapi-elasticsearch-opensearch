@@ -6,10 +6,10 @@ from base64 import urlsafe_b64decode, urlsafe_b64encode
 from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple, Type, Union
 
 import attr
-from opensearchpy.helpers.search import Search
-from opensearchpy.helpers.query import Q
-from opensearchpy import helpers, exceptions
+from opensearchpy import exceptions, helpers
 from opensearchpy.exceptions import TransportError
+from opensearchpy.helpers.query import Q
+from opensearchpy.helpers.search import Search
 
 from stac_fastapi.elasticsearch import serializers
 from stac_fastapi.elasticsearch.config.config_opensearch import AsyncSearchSettings
@@ -17,9 +17,9 @@ from stac_fastapi.elasticsearch.config.config_opensearch import (
     SearchSettings as SyncSearchSettings,
 )
 from stac_fastapi.elasticsearch.extensions import filter
+from stac_fastapi.elasticsearch.utilities import bbox2polygon
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.stac import Collection, Item
-from stac_fastapi.elasticsearch.utilities import bbox2polygon
 
 logger = logging.getLogger(__name__)
 
@@ -184,22 +184,19 @@ async def create_collection_index() -> None:
 
     search_body = {
         "mappings": ES_COLLECTIONS_MAPPINGS,
-        "aliases":{COLLECTIONS_INDEX: {}}
+        "aliases": {COLLECTIONS_INDEX: {}},
     }
 
     index = f"{COLLECTIONS_INDEX}-000001"
 
     try:
-        await client.indices.create(
-            index=index,
-            body=search_body
-        )
+        await client.indices.create(index=index, body=search_body)
     except TransportError as e:
         if e.status_code == 400:
             pass  # Ignore 400 status codes
         else:
-            raise e 
-        
+            raise e
+
     await client.close()
 
 
@@ -217,22 +214,19 @@ async def create_item_index(collection_id: str):
     client = AsyncSearchSettings().create_client
     index_name = index_by_collection_id(collection_id)
     search_body = {
-        "aliases":{index_name: {}},
-        "mappings":ES_ITEMS_MAPPINGS,
-        "settings":ES_ITEMS_SETTINGS,
+        "aliases": {index_name: {}},
+        "mappings": ES_ITEMS_MAPPINGS,
+        "settings": ES_ITEMS_SETTINGS,
     }
 
     try:
-        await client.indices.create(
-            index=f"{index_name}-000001",
-            body=search_body
-        )
+        await client.indices.create(index=f"{index_name}-000001", body=search_body)
     except TransportError as e:
         if e.status_code == 400:
             pass  # Ignore 400 status codes
         else:
-            raise e 
-        
+            raise e
+
     await client.close()
 
 
@@ -317,7 +311,9 @@ class DatabaseLogic:
     """CORE LOGIC"""
 
     async def get_all_collections(
-        self, token: Optional[str], limit: int
+        self,
+        token: Optional[str],
+        limit: int,
     ) -> Iterable[Dict[str, Any]]:
         """Retrieve a list of all collections from the database.
 
@@ -333,16 +329,15 @@ class DatabaseLogic:
             with the `COLLECTIONS_INDEX` as the target index and `size=limit` to retrieve records.
             The result is a generator of dictionaries containing the source data for each collection.
         """
-        search_body = {}
+        search_body: Dict[str, Any] = {}
         if token:
             search_after = urlsafe_b64decode(token.encode()).decode().split(",")
             search_body["search_after"] = search_after
+
         search_body["sort"] = {"id": {"order": "asc"}}
-        
+
         collections = await self.client.search(
-            index=COLLECTIONS_INDEX,
-            body=search_body,
-            size=limit
+            index=COLLECTIONS_INDEX, body=search_body, size=limit
         )
         hits = collections["hits"]["hits"]
         return hits
@@ -545,14 +540,14 @@ class DatabaseLogic:
         Raises:
             NotFoundError: If the collections specified in `collection_ids` do not exist.
         """
-        search_body = {}
+        search_body: Dict[str, Any] = {}
         query = search.query.to_dict() if search.query else None
         if query:
-            search_body["query"] = query 
+            search_body["query"] = query
         if token:
             search_after = urlsafe_b64decode(token.encode()).decode().split(",")
             search_body["search_after"] = search_after
-        search_body["sort"]  = sort if sort else DEFAULT_SORT
+        search_body["sort"] = sort if sort else DEFAULT_SORT
 
         index_param = indices(collection_ids)
 
@@ -561,7 +556,7 @@ class DatabaseLogic:
                 index=index_param,
                 ignore_unavailable=ignore_unavailable,
                 body=search_body,
-                size=limit
+                size=limit,
             )
         )
 
