@@ -12,7 +12,8 @@ import pytest
 from geojson_pydantic.geometries import Polygon
 from pystac.utils import datetime_to_str
 
-from stac_fastapi.elasticsearch.core import CoreClient
+from stac_fastapi.core.core import CoreClient
+from stac_fastapi.elasticsearch.database_logic import DatabaseLogic
 from stac_fastapi.elasticsearch.datetime_utils import now_to_rfc3339_str
 from stac_fastapi.types.core import LandingPageMixin
 
@@ -21,6 +22,9 @@ from ..conftest import create_item, refresh_indices
 
 def rfc3339_str_to_datetime(s: str) -> datetime:
     return ciso8601.parse_rfc3339(s)
+
+
+database_logic = DatabaseLogic()
 
 
 @pytest.mark.asyncio
@@ -773,7 +777,9 @@ async def test_conformance_classes_configurable():
     # Update environment to avoid key error on client instantiation
     os.environ["READER_CONN_STRING"] = "testing"
     os.environ["WRITER_CONN_STRING"] = "testing"
-    client = CoreClient(base_conformance_classes=["this is a test"])
+    client = CoreClient(
+        database=database_logic, base_conformance_classes=["this is a test"]
+    )
     assert client.conformance_classes()[0] == "this is a test"
 
 
