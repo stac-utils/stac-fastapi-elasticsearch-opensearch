@@ -68,6 +68,10 @@ jobs:
         run: |
           python -m pip install --upgrade pipenv wheel
 
+      - name: Install core library stac-fastapi
+        run: |
+          pip install ./stac_fastapi/core
+
       - name: Install elasticsearch stac-fastapi
         run: |
           pip install ./stac_fastapi/elasticsearch[dev,server]
