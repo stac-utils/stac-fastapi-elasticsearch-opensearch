@@ -50,7 +50,7 @@ file named `.env` in the same directory you run docker-compose from:
 ELASTICSEARCH_VERSION=7.17.1
 OPENSEARCH_VERSION=2.11.0
 ```
-The most recent 7.x versions should also work. See the [opensearch-py docs](https://github.com/opensearch-project/opensearch-py/blob/main/COMPATIBILITY.md) for compatibility information.
+The most recent Elasticsearch 7.x versions should also work. See the [opensearch-py docs](https://github.com/opensearch-project/opensearch-py/blob/main/COMPATIBILITY.md) for compatibility information.
 
 To create a new Collection:
 
@@ -91,7 +91,6 @@ Test against Elasticsearch only
 ```shell
 make test-elasticsearch
 ```  
-
 
 ## Ingest sample data
 
