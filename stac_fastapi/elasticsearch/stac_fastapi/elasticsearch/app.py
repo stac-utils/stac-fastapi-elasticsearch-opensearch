@@ -4,10 +4,10 @@ from stac_fastapi.api.models import create_get_request_model, create_post_reques
 from stac_fastapi.core.core import (
     BulkTransactionsClient,
     CoreClient,
+    EsAsyncBaseFiltersClient,
     TransactionsClient,
 )
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
-from stac_fastapi.elasticsearch.core import EsAsyncBaseFiltersClient
 from stac_fastapi.elasticsearch.database_logic import (
     DatabaseLogic,
     create_collection_index,
