@@ -1,14 +1,17 @@
 """FastAPI application."""
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import create_get_request_model, create_post_request_model
-from stac_fastapi.elasticsearch.config import ElasticsearchSettings
-from stac_fastapi.elasticsearch.core import (
+from stac_fastapi.core.core import (
     BulkTransactionsClient,
     CoreClient,
-    EsAsyncBaseFiltersClient,
     TransactionsClient,
 )
-from stac_fastapi.elasticsearch.database_logic import create_collection_index
+from stac_fastapi.elasticsearch.config import ElasticsearchSettings
+from stac_fastapi.elasticsearch.core import EsAsyncBaseFiltersClient
+from stac_fastapi.elasticsearch.database_logic import (
+    DatabaseLogic,
+    create_collection_index,
+)
 from stac_fastapi.elasticsearch.extensions import QueryExtension
 from stac_fastapi.elasticsearch.session import Session
 from stac_fastapi.extensions.core import (
@@ -29,9 +32,20 @@ filter_extension.conformance_classes.append(
     "http://www.opengis.net/spec/cql2/1.0/conf/advanced-comparison-operators"
 )
 
+database_logic = DatabaseLogic()
+
 extensions = [
-    TransactionExtension(client=TransactionsClient(session=session), settings=settings),
-    BulkTransactionExtension(client=BulkTransactionsClient(session=session)),
+    TransactionExtension(
+        client=TransactionsClient(database=database_logic, session=session),
+        settings=settings,
+    ),
+    BulkTransactionExtension(
+        client=BulkTransactionsClient(
+            database=database_logic,
+            session=session,
+            settings=settings,
+        )
+    ),
     FieldsExtension(),
     QueryExtension(),
     SortExtension(),
@@ -45,7 +59,9 @@ post_request_model = create_post_request_model(extensions)
 api = StacApi(
     settings=settings,
     extensions=extensions,
-    client=CoreClient(session=session, post_request_model=post_request_model),
+    client=CoreClient(
+        database=database_logic, session=session, post_request_model=post_request_model
+    ),
     search_get_request_model=create_get_request_model(extensions),
     search_post_request_model=post_request_model,
 )
