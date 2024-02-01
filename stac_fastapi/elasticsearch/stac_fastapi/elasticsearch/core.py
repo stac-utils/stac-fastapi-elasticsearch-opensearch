@@ -289,22 +289,10 @@ class CoreClient(AsyncBaseCoreClient):
             datetime = f"{intervals[0][0:19]}Z"
             return {"eq": datetime}
         else:
-            start_date = intervals[0]
-            end_date = intervals[1]
-            if ".." not in intervals:
-                start_date = f"{start_date[0:19]}Z"
-                end_date = f"{end_date[0:19]}Z"
-            elif start_date != "..":
-                start_date = f"{start_date[0:19]}Z"
-                end_date = "2200-12-01T12:31:12Z"
-            elif end_date != "..":
-                start_date = "1900-10-01T00:00:00Z"
-                end_date = f"{end_date[0:19]}Z"
-            else:
-                start_date = "1900-10-01T00:00:00Z"
-                end_date = "2200-12-01T12:31:12Z"
+            start_date = f"{intervals[0][0:19]}Z" if intervals[0] != ".." else None
+            end_date = f"{intervals[1][0:19]}Z" if intervals[1] != ".." else None
 
-        return {"lte": end_date, "gte": start_date}
+            return {"lte": end_date, "gte": start_date}
 
     async def get_search(
         self,
@@ -457,9 +445,9 @@ class CoreClient(AsyncBaseCoreClient):
             )
 
         if search_request.query:
-            for (field_name, expr) in search_request.query.items():
+            for field_name, expr in search_request.query.items():
                 field = "properties__" + field_name
-                for (op, value) in expr.items():
+                for op, value in expr.items():
                     search = self.database.apply_stacql_filter(
                         search=search, op=op, field=field, value=value
                     )

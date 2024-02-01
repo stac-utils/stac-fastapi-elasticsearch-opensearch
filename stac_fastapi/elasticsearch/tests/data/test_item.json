@@ -35,6 +35,8 @@
   },
   "properties": {
     "datetime": "2020-02-12T12:30:22Z",
+    "start_datetime": "2020-02-08T12:30:22Z",
+    "end_datetime": "2020-02-16T12:30:22Z",
     "landsat:scene_id": "LC82081612020043LGN00",
     "landsat:row": "161",
     "gsd": 15,
