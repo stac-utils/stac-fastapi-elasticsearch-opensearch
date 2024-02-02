@@ -218,6 +218,7 @@ class CoreClient(AsyncBaseCoreClient):
         next_link = None
         if len(hits) == limit:
             last_hit = hits[-1]
+            logger.info(last_hit)
             next_search_after = last_hit["sort"]
             next_token = urlsafe_b64encode(
                 ",".join(map(str, next_search_after)).encode()
@@ -848,6 +849,8 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         """Create es engine."""
         # settings = BaseSettings()
         self.client = self.settings.create_client
+        # settings = SearchSettings()
+        # self.client = settings.create_client
 
     def preprocess_item(
         self, item: stac_types.Item, base_url, method: BulkTransactionMethod

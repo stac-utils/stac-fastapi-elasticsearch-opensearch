@@ -1,4 +1,4 @@
-"""stac_fastapi: elasticsearch module."""
+"""stac_fastapi: opencsearch module."""
 
 from setuptools import find_namespace_packages, setup
 
@@ -13,34 +13,34 @@ install_requires = [
     "stac-fastapi.types==2.4.9",
     "stac-fastapi.api==2.4.9",
     "stac-fastapi.extensions==2.4.9",
-    # "elasticsearch[async]==8.11.0",
-    # "elasticsearch-dsl==8.11.0",
+    "opensearch-py==2.4.2",
+    "opensearch-py[async]==2.4.2",
     "pystac[validation]",
-    # "uvicorn",
+    "uvicorn",
     "orjson",
     "overrides",
-    # "starlette",
+    "starlette",
     "geojson-pydantic",
     "pygeofilter==0.2.1",
 ]
 
-# extra_reqs = {
-#     "dev": [
-#         "pytest",
-#         "pytest-cov",
-#         "pytest-asyncio",
-#         "pre-commit",
-#         "requests",
-#         "ciso8601",
-#         "httpx",
-#     ],
-#     "docs": ["mkdocs", "mkdocs-material", "pdocs"],
-#     "server": ["uvicorn[standard]==0.19.0"],
-# }
+extra_reqs = {
+    "dev": [
+        "pytest",
+        "pytest-cov",
+        "pytest-asyncio",
+        "pre-commit",
+        "requests",
+        "ciso8601",
+        "httpx",
+    ],
+    "docs": ["mkdocs", "mkdocs-material", "pdocs"],
+    "server": ["uvicorn[standard]==0.19.0"],
+}
 
 setup(
-    name="stac-fastapi.core",
-    description="Core library for the Elasticsearch and Opensearch stac-fastapi backends.",
+    name="stac-fastapi.opensearch",
+    description="Opensearch stac-fastapi backend.",
     long_description=desc,
     long_description_content_type="text/markdown",
     python_requires=">=3.8",
