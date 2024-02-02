@@ -43,7 +43,7 @@ services:
       - RELOAD=true
       - ENVIRONMENT=local
       - WEB_CONCURRENCY=10
-      - ES_HOST=172.17.0.1
+      - ES_HOST=opensearch
       - ES_PORT=9202
       - ES_USE_SSL=false
       - ES_VERIFY_CERTS=false
@@ -74,6 +74,7 @@ services:
   opensearch:
     container_name: os-container
     image: opensearchproject/opensearch:${OPENSEARCH_VERSION:-2.11.1}
+    hostname: opensearch
     environment:
       - discovery.type=single-node
       - plugins.security.disabled=true
