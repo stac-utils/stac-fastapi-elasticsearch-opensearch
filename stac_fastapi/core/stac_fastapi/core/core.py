@@ -570,9 +570,9 @@ class CoreClient(AsyncBaseCoreClient):
             )
 
         if search_request.query:
-            for (field_name, expr) in search_request.query.items():
+            for field_name, expr in search_request.query.items():
                 field = "properties__" + field_name
-                for (op, value) in expr.items():
+                for op, value in expr.items():
                     search = self.database.apply_stacql_filter(
                         search=search, op=op, field=field, value=value
                     )
@@ -776,8 +776,11 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         Update a collection.
 
         This method updates an existing collection in the database by first finding
-        the collection by its id, then deleting the old version, and finally creating
-        a new version of the updated collection. The updated collection is then returned.
+        the collection by the id given in the keyword argument `collection_id`.
+        If no `collection_id` is given the id of the given collection object is used.
+        If the object and keyword collection ids don't match the sub items
+        collection id is updated else the items are left unchanged.
+        The updated collection is then returned.
 
         Args:
             collection: A STAC collection that needs to be updated.
@@ -789,9 +792,18 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         """
         base_url = str(kwargs["request"].base_url)
 
-        await self.database.find_collection(collection_id=collection["id"])
-        await self.delete_collection(collection["id"])
-        await self.create_collection(collection, **kwargs)
+        collection_id = kwargs["request"].query_params.get(
+            "collection_id", collection["id"]
+        )
+
+        collection_links = CollectionLinks(
+            collection_id=collection["id"], base_url=base_url
+        ).create_links()
+        collection["links"] = collection_links
+
+        await self.database.update_collection(
+            collection_id=collection_id, collection=collection
+        )
 
         return CollectionSerializer.db_to_stac(collection, base_url)
 

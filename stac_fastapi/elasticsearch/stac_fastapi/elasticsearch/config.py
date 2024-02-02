@@ -39,6 +39,15 @@ def _es_config() -> Dict[str, Any]:
     if (u := os.getenv("ES_USER")) and (p := os.getenv("ES_PASS")):
         config["http_auth"] = (u, p)
 
+    if api_key := os.getenv("ES_API_KEY"):
+        if isinstance(config["headers"], dict):
+            headers = {**config["headers"], "x-api-key": api_key}
+
+        else:
+            config["headers"] = {"x-api-key": api_key}
+
+        config["headers"] = headers
+
     return config
 
 
