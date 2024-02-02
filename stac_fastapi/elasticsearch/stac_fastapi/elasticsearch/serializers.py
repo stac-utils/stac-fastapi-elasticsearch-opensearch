@@ -1,5 +1,6 @@
 """Serializers."""
 import abc
+from copy import deepcopy
 from typing import Any
 
 import attr
@@ -121,18 +122,24 @@ class CollectionSerializer(Serializer):
         Returns:
             stac_types.Collection: The STAC collection object.
         """
-        # Use dictionary unpacking to extract values from the collection dictionary
+        # Avoid modifying the input dict in-place ... doing so breaks some tests
+        collection = deepcopy(collection)
+
+        # Set defaults
         collection_id = collection.get("id")
-        stac_extensions = collection.get("stac_extensions", [])
-        stac_version = collection.get("stac_version", "")
-        title = collection.get("title", "")
-        description = collection.get("description", "")
-        keywords = collection.get("keywords", [])
-        license = collection.get("license", "")
-        providers = collection.get("providers", {})
-        summaries = collection.get("summaries", {})
-        extent = collection.get("extent", {})
-        collection_assets = collection.get("assets", {})
+        collection.setdefault("type", "Collection")
+        collection.setdefault("stac_extensions", [])
+        collection.setdefault("stac_version", "1.0.0")
+        collection.setdefault("title", collection_id)
+        collection.setdefault("description", collection_id)
+        collection.setdefault("keywords", [])
+        collection.setdefault("license", "proprietary")
+        collection.setdefault("providers", [])
+        collection.setdefault("summaries", {})
+        collection.setdefault(
+            "extent", {"spatial": {"bbox": []}, "temporal": {"interval": []}}
+        )
+        collection.setdefault("assets", {})
 
         # Create the collection links using CollectionLinks
         collection_links = CollectionLinks(
@@ -143,20 +150,7 @@ class CollectionSerializer(Serializer):
         original_links = collection.get("links")
         if original_links:
             collection_links += resolve_links(original_links, base_url)
+        collection["links"] = collection_links
 
         # Return the stac_types.Collection object
-        return stac_types.Collection(
-            type="Collection",
-            id=collection_id,
-            stac_extensions=stac_extensions,
-            stac_version=stac_version,
-            title=title,
-            description=description,
-            keywords=keywords,
-            license=license,
-            providers=providers,
-            summaries=summaries,
-            extent=extent,
-            links=collection_links,
-            assets=collection_assets,
-        )
+        return stac_types.Collection(**collection)
