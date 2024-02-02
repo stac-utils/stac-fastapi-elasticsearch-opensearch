@@ -9,12 +9,7 @@ from stac_fastapi.core.core import (
     TransactionsClient,
 )
 from stac_fastapi.core.extensions import QueryExtension
-from stac_fastapi.elasticsearch.config import ElasticsearchSettings
-from stac_fastapi.elasticsearch.database_logic import (
-    DatabaseLogic,
-    create_collection_index,
-)
-from stac_fastapi.elasticsearch.session import Session
+from stac_fastapi.core.session import Session
 from stac_fastapi.extensions.core import (
     ContextExtension,
     FieldsExtension,
@@ -24,8 +19,13 @@ from stac_fastapi.extensions.core import (
     TransactionExtension,
 )
 from stac_fastapi.extensions.third_party import BulkTransactionExtension
+from stac_fastapi.opensearch.config import OpensearchSettings
+from stac_fastapi.opensearch.database_logic import (
+    DatabaseLogic,
+    create_collection_index,
+)
 
-settings = ElasticsearchSettings()
+settings = OpensearchSettings()
 session = Session.create_from_settings(settings)
 
 filter_extension = FilterExtension(client=EsAsyncBaseFiltersClient())
@@ -82,7 +82,7 @@ def run() -> None:
         import uvicorn
 
         uvicorn.run(
-            "stac_fastapi.elasticsearch.app:app",
+            "stac_fastapi.opensearch.app:app",
             host=settings.app_host,
             port=settings.app_port,
             log_level="info",

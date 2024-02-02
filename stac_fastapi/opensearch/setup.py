@@ -1,4 +1,4 @@
-"""stac_fastapi: opencsearch module."""
+"""stac_fastapi: opensearch module."""
 
 from setuptools import find_namespace_packages, setup
 

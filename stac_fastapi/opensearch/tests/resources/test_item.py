@@ -14,7 +14,7 @@ from pystac.utils import datetime_to_str
 
 from stac_fastapi.core.core import CoreClient
 from stac_fastapi.core.datetime_utils import now_to_rfc3339_str
-from stac_fastapi.elasticsearch.database_logic import DatabaseLogic
+from stac_fastapi.opensearch.database_logic import DatabaseLogic
 from stac_fastapi.types.core import LandingPageMixin
 
 from ..conftest import create_item, refresh_indices

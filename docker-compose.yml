@@ -57,7 +57,7 @@ services:
     depends_on:
       - opensearch
     command:
-      bash -c "./scripts/wait-for-it-es.sh os-container:9202 && python -m stac_fastapi.elasticsearch.app"
+      bash -c "./scripts/wait-for-it-es.sh os-container:9202 && python -m stac_fastapi.opensearch.app"
 
   elasticsearch:
     container_name: es-container
