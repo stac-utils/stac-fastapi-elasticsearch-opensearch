@@ -46,7 +46,7 @@ def _es_config() -> Dict[str, Any]:
 _forbidden_fields: Set[str] = {"type"}
 
 
-class SearchSettings(ApiSettings):
+class OpensearchSettings(ApiSettings):
     """API settings."""
 
     # Fields which are defined by STAC but not included in the database model
@@ -59,7 +59,7 @@ class SearchSettings(ApiSettings):
         return OpenSearch(**_es_config())
 
 
-class AsyncSearchSettings(ApiSettings):
+class AsyncOpensearchSettings(ApiSettings):
     """API settings."""
 
     # Fields which are defined by STAC but not included in the database model
