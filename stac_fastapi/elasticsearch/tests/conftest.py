@@ -51,6 +51,7 @@ class Context:
 
 class MockRequest:
     base_url = "http://test-server"
+    query_params = {}
 
     def __init__(
         self,
@@ -62,7 +63,7 @@ class MockRequest:
         self.method = method
         self.url = url
         self.app = app
-        self.query_params = query_params or {}
+        self.query_params = query_params
 
 
 class TestSettings(AsyncSearchSettings):
