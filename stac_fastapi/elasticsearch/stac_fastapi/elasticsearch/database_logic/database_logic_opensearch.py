@@ -771,7 +771,7 @@ class DatabaseLogic:
             raise NotFoundError(f"Collection {collection_id} not found")
 
         return collection["_source"]
-    
+
     async def update_collection(
         self, collection_id: str, collection: Collection, refresh: bool = False
     ):
