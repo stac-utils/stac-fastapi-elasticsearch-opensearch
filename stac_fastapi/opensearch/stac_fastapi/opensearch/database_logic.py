@@ -772,7 +772,6 @@ class DatabaseLogic:
 
         return collection["_source"]
 
-    # this is copied from stac-fastapi-elasticseach and the logic needs to be updated for opensearch
     async def update_collection(
         self, collection_id: str, collection: Collection, refresh: bool = False
     ):
@@ -816,7 +815,7 @@ class DatabaseLogic:
             await self.client.index(
                 index=COLLECTIONS_INDEX,
                 id=collection_id,
-                document=collection,
+                body=collection,
                 refresh=refresh,
             )
 
