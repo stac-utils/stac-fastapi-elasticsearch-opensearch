@@ -1,12 +1,8 @@
-# STAC FastAPI Elasticsearch (sfes)
+# stac-fastapi-elasticsearch-opensearch (sfeos)
 
-## Elasticsearch backend for stac-fastapi
+## Elasticsearch and Opensearch backends for the stac-fastapi project
    
-#### Join our [Gitter](https://gitter.im/stac-fastapi-elasticsearch/community) page
 
-#### Check out the public Postman documentation [Postman](https://documenter.getpostman.com/view/12888943/2s8ZDSdRHA)
-
-#### Check out the examples folder for deployment options, ex. running sfes from pip in docker
 
 #### For changes, see the [Changelog](CHANGELOG.md)
 
@@ -18,6 +14,13 @@ To install the classes in your local Python env, run:
 ```shell
 pip install -e 'stac_fastapi/elasticsearch[dev]'
 ```
+
+or
+
+```shell
+pip install -e 'stac_fastapi/opensearch[dev]'
+```
+
 
 ### Pre-commit
 
