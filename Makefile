@@ -27,9 +27,13 @@ run_os = docker-compose \
 	-e APP_PORT=${OS_APP_PORT} \
 	app-opensearch
 
-.PHONY: image-deploy
-image-deploy:
-	docker build -f Dockerfile.deploy -t stac-fastapi-elasticsearch:latest .
+.PHONY: image-deploy-es
+image-deploy-es:
+	docker build -f Dockerfile.deploy.es -t stac-fastapi-elasticsearch:latest .
+	
+.PHONY: image-deploy-os
+image-deploy-os:
+	docker build -f Dockerfile.deploy.os -t stac-fastapi-opensearch:latest .
 
 .PHONY: run-deploy-locally
 run-deploy-locally:
@@ -44,13 +48,21 @@ run-deploy-locally:
 image-dev:
 	docker-compose build
 
-.PHONY: docker-run
-docker-run: image-dev
+.PHONY: docker-run-es
+docker-run-es: image-dev
 	$(run_es)
 
-.PHONY: docker-shell
+.PHONY: docker-run-os
+docker-run-es: image-dev
+	$(run_os)
+
+.PHONY: docker-shell-es
 docker-shell:
 	$(run_es) /bin/bash
+
+.PHONY: docker-shell-os
+docker-shell:
+	$(run_os) /bin/bash
 
 .PHONY: test-elasticsearch
 test:
@@ -59,7 +71,7 @@ test:
 
 .PHONY: test-opensearch
 test-opensearch:
-	-$(run_os) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh opensearch:9202 && cd /app/stac_fastapi/elasticsearch/tests/ && pytest'
+	-$(run_os) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh opensearch:9202 && cd /app/stac_fastapi/opensearch/tests/ && pytest'
 	docker-compose down
 
 .PHONY: test
@@ -67,7 +79,7 @@ test:
 	-$(run_es) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd /app/stac_fastapi/elasticsearch/tests/ && pytest'
 	docker-compose down
 
-	-$(run_os) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh opensearch:9202 && cd /app/stac_fastapi/elasticsearch/tests/ && pytest'
+	-$(run_os) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh opensearch:9202 && cd /app/stac_fastapi/opensearch/tests/ && pytest'
 	docker-compose down
 
 .PHONY: run-database-es
@@ -83,11 +95,16 @@ pybase-install:
 	pip install wheel && \
 	pip install -e ./stac_fastapi/api[dev] && \
 	pip install -e ./stac_fastapi/types[dev] && \
-	pip install -e ./stac_fastapi/extensions[dev]
+	pip install -e ./stac_fastapi/extensions[dev] && \
+	pip install -e ./stac_fastapi/core
 
-.PHONY: install
-install: pybase-install
+.PHONY: install-es
+install-es: pybase-install
 	pip install -e ./stac_fastapi/elasticsearch[dev,server]
+
+.PHONY: install-os
+install-os: pybase-install
+	pip install -e ./stac_fastapi/opensearch[dev,server]
 
 .PHONY: ingest
 ingest:
