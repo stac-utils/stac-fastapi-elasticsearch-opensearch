@@ -1,5 +1,6 @@
 """Item crud client."""
 import logging
+import os
 import re
 from base64 import urlsafe_b64encode
 from datetime import datetime as datetime_type
@@ -18,9 +19,18 @@ from pygeofilter.parsers.cql2_text import parse as parse_cql2_text
 from stac_pydantic.links import Relations
 from stac_pydantic.shared import MimeTypes
 
+if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
+    from stac_fastapi.elasticsearch.config.config_opensearch import SearchSettings
+    from stac_fastapi.elasticsearch.database_logic.database_logic_opensearch import (
+        DatabaseLogic,
+    )
+else:
+    from stac_fastapi.elasticsearch.database_logic.database_logic_elasticsearch import (
+        DatabaseLogic,
+    )
+    from stac_fastapi.elasticsearch.config.config_elasticsearch import SearchSettings
+
 from stac_fastapi.elasticsearch import serializers
-from stac_fastapi.elasticsearch.config import ElasticsearchSettings
-from stac_fastapi.elasticsearch.database_logic import DatabaseLogic
 from stac_fastapi.elasticsearch.models.links import PagingLinks
 from stac_fastapi.elasticsearch.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.elasticsearch.session import Session
@@ -728,7 +738,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
 
     def __attrs_post_init__(self):
         """Create es engine."""
-        settings = ElasticsearchSettings()
+        settings = SearchSettings()
         self.client = settings.create_client
 
     def preprocess_item(

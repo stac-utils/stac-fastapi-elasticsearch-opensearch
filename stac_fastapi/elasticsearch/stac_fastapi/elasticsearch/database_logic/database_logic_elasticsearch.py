@@ -10,11 +10,12 @@ from elasticsearch_dsl import Q, Search
 
 from elasticsearch import exceptions, helpers  # type: ignore
 from stac_fastapi.elasticsearch import serializers
-from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
-from stac_fastapi.elasticsearch.config import (
-    ElasticsearchSettings as SyncElasticsearchSettings,
+from stac_fastapi.elasticsearch.config.config_elasticsearch import AsyncSearchSettings
+from stac_fastapi.elasticsearch.config.config_elasticsearch import (
+    SearchSettings as SyncSearchSettings,
 )
 from stac_fastapi.elasticsearch.extensions import filter
+from stac_fastapi.elasticsearch.utilities import bbox2polygon
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.stac import Collection, Item
 
@@ -177,7 +178,7 @@ async def create_collection_index() -> None:
         None
 
     """
-    client = AsyncElasticsearchSettings().create_client
+    client = AsyncSearchSettings().create_client
 
     await client.options(ignore_status=400).indices.create(
         index=f"{COLLECTIONS_INDEX}-000001",
@@ -198,7 +199,7 @@ async def create_item_index(collection_id: str):
         None
 
     """
-    client = AsyncElasticsearchSettings().create_client
+    client = AsyncSearchSettings().create_client
     index_name = index_by_collection_id(collection_id)
 
     await client.options(ignore_status=400).indices.create(
@@ -216,7 +217,7 @@ async def delete_item_index(collection_id: str):
     Args:
         collection_id (str): The ID of the collection whose items index will be deleted.
     """
-    client = AsyncElasticsearchSettings().create_client
+    client = AsyncSearchSettings().create_client
 
     name = index_by_collection_id(collection_id)
     resolved = await client.indices.resolve_index(name=name)
@@ -227,21 +228,6 @@ async def delete_item_index(collection_id: str):
     else:
         await client.indices.delete(index=name)
     await client.close()
-
-
-def bbox2polygon(b0: float, b1: float, b2: float, b3: float) -> List[List[List[float]]]:
-    """Transform a bounding box represented by its four coordinates `b0`, `b1`, `b2`, and `b3` into a polygon.
-
-    Args:
-        b0 (float): The x-coordinate of the lower-left corner of the bounding box.
-        b1 (float): The y-coordinate of the lower-left corner of the bounding box.
-        b2 (float): The x-coordinate of the upper-right corner of the bounding box.
-        b3 (float): The y-coordinate of the upper-right corner of the bounding box.
-
-    Returns:
-        List[List[List[float]]]: A polygon represented as a list of lists of coordinates.
-    """
-    return [[[b0, b1], [b2, b1], [b2, b3], [b0, b3], [b0, b1]]]
 
 
 def mk_item_id(item_id: str, collection_id: str):
@@ -293,8 +279,8 @@ class Geometry(Protocol):  # noqa
 class DatabaseLogic:
     """Database logic."""
 
-    client = AsyncElasticsearchSettings().create_client
-    sync_client = SyncElasticsearchSettings().create_client
+    client = AsyncSearchSettings().create_client
+    sync_client = SyncSearchSettings().create_client
 
     item_serializer: Type[serializers.ItemSerializer] = attr.ib(
         default=serializers.ItemSerializer

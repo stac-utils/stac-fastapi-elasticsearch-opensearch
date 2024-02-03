@@ -15,6 +15,8 @@ install_requires = [
     "stac-fastapi.extensions==2.4.9",
     "elasticsearch[async]==8.11.0",
     "elasticsearch-dsl==8.11.0",
+    "opensearch-py==2.4.2",
+    "opensearch-py[async]==2.4.2",
     "pystac[validation]",
     "uvicorn",
     "orjson",
