@@ -218,7 +218,6 @@ class CoreClient(AsyncBaseCoreClient):
         next_link = None
         if len(hits) == limit:
             last_hit = hits[-1]
-            logger.info(last_hit)
             next_search_after = last_hit["sort"]
             next_token = urlsafe_b64encode(
                 ",".join(map(str, next_search_after)).encode()
