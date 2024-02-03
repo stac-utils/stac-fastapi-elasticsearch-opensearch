@@ -1,6 +1,6 @@
 # STAC FastAPI Elasticsearch (sfes)
 
-## Elasticsearch backend for stac-fastapi
+## Elasticsearch backend for stac-fastapi with Opensearch support
    
 #### Join our [Gitter](https://gitter.im/stac-fastapi-elasticsearch/community) page
 
