@@ -42,7 +42,7 @@ extra_reqs = {
 
 setup(
     name="stac-fastapi.elasticsearch",
-    description="An implementation of STAC API based on the FastAPI framework with Elasticsearch.",
+    description="An implementation of STAC API based on the FastAPI framework with both Elasticsearch and Opensearch.",
     long_description=desc,
     long_description_content_type="text/markdown",
     python_requires=">=3.8",
