@@ -6,22 +6,11 @@ with open("README.md") as f:
     desc = f.read()
 
 install_requires = [
-    "fastapi",
-    "attrs",
-    "pydantic[dotenv]<2",
-    "stac_pydantic==2.0.*",
-    "stac-fastapi.types==2.4.9",
-    "stac-fastapi.api==2.4.9",
-    "stac-fastapi.extensions==2.4.9",
+    "stac-fastapi.core==0.1.0",
     "elasticsearch[async]==8.11.0",
     "elasticsearch-dsl==8.11.0",
-    "pystac[validation]",
     "uvicorn",
-    "orjson",
-    "overrides",
     "starlette",
-    "geojson-pydantic",
-    "pygeofilter==0.2.1",
 ]
 
 extra_reqs = {
