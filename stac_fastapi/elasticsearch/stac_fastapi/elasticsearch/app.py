@@ -9,12 +9,12 @@ from stac_fastapi.core.core import (
     TransactionsClient,
 )
 from stac_fastapi.core.extensions import QueryExtension
+from stac_fastapi.core.session import Session
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
 from stac_fastapi.elasticsearch.database_logic import (
     DatabaseLogic,
     create_collection_index,
 )
-from stac_fastapi.elasticsearch.session import Session
 from stac_fastapi.extensions.core import (
     ContextExtension,
     FieldsExtension,

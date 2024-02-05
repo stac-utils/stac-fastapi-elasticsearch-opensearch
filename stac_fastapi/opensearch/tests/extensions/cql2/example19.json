@@ -1,9 +1,0 @@
-{
-  "op": "like",
-  "args": [
-    {
-      "property": "scene_id"
-    },
-    "LC82030282019133%"
-  ]
-}
