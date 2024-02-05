@@ -661,7 +661,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     @overrides
     async def create_item(
         self, collection_id: str, item: stac_types.Item, **kwargs
-    ) -> stac_types.Item:
+    ) -> Optional[stac_types.Item]:
         """Create an item in the collection.
 
         Args:
@@ -692,7 +692,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 collection_id, processed_items, refresh=kwargs.get("refresh", False)
             )
 
-            return None  # type: ignore
+            return None
         else:
             item = await self.database.prep_create_item(item=item, base_url=base_url)
             await self.database.create_item(item, refresh=kwargs.get("refresh", False))
@@ -730,7 +730,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     @overrides
     async def delete_item(
         self, item_id: str, collection_id: str, **kwargs
-    ) -> stac_types.Item:
+    ) -> Optional[stac_types.Item]:
         """Delete an item from a collection.
 
         Args:
@@ -741,7 +741,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             Optional[stac_types.Item]: The deleted item, or `None` if the item was successfully deleted.
         """
         await self.database.delete_item(item_id=item_id, collection_id=collection_id)
-        return None  # type: ignore
+        return None
 
     @overrides
     async def create_collection(
@@ -810,7 +810,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     @overrides
     async def delete_collection(
         self, collection_id: str, **kwargs
-    ) -> stac_types.Collection:
+    ) -> Optional[stac_types.Collection]:
         """
         Delete a collection.
 
@@ -827,7 +827,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             NotFoundError: If the collection doesn't exist.
         """
         await self.database.delete_collection(collection_id=collection_id)
-        return None  # type: ignore
+        return None
 
 
 @attr.s
@@ -842,14 +842,10 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
     database: BaseDatabaseLogic = attr.ib()
     settings: ApiBaseSettings = attr.ib()
     session: Session = attr.ib(default=attr.Factory(Session.create_from_env))
-    # database = DatabaseLogic()
 
     def __attrs_post_init__(self):
         """Create es engine."""
-        # settings = BaseSettings()
         self.client = self.settings.create_client
-        # settings = SearchSettings()
-        # self.client = settings.create_client
 
     def preprocess_item(
         self, item: stac_types.Item, base_url, method: BulkTransactionMethod
