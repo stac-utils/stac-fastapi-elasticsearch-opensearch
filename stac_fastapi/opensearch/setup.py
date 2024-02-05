@@ -43,7 +43,7 @@ setup(
         "Programming Language :: Python :: 3.11",
         "License :: OSI Approved :: MIT License",
     ],
-    url="https://github.com/stac-utils/stac-fastapi-elasticsearch",
+    url="https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch",
     license="MIT",
     packages=find_namespace_packages(),
     zip_safe=False,
