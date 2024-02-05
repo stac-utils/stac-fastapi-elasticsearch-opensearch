@@ -3,7 +3,7 @@ version: '3.9'
 services:
   app-elasticsearch:
     container_name: stac-fastapi-es
-    image: stac-utils/stac-fastapi
+    image: stac-utils/stac-fastapi-es
     restart: always
     build:
       context: .
@@ -14,10 +14,11 @@ services:
       - RELOAD=true
       - ENVIRONMENT=local
       - WEB_CONCURRENCY=10
-      - ES_HOST=172.17.0.1
+      - ES_HOST=elasticsearch
       - ES_PORT=9200
       - ES_USE_SSL=false
       - ES_VERIFY_CERTS=false
+      - BACKEND=elasticsearch
     ports:
       - "8080:8080"
     volumes:
@@ -29,9 +30,39 @@ services:
     command:
       bash -c "./scripts/wait-for-it-es.sh es-container:9200 && python -m stac_fastapi.elasticsearch.app"
 
+  app-opensearch:
+    container_name: stac-fastapi-os
+    image: stac-utils/stac-fastapi-os
+    restart: always
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    environment:
+      - APP_HOST=0.0.0.0
+      - APP_PORT=8082
+      - RELOAD=true
+      - ENVIRONMENT=local
+      - WEB_CONCURRENCY=10
+      - ES_HOST=opensearch
+      - ES_PORT=9202
+      - ES_USE_SSL=false
+      - ES_VERIFY_CERTS=false
+      - BACKEND=opensearch
+    ports:
+      - "8082:8082"
+    volumes:
+      - ./stac_fastapi:/app/stac_fastapi
+      - ./scripts:/app/scripts
+      - ./osdata:/usr/share/opensearch/data
+    depends_on:
+      - opensearch
+    command:
+      bash -c "./scripts/wait-for-it-es.sh os-container:9202 && python -m stac_fastapi.elasticsearch.app"
+
   elasticsearch:
     container_name: es-container
     image: docker.elastic.co/elasticsearch/elasticsearch:${ELASTICSEARCH_VERSION:-8.11.0}
+    hostname: elasticsearch
     environment:
       ES_JAVA_OPTS: -Xms512m -Xmx1g
     volumes:
@@ -39,3 +70,17 @@ services:
       - ./elasticsearch/snapshots:/usr/share/elasticsearch/snapshots
     ports:
       - "9200:9200"
+
+  opensearch:
+    container_name: os-container
+    image: opensearchproject/opensearch:${OPENSEARCH_VERSION:-2.11.1}
+    hostname: opensearch
+    environment:
+      - discovery.type=single-node
+      - plugins.security.disabled=true
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+    volumes:
+      - ./opensearch/config/opensearch.yml:/usr/share/opensearch/config/opensearch.yml
+      - ./opensearch/snapshots:/usr/share/opensearch/snapshots
+    ports:
+      - "9202:9202"

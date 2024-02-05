@@ -1,5 +1,6 @@
 """Item crud client."""
 import logging
+import os
 import re
 from base64 import urlsafe_b64encode
 from datetime import datetime as datetime_type
@@ -18,9 +19,18 @@ from pygeofilter.parsers.cql2_text import parse as parse_cql2_text
 from stac_pydantic.links import Relations
 from stac_pydantic.shared import MimeTypes
 
+if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
+    from stac_fastapi.elasticsearch.config.config_opensearch import SearchSettings
+    from stac_fastapi.elasticsearch.database_logic.database_logic_opensearch import (
+        DatabaseLogic,
+    )
+else:
+    from stac_fastapi.elasticsearch.database_logic.database_logic_elasticsearch import (
+        DatabaseLogic,
+    )
+    from stac_fastapi.elasticsearch.config.config_elasticsearch import SearchSettings
+
 from stac_fastapi.elasticsearch import serializers
-from stac_fastapi.elasticsearch.config import ElasticsearchSettings
-from stac_fastapi.elasticsearch.database_logic import DatabaseLogic
 from stac_fastapi.elasticsearch.models.links import PagingLinks
 from stac_fastapi.elasticsearch.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.elasticsearch.session import Session
@@ -457,9 +467,9 @@ class CoreClient(AsyncBaseCoreClient):
             )
 
         if search_request.query:
-            for (field_name, expr) in search_request.query.items():
+            for field_name, expr in search_request.query.items():
                 field = "properties__" + field_name
-                for (op, value) in expr.items():
+                for op, value in expr.items():
                     search = self.database.apply_stacql_filter(
                         search=search, op=op, field=field, value=value
                     )
@@ -660,8 +670,11 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         Update a collection.
 
         This method updates an existing collection in the database by first finding
-        the collection by its id, then deleting the old version, and finally creating
-        a new version of the updated collection. The updated collection is then returned.
+        the collection by the id given in the keyword argument `collection_id`.
+        If no `collection_id` is given the id of the given collection object is used.
+        If the object and keyword collection ids don't match the sub items
+        collection id is updated else the items are left unchanged.
+        The updated collection is then returned.
 
         Args:
             collection: A STAC collection that needs to be updated.
@@ -673,9 +686,18 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         """
         base_url = str(kwargs["request"].base_url)
 
-        await self.database.find_collection(collection_id=collection["id"])
-        await self.delete_collection(collection["id"])
-        await self.create_collection(collection, **kwargs)
+        collection_id = kwargs["request"].query_params.get(
+            "collection_id", collection["id"]
+        )
+
+        collection_links = CollectionLinks(
+            collection_id=collection["id"], base_url=base_url
+        ).create_links()
+        collection["links"] = collection_links
+
+        await self.database.update_collection(
+            collection_id=collection_id, collection=collection
+        )
 
         return CollectionSerializer.db_to_stac(collection, base_url)
 
@@ -716,7 +738,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
 
     def __attrs_post_init__(self):
         """Create es engine."""
-        settings = ElasticsearchSettings()
+        settings = SearchSettings()
         self.client = settings.create_client
 
     def preprocess_item(

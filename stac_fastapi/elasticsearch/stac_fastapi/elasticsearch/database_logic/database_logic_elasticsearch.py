@@ -10,11 +10,12 @@ from elasticsearch_dsl import Q, Search
 
 from elasticsearch import exceptions, helpers  # type: ignore
 from stac_fastapi.elasticsearch import serializers
-from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
-from stac_fastapi.elasticsearch.config import (
-    ElasticsearchSettings as SyncElasticsearchSettings,
+from stac_fastapi.elasticsearch.config.config_elasticsearch import AsyncSearchSettings
+from stac_fastapi.elasticsearch.config.config_elasticsearch import (
+    SearchSettings as SyncSearchSettings,
 )
 from stac_fastapi.elasticsearch.extensions import filter
+from stac_fastapi.elasticsearch.utilities import bbox2polygon
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.stac import Collection, Item
 
@@ -177,7 +178,7 @@ async def create_collection_index() -> None:
         None
 
     """
-    client = AsyncElasticsearchSettings().create_client
+    client = AsyncSearchSettings().create_client
 
     await client.options(ignore_status=400).indices.create(
         index=f"{COLLECTIONS_INDEX}-000001",
@@ -198,7 +199,7 @@ async def create_item_index(collection_id: str):
         None
 
     """
-    client = AsyncElasticsearchSettings().create_client
+    client = AsyncSearchSettings().create_client
     index_name = index_by_collection_id(collection_id)
 
     await client.options(ignore_status=400).indices.create(
@@ -216,7 +217,7 @@ async def delete_item_index(collection_id: str):
     Args:
         collection_id (str): The ID of the collection whose items index will be deleted.
     """
-    client = AsyncElasticsearchSettings().create_client
+    client = AsyncSearchSettings().create_client
 
     name = index_by_collection_id(collection_id)
     resolved = await client.indices.resolve_index(name=name)
@@ -227,21 +228,6 @@ async def delete_item_index(collection_id: str):
     else:
         await client.indices.delete(index=name)
     await client.close()
-
-
-def bbox2polygon(b0: float, b1: float, b2: float, b3: float) -> List[List[List[float]]]:
-    """Transform a bounding box represented by its four coordinates `b0`, `b1`, `b2`, and `b3` into a polygon.
-
-    Args:
-        b0 (float): The x-coordinate of the lower-left corner of the bounding box.
-        b1 (float): The y-coordinate of the lower-left corner of the bounding box.
-        b2 (float): The x-coordinate of the upper-right corner of the bounding box.
-        b3 (float): The y-coordinate of the upper-right corner of the bounding box.
-
-    Returns:
-        List[List[List[float]]]: A polygon represented as a list of lists of coordinates.
-    """
-    return [[[b0, b1], [b2, b1], [b2, b3], [b0, b3], [b0, b1]]]
 
 
 def mk_item_id(item_id: str, collection_id: str):
@@ -293,8 +279,8 @@ class Geometry(Protocol):  # noqa
 class DatabaseLogic:
     """Database logic."""
 
-    client = AsyncElasticsearchSettings().create_client
-    sync_client = SyncElasticsearchSettings().create_client
+    client = AsyncSearchSettings().create_client
+    sync_client = SyncSearchSettings().create_client
 
     item_serializer: Type[serializers.ItemSerializer] = attr.ib(
         default=serializers.ItemSerializer
@@ -762,6 +748,53 @@ class DatabaseLogic:
             raise NotFoundError(f"Collection {collection_id} not found")
 
         return collection["_source"]
+
+    async def update_collection(
+        self, collection_id: str, collection: Collection, refresh: bool = False
+    ):
+        """Update a collection from the database.
+
+        Args:
+            self: The instance of the object calling this function.
+            collection_id (str): The ID of the collection to be updated.
+            collection (Collection): The Collection object to be used for the update.
+
+        Raises:
+            NotFoundError: If the collection with the given `collection_id` is not
+            found in the database.
+
+        Notes:
+            This function updates the collection in the database using the specified
+            `collection_id` and with the collection specified in the `Collection` object.
+            If the collection is not found, a `NotFoundError` is raised.
+        """
+        await self.find_collection(collection_id=collection_id)
+
+        if collection_id != collection["id"]:
+            await self.create_collection(collection, refresh=refresh)
+
+            await self.client.reindex(
+                body={
+                    "dest": {"index": f"{ITEMS_INDEX_PREFIX}{collection['id']}"},
+                    "source": {"index": f"{ITEMS_INDEX_PREFIX}{collection_id}"},
+                    "script": {
+                        "lang": "painless",
+                        "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection["id"]}'); ctx._source.collection = '{collection["id"]}' ;""",
+                    },
+                },
+                wait_for_completion=True,
+                refresh=refresh,
+            )
+
+            await self.delete_collection(collection_id)
+
+        else:
+            await self.client.index(
+                index=COLLECTIONS_INDEX,
+                id=collection_id,
+                document=collection,
+                refresh=refresh,
+            )
 
     async def delete_collection(self, collection_id: str, refresh: bool = False):
         """Delete a collection from the database.

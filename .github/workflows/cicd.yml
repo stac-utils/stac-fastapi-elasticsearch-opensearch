@@ -46,6 +46,22 @@ jobs:
           ES_JAVA_OPTS: -Xms512m -Xmx1g
         ports:
           - 9400:9400
+
+      opensearch_2_11:
+        image: opensearchproject/opensearch:2.11.1
+        env:
+          cluster.name: stac-cluster
+          node.name: os01
+          network.host: 0.0.0.0
+          transport.host: 0.0.0.0
+          discovery.type: single-node
+          http.port: 9202
+          http.cors.enabled: true
+          plugins.security.disabled: true
+          plugins.security.ssl.http.enabled: true
+          OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+        ports:
+          - 9202:9202
     strategy:
       matrix:
         python-version: [ "3.8", "3.9", "3.10", "3.11"]
@@ -91,3 +107,14 @@ jobs:
           ES_HOST: 172.17.0.1
           ES_USE_SSL: false
           ES_VERIFY_CERTS: false
+
+      - name: Run test suite against OpenSearch 2.11.1
+        run: |
+          cd stac_fastapi/elasticsearch && pipenv run pytest -svvv
+        env:
+          ENVIRONMENT: testing
+          ES_PORT: 9202
+          ES_HOST: 172.17.0.1
+          ES_USE_SSL: false
+          ES_VERIFY_CERTS: false
+          BACKEND: opensearch
