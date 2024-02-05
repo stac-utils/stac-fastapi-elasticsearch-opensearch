@@ -17,7 +17,7 @@ NumType = Union[float, int]
 StacType = Dict[str, Any]
 
 
-@attr.s  # type:ignore
+@attr.s
 class AsyncBaseTransactionsClient(abc.ABC):
     """Defines a pattern for implementing the STAC transaction extension."""
 
@@ -160,58 +160,6 @@ class AsyncBaseCoreClient(abc.ABC):
     def extension_is_enabled(self, extension: str) -> bool:
         """Check if an api extension is enabled."""
         return any([type(ext).__name__ == extension for ext in self.extensions])
-
-    # async def landing_page(self, **kwargs) -> stac_types.LandingPage:
-    #     """Landing page.
-
-    #     Called with `GET /`.
-
-    #     Returns:
-    #         API landing page, serving as an entry point to the API.
-    #     """
-    #     request: Request = kwargs["request"]
-    #     base_url = get_base_url(request)
-    #     landing_page = self._landing_page(
-    #         base_url=base_url,
-    #         conformance_classes=self.conformance_classes(),
-    #         extension_schemas=[],
-    #     )
-    #     collections = await self.all_collections(request=kwargs["request"])
-    #     for collection in collections["collections"]:
-    #         landing_page["links"].append(
-    #             {
-    #                 "rel": Relations.child.value,
-    #                 "type": MimeTypes.json.value,
-    #                 "title": collection.get("title") or collection.get("id"),
-    #                 "href": urljoin(base_url, f"collections/{collection['id']}"),
-    #             }
-    #         )
-
-    #     # Add OpenAPI URL
-    #     landing_page["links"].append(
-    #         {
-    #             "rel": "service-desc",
-    #             "type": "application/vnd.oai.openapi+json;version=3.0",
-    #             "title": "OpenAPI service description",
-    #             "href": urljoin(
-    #                 str(request.base_url), request.app.openapi_url.lstrip("/")
-    #             ),
-    #         }
-    #     )
-
-    #     # Add human readable service-doc
-    #     landing_page["links"].append(
-    #         {
-    #             "rel": "service-doc",
-    #             "type": "text/html",
-    #             "title": "OpenAPI service documentation",
-    #             "href": urljoin(
-    #                 str(request.base_url), request.app.docs_url.lstrip("/")
-    #             ),
-    #         }
-    #     )
-
-    #     return landing_page
 
     async def conformance(self, **kwargs) -> stac_types.Conformance:
         """Conformance classes.
