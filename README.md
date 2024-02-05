@@ -2,7 +2,17 @@
 
 ## Elasticsearch and Opensearch backends for the stac-fastapi project
    
+[![PyPI version](https://badge.fury.io/py/stac-fastapi.elasticsearch.svg)](https://badge.fury.io/py/stac-fastapi.elasticsearch)
 
+To install from PyPI:
+
+```shell
+pip install stac_fastapi.elasticsearch
+```
+or   
+```
+pip install stac_fastapi.opensearch
+```
 
 #### For changes, see the [Changelog](CHANGELOG.md)
 
@@ -32,17 +42,17 @@ Prior to commit, run:
 pre-commit run --all-files
 ```
 
-
-## Building
+## Build Elasticsearh API backend
 
 ```shell
-docker-compose build
+docker-compose up elasticsearch
+docker-compose build app-elasticsearch
 ```
   
-## Running API on localhost:8080
+## Running Elasticsearh API on localhost:8080
 
 ```shell
-docker-compose up
+docker-compose up app-elasticsearch
 ```
 
 By default, docker-compose uses Elasticsearch 8.x and OpenSearch 2.11.1. 
