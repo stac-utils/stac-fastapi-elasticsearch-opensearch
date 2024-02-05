@@ -5,6 +5,22 @@ import pytest
 
 from ..conftest import create_collection, delete_collections_and_items, refresh_indices
 
+CORE_COLLECTION_PROPS = [
+    "id",
+    "type",
+    "stac_extensions",
+    "stac_version",
+    "title",
+    "description",
+    "keywords",
+    "license",
+    "providers",
+    "summaries",
+    "extent",
+    "links",
+    "assets",
+]
+
 
 @pytest.mark.asyncio
 async def test_create_and_delete_collection(app_client, load_test_data):
@@ -96,6 +112,18 @@ async def test_collection_extensions(ctx, app_client):
 
     assert resp.status_code == 200
     assert resp.json().get("item_assets", {}).get("test") == test_asset
+
+
+@pytest.mark.asyncio
+async def test_collection_defaults(app_client):
+    """Test that properties omitted by client are populated w/ default values"""
+    minimal_coll = {"id": str(uuid.uuid4())}
+    resp = await app_client.post("/collections", json=minimal_coll)
+
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    for prop in CORE_COLLECTION_PROPS:
+        assert prop in resp_json.keys()
 
 
 @pytest.mark.asyncio
