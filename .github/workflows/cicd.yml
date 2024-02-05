@@ -98,27 +98,29 @@ jobs:
 
       - name: Run test suite against Elasticsearch 7.x
         run: |
-          cd stac_fastapi/elasticsearch && pipenv run pytest -svvv
+          pipenv run pytest -svvv
         env:
           ENVIRONMENT: testing
           ES_PORT: 9200
           ES_HOST: 172.17.0.1
           ES_USE_SSL: false
           ES_VERIFY_CERTS: false
+          BACKEND: elasticsearch
 
       - name: Run test suite against Elasticsearch 8.x
         run: |
-          cd stac_fastapi/elasticsearch && pipenv run pytest -svvv
+          pipenv run pytest -svvv
         env:
           ENVIRONMENT: testing
           ES_PORT: 9400
           ES_HOST: 172.17.0.1
           ES_USE_SSL: false
           ES_VERIFY_CERTS: false
+          BACKEND: elasticsearch
 
       - name: Run test suite against OpenSearch 2.11.1
         run: |
-          cd stac_fastapi/opensearch && pipenv run pytest -svvv
+          pipenv run pytest -svvv
         env:
           ENVIRONMENT: testing
           ES_PORT: 9202

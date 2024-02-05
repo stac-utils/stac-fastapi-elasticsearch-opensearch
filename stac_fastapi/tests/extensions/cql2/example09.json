@@ -1,0 +1,9 @@
+{
+  "op": ">",
+  "args": [
+    {
+      "property": "floors"
+    },
+    5
+  ]
+}
