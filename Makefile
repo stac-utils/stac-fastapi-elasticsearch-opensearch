@@ -1,6 +1,5 @@
 #!make
 APP_HOST ?= 0.0.0.0
-ES_APP_PORT ?= 8080
 EXTERNAL_APP_PORT ?= ${APP_PORT}
 
 ES_APP_PORT ?= 8080
@@ -8,7 +7,7 @@ ES_HOST ?= docker.for.mac.localhost
 ES_PORT ?= 9200
 
 OS_APP_PORT ?= 8082
-ES_HOST ?= docker.for.mac.localhost
+OS_HOST ?= docker.for.mac.localhost
 OS_PORT ?= 9202
 
 run_es = docker-compose \
@@ -29,11 +28,11 @@ run_os = docker-compose \
 
 .PHONY: image-deploy-es
 image-deploy-es:
-	docker build -f Dockerfile.deploy.es -t stac-fastapi-elasticsearch:latest .
+	docker build -f Dockerfile.dev.es -t stac-fastapi-elasticsearch:latest .
 	
 .PHONY: image-deploy-os
 image-deploy-os:
-	docker build -f Dockerfile.deploy.os -t stac-fastapi-opensearch:latest .
+	docker build -f Dockerfile.dev.os -t stac-fastapi-opensearch:latest .
 
 .PHONY: run-deploy-locally
 run-deploy-locally:
@@ -53,33 +52,33 @@ docker-run-es: image-dev
 	$(run_es)
 
 .PHONY: docker-run-os
-docker-run-es: image-dev
+docker-run-os: image-dev
 	$(run_os)
 
 .PHONY: docker-shell-es
-docker-shell:
+docker-shell-es:
 	$(run_es) /bin/bash
 
 .PHONY: docker-shell-os
-docker-shell:
+docker-shell-os:
 	$(run_os) /bin/bash
 
 .PHONY: test-elasticsearch
-test:
-	-$(run_es) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd /app/stac_fastapi/elasticsearch/tests/ && pytest'
+test-elasticsearch:
+	-$(run_es) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd stac_fastapi/tests/ && pytest'
 	docker-compose down
 
 .PHONY: test-opensearch
 test-opensearch:
-	-$(run_os) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh opensearch:9202 && cd /app/stac_fastapi/opensearch/tests/ && pytest'
+	-$(run_os) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh opensearch:9202 && cd stac_fastapi/tests/ && pytest'
 	docker-compose down
 
 .PHONY: test
 test:
-	-$(run_es) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd /app/stac_fastapi/elasticsearch/tests/ && pytest'
+	-$(run_es) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd stac_fastapi/tests/ && pytest'
 	docker-compose down
 
-	-$(run_os) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh opensearch:9202 && cd /app/stac_fastapi/opensearch/tests/ && pytest'
+	-$(run_os) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh opensearch:9202 && cd stac_fastapi/tests/ && pytest'
 	docker-compose down
 
 .PHONY: run-database-es

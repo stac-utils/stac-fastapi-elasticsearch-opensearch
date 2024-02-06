@@ -14,10 +14,16 @@ from pystac.utils import datetime_to_str
 
 from stac_fastapi.core.core import CoreClient
 from stac_fastapi.core.datetime_utils import now_to_rfc3339_str
-from stac_fastapi.elasticsearch.database_logic import DatabaseLogic
+
+# from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.types.core import LandingPageMixin
 
 from ..conftest import create_item, refresh_indices
+
+if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
+    from stac_fastapi.opensearch.database_logic import DatabaseLogic
+else:
+    from stac_fastapi.elasticsearch.database_logic import DatabaseLogic
 
 
 def rfc3339_str_to_datetime(s: str) -> datetime:
