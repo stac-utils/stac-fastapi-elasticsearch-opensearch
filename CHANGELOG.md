@@ -9,11 +9,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
-- Added core library package for common logic [#186]https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/186
+- Added core library package for common logic [#186](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/186)
 
 ### Changed
 
-- Moved Elasticsearch and Opensearch backends into separate packages [#186]https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/186
+- Moved Elasticsearch and Opensearch backends into separate packages [#186](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/186)
 
 ### Fixed
 
