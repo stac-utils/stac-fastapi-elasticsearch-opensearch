@@ -9,13 +9,13 @@ import attr
 from elasticsearch_dsl import Q, Search
 
 from elasticsearch import exceptions, helpers  # type: ignore
-from stac_fastapi.elasticsearch import serializers
-from stac_fastapi.elasticsearch.config.config_elasticsearch import AsyncSearchSettings
-from stac_fastapi.elasticsearch.config.config_elasticsearch import (
-    SearchSettings as SyncSearchSettings,
+from stac_fastapi.core.extensions import filter
+from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
+from stac_fastapi.core.utilities import bbox2polygon
+from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
+from stac_fastapi.elasticsearch.config import (
+    ElasticsearchSettings as SyncElasticsearchSettings,
 )
-from stac_fastapi.elasticsearch.extensions import filter
-from stac_fastapi.elasticsearch.utilities import bbox2polygon
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.stac import Collection, Item
 
@@ -178,7 +178,7 @@ async def create_collection_index() -> None:
         None
 
     """
-    client = AsyncSearchSettings().create_client
+    client = AsyncElasticsearchSettings().create_client
 
     await client.options(ignore_status=400).indices.create(
         index=f"{COLLECTIONS_INDEX}-000001",
@@ -199,7 +199,7 @@ async def create_item_index(collection_id: str):
         None
 
     """
-    client = AsyncSearchSettings().create_client
+    client = AsyncElasticsearchSettings().create_client
     index_name = index_by_collection_id(collection_id)
 
     await client.options(ignore_status=400).indices.create(
@@ -217,7 +217,7 @@ async def delete_item_index(collection_id: str):
     Args:
         collection_id (str): The ID of the collection whose items index will be deleted.
     """
-    client = AsyncSearchSettings().create_client
+    client = AsyncElasticsearchSettings().create_client
 
     name = index_by_collection_id(collection_id)
     resolved = await client.indices.resolve_index(name=name)
@@ -279,14 +279,12 @@ class Geometry(Protocol):  # noqa
 class DatabaseLogic:
     """Database logic."""
 
-    client = AsyncSearchSettings().create_client
-    sync_client = SyncSearchSettings().create_client
+    client = AsyncElasticsearchSettings().create_client
+    sync_client = SyncElasticsearchSettings().create_client
 
-    item_serializer: Type[serializers.ItemSerializer] = attr.ib(
-        default=serializers.ItemSerializer
-    )
-    collection_serializer: Type[serializers.CollectionSerializer] = attr.ib(
-        default=serializers.CollectionSerializer
+    item_serializer: Type[ItemSerializer] = attr.ib(default=ItemSerializer)
+    collection_serializer: Type[CollectionSerializer] = attr.ib(
+        default=CollectionSerializer
     )
 
     """CORE LOGIC"""

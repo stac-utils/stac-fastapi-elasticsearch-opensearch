@@ -10,26 +10,30 @@ from httpx import AsyncClient
 
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import create_get_request_model, create_post_request_model
-
-if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
-    from stac_fastapi.elasticsearch.config.config_opensearch import AsyncSearchSettings
-    from stac_fastapi.elasticsearch.database_logic.database_logic_opensearch import (
-        create_collection_index,
-    )
-else:
-    from stac_fastapi.elasticsearch.config.config_elasticsearch import (
-        AsyncSearchSettings,
-    )
-    from stac_fastapi.elasticsearch.database_logic.database_logic_elasticsearch import (
-        create_collection_index,
-    )
-
-from stac_fastapi.elasticsearch.core import (
+from stac_fastapi.core.core import (
     BulkTransactionsClient,
     CoreClient,
     TransactionsClient,
 )
-from stac_fastapi.elasticsearch.extensions import QueryExtension
+from stac_fastapi.core.extensions import QueryExtension
+
+if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
+    from stac_fastapi.opensearch.config import AsyncOpensearchSettings as AsyncSettings
+    from stac_fastapi.opensearch.config import OpensearchSettings as SearchSettings
+    from stac_fastapi.opensearch.database_logic import (
+        DatabaseLogic,
+        create_collection_index,
+    )
+else:
+    from stac_fastapi.elasticsearch.config import (
+        ElasticsearchSettings as SearchSettings,
+        AsyncElasticsearchSettings as AsyncSettings,
+    )
+    from stac_fastapi.elasticsearch.database_logic import (
+        DatabaseLogic,
+        create_collection_index,
+    )
+
 from stac_fastapi.extensions.core import (  # FieldsExtension,
     ContextExtension,
     FieldsExtension,
@@ -66,7 +70,7 @@ class MockRequest:
         self.query_params = query_params
 
 
-class TestSettings(AsyncSearchSettings):
+class TestSettings(AsyncSettings):
     class Config:
         env_file = ".env.test"
 
@@ -156,27 +160,34 @@ async def ctx(txn_client: TransactionsClient, test_collection, test_item):
     await delete_collections_and_items(txn_client)
 
 
+database = DatabaseLogic()
+settings = SearchSettings()
+
+
 @pytest.fixture
 def core_client():
-    return CoreClient(session=None)
+    return CoreClient(database=database, session=None)
 
 
 @pytest.fixture
 def txn_client():
-    return TransactionsClient(session=None)
+    return TransactionsClient(database=database, session=None, settings=settings)
 
 
 @pytest.fixture
 def bulk_txn_client():
-    return BulkTransactionsClient(session=None)
+    return BulkTransactionsClient(database=database, session=None, settings=settings)
 
 
 @pytest_asyncio.fixture(scope="session")
 async def app():
-    settings = AsyncSearchSettings()
+    settings = AsyncSettings()
     extensions = [
         TransactionExtension(
-            client=TransactionsClient(session=None), settings=settings
+            client=TransactionsClient(
+                database=database, session=None, settings=settings
+            ),
+            settings=settings,
         ),
         ContextExtension(),
         SortExtension(),
@@ -191,6 +202,7 @@ async def app():
     return StacApi(
         settings=settings,
         client=CoreClient(
+            database=database,
             session=None,
             extensions=extensions,
             post_request_model=post_request_model,

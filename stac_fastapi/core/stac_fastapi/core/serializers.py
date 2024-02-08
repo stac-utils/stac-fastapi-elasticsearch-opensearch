@@ -5,7 +5,7 @@ from typing import Any
 
 import attr
 
-from stac_fastapi.elasticsearch.datetime_utils import now_to_rfc3339_str
+from stac_fastapi.core.datetime_utils import now_to_rfc3339_str
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.links import CollectionLinks, ItemLinks, resolve_links
 

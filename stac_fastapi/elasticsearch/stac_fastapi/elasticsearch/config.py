@@ -3,8 +3,7 @@ import os
 import ssl
 from typing import Any, Dict, Set
 
-from opensearchpy import AsyncOpenSearch, OpenSearch
-
+from elasticsearch import AsyncElasticsearch, Elasticsearch  # type: ignore
 from stac_fastapi.types.config import ApiSettings
 
 
@@ -19,7 +18,7 @@ def _es_config() -> Dict[str, Any]:
     # Initialize the configuration dictionary
     config = {
         "hosts": hosts,
-        "headers": {"accept": "application/json", "Content-Type": "application/json"},
+        "headers": {"accept": "application/vnd.elasticsearch+json; compatible-with=7"},
     }
 
     # Explicitly exclude SSL settings when not using SSL
@@ -55,7 +54,7 @@ def _es_config() -> Dict[str, Any]:
 _forbidden_fields: Set[str] = {"type"}
 
 
-class SearchSettings(ApiSettings):
+class ElasticsearchSettings(ApiSettings):
     """API settings."""
 
     # Fields which are defined by STAC but not included in the database model
@@ -65,10 +64,10 @@ class SearchSettings(ApiSettings):
     @property
     def create_client(self):
         """Create es client."""
-        return OpenSearch(**_es_config())
+        return Elasticsearch(**_es_config())
 
 
-class AsyncSearchSettings(ApiSettings):
+class AsyncElasticsearchSettings(ApiSettings):
     """API settings."""
 
     # Fields which are defined by STAC but not included in the database model
@@ -78,4 +77,4 @@ class AsyncSearchSettings(ApiSettings):
     @property
     def create_client(self):
         """Create async elasticsearch client."""
-        return AsyncOpenSearch(**_es_config())
+        return AsyncElasticsearch(**_es_config())

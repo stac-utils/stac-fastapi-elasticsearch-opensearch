@@ -1,0 +1,1 @@
+# stac-fastapi core library for Elasticsearch and Opensearch backends

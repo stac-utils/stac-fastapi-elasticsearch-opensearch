@@ -1,4 +1,4 @@
-"""stac_fastapi: elasticsearch module."""
+"""stac_fastapi: opensearch module."""
 
 from setuptools import find_namespace_packages, setup
 
@@ -7,8 +7,8 @@ with open("README.md") as f:
 
 install_requires = [
     "stac-fastapi.core==0.1.0",
-    "elasticsearch[async]==8.11.0",
-    "elasticsearch-dsl==8.11.0",
+    "opensearch-py==2.4.2",
+    "opensearch-py[async]==2.4.2",
     "uvicorn",
     "starlette",
 ]
@@ -28,8 +28,8 @@ extra_reqs = {
 }
 
 setup(
-    name="stac-fastapi.elasticsearch",
-    description="An implementation of STAC API based on the FastAPI framework with both Elasticsearch and Opensearch.",
+    name="stac-fastapi.opensearch",
+    description="Opensearch stac-fastapi backend.",
     long_description=desc,
     long_description_content_type="text/markdown",
     python_requires=">=3.8",
@@ -45,14 +45,11 @@ setup(
     ],
     url="https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch",
     license="MIT",
-    packages=find_namespace_packages(exclude=["alembic", "tests", "scripts"]),
+    packages=find_namespace_packages(),
     zip_safe=False,
     install_requires=install_requires,
-    tests_require=extra_reqs["dev"],
     extras_require=extra_reqs,
     entry_points={
-        "console_scripts": [
-            "stac-fastapi-elasticsearch=stac_fastapi.elasticsearch.app:run"
-        ]
+        "console_scripts": ["stac-fastapi-opensearch=stac_fastapi.opensearch.app:run"]
     },
 )

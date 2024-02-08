@@ -11,13 +11,13 @@ from opensearchpy.exceptions import TransportError
 from opensearchpy.helpers.query import Q
 from opensearchpy.helpers.search import Search
 
-from stac_fastapi.elasticsearch import serializers
-from stac_fastapi.elasticsearch.config.config_opensearch import AsyncSearchSettings
-from stac_fastapi.elasticsearch.config.config_opensearch import (
-    SearchSettings as SyncSearchSettings,
+from stac_fastapi.core import serializers
+from stac_fastapi.core.extensions import filter
+from stac_fastapi.core.utilities import bbox2polygon
+from stac_fastapi.opensearch.config import (
+    AsyncOpensearchSettings as AsyncSearchSettings,
 )
-from stac_fastapi.elasticsearch.extensions import filter
-from stac_fastapi.elasticsearch.utilities import bbox2polygon
+from stac_fastapi.opensearch.config import OpensearchSettings as SyncSearchSettings
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.stac import Collection, Item
 

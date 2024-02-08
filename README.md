@@ -1,12 +1,18 @@
-# STAC FastAPI Elasticsearch (sfes)
+# stac-fastapi-elasticsearch-opensearch (sfeos)
 
-## Elasticsearch backend for stac-fastapi with Opensearch support
+## Elasticsearch and Opensearch backends for the stac-fastapi project
    
-#### Join our [Gitter](https://gitter.im/stac-fastapi-elasticsearch/community) page
+[![PyPI version](https://badge.fury.io/py/stac-fastapi.elasticsearch.svg)](https://badge.fury.io/py/stac-fastapi.elasticsearch)
 
-#### Check out the public Postman documentation [Postman](https://documenter.getpostman.com/view/12888943/2s8ZDSdRHA)
+To install from PyPI:
 
-#### Check out the examples folder for deployment options, ex. running sfes from pip in docker
+```shell
+pip install stac_fastapi.elasticsearch
+```
+or   
+```
+pip install stac_fastapi.opensearch
+```
 
 #### For changes, see the [Changelog](CHANGELOG.md)
 
@@ -19,6 +25,13 @@ To install the classes in your local Python env, run:
 pip install -e 'stac_fastapi/elasticsearch[dev]'
 ```
 
+or
+
+```shell
+pip install -e 'stac_fastapi/opensearch[dev]'
+```
+
+
 ### Pre-commit
 
 Install [pre-commit](https://pre-commit.com/#install).
@@ -29,17 +42,17 @@ Prior to commit, run:
 pre-commit run --all-files
 ```
 
-
-## Building
+## Build Elasticsearh API backend
 
 ```shell
-docker-compose build
+docker-compose up elasticsearch
+docker-compose build app-elasticsearch
 ```
   
-## Running API on localhost:8080
+## Running Elasticsearh API on localhost:8080
 
 ```shell
-docker-compose up
+docker-compose up app-elasticsearch
 ```
 
 By default, docker-compose uses Elasticsearch 8.x and OpenSearch 2.11.1. 
