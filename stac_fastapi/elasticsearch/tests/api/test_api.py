@@ -402,7 +402,22 @@ async def test_search_point_does_not_intersect(app_client, ctx):
 
 
 @pytest.mark.asyncio
-async def test_datetime_non_interval(app_client, ctx):
+async def test_datetime_response_format(app_client, txn_client, ctx):
+    first_item = ctx.item
+
+    second_item = dict(first_item)
+    second_item["id"] = "second-item"
+    second_item["properties"]["datetime"] = None
+
+    await create_item(txn_client, second_item)
+
+    third_item = dict(first_item)
+    third_item["id"] = "third-item"
+    del third_item["properties"]["start_datetime"]
+    del third_item["properties"]["end_datetime"]
+
+    await create_item(txn_client, third_item)
+
     dt_formats = [
         "2020-02-12T12:30:22+00:00",
         "2020-02-12T12:30:22.00Z",
@@ -421,6 +436,154 @@ async def test_datetime_non_interval(app_client, ctx):
         resp_json = resp.json()
         # datetime is returned in this format "2020-02-12T12:30:22Z"
         assert resp_json["features"][0]["properties"]["datetime"][0:19] == dt[0:19]
+
+
+@pytest.mark.asyncio
+async def test_datetime_non_interval(app_client, txn_client, ctx):
+    first_item = ctx.item
+
+    second_item = dict(first_item)
+    second_item["id"] = "second-item"
+    second_item["properties"]["datetime"] = None
+
+    await create_item(txn_client, second_item)
+
+    third_item = dict(first_item)
+    third_item["id"] = "third-item"
+    del third_item["properties"]["start_datetime"]
+    del third_item["properties"]["end_datetime"]
+
+    await create_item(txn_client, third_item)
+
+    dt_formats = [
+        "2020-02-12T12:30:22+00:00",
+        "2020-02-12T12:30:22.00Z",
+        "2020-02-12T12:30:22Z",
+        "2020-02-12T12:30:22.00+00:00",
+    ]
+
+    for dt in dt_formats:
+        params = {
+            "datetime": dt,
+            "collections": [ctx.item["collection"]],
+        }
+
+        resp = await app_client.post("/search", json=params)
+        assert resp.status_code == 200
+        resp_json = resp.json()
+        assert len(resp_json["features"]) == 3
+
+
+@pytest.mark.asyncio
+async def test_datetime_interval(app_client, txn_client, ctx):
+    first_item = ctx.item
+
+    second_item = dict(first_item)
+    second_item["id"] = "second-item"
+    second_item["properties"]["datetime"] = None
+
+    await create_item(txn_client, second_item)
+
+    third_item = dict(first_item)
+    third_item["id"] = "third-item"
+    del third_item["properties"]["start_datetime"]
+    del third_item["properties"]["end_datetime"]
+
+    await create_item(txn_client, third_item)
+
+    print("CREATED ITEMS")
+
+    dt_formats = [
+        "2020-02-06T12:30:22+00:00/2020-02-13T12:30:22+00:00",
+        "2020-02-12T12:30:22.00Z/2020-02-20T12:30:22.00Z",
+        "2020-02-12T12:30:22Z/2020-02-13T12:30:22Z",
+        "2020-02-06T12:30:22.00+00:00/2020-02-20T12:30:22.00+00:00",
+    ]
+
+    for dt in dt_formats:
+        params = {
+            "datetime": dt,
+            "collections": [ctx.item["collection"]],
+        }
+
+        resp = await app_client.post("/search", json=params)
+        assert resp.status_code == 200
+        resp_json = resp.json()
+        assert len(resp_json["features"]) == 3
+
+
+@pytest.mark.asyncio
+async def test_datetime_bad_non_interval(app_client, txn_client, ctx):
+    first_item = ctx.item
+
+    second_item = dict(first_item)
+    second_item["id"] = "second-item"
+    second_item["properties"]["datetime"] = None
+
+    await create_item(txn_client, second_item)
+
+    third_item = dict(first_item)
+    third_item["id"] = "third-item"
+    del third_item["properties"]["start_datetime"]
+    del third_item["properties"]["end_datetime"]
+
+    await create_item(txn_client, third_item)
+
+    dt_formats = [
+        "2020-02-06T12:30:22+00:00",
+        "2020-02-06:30:22.00Z",
+        "2020-02-06:30:22Z",
+        "2020-02-06T12:30:22.00+00:00",
+    ]
+
+    for dt in dt_formats:
+        params = {
+            "datetime": dt,
+            "collections": [ctx.item["collection"]],
+        }
+
+        resp = await app_client.post("/search", json=params)
+        assert resp.status_code == 200
+        resp_json = resp.json()
+        assert len(resp_json["features"]) == 0
+
+
+@pytest.mark.asyncio
+async def test_datetime_bad_interval(app_client, txn_client, ctx):
+    first_item = ctx.item
+
+    second_item = dict(first_item)
+    second_item["id"] = "second-item"
+    second_item["properties"]["datetime"] = None
+
+    await create_item(txn_client, second_item)
+
+    third_item = dict(first_item)
+    third_item["id"] = "third-item"
+    del third_item["properties"]["start_datetime"]
+    del third_item["properties"]["end_datetime"]
+
+    await create_item(txn_client, third_item)
+
+    print("CREATED ITEMS")
+
+    dt_formats = [
+        "1920-02-04T12:30:22+00:00/1920-02-06T12:30:22+00:00",
+        "1920-02-04T12:30:22.00Z/1920-02-06T12:30:22.00Z",
+        "1920-02-04T12:30:22Z/1920-02-06T12:30:22Z",
+        "1920-02-04T12:30:22.00+00:00/1920-02-06T12:30:22.00+00:00",
+    ]
+
+    for dt in dt_formats:
+        params = {
+            "datetime": dt,
+            "collections": [ctx.item["collection"]],
+        }
+
+        resp = await app_client.post("/search", json=params)
+        assert resp.status_code == 200
+        resp_json = resp.json()
+        assert len(resp_json["features"]) == 0
 
 
 @pytest.mark.asyncio
