@@ -7,9 +7,8 @@ with open("README.md") as f:
 
 install_requires = [
     "stac-fastapi.core==2.0.0",
-    "opensearch-py==2.4.2",
-    "opensearch-py[async]==2.4.2",
-    "uvicorn",
+    "motor==3.3.2",
+    "pymongo==4.6.1" "uvicorn",
     "starlette",
 ]
 
@@ -49,7 +48,5 @@ setup(
     zip_safe=False,
     install_requires=install_requires,
     extras_require=extra_reqs,
-    entry_points={
-        "console_scripts": ["stac-fastapi-opensearch=stac_fastapi.opensearch.app:run"]
-    },
+    entry_points={"console_scripts": ["stac-fastapi-mongo=stac_fastapi.mongo.app:run"]},
 )
