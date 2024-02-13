@@ -1,81 +1,65 @@
 """API configuration."""
 import os
-import ssl
-from typing import Any, Dict, Set
+from typing import Set
 
-from opensearchpy import AsyncOpenSearch, OpenSearch
+from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import MongoClient
 
 from stac_fastapi.types.config import ApiSettings
 
 
-def _es_config() -> Dict[str, Any]:
-    # Determine the scheme (http or https)
-    use_ssl = os.getenv("ES_USE_SSL", "true").lower() == "true"
-    scheme = "https" if use_ssl else "http"
+def _mongodb_uri() -> str:
+    # MongoDB connection URI construction
+    user = os.getenv("MONGO_USER")
+    password = os.getenv("MONGO_PASS")
+    host = os.getenv("MONGO_HOST", "localhost")
+    port = os.getenv("MONGO_PORT", "27017")
+    database = os.getenv(
+        "MONGO_DB", "admin"
+    )  # Default to admin database for authentication
+    use_ssl = os.getenv("MONGO_USE_SSL", "false").lower() == "true"
+    ssl_cert_reqs = (
+        "CERT_NONE"
+        if os.getenv("MONGO_VERIFY_CERTS", "false").lower() == "false"
+        else "CERT_REQUIRED"
+    )
 
-    # Configure the hosts parameter with the correct scheme
-    hosts = [f"{scheme}://{os.getenv('ES_HOST')}:{os.getenv('ES_PORT')}"]
+    # Adjust URI based on whether using SRV record or not
+    if "mongodb+srv" in os.getenv("MONGO_CONNECTION_STRING", ""):
+        # SRV connection string format does not use port
+        uri = f"mongodb+srv://{user}:{password}@{host}/{database}?retryWrites=true&w=majority"
+    else:
+        # Standard connection string format with port
+        uri = f"mongodb://{user}:{password}@{host}:{port}/{database}?retryWrites=true"
 
-    # Initialize the configuration dictionary
-    config = {
-        "hosts": hosts,
-        "headers": {"accept": "application/json", "Content-Type": "application/json"},
-    }
+    if use_ssl:
+        uri += f"&ssl=true&ssl_cert_reqs={ssl_cert_reqs}"
 
-    # Explicitly exclude SSL settings when not using SSL
-    if not use_ssl:
-        return config
-
-    # Include SSL settings if using https
-    config["ssl_version"] = ssl.TLSVersion.TLSv1_3  # type: ignore
-    config["verify_certs"] = os.getenv("ES_VERIFY_CERTS", "true").lower() != "false"  # type: ignore
-
-    # Include CA Certificates if verifying certs
-    if config["verify_certs"]:
-        config["ca_certs"] = os.getenv(
-            "CURL_CA_BUNDLE", "/etc/ssl/certs/ca-certificates.crt"
-        )
-
-    # Handle authentication
-    if (u := os.getenv("ES_USER")) and (p := os.getenv("ES_PASS")):
-        config["http_auth"] = (u, p)
-
-    if api_key := os.getenv("ES_API_KEY"):
-        if isinstance(config["headers"], dict):
-            headers = {**config["headers"], "x-api-key": api_key}
-
-        else:
-            config["headers"] = {"x-api-key": api_key}
-
-        config["headers"] = headers
-
-    return config
+    return uri
 
 
 _forbidden_fields: Set[str] = {"type"}
 
 
-class OpensearchSettings(ApiSettings):
+class MongoDBSettings(ApiSettings):
     """API settings."""
 
-    # Fields which are defined by STAC but not included in the database model
     forbidden_fields: Set[str] = _forbidden_fields
     indexed_fields: Set[str] = {"datetime"}
 
     @property
-    def create_client(self):
-        """Create es client."""
-        return OpenSearch(**_es_config())
+    def create_client(self) -> MongoClient:
+        """Create MongoDB client."""
+        return MongoClient(_mongodb_uri())
 
 
-class AsyncOpensearchSettings(ApiSettings):
+class AsyncMongoDBSettings(ApiSettings):
     """API settings."""
 
-    # Fields which are defined by STAC but not included in the database model
     forbidden_fields: Set[str] = _forbidden_fields
     indexed_fields: Set[str] = {"datetime"}
 
     @property
-    def create_client(self):
-        """Create async elasticsearch client."""
-        return AsyncOpenSearch(**_es_config())
+    def create_client(self) -> AsyncIOMotorClient:
+        """Create async MongoDB client."""
+        return AsyncIOMotorClient(_mongodb_uri())
