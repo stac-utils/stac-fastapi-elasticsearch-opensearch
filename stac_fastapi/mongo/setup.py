@@ -1,4 +1,4 @@
-"""stac_fastapi: opensearch module."""
+"""stac_fastapi: mongodb module."""
 
 from setuptools import find_namespace_packages, setup
 
@@ -28,8 +28,8 @@ extra_reqs = {
 }
 
 setup(
-    name="stac-fastapi.opensearch",
-    description="Opensearch stac-fastapi backend.",
+    name="stac-fastapi.mongo",
+    description="Mongodb stac-fastapi backend.",
     long_description=desc,
     long_description_content_type="text/markdown",
     python_requires=">=3.8",
