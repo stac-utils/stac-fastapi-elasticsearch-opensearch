@@ -72,6 +72,9 @@ services:
       - RELOAD=true
       - ENVIRONMENT=local
       - BACKEND=mongo
+      - MONGO_DB=stac
+      - MONGO_USER=root
+      - MONGO_PASS=example
     ports:
       - "8084:8084"
     volumes:

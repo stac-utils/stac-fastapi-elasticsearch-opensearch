@@ -19,13 +19,10 @@ from stac_fastapi.extensions.core import (
     TransactionExtension,
 )
 from stac_fastapi.extensions.third_party import BulkTransactionExtension
-from stac_fastapi.opensearch.config import OpensearchSettings
-from stac_fastapi.opensearch.database_logic import (
-    DatabaseLogic,
-    create_collection_index,
-)
+from stac_fastapi.mongo.config import AsyncMongoDBSettings
+from stac_fastapi.mongo.database_logic import DatabaseLogic, create_collection_index
 
-settings = OpensearchSettings()
+settings = AsyncMongoDBSettings
 session = Session.create_from_settings(settings)
 
 filter_extension = FilterExtension(client=EsAsyncBaseFiltersClient())
