@@ -70,8 +70,9 @@ async def create_collection_index():
     Returns:
         None
     """
-    client = AsyncSearchSettings.create_client()
+    client = AsyncSearchSettings().create_client
     db = client[DATABASE]
+    # db = client.get_database(DATABASE)
 
     try:
         await db[COLLECTIONS_INDEX].create_index([("id", 1)], unique=True)
@@ -93,7 +94,7 @@ async def create_item_index(collection_id: str):
     Returns:
         None
     """
-    client = AsyncSearchSettings.create_client()
+    client = AsyncSearchSettings.create_client
     db = client[DATABASE]
 
     # Derive the collection name for items based on the collection_id
@@ -123,7 +124,7 @@ async def delete_item_index(collection_id: str):
     Args:
         collection_id (str): The ID of the collection whose associated MongoDB collection will be dropped.
     """
-    client = AsyncSearchSettings.create_client()
+    client = AsyncSearchSettings.create_client
     db = client[DATABASE]
 
     # Derive the MongoDB collection name using the collection ID

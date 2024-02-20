@@ -22,7 +22,7 @@ from stac_fastapi.extensions.third_party import BulkTransactionExtension
 from stac_fastapi.mongo.config import AsyncMongoDBSettings
 from stac_fastapi.mongo.database_logic import DatabaseLogic, create_collection_index
 
-settings = AsyncMongoDBSettings
+settings = AsyncMongoDBSettings()
 session = Session.create_from_settings(settings)
 
 filter_extension = FilterExtension(client=EsAsyncBaseFiltersClient())
@@ -79,7 +79,7 @@ def run() -> None:
         import uvicorn
 
         uvicorn.run(
-            "stac_fastapi.opensearch.app:app",
+            "stac_fastapi.mongo.app:app",
             host=settings.app_host,
             port=settings.app_port,
             log_level="info",

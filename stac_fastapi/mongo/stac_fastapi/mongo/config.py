@@ -1,6 +1,7 @@
 """API configuration."""
 import os
-from typing import Set
+import ssl
+from typing import Any, Dict, Set
 
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo import MongoClient
@@ -8,58 +9,62 @@ from pymongo import MongoClient
 from stac_fastapi.types.config import ApiSettings
 
 
-def _mongodb_uri() -> str:
-    # MongoDB connection URI construction
+def _mongodb_config() -> Dict[str, Any]:
+    # MongoDB connection URI and client options
     user = os.getenv("MONGO_USER")
     password = os.getenv("MONGO_PASS")
     host = os.getenv("MONGO_HOST", "localhost")
     port = os.getenv("MONGO_PORT", "27017")
-    database = os.getenv(
-        "MONGO_DB", "admin"
-    )  # Default to admin database for authentication
+    database = os.getenv("MONGO_DB", "stac")  # Default to 'stac' database
     use_ssl = os.getenv("MONGO_USE_SSL", "false").lower() == "true"
-    ssl_cert_reqs = (
-        "CERT_NONE"
-        if os.getenv("MONGO_VERIFY_CERTS", "false").lower() == "false"
-        else "CERT_REQUIRED"
-    )
+    verify_certs = os.getenv("MONGO_VERIFY_CERTS", "true").lower() == "true"
+
+    ssl_cert_reqs = ssl.CERT_REQUIRED if verify_certs else ssl.CERT_NONE
 
     # Adjust URI based on whether using SRV record or not
     if "mongodb+srv" in os.getenv("MONGO_CONNECTION_STRING", ""):
-        # SRV connection string format does not use port
         uri = f"mongodb+srv://{user}:{password}@{host}/{database}?retryWrites=true&w=majority"
     else:
-        # Standard connection string format with port
         uri = f"mongodb://{user}:{password}@{host}:{port}/{database}?retryWrites=true"
 
     if use_ssl:
-        uri += f"&ssl=true&ssl_cert_reqs={ssl_cert_reqs}"
+        uri += "&ssl=true&ssl_cert_reqs={}".format(ssl_cert_reqs)
 
-    return uri
+    # Initialize the configuration dictionary
+    config = {
+        "uri": uri,
+        "database": database,
+        # MongoDB does not use headers, but added here for structure alignment
+        "headers": {},  # Placeholder for consistency
+    }
+
+    return config
 
 
 _forbidden_fields: Set[str] = {"type"}
 
 
 class MongoDBSettings(ApiSettings):
-    """API settings."""
+    """MongoDB specific API settings."""
 
     forbidden_fields: Set[str] = _forbidden_fields
     indexed_fields: Set[str] = {"datetime"}
 
     @property
     def create_client(self) -> MongoClient:
-        """Create MongoDB client."""
-        return MongoClient(_mongodb_uri())
+        """Create a synchronous MongoDB client."""
+        config = _mongodb_config()
+        return MongoClient(config["uri"])
 
 
 class AsyncMongoDBSettings(ApiSettings):
-    """API settings."""
+    """Async MongoDB specific API settings."""
 
     forbidden_fields: Set[str] = _forbidden_fields
     indexed_fields: Set[str] = {"datetime"}
 
     @property
     def create_client(self) -> AsyncIOMotorClient:
-        """Create async MongoDB client."""
-        return AsyncIOMotorClient(_mongodb_uri())
+        """Create an asynchronous MongoDB client."""
+        config = _mongodb_config()
+        return AsyncIOMotorClient(config["uri"])
