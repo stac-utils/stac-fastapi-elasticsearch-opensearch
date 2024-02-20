@@ -8,9 +8,8 @@ from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple, Type, U
 
 import attr
 from bson import ObjectId
-from pymongo.errors import (
+from pymongo.errors import (  # CollectionInvalid,
     BulkWriteError,
-    CollectionInvalid,
     DuplicateKeyError,
     PyMongoError,
 )
@@ -20,6 +19,7 @@ from stac_fastapi.core.extensions import filter
 from stac_fastapi.core.utilities import bbox2polygon
 from stac_fastapi.mongo.config import AsyncMongoDBSettings as AsyncSearchSettings
 from stac_fastapi.mongo.config import MongoDBSettings as SyncSearchSettings
+from stac_fastapi.mongo.utilities import serialize_doc
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.stac import Collection, Item
 
@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 NumType = Union[float, int]
 
 COLLECTIONS_INDEX = os.getenv("STAC_COLLECTIONS_INDEX", "collections")
+ITEMS_INDEX = os.getenv("STAC_ITEMS_INDEX", "items")
 ITEMS_INDEX_PREFIX = os.getenv("STAC_ITEMS_INDEX_PREFIX", "items_")
 DATABASE = os.getenv("MONGO_DB", "admin")
 
@@ -83,25 +84,6 @@ async def create_collection_index():
             client.close()
     else:
         print("Failed to create MongoDB client.")
-
-    # async with AsyncSearchSettings() as client:
-    #     db = client[DATABASE]
-    #     await db[COLLECTIONS_INDEX].create_index([("id", 1)], unique=True)
-    #     print("Index created successfully.")
-
-    # db = client[DATABASE]
-    # print("HELLO")
-    # print(client)
-    # # db = client.get_database(DATABASE)
-
-    # try:
-    #     await db[COLLECTIONS_INDEX].create_index([("id", 1)], unique=True)
-    #     print("Index created successfully.")
-    # except Exception as e:
-    #     # Handle exceptions, which could be due to existing index conflicts, etc.
-    #     print(f"An error occurred while creating the index: {e}")
-    # finally:
-    #     await client.close()
 
 
 async def create_item_index(collection_id: str):
@@ -249,10 +231,6 @@ class DatabaseLogic:
         default=serializers.CollectionSerializer
     )
 
-    def __init__(self):
-        """Init."""
-        self.db_name = os.getenv("MONGO_DB", "default_db_name")
-
     """CORE LOGIC"""
 
     async def get_all_collections(
@@ -305,7 +283,7 @@ class DatabaseLogic:
             NotFoundError: If the specified Item does not exist in the Collection.
 
         """
-        db = self.client[self.db_name]
+        db = self.client[DATABASE]
         collection_name = index_by_collection_id(collection_id)
 
         try:
@@ -565,7 +543,7 @@ class DatabaseLogic:
         Raises:
             NotFoundError: If the collections specified in `collection_ids` do not exist.
         """
-        db = self.client[self.db_name]
+        db = self.client[DATABASE]
         collection = db["stac_items"]
         query = {"$and": search.filters} if search.filters else {}
 
@@ -620,7 +598,7 @@ class DatabaseLogic:
             The `NotFoundError` should be appropriately defined or imported in your
             application to handle cases where the specified collection does not exist.
         """
-        db = self.client[self.db_name]
+        db = self.client[DATABASE]
 
         # Check for the collection's existence by filtering list_collection_names
         collections = db.list_collection_names(filter={"name": collection_id})
@@ -645,16 +623,16 @@ class DatabaseLogic:
             ConflictError: If the item already exists in the database and exist_ok is False.
             NotFoundError: If the collection specified by the item does not exist.
         """
-        db = self.client[self.db_name]
+        db = self.client[DATABASE]
         collections_collection = db[COLLECTIONS_INDEX]
-        items_collection = db[index_by_collection_id(item.collection)]
+        items_collection = db[ITEMS_INDEX]
 
         # Check if the collection exists
         collection_exists = await collections_collection.count_documents(
-            {"id": item.collection}, limit=1
+            {"id": item["collection"]}, limit=1
         )
         if not collection_exists:
-            raise NotFoundError(f"Collection {item.collection} does not exist")
+            raise NotFoundError(f"Collection {item['collection']} does not exist")
 
         # Transform item using item_serializer for MongoDB compatibility
         mongo_item = self.item_serializer.stac_to_db(item, base_url)
@@ -687,7 +665,7 @@ class DatabaseLogic:
             ConflictError: If the item already exists in the database and exist_ok is False.
             NotFoundError: If the collection specified by the item does not exist.
         """
-        db = self.sync_client[self.db_name]
+        db = self.client[DATABASE]
         collections_collection = db[COLLECTIONS_INDEX]
         items_collection = db[index_by_collection_id(item.collection)]
 
@@ -723,26 +701,26 @@ class DatabaseLogic:
             ConflictError: If the item with the same ID already exists within the collection.
             NotFoundError: If the specified collection does not exist in MongoDB.
         """
-        db = self.client[self.db_name]
-        items_collection = db[index_by_collection_id(item.collection)]
+        db = self.client[DATABASE]
+        items_collection = db[ITEMS_INDEX]
 
         # Convert STAC Item to a dictionary, preserving all its fields
-        item_dict = item.dict(by_alias=True)
+        # item_dict = item.dict(by_alias=True)
 
         # Ensure the collection exists
         collections_collection = db[COLLECTIONS_INDEX]
         collection_exists = await collections_collection.count_documents(
-            {"id": item.collection}, limit=1
+            {"id": item["collection"]}, limit=1
         )
         if collection_exists == 0:
-            raise NotFoundError(f"Collection {item.collection} does not exist")
+            raise NotFoundError(f"Collection {item['collection']} does not exist")
 
         # Attempt to insert the item, checking for duplicates
         try:
-            await items_collection.insert_one(item_dict)
+            await items_collection.insert_one(item)
         except DuplicateKeyError:
             raise ConflictError(
-                f"Item {item.id} in collection {item.collection} already exists"
+                f"Item {item['id']} in collection {item['collection']} already exists"
             )
 
     async def delete_item(
@@ -759,7 +737,7 @@ class DatabaseLogic:
         Raises:
             NotFoundError: If the Item does not exist in the database.
         """
-        db = self.client[self.db_name]
+        db = self.client[DATABASE]
         collection_name = index_by_collection_id(
             collection_id
         )  # Derive the MongoDB collection name
@@ -780,7 +758,7 @@ class DatabaseLogic:
             )
 
     async def create_collection(self, collection: Collection, refresh: bool = False):
-        """Create a single collection in the database.
+        """Create a single collection document in the database.
 
         Args:
             collection (Collection): The Collection object to be created.
@@ -788,34 +766,26 @@ class DatabaseLogic:
 
         Raises:
             ConflictError: If a Collection with the same id already exists in the database.
-
-        Notes:
-            A new index is created for the items in the Collection using the `create_item_index` function.
         """
-        db = self.client[self.db_name]
-        collection_id = collection["id"]
+        db = self.client[DATABASE]
+        collections_collection = db[COLLECTIONS_INDEX]
 
         # Check if the collection already exists
-        if collection_id in await db.list_collection_names():
-            raise ConflictError(f"Collection {collection_id} already exists")
+        existing_collection = await collections_collection.find_one(
+            {"id": collection["id"]}
+        )
+        if existing_collection:
+            raise ConflictError(f"Collection {collection['id']} already exists")
 
         try:
-            # Since MongoDB creates collections when the first document is inserted,
-            # we can simulate collection creation by ensuring an index, such as on the 'id' field.
-            await db[collection_id].create_index([("id", 1)], unique=True)
-        except CollectionInvalid as e:
-            # If there's an error creating the index, it might indicate an issue with the collection.
-            # This block can be customized based on specific needs or errors.
-            raise ConflictError(
-                f"Error ensuring collection '{collection_id}' exists: {e}"
-            )
+            # Insert the new collection document into the collections collection
+            await collections_collection.insert_one(collection)
         except PyMongoError as e:
-            # Catch any other MongoDB error and raise a ConflictError for consistency with the original function's error handling.
-            raise ConflictError(
-                f"Error ensuring collection '{collection_id}' exists: {e}"
-            )
+            # Catch any MongoDB error and raise an appropriate error
+            print(f"Failed to create collection {collection['id']}: {e}")
+            raise ConflictError(f"Failed to create collection {collection['id']}: {e}")
 
-    async def find_collection(self, collection_id: str) -> Collection:
+    async def find_collection(self, collection_id: str) -> dict:
         """
         Find and return a collection from the database.
 
@@ -824,21 +794,21 @@ class DatabaseLogic:
             collection_id (str): The ID of the collection to be found.
 
         Returns:
-            Collection: The found collection, represented as a `Collection` object.
+            dict: The found collection, represented as a dictionary.
 
         Raises:
             NotFoundError: If the collection with the given `collection_id` is not found in the database.
         """
-        db = self.client[self.db_name]
-        collections_collection = db[
-            COLLECTIONS_INDEX
-        ]  # Assuming COLLECTIONS_INDEX is defined elsewhere
+        db = self.client[DATABASE]
+        collections_collection = db[COLLECTIONS_INDEX]
 
         try:
             collection = await collections_collection.find_one({"id": collection_id})
             if not collection:
                 raise NotFoundError(f"Collection {collection_id} not found")
-            return collection  # Adjust this return according to how you want to use the Collection object
+            serialized_collection = serialize_doc(collection)
+            print("HELLO")
+            return serialized_collection
         except PyMongoError as e:
             # This is a general catch-all for MongoDB errors; adjust as needed for more specific handling
             print(f"Failed to find collection {collection_id}: {e}")
@@ -859,10 +829,8 @@ class DatabaseLogic:
             NotFoundError: If the collection with the specified ID does not exist.
             ConflictError: If attempting to change the collection ID to one that already exists.
         """
-        db = self.client.get_database()  # Assuming the database is set in the client
-        collections_collection = db[
-            COLLECTIONS_INDEX
-        ]  # Assuming COLLECTIONS_INDEX is defined elsewhere
+        db = self.client[DATABASE]
+        collections_collection = db[COLLECTIONS_INDEX]
 
         existing_collection = await self.find_collection(collection_id)
         if not existing_collection:
@@ -902,7 +870,7 @@ class DatabaseLogic:
         Args:
             collection_id (str): The ID of the collection to be deleted.
         """
-        db = self.client.get_database()  # Get the database
+        db = self.client[DATABASE]
 
         # Attempt to delete the collection document
         collection_result = await db["collections"].delete_one({"id": collection_id})
@@ -929,7 +897,7 @@ class DatabaseLogic:
             `mk_actions` function is called to generate a list of actions for the bulk insert. If `refresh` is set to True, the
             index is refreshed after the bulk insert. The function does not return any value.
         """
-        db = self.client.get_database()
+        db = self.client[DATABASE]
         items_collection = db["items"]
 
         # Prepare the documents for insertion
@@ -958,7 +926,7 @@ class DatabaseLogic:
             completed. The `mk_actions` function is called to generate a list of actions for the bulk insert. If `refresh` is set to
             True, the index is refreshed after the bulk insert. The function does not return any value.
         """
-        db = self.sync_client.get_database()
+        db = self.sync_client[DATABASE]
         items_collection = db["items"]
 
         # Prepare the documents for insertion
@@ -976,10 +944,8 @@ class DatabaseLogic:
 
         Deletes all items from the 'items' collection in MongoDB.
         """
-        db = self.client.get_default_database()  # or get_database('yourdbname')
-        items_collection = db[
-            "items"
-        ]  # Assuming 'items' is the name of your items collection
+        db = self.client[DATABASE]
+        items_collection = db["items"]
 
         try:
             await items_collection.delete_many({})
@@ -993,10 +959,8 @@ class DatabaseLogic:
 
         Deletes all collections from the 'collections' collection in MongoDB.
         """
-        db = self.client.get_default_database()  # or get_database('yourdbname')
-        collections_collection = db[
-            "collections"
-        ]  # Assuming 'collections' is the name of your collections collection
+        db = self.client[DATABASE]
+        collections_collection = db["collections"]
 
         try:
             await collections_collection.delete_many({})

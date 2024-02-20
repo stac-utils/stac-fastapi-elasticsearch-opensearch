@@ -20,6 +20,8 @@ from ..conftest import create_item, refresh_indices
 
 if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
     from stac_fastapi.opensearch.database_logic import DatabaseLogic
+elif os.getenv("BACKEND", "elasticsearch").lower() == "mongo":
+    from stac_fastapi.mongo.database_logic import DatabaseLogic
 else:
     from stac_fastapi.elasticsearch.database_logic import DatabaseLogic
 
