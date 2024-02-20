@@ -73,8 +73,10 @@ services:
       - ENVIRONMENT=local
       - BACKEND=mongo
       - MONGO_DB=stac
+      - MONGO_HOST=mongo
       - MONGO_USER=root
       - MONGO_PASS=example
+      - MONGO_PORT=27017
     ports:
       - "8084:8084"
     volumes:
@@ -85,6 +87,26 @@ services:
     command:
       bash -c "./scripts/wait-for-it-es.sh mongo-container:27017 && python -m stac_fastapi.mongo.app"
 
+  mongo:
+    container_name: mongo-container
+    image: mongo:7.0.5
+    hostname: mongo
+    environment:
+      - MONGO_INITDB_ROOT_USERNAME=root
+      - MONGO_INITDB_ROOT_PASSWORD=example
+    ports:
+      - "27017:27017"
+
+  mongo-express:
+    image: mongo-express
+    restart: always
+    ports:
+      - "8081:8081"
+    environment:
+      - ME_CONFIG_MONGODB_ADMINUSERNAME=root
+      - ME_CONFIG_MONGODB_ADMINPASSWORD=example
+      - ME_CONFIG_MONGODB_URL=mongodb://root:example@mongo:27017/
+      
   elasticsearch:
     container_name: es-container
     image: docker.elastic.co/elasticsearch/elasticsearch:${ELASTICSEARCH_VERSION:-8.11.0}
@@ -110,23 +132,3 @@ services:
       - ./opensearch/snapshots:/usr/share/opensearch/snapshots
     ports:
       - "9202:9202"
-
-  mongo:
-    container_name: mongo-container
-    image: mongo:7.0.5
-    hostname: mongo
-    environment:
-      - MONGO_INITDB_ROOT_USERNAME=root
-      - MONGO_INITDB_ROOT_PASSWORD=example
-    ports:
-      - "27017:27017"
-
-  mongo-express:
-    image: mongo-express
-    restart: always
-    ports:
-      - "8081:8081"
-    environment:
-      - ME_CONFIG_MONGODB_ADMINUSERNAME=root
-      - ME_CONFIG_MONGODB_ADMINPASSWORD=example
-      - ME_CONFIG_MONGODB_URL=mongodb://root:example@mongo:27017/

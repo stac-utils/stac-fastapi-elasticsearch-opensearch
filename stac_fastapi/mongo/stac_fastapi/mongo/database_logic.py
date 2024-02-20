@@ -71,17 +71,37 @@ async def create_collection_index():
         None
     """
     client = AsyncSearchSettings().create_client
-    db = client[DATABASE]
-    # db = client.get_database(DATABASE)
+    if client:
+        try:
+            db = client[DATABASE]
+            await db[COLLECTIONS_INDEX].create_index([("id", 1)], unique=True)
+            print("Index created successfully.")
+        except Exception as e:
+            print(f"An error occurred while creating the index: {e}")
+        finally:
+            print(f"Closing client: {client}")
+            client.close()
+    else:
+        print("Failed to create MongoDB client.")
 
-    try:
-        await db[COLLECTIONS_INDEX].create_index([("id", 1)], unique=True)
-        print("Index created successfully.")
-    except Exception as e:
-        # Handle exceptions, which could be due to existing index conflicts, etc.
-        print(f"An error occurred while creating the index: {e}")
-    finally:
-        await client.close()
+    # async with AsyncSearchSettings() as client:
+    #     db = client[DATABASE]
+    #     await db[COLLECTIONS_INDEX].create_index([("id", 1)], unique=True)
+    #     print("Index created successfully.")
+
+    # db = client[DATABASE]
+    # print("HELLO")
+    # print(client)
+    # # db = client.get_database(DATABASE)
+
+    # try:
+    #     await db[COLLECTIONS_INDEX].create_index([("id", 1)], unique=True)
+    #     print("Index created successfully.")
+    # except Exception as e:
+    #     # Handle exceptions, which could be due to existing index conflicts, etc.
+    #     print(f"An error occurred while creating the index: {e}")
+    # finally:
+    #     await client.close()
 
 
 async def create_item_index(collection_id: str):
@@ -254,7 +274,7 @@ class DatabaseLogic:
             with the `COLLECTIONS_INDEX` as the target index and `size=limit` to retrieve records.
             The result is a generator of dictionaries containing the source data for each collection.
         """
-        db = self.client[self.db_name]
+        db = self.client[DATABASE]
         collections_collection = db[COLLECTIONS_INDEX]
 
         query: Dict[str, Any] = {}

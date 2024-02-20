@@ -78,6 +78,8 @@ def run() -> None:
     try:
         import uvicorn
 
+        print("host: ", settings.app_host)
+        print("port: ", settings.app_port)
         uvicorn.run(
             "stac_fastapi.mongo.app:app",
             host=settings.app_host,

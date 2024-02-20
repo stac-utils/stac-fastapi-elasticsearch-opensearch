@@ -1,6 +1,6 @@
 # stac-fastapi-elasticsearch-opensearch (sfeos)
 
-## Elasticsearch and Opensearch backends for the stac-fastapi project
+## Elasticsearch, Opensearch and Mongo backends for the stac-fastapi project 
    
 [![PyPI version](https://badge.fury.io/py/stac-fastapi.elasticsearch.svg)](https://badge.fury.io/py/stac-fastapi.elasticsearch)
 
