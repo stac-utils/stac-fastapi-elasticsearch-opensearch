@@ -132,6 +132,7 @@ ES_COLLECTIONS_MAPPINGS = {
     "numeric_detection": False,
     "dynamic_templates": ES_MAPPINGS_DYNAMIC_TEMPLATES,
     "properties": {
+        "id": {"type": "keyword"},
         "extent.spatial.bbox": {"type": "long"},
         "extent.temporal.interval": {"type": "date"},
         "providers": {"type": "object", "enabled": False},
