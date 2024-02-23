@@ -24,117 +24,117 @@ NumType = Union[float, int]
 
 COLLECTIONS_INDEX = os.getenv("STAC_COLLECTIONS_INDEX", "collections")
 ITEMS_INDEX = os.getenv("STAC_ITEMS_INDEX", "items")
-ITEMS_INDEX_PREFIX = os.getenv("STAC_ITEMS_INDEX_PREFIX", "items_")
+# ITEMS_INDEX_PREFIX = os.getenv("STAC_ITEMS_INDEX_PREFIX", "items_")
 DATABASE = os.getenv("MONGO_DB", "admin")
 
 
-def index_by_collection_id(collection_id: str) -> str:
-    """
-    Translate a collection id into an Elasticsearch index name.
+# def index_by_collection_id(collection_id: str) -> str:
+#     """
+#     Translate a collection id into an Elasticsearch index name.
 
-    Args:
-        collection_id (str): The collection id to translate into an index name.
+#     Args:
+#         collection_id (str): The collection id to translate into an index name.
 
-    Returns:
-        str: The index name derived from the collection id.
-    """
-    unsupported_chars = set('/\\ ."*<>:|?$')
-    sanitized = "".join(c for c in collection_id if c not in unsupported_chars)
-    return f"{ITEMS_INDEX_PREFIX}{sanitized.lower()}"
-
-
-def indices(collection_ids: Optional[List[str]]) -> str:
-    """
-    Get a comma-separated string of index names for a given list of collection ids.
-
-    Args:
-        collection_ids: A list of collection ids.
-
-    Returns:
-        A string of comma-separated index names. If `collection_ids` is None, returns the default indices.
-    """
-    if collection_ids is None:
-        return COLLECTIONS_INDEX
-    else:
-        return ",".join([index_by_collection_id(c) for c in collection_ids])
+#     Returns:
+#         str: The index name derived from the collection id.
+#     """
+#     unsupported_chars = set('/\\ ."*<>:|?$')
+#     sanitized = "".join(c for c in collection_id if c not in unsupported_chars)
+#     return f"{ITEMS_INDEX_PREFIX}{sanitized.lower()}"
 
 
-async def create_collection_index():
-    """
-    Ensure indexes for the collections collection in MongoDB using the asynchronous client.
+# def indices(collection_ids: Optional[List[str]]) -> str:
+#     """
+#     Get a comma-separated string of index names for a given list of collection ids.
 
-    Returns:
-        None
-    """
-    client = AsyncSearchSettings().create_client
-    if client:
-        try:
-            db = client[DATABASE]
-            await db[COLLECTIONS_INDEX].create_index([("id", 1)], unique=True)
-            print("Index created successfully.")
-        except Exception as e:
-            print(f"An error occurred while creating the index: {e}")
-        finally:
-            print(f"Closing client: {client}")
-            client.close()
-    else:
-        print("Failed to create MongoDB client.")
+#     Args:
+#         collection_ids: A list of collection ids.
+
+#     Returns:
+#         A string of comma-separated index names. If `collection_ids` is None, returns the default indices.
+#     """
+#     if collection_ids is None:
+#         return COLLECTIONS_INDEX
+#     else:
+#         return ",".join([index_by_collection_id(c) for c in collection_ids])
 
 
-async def create_item_index(collection_id: str):
-    """
-    Ensure indexes for a specific collection of items in MongoDB using the asynchronous client.
+# async def create_collection_index():
+#     """
+#     Ensure indexes for the collections collection in MongoDB using the asynchronous client.
 
-    Args:
-        collection_id (str): Collection identifier used to derive the MongoDB collection name for items.
-
-    Returns:
-        None
-    """
-    client = AsyncSearchSettings.create_client
-    db = client[DATABASE]
-
-    # Derive the collection name for items based on the collection_id
-    collection_name = index_by_collection_id(collection_id)
-
-    try:
-        await db[collection_name].create_index([("properties.datetime", -1)])
-        await db[collection_name].create_index([("id", 1)], unique=True)
-        await db[collection_name].create_index([("geometry", "2dsphere")])
-        print(f"Indexes created successfully for collection: {collection_name}.")
-    except Exception as e:
-        # Handle exceptions, which could be due to existing index conflicts, etc.
-        print(
-            f"An error occurred while creating indexes for collection {collection_name}: {e}"
-        )
-    finally:
-        await client.close()
+#     Returns:
+#         None
+#     """
+#     client = AsyncSearchSettings().create_client
+#     if client:
+#         try:
+#             db = client[DATABASE]
+#             await db[COLLECTIONS_INDEX].create_index([("id", 1)], unique=True)
+#             print("Index created successfully.")
+#         except Exception as e:
+#             print(f"An error occurred while creating the index: {e}")
+#         finally:
+#             print(f"Closing client: {client}")
+#             client.close()
+#     else:
+#         print("Failed to create MongoDB client.")
 
 
-async def delete_item_index(collection_id: str):
-    """
-    Drop the MongoDB collection corresponding to the specified collection ID.
+# async def create_item_index(collection_id: str):
+#     """
+#     Ensure indexes for a specific collection of items in MongoDB using the asynchronous client.
 
-    This operation is the MongoDB equivalent of deleting an Elasticsearch index, removing both the data and
-    the structure for the specified collection's items.
+#     Args:
+#         collection_id (str): Collection identifier used to derive the MongoDB collection name for items.
 
-    Args:
-        collection_id (str): The ID of the collection whose associated MongoDB collection will be dropped.
-    """
-    client = AsyncSearchSettings.create_client
-    db = client[DATABASE]
+#     Returns:
+#         None
+#     """
+#     client = AsyncSearchSettings.create_client
+#     db = client[DATABASE]
 
-    # Derive the MongoDB collection name using the collection ID
-    collection_name = index_by_collection_id(collection_id)
+#     # Derive the collection name for items based on the collection_id
+#     collection_name = index_by_collection_id(collection_id)
 
-    try:
-        # Drop the collection, removing both its data and structure
-        await db[collection_name].drop()
-        logger.info(f"Collection '{collection_name}' successfully dropped.")
-    except Exception as e:
-        logger.error(f"Error dropping collection '{collection_name}': {e}")
-    finally:
-        await client.close()
+#     try:
+#         await db[collection_name].create_index([("properties.datetime", -1)])
+#         await db[collection_name].create_index([("id", 1)], unique=True)
+#         await db[collection_name].create_index([("geometry", "2dsphere")])
+#         print(f"Indexes created successfully for collection: {collection_name}.")
+#     except Exception as e:
+#         # Handle exceptions, which could be due to existing index conflicts, etc.
+#         print(
+#             f"An error occurred while creating indexes for collection {collection_name}: {e}"
+#         )
+#     finally:
+#         await client.close()
+
+
+# async def delete_item_index(collection_id: str):
+#     """
+#     Drop the MongoDB collection corresponding to the specified collection ID.
+
+#     This operation is the MongoDB equivalent of deleting an Elasticsearch index, removing both the data and
+#     the structure for the specified collection's items.
+
+#     Args:
+#         collection_id (str): The ID of the collection whose associated MongoDB collection will be dropped.
+#     """
+#     client = AsyncSearchSettings.create_client
+#     db = client[DATABASE]
+
+#     # Derive the MongoDB collection name using the collection ID
+#     collection_name = index_by_collection_id(collection_id)
+
+#     try:
+#         # Drop the collection, removing both its data and structure
+#         await db[collection_name].drop()
+#         logger.info(f"Collection '{collection_name}' successfully dropped.")
+#     except Exception as e:
+#         logger.error(f"Error dropping collection '{collection_name}': {e}")
+#     finally:
+#         await client.close()
 
 
 def mk_item_id(item_id: str, collection_id: str):
@@ -179,9 +179,7 @@ class MongoSearchAdapter:
         are retrieved first.
         """
         self.filters = []
-        # MongoDB uses a list of tuples for sorting: [('field1', direction), ('field2', direction)]
-        # Convert the DEFAULT_SORT dict to this format, considering MongoDB's sorting capabilities
-        self.sort = [("properties.datetime", -1), ("id", -1), ("collection", -1)]
+        # self.sort = [("properties.datetime", -1), ("id", -1), ("collection", -1)]
 
     def add_filter(self, filter_condition):
         """
@@ -195,21 +193,21 @@ class MongoSearchAdapter:
         """
         self.filters.append(filter_condition)
 
-    def set_sort(self, sort_conditions):
-        """
-        Set the sorting criteria for the query based on provided conditions.
+    # def set_sort(self, sort_conditions):
+    #     """
+    #     Set the sorting criteria for the query based on provided conditions.
 
-        This method translates a dictionary of field names and sort directions (asc or desc) into MongoDB's
-        format for sorting queries. It overwrites any existing sort criteria with the new criteria provided.
+    #     This method translates a dictionary of field names and sort directions (asc or desc) into MongoDB's
+    #     format for sorting queries. It overwrites any existing sort criteria with the new criteria provided.
 
-        Args:
-            sort_conditions (dict): A dictionary where keys are field names and values are dictionaries
-                                    indicating sort direction ('asc' for ascending or 'desc' for descending).
-        """
-        self.sort = []
-        for field, details in sort_conditions.items():
-            direction = 1 if details["order"] == "asc" else -1
-            self.sort.append((field, direction))
+    #     Args:
+    #         sort_conditions (dict): A dictionary where keys are field names and values are dictionaries
+    #                                 indicating sort direction ('asc' for ascending or 'desc' for descending).
+    #     """
+    #     self.sort = []
+    #     for field, details in sort_conditions.items():
+    #         direction = 1 if details["order"] == "asc" else -1
+    #         self.sort.append((field, direction))
 
 
 @attr.s
@@ -552,15 +550,13 @@ class DatabaseLogic:
         """
         db = self.client[DATABASE]
         collection = db[ITEMS_INDEX]
-        print("Search: ", search)
         print("Filters: ", search.filters)
         query = {"$and": search.filters} if search.filters else {}
 
         if collection_ids:
             query["collection"] = {"$in": collection_ids}
 
-        sort_criteria = search.sort if search.sort else [("_id", 1)]  # Default sort
-
+        sort_criteria = sort if sort else [("_id", 1)]  # Default sort
         try:
             if token:
                 last_id = ObjectId(base64.urlsafe_b64decode(token.encode()).decode())
