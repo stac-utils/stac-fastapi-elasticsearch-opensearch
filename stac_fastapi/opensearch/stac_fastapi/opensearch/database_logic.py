@@ -314,7 +314,7 @@ class DatabaseLogic:
         self, token: Optional[str], limit: int
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
         """
-        Retrieve a list of all collections from Elasticsearch, supporting pagination.
+        Retrieve a list of all collections from Opensearch, supporting pagination.
 
         Args:
             token (Optional[str]): The pagination token.
