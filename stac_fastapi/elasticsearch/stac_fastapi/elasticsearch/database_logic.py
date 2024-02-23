@@ -290,7 +290,7 @@ class DatabaseLogic:
     """CORE LOGIC"""
 
     async def get_all_collections(
-        self, token: Optional[str], limit: int
+        self, token: Optional[str], limit: int, base_url: str
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
         """Retrieve a list of all collections from Elasticsearch, supporting pagination.
 
@@ -315,7 +315,12 @@ class DatabaseLogic:
         )
 
         hits = response["hits"]["hits"]
-        collections = [hit["_source"] for hit in hits]
+        collections = [
+            self.collection_serializer.db_to_stac(
+                collection=hit["_source"], base_url=base_url
+            )
+            for hit in hits
+        ]
 
         next_token = None
         if len(hits) == limit:

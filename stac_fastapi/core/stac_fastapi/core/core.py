@@ -204,7 +204,7 @@ class CoreClient(AsyncBaseCoreClient):
         token = request.query_params.get("token")
 
         collections, next_token = await self.database.get_all_collections(
-            token=token, limit=limit
+            token=token, limit=limit, base_url=base_url
         )
 
         links = [
@@ -238,7 +238,9 @@ class CoreClient(AsyncBaseCoreClient):
         """
         base_url = str(kwargs["request"].base_url)
         collection = await self.database.find_collection(collection_id=collection_id)
-        return self.collection_serializer.db_to_stac(collection, base_url)
+        return self.collection_serializer.db_to_stac(
+            collection=collection, base_url=base_url
+        )
 
     async def item_collection(
         self,
