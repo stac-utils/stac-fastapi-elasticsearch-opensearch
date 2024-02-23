@@ -213,7 +213,7 @@ class CoreClient(AsyncBaseCoreClient):
             {
                 "rel": Relations.self.value,
                 "type": MimeTypes.json,
-                "href": f"{base_url}collections",
+                "href": urljoin(base_url, "collections"),
             },
         ]
 
