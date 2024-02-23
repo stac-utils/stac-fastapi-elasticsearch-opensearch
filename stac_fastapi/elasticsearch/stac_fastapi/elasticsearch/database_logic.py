@@ -291,32 +291,37 @@ class DatabaseLogic:
 
     async def get_all_collections(
         self, token: Optional[str], limit: int
-    ) -> Iterable[Dict[str, Any]]:
-        """Retrieve a list of all collections from the database.
+    ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+        """Retrieve a list of all collections from Elasticsearch, supporting pagination.
 
         Args:
-            token (Optional[str]): The token used to return the next set of results.
-            limit (int): Number of results to return
+            token (Optional[str]): The pagination token.
+            limit (int): The number of results to return.
 
         Returns:
-            collections (Iterable[Dict[str, Any]]): A list of dictionaries containing the source data for each collection.
-
-        Notes:
-            The collections are retrieved from the Elasticsearch database using the `client.search` method,
-            with the `COLLECTIONS_INDEX` as the target index and `size=limit` to retrieve records.
-            The result is a generator of dictionaries containing the source data for each collection.
+            A tuple of (collections, next pagination token if any).
         """
         search_after = None
         if token:
-            search_after = urlsafe_b64decode(token.encode()).decode().split(",")
-        collections = await self.client.search(
+            search_after = [token]
+
+        response = await self.client.search(
             index=COLLECTIONS_INDEX,
-            search_after=search_after,
-            size=limit,
-            sort={"id": {"order": "asc"}},
+            body={
+                "sort": [{"id": {"order": "asc"}}],
+                "size": limit,
+                "search_after": search_after,
+            },
         )
-        hits = collections["hits"]["hits"]
-        return hits
+
+        hits = response["hits"]["hits"]
+        collections = [hit["_source"] for hit in hits]
+
+        next_token = None
+        if len(hits) == limit:
+            next_token = hits[-1]["sort"][0]
+
+        return collections, next_token
 
     async def get_one_item(self, collection_id: str, item_id: str) -> Dict:
         """Retrieve a single item from the database.
