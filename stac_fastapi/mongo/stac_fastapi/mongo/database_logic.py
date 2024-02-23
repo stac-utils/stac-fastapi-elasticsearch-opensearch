@@ -393,10 +393,10 @@ class DatabaseLogic:
         Notes:
             A geo_shape filter is added to the search object, set to intersect with the specified geometry.
         """
-        print("intersect: ", search)
-        print("intersects geometry: ", intersects)
-        search.add_filter({"geometry": {"$geoIntersects": {"$geometry": intersects}}})
-        print("intersect: ", search)
+        geometry_dict = {"type": intersects.type, "coordinates": intersects.coordinates}
+        search.add_filter(
+            {"geometry": {"$geoIntersects": {"$geometry": geometry_dict}}}
+        )
         return search
 
     @staticmethod
