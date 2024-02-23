@@ -1,7 +1,6 @@
 """Item crud client."""
 import logging
 import re
-from base64 import urlsafe_b64encode
 from datetime import datetime as datetime_type
 from datetime import timezone
 from typing import Any, Dict, List, Optional, Set, Type, Union
@@ -193,66 +192,36 @@ class CoreClient(AsyncBaseCoreClient):
     async def all_collections(self, **kwargs) -> Collections:
         """Read all collections from the database.
 
+        Args:
+            **kwargs: Keyword arguments from the request.
+
         Returns:
-            Collections: A `Collections` object containing all the collections in the database and
-                links to various resources.
-
-        Raises:
-            Exception: If any error occurs while reading the collections from the database.
+            A Collections object containing all the collections in the database and links to various resources.
         """
-        request: Request = kwargs["request"]
-        base_url = str(kwargs["request"].base_url)
+        request = kwargs["request"]
+        base_url = str(request.base_url)
+        limit = int(request.query_params.get("limit", 10))
+        token = request.query_params.get("token")
 
-        limit = (
-            int(request.query_params["limit"])
-            if "limit" in request.query_params
-            else 10
+        collections, next_token = await self.database.get_all_collections(
+            token=token, limit=limit, base_url=base_url
         )
-        token = (
-            request.query_params["token"] if "token" in request.query_params else None
-        )
-
-        hits = await self.database.get_all_collections(limit=limit, token=token)
-
-        next_search_after = None
-        next_link = None
-        if len(hits) == limit:
-            last_hit = hits[-1]
-            next_search_after = last_hit["sort"]
-            next_token = urlsafe_b64encode(
-                ",".join(map(str, next_search_after)).encode()
-            ).decode()
-            paging_links = PagingLinks(next=next_token, request=request)
-            next_link = paging_links.link_next()
 
         links = [
-            {
-                "rel": Relations.root.value,
-                "type": MimeTypes.json,
-                "href": base_url,
-            },
-            {
-                "rel": Relations.parent.value,
-                "type": MimeTypes.json,
-                "href": base_url,
-            },
+            {"rel": Relations.root.value, "type": MimeTypes.json, "href": base_url},
+            {"rel": Relations.parent.value, "type": MimeTypes.json, "href": base_url},
             {
                 "rel": Relations.self.value,
                 "type": MimeTypes.json,
-                "href": urljoin(base_url, "collections"),
+                "href": f"{base_url}collections",
             },
         ]
 
-        if next_link:
+        if next_token:
+            next_link = PagingLinks(next=next_token, request=request).link_next()
             links.append(next_link)
 
-        return Collections(
-            collections=[
-                self.collection_serializer.db_to_stac(c["_source"], base_url=base_url)
-                for c in hits
-            ],
-            links=links,
-        )
+        return Collections(collections=collections, links=links)
 
     async def get_collection(self, collection_id: str, **kwargs) -> Collection:
         """Get a collection from the database by its id.
@@ -565,9 +534,12 @@ class CoreClient(AsyncBaseCoreClient):
             search = self.database.apply_bbox_filter(search=search, bbox=bbox)
 
         if search_request.intersects:
+            print("INTERSECTS: HELLO")
+            print("SEARCH1: ", search)
             search = self.database.apply_intersects_filter(
                 search=search, intersects=search_request.intersects
             )
+            print("SEARCH2: ", search)
 
         if search_request.query:
             for field_name, expr in search_request.query.items():

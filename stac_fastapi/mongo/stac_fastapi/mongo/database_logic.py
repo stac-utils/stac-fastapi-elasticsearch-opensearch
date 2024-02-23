@@ -11,13 +11,10 @@ from pymongo.errors import BulkWriteError, PyMongoError
 from stac_fastapi.core import serializers
 from stac_fastapi.core.extensions import filter
 from stac_fastapi.core.utilities import bbox2polygon
+from stac_fastapi.extensions.core import SortExtension
 from stac_fastapi.mongo.config import AsyncMongoDBSettings as AsyncSearchSettings
 from stac_fastapi.mongo.config import MongoDBSettings as SyncSearchSettings
-from stac_fastapi.mongo.utilities import (
-    adapt_mongodb_docs_for_es_sorted,
-    decode_token,
-    serialize_doc,
-)
+from stac_fastapi.mongo.utilities import decode_token, encode_token, serialize_doc
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.stac import Collection, Item
 
@@ -232,37 +229,47 @@ class DatabaseLogic:
     """CORE LOGIC"""
 
     async def get_all_collections(
-        self,
-        token: Optional[str],
-        limit: int,
-    ) -> Iterable[Dict[str, Any]]:
+        self, token: Optional[str], limit: int, base_url: str
+    ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
         """
-        Retrieve a list of all collections from the database, adapted to mimic Elasticsearch's document structure.
+        Retrieve a list of all collections from the MongoDB database, supporting pagination.
 
         Args:
-            token (Optional[str]): The token used to return the next set of results.
-            limit (int): Number of results to return
+            token (Optional[str]): The pagination token, which is the ID of the last collection in the previous page.
+            limit (int): The maximum number of results to return.
+            base_url (str): The base URL for constructing fully qualified links.
 
         Returns:
-            collections (Iterable[Dict[str, Any]]): A list of dictionaries containing the source data for each collection,
-                                                    with each document nested under a '_source' key.
+            Tuple[List[Dict[str, Any]], Optional[str]]: A tuple containing a list of collections
+            and an optional next token for pagination.
         """
         db = self.client[DATABASE]
         collections_collection = db[COLLECTIONS_INDEX]
 
         query: Dict[str, Any] = {}
-
         if token:
             last_seen_id = decode_token(token)
             query = {"id": {"$gt": last_seen_id}}
 
-        cursor = collections_collection.find(query).sort("id", 1).limit(limit)
-        collections = await cursor.to_list(length=limit)
+        cursor = collections_collection.find(query).sort("id", 1).limit(limit + 1)
+        collections = await cursor.to_list(length=limit + 1)
 
-        # Adapt the MongoDB documents to mimic Elasticsearch's document structure
-        adapted_collections = adapt_mongodb_docs_for_es_sorted(collections)
+        # Check if we have more items to paginate through
+        next_token = None
+        if len(collections) > limit:
+            # Use the ID of the last item in the list as the next token
+            next_token = encode_token(collections[-1]["id"])
+            collections = collections[
+                :-1
+            ]  # Remove the extra item used to check for next page
 
-        return adapted_collections
+        # Serialize MongoDB documents to STAC-compliant collections
+        serialized_collections = [
+            self.collection_serializer.db_to_stac(serialize_doc(collection), base_url)
+            for collection in collections
+        ]
+
+        return serialized_collections, next_token
 
     async def get_one_item(self, collection_id: str, item_id: str) -> Dict:
         """Retrieve a single item from the database.
@@ -386,9 +393,10 @@ class DatabaseLogic:
         Notes:
             A geo_shape filter is added to the search object, set to intersect with the specified geometry.
         """
-        search = search.add_filter(
-            {"geometry": {"$geoIntersects": {"$geometry": intersects}}}
-        )
+        print("intersect: ", search)
+        print("intersects geometry: ", intersects)
+        search.add_filter({"geometry": {"$geoIntersects": {"$geometry": intersects}}})
+        print("intersect: ", search)
         return search
 
     @staticmethod
@@ -487,7 +495,7 @@ class DatabaseLogic:
         return search_adapter
 
     @staticmethod
-    def populate_sort(sortby: List[Dict[str, str]]) -> List[Tuple[str, int]]:
+    def populate_sort(sortby: List[SortExtension]) -> List[Tuple[str, int]]:
         """
         Transform a list of sort criteria into the format expected by MongoDB.
 
@@ -544,6 +552,8 @@ class DatabaseLogic:
         """
         db = self.client[DATABASE]
         collection = db[ITEMS_INDEX]
+        print("Search: ", search)
+        print("Filters: ", search.filters)
         query = {"$and": search.filters} if search.filters else {}
 
         if collection_ids:
