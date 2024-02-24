@@ -20,7 +20,11 @@ from stac_fastapi.extensions.core import (
 )
 from stac_fastapi.extensions.third_party import BulkTransactionExtension
 from stac_fastapi.mongo.config import AsyncMongoDBSettings
-from stac_fastapi.mongo.database_logic import DatabaseLogic, create_collection_index
+from stac_fastapi.mongo.database_logic import (
+    DatabaseLogic,
+    create_collection_index,
+    create_item_index,
+)
 
 settings = AsyncMongoDBSettings()
 session = Session.create_from_settings(settings)
@@ -71,6 +75,7 @@ app = api.app
 @app.on_event("startup")
 async def _startup_event() -> None:
     await create_collection_index()
+    await create_item_index()
 
 
 def run() -> None:
