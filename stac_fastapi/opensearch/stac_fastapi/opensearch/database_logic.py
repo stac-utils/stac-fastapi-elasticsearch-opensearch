@@ -134,6 +134,7 @@ ES_COLLECTIONS_MAPPINGS = {
     "numeric_detection": False,
     "dynamic_templates": ES_MAPPINGS_DYNAMIC_TEMPLATES,
     "properties": {
+        "id": {"type": "keyword"},
         "extent.spatial.bbox": {"type": "long"},
         "extent.temporal.interval": {"type": "date"},
         "providers": {"type": "object", "enabled": False},
@@ -311,36 +312,49 @@ class DatabaseLogic:
     """CORE LOGIC"""
 
     async def get_all_collections(
-        self,
-        token: Optional[str],
-        limit: int,
-    ) -> Iterable[Dict[str, Any]]:
-        """Retrieve a list of all collections from the database.
+        self, token: Optional[str], limit: int, base_url: str
+    ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+        """
+        Retrieve a list of all collections from Opensearch, supporting pagination.
 
         Args:
-            token (Optional[str]): The token used to return the next set of results.
-            limit (int): Number of results to return
+            token (Optional[str]): The pagination token.
+            limit (int): The number of results to return.
 
         Returns:
-            collections (Iterable[Dict[str, Any]]): A list of dictionaries containing the source data for each collection.
-
-        Notes:
-            The collections are retrieved from the Elasticsearch database using the `client.search` method,
-            with the `COLLECTIONS_INDEX` as the target index and `size=limit` to retrieve records.
-            The result is a generator of dictionaries containing the source data for each collection.
+            A tuple of (collections, next pagination token if any).
         """
-        search_body: Dict[str, Any] = {}
+        search_body = {
+            "sort": [{"id": {"order": "asc"}}],
+            "size": limit,
+        }
+
+        # Only add search_after to the query if token is not None and not empty
         if token:
-            search_after = urlsafe_b64decode(token.encode()).decode().split(",")
+            search_after = [token]
             search_body["search_after"] = search_after
 
-        search_body["sort"] = {"id": {"order": "asc"}}
-
-        collections = await self.client.search(
-            index=COLLECTIONS_INDEX, body=search_body, size=limit
+        response = await self.client.search(
+            index="collections",
+            body=search_body,
         )
-        hits = collections["hits"]["hits"]
-        return hits
+
+        hits = response["hits"]["hits"]
+        collections = [
+            self.collection_serializer.db_to_stac(
+                collection=hit["_source"], base_url=base_url
+            )
+            for hit in hits
+        ]
+
+        next_token = None
+        if len(hits) == limit:
+            # Ensure we have a valid sort value for next_token
+            next_token_values = hits[-1].get("sort")
+            if next_token_values:
+                next_token = next_token_values[0]
+
+        return collections, next_token
 
     async def get_one_item(self, collection_id: str, item_id: str) -> Dict:
         """Retrieve a single item from the database.
