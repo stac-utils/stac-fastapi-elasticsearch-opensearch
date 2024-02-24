@@ -24,117 +24,61 @@ NumType = Union[float, int]
 
 COLLECTIONS_INDEX = os.getenv("STAC_COLLECTIONS_INDEX", "collections")
 ITEMS_INDEX = os.getenv("STAC_ITEMS_INDEX", "items")
-# ITEMS_INDEX_PREFIX = os.getenv("STAC_ITEMS_INDEX_PREFIX", "items_")
 DATABASE = os.getenv("MONGO_DB", "admin")
 
 
-# def index_by_collection_id(collection_id: str) -> str:
-#     """
-#     Translate a collection id into an Elasticsearch index name.
+async def create_collection_index():
+    """
+    Ensure indexes for the collections collection in MongoDB using the asynchronous client.
 
-#     Args:
-#         collection_id (str): The collection id to translate into an index name.
-
-#     Returns:
-#         str: The index name derived from the collection id.
-#     """
-#     unsupported_chars = set('/\\ ."*<>:|?$')
-#     sanitized = "".join(c for c in collection_id if c not in unsupported_chars)
-#     return f"{ITEMS_INDEX_PREFIX}{sanitized.lower()}"
-
-
-# def indices(collection_ids: Optional[List[str]]) -> str:
-#     """
-#     Get a comma-separated string of index names for a given list of collection ids.
-
-#     Args:
-#         collection_ids: A list of collection ids.
-
-#     Returns:
-#         A string of comma-separated index names. If `collection_ids` is None, returns the default indices.
-#     """
-#     if collection_ids is None:
-#         return COLLECTIONS_INDEX
-#     else:
-#         return ",".join([index_by_collection_id(c) for c in collection_ids])
+    Returns:
+        None
+    """
+    client = AsyncSearchSettings().create_client
+    if client:
+        try:
+            db = client[DATABASE]
+            await db[COLLECTIONS_INDEX].create_index([("id", 1)], unique=True)
+            print(f"Index created successfully for collection: {COLLECTIONS_INDEX}.")
+        except Exception as e:
+            # Handle exceptions, which could be due to existing index conflicts, etc.
+            print(
+                f"An error occurred while creating indexe for collection {COLLECTIONS_INDEX}: {e}"
+            )
+        finally:
+            print(f"Closing client: {client}")
+            client.close()
+    else:
+        print("Failed to create MongoDB client.")
 
 
-# async def create_collection_index():
-#     """
-#     Ensure indexes for the collections collection in MongoDB using the asynchronous client.
+async def create_item_index():
+    """
+    Ensure indexes for a specific collection of items in MongoDB using the asynchronous client.
 
-#     Returns:
-#         None
-#     """
-#     client = AsyncSearchSettings().create_client
-#     if client:
-#         try:
-#             db = client[DATABASE]
-#             await db[COLLECTIONS_INDEX].create_index([("id", 1)], unique=True)
-#             print("Index created successfully.")
-#         except Exception as e:
-#             print(f"An error occurred while creating the index: {e}")
-#         finally:
-#             print(f"Closing client: {client}")
-#             client.close()
-#     else:
-#         print("Failed to create MongoDB client.")
+    Args:
+        collection_id (str): Collection identifier used to derive the MongoDB collection name for items.
 
+    Returns:
+        None
+    """
+    client = AsyncSearchSettings().create_client
 
-# async def create_item_index(collection_id: str):
-#     """
-#     Ensure indexes for a specific collection of items in MongoDB using the asynchronous client.
-
-#     Args:
-#         collection_id (str): Collection identifier used to derive the MongoDB collection name for items.
-
-#     Returns:
-#         None
-#     """
-#     client = AsyncSearchSettings.create_client
-#     db = client[DATABASE]
-
-#     # Derive the collection name for items based on the collection_id
-#     collection_name = index_by_collection_id(collection_id)
-
-#     try:
-#         await db[collection_name].create_index([("properties.datetime", -1)])
-#         await db[collection_name].create_index([("id", 1)], unique=True)
-#         await db[collection_name].create_index([("geometry", "2dsphere")])
-#         print(f"Indexes created successfully for collection: {collection_name}.")
-#     except Exception as e:
-#         # Handle exceptions, which could be due to existing index conflicts, etc.
-#         print(
-#             f"An error occurred while creating indexes for collection {collection_name}: {e}"
-#         )
-#     finally:
-#         await client.close()
-
-
-# async def delete_item_index(collection_id: str):
-#     """
-#     Drop the MongoDB collection corresponding to the specified collection ID.
-
-#     This operation is the MongoDB equivalent of deleting an Elasticsearch index, removing both the data and
-#     the structure for the specified collection's items.
-
-#     Args:
-#         collection_id (str): The ID of the collection whose associated MongoDB collection will be dropped.
-#     """
-#     client = AsyncSearchSettings.create_client
-#     db = client[DATABASE]
-
-#     # Derive the MongoDB collection name using the collection ID
-#     collection_name = index_by_collection_id(collection_id)
-
-#     try:
-#         # Drop the collection, removing both its data and structure
-#         await db[collection_name].drop()
-#         logger.info(f"Collection '{collection_name}' successfully dropped.")
-#     except Exception as e:
-#         logger.error(f"Error dropping collection '{collection_name}': {e}")
-#     finally:
-#         await client.close()
+    if client:
+        db = client[DATABASE]
+        collection = db[ITEMS_INDEX]
+        try:
+            await collection.create_index([("properties.datetime", -1)])
+            await collection.create_index([("id", 1)], unique=True)
+            await collection.create_index([("geometry", "2dsphere")])
+            print(f"Indexes created successfully for collection: {ITEMS_INDEX}.")
+        except Exception as e:
+            # Handle exceptions, which could be due to existing index conflicts, etc.
+            print(
+                f"An error occurred while creating indexes for collection {ITEMS_INDEX}: {e}"
+            )
+        finally:
+            await client.close()
 
 
 def mk_item_id(item_id: str, collection_id: str):
@@ -193,22 +137,6 @@ class MongoSearchAdapter:
         """
         self.filters.append(filter_condition)
 
-    # def set_sort(self, sort_conditions):
-    #     """
-    #     Set the sorting criteria for the query based on provided conditions.
-
-    #     This method translates a dictionary of field names and sort directions (asc or desc) into MongoDB's
-    #     format for sorting queries. It overwrites any existing sort criteria with the new criteria provided.
-
-    #     Args:
-    #         sort_conditions (dict): A dictionary where keys are field names and values are dictionaries
-    #                                 indicating sort direction ('asc' for ascending or 'desc' for descending).
-    #     """
-    #     self.sort = []
-    #     for field, details in sort_conditions.items():
-    #         direction = 1 if details["order"] == "asc" else -1
-    #         self.sort.append((field, direction))
-
 
 @attr.s
 class DatabaseLogic:
@@ -233,7 +161,7 @@ class DatabaseLogic:
         Retrieve a list of all collections from the MongoDB database, supporting pagination.
 
         Args:
-            token (Optional[str]): The pagination token, which is the ID of the last collection in the previous page.
+            token (Optional[str]): The pagination token, which is the ID of the last collection seen.
             limit (int): The maximum number of results to return.
             base_url (str): The base URL for constructing fully qualified links.
 
@@ -247,26 +175,27 @@ class DatabaseLogic:
         query: Dict[str, Any] = {}
         if token:
             last_seen_id = decode_token(token)
+            print(f"Decoded token (Last seen ID): {last_seen_id}")
             query = {"id": {"$gt": last_seen_id}}
 
-        cursor = collections_collection.find(query).sort("id", 1).limit(limit + 1)
-        collections = await cursor.to_list(length=limit + 1)
+        print(f"Query: {query}, Limit: {limit}")
+        cursor = collections_collection.find(query).sort("id", 1).limit(limit)
+        collections = await cursor.to_list(length=limit)
 
-        # Check if we have more items to paginate through
         next_token = None
-        if len(collections) > limit:
-            # Use the ID of the last item in the list as the next token
+        if len(collections) == limit:
+            # Assumes collections are sorted by 'id' in ascending order.
             next_token = encode_token(collections[-1]["id"])
-            collections = collections[
-                :-1
-            ]  # Remove the extra item used to check for next page
+            print(f"Next token (for next page): {next_token}")
 
-        # Serialize MongoDB documents to STAC-compliant collections
         serialized_collections = [
             self.collection_serializer.db_to_stac(serialize_doc(collection), base_url)
             for collection in collections
         ]
 
+        print(
+            f"Serialized Collections: {serialized_collections}, Next Token: {next_token}"
+        )
         return serialized_collections, next_token
 
     async def get_one_item(self, collection_id: str, item_id: str) -> Dict:
@@ -281,28 +210,21 @@ class DatabaseLogic:
 
         Raises:
             NotFoundError: If the specified Item does not exist in the Collection.
-
         """
         db = self.client[DATABASE]
         collection = db[ITEMS_INDEX]
 
-        try:
-            # Attempt to find the item in the specified collection
-            item = await collection.find_one({"id": item_id})
-            if not item:
-                # If the item is not found, raise NotFoundError
-                raise NotFoundError(f"Item {item_id} does not exist.")
-
-            # Serialize the MongoDB document to make it JSON serializable
-            serialized_item = serialize_doc(item)
-
-            return serialized_item
-        except Exception as e:
-            # Log and re-raise any exceptions encountered during the operation
-            logger.error(
-                f"An error occurred while retrieving item {item_id} from collection {collection_id}: {e}"
+        # Adjusted to include collection_id in the query to fetch items within a specific collection
+        item = await collection.find_one({"id": item_id, "collection": collection_id})
+        if not item:
+            # If the item is not found, raise NotFoundError
+            raise NotFoundError(
+                f"Item {item_id} in collection {collection_id} does not exist."
             )
-            raise
+
+        # Serialize the MongoDB document to make it JSON serializable
+        serialized_item = serialize_doc(item)
+        return serialized_item
 
     @staticmethod
     def make_search():
@@ -422,6 +344,9 @@ class DatabaseLogic:
             "lte": "$lte",
         }
 
+        # Replace double underscores with dots for nested field queries
+        field = field.replace("__", ".")
+
         # Construct the MongoDB filter
         if op in op_mapping:
             mongo_op = op_mapping[op]
@@ -430,66 +355,124 @@ class DatabaseLogic:
             raise ValueError(f"Unsupported operation '{op}'")
 
         # Add the constructed filter to the search adapter's filters
-        search = search.add_filter(filter_condition)
+        search.add_filter(filter_condition)
         return search
 
     @staticmethod
-    def translate_clause_to_mongo(clause: filter.Clause) -> dict:
-        """Translate a CQL2 Clause object to a MongoDB query.
+    def translate_cql2_to_mongo(cql2_filter: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Translate a CQL2 filter dictionary to a MongoDB query.
+
+        This function translates a CQL2 JSON filter into a MongoDB query format. It supports
+        various comparison operators, logical operators, and a special handling for spatial
+        intersections and the 'in' operator.
 
         Args:
-            clause (Clause): The Clause object to translate.
+            cql2_filter: A dictionary representing the CQL2 filter.
 
         Returns:
-            dict: The translated MongoDB query.
+            A MongoDB query as a dictionary.
         """
-        # This function needs to recursively translate CQL2 Clauses to MongoDB queries
-        # Here we demonstrate a simple example of handling an "eq" operator
-        if clause.op == filter.ComparisonOp.eq:
-            # Direct translation of an "eq" operation to MongoDB's query syntax
-            return {clause.args[0].property: {"$eq": clause.args[1]}}
-        elif clause.op == filter.SpatialIntersectsOp.s_intersects:
-            # Example of handling a spatial intersects operation
+        print("CQL2 filter:", cql2_filter)
+        op_mapping = {
+            ">": "$gt",
+            ">=": "$gte",
+            "<": "$lt",
+            "<=": "$lte",
+            "=": "$eq",
+            "!=": "$ne",
+            "like": "$regex",
+            "in": "$in",
+        }
+
+        if cql2_filter["op"] in ["and", "or"]:
+            mongo_op = f"${cql2_filter['op']}"
             return {
-                clause.args[0].property: {
-                    "$geoIntersects": {
-                        "$geometry": clause.args[
-                            1
-                        ].__geo_interface__  # Assuming args[1] is a GeoJSON-pydantic model
-                    }
-                }
+                mongo_op: [
+                    DatabaseLogic.translate_cql2_to_mongo(arg)
+                    for arg in cql2_filter["args"]
+                ]
             }
-        # Add additional elif blocks to handle other operators like "lt", "lte", "gt", "gte", "neq", etc.
-        else:
-            raise NotImplementedError(
-                f"Operator {clause.op} not implemented for MongoDB translation."
+
+        elif cql2_filter["op"] == "not":
+            translated_condition = DatabaseLogic.translate_cql2_to_mongo(
+                cql2_filter["args"][0]
             )
+            return {"$nor": [translated_condition]}
+
+        elif cql2_filter["op"] == "s_intersects":
+            geometry = cql2_filter["args"][1]
+            return {"geometry": {"$geoIntersects": {"$geometry": geometry}}}
+
+        elif cql2_filter["op"] == "between":
+            property_path = "properties." + cql2_filter["args"][0]["property"]
+            lower_bound = cql2_filter["args"][1]
+            upper_bound = cql2_filter["args"][2]
+            return {property_path: {"$gte": lower_bound, "$lte": upper_bound}}
+
+        else:
+            property_name = cql2_filter["args"][0]["property"]
+            # Check if the property name is in the special mapping
+            if property_name in filter.queryables_mapping:
+                property_path = filter.queryables_mapping[property_name]
+            elif property_name not in [
+                "id",
+                "collection",
+            ] and not property_name.startswith("properties."):
+                property_path = f"properties.{property_name}"
+            else:
+                property_path = property_name
+
+            value = cql2_filter["args"][1]
+            # Attempt to convert numeric string to float or integer
+            try:
+                if "." in value:
+                    value = float(value)
+                else:
+                    value = int(value)
+            except (ValueError, TypeError):
+                pass  # Keep value as is if conversion is not possible
+            mongo_op = op_mapping.get(cql2_filter["op"])
+
+            print("VALUE", type(value))
+
+            if mongo_op is None:
+                raise ValueError(
+                    f"Unsupported operation '{cql2_filter['op']}' in CQL2 filter."
+                )
+
+            if mongo_op == "$regex":
+                return {
+                    property_path: {mongo_op: value.replace("%", ".*"), "$options": "i"}
+                }
+            elif mongo_op == "$in":
+                if not isinstance(value, list):
+                    raise ValueError(f"Arg {value} is not a list")
+                return {property_path: {mongo_op: value}}
+            else:
+                return {property_path: {mongo_op: value}}
 
     @staticmethod
     def apply_cql2_filter(
-        search_adapter: MongoSearchAdapter, _filter: Optional[filter.Clause]
+        search_adapter: "MongoSearchAdapter", _filter: Optional[Dict[str, Any]]
     ):
-        """Adapt database logic to apply a CQL2 filter for MongoDB search endpoint.
+        """
+        Apply a CQL2 JSON filter to the MongoDB search adapter.
+
+        This method translates a CQL2 JSON filter into MongoDB's query syntax and adds it to the adapter's filters.
 
         Args:
-            search_adapter (MongoSearchAdapter): The search adapter to which the filter will be applied.
-            _filter (Optional[Clause]): A Clause representing the filter criteria.
+            search_adapter (MongoSearchAdapter): The MongoDB search adapter to which the filter will be applied.
+            _filter (Optional[Dict[str, Any]]): The CQL2 filter as a dictionary. If None, no action is taken.
 
         Returns:
-            MongoSearchAdapter: The search adapter with the filter applied.
+            MongoSearchAdapter: The search adapter with the CQL2 filter applied.
         """
-        if _filter is None:
-            return search_adapter
-
-        # Translating the CQL2 Clause to a MongoDB query
-        try:
-            # Assuming _filter is a Clause object as defined above
-            mongo_query = DatabaseLogic.translate_clause_to_mongo(_filter)
+        if _filter is not None:
+            mongo_query = DatabaseLogic.translate_cql2_to_mongo(_filter)
             search_adapter.add_filter(mongo_query)
-        except Exception as e:
-            # Handle translation errors or unsupported features
-            print(f"Error translating CQL2 Clause to MongoDB query: {e}")
 
+        print("search adapter: ", search_adapter)
         return search_adapter
 
     @staticmethod
@@ -550,9 +533,10 @@ class DatabaseLogic:
         """
         db = self.client[DATABASE]
         collection = db[ITEMS_INDEX]
-        print("Filters: ", search.filters)
-        query = {"$and": search.filters} if search.filters else {}
 
+        query = {"$and": search.filters} if search and search.filters else {}
+
+        print("Query: ", query)
         if collection_ids:
             query["collection"] = {"$in": collection_ids}
 
@@ -703,14 +687,14 @@ class DatabaseLogic:
 
         # Check if the collection exists
         collection_exists = collections_collection.count_documents(
-            {"id": item.collection}, limit=1
+            {"id": item["collection"]}, limit=1
         )
         if not collection_exists:
-            raise NotFoundError(f"Collection {item.collection} does not exist")
+            raise NotFoundError(f"Collection {item['collection']} does not exist")
 
         # Transform item using item_serializer for MongoDB compatibility
         mongo_item = self.item_serializer.stac_to_db(item, base_url)
-
+        print("mongo item id: ", mongo_item["id"])
         if not exist_ok:
             existing_item = items_collection.find_one({"id": mongo_item["id"]})
             if existing_item:
@@ -719,7 +703,7 @@ class DatabaseLogic:
                 )
 
         # Return the transformed item ready for insertion
-        return mongo_item
+        return serialize_doc(mongo_item)
 
     async def delete_item(
         self, item_id: str, collection_id: str, refresh: bool = False
@@ -824,16 +808,22 @@ class DatabaseLogic:
         Raises:
             NotFoundError: If the collection with the specified ID does not exist.
             ConflictError: If attempting to change the collection ID to one that already exists.
+
+        Note:
+            This function handles both updating a collection's metadata and changing its ID.
+            It does not directly modify the `_id` field, which is immutable in MongoDB.
+            When changing a collection's ID, it creates a new document with the new ID and deletes the old document.
         """
         db = self.client[DATABASE]
         collections_collection = db[COLLECTIONS_INDEX]
 
+        # Ensure the existing collection exists
         existing_collection = await self.find_collection(collection_id)
         if not existing_collection:
             raise NotFoundError(f"Collection {collection_id} not found")
 
+        # Handle changing collection ID
         if collection_id != collection["id"]:
-            # Check if the new ID already exists
             new_id_exists = await collections_collection.find_one(
                 {"id": collection["id"]}
             )
@@ -842,29 +832,40 @@ class DatabaseLogic:
                     f"Collection with ID {collection['id']} already exists"
                 )
 
-            # Update the collection ID in all related documents/items
             items_collection = db[ITEMS_INDEX]
+            # Update only items related to the old collection ID to the new collection ID
             await items_collection.update_many(
-                {}, {"$set": {"collection": collection["id"]}}
+                {"collection": collection_id},
+                {"$set": {"collection": collection["id"]}},
             )
 
             # Insert the new collection and delete the old one
             await collections_collection.insert_one(collection)
             await collections_collection.delete_one({"id": collection_id})
-
-            # Optionally, handle renaming or moving documents to a new collection if necessary
         else:
-            # Update the existing collection with new data
+            # Update the existing collection with new data, ensuring not to attempt to update `_id`
             await collections_collection.update_one(
-                {"id": collection_id}, {"$set": collection}
+                {"id": collection_id},
+                {"$set": {k: v for k, v in collection.items() if k != "_id"}},
             )
 
     async def delete_collection(self, collection_id: str):
         """
         Delete a collection from the MongoDB database and all items associated with it.
 
+        This function first attempts to delete the specified collection from the database.
+        If the collection exists and is successfully deleted, it then proceeds to delete
+        all items that are associated with this collection. If the collection does not exist,
+        a NotFoundError is raised to indicate the collection cannot be found in the database.
+
         Args:
             collection_id (str): The ID of the collection to be deleted.
+
+        Raises:
+            NotFoundError: If the collection with the specified ID does not exist in the database.
+
+        This ensures that when a collection is deleted, all of its items are also cleaned up from the database,
+        maintaining data integrity and avoiding orphaned items without a parent collection.
         """
         db = self.client[DATABASE]
         collections_collection = db[COLLECTIONS_INDEX]
@@ -875,9 +876,10 @@ class DatabaseLogic:
             {"id": collection_id}
         )
         if collection_result.deleted_count == 0:
+            # Collection not found, raise an error
             raise NotFoundError(f"Collection {collection_id} not found")
 
-        # Delete all items associated with the collection
+        # Successfully found and deleted the collection, now delete its items
         await items_collection.delete_many({"collection": collection_id})
 
     async def bulk_async(
