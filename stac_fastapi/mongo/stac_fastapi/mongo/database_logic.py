@@ -2,6 +2,7 @@
 import base64
 import logging
 import os
+import re
 from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple, Type, Union
 
 import attr
@@ -229,14 +230,12 @@ class DatabaseLogic:
     @staticmethod
     def make_search():
         """Database logic to create a Search instance."""
-        # return Search().sort(*DEFAULT_SORT)
-        print("make_search hello")
         return MongoSearchAdapter()
 
     @staticmethod
     def apply_ids_filter(search: MongoSearchAdapter, item_ids: List[str]):
         """Database logic to search a list of STAC item ids."""
-        search.add_filter({"_id": {"$in": item_ids}})
+        search.add_filter({"id": {"$in": item_ids}})
         return search
 
     @staticmethod
@@ -405,7 +404,19 @@ class DatabaseLogic:
             return {"geometry": {"$geoIntersects": {"$geometry": geometry}}}
 
         elif cql2_filter["op"] == "between":
-            property_path = "properties." + cql2_filter["args"][0]["property"]
+            property_name = cql2_filter["args"][0]["property"]
+
+            # Use the special mapping directly if available, or construct the path appropriately
+            if property_name in filter.queryables_mapping:
+                property_path = filter.queryables_mapping[property_name]
+            elif property_name not in [
+                "id",
+                "collection",
+            ] and not property_name.startswith("properties."):
+                property_path = f"properties.{property_name}"
+            else:
+                property_path = property_name
+
             lower_bound = cql2_filter["args"][1]
             upper_bound = cql2_filter["args"][2]
             return {property_path: {"$gte": lower_bound, "$lte": upper_bound}}
@@ -442,9 +453,22 @@ class DatabaseLogic:
                 )
 
             if mongo_op == "$regex":
-                return {
-                    property_path: {mongo_op: value.replace("%", ".*"), "$options": "i"}
-                }
+                # Replace SQL LIKE wildcards with regex equivalents, handling escaped characters
+                regex_pattern = re.sub(
+                    r"(?<!\\)%", ".*", value
+                )  # Replace '%' with '.*', ignoring escaped '\%'
+                regex_pattern = re.sub(
+                    r"(?<!\\)_", ".", regex_pattern
+                )  # Replace '_' with '.', ignoring escaped '\_'
+
+                # Handle escaped wildcards by reverting them to their literal form
+                regex_pattern = regex_pattern.replace("\\%", "%").replace("\\_", "_")
+
+                # Ensure backslashes are properly escaped for MongoDB regex
+                regex_pattern = regex_pattern.replace("\\", "\\\\")
+
+                return {property_path: {"$regex": regex_pattern, "$options": "i"}}
+
             elif mongo_op == "$in":
                 if not isinstance(value, list):
                     raise ValueError(f"Arg {value} is not a list")
