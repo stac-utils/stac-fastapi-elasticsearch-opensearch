@@ -1,11 +1,14 @@
 FROM python:3.10-slim
 
+
+# update apt pkgs, and install build-essential for ciso8601
 RUN apt-get update && \
     apt-get -y upgrade && \
-    apt-get -y install gcc && \
+    apt-get install -y build-essential && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+# update certs used by Requests
 ENV CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
 
 WORKDIR /app
@@ -13,8 +16,4 @@ WORKDIR /app
 COPY . /app
 
 RUN pip install --no-cache-dir -e ./stac_fastapi/core
-RUN pip install --no-cache-dir ./stac_fastapi/elasticsearch[server]
-
-EXPOSE 8080
-
-CMD ["uvicorn", "stac_fastapi.elasticsearch.app:app", "--host", "0.0.0.0", "--port", "8080"]
+RUN pip install --no-cache-dir -e ./stac_fastapi/mongo[dev,server]
