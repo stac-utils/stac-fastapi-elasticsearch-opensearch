@@ -1,4 +1,4 @@
-"""stac_fastapi: mongodb module."""
+"""stac_fastapi: opensearch module."""
 
 from setuptools import find_namespace_packages, setup
 
@@ -7,8 +7,8 @@ with open("README.md") as f:
 
 install_requires = [
     "stac-fastapi.core==2.0.0",
-    "motor==3.3.2",
-    "pymongo==4.6.1",
+    "opensearch-py==2.4.2",
+    "opensearch-py[async]==2.4.2",
     "uvicorn",
     "starlette",
 ]
@@ -28,8 +28,8 @@ extra_reqs = {
 }
 
 setup(
-    name="stac-fastapi.mongo",
-    description="Mongodb stac-fastapi backend.",
+    name="stac-fastapi.opensearch",
+    description="Opensearch stac-fastapi backend.",
     long_description=desc,
     long_description_content_type="text/markdown",
     python_requires=">=3.8",
@@ -49,5 +49,7 @@ setup(
     zip_safe=False,
     install_requires=install_requires,
     extras_require=extra_reqs,
-    entry_points={"console_scripts": ["stac-fastapi-mongo=stac_fastapi.mongo.app:run"]},
+    entry_points={
+        "console_scripts": ["stac-fastapi-opensearch=stac_fastapi.opensearch.app:run"]
+    },
 )
