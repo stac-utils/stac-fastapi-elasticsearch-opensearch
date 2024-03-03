@@ -24,6 +24,10 @@ if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
         DatabaseLogic,
         create_collection_index,
     )
+elif os.getenv("BACKEND", "elasticsearch").lower() == "mongo":
+    from stac_fastapi.mongo.config import AsyncMongoDBSettings as AsyncSettings
+    from stac_fastapi.mongo.config import MongoDBSettings as SearchSettings
+    from stac_fastapi.mongo.database_logic import DatabaseLogic, create_collection_index
 else:
     from stac_fastapi.elasticsearch.config import (
         ElasticsearchSettings as SearchSettings,
