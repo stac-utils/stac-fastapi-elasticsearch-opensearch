@@ -2,7 +2,7 @@
 
 ## Mongo backend for the stac-fastapi project built on top of the [sfeos](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch) core api library. 
 
-### Note: This is presently in development and for now is mostly a proof of concept showing that other databases can be plugged into the [sfeos](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch) core api library, besides for elasticsearch and opensearch. 
+- Note: This is presently in development and, for now, is a proof of concept project showing that other databases can be plugged into the [sfeos](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch) core api library, besides for elasticsearch and opensearch. 
    
 
 To install from PyPI:
