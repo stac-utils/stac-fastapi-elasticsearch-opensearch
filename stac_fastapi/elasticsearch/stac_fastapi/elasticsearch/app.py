@@ -10,6 +10,11 @@ from stac_fastapi.core.core import (
 )
 from stac_fastapi.core.extensions import QueryExtension
 from stac_fastapi.core.session import Session
+from stac_fastapi.elasticsearch.config import ElasticsearchSettings
+from stac_fastapi.elasticsearch.database_logic import (
+    DatabaseLogic,
+    create_collection_index,
+)
 from stac_fastapi.extensions.core import (
     ContextExtension,
     FieldsExtension,
@@ -19,14 +24,8 @@ from stac_fastapi.extensions.core import (
     TransactionExtension,
 )
 from stac_fastapi.extensions.third_party import BulkTransactionExtension
-from stac_fastapi.mongo.config import AsyncMongoDBSettings
-from stac_fastapi.mongo.database_logic import (
-    DatabaseLogic,
-    create_collection_index,
-    create_item_index,
-)
 
-settings = AsyncMongoDBSettings()
+settings = ElasticsearchSettings()
 session = Session.create_from_settings(settings)
 
 filter_extension = FilterExtension(client=EsAsyncBaseFiltersClient())
@@ -75,7 +74,6 @@ app = api.app
 @app.on_event("startup")
 async def _startup_event() -> None:
     await create_collection_index()
-    await create_item_index()
 
 
 def run() -> None:
@@ -83,10 +81,8 @@ def run() -> None:
     try:
         import uvicorn
 
-        print("host: ", settings.app_host)
-        print("port: ", settings.app_port)
         uvicorn.run(
-            "stac_fastapi.mongo.app:app",
+            "stac_fastapi.elasticsearch.app:app",
             host=settings.app_host,
             port=settings.app_port,
             log_level="info",
