@@ -2,92 +2,58 @@
 APP_HOST ?= 0.0.0.0
 EXTERNAL_APP_PORT ?= ${APP_PORT}
 
-ES_APP_PORT ?= 8080
-ES_HOST ?= docker.for.mac.localhost
-ES_PORT ?= 9200
+MONGO_APP_PORT ?= 8084
+MONGO_HOST ?= docker.for.mac.localhost
+MONGO_PORT ?= 27017
 
-OS_APP_PORT ?= 8082
-OS_HOST ?= docker.for.mac.localhost
-OS_PORT ?= 9202
-
-run_es = docker-compose \
+run_mongo = docker-compose \
 	run \
-	-p ${EXTERNAL_APP_PORT}:${ES_APP_PORT} \
+	-p ${EXTERNAL_APP_PORT}:${MONGO_APP_PORT} \
 	-e PY_IGNORE_IMPORTMISMATCH=1 \
 	-e APP_HOST=${APP_HOST} \
-	-e APP_PORT=${ES_APP_PORT} \
-	app-elasticsearch
+	-e APP_PORT=${MONGO_APP_PORT} \
+	app-mongo
 
-run_os = docker-compose \
-	run \
-	-p ${EXTERNAL_APP_PORT}:${OS_APP_PORT} \
-	-e PY_IGNORE_IMPORTMISMATCH=1 \
-	-e APP_HOST=${APP_HOST} \
-	-e APP_PORT=${OS_APP_PORT} \
-	app-opensearch
+.PHONY: image-deploy-mongo
+image-deploy-mongo:
+	docker build -f dockerfiles/Dockerfile.dev.mongo -t stac-fastapi-mongo:latest .
 
-.PHONY: image-deploy-es
-image-deploy-es:
-	docker build -f dockerfiles/Dockerfile.dev.es -t stac-fastapi-elasticsearch:latest .
-	
-.PHONY: image-deploy-os
-image-deploy-os:
-	docker build -f dockerfiles/Dockerfile.dev.os -t stac-fastapi-opensearch:latest .
 
 .PHONY: run-deploy-locally
 run-deploy-locally:
-	 docker run -it -p 8080:8080 \
-		-e ES_HOST=${ES_HOST} \
-		-e ES_PORT=${ES_PORT} \
-		-e ES_USER=${ES_USER} \
-		-e ES_PASS=${ES_PASS} \
-		stac-fastapi-elasticsearch:latest
+	 docker run -it -p 8084:8084 \
+		-e ES_HOST=${MONGO_HOST} \
+		-e ES_PORT=${MONGO_PORT} \
+		-e ES_USER=${MONGO_USER} \
+		-e ES_PASS=${MONGO_PASS} \
+		stac-fastapi-mongo:latest
 
 .PHONY: image-dev
 image-dev:
 	docker-compose build
 
-.PHONY: docker-run-es
-docker-run-es: image-dev
-	$(run_es)
+.PHONY: docker-run-mongo
+docker-run-mongo: image-dev
+	$(run_mongo)
 
-.PHONY: docker-run-os
-docker-run-os: image-dev
-	$(run_os)
+.PHONY: docker-shell-mongo
+docker-shell-mongo:
+	$(run_mongo) /bin/bash
 
-.PHONY: docker-shell-es
-docker-shell-es:
-	$(run_es) /bin/bash
 
-.PHONY: docker-shell-os
-docker-shell-os:
-	$(run_os) /bin/bash
-
-.PHONY: test-elasticsearch
-test-elasticsearch:
-	-$(run_es) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd stac_fastapi/tests/ && pytest'
-	docker-compose down
-
-.PHONY: test-opensearch
-test-opensearch:
-	-$(run_os) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh opensearch:9202 && cd stac_fastapi/tests/ && pytest'
+.PHONY: test-mongo
+test-mongo:
+	-$(run_mongo) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh mongo:27017 && cd stac_fastapi/tests/ && pytest'
 	docker-compose down
 
 .PHONY: test
 test:
-	-$(run_es) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd stac_fastapi/tests/ && pytest'
+	-$(run_es) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh mongo:27017 && cd stac_fastapi/tests/ && pytest'
 	docker-compose down
 
-	-$(run_os) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh opensearch:9202 && cd stac_fastapi/tests/ && pytest'
-	docker-compose down
-
-.PHONY: run-database-es
-run-database-es:
-	docker-compose run --rm elasticsearch
-
-.PHONY: run-database-os
-run-database-os:
-	docker-compose run --rm opensearch
+.PHONY: run-database-mongo
+run-database-mongo:
+	docker-compose run --rm mongo
 
 .PHONY: pybase-install
 pybase-install:
@@ -97,13 +63,9 @@ pybase-install:
 	pip install -e ./stac_fastapi/extensions[dev] && \
 	pip install -e ./stac_fastapi/core
 
-.PHONY: install-es
+.PHONY: install-mongo
 install-es: pybase-install
-	pip install -e ./stac_fastapi/elasticsearch[dev,server]
-
-.PHONY: install-os
-install-os: pybase-install
-	pip install -e ./stac_fastapi/opensearch[dev,server]
+	pip install -e ./stac_fastapi/mongo[dev,server]
 
 .PHONY: ingest
 ingest:
