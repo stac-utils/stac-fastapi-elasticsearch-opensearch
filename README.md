@@ -1,6 +1,8 @@
 # stac-fastapi-elasticsearch-opensearch (sfeos)
 
-## Elasticsearch and Opensearch backends for the stac-fastapi project
+## Elasticsearch and Opensearch backends for the stac-fastapi project  
+    
+### Api core library for custom backends. See [stac-fastapi-mongo](https://github.com/Healy-Hyperspatial/stac-fastapi-mongo) for a working example.
    
 [![PyPI version](https://badge.fury.io/py/stac-fastapi.elasticsearch.svg)](https://badge.fury.io/py/stac-fastapi.elasticsearch)
 
