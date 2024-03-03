@@ -1,4 +1,5 @@
 name: stac-fastapi-elasticsearch
+
 on:
   push:
     branches:

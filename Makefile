@@ -28,11 +28,11 @@ run_os = docker-compose \
 
 .PHONY: image-deploy-es
 image-deploy-es:
-	docker build -f Dockerfile.dev.es -t stac-fastapi-elasticsearch:latest .
+	docker build -f dockerfiles/Dockerfile.dev.es -t stac-fastapi-elasticsearch:latest .
 	
 .PHONY: image-deploy-os
 image-deploy-os:
-	docker build -f Dockerfile.dev.os -t stac-fastapi-opensearch:latest .
+	docker build -f dockerfiles/Dockerfile.dev.os -t stac-fastapi-opensearch:latest .
 
 .PHONY: run-deploy-locally
 run-deploy-locally:
