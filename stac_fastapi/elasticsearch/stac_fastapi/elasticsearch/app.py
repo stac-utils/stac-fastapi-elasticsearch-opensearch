@@ -1,5 +1,7 @@
 """FastAPI application."""
 
+import os
+
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import create_get_request_model, create_post_request_model
 from stac_fastapi.core.core import (
@@ -60,6 +62,8 @@ extensions = [
 post_request_model = create_post_request_model(extensions)
 
 api = StacApi(
+    title=os.getenv("STAC_API_TITLE", "stac-fastapi"),
+    description=os.getenv("STAC_API_DESCRIPTION", "stac-fastapi"),
     settings=settings,
     extensions=extensions,
     client=CoreClient(
