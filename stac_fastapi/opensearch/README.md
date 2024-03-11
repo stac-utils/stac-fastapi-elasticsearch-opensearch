@@ -2,4 +2,4 @@
 
 ## Requirements
 
-The Elasticsearch backend requires **opensearch**.
+The Opensearch backend requires **opensearch**.
