@@ -62,8 +62,8 @@ extensions = [
 post_request_model = create_post_request_model(extensions)
 
 api = StacApi(
-    title=os.getenv("STAC_API_TITLE", "stac-fastapi"),
-    description=os.getenv("STAC_API_DESCRIPTION", "stac-fastapi"),
+    title=os.getenv("STAC_FASTAPI_TITLE", "stac-fastapi"),
+    description=os.getenv("STAC_FASTAPI_DESCRIPTION", "stac-fastapi"),
     settings=settings,
     extensions=extensions,
     client=CoreClient(
