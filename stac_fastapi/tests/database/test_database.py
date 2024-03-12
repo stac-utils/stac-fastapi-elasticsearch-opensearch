@@ -25,7 +25,9 @@ else:
 @pytest.mark.asyncio
 async def test_index_mapping_collections(ctx):
     response = await database.client.indices.get_mapping(index=COLLECTIONS_INDEX)
-    actual_mappings = next(iter(response.body.values()))["mappings"]
+    if not isinstance(response, dict):
+        response = response.body
+    actual_mappings = next(iter(response.values()))["mappings"]
     assert (
         actual_mappings["dynamic_templates"]
         == ES_COLLECTIONS_MAPPINGS["dynamic_templates"]
@@ -40,7 +42,9 @@ async def test_index_mapping_items(ctx, txn_client):
     response = await database.client.indices.get_mapping(
         index=index_by_collection_id(collection["id"])
     )
-    actual_mappings = next(iter(response.body.values()))["mappings"]
+    if not isinstance(response, dict):
+        response = response.body
+    actual_mappings = next(iter(response.values()))["mappings"]
     assert (
         actual_mappings["dynamic_templates"] == ES_ITEMS_MAPPINGS["dynamic_templates"]
     )
