@@ -210,7 +210,7 @@ async def create_collection_index() -> None:
     """
     client = AsyncSearchSettings().create_client
 
-    search_body: dict[str, Any] = {
+    search_body: Dict[str, Any] = {
         "aliases": {COLLECTIONS_INDEX: {}},
     }
 
@@ -240,7 +240,7 @@ async def create_item_index(collection_id: str):
     """
     client = AsyncSearchSettings().create_client
     index_name = index_by_collection_id(collection_id)
-    search_body: dict[str, Any] = {
+    search_body: Dict[str, Any] = {
         "aliases": {index_name: {}},
     }
 
