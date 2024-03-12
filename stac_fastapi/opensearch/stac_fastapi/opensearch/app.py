@@ -97,8 +97,8 @@ def run() -> None:
         raise RuntimeError("Uvicorn must be installed in order to use command")
 
 
-# if __name__ == "__main__":
-#     run()
+if __name__ == "__main__":
+    run()
 
 
 def create_handler(app):
