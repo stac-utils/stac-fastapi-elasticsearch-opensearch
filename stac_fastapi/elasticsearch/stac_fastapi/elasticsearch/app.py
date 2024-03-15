@@ -16,6 +16,7 @@ from stac_fastapi.elasticsearch.config import ElasticsearchSettings
 from stac_fastapi.elasticsearch.database_logic import (
     DatabaseLogic,
     create_collection_index,
+    create_index_templates,
 )
 from stac_fastapi.extensions.core import (
     ContextExtension,
@@ -78,6 +79,7 @@ app = api.app
 
 @app.on_event("startup")
 async def _startup_event() -> None:
+    await create_index_templates()
     await create_collection_index()
 
 

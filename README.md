@@ -116,10 +116,12 @@ make ingest
 
 ## Elasticsearch Mappings
 
-Mappings apply to search index, not source.  
+Mappings apply to search index, not source. The mappings are stored in index templates on application startup. 
+These templates will be used implicitly when creating new Collection and Item indices.
     
 
 ## Managing Elasticsearch Indices
+### Snapshots
 
 This section covers how to create a snapshot repository and then create and restore snapshots with this.
 
@@ -219,3 +221,52 @@ curl -X "POST" "http://localhost:8080/collections" \
 
 Voila! You have a copy of the collection now that has a resource URI (`/collections/my-collection-copy`) and can be
 correctly queried by collection name.
+
+### Reindexing
+This section covers how to reindex documents stored in Elasticsearch/OpenSearch. 
+A reindex operation might be useful to apply changes to documents or to correct dynamically generated mappings.
+
+The index templates will make sure that manually created indices will also have the correct mappings and settings.
+
+In this example, we will make a copy of an existing Item index `items_my-collection-000001` but change the Item identifier to be lowercase.
+
+```shell
+curl -X "POST" "http://localhost:9200/_reindex" \
+  -H 'Content-Type: application/json' \
+  -d $'{
+    "source": {
+      "index": "items_my-collection-000001"
+    }, 
+    "dest": {
+      "index": "items_my-collection-000002"
+    },
+    "script": {
+      "source": "ctx._source.id = ctx._source.id.toLowerCase()",
+      "lang": "painless"
+    }
+  }'
+```
+
+If we are happy with the data in the newly created index, we can move the alias `items_my-collection` to the new index `items_my-collection-000002`.
+```shell
+curl -X "POST" "http://localhost:9200/_aliases" \
+  -h 'Content-Type: application/json' \
+  -d $'{
+    "actions": [
+      {
+        "remove": {
+          "index": "*",
+          "alias": "items_my-collection"
+        }
+      },
+      {
+        "add": {
+          "index": "items_my-collection-000002",
+          "alias": "items_my-collection"
+        }
+      }
+    ]
+  }'
+```
+
+The modified Items with lowercase identifiers will now be visible to users accessing `my-collection` in the STAC API.
