@@ -37,7 +37,6 @@ from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.config import Settings
 from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
 from stac_fastapi.types.extension import ApiExtension
-from stac_fastapi.types.links import CollectionLinks
 from stac_fastapi.types.requests import get_base_url
 from stac_fastapi.types.search import BaseSearchPostRequest
 from stac_fastapi.types.stac import Collection, Collections, Item, ItemCollection
@@ -731,10 +730,9 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             ConflictError: If the collection already exists.
         """
         base_url = str(kwargs["request"].base_url)
-        collection_links = CollectionLinks(
-            collection_id=collection["id"], base_url=base_url
-        ).create_links()
-        collection["links"] = collection_links
+        collection = self.database.collection_serializer.stac_to_db(
+            collection, base_url
+        )
         await self.database.create_collection(collection=collection)
 
         return CollectionSerializer.db_to_stac(collection, base_url)
@@ -767,11 +765,9 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             "collection_id", collection["id"]
         )
 
-        collection_links = CollectionLinks(
-            collection_id=collection["id"], base_url=base_url
-        ).create_links()
-        collection["links"] = collection_links
-
+        collection = self.database.collection_serializer.stac_to_db(
+            collection, base_url
+        )
         await self.database.update_collection(
             collection_id=collection_id, collection=collection
         )

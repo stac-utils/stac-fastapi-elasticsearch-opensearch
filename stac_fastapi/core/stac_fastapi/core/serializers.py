@@ -60,11 +60,7 @@ class ItemSerializer(Serializer):
         Returns:
             stac_types.Item: The database-ready STAC item object.
         """
-        item_links = ItemLinks(
-            collection_id=stac_data["collection"],
-            item_id=stac_data["id"],
-            base_url=base_url,
-        ).create_links()
+        item_links = resolve_links(stac_data.get("links", []), base_url)
         stac_data["links"] = item_links
 
         now = now_to_rfc3339_str()
@@ -110,6 +106,24 @@ class ItemSerializer(Serializer):
 
 class CollectionSerializer(Serializer):
     """Serialization methods for STAC collections."""
+
+    @classmethod
+    def stac_to_db(
+        cls, collection: stac_types.Collection, base_url: str
+    ) -> stac_types.Collection:
+        """
+        Transform STAC Collection to database-ready STAC collection.
+
+        Args:
+            stac_data: the STAC Collection object to be transformed
+            base_url: the base URL for the STAC API
+
+        Returns:
+            stac_types.Collection: The database-ready STAC Collection object.
+        """
+        collection = deepcopy(collection)
+        collection["links"] = resolve_links(collection.get("links", []), base_url)
+        return collection
 
     @classmethod
     def db_to_stac(cls, collection: dict, base_url: str) -> stac_types.Collection:
