@@ -1,3 +1,4 @@
+import copy
 import uuid
 
 import pystac
@@ -163,3 +164,18 @@ async def test_pagination_collection(app_client, ctx, txn_client):
 
     # Confirm we have paginated through all collections
     assert collection_ids == ids
+
+
+@pytest.mark.asyncio
+async def test_links_collection(app_client, ctx, txn_client):
+    await delete_collections_and_items(txn_client)
+    collection = copy.deepcopy(ctx.collection)
+    collection["links"].append(
+        {"href": "https://landsat.usgs.gov/", "rel": "license", "type": "text/html"}
+    )
+    await create_collection(txn_client, collection=collection)
+    response = await app_client.get(f"/collections/{collection['id']}")
+    assert (
+        len([link for link in response.json()["links"] if link["rel"] == "license"])
+        == 1
+    )

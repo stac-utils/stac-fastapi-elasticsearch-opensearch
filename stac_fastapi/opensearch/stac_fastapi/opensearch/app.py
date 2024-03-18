@@ -25,6 +25,7 @@ from stac_fastapi.opensearch.config import OpensearchSettings
 from stac_fastapi.opensearch.database_logic import (
     DatabaseLogic,
     create_collection_index,
+    create_index_templates,
 )
 
 settings = OpensearchSettings()
@@ -78,6 +79,7 @@ app = api.app
 
 @app.on_event("startup")
 async def _startup_event() -> None:
+    await create_index_templates()
     await create_collection_index()
 
 

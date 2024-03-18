@@ -171,9 +171,36 @@ def indices(collection_ids: Optional[List[str]]) -> str:
         return ",".join([index_by_collection_id(c) for c in collection_ids])
 
 
+async def create_index_templates() -> None:
+    """
+    Create index templates for the Collection and Item indices.
+
+    Returns:
+        None
+
+    """
+    client = AsyncElasticsearchSettings().create_client
+    await client.indices.put_template(
+        name=f"template_{COLLECTIONS_INDEX}",
+        body={
+            "index_patterns": [f"{COLLECTIONS_INDEX}*"],
+            "mappings": ES_COLLECTIONS_MAPPINGS,
+        },
+    )
+    await client.indices.put_template(
+        name=f"template_{ITEMS_INDEX_PREFIX}",
+        body={
+            "index_patterns": [f"{ITEMS_INDEX_PREFIX}*"],
+            "settings": ES_ITEMS_SETTINGS,
+            "mappings": ES_ITEMS_MAPPINGS,
+        },
+    )
+    await client.close()
+
+
 async def create_collection_index() -> None:
     """
-    Create the index for a Collection.
+    Create the index for a Collection. The settings of the index template will be used implicitly.
 
     Returns:
         None
@@ -184,14 +211,13 @@ async def create_collection_index() -> None:
     await client.options(ignore_status=400).indices.create(
         index=f"{COLLECTIONS_INDEX}-000001",
         aliases={COLLECTIONS_INDEX: {}},
-        mappings=ES_COLLECTIONS_MAPPINGS,
     )
     await client.close()
 
 
 async def create_item_index(collection_id: str):
     """
-    Create the index for Items.
+    Create the index for Items. The settings of the index template will be used implicitly.
 
     Args:
         collection_id (str): Collection identifier.
@@ -206,8 +232,6 @@ async def create_item_index(collection_id: str):
     await client.options(ignore_status=400).indices.create(
         index=f"{index_by_collection_id(collection_id)}-000001",
         aliases={index_name: {}},
-        mappings=ES_ITEMS_MAPPINGS,
-        settings=ES_ITEMS_SETTINGS,
     )
     await client.close()
 

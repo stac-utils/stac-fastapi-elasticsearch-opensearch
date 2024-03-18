@@ -23,6 +23,7 @@ if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
     from stac_fastapi.opensearch.database_logic import (
         DatabaseLogic,
         create_collection_index,
+        create_index_templates,
     )
 else:
     from stac_fastapi.elasticsearch.config import (
@@ -32,6 +33,7 @@ else:
     from stac_fastapi.elasticsearch.database_logic import (
         DatabaseLogic,
         create_collection_index,
+        create_index_templates,
     )
 
 from stac_fastapi.extensions.core import (  # FieldsExtension,
@@ -215,6 +217,7 @@ async def app():
 
 @pytest_asyncio.fixture(scope="session")
 async def app_client(app):
+    await create_index_templates()
     await create_collection_index()
 
     async with AsyncClient(app=app, base_url="http://test-server") as c:

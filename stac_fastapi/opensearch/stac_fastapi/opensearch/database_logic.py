@@ -173,9 +173,36 @@ def indices(collection_ids: Optional[List[str]]) -> str:
         return ",".join([index_by_collection_id(c) for c in collection_ids])
 
 
+async def create_index_templates() -> None:
+    """
+    Create index templates for the Collection and Item indices.
+
+    Returns:
+        None
+
+    """
+    client = AsyncSearchSettings().create_client
+    await client.indices.put_template(
+        name=f"template_{COLLECTIONS_INDEX}",
+        body={
+            "index_patterns": [f"{COLLECTIONS_INDEX}*"],
+            "mappings": ES_COLLECTIONS_MAPPINGS,
+        },
+    )
+    await client.indices.put_template(
+        name=f"template_{ITEMS_INDEX_PREFIX}",
+        body={
+            "index_patterns": [f"{ITEMS_INDEX_PREFIX}*"],
+            "settings": ES_ITEMS_SETTINGS,
+            "mappings": ES_ITEMS_MAPPINGS,
+        },
+    )
+    await client.close()
+
+
 async def create_collection_index() -> None:
     """
-    Create the index for a Collection.
+    Create the index for a Collection. The settings of the index template will be used implicitly.
 
     Returns:
         None
@@ -183,8 +210,7 @@ async def create_collection_index() -> None:
     """
     client = AsyncSearchSettings().create_client
 
-    search_body = {
-        "mappings": ES_COLLECTIONS_MAPPINGS,
+    search_body: Dict[str, Any] = {
         "aliases": {COLLECTIONS_INDEX: {}},
     }
 
@@ -203,7 +229,7 @@ async def create_collection_index() -> None:
 
 async def create_item_index(collection_id: str):
     """
-    Create the index for Items.
+    Create the index for Items. The settings of the index template will be used implicitly.
 
     Args:
         collection_id (str): Collection identifier.
@@ -214,10 +240,8 @@ async def create_item_index(collection_id: str):
     """
     client = AsyncSearchSettings().create_client
     index_name = index_by_collection_id(collection_id)
-    search_body = {
+    search_body: Dict[str, Any] = {
         "aliases": {index_name: {}},
-        "mappings": ES_ITEMS_MAPPINGS,
-        "settings": ES_ITEMS_SETTINGS,
     }
 
     try:
@@ -335,7 +359,7 @@ class DatabaseLogic:
             search_body["search_after"] = search_after
 
         response = await self.client.search(
-            index="collections",
+            index=COLLECTIONS_INDEX,
             body=search_body,
         )
 
