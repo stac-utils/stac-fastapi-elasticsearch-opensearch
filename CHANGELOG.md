@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- URL encode next href: [#213](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/213)
 
 ## [v2.1.0]
 

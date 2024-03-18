@@ -2,7 +2,7 @@ import json
 import os
 import uuid
 from copy import deepcopy
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from random import randint
 from urllib.parse import parse_qs, urlparse, urlsplit
 
@@ -473,6 +473,31 @@ async def test_item_search_temporal_window_get(app_client, ctx):
     resp = await app_client.get("/search", params=params)
     resp_json = resp.json()
     assert resp_json["features"][0]["id"] == test_item["id"]
+
+
+@pytest.mark.asyncio
+async def test_item_search_temporal_window_timezone_get(app_client, ctx):
+    """Test GET search with spatio-temporal query ending with Zulu and pagination(core)"""
+    tzinfo = timezone(timedelta(hours=1))
+    test_item = ctx.item
+    item_date = rfc3339_str_to_datetime(test_item["properties"]["datetime"])
+    item_date_before = item_date - timedelta(seconds=1)
+    item_date_before = item_date_before.replace(tzinfo=tzinfo)
+    item_date_after = item_date + timedelta(seconds=1)
+    item_date_after = item_date_after.replace(tzinfo=tzinfo)
+
+    params = {
+        "collections": test_item["collection"],
+        "bbox": ",".join([str(coord) for coord in test_item["bbox"]]),
+        "datetime": f"{datetime_to_str(item_date_before)}/{datetime_to_str(item_date_after)}",
+    }
+    resp = await app_client.get("/search", params=params)
+    resp_json = resp.json()
+    next_link = next(link for link in resp_json["links"] if link["rel"] == "next")[
+        "href"
+    ]
+    resp = await app_client.get(next_link)
+    assert resp.status_code == 200
 
 
 @pytest.mark.asyncio
