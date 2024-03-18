@@ -359,7 +359,7 @@ class DatabaseLogic:
             search_body["search_after"] = search_after
 
         response = await self.client.search(
-            index="collections",
+            index=COLLECTIONS_INDEX,
             body=search_body,
         )
 
