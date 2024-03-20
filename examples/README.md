@@ -1,4 +1,4 @@
-# stac-fastapi-elasticsearch (sfes) deployment examples
+# stac-fastapi.elasticsearch (sfes) deployment examples
 
 ## Deploy sfes from pip in docker
 

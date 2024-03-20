@@ -15,4 +15,4 @@ WORKDIR /app
 
 COPY . /app
 
-RUN pip install stac-fastapi.elasticsearch==1.1.0
+RUN pip install stac-fastapi.elasticsearch==2.1.0
