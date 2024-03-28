@@ -6,6 +6,8 @@
   
 - Our Api core library can be used to create custom backends. See [stac-fastapi-mongo](https://github.com/Healy-Hyperspatial/stac-fastapi-mongo) for a working example.  
 - Reach out on our [Gitter](https://app.gitter.im/#/room/#stac-fastapi-elasticsearch_community:gitter.im) channel or feel free to add to our [Discussions](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/discussions) page here on github.
+- There is [Postman](https://documenter.getpostman.com/view/12888943/2s8ZDSdRHA) documentation here for examples on how to run some of the API routes locally - after starting the elasticsearch backend via the docker-compose.yml file.
+- The `/examples` folder shows an example of running stac-fastapi-elasticsearch from PyPI in docker without needing any code from the repository. There is also a Postman collection here that you can load into Postman for testing the API routes. 
 
 ### To install from PyPI:
 
@@ -91,6 +93,26 @@ get the next page of results.
 curl -X "GET" "http://localhost:8080/collections?limit=1&token=example_token"
 ```
 
+## Ingesting Sample Data CLI Tool   
+
+```shell
+Usage: data_loader.py [OPTIONS]
+
+  Load STAC items into the database.
+
+Options:
+  --base-url TEXT       Base URL of the STAC API  [required]
+  --collection-id TEXT  ID of the collection to which items are added
+  --use-bulk            Use bulk insert method for items
+  --data-dir PATH       Directory containing collection.json and feature
+                        collection file
+  --help                Show this message and exit.
+```
+
+```shell
+python3 data_loader.py --base-url http://localhost:8080
+```  
+
 ## Testing
 
 ```shell
@@ -107,12 +129,6 @@ Test against Elasticsearch only
 ```shell
 make test-elasticsearch
 ```  
-
-## Ingest sample data
-
-```shell
-make ingest
-```
 
 ## Elasticsearch Mappings
 
