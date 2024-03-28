@@ -104,11 +104,12 @@ Options:
   --base-url TEXT       Base URL of the STAC API  [required]
   --collection-id TEXT  ID of the collection to which items are added
   --use-bulk            Use bulk insert method for items
+  --data-dir PATH       Directory containing collection.json and feature
+                        collection file
   --help                Show this message and exit.
 ```
 
 ```shell
-cd data_loader   
 python3 data_loader.py --base-url http://localhost:8080
 ```  
 
