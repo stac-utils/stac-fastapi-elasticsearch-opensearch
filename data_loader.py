@@ -84,7 +84,7 @@ def load_items_bulk_insert(base_url, collection_id, feature_collection, data_dir
             feature_collection["features"][i]["collection"] = collection_id
         resp = requests.post(
             f"{base_url}/collections/{collection_id}/items", json=feature_collection
-        )  # Adjust this endpoint as necessary
+        )
         if resp.status_code == 200:
             click.echo(f"Status code: {resp.status_code}")
             click.echo("Bulk inserted items successfully.")
