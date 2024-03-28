@@ -117,12 +117,6 @@ Test against Elasticsearch only
 make test-elasticsearch
 ```  
 
-## Ingest sample data
-
-```shell
-make ingest
-```
-
 ## Elasticsearch Mappings
 
 Mappings apply to search index, not source. The mappings are stored in index templates on application startup. 

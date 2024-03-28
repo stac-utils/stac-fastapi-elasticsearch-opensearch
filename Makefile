@@ -104,7 +104,3 @@ install-es: pybase-install
 .PHONY: install-os
 install-os: pybase-install
 	pip install -e ./stac_fastapi/opensearch[dev,server]
-
-.PHONY: ingest
-ingest:
-	python3 data_loader/data_loader.py
