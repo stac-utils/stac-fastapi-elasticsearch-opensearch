@@ -93,7 +93,19 @@ get the next page of results.
 curl -X "GET" "http://localhost:8080/collections?limit=1&token=example_token"
 ```
 
-## Ingesting Sample Data   
+## Ingesting Sample Data CLI Tool   
+
+```shell
+Usage: data_loader.py [OPTIONS]
+
+  Load STAC items into the database.
+
+Options:
+  --base-url TEXT       Base URL of the STAC API  [required]
+  --collection-id TEXT  ID of the collection to which items are added
+  --use-bulk            Use bulk insert method for items
+  --help                Show this message and exit.
+```
 
 ```shell
 cd data_loader   
