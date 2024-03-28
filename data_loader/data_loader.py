@@ -1,69 +1,59 @@
 """Database ingestion script."""
 import json
 import os
-import sys
-
 import click
 import requests
 
-if len(sys.argv) != 2:
-    print("Usage: python data_loader.py <opensearch|elasticsearch>")
-    sys.exit(1)
-
+# Define the directory where your data files are located
 DATA_DIR = os.path.join(os.path.dirname(__file__), "setup_data/")
 
-backend = sys.argv[1].lower()
-
-if backend == "opensearch":
-    STAC_API_BASE_URL = "http://localhost:8082"
-elif backend == "elasticsearch":
-    STAC_API_BASE_URL = "http://localhost:8080"
-else:
-    print("Invalid backend tag. Enter either 'opensearch' or 'elasticsearch'.")
-
-
 def load_data(filename):
-    """Load json data."""
+    """Load json data from a file."""
     with open(os.path.join(DATA_DIR, filename)) as file:
         return json.load(file)
 
-
-def load_collection(collection_id):
-    """Load stac collection into the database."""
+def load_collection(base_url, collection_id):
+    """Load a STAC collection into the database."""
     collection = load_data("collection.json")
     collection["id"] = collection_id
     try:
-        resp = requests.post(f"{STAC_API_BASE_URL}/collections", json=collection)
+        resp = requests.post(f"{base_url}/collections", json=collection)
         if resp.status_code == 200:
-            print(f"Status code: {resp.status_code}")
-            print(f"Added collection: {collection['id']}")
+            click.echo(f"Status code: {resp.status_code}")
+            click.echo(f"Added collection: {collection['id']}")
         elif resp.status_code == 409:
-            print(f"Status code: {resp.status_code}")
-            print(f"Collection: {collection['id']} already exists")
+            click.echo(f"Status code: {resp.status_code}")
+            click.echo(f"Collection: {collection['id']} already exists")
     except requests.ConnectionError:
-        click.secho("failed to connect")
+        click.secho("Failed to connect", fg="red")
 
-
-def load_items():
-    """Load stac items into the database."""
+def load_items(base_url, collection_id):
+    """Load STAC items into the database."""
     feature_collection = load_data("sentinel-s2-l2a-cogs_0_100.json")
-    collection = "test-collection"
-    load_collection(collection)
+    collection = collection_id
+    load_collection(base_url, collection)
 
     for feature in feature_collection["features"]:
         try:
             feature["collection"] = collection
-            resp = requests.post(
-                f"{STAC_API_BASE_URL}/collections/{collection}/items", json=feature
-            )
+            resp = requests.post(f"{base_url}/collections/{collection}/items", json=feature)
             if resp.status_code == 200:
-                print(f"Status code: {resp.status_code}")
-                print(f"Added item: {feature['id']}")
+                click.echo(f"Status code: {resp.status_code}")
+                click.echo(f"Added item: {feature['id']}")
             elif resp.status_code == 409:
-                print(f"Status code: {resp.status_code}")
-                print(f"Item: {feature['id']} already exists")
+                click.echo(f"Status code: {resp.status_code}")
+                click.echo(f"Item: {feature['id']} already exists")
         except requests.ConnectionError:
-            click.secho("failed to connect")
+            click.secho("Failed to connect", fg="red")
 
+@click.command()
+@click.option('--base-url', required=True, help='Base URL of the STAC API')
+@click.option('--collection-id', default='test-collection', help='ID of the collection to which items are added')
+def main(base_url, collection_id):
+    """
+    Load STAC items into the database.
+    """
+    load_items(base_url, collection_id)
 
-load_items()
+if __name__ == '__main__':
+    main()

@@ -93,6 +93,13 @@ get the next page of results.
 curl -X "GET" "http://localhost:8080/collections?limit=1&token=example_token"
 ```
 
+## Ingesting Sample Data   
+
+```shell
+cd data_loader   
+python3 data_loader.py --base-url http://localhost:8080
+```  
+
 ## Testing
 
 ```shell
