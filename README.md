@@ -82,6 +82,13 @@ curl -X "POST" "http://localhost:8080/collections" \
 
 Note: this "Collections Transaction" behavior is not part of the STAC API, but may be soon.  
 
+## Configure the API
+
+By default the API title and description are set to `stac-fastapi-<backend>`. Change the API title and description from the default by setting the `STAC_FASTAPI_TITLE` and `STAC_FASTAPI_DESCRIPTION` environment variables, respectively.
+
+By default the API will read from and write to the `collections` and `items_<collection name>` indices. To change the API collections index and the items index prefix, change the `STAC_COLLECTIONS_INDEX` and `STAC_ITEMS_INDEX_PREFIX` environment variables.
+
+The application root path is left as the base url by default. If deploying to AWS Lambda with a Gateway API, you will need to define the app root path to be the same as the Gateway API stage name where you will deploy the API. The app root path can be defined with the `STAC_FASTAPI_ROOT_PATH` environment variable (`/v1`, for example)
 
 ## Collection pagination
 
