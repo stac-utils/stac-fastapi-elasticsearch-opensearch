@@ -75,6 +75,7 @@ api = StacApi(
     search_post_request_model=post_request_model,
 )
 app = api.app
+app.root_path = os.getenv("STAC_FASTAPI_ROOT_PATH", "")
 
 
 @app.on_event("startup")
