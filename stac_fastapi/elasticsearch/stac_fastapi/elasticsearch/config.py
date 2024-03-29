@@ -3,6 +3,8 @@ import os
 import ssl
 from typing import Any, Dict, Set
 
+import certifi
+
 from elasticsearch import AsyncElasticsearch, Elasticsearch  # type: ignore
 from stac_fastapi.types.config import ApiSettings
 
@@ -31,9 +33,7 @@ def _es_config() -> Dict[str, Any]:
 
     # Include CA Certificates if verifying certs
     if config["verify_certs"]:
-        config["ca_certs"] = os.getenv(
-            "CURL_CA_BUNDLE", "/etc/ssl/certs/ca-certificates.crt"
-        )
+        config["ca_certs"] = os.getenv("CURL_CA_BUNDLE", certifi.where())
 
     # Handle authentication
     if (u := os.getenv("ES_USER")) and (p := os.getenv("ES_PASS")):
