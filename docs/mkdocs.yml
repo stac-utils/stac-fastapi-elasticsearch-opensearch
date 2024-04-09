@@ -1,5 +1,5 @@
 site_name: stac-fastapi-elasticsearch-opensearch
-site_description: STAC FastAPI.
+site_description: STAC FastAPI Elasticsearch and Opensearch backends.
 
 # Repository
 repo_name: "stac-utils/stac-fastapi-elasticsearch-opensearch"
@@ -17,7 +17,7 @@ extra:
 
 # Layout
 nav:
-  - Home: index.md
+  - Home: "index.md"
   - Tips and Tricks: tips-and-tricks.md
   - API:
       - stac_fastapi.elasticsearch:
