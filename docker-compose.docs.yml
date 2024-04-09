@@ -8,11 +8,18 @@ services:
       dockerfile: Dockerfile.docs
     platform: linux/amd64
     environment:
-      - POSTGRES_USER=username
-      - POSTGRES_PASS=password
-      - POSTGRES_DBNAME=postgis
-      - POSTGRES_HOST_READER=database
-      - POSTGRES_HOST_WRITER=database
-      - POSTGRES_PORT=5432
+    - STAC_FASTAPI_TITLE=stac-fastapi-opensearch
+    - STAC_FASTAPI_DESCRIPTION=A STAC FastAPI with an Opensearch backend
+    - STAC_FASTAPI_VERSION=2.1
+    - APP_HOST=0.0.0.0
+    - APP_PORT=8082
+    - RELOAD=true
+    - ENVIRONMENT=local
+    - WEB_CONCURRENCY=10
+    - ES_HOST=opensearch
+    - ES_PORT=9202
+    - ES_USE_SSL=false
+    - ES_VERIFY_CERTS=false
+    - BACKEND=opensearch
     volumes:
       - .:/opt/src
