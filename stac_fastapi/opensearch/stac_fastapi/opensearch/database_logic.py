@@ -6,16 +6,18 @@ from base64 import urlsafe_b64decode, urlsafe_b64encode
 from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple, Type, Union
 
 import attr
-from elasticsearch_dsl import Q, Search
+from opensearchpy import exceptions, helpers
+from opensearchpy.exceptions import TransportError
+from opensearchpy.helpers.query import Q
+from opensearchpy.helpers.search import Search
 
-from elasticsearch import exceptions, helpers  # type: ignore
+from stac_fastapi.core import serializers
 from stac_fastapi.core.extensions import filter
-from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.utilities import bbox2polygon
-from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
-from stac_fastapi.elasticsearch.config import (
-    ElasticsearchSettings as SyncElasticsearchSettings,
+from stac_fastapi.opensearch.config import (
+    AsyncOpensearchSettings as AsyncSearchSettings,
 )
+from stac_fastapi.opensearch.config import OpensearchSettings as SyncSearchSettings
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.stac import Collection, Item
 
@@ -179,7 +181,7 @@ async def create_index_templates() -> None:
         None
 
     """
-    client = AsyncElasticsearchSettings().create_client
+    client = AsyncSearchSettings().create_client
     await client.indices.put_template(
         name=f"template_{COLLECTIONS_INDEX}",
         body={
@@ -206,12 +208,22 @@ async def create_collection_index() -> None:
         None
 
     """
-    client = AsyncElasticsearchSettings().create_client
+    client = AsyncSearchSettings().create_client
 
-    await client.options(ignore_status=400).indices.create(
-        index=f"{COLLECTIONS_INDEX}-000001",
-        aliases={COLLECTIONS_INDEX: {}},
-    )
+    search_body: Dict[str, Any] = {
+        "aliases": {COLLECTIONS_INDEX: {}},
+    }
+
+    index = f"{COLLECTIONS_INDEX}-000001"
+
+    try:
+        await client.indices.create(index=index, body=search_body)
+    except TransportError as e:
+        if e.status_code == 400:
+            pass  # Ignore 400 status codes
+        else:
+            raise e
+
     await client.close()
 
 
@@ -226,13 +238,20 @@ async def create_item_index(collection_id: str):
         None
 
     """
-    client = AsyncElasticsearchSettings().create_client
+    client = AsyncSearchSettings().create_client
     index_name = index_by_collection_id(collection_id)
+    search_body: Dict[str, Any] = {
+        "aliases": {index_name: {}},
+    }
 
-    await client.options(ignore_status=400).indices.create(
-        index=f"{index_by_collection_id(collection_id)}-000001",
-        aliases={index_name: {}},
-    )
+    try:
+        await client.indices.create(index=f"{index_name}-000001", body=search_body)
+    except TransportError as e:
+        if e.status_code == 400:
+            pass  # Ignore 400 status codes
+        else:
+            raise e
+
     await client.close()
 
 
@@ -242,7 +261,7 @@ async def delete_item_index(collection_id: str):
     Args:
         collection_id (str): The ID of the collection whose items index will be deleted.
     """
-    client = AsyncElasticsearchSettings().create_client
+    client = AsyncSearchSettings().create_client
 
     name = index_by_collection_id(collection_id)
     resolved = await client.indices.resolve_index(name=name)
@@ -304,12 +323,14 @@ class Geometry(Protocol):  # noqa
 class DatabaseLogic:
     """Database logic."""
 
-    client = AsyncElasticsearchSettings().create_client
-    sync_client = SyncElasticsearchSettings().create_client
+    client = AsyncSearchSettings().create_client
+    sync_client = SyncSearchSettings().create_client
 
-    item_serializer: Type[ItemSerializer] = attr.ib(default=ItemSerializer)
-    collection_serializer: Type[CollectionSerializer] = attr.ib(
-        default=CollectionSerializer
+    item_serializer: Type[serializers.ItemSerializer] = attr.ib(
+        default=serializers.ItemSerializer
+    )
+    collection_serializer: Type[serializers.CollectionSerializer] = attr.ib(
+        default=serializers.CollectionSerializer
     )
 
     """CORE LOGIC"""
@@ -317,7 +338,8 @@ class DatabaseLogic:
     async def get_all_collections(
         self, token: Optional[str], limit: int, base_url: str
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
-        """Retrieve a list of all collections from Elasticsearch, supporting pagination.
+        """
+        Retrieve a list of all collections from Opensearch, supporting pagination.
 
         Args:
             token (Optional[str]): The pagination token.
@@ -326,17 +348,19 @@ class DatabaseLogic:
         Returns:
             A tuple of (collections, next pagination token if any).
         """
-        search_after = None
+        search_body = {
+            "sort": [{"id": {"order": "asc"}}],
+            "size": limit,
+        }
+
+        # Only add search_after to the query if token is not None and not empty
         if token:
             search_after = [token]
+            search_body["search_after"] = search_after
 
         response = await self.client.search(
             index=COLLECTIONS_INDEX,
-            body={
-                "sort": [{"id": {"order": "asc"}}],
-                "size": limit,
-                "search_after": search_after,
-            },
+            body=search_body,
         )
 
         hits = response["hits"]["hits"]
@@ -349,7 +373,10 @@ class DatabaseLogic:
 
         next_token = None
         if len(hits) == limit:
-            next_token = hits[-1]["sort"][0]
+            # Ensure we have a valid sort value for next_token
+            next_token_values = hits[-1].get("sort")
+            if next_token_values:
+                next_token = next_token_values[0]
 
         return collections, next_token
 
@@ -397,8 +424,8 @@ class DatabaseLogic:
         return search.filter("terms", collection=collection_ids)
 
     @staticmethod
-    def apply_datetime_filter(search: Search, datetime_search: dict):
-        """Apply a filter to search on datetime, start_datetime, and end_datetime fields.
+    def apply_datetime_filter(search: Search, datetime_search):
+        """Apply a filter to search based on datetime field.
 
         Args:
             search (Search): The search object to filter.
@@ -407,101 +434,17 @@ class DatabaseLogic:
         Returns:
             Search: The filtered search object.
         """
-        should = []
-
         if "eq" in datetime_search:
-            should.extend(
-                [
-                    Q(
-                        "bool",
-                        filter=[
-                            Q(
-                                "term",
-                                properties__datetime=datetime_search["eq"],
-                            ),
-                        ],
-                    ),
-                    Q(
-                        "bool",
-                        filter=[
-                            Q(
-                                "range",
-                                properties__start_datetime={
-                                    "lte": datetime_search["eq"],
-                                },
-                            ),
-                            Q(
-                                "range",
-                                properties__end_datetime={
-                                    "gte": datetime_search["eq"],
-                                },
-                            ),
-                        ],
-                    ),
-                ]
+            search = search.filter(
+                "term", **{"properties__datetime": datetime_search["eq"]}
             )
-
         else:
-            should.extend(
-                [
-                    Q(
-                        "bool",
-                        filter=[
-                            Q(
-                                "range",
-                                properties__datetime={
-                                    "gte": datetime_search["gte"],
-                                    "lte": datetime_search["lte"],
-                                },
-                            ),
-                        ],
-                    ),
-                    Q(
-                        "bool",
-                        filter=[
-                            Q(
-                                "range",
-                                properties__start_datetime={
-                                    "gte": datetime_search["gte"],
-                                    "lte": datetime_search["lte"],
-                                },
-                            ),
-                        ],
-                    ),
-                    Q(
-                        "bool",
-                        filter=[
-                            Q(
-                                "range",
-                                properties__end_datetime={
-                                    "gte": datetime_search["gte"],
-                                    "lte": datetime_search["lte"],
-                                },
-                            ),
-                        ],
-                    ),
-                    Q(
-                        "bool",
-                        filter=[
-                            Q(
-                                "range",
-                                properties__start_datetime={
-                                    "lte": datetime_search["gte"]
-                                },
-                            ),
-                            Q(
-                                "range",
-                                properties__end_datetime={
-                                    "gte": datetime_search["lte"]
-                                },
-                            ),
-                        ],
-                    ),
-                ]
+            search = search.filter(
+                "range", properties__datetime={"lte": datetime_search["lte"]}
             )
-
-        search = search.query(Q("bool", filter=[Q("bool", should=should)]))
-
+            search = search.filter(
+                "range", properties__datetime={"gte": datetime_search["gte"]}
+            )
         return search
 
     @staticmethod
@@ -635,11 +578,14 @@ class DatabaseLogic:
         Raises:
             NotFoundError: If the collections specified in `collection_ids` do not exist.
         """
-        search_after = None
+        search_body: Dict[str, Any] = {}
+        query = search.query.to_dict() if search.query else None
+        if query:
+            search_body["query"] = query
         if token:
             search_after = urlsafe_b64decode(token.encode()).decode().split(",")
-
-        query = search.query.to_dict() if search.query else None
+            search_body["search_after"] = search_after
+        search_body["sort"] = sort if sort else DEFAULT_SORT
 
         index_param = indices(collection_ids)
 
@@ -647,9 +593,7 @@ class DatabaseLogic:
             self.client.search(
                 index=index_param,
                 ignore_unavailable=ignore_unavailable,
-                query=query,
-                sort=sort or DEFAULT_SORT,
-                search_after=search_after,
+                body=search_body,
                 size=limit,
             )
         )
@@ -780,7 +724,7 @@ class DatabaseLogic:
         es_resp = await self.client.index(
             index=index_by_collection_id(collection_id),
             id=mk_item_id(item_id, collection_id),
-            document=item,
+            body=item,
             refresh=refresh,
         )
 
@@ -834,7 +778,7 @@ class DatabaseLogic:
         await self.client.index(
             index=COLLECTIONS_INDEX,
             id=collection_id,
-            document=collection,
+            body=collection,
             refresh=refresh,
         )
 
@@ -909,7 +853,7 @@ class DatabaseLogic:
             await self.client.index(
                 index=COLLECTIONS_INDEX,
                 id=collection_id,
-                document=collection,
+                body=collection,
                 refresh=refresh,
             )
 

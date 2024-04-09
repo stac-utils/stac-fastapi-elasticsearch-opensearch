@@ -1,23 +1,38 @@
 #!make
 APP_HOST ?= 0.0.0.0
-APP_PORT ?= 8080
 EXTERNAL_APP_PORT ?= ${APP_PORT}
 
-APP_PORT ?= 8080
+ES_APP_PORT ?= 8080
 ES_HOST ?= docker.for.mac.localhost
 ES_PORT ?= 9200
 
+OS_APP_PORT ?= 8082
+OS_HOST ?= docker.for.mac.localhost
+OS_PORT ?= 9202
+
 run_es = docker-compose \
 	run \
-	-p ${EXTERNAL_APP_PORT}:${APP_PORT} \
+	-p ${EXTERNAL_APP_PORT}:${ES_APP_PORT} \
 	-e PY_IGNORE_IMPORTMISMATCH=1 \
 	-e APP_HOST=${APP_HOST} \
-	-e APP_PORT=${APP_PORT} \
+	-e APP_PORT=${ES_APP_PORT} \
 	app-elasticsearch
 
-.PHONY: image-deploy
-image-deploy:
-	docker build -f Dockerfile.deploy -t stac-fastapi-elasticsearch:latest .
+run_os = docker-compose \
+	run \
+	-p ${EXTERNAL_APP_PORT}:${OS_APP_PORT} \
+	-e PY_IGNORE_IMPORTMISMATCH=1 \
+	-e APP_HOST=${APP_HOST} \
+	-e APP_PORT=${OS_APP_PORT} \
+	app-opensearch
+
+.PHONY: image-deploy-es
+image-deploy-es:
+	docker build -f dockerfiles/Dockerfile.dev.es -t stac-fastapi-elasticsearch:latest .
+	
+.PHONY: image-deploy-os
+image-deploy-os:
+	docker build -f dockerfiles/Dockerfile.dev.os -t stac-fastapi-opensearch:latest .
 
 .PHONY: run-deploy-locally
 run-deploy-locally:
@@ -32,34 +47,60 @@ run-deploy-locally:
 image-dev:
 	docker-compose build
 
-.PHONY: docker-run
-docker-run: image-dev
+.PHONY: docker-run-es
+docker-run-es: image-dev
 	$(run_es)
 
-.PHONY: docker-shell
-docker-shell:
+.PHONY: docker-run-os
+docker-run-os: image-dev
+	$(run_os)
+
+.PHONY: docker-shell-es
+docker-shell-es:
 	$(run_es) /bin/bash
+
+.PHONY: docker-shell-os
+docker-shell-os:
+	$(run_os) /bin/bash
+
+.PHONY: test-elasticsearch
+test-elasticsearch:
+	-$(run_es) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd stac_fastapi/tests/ && pytest'
+	docker-compose down
+
+.PHONY: test-opensearch
+test-opensearch:
+	-$(run_os) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh opensearch:9202 && cd stac_fastapi/tests/ && pytest'
+	docker-compose down
 
 .PHONY: test
 test:
-	-$(run_es) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd /app/stac_fastapi/elasticsearch/tests/ && pytest'
+	-$(run_es) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd stac_fastapi/tests/ && pytest'
 	docker-compose down
 
-.PHONY: run-database
-run-database:
+	-$(run_os) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh opensearch:9202 && cd stac_fastapi/tests/ && pytest'
+	docker-compose down
+
+.PHONY: run-database-es
+run-database-es:
 	docker-compose run --rm elasticsearch
+
+.PHONY: run-database-os
+run-database-os:
+	docker-compose run --rm opensearch
 
 .PHONY: pybase-install
 pybase-install:
 	pip install wheel && \
 	pip install -e ./stac_fastapi/api[dev] && \
 	pip install -e ./stac_fastapi/types[dev] && \
-	pip install -e ./stac_fastapi/extensions[dev]
+	pip install -e ./stac_fastapi/extensions[dev] && \
+	pip install -e ./stac_fastapi/core
 
-.PHONY: install
-install: pybase-install
+.PHONY: install-es
+install-es: pybase-install
 	pip install -e ./stac_fastapi/elasticsearch[dev,server]
 
-.PHONY: ingest
-ingest:
-	python3 data_loader/data_loader.py
+.PHONY: install-os
+install-os: pybase-install
+	pip install -e ./stac_fastapi/opensearch[dev,server]

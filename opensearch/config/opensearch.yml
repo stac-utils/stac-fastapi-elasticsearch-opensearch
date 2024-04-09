@@ -1,0 +1,19 @@
+## Cluster Settings
+cluster.name: stac-cluster
+node.name: os01
+network.host: 0.0.0.0
+transport.host: 0.0.0.0
+discovery.type: single-node
+http.port: 9202
+http.cors.enabled: true
+http.cors.allow-headers: X-Requested-With,Content-Type,Content-Length,Accept,Authorization
+
+path:
+  repo:
+    - /usr/share/opensearch/snapshots
+
+# Security
+plugins.security.disabled: true
+plugins.security.ssl.http.enabled: true
+
+node.max_local_storage_nodes: 3

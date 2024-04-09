@@ -1,12 +1,23 @@
-# STAC FastAPI Elasticsearch (sfes)
+# stac-fastapi-elasticsearch-opensearch (sfeos)
 
-## Elasticsearch backend for stac-fastapi
-   
-#### Join our [Gitter](https://gitter.im/stac-fastapi-elasticsearch/community) page
+## Elasticsearch and Opensearch backends for the stac-fastapi project  
+  
+  [![PyPI version](https://badge.fury.io/py/stac-fastapi.elasticsearch.svg)](https://badge.fury.io/py/stac-fastapi.elasticsearch)  
+  
+- Our Api core library can be used to create custom backends. See [stac-fastapi-mongo](https://github.com/Healy-Hyperspatial/stac-fastapi-mongo) for a working example.  
+- Reach out on our [Gitter](https://app.gitter.im/#/room/#stac-fastapi-elasticsearch_community:gitter.im) channel or feel free to add to our [Discussions](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/discussions) page here on github.
+- There is [Postman](https://documenter.getpostman.com/view/12888943/2s8ZDSdRHA) documentation here for examples on how to run some of the API routes locally - after starting the elasticsearch backend via the docker-compose.yml file.
+- The `/examples` folder shows an example of running stac-fastapi-elasticsearch from PyPI in docker without needing any code from the repository. There is also a Postman collection here that you can load into Postman for testing the API routes. 
 
-#### Check out the public Postman documentation [Postman](https://documenter.getpostman.com/view/12888943/2s8ZDSdRHA)
+### To install from PyPI:
 
-#### Check out the examples folder for deployment options, ex. running sfes from pip in docker
+```shell
+pip install stac_fastapi.elasticsearch
+```
+or   
+```
+pip install stac_fastapi.opensearch
+```
 
 #### For changes, see the [Changelog](CHANGELOG.md)
 
@@ -19,6 +30,13 @@ To install the classes in your local Python env, run:
 pip install -e 'stac_fastapi/elasticsearch[dev]'
 ```
 
+or
+
+```shell
+pip install -e 'stac_fastapi/opensearch[dev]'
+```
+
+
 ### Pre-commit
 
 Install [pre-commit](https://pre-commit.com/#install).
@@ -29,26 +47,28 @@ Prior to commit, run:
 pre-commit run --all-files
 ```
 
-
-## Building
+## Build Elasticsearh API backend
 
 ```shell
-docker-compose build
+docker-compose up elasticsearch
+docker-compose build app-elasticsearch
 ```
   
-## Running API on localhost:8080
+## Running Elasticsearh API on localhost:8080
 
 ```shell
-docker-compose up
+docker-compose up app-elasticsearch
 ```
 
-By default, docker-compose uses Elasticsearch 8.x. However, most recent 7.x versions should also work. 
+By default, docker-compose uses Elasticsearch 8.x and OpenSearch 2.11.1. 
 If you wish to use a different version, put the following in a 
 file named `.env` in the same directory you run docker-compose from:
 
 ```shell
 ELASTICSEARCH_VERSION=7.17.1
+OPENSEARCH_VERSION=2.11.0
 ```
+The most recent Elasticsearch 7.x versions should also work. See the [opensearch-py docs](https://github.com/opensearch-project/opensearch-py/blob/main/COMPATIBILITY.md) for compatibility information.
 
 To create a new Collection:
 
@@ -62,6 +82,13 @@ curl -X "POST" "http://localhost:8080/collections" \
 
 Note: this "Collections Transaction" behavior is not part of the STAC API, but may be soon.  
 
+## Configure the API
+
+By default the API title and description are set to `stac-fastapi-<backend>`. Change the API title and description from the default by setting the `STAC_FASTAPI_TITLE` and `STAC_FASTAPI_DESCRIPTION` environment variables, respectively.
+
+By default the API will read from and write to the `collections` and `items_<collection name>` indices. To change the API collections index and the items index prefix, change the `STAC_COLLECTIONS_INDEX` and `STAC_ITEMS_INDEX_PREFIX` environment variables.
+
+The application root path is left as the base url by default. If deploying to AWS Lambda with a Gateway API, you will need to define the app root path to be the same as the Gateway API stage name where you will deploy the API. The app root path can be defined with the `STAC_FASTAPI_ROOT_PATH` environment variable (`/v1`, for example)
 
 ## Collection pagination
 
@@ -73,24 +100,51 @@ get the next page of results.
 curl -X "GET" "http://localhost:8080/collections?limit=1&token=example_token"
 ```
 
+## Ingesting Sample Data CLI Tool   
+
+```shell
+Usage: data_loader.py [OPTIONS]
+
+  Load STAC items into the database.
+
+Options:
+  --base-url TEXT       Base URL of the STAC API  [required]
+  --collection-id TEXT  ID of the collection to which items are added
+  --use-bulk            Use bulk insert method for items
+  --data-dir PATH       Directory containing collection.json and feature
+                        collection file
+  --help                Show this message and exit.
+```
+
+```shell
+python3 data_loader.py --base-url http://localhost:8080
+```  
+
 ## Testing
 
 ```shell
 make test
 ```
-   
-## Ingest sample data
+Test against OpenSearch only
 
 ```shell
-make ingest
+make test-opensearch
 ```
+
+Test against Elasticsearch only
+
+```shell
+make test-elasticsearch
+```  
 
 ## Elasticsearch Mappings
 
-Mappings apply to search index, not source.  
+Mappings apply to search index, not source. The mappings are stored in index templates on application startup. 
+These templates will be used implicitly when creating new Collection and Item indices.
     
 
 ## Managing Elasticsearch Indices
+### Snapshots
 
 This section covers how to create a snapshot repository and then create and restore snapshots with this.
 
@@ -190,3 +244,52 @@ curl -X "POST" "http://localhost:8080/collections" \
 
 Voila! You have a copy of the collection now that has a resource URI (`/collections/my-collection-copy`) and can be
 correctly queried by collection name.
+
+### Reindexing
+This section covers how to reindex documents stored in Elasticsearch/OpenSearch. 
+A reindex operation might be useful to apply changes to documents or to correct dynamically generated mappings.
+
+The index templates will make sure that manually created indices will also have the correct mappings and settings.
+
+In this example, we will make a copy of an existing Item index `items_my-collection-000001` but change the Item identifier to be lowercase.
+
+```shell
+curl -X "POST" "http://localhost:9200/_reindex" \
+  -H 'Content-Type: application/json' \
+  -d $'{
+    "source": {
+      "index": "items_my-collection-000001"
+    }, 
+    "dest": {
+      "index": "items_my-collection-000002"
+    },
+    "script": {
+      "source": "ctx._source.id = ctx._source.id.toLowerCase()",
+      "lang": "painless"
+    }
+  }'
+```
+
+If we are happy with the data in the newly created index, we can move the alias `items_my-collection` to the new index `items_my-collection-000002`.
+```shell
+curl -X "POST" "http://localhost:9200/_aliases" \
+  -h 'Content-Type: application/json' \
+  -d $'{
+    "actions": [
+      {
+        "remove": {
+          "index": "*",
+          "alias": "items_my-collection"
+        }
+      },
+      {
+        "add": {
+          "index": "items_my-collection-000002",
+          "alias": "items_my-collection"
+        }
+      }
+    ]
+  }'
+```
+
+The modified Items with lowercase identifiers will now be visible to users accessing `my-collection` in the STAC API.
