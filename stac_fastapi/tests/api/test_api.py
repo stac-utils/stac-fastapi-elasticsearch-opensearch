@@ -491,8 +491,6 @@ async def test_datetime_interval(app_client, txn_client, ctx):
 
     await create_item(txn_client, third_item)
 
-    print("CREATED ITEMS")
-
     dt_formats = [
         "2020-02-06T12:30:22+00:00/2020-02-13T12:30:22+00:00",
         "2020-02-12T12:30:22.00Z/2020-02-20T12:30:22.00Z",
@@ -564,8 +562,6 @@ async def test_datetime_bad_interval(app_client, txn_client, ctx):
     del third_item["properties"]["end_datetime"]
 
     await create_item(txn_client, third_item)
-
-    print("CREATED ITEMS")
 
     dt_formats = [
         "1920-02-04T12:30:22+00:00/1920-02-06T12:30:22+00:00",

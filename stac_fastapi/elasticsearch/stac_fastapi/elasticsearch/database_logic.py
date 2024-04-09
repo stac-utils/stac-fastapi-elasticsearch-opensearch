@@ -409,6 +409,9 @@ class DatabaseLogic:
         """
         should = []
 
+        # If the request is a single datetime return
+        # items with datetimes equal to the requested datetime OR
+        # the requested datetime is between their start and end datetimes
         if "eq" in datetime_search:
             should.extend(
                 [
@@ -441,6 +444,11 @@ class DatabaseLogic:
                 ]
             )
 
+        # If the request is a date range return
+        # items with datetimes within the requested date range OR
+        # their startdatetime ithin the requested date range OR
+        # their enddatetime ithin the requested date range OR
+        # the requested daterange within their start and end datetimes
         else:
             should.extend(
                 [
