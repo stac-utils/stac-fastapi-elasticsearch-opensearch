@@ -1,0 +1,78 @@
+site_name: stac-fastapi-elasticsearch-opensearch
+site_description: STAC FastAPI.
+
+# Repository
+repo_name: "stac-utils/stac-fastapi-elasticsearch-opensearch"
+repo_url: "https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch"
+edit_uri: "blob/main/docs/src/"
+
+docs_dir: 'src'
+site_dir: 'build'
+
+# Social links
+extra:
+  social:
+    - icon: "fontawesome/brands/github"
+      link: "https://github.com/stac-utils"
+
+# Layout
+nav:
+  - Home: "index.md"
+  - Tips and Tricks: tips-and-tricks.md
+  - ELASTICSEARCH:
+      - packages: elasticsearch/stac_fastapi/index.md
+      - stac_fastapi.elasticsearch:
+          - module: elasticsearch/stac_fastapi/elasticsearch/index.md
+          - app: elasticsearch/stac_fastapi/elasticsearch/app.md
+          - config: elasticsearch/stac_fastapi/elasticsearch/config.md
+          - database_logic: elasticsearch/stac_fastapi/elasticsearch/database_logic.md
+          - version: elasticsearch/stac_fastapi/elasticsearch/version.md
+  - Development - Contributing: "contributing.md"
+  - Release Notes: "release-notes.md"
+
+plugins:
+  - search
+
+# Theme
+theme:
+  icon:
+    logo: "material/home"
+    repo: "fontawesome/brands/github"
+  name: "material"
+  language: "en"
+  font:
+    text: "Nunito Sans"
+    code: "Fira Code"
+
+extra_css:
+  - stylesheets/extra.css
+
+# These extensions are chosen to be a superset of Pandoc's Markdown.
+# This way, I can write in Pandoc's Markdown and have it be supported here.
+# https://pandoc.org/MANUAL.html
+markdown_extensions:
+  - admonition
+  - attr_list
+  - codehilite:
+      guess_lang: false
+  - def_list
+  - footnotes
+  - pymdownx.arithmatex
+  - pymdownx.betterem
+  - pymdownx.caret:
+      insert: false
+  - pymdownx.details
+  - pymdownx.emoji
+  - pymdownx.escapeall:
+      hardbreak: true
+      nbsp: true
+  - pymdownx.magiclink:
+      hide_protocol: true
+      repo_url_shortener: true
+  - pymdownx.smartsymbols
+  - pymdownx.superfences
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+  - toc:
+      permalink: true
