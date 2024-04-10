@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [v2.2.0]
+
 ### Added
 
 - use index templates for Collection and Item indices [#208](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/discussions/208)
@@ -149,7 +151,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Added db_to_stac serializer to item_collection method in core.py.
 
 
-[Unreleased]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.1.0...main>
+[Unreleased]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.2.0...main>
+[v2.2.0]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.1.0...v2.2.0>
 [v2.1.0]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.0.0...v2.1.0>
 [v2.0.0]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v1.1.0...v2.0.0>
 [v1.1.0]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v1.0.0...v1.1.0>
