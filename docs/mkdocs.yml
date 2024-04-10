@@ -4,7 +4,7 @@ site_description: STAC FastAPI Elasticsearch and Opensearch backends.
 # Repository
 repo_name: "stac-utils/stac-fastapi-elasticsearch-opensearch"
 repo_url: "https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch"
-edit_uri: "blob/makedocs/docs/src/"
+edit_uri: "blob/main/docs/src/"
 
 docs_dir: 'src'
 site_dir: 'build'
@@ -22,23 +22,24 @@ nav:
   - API:
       - stac_fastapi.elasticsearch:
           - app: api/stac_fastapi/elasticsearch/app.md
-          - module: api/stac_fastapi/elasticsearch/index.md
+          - index: api/stac_fastapi/elasticsearch/index.md
           - config: api/stac_fastapi/elasticsearch/config.md
           - database_logic: api/stac_fastapi/elasticsearch/database_logic.md
           - index: api/stac_fastapi/elasticsearch/index.md
           - version: api/stac_fastapi/elasticsearch/version.md
       - stac_fastapi.opensearch:
           - app: api/stac_fastapi/opensearch/app.md
-          - module: api/stac_fastapi/opensearch/index.md
+          - index: api/stac_fastapi/opensearch/index.md
           - config: api/stac_fastapi/opensearch/config.md
           - database_logic: api/stac_fastapi/opensearch/database_logic.md
           - index: api/stac_fastapi/opensearch/index.md
           - version: api/stac_fastapi/opensearch/version.md
       - stac_fastapi.core:
-          - module: api/stac_fastapi/core/index.md
+          - index: api/stac_fastapi/core/index.md
           - base_database_logic: api/stac_fastapi/core/base_database_logic.md
           - base_settings: api/stac_fastapi/core/base_settings.md
           - core: api/stac_fastapi/core/core.md
+          - datetime_utils: api/stac_fastapi/core/datetime_utils.md
           - extensions:
             - module: api/stac_fastapi/core/extensions/index.md
             - filter: api/stac_fastapi/core/extensions/filter.md
@@ -48,6 +49,8 @@ nav:
             - links: api/stac_fastapi/core/models/links.md
             - search: api/stac_fastapi/core/models/search.md
           - serializers: api/stac_fastapi/core/serializers.md
+          - session: api/stac_fastapi/core/session.md
+          - utilities: api/stac_fastapi/core/utilities.md
           - version: api/stac_fastapi/core/version.md
   - Development - Contributing: "contributing.md"
   - Release Notes: "release-notes.md"

@@ -1,7 +1,7 @@
 name: Publish docs via GitHub Pages
 
 on:
-  pull_request:
+  push:
     branches:
       - main
     paths:
@@ -41,13 +41,8 @@ jobs:
             --overwrite \
             stac_fastapi
         env:
-          APP_HOST: 0.0.0.0
           APP_PORT: 8082
-          ES_HOST: opensearch
           ES_PORT: 9202
-          ES_USE_SSL: false
-          ES_VERIFY_CERTS: false
-          BACKEND: opensearch
 
       - name: Deploy docs
         run: mkdocs gh-deploy --force -f docs/mkdocs.yml
