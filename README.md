@@ -1,8 +1,23 @@
 # stac-fastapi-elasticsearch-opensearch (sfeos)
 
-## Elasticsearch and Opensearch backends for the stac-fastapi project  
+<!-- markdownlint-disable MD033 MD041 -->
+
+<p align="left">
+  <img src="https://github.com/radiantearth/stac-site/raw/master/images/logo/stac-030-long.png" width=600>
+  <p align="left"><b>Elasticsearch and Opensearch backends for the stac-fastapi project.</b></p>
+
   
   [![PyPI version](https://badge.fury.io/py/stac-fastapi.elasticsearch.svg)](https://badge.fury.io/py/stac-fastapi.elasticsearch)  
+
+---
+
+**Documentation**: [https://stac-utils.github.io/stac-fastapi-elasticsearch-opensearch](https://stac-utils.github.io/stac-fastapi-elasticsearch-opensearch/)
+
+**Source Code**: [https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch)
+
+---
+
+### Notes:    
   
 - Our Api core library can be used to create custom backends. See [stac-fastapi-mongo](https://github.com/Healy-Hyperspatial/stac-fastapi-mongo) for a working example.  
 - Reach out on our [Gitter](https://app.gitter.im/#/room/#stac-fastapi-elasticsearch_community:gitter.im) channel or feel free to add to our [Discussions](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/discussions) page here on github.
