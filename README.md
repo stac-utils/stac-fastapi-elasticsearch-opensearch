@@ -5,6 +5,7 @@
 <p align="left">
   <img src="https://github.com/radiantearth/stac-site/raw/master/images/logo/stac-030-long.png" width=600>
   <p align="left"><b>Elasticsearch and Opensearch backends for the stac-fastapi project.</b></p>
+</p>
 
   
   [![PyPI version](https://badge.fury.io/py/stac-fastapi.elasticsearch.svg)](https://badge.fury.io/py/stac-fastapi.elasticsearch)  
