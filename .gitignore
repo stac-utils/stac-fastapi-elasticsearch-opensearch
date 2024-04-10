@@ -135,6 +135,6 @@ dmypy.json
 # Virtualenv
 venv
 
-/docs/src/api
+/docs/src/api/*
 
 .DS_Store
