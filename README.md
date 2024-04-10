@@ -1,13 +1,33 @@
 # stac-fastapi-elasticsearch-opensearch (sfeos)
 
-## Elasticsearch and Opensearch backends for the stac-fastapi project  
+<!-- markdownlint-disable MD033 MD041 -->
+
+<p align="left">
+  <img src="https://github.com/radiantearth/stac-site/raw/master/images/logo/stac-030-long.png" width=600>
+  <p align="left"><b>Elasticsearch and Opensearch backends for the stac-fastapi project.</b></p>
+
   
   [![PyPI version](https://badge.fury.io/py/stac-fastapi.elasticsearch.svg)](https://badge.fury.io/py/stac-fastapi.elasticsearch)  
+
+---
+
+**Online Documentation**: [https://stac-utils.github.io/stac-fastapi-elasticsearch-opensearch](https://stac-utils.github.io/stac-fastapi-elasticsearch-opensearch/)
+
+**Source Code**: [https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch)
+
+
+---
+
+### Notes:    
   
 - Our Api core library can be used to create custom backends. See [stac-fastapi-mongo](https://github.com/Healy-Hyperspatial/stac-fastapi-mongo) for a working example.  
 - Reach out on our [Gitter](https://app.gitter.im/#/room/#stac-fastapi-elasticsearch_community:gitter.im) channel or feel free to add to our [Discussions](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/discussions) page here on github.
 - There is [Postman](https://documenter.getpostman.com/view/12888943/2s8ZDSdRHA) documentation here for examples on how to run some of the API routes locally - after starting the elasticsearch backend via the docker-compose.yml file.
-- The `/examples` folder shows an example of running stac-fastapi-elasticsearch from PyPI in docker without needing any code from the repository. There is also a Postman collection here that you can load into Postman for testing the API routes. 
+- The `/examples` folder shows an example of running stac-fastapi-elasticsearch from PyPI in docker without needing any code from the repository. There is also a Postman collection here that you can load into Postman for testing the API routes.  
+    
+- For changes, see the [Changelog](CHANGELOG.md)   
+- We are always welcoming contributions. For the development notes: [Contributing](CONTRIBUTING.md)     
+
 
 ### To install from PyPI:
 
@@ -18,35 +38,7 @@ or
 ```
 pip install stac_fastapi.opensearch
 ```
-
-#### For changes, see the [Changelog](CHANGELOG.md)
-
-
-## Development Environment Setup
-
-To install the classes in your local Python env, run:
-
-```shell
-pip install -e 'stac_fastapi/elasticsearch[dev]'
-```
-
-or
-
-```shell
-pip install -e 'stac_fastapi/opensearch[dev]'
-```
-
-
-### Pre-commit
-
-Install [pre-commit](https://pre-commit.com/#install).
-
-Prior to commit, run:
-
-```shell
-pre-commit run --all-files
-```
-
+    
 ## Build Elasticsearh API backend
 
 ```shell
@@ -120,22 +112,6 @@ Options:
 python3 data_loader.py --base-url http://localhost:8080
 ```  
 
-## Testing
-
-```shell
-make test
-```
-Test against OpenSearch only
-
-```shell
-make test-opensearch
-```
-
-Test against Elasticsearch only
-
-```shell
-make test-elasticsearch
-```  
 
 ## Elasticsearch Mappings
 
