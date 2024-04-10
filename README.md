@@ -36,32 +36,8 @@ pip install stac_fastapi.opensearch
 
 #### For changes, see the [Changelog](CHANGELOG.md)
 
-
-## Development Environment Setup
-
-To install the classes in your local Python env, run:
-
-```shell
-pip install -e 'stac_fastapi/elasticsearch[dev]'
-```
-
-or
-
-```shell
-pip install -e 'stac_fastapi/opensearch[dev]'
-```
-
-
-### Pre-commit
-
-Install [pre-commit](https://pre-commit.com/#install).
-
-Prior to commit, run:
-
-```shell
-pre-commit run --all-files
-```
-
+#### Development notes: [Contributing](CONTRIBUTING.md)   
+    
 ## Build Elasticsearh API backend
 
 ```shell
@@ -135,22 +111,6 @@ Options:
 python3 data_loader.py --base-url http://localhost:8080
 ```  
 
-## Testing
-
-```shell
-make test
-```
-Test against OpenSearch only
-
-```shell
-make test-opensearch
-```
-
-Test against Elasticsearch only
-
-```shell
-make test-elasticsearch
-```  
 
 ## Elasticsearch Mappings
 

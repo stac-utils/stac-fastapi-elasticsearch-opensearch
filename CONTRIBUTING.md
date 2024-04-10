@@ -1,48 +1,58 @@
 # Contributing
 
 Issues and pull requests are more than welcome.
+  
 
-**dev install**
+### Development Environment Setup
 
-```bash
-git clone https://github.com/stac-utils/stac-fastapi.git
-cd stac-fastapi
-python -m pip install -e stac_fastapi/api[dev]
+To install the classes in your local Python env, run:
+
+```shell
+pip install -e 'stac_fastapi/elasticsearch[dev]'
 ```
 
-**pre-commit**
+or
 
-This repo is set to use `pre-commit` to run *ruff*, *pydocstring* and mypy when committing new code.
+```shell
+pip install -e 'stac_fastapi/opensearch[dev]'
+```
 
-```bash
+### Pre-commit
+
+Install [pre-commit](https://pre-commit.com/#install).
+
+Prior to commit, run:
+
+```shell
 pre-commit install
+pre-commit run --all-files
+```   
+
+### Testing
+
+```shell
+make test
 ```
+Test against OpenSearch only
+
+```shell
+make test-opensearch
+```
+
+Test against Elasticsearch only
+
+```shell
+make test-elasticsearch
+```  
 
 ### Docs
 
-```bash
-git clone https://github.com/stac-utils/stac-fastapi.git
-cd stac-fastapi
-python pip install -e stac_fastapi/api["docs"]
+```shell
+make docs
 ```
 
-Hot-reloading docs:
+Hot-reloading docs locally:
 
-```bash
-$ mkdocs serve -f docs/mkdocs.yml
-```
-
-To manually deploy docs (note you should never need to do this because GitHub
-Actions deploys automatically for new commits.):
-
-```bash
-Create API documentations
-$ pdocs as_markdown \
-  --output_dir docs/src/api/ \
-  --exclude_source \
-  --overwrite \
-  stac_fastapi.opensearch
-
-# deploy
-$ mkdocs gh-deploy -f docs/mkdocs.yml
+```shell
+mkdocs serve -f docs/mkdocs.yml
 ```
