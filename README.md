@@ -40,14 +40,14 @@ or
 pip install stac_fastapi.opensearch
 ```
     
-## Build Elasticsearh API backend
+## Build Elasticsearch API backend
 
 ```shell
 docker-compose up elasticsearch
 docker-compose build app-elasticsearch
 ```
   
-## Running Elasticsearh API on localhost:8080
+## Running Elasticsearch API on localhost:8080
 
 ```shell
 docker-compose up app-elasticsearch
