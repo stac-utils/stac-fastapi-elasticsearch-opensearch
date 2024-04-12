@@ -1,4 +1,5 @@
 """Item crud client."""
+
 import logging
 import re
 from datetime import datetime as datetime_type
@@ -552,6 +553,17 @@ class CoreClient(AsyncBaseCoreClient):
             cql2_filter = getattr(search_request, "filter", None)
             try:
                 search = self.database.apply_cql2_filter(search, cql2_filter)
+            except Exception as e:
+                raise HTTPException(
+                    status_code=400, detail=f"Error with cql2_json filter: {e}"
+                )
+
+        if self.extension_is_enabled("FreeTextExtension") and hasattr(
+            search_request, "q"
+        ):
+            query_str = getattr(search_request, "q", None)
+            try:
+                search = self.database.apply_free_text_filter(search, query_str)
             except Exception as e:
                 raise HTTPException(
                     status_code=400, detail=f"Error with cql2_json filter: {e}"

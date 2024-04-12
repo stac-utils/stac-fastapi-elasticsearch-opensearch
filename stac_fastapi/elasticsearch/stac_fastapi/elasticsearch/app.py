@@ -26,7 +26,10 @@ from stac_fastapi.extensions.core import (
     TokenPaginationExtension,
     TransactionExtension,
 )
-from stac_fastapi.extensions.third_party import BulkTransactionExtension
+from stac_fastapi.extensions.third_party import (
+    BulkTransactionExtension,
+    FreeTextExtension,
+)
 
 settings = ElasticsearchSettings()
 session = Session.create_from_settings(settings)
@@ -58,6 +61,7 @@ extensions = [
     TokenPaginationExtension(),
     ContextExtension(),
     filter_extension,
+    FreeTextExtension(),
 ]
 
 post_request_model = create_post_request_model(extensions)

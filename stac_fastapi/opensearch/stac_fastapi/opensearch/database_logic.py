@@ -1,4 +1,5 @@
 """Database logic."""
+
 import asyncio
 import logging
 import os
@@ -422,6 +423,20 @@ class DatabaseLogic:
     def apply_collections_filter(search: Search, collection_ids: List[str]):
         """Database logic to search a list of STAC collection ids."""
         return search.filter("terms", collection=collection_ids)
+
+    @staticmethod
+    def apply_free_text_filter(search: Search, query_str: Optional[str]):
+        """Database logic to perform query for search endpoint."""
+        if query_str is not None:
+            # the colon is a reserved character
+            query_str = query_str.replace(":", "\:").replace("=", ":")
+            search = search.query(
+                "query_string",
+                query=query_str,
+                fields=["collection", "properties.*"],
+                lenient=True,
+            )
+        return search
 
     @staticmethod
     def apply_datetime_filter(search: Search, datetime_search):
