@@ -55,7 +55,9 @@ async def test_delete_missing_collection(app_client):
 async def test_update_collection_already_exists(ctx, app_client):
     """Test updating a collection which already exists"""
     ctx.collection["keywords"].append("test")
-    resp = await app_client.put("/collections", json=ctx.collection)
+    resp = await app_client.put(
+        "/collections/{ctx.collection['id']}", json=ctx.collection
+    )
     assert resp.status_code == 200
 
     resp = await app_client.get(f"/collections/{ctx.collection['id']}")
@@ -70,7 +72,9 @@ async def test_update_new_collection(app_client, load_test_data):
     test_collection = load_test_data("test_collection.json")
     test_collection["id"] = "new-test-collection"
 
-    resp = await app_client.put("/collections", json=test_collection)
+    resp = await app_client.put(
+        "/collections/{ctx.collection['id']}", json=test_collection
+    )
     assert resp.status_code == 404
 
 
@@ -84,7 +88,9 @@ async def test_collection_not_found(app_client):
 @pytest.mark.asyncio
 async def test_returns_valid_collection(ctx, app_client):
     """Test validates fetched collection with jsonschema"""
-    resp = await app_client.put("/collections", json=ctx.collection)
+    resp = await app_client.put(
+        "/collections/{ctx.collection['id']}", json=ctx.collection
+    )
     assert resp.status_code == 200
 
     resp = await app_client.get(f"/collections/{ctx.collection['id']}")
@@ -109,7 +115,9 @@ async def test_collection_extensions(ctx, app_client):
     )
     test_asset = {"title": "test", "description": "test", "type": "test"}
     ctx.collection["item_assets"] = {"test": test_asset}
-    resp = await app_client.put("/collections", json=ctx.collection)
+    resp = await app_client.put(
+        "/collections/{ctx.collection['id']}", json=ctx.collection
+    )
 
     assert resp.status_code == 200
     assert resp.json().get("item_assets", {}).get("test") == test_asset
