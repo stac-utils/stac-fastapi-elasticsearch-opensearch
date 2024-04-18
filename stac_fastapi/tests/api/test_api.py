@@ -28,7 +28,7 @@ ROUTES = {
     "DELETE /collections/{collection_id}/items/{item_id}",
     "POST /collections",
     "POST /collections/{collection_id}/items",
-    "PUT /collections",
+    "PUT /collections/{collection_id}",
     "PUT /collections/{collection_id}/items/{item_id}",
 }
 
