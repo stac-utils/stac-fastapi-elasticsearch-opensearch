@@ -138,3 +138,6 @@ venv
 /docs/src/api/*
 
 .DS_Store
+
+# IntelliJ
+.idea/
