@@ -38,6 +38,7 @@ from stac_fastapi.types.config import Settings
 from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
 from stac_fastapi.types.extension import ApiExtension
 from stac_fastapi.types.requests import get_base_url
+from stac_fastapi.types.rfc3339 import DateTimeType
 from stac_fastapi.types.search import BaseSearchPostRequest
 from stac_fastapi.types.stac import Collection, Collections, Item, ItemCollection
 
@@ -348,46 +349,50 @@ class CoreClient(AsyncBaseCoreClient):
         )
         return self.item_serializer.db_to_stac(item, base_url)
 
-    @staticmethod
-    def _return_date(interval_str):
-        """
-        Convert a date interval string into a dictionary for filtering search results.
+    # DateTimeType = Union[
+    #     datetime,
+    #     Tuple[datetime, datetime],
+    #     Tuple[Optional[datetime], Optional[datetime]]
+    # ]
 
-        The date interval string should be formatted as either a single date or a range of dates separated
-        by "/". The date format should be ISO-8601 (YYYY-MM-DDTHH:MM:SSZ). If the interval string is a
-        single date, it will be converted to a dictionary with a single "eq" key whose value is the date in
-        the ISO-8601 format. If the interval string is a range of dates, it will be converted to a
-        dictionary with "gte" (greater than or equal to) and "lte" (less than or equal to) keys. If the
-        interval string is a range of dates with ".." instead of "/", the start and end dates will be
-        assigned default values to encompass the entire possible date range.
+    @staticmethod
+    def _return_date(interval: Optional[DateTimeType]) -> dict:
+        """
+        Convert a date interval already parsed as DateTimeType into a dictionary.
+
+        For filtering search results with Elasticsearch.
+
+        This function ensures the output dictionary contains 'gte' and 'lte' keys
+        even if they are set to None to prevent KeyError in the consuming logic.
 
         Args:
-            interval_str (str): The date interval string to be converted.
+            interval (Optional[DateTimeType]): The date interval, which might be a single datetime,
+                a tuple with one or two datetimes, or None.
 
         Returns:
-            dict: A dictionary representing the date interval for use in filtering search results.
+            dict: A dictionary representing the date interval for use in filtering search results,
+                always containing 'gte' and 'lte' keys.
         """
-        intervals = interval_str.split("/")
-        if len(intervals) == 1:
-            datetime = f"{intervals[0][0:19]}Z"
-            return {"eq": datetime}
-        else:
-            start_date = intervals[0]
-            end_date = intervals[1]
-            if ".." not in intervals:
-                start_date = f"{start_date[0:19]}Z"
-                end_date = f"{end_date[0:19]}Z"
-            elif start_date != "..":
-                start_date = f"{start_date[0:19]}Z"
-                end_date = "2200-12-01T12:31:12Z"
-            elif end_date != "..":
-                start_date = "1900-10-01T00:00:00Z"
-                end_date = f"{end_date[0:19]}Z"
-            else:
-                start_date = "1900-10-01T00:00:00Z"
-                end_date = "2200-12-01T12:31:12Z"
+        result: Dict[str, Optional[str]] = {"gte": None, "lte": None}
 
-        return {"lte": end_date, "gte": start_date}
+        if interval is None:
+            return result  # Return default if no interval is specified
+
+        if isinstance(interval, datetime_type):
+            # Single datetime object for both 'gte' and 'lte'
+            datetime_iso = interval.isoformat()
+            result["gte"] = datetime_iso
+            result["lte"] = datetime_iso
+            return result
+
+        # Handling tuples, which may contain one or two datetime objects or None
+        start, end = interval
+        if start:
+            result["gte"] = start.isoformat()
+        if end:
+            result["lte"] = end.isoformat()
+
+        return result
 
     async def get_search(
         self,
@@ -459,7 +464,6 @@ class CoreClient(AsyncBaseCoreClient):
                         "direction": "desc" if sort[0] == "-" else "asc",
                     }
                 )
-            print(sort_param)
             base_args["sortby"] = sort_param
 
         if filter:
