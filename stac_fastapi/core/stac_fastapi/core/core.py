@@ -273,9 +273,9 @@ class CoreClient(AsyncBaseCoreClient):
         request: Request = kwargs["request"]
         query_params = dict(request.query_params)  # Convert MultiDict to dict
 
-        # I am not sure why I have to do this
+        # I am not sure why I have to do this .... as of stac-fastapi 2.5.2
         if "datetime" in query_params:
-            datetime = query_params['datetime']
+            datetime = query_params["datetime"]
 
         base_url = str(request.base_url)
 
@@ -363,10 +363,14 @@ class CoreClient(AsyncBaseCoreClient):
     # ]
 
     @staticmethod
-    def _return_date(interval: Optional[Union[DateTimeType, str]]) -> Dict[str, Optional[str]]:
+    def _return_date(
+        interval: Optional[Union[DateTimeType, str]]
+    ) -> Dict[str, Optional[str]]:
         """
-        Convert a date interval (which may be a datetime, a tuple of one or two datetimes, 
-        a string representing a datetime or range, or None) into a dictionary for filtering
+        Convert a date interval.
+
+        (which may be a datetime, a tuple of one or two datetimes a string
+        representing a datetime or range, or None) into a dictionary for filtering
         search results with Elasticsearch.
 
         This function ensures the output dictionary contains 'gte' and 'lte' keys,
@@ -386,25 +390,27 @@ class CoreClient(AsyncBaseCoreClient):
             return result
 
         if isinstance(interval, str):
-            if '/' in interval:
-                parts = interval.split('/')
-                result['gte'] = parts[0] if parts[0] != ".." else None
-                result['lte'] = parts[1] if len(parts) > 1 and parts[1] != ".." else None
+            if "/" in interval:
+                parts = interval.split("/")
+                result["gte"] = parts[0] if parts[0] != ".." else None
+                result["lte"] = (
+                    parts[1] if len(parts) > 1 and parts[1] != ".." else None
+                )
             else:
                 converted_time = interval if interval != ".." else None
-                result['gte'] = result['lte'] = converted_time
+                result["gte"] = result["lte"] = converted_time
             return result
 
         if isinstance(interval, datetime_type):
             datetime_iso = interval.isoformat()
-            result['gte'] = result['lte'] = datetime_iso
+            result["gte"] = result["lte"] = datetime_iso
         elif isinstance(interval, tuple):
             start, end = interval
             # Ensure datetimes are converted to UTC and formatted with 'Z'
             if start:
-                result["gte"] = start.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
+                result["gte"] = start.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
             if end:
-                result["lte"] = end.strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'
+                result["lte"] = end.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
 
         return result
 
