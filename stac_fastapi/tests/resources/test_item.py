@@ -829,5 +829,6 @@ async def test_search_datetime_validation_errors(app_client):
         resp = await app_client.post("/search", json=body)
         assert resp.status_code == 400
 
+        # Getting this instead ValueError: Invalid RFC3339 datetime.
         # resp = await app_client.get("/search?datetime={}".format(dt))
         # assert resp.status_code == 400
