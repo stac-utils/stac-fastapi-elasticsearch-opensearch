@@ -1,4 +1,5 @@
 """Item crud client."""
+import json
 import logging
 import re
 from datetime import datetime as datetime_type
@@ -452,8 +453,27 @@ class CoreClient(AsyncBaseCoreClient):
         if datetime:
             base_args["datetime"] = datetime
 
+        # As of stac-fastapi 2.5.x, the intersects GET request parameter is being sent as a list
         if intersects:
-            base_args["intersects"] = orjson.loads(unquote_plus(intersects))
+            intersects_dict = {"type": None, "coordinates": None}
+
+            combined_json_string = intersects[0]
+
+            # Iterate over the remaining fragments and add each with a preceding comma
+            for fragment in intersects[1:]:
+                combined_json_string += "," + fragment
+
+            combined_json_string = combined_json_string.replace("'", "")
+            combined_json_string = "".join(
+                char for char in combined_json_string if char.isprintable()
+            )
+
+            try:
+                intersects_dict = json.loads(combined_json_string)
+            except json.JSONDecodeError as error:
+                print("Failed to parse JSON:", error)
+
+            base_args["intersects"] = intersects_dict
 
         if sortby:
             sort_param = []
