@@ -356,12 +356,6 @@ class CoreClient(AsyncBaseCoreClient):
         )
         return self.item_serializer.db_to_stac(item, base_url)
 
-    # DateTimeType = Union[
-    #     datetime,
-    #     Tuple[datetime, datetime],
-    #     Tuple[Optional[datetime], Optional[datetime]]
-    # ]
-
     @staticmethod
     def _return_date(
         interval: Optional[Union[DateTimeType, str]]
