@@ -73,7 +73,7 @@ async def test_update_new_collection(app_client, load_test_data):
     test_collection["id"] = "new-test-collection"
 
     resp = await app_client.put(
-        "/collections/{ctx.collection['id']}", json=test_collection
+        f"/collections/{test_collection['id']}", json=test_collection
     )
     assert resp.status_code == 404
 
@@ -89,7 +89,7 @@ async def test_collection_not_found(app_client):
 async def test_returns_valid_collection(ctx, app_client):
     """Test validates fetched collection with jsonschema"""
     resp = await app_client.put(
-        "/collections/{ctx.collection['id']}", json=ctx.collection
+        f"/collections/{ctx.collection['id']}", json=ctx.collection
     )
     assert resp.status_code == 200
 
@@ -116,7 +116,7 @@ async def test_collection_extensions(ctx, app_client):
     test_asset = {"title": "test", "description": "test", "type": "test"}
     ctx.collection["item_assets"] = {"test": test_asset}
     resp = await app_client.put(
-        "/collections/{ctx.collection['id']}", json=ctx.collection
+        f"/collections/{ctx.collection['id']}", json=ctx.collection
     )
 
     assert resp.status_code == 200
