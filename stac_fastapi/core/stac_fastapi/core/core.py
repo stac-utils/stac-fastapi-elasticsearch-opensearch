@@ -26,6 +26,7 @@ from stac_fastapi.core.session import Session
 from stac_fastapi.core.types.core import (
     AsyncBaseCoreClient,
     AsyncBaseFiltersClient,
+    AsyncCollectionSearchClient,
     AsyncBaseTransactionsClient,
 )
 from stac_fastapi.extensions.third_party.bulk_transactions import (
@@ -38,7 +39,7 @@ from stac_fastapi.types.config import Settings
 from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
 from stac_fastapi.types.extension import ApiExtension
 from stac_fastapi.types.requests import get_base_url
-from stac_fastapi.types.search import BaseSearchPostRequest
+from stac_fastapi.types.search import BaseSearchPostRequest, BaseCollectionSearchPostRequest
 from stac_fastapi.types.stac import Collection, Collections, Item, ItemCollection
 
 logger = logging.getLogger(__name__)
@@ -944,3 +945,115 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
             },
             "additionalProperties": True,
         }
+
+@attr.s
+class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
+    """Defines a pattern for implementing the STAC collection search extension."""
+
+    database: BaseDatabaseLogic = attr.ib()
+    post_request_model = attr.ib(default=BaseCollectionSearchPostRequest)
+    collection_serializer: Type[CollectionSerializer] = attr.ib(
+        default=CollectionSerializer
+    )
+
+    async def post_collection_search(
+        self, search_request: BaseCollectionSearchPostRequest, request: Request, **kwargs
+    ) -> Collections:
+        """
+        Perform a POST search on the collections in the catalog. 
+
+        Args:
+            search_request (BaseCollectionSearchPostRequest): Request object that includes the parameters for the search.
+            kwargs: Keyword arguments passed to the function.
+
+        Returns:
+            A tuple of (collections, next pagination token if any).
+
+        Raises:
+            HTTPException: If there is an error with the cql2_json filter.
+        """
+        base_url = str(request.base_url)
+
+        search = self.database.make_collection_search()
+
+        if search_request.datetime:
+            datetime_search = CoreClient._return_date(search_request.datetime)
+            search = self.database.apply_datetime_collections_filter(
+                search=search, datetime_search=datetime_search
+            )
+
+
+        if search_request.bbox:
+            bbox = search_request.bbox
+            if len(bbox) == 6:
+                bbox = [bbox[0], bbox[1], bbox[3], bbox[4]]
+
+            search = self.database.apply_bbox_collections_filter(search=search, bbox=bbox)
+
+        sort = None
+
+        limit = 10
+        if search_request.limit:
+            limit = search_request.limit
+
+        base_url = str(request.base_url)
+
+        collections, maybe_count, next_token = await self.database.execute_collection_search(
+            search=search,
+            limit=limit,
+            token=None,
+            sort=sort,
+            collection_ids=None, #search_request.collections,
+            base_url=base_url,
+        )
+
+        collections = [
+            self.collection_serializer.db_to_stac(collection, base_url=base_url) for collection in collections
+        ]
+
+        links = []
+        if next_token:
+            links = await PagingLinks(request=request, next=next_token).get_links()
+
+        return Collections(collections=collections, links=links)
+
+    # todo: use the ES _mapping endpoint to dynamically find what fields exist
+    async def get_collection_search(
+        self,
+        request: Request,
+        bbox: Optional[List[NumType]] = None,
+        datetime: Optional[Union[str, datetime_type]] = None,
+        limit: Optional[int] = 10,
+        **kwargs,
+    ) -> Collections:
+        """Get search results from the database for collections.
+        Called with `GET /collection-search`.
+        Args:
+            bbox (Optional[List[NumType]]): Bounding box to search in.
+            datetime (Optional[Union[str, datetime_type]]): Filter items based on the datetime field.
+            limit (Optional[int]): Maximum number of results to return.
+            token (Optional[str]): Access token to use when searching the catalog.
+            kwargs: Additional parameters to be passed to the API.
+
+        Returns:
+            A tuple of (collections, next pagination token if any).
+
+        Raises:
+            HTTPException: If any error occurs while searching the catalog.
+        """
+
+        base_args = {
+            "bbox": bbox,
+            "limit": limit,
+        }
+
+        if datetime:
+            base_args["datetime"] = datetime
+        print(base_args)
+        try:
+            search_request = self.post_request_model(**base_args)
+        except ValidationError:
+            raise HTTPException(status_code=400, detail="Invalid parameters provided")
+        resp = await self.post_collection_search(search_request=search_request, request=request)
+
+        return resp
