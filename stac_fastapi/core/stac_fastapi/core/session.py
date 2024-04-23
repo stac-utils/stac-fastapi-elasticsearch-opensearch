@@ -1,4 +1,5 @@
 """database session management."""
+
 import logging
 
 import attr

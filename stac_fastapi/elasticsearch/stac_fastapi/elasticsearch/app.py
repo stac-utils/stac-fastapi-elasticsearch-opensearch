@@ -8,6 +8,7 @@ from stac_fastapi.core.core import (
     BulkTransactionsClient,
     CoreClient,
     EsAsyncBaseFiltersClient,
+    EsAsyncCollectionSearchClient,
     TransactionsClient,
 )
 from stac_fastapi.core.extensions import QueryExtension
@@ -25,6 +26,7 @@ from stac_fastapi.extensions.core import (
     SortExtension,
     TokenPaginationExtension,
     TransactionExtension,
+    CollectionSearchExtension,
 )
 from stac_fastapi.extensions.third_party import BulkTransactionExtension
 
@@ -37,6 +39,13 @@ filter_extension.conformance_classes.append(
 )
 
 database_logic = DatabaseLogic()
+
+collection_search_extension = CollectionSearchExtension(
+    client=EsAsyncCollectionSearchClient(database_logic)
+)
+collection_search_extension.conformance_classes.append(
+    "https://api.stacspec.org/v1.0.0-rc.1/collection-search"
+)
 
 extensions = [
     TransactionExtension(
@@ -58,6 +67,7 @@ extensions = [
     TokenPaginationExtension(),
     ContextExtension(),
     filter_extension,
+    collection_search_extension,
 ]
 
 post_request_model = create_post_request_model(extensions)

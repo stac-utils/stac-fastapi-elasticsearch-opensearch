@@ -1,4 +1,5 @@
 """API configuration."""
+
 import os
 import ssl
 from typing import Any, Dict, Set

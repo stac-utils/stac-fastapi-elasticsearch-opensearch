@@ -10,6 +10,7 @@ defines the LIKE, IN, and BETWEEN operators.
 Basic Spatial Operators (http://www.opengis.net/spec/cql2/1.0/conf/basic-spatial-operators)
 defines the intersects operator (S_INTERSECTS).
 """
+
 from __future__ import annotations
 
 import datetime

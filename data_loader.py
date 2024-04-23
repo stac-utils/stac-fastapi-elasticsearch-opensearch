@@ -1,4 +1,5 @@
 """Data Loader CLI STAC_API Ingestion Tool."""
+
 import json
 import os
 
