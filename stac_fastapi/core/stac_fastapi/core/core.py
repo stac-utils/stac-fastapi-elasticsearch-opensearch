@@ -270,12 +270,6 @@ class CoreClient(AsyncBaseCoreClient):
             Exception: If any error occurs while reading the items from the database.
         """
         request: Request = kwargs["request"]
-        query_params = dict(request.query_params)  # Convert MultiDict to dict
-
-        # I am not sure why I have to do this .... as of stac-fastapi 2.5.2
-        if "datetime" in query_params:
-            datetime = query_params["datetime"]
-
         base_url = str(request.base_url)
 
         collection = await self.get_collection(
