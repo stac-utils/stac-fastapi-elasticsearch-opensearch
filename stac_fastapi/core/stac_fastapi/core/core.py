@@ -1049,7 +1049,7 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
 
         if datetime:
             base_args["datetime"] = datetime
-        print(base_args)
+            
         try:
             search_request = self.post_request_model(**base_args)
         except ValidationError:
