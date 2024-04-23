@@ -144,19 +144,40 @@ ES_COLLECTIONS_MAPPINGS = {
         "links": {"type": "object", "enabled": False},
         "item_assets": {"type": "object", "enabled": False},        
     },
+    # Collection Search Extension https://github.com/stac-api-extensions/collection-search
     "runtime": {
         "collection_start_time": {
             "type": "date",
             "on_script_error": "fail",
             "script": {
-                "source": "def times = params._source.extent.temporal.interval; def time = times[0][0]; if (time == null) { def datetime = ZonedDateTime.parse('0000-10-01T00:00:00Z'); emit(datetime.toInstant().toEpochMilli()); } else { def datetime = ZonedDateTime.parse(time); emit(datetime.toInstant().toEpochMilli())}"
+                "source": """
+                def times = params._source.extent.temporal.interval; 
+                def time = times[0][0]; 
+                if (time == null) { 
+                    def datetime = ZonedDateTime.parse('0000-10-01T00:00:00Z'); 
+                    emit(datetime.toInstant().toEpochMilli()); 
+                } 
+                else { 
+                    def datetime = ZonedDateTime.parse(time); 
+                    emit(datetime.toInstant().toEpochMilli())
+                }"""
             }
         },
         "collection_end_time": {
             "type": "date",
             "on_script_error": "fail",
             "script": {
-                "source": "def times = params._source.extent.temporal.interval; def time = times[0][1]; if (time == null) { def datetime = ZonedDateTime.parse('9900-12-01T12:31:12Z'); emit(datetime.toInstant().toEpochMilli()); } else { def datetime = ZonedDateTime.parse(time); emit(datetime.toInstant().toEpochMilli())}"
+                "source": """
+                def times = params._source.extent.temporal.interval; 
+                def time = times[0][1]; 
+                if (time == null) { 
+                    def datetime = ZonedDateTime.parse('9900-12-01T12:31:12Z'); 
+                    emit(datetime.toInstant().toEpochMilli()); 
+                } 
+                else { 
+                    def datetime = ZonedDateTime.parse(time); 
+                    emit(datetime.toInstant().toEpochMilli())
+                }"""
             }
         },
         "geometry.shape": {
