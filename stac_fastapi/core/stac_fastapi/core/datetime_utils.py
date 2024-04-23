@@ -1,4 +1,5 @@
 """A few datetime methods."""
+
 from datetime import datetime, timezone
 
 from pystac.utils import datetime_to_str

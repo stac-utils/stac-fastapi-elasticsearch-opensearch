@@ -1,4 +1,5 @@
 """Database logic."""
+
 import asyncio
 import logging
 import os
@@ -139,10 +140,10 @@ ES_COLLECTIONS_MAPPINGS = {
     "properties": {
         "id": {"type": "keyword"},
         "extent.spatial.bbox": {"type": "double"},
-        "extent.temporal.interval": {"type": "date"},      
+        "extent.temporal.interval": {"type": "date"},
         "providers": {"type": "object", "enabled": False},
         "links": {"type": "object", "enabled": False},
-        "item_assets": {"type": "object", "enabled": False},        
+        "item_assets": {"type": "object", "enabled": False},
     },
     # Collection Search Extension https://github.com/stac-api-extensions/collection-search
     "runtime": {
@@ -161,7 +162,7 @@ ES_COLLECTIONS_MAPPINGS = {
                     def datetime = ZonedDateTime.parse(time); 
                     emit(datetime.toInstant().toEpochMilli())
                 }"""
-            }
+            },
         },
         "collection_end_time": {
             "type": "date",
@@ -178,43 +179,41 @@ ES_COLLECTIONS_MAPPINGS = {
                     def datetime = ZonedDateTime.parse(time); 
                     emit(datetime.toInstant().toEpochMilli())
                 }"""
-            }
+            },
         },
         "geometry.shape": {
             "type": "keyword",
             "on_script_error": "fail",
-            "script": {
-                "source": "emit('Polygon')"
-            }
+            "script": {"source": "emit('Polygon')"},
         },
         "collection_min_lat": {
             "type": "double",
             "on_script_error": "fail",
             "script": {
                 "source": "def bbox = params._source.extent.spatial.bbox; emit(bbox[0][0]);"
-            }
+            },
         },
         "collection_min_lon": {
             "type": "double",
             "on_script_error": "fail",
             "script": {
                 "source": "def bbox = params._source.extent.spatial.bbox; emit(bbox[0][1]);"
-            }
+            },
         },
         "collection_max_lat": {
             "type": "double",
             "on_script_error": "fail",
             "script": {
                 "source": "def bbox = params._source.extent.spatial.bbox; emit(bbox[0][2]);"
-            }
+            },
         },
         "collection_max_lon": {
             "type": "double",
             "on_script_error": "fail",
             "script": {
                 "source": "def bbox = params._source.extent.spatial.bbox; emit(bbox[0][3]);"
-            }
-        }
+            },
+        },
     },
 }
 
@@ -462,7 +461,7 @@ class DatabaseLogic:
     def make_search():
         """Database logic to create a Search instance."""
         return Search().sort(*DEFAULT_SORT)
-    
+
     @staticmethod
     def make_collection_search():
         """Database logic to create a Search instance."""
@@ -501,7 +500,7 @@ class DatabaseLogic:
                 "range", properties__datetime={"gte": datetime_search["gte"]}
             )
         return search
-    
+
     @staticmethod
     def apply_datetime_collections_filter(search: Search, datetime_search):
         """Apply a filter to search collections based on datetime field.
@@ -514,37 +513,55 @@ class DatabaseLogic:
             Search: The filtered search object.
         """
         if "eq" in datetime_search:
-            search = search.filter("range", **{"collection_start_time": {"lte": datetime_search['eq']}})
-            search = search.filter("range", **{"collection_end_time": {"gte": datetime_search['eq']}})            
+            search = search.filter(
+                "range", **{"collection_start_time": {"lte": datetime_search["eq"]}}
+            )
+            search = search.filter(
+                "range", **{"collection_end_time": {"gte": datetime_search["eq"]}}
+            )
 
         else:
             should = []
             should.extend(
                 [
-                    Q("bool", filter=[
-                        Q("range", collection_start_time={
-                                                    "lte": datetime_search["lte"],
-                                                    "gte": datetime_search["gte"],
-                                                    },
+                    Q(
+                        "bool",
+                        filter=[
+                            Q(
+                                "range",
+                                collection_start_time={
+                                    "lte": datetime_search["lte"],
+                                    "gte": datetime_search["gte"],
+                                },
                             ),
-                        ]
+                        ],
                     ),
-                    Q("bool", filter=[
-                        Q("range", collection_end_time={
-                                                    "lte": datetime_search["lte"],
-                                                    "gte": datetime_search["gte"],
-                                                    },
+                    Q(
+                        "bool",
+                        filter=[
+                            Q(
+                                "range",
+                                collection_end_time={
+                                    "lte": datetime_search["lte"],
+                                    "gte": datetime_search["gte"],
+                                },
                             ),
-                        ]
+                        ],
                     ),
-                    Q("bool", filter=[
-                        Q("range", collection_start_time={
-                                                    "lte": datetime_search["gte"],
-                                                    },
+                    Q(
+                        "bool",
+                        filter=[
+                            Q(
+                                "range",
+                                collection_start_time={
+                                    "lte": datetime_search["gte"],
+                                },
                             ),
-                        Q("range", collection_end_time={
-                                                    "gte": datetime_search['lte'],
-                                                    },
+                            Q(
+                                "range",
+                                collection_end_time={
+                                    "gte": datetime_search["lte"],
+                                },
                             ),
                         ],
                     ),
@@ -584,7 +601,7 @@ class DatabaseLogic:
                 }
             )
         )
-    
+
     @staticmethod
     def apply_bbox_collections_filter(search: Search, bbox: List):
         """Filter collections search results based on bounding box.
@@ -600,43 +617,54 @@ class DatabaseLogic:
         must = []
         must.extend(
             [
-                Q("bool", filter=[
-                    Q("range", collection_max_lat={
-                                                "gte": bbox[0],
-                                                },
+                Q(
+                    "bool",
+                    filter=[
+                        Q(
+                            "range",
+                            collection_max_lat={
+                                "gte": bbox[0],
+                            },
                         ),
-                    ]
+                    ],
                 ),
-                Q("bool", filter=[
-                    Q("range", collection_min_lat={
-                                                "lte": bbox[2],
-                                                },
+                Q(
+                    "bool",
+                    filter=[
+                        Q(
+                            "range",
+                            collection_min_lat={
+                                "lte": bbox[2],
+                            },
                         ),
-                    ]
+                    ],
                 ),
-                Q("bool", filter=[
-                    Q("range", collection_max_lon={
-                                                "gte": bbox[1],
-                                                },
+                Q(
+                    "bool",
+                    filter=[
+                        Q(
+                            "range",
+                            collection_max_lon={
+                                "gte": bbox[1],
+                            },
                         ),
-                    ]
+                    ],
                 ),
-                Q("bool", filter=[
-                    Q("range", collection_min_lon={
-                                                "lte": bbox[3],
-                                                },
+                Q(
+                    "bool",
+                    filter=[
+                        Q(
+                            "range",
+                            collection_min_lon={
+                                "lte": bbox[3],
+                            },
                         ),
-                    ]
+                    ],
                 ),
             ]
         )
-                
+
         return search.query(Q("bool", filter=[Q("bool", must=must)]))
-
-
-        ## testing collection with two arrays defined for bbox, first item in indexed document is -180, -90, 80, 90
-
-        #search.filter("script", **{"script": {"source": f"doc['extent.spatial.bbox'][3] >= {bbox[0]} && doc['extent.spatial.bbox'][1] <= {bbox[3]} && doc['extent.spatial.bbox'][0] <= {bbox[2]} && doc['extent.spatial.bbox'][2] >= {bbox[1]}"}})
 
     @staticmethod
     def apply_intersects_filter(
@@ -789,7 +817,7 @@ class DatabaseLogic:
                 logger.error(f"Count task failed: {e}")
 
         return items, maybe_count, next_token
-    
+
     async def execute_collection_search(
         self,
         search: Search,
@@ -827,7 +855,7 @@ class DatabaseLogic:
 
         query = search.query.to_dict() if search.query else None
 
-        index_param = "document" #indices(collection_ids)
+        index_param = "document"  # indices(collection_ids)
 
         search_task = asyncio.create_task(
             self.client.search(

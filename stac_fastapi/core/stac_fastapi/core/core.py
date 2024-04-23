@@ -1,4 +1,5 @@
 """Item crud client."""
+
 import logging
 import re
 from datetime import datetime as datetime_type
@@ -39,7 +40,10 @@ from stac_fastapi.types.config import Settings
 from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
 from stac_fastapi.types.extension import ApiExtension
 from stac_fastapi.types.requests import get_base_url
-from stac_fastapi.types.search import BaseSearchPostRequest, BaseCollectionSearchPostRequest
+from stac_fastapi.types.search import (
+    BaseSearchPostRequest,
+    BaseCollectionSearchPostRequest,
+)
 from stac_fastapi.types.stac import Collection, Collections, Item, ItemCollection
 
 logger = logging.getLogger(__name__)
@@ -946,6 +950,7 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
             "additionalProperties": True,
         }
 
+
 @attr.s
 class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
     """Defines a pattern for implementing the STAC collection search extension."""
@@ -957,10 +962,13 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
     )
 
     async def post_collection_search(
-        self, search_request: BaseCollectionSearchPostRequest, request: Request, **kwargs
+        self,
+        search_request: BaseCollectionSearchPostRequest,
+        request: Request,
+        **kwargs,
     ) -> Collections:
         """
-        Perform a POST search on the collections in the catalog. 
+        Perform a POST search on the collections in the catalog.
 
         Args:
             search_request (BaseCollectionSearchPostRequest): Request object that includes the parameters for the search.
@@ -982,13 +990,14 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
                 search=search, datetime_search=datetime_search
             )
 
-
         if search_request.bbox:
             bbox = search_request.bbox
             if len(bbox) == 6:
                 bbox = [bbox[0], bbox[1], bbox[3], bbox[4]]
 
-            search = self.database.apply_bbox_collections_filter(search=search, bbox=bbox)
+            search = self.database.apply_bbox_collections_filter(
+                search=search, bbox=bbox
+            )
 
         sort = None
 
@@ -998,17 +1007,20 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
 
         base_url = str(request.base_url)
 
-        collections, maybe_count, next_token = await self.database.execute_collection_search(
-            search=search,
-            limit=limit,
-            token=None,
-            sort=sort,
-            collection_ids=None, #search_request.collections,
-            base_url=base_url,
+        collections, maybe_count, next_token = (
+            await self.database.execute_collection_search(
+                search=search,
+                limit=limit,
+                token=None,
+                sort=sort,
+                collection_ids=None,  # search_request.collections,
+                base_url=base_url,
+            )
         )
 
         collections = [
-            self.collection_serializer.db_to_stac(collection, base_url=base_url) for collection in collections
+            self.collection_serializer.db_to_stac(collection, base_url=base_url)
+            for collection in collections
         ]
 
         links = []
@@ -1049,11 +1061,13 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
 
         if datetime:
             base_args["datetime"] = datetime
-            
+
         try:
             search_request = self.post_request_model(**base_args)
         except ValidationError:
             raise HTTPException(status_code=400, detail="Invalid parameters provided")
-        resp = await self.post_collection_search(search_request=search_request, request=request)
+        resp = await self.post_collection_search(
+            search_request=search_request, request=request
+        )
 
         return resp

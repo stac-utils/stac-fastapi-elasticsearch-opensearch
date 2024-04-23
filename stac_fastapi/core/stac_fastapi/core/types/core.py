@@ -1,4 +1,5 @@
 """Base clients. Takef from stac-fastapi.types.core v2.4.9."""
+
 import abc
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
@@ -304,7 +305,8 @@ class AsyncBaseFiltersClient(abc.ABC):
             "description": "Queryable names for the example STAC API Item Search filter.",
             "properties": {},
         }
-    
+
+
 @attr.s
 class AsyncCollectionSearchClient(abc.ABC):
     """Defines a pattern for implementing the STAC Collection Search extension."""

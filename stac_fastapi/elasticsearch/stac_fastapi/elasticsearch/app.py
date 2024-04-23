@@ -40,7 +40,9 @@ filter_extension.conformance_classes.append(
 
 database_logic = DatabaseLogic()
 
-collection_search_extension = CollectionSearchExtension(client=EsAsyncCollectionSearchClient(database_logic))
+collection_search_extension = CollectionSearchExtension(
+    client=EsAsyncCollectionSearchClient(database_logic)
+)
 collection_search_extension.conformance_classes.append(
     "https://api.stacspec.org/v1.0.0-rc.1/collection-search"
 )
