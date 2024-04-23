@@ -379,7 +379,7 @@ class CoreClient(AsyncBaseCoreClient):
             start_date = intervals[0]
             end_date = intervals[1]
             if None not in intervals:
-                ...
+                pass
             elif start_date:
                 end_date = "2200-12-01T12:31:12Z"
             elif end_date:
