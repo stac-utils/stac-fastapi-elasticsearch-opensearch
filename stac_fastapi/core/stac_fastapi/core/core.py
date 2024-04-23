@@ -1,5 +1,4 @@
-"""Item crud client."""
-import json
+"""Core client."""
 import logging
 import re
 from datetime import datetime as datetime_type
@@ -16,7 +15,7 @@ from pydantic import ValidationError
 from pygeofilter.backends.cql2_json import to_cql2
 from pygeofilter.parsers.cql2_text import parse as parse_cql2_text
 from stac_pydantic.links import Relations
-from stac_pydantic.shared import MimeTypes
+from stac_pydantic.shared import BBox, MimeTypes
 from stac_pydantic.version import STAC_VERSION
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
@@ -246,8 +245,8 @@ class CoreClient(AsyncBaseCoreClient):
     async def item_collection(
         self,
         collection_id: str,
-        bbox: Optional[List[NumType]] = None,
-        datetime: Union[str, datetime_type, None] = None,
+        bbox: Optional[BBox] = None,
+        datetime: Optional[DateTimeType] = None,
         limit: int = 10,
         token: str = None,
         **kwargs,
@@ -256,8 +255,8 @@ class CoreClient(AsyncBaseCoreClient):
 
         Args:
             collection_id (str): The identifier of the collection to read items from.
-            bbox (Optional[List[NumType]]): The bounding box to filter items by.
-            datetime (Union[str, datetime_type, None]): The datetime range to filter items by.
+            bbox (OOptional[BBox]): The bounding box to filter items by.
+            datetime (Optional[DateTimeType]): The datetime range to filter items by.
             limit (int): The maximum number of items to return. The default value is 10.
             token (str): A token used for pagination.
             request (Request): The incoming request.
@@ -413,8 +412,8 @@ class CoreClient(AsyncBaseCoreClient):
         request: Request,
         collections: Optional[List[str]] = None,
         ids: Optional[List[str]] = None,
-        bbox: Optional[List[NumType]] = None,
-        datetime: Optional[Union[str, datetime_type]] = None,
+        bbox: Optional[BBox] = None,
+        datetime: Optional[DateTimeType] = None,
         limit: Optional[int] = 10,
         query: Optional[str] = None,
         token: Optional[str] = None,
@@ -430,8 +429,8 @@ class CoreClient(AsyncBaseCoreClient):
         Args:
             collections (Optional[List[str]]): List of collection IDs to search in.
             ids (Optional[List[str]]): List of item IDs to search for.
-            bbox (Optional[List[NumType]]): Bounding box to search in.
-            datetime (Optional[Union[str, datetime_type]]): Filter items based on the datetime field.
+            bbox (Optional[BBox]): Bounding box to search in.
+            datetime (Optional[DateTimeType]): Filter items based on the datetime field.
             limit (Optional[int]): Maximum number of results to return.
             query (Optional[str]): Query string to filter the results.
             token (Optional[str]): Access token to use when searching the catalog.
@@ -466,27 +465,8 @@ class CoreClient(AsyncBaseCoreClient):
         if datetime:
             base_args["datetime"] = datetime
 
-        # As of stac-fastapi 2.5.x, the intersects GET request parameter is being sent as a list
         if intersects:
-            intersects_dict = {"type": None, "coordinates": None}
-
-            combined_json_string = intersects[0]
-
-            # Iterate over the remaining fragments and add each with a preceding comma
-            for fragment in intersects[1:]:
-                combined_json_string += "," + fragment
-
-            combined_json_string = combined_json_string.replace("'", "")
-            combined_json_string = "".join(
-                char for char in combined_json_string if char.isprintable()
-            )
-
-            try:
-                intersects_dict = json.loads(combined_json_string)
-            except json.JSONDecodeError as error:
-                print("Failed to parse JSON:", error)
-
-            base_args["intersects"] = intersects_dict
+            base_args["intersects"] = orjson.loads(unquote_plus(intersects))
 
         if sortby:
             sort_param = []
