@@ -255,7 +255,7 @@ class CoreClient(AsyncBaseCoreClient):
 
         Args:
             collection_id (str): The identifier of the collection to read items from.
-            bbox (OOptional[BBox]): The bounding box to filter items by.
+            bbox (Optional[BBox]): The bounding box to filter items by.
             datetime (Optional[DateTimeType]): The datetime range to filter items by.
             limit (int): The maximum number of items to return. The default value is 10.
             token (str): A token used for pagination.

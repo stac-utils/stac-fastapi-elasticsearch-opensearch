@@ -56,7 +56,7 @@ async def test_update_collection_already_exists(ctx, app_client):
     """Test updating a collection which already exists"""
     ctx.collection["keywords"].append("test")
     resp = await app_client.put(
-        "/collections/{ctx.collection['id']}", json=ctx.collection
+        f"/collections/{ctx.collection['id']}", json=ctx.collection
     )
     assert resp.status_code == 200
 
