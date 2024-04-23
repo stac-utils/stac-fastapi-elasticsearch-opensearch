@@ -372,22 +372,18 @@ class CoreClient(AsyncBaseCoreClient):
         Returns:
             dict: A dictionary representing the date interval for use in filtering search results.
         """
-        intervals = interval_str.split("/")
-        if len(intervals) == 1:
-            datetime = f"{intervals[0][0:19]}Z"
-            return {"eq": datetime}
+        intervals = interval_str
+        if type(intervals) != tuple:
+            return {"eq": intervals}
         else:
             start_date = intervals[0]
             end_date = intervals[1]
-            if ".." not in intervals:
-                start_date = f"{start_date[0:19]}Z"
-                end_date = f"{end_date[0:19]}Z"
-            elif start_date != "..":
-                start_date = f"{start_date[0:19]}Z"
+            if None not in intervals:
+                pass
+            elif start_date:
                 end_date = "2200-12-01T12:31:12Z"
-            elif end_date != "..":
+            elif end_date:
                 start_date = "1900-10-01T00:00:00Z"
-                end_date = f"{end_date[0:19]}Z"
             else:
                 start_date = "1900-10-01T00:00:00Z"
                 end_date = "2200-12-01T12:31:12Z"
