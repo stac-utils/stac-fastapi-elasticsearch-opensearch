@@ -1,4 +1,4 @@
-"""Item crud client."""
+"""Core client."""
 import logging
 import re
 from datetime import datetime as datetime_type
@@ -15,7 +15,7 @@ from pydantic import ValidationError
 from pygeofilter.backends.cql2_json import to_cql2
 from pygeofilter.parsers.cql2_text import parse as parse_cql2_text
 from stac_pydantic.links import Relations
-from stac_pydantic.shared import MimeTypes
+from stac_pydantic.shared import BBox, MimeTypes
 from stac_pydantic.version import STAC_VERSION
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
@@ -38,6 +38,7 @@ from stac_fastapi.types.config import Settings
 from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
 from stac_fastapi.types.extension import ApiExtension
 from stac_fastapi.types.requests import get_base_url
+from stac_fastapi.types.rfc3339 import DateTimeType
 from stac_fastapi.types.search import BaseSearchPostRequest
 from stac_fastapi.types.stac import Collection, Collections, Item, ItemCollection
 
@@ -244,8 +245,8 @@ class CoreClient(AsyncBaseCoreClient):
     async def item_collection(
         self,
         collection_id: str,
-        bbox: Optional[List[NumType]] = None,
-        datetime: Union[str, datetime_type, None] = None,
+        bbox: Optional[BBox] = None,
+        datetime: Optional[DateTimeType] = None,
         limit: int = 10,
         token: str = None,
         **kwargs,
@@ -254,8 +255,8 @@ class CoreClient(AsyncBaseCoreClient):
 
         Args:
             collection_id (str): The identifier of the collection to read items from.
-            bbox (Optional[List[NumType]]): The bounding box to filter items by.
-            datetime (Union[str, datetime_type, None]): The datetime range to filter items by.
+            bbox (Optional[BBox]): The bounding box to filter items by.
+            datetime (Optional[DateTimeType]): The datetime range to filter items by.
             limit (int): The maximum number of items to return. The default value is 10.
             token (str): A token used for pagination.
             request (Request): The incoming request.
@@ -349,53 +350,64 @@ class CoreClient(AsyncBaseCoreClient):
         return self.item_serializer.db_to_stac(item, base_url)
 
     @staticmethod
-    def _return_date(interval_str):
+    def _return_date(
+        interval: Optional[Union[DateTimeType, str]]
+    ) -> Dict[str, Optional[str]]:
         """
-        Convert a date interval string into a dictionary for filtering search results.
+        Convert a date interval.
 
-        The date interval string should be formatted as either a single date or a range of dates separated
-        by "/". The date format should be ISO-8601 (YYYY-MM-DDTHH:MM:SSZ). If the interval string is a
-        single date, it will be converted to a dictionary with a single "eq" key whose value is the date in
-        the ISO-8601 format. If the interval string is a range of dates, it will be converted to a
-        dictionary with "gte" (greater than or equal to) and "lte" (less than or equal to) keys. If the
-        interval string is a range of dates with ".." instead of "/", the start and end dates will be
-        assigned default values to encompass the entire possible date range.
+        (which may be a datetime, a tuple of one or two datetimes a string
+        representing a datetime or range, or None) into a dictionary for filtering
+        search results with Elasticsearch.
+
+        This function ensures the output dictionary contains 'gte' and 'lte' keys,
+        even if they are set to None, to prevent KeyError in the consuming logic.
 
         Args:
-            interval_str (str): The date interval string to be converted.
+            interval (Optional[Union[DateTimeType, str]]): The date interval, which might be a single datetime,
+                a tuple with one or two datetimes, a string, or None.
 
         Returns:
-            dict: A dictionary representing the date interval for use in filtering search results.
+            dict: A dictionary representing the date interval for use in filtering search results,
+                always containing 'gte' and 'lte' keys.
         """
-        intervals = interval_str.split("/")
-        if len(intervals) == 1:
-            datetime = f"{intervals[0][0:19]}Z"
-            return {"eq": datetime}
-        else:
-            start_date = intervals[0]
-            end_date = intervals[1]
-            if ".." not in intervals:
-                start_date = f"{start_date[0:19]}Z"
-                end_date = f"{end_date[0:19]}Z"
-            elif start_date != "..":
-                start_date = f"{start_date[0:19]}Z"
-                end_date = "2200-12-01T12:31:12Z"
-            elif end_date != "..":
-                start_date = "1900-10-01T00:00:00Z"
-                end_date = f"{end_date[0:19]}Z"
-            else:
-                start_date = "1900-10-01T00:00:00Z"
-                end_date = "2200-12-01T12:31:12Z"
+        result: Dict[str, Optional[str]] = {"gte": None, "lte": None}
 
-        return {"lte": end_date, "gte": start_date}
+        if interval is None:
+            return result
+
+        if isinstance(interval, str):
+            if "/" in interval:
+                parts = interval.split("/")
+                result["gte"] = parts[0] if parts[0] != ".." else None
+                result["lte"] = (
+                    parts[1] if len(parts) > 1 and parts[1] != ".." else None
+                )
+            else:
+                converted_time = interval if interval != ".." else None
+                result["gte"] = result["lte"] = converted_time
+            return result
+
+        if isinstance(interval, datetime_type):
+            datetime_iso = interval.isoformat()
+            result["gte"] = result["lte"] = datetime_iso
+        elif isinstance(interval, tuple):
+            start, end = interval
+            # Ensure datetimes are converted to UTC and formatted with 'Z'
+            if start:
+                result["gte"] = start.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+            if end:
+                result["lte"] = end.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+        return result
 
     async def get_search(
         self,
         request: Request,
         collections: Optional[List[str]] = None,
         ids: Optional[List[str]] = None,
-        bbox: Optional[List[NumType]] = None,
-        datetime: Optional[Union[str, datetime_type]] = None,
+        bbox: Optional[BBox] = None,
+        datetime: Optional[DateTimeType] = None,
         limit: Optional[int] = 10,
         query: Optional[str] = None,
         token: Optional[str] = None,
@@ -411,8 +423,8 @@ class CoreClient(AsyncBaseCoreClient):
         Args:
             collections (Optional[List[str]]): List of collection IDs to search in.
             ids (Optional[List[str]]): List of item IDs to search for.
-            bbox (Optional[List[NumType]]): Bounding box to search in.
-            datetime (Optional[Union[str, datetime_type]]): Filter items based on the datetime field.
+            bbox (Optional[BBox]): Bounding box to search in.
+            datetime (Optional[DateTimeType]): Filter items based on the datetime field.
             limit (Optional[int]): Maximum number of results to return.
             query (Optional[str]): Query string to filter the results.
             token (Optional[str]): Access token to use when searching the catalog.
@@ -459,7 +471,6 @@ class CoreClient(AsyncBaseCoreClient):
                         "direction": "desc" if sort[0] == "-" else "asc",
                     }
                 )
-            print(sort_param)
             base_args["sortby"] = sort_param
 
         if filter:

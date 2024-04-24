@@ -1,4 +1,4 @@
-"""Base clients. Takef from stac-fastapi.types.core v2.4.9."""
+"""Base clients. Taken from stac-fastapi.types.core v2.4.9."""
 import abc
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Union

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Changed 
+
+- Upgraded stac-fastapi libraries to v2.5.3 from v2.4.9 [#172](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/172)
+
 ## [v2.2.0]
 
 ### Added
