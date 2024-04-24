@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [v2.3.0]
+
 ### Changed 
 
 - Upgraded stac-fastapi libraries to v2.5.3 from v2.4.9 [#172](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/172)
@@ -155,7 +157,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Added db_to_stac serializer to item_collection method in core.py.
 
 
-[Unreleased]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.2.0...main>
+[Unreleased]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.3.0...main>
+[v2.3.0]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.2.0...v2.3.0>
 [v2.2.0]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.1.0...v2.2.0>
 [v2.1.0]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.0.0...v2.1.0>
 [v2.0.0]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v1.1.0...v2.0.0>
