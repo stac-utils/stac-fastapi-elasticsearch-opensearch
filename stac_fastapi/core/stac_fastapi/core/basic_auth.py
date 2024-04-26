@@ -13,8 +13,8 @@ from typing_extensions import Annotated
 
 from stac_fastapi.api.app import StacApi
 
-_SECURITY = HTTPBasic()
 _LOGGER = logging.getLogger("uvicorn.default")
+_SECURITY = HTTPBasic()
 _BASIC_AUTH: Dict[str, Any] = {}
 
 
