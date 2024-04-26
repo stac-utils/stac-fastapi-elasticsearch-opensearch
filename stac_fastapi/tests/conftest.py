@@ -10,13 +10,13 @@ from httpx import AsyncClient
 
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import create_get_request_model, create_post_request_model
+from stac_fastapi.core.basic_auth import apply_basic_auth
 from stac_fastapi.core.core import (
     BulkTransactionsClient,
     CoreClient,
     TransactionsClient,
 )
 from stac_fastapi.core.extensions import QueryExtension
-from stac_fastapi.core.basic_auth import apply_basic_auth
 
 if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
     from stac_fastapi.opensearch.config import AsyncOpensearchSettings as AsyncSettings
