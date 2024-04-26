@@ -225,10 +225,6 @@ class CoreClient(AsyncBaseCoreClient):
             next_link = PagingLinks(next=next_token, request=request).link_next()
             links.append(next_link)
 
-        print("all_collections")
-        print(type(collections))
-        print(collections)
-
         return Collections(collections=collections, links=links)
 
     async def get_collection(self, collection_id: str, **kwargs) -> Collection:
@@ -1031,10 +1027,6 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
         if next_token:
             links = await PagingLinks(request=request, next=next_token).get_links()
 
-        print("returning collections now")
-        print("collection search")
-        print(type(collections))
-        print(collections)
         return Collections(collections=collections, links=links)
 
     # todo: use the ES _mapping endpoint to dynamically find what fields exist
