@@ -881,7 +881,6 @@ class DatabaseLogic:
         except exceptions.NotFoundError:
             raise NotFoundError(f"Collections '{collection_ids}' do not exist")
 
-        print("about to serialise outputs")
         hits = es_response["hits"]["hits"]
         collections = [
             self.collection_serializer.db_to_stac(
@@ -889,7 +888,6 @@ class DatabaseLogic:
             )
             for hit in hits
         ]
-        print("result serialised")
 
         next_token = None
         if hits and (sort_array := hits[-1].get("sort")):
