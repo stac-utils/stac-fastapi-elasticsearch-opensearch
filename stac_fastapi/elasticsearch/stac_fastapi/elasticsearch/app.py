@@ -12,6 +12,7 @@ from stac_fastapi.core.core import (
 )
 from stac_fastapi.core.extensions import QueryExtension
 from stac_fastapi.core.session import Session
+from stac_fastapi.elasticsearch.basic_auth import apply_basic_auth
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
 from stac_fastapi.elasticsearch.database_logic import (
     DatabaseLogic,
@@ -76,6 +77,8 @@ api = StacApi(
 )
 app = api.app
 app.root_path = os.getenv("STAC_FASTAPI_ROOT_PATH", "")
+
+apply_basic_auth(api)
 
 
 @app.on_event("startup")

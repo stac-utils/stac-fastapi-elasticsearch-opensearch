@@ -25,6 +25,7 @@ if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
         create_collection_index,
         create_index_templates,
     )
+    from stac_fastapi.opensearch.basic_auth import apply_basic_auth
 else:
     from stac_fastapi.elasticsearch.config import (
         ElasticsearchSettings as SearchSettings,
@@ -35,6 +36,7 @@ else:
         create_collection_index,
         create_index_templates,
     )
+    from stac_fastapi.elasticsearch.basic_auth import apply_basic_auth
 
 from stac_fastapi.extensions.core import (  # FieldsExtension,
     ContextExtension,
@@ -221,4 +223,52 @@ async def app_client(app):
     await create_collection_index()
 
     async with AsyncClient(app=app, base_url="http://test-server") as c:
+        yield c
+
+
+@pytest_asyncio.fixture(scope="session")
+async def app_basic_auth():
+    settings = AsyncSettings()
+    extensions = [
+        TransactionExtension(
+            client=TransactionsClient(
+                database=database, session=None, settings=settings
+            ),
+            settings=settings,
+        ),
+        ContextExtension(),
+        SortExtension(),
+        FieldsExtension(),
+        QueryExtension(),
+        TokenPaginationExtension(),
+        FilterExtension(),
+    ]
+
+    post_request_model = create_post_request_model(extensions)
+
+    stac_api = StacApi(
+        settings=settings,
+        client=CoreClient(
+            database=database,
+            session=None,
+            extensions=extensions,
+            post_request_model=post_request_model,
+        ),
+        extensions=extensions,
+        search_get_request_model=create_get_request_model(extensions),
+        search_post_request_model=post_request_model,
+    )
+    
+    os.environ["BASIC_AUTH"] = '{"public_endpoints":[{"path":"/","method":"GET"},{"path":"/search","method":"GET"}],"users":[{"username":"admin","password":"admin","permissions":"*"},{"username":"reader","password":"reader","permissions":[{"path":"/conformance","method":["GET"]},{"path":"/collections/{collection_id}/items/{item_id}","method":["GET"]},{"path":"/search","method":["POST"]},{"path":"/collections","method":["GET"]},{"path":"/collections/{collection_id}","method":["GET"]},{"path":"/collections/{collection_id}/items","method":["GET"]},{"path":"/queryables","method":["GET"]},{"path":"/queryables/collections/{collection_id}/queryables","method":["GET"]},{"path":"/_mgmt/ping","method":["GET"]}]}]}'
+    apply_basic_auth(stac_api)
+    
+    return stac_api.app
+
+
+@pytest_asyncio.fixture(scope="session")
+async def app_client_basic_auth(app_basic_auth):
+    await create_index_templates()
+    await create_collection_index()
+
+    async with AsyncClient(app=app_basic_auth, base_url="http://test-server") as c:
         yield c

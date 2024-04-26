@@ -21,6 +21,7 @@ from stac_fastapi.extensions.core import (
     TransactionExtension,
 )
 from stac_fastapi.extensions.third_party import BulkTransactionExtension
+from stac_fastapi.opensearch.basic_auth import apply_basic_auth
 from stac_fastapi.opensearch.config import OpensearchSettings
 from stac_fastapi.opensearch.database_logic import (
     DatabaseLogic,
@@ -76,6 +77,8 @@ api = StacApi(
 )
 app = api.app
 app.root_path = os.getenv("STAC_FASTAPI_ROOT_PATH", "")
+
+apply_basic_auth(api)
 
 
 @app.on_event("startup")
