@@ -882,7 +882,12 @@ class DatabaseLogic:
             raise NotFoundError(f"Collections '{collection_ids}' do not exist")
 
         hits = es_response["hits"]["hits"]
-        collections = (hit["_source"] for hit in hits)
+        collections = [
+            self.collection_serializer.db_to_stac(
+                collection=hit["_source"], base_url=base_url
+            )
+            for hit in hits
+        ]
 
         next_token = None
         if hits and (sort_array := hits[-1].get("sort")):

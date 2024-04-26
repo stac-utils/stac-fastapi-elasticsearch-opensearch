@@ -1014,12 +1014,16 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
             )
         )
 
-        collections = [
-            self.collection_serializer.db_to_stac(collection, base_url=base_url)
-            for collection in collections
+        links = [
+            {"rel": Relations.root.value, "type": MimeTypes.json, "href": base_url},
+            {"rel": Relations.parent.value, "type": MimeTypes.json, "href": base_url},
+            {
+                "rel": Relations.self.value,
+                "type": MimeTypes.json,
+                "href": urljoin(base_url, "collections"),
+            },
         ]
 
-        links = []
         if next_token:
             links = await PagingLinks(request=request, next=next_token).get_links()
 
