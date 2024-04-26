@@ -149,7 +149,7 @@ ES_COLLECTIONS_MAPPINGS = {
     "runtime": {
         "collection_start_time": {
             "type": "date",
-            "on_script_error": "fail",
+            "on_script_error": "continue",
             "script": {
                 "source": """
                 def times = params._source.extent.temporal.interval; 
@@ -166,7 +166,7 @@ ES_COLLECTIONS_MAPPINGS = {
         },
         "collection_end_time": {
             "type": "date",
-            "on_script_error": "fail",
+            "on_script_error": "continue",
             "script": {
                 "source": """
                 def times = params._source.extent.temporal.interval; 
@@ -183,33 +183,33 @@ ES_COLLECTIONS_MAPPINGS = {
         },
         "geometry.shape": {
             "type": "keyword",
-            "on_script_error": "fail",
+            "on_script_error": "continue",
             "script": {"source": "emit('Polygon')"},
         },
         "collection_min_lat": {
             "type": "double",
-            "on_script_error": "fail",
+            "on_script_error": "continue",
             "script": {
                 "source": "def bbox = params._source.extent.spatial.bbox; emit(bbox[0][0]);"
             },
         },
         "collection_min_lon": {
             "type": "double",
-            "on_script_error": "fail",
+            "on_script_error": "continue",
             "script": {
                 "source": "def bbox = params._source.extent.spatial.bbox; emit(bbox[0][1]);"
             },
         },
         "collection_max_lat": {
             "type": "double",
-            "on_script_error": "fail",
+            "on_script_error": "continue",
             "script": {
                 "source": "def bbox = params._source.extent.spatial.bbox; emit(bbox[0][2]);"
             },
         },
         "collection_max_lon": {
             "type": "double",
-            "on_script_error": "fail",
+            "on_script_error": "continue",
             "script": {
                 "source": "def bbox = params._source.extent.spatial.bbox; emit(bbox[0][3]);"
             },
@@ -881,6 +881,7 @@ class DatabaseLogic:
         except exceptions.NotFoundError:
             raise NotFoundError(f"Collections '{collection_ids}' do not exist")
 
+        print("about to serialise outputs")
         hits = es_response["hits"]["hits"]
         collections = [
             self.collection_serializer.db_to_stac(
@@ -888,6 +889,7 @@ class DatabaseLogic:
             )
             for hit in hits
         ]
+        print("result serialised")
 
         next_token = None
         if hits and (sort_array := hits[-1].get("sort")):
