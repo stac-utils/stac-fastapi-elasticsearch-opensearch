@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+- Added option to include Basic Auth.
+
 ## [v2.3.0]
 
 ### Changed 
