@@ -1,6 +1,7 @@
 """Basic Authentication Module."""
 
 import json
+import logging
 import os
 import secrets
 from typing import Any, Dict
@@ -12,13 +13,13 @@ from typing_extensions import Annotated
 
 from stac_fastapi.api.app import StacApi
 
-security = HTTPBasic()
-
+_SECURITY = HTTPBasic()
+_LOGGER = logging.getLogger("uvicorn.default")
 _BASIC_AUTH: Dict[str, Any] = {}
 
 
 def has_access(
-    request: Request, credentials: Annotated[HTTPBasicCredentials, Depends(security)]
+    request: Request, credentials: Annotated[HTTPBasicCredentials, Depends(_SECURITY)]
 ) -> str:
     """Check if the provided credentials match the expected \
         username and password stored in environment variables for basic authentication.
@@ -90,13 +91,13 @@ def apply_basic_auth(api: StacApi) -> None:
 
     basic_auth_json_str = os.environ.get("BASIC_AUTH")
     if not basic_auth_json_str:
-        print("Basic authentication disabled.")
+        _LOGGER.info("Basic authentication disabled.")
         return
 
     try:
         _BASIC_AUTH = json.loads(basic_auth_json_str)
     except json.JSONDecodeError as exception:
-        print(f"Invalid JSON format for BASIC_AUTH. {exception=}")
+        _LOGGER.error(f"Invalid JSON format for BASIC_AUTH. {exception=}")
         raise
     public_endpoints = _BASIC_AUTH.get("public_endpoints", [])
     users = _BASIC_AUTH.get("users")
@@ -111,4 +112,4 @@ def apply_basic_auth(api: StacApi) -> None:
                 if endpoint not in public_endpoints:
                     api.add_route_dependencies([endpoint], [Depends(has_access)])
 
-    print("Basic authentication enabled.")
+    _LOGGER.info("Basic authentication enabled.")
