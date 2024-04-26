@@ -349,6 +349,6 @@ Example: This example demonstrates the configuration for public endpoints, allow
 }
 ```
 
-### Basic Authentication Configurations
+### Docker Compose Configurations
 
 See `docker-compose.basic_auth_protected.yml` and `docker-compose.basic_auth_public.yml` for basic authentication configurations.
