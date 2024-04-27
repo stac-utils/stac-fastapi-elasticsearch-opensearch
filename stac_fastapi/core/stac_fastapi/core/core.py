@@ -40,7 +40,9 @@ from stac_fastapi.types.extension import ApiExtension
 from stac_fastapi.types.requests import get_base_url
 from stac_fastapi.types.rfc3339 import DateTimeType
 from stac_fastapi.types.search import BaseSearchPostRequest
-from stac_fastapi.types.stac import Collection, Collections, Item, ItemCollection
+from stac_fastapi.types.stac import Collections
+
+from stac_pydantic import Collection, Item, ItemCollection
 
 logger = logging.getLogger(__name__)
 
@@ -223,7 +225,7 @@ class CoreClient(AsyncBaseCoreClient):
 
         return Collections(collections=collections, links=links)
 
-    async def get_collection(self, collection_id: str, **kwargs) -> Collection:
+    async def get_collection(self, collection_id: str, **kwargs) -> stac_types.Collection:
         """Get a collection from the database by its id.
 
         Args:
@@ -250,7 +252,7 @@ class CoreClient(AsyncBaseCoreClient):
         limit: int = 10,
         token: str = None,
         **kwargs,
-    ) -> ItemCollection:
+    ) -> stac_types.ItemCollection:
         """Read items from a specific collection in the database.
 
         Args:
@@ -329,7 +331,7 @@ class CoreClient(AsyncBaseCoreClient):
             context=context_obj,
         )
 
-    async def get_item(self, item_id: str, collection_id: str, **kwargs) -> Item:
+    async def get_item(self, item_id: str, collection_id: str, **kwargs) -> stac_types.Item:
         """Get an item from the database based on its id and collection id.
 
         Args:
@@ -417,7 +419,7 @@ class CoreClient(AsyncBaseCoreClient):
         filter: Optional[str] = None,
         filter_lang: Optional[str] = None,
         **kwargs,
-    ) -> ItemCollection:
+    ) -> stac_types.ItemCollection:
         """Get search results from the database.
 
         Args:
@@ -504,7 +506,7 @@ class CoreClient(AsyncBaseCoreClient):
 
     async def post_search(
         self, search_request: BaseSearchPostRequest, request: Request
-    ) -> ItemCollection:
+    ) -> stac_types.ItemCollection:
         """
         Perform a POST search on the catalog.
 
@@ -641,7 +643,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def create_item(
-        self, collection_id: str, item: stac_types.Item, **kwargs
+        self, collection_id: str, item: Union[Item, ItemCollection], **kwargs
     ) -> Optional[stac_types.Item]:
         """Create an item in the collection.
 
@@ -658,6 +660,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             ConflictError: If the item in the specified collection already exists.
 
         """
+        item = item.model_dump(mode="json")
         base_url = str(kwargs["request"].base_url)
 
         # If a feature collection is posted
@@ -681,7 +684,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def update_item(
-        self, collection_id: str, item_id: str, item: stac_types.Item, **kwargs
+        self, collection_id: str, item_id: str, item: Item, **kwargs
     ) -> stac_types.Item:
         """Update an item in the collection.
 
@@ -698,6 +701,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             NotFound: If the specified collection is not found in the database.
 
         """
+        item = item.model_dump(mode="json")
         base_url = str(kwargs["request"].base_url)
         now = datetime_type.now(timezone.utc).isoformat().replace("+00:00", "Z")
         item["properties"]["updated"] = now
@@ -726,7 +730,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def create_collection(
-        self, collection: stac_types.Collection, **kwargs
+        self, collection: Collection, **kwargs
     ) -> stac_types.Collection:
         """Create a new collection in the database.
 
@@ -740,6 +744,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         Raises:
             ConflictError: If the collection already exists.
         """
+        collection = collection.model_dump(mode="json")
         base_url = str(kwargs["request"].base_url)
         collection = self.database.collection_serializer.stac_to_db(
             collection, base_url
@@ -750,7 +755,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def update_collection(
-        self, collection: stac_types.Collection, **kwargs
+        self, collection: Collection, **kwargs
     ) -> stac_types.Collection:
         """
         Update a collection.
@@ -770,6 +775,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             A STAC collection that has been updated in the database.
 
         """
+        collection = collection.model_dump(mode="json")
         base_url = str(kwargs["request"].base_url)
 
         collection_id = kwargs["request"].query_params.get(

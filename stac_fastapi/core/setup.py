@@ -7,12 +7,16 @@ with open("README.md") as f:
 
 install_requires = [
     "fastapi",
-    "attrs",
-    "pydantic[dotenv]<2",
-    "stac_pydantic==2.0.*",
-    "stac-fastapi.types==2.5.3",
-    "stac-fastapi.api==2.5.3",
-    "stac-fastapi.extensions==2.5.3",
+    "attrs>=23.2.0",
+    "pydantic[dotenv]",
+    "stac_pydantic>=3",
+    # "stac-fastapi.types==2.5.3",
+    # "stac-fastapi.api==2.5.3",
+    # "stac-fastapi.extensions==2.5.3",
+    # For now we use latest commit in master
+    "stac-fastapi.api @ git+https://github.com/stac-utils/stac-fastapi/@e7f82d6996af0f28574329d57f5a5e90431d66bb#egg=stac-fastapi.api&subdirectory=stac_fastapi/api",
+    "stac-fastapi.extensions @ git+https://github.com/stac-utils/stac-fastapi/@e7f82d6996af0f28574329d57f5a5e90431d66bb#egg=stac-fastapi.extensions&subdirectory=stac_fastapi/extensions",
+    "stac-fastapi.types @ git+https://github.com/stac-utils/stac-fastapi/@e7f82d6996af0f28574329d57f5a5e90431d66bb#egg=stac-fastapi.types&subdirectory=stac_fastapi/types",
     "pystac[validation]",
     "orjson",
     "overrides",
