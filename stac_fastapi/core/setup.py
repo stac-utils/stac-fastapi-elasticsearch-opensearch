@@ -7,12 +7,17 @@ with open("README.md") as f:
 
 install_requires = [
     "fastapi",
-    "attrs",
-    "pydantic[dotenv]<2",
-    "stac_pydantic==2.0.*",
-    "stac-fastapi.types==2.5.3",
-    "stac-fastapi.api==2.5.3",
-    "stac-fastapi.extensions==2.5.3",
+    "attrs>=23.2.0",
+    "pydantic[dotenv]",
+    "stac_pydantic>=3",
+    # "stac-fastapi.types==2.5.3",
+    # "stac-fastapi.api==2.5.3",
+    # "stac-fastapi.extensions==2.5.3",
+
+    # use latest commits
+    "stac-fastapi.api @ git+https://github.com/stac-utils/stac-fastapi/@e7f82d6996af0f28574329d57f5a5e90431d66bb#egg=stac-fastapi.api&subdirectory=stac_fastapi/api",
+    "stac-fastapi.extensions @ git+https://github.com/stac-utils/stac-fastapi/@e7f82d6996af0f28574329d57f5a5e90431d66bb#egg=stac-fastapi.extensions&subdirectory=stac_fastapi/extensions",
+    "stac-fastapi.types @ git+https://github.com/stac-utils/stac-fastapi/@e7f82d6996af0f28574329d57f5a5e90431d66bb#egg=stac-fastapi.types&subdirectory=stac_fastapi/types",
     "pystac[validation]",
     "orjson",
     "overrides",
@@ -22,7 +27,7 @@ install_requires = [
 
 setup(
     name="stac-fastapi.core",
-    description="Core library for the Elasticsearch and Opensearch stac-fastapi backends.",
+    description="Core library for the Elasticsearch, Mongo, and Opensearch stac-fastapi backends.",
     long_description=desc,
     long_description_content_type="text/markdown",
     python_requires=">=3.8",

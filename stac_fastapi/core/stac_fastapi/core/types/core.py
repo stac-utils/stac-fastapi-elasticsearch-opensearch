@@ -12,6 +12,7 @@ from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
 from stac_fastapi.types.extension import ApiExtension
 from stac_fastapi.types.search import BaseSearchPostRequest
 from stac_fastapi.types.stac import Conformance
+from stac_pydantic import Collection, Item, ItemCollection
 
 NumType = Union[float, int]
 StacType = Dict[str, Any]
@@ -27,9 +28,9 @@ class AsyncBaseTransactionsClient(abc.ABC):
     async def create_item(
         self,
         collection_id: str,
-        item: Union[stac_types.Item, stac_types.ItemCollection],
+        item: Union[Item, ItemCollection],
         **kwargs,
-    ) -> Optional[Union[stac_types.Item, Response, None]]:
+    ) -> Optional[Union[Item, Response, None]]:
         """Create a new item.
 
         Called with `POST /collections/{collection_id}/items`.
@@ -45,8 +46,8 @@ class AsyncBaseTransactionsClient(abc.ABC):
 
     @abc.abstractmethod
     async def update_item(
-        self, collection_id: str, item_id: str, item: stac_types.Item, **kwargs
-    ) -> Optional[Union[stac_types.Item, Response]]:
+        self, collection_id: str, item_id: str, item: Item, **kwargs
+    ) -> Optional[Union[Item, Response]]:
         """Perform a complete update on an existing item.
 
         Called with `PUT /collections/{collection_id}/items`. It is expected
@@ -81,8 +82,8 @@ class AsyncBaseTransactionsClient(abc.ABC):
 
     @abc.abstractmethod
     async def create_collection(
-        self, collection: stac_types.Collection, **kwargs
-    ) -> Optional[Union[stac_types.Collection, Response]]:
+        self, collection: Collection, **kwargs
+    ) -> Optional[Union[Collection, Response]]:
         """Create a new collection.
 
         Called with `POST /collections`.
@@ -97,8 +98,8 @@ class AsyncBaseTransactionsClient(abc.ABC):
 
     @abc.abstractmethod
     async def update_collection(
-        self, collection: stac_types.Collection, **kwargs
-    ) -> Optional[Union[stac_types.Collection, Response]]:
+        self, collection: Collection, **kwargs
+    ) -> Optional[Union[Collection, Response]]:
         """Perform a complete update on an existing collection.
 
         Called with `PUT /collections`. It is expected that this item already
@@ -117,7 +118,7 @@ class AsyncBaseTransactionsClient(abc.ABC):
     @abc.abstractmethod
     async def delete_collection(
         self, collection_id: str, **kwargs
-    ) -> Optional[Union[stac_types.Collection, Response]]:
+    ) -> Optional[Union[Collection, Response]]:
         """Delete a collection.
 
         Called with `DELETE /collections/{collection_id}`

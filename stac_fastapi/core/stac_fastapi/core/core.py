@@ -17,6 +17,7 @@ from pygeofilter.parsers.cql2_text import parse as parse_cql2_text
 from stac_pydantic.links import Relations
 from stac_pydantic.shared import BBox, MimeTypes
 from stac_pydantic.version import STAC_VERSION
+from stac_pydantic.links import Links
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
@@ -40,7 +41,8 @@ from stac_fastapi.types.extension import ApiExtension
 from stac_fastapi.types.requests import get_base_url
 from stac_fastapi.types.rfc3339 import DateTimeType
 from stac_fastapi.types.search import BaseSearchPostRequest
-from stac_fastapi.types.stac import Collection, Collections, Item, ItemCollection
+from stac_fastapi.types.stac import Collections
+from stac_pydantic import Collection, Item, ItemCollection
 
 logger = logging.getLogger(__name__)
 
@@ -641,17 +643,17 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def create_item(
-        self, collection_id: str, item: stac_types.Item, **kwargs
-    ) -> Optional[stac_types.Item]:
+        self, collection_id: str, item: Union[Item, ItemCollection], **kwargs
+    ) -> Optional[Item]:
         """Create an item in the collection.
 
         Args:
             collection_id (str): The id of the collection to add the item to.
-            item (stac_types.Item): The item to be added to the collection.
+            item (Union[Item, ItemCollection]): The item or item collecti.on
             kwargs: Additional keyword arguments.
 
         Returns:
-            stac_types.Item: The created item.
+            Item: The created item.
 
         Raises:
             NotFound: If the specified collection is not found in the database.
@@ -681,18 +683,18 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def update_item(
-        self, collection_id: str, item_id: str, item: stac_types.Item, **kwargs
-    ) -> stac_types.Item:
+        self, collection_id: str, item_id: str, item: Item, **kwargs
+    ) -> Item:
         """Update an item in the collection.
 
         Args:
             collection_id (str): The ID of the collection the item belongs to.
             item_id (str): The ID of the item to be updated.
-            item (stac_types.Item): The new item data.
+            item (Item): The new item data.
             kwargs: Other optional arguments, including the request object.
 
         Returns:
-            stac_types.Item: The updated item object.
+            Item: The updated item object.
 
         Raises:
             NotFound: If the specified collection is not found in the database.
@@ -711,7 +713,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     @overrides
     async def delete_item(
         self, item_id: str, collection_id: str, **kwargs
-    ) -> Optional[stac_types.Item]:
+    ) -> Optional[Item]:
         """Delete an item from a collection.
 
         Args:
@@ -726,16 +728,16 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def create_collection(
-        self, collection: stac_types.Collection, **kwargs
-    ) -> stac_types.Collection:
+        self, collection: Collection, **kwargs
+    ) -> Collection:
         """Create a new collection in the database.
 
         Args:
-            collection (stac_types.Collection): The collection to be created.
+            collection (Collection): The collection to be created.
             kwargs: Additional keyword arguments.
 
         Returns:
-            stac_types.Collection: The created collection object.
+            Collection: The created collection object.
 
         Raises:
             ConflictError: If the collection already exists.
@@ -750,8 +752,8 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def update_collection(
-        self, collection: stac_types.Collection, **kwargs
-    ) -> stac_types.Collection:
+        self, collection: Collection, **kwargs
+    ) -> Collection:
         """
         Update a collection.
 
@@ -788,7 +790,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     @overrides
     async def delete_collection(
         self, collection_id: str, **kwargs
-    ) -> Optional[stac_types.Collection]:
+    ) -> Optional[Collection]:
         """
         Delete a collection.
 
