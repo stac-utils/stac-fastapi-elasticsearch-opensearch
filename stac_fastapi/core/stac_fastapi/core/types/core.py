@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 
 import attr
+from stac_pydantic import Collection, Item, ItemCollection
 from starlette.responses import Response
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
@@ -12,8 +13,6 @@ from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
 from stac_fastapi.types.extension import ApiExtension
 from stac_fastapi.types.search import BaseSearchPostRequest
 from stac_fastapi.types.stac import Conformance
-
-from stac_pydantic import Collection, Item, ItemCollection
 
 NumType = Union[float, int]
 StacType = Dict[str, Any]

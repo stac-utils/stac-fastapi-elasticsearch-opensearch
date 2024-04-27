@@ -14,6 +14,7 @@ from overrides import overrides
 from pydantic import ValidationError
 from pygeofilter.backends.cql2_json import to_cql2
 from pygeofilter.parsers.cql2_text import parse as parse_cql2_text
+from stac_pydantic import Collection, Item, ItemCollection
 from stac_pydantic.links import Relations
 from stac_pydantic.shared import BBox, MimeTypes
 from stac_pydantic.version import STAC_VERSION
@@ -41,8 +42,6 @@ from stac_fastapi.types.requests import get_base_url
 from stac_fastapi.types.rfc3339 import DateTimeType
 from stac_fastapi.types.search import BaseSearchPostRequest
 from stac_fastapi.types.stac import Collections
-
-from stac_pydantic import Collection, Item, ItemCollection
 
 logger = logging.getLogger(__name__)
 
@@ -225,7 +224,9 @@ class CoreClient(AsyncBaseCoreClient):
 
         return Collections(collections=collections, links=links)
 
-    async def get_collection(self, collection_id: str, **kwargs) -> stac_types.Collection:
+    async def get_collection(
+        self, collection_id: str, **kwargs
+    ) -> stac_types.Collection:
         """Get a collection from the database by its id.
 
         Args:
@@ -331,7 +332,9 @@ class CoreClient(AsyncBaseCoreClient):
             context=context_obj,
         )
 
-    async def get_item(self, item_id: str, collection_id: str, **kwargs) -> stac_types.Item:
+    async def get_item(
+        self, item_id: str, collection_id: str, **kwargs
+    ) -> stac_types.Item:
         """Get an item from the database based on its id and collection id.
 
         Args:
