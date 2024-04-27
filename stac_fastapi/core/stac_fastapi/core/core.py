@@ -321,8 +321,15 @@ class CoreClient(AsyncBaseCoreClient):
                 context_obj["matched"] = maybe_count
 
         links = []
-        if next_token:
-            links = await PagingLinks(request=request, next=next_token).get_links()
+        # if next_token:
+        #     links = await PagingLinks(request=request, next=next_token).get_links()
+
+#         E       pydantic_core._pydantic_core.ValidationError: 1 validation error for ItemCollection
+# E       links.0.method
+# E         Extra inputs are not permitted [type=extra_forbidden, input_value='GET', input_type=str]
+# E           For further information visit https://errors.pydantic.dev/2.7/v/extra_forbidden
+
+# stac_fastapi/core/stac_fastapi/core/core.py:327: ValidationError
 
         return ItemCollection(
             type="FeatureCollection",
@@ -622,8 +629,14 @@ class CoreClient(AsyncBaseCoreClient):
                 context_obj["matched"] = maybe_count
 
         links = []
-        if next_token:
-            links = await PagingLinks(request=request, next=next_token).get_links()
+
+#         E       pydantic_core._pydantic_core.ValidationError: 1 validation error for ItemCollection
+# E       links.0.method
+# E         Extra inputs are not permitted [type=extra_forbidden, input_value='GET', input_type=str]
+# E           For further information visit https://errors.pydantic.dev/2.7/v/extra_forbidden
+
+        # if next_token:
+        #     links = await PagingLinks(request=request, next=next_token).get_links()
 
         return ItemCollection(
             type="FeatureCollection",
@@ -660,6 +673,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             ConflictError: If the item in the specified collection already exists.
 
         """
+        item = item.model_dump(mode="json")        
         base_url = str(kwargs["request"].base_url)
 
         # If a feature collection is posted

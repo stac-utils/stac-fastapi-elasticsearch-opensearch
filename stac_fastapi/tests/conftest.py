@@ -4,6 +4,8 @@ import json
 import os
 from typing import Any, Callable, Dict, Optional
 
+from stac_pydantic import api 
+
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
@@ -16,6 +18,7 @@ from stac_fastapi.core.core import (
     TransactionsClient,
 )
 from stac_fastapi.core.extensions import QueryExtension
+from stac_pydantic import Collection, Item, ItemCollection
 
 if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
     from stac_fastapi.opensearch.config import AsyncOpensearchSettings as AsyncSettings
@@ -118,19 +121,24 @@ async def create_collection(txn_client: TransactionsClient, collection: Dict) ->
         dict(collection), request=MockRequest, refresh=True
     )
 
+async def create_item(txn_client: TransactionsClient, item: dict) -> None:
+    print("item type: ", type(item))
+    print(item["type"])
 
-async def create_item(txn_client: TransactionsClient, item: Dict) -> None:
-    if "collection" in item:
+    if item["type"] == "Feature":
+        item = api.Item(**item)
         await txn_client.create_item(
-            collection_id=item["collection"],
+            collection_id=item.collection,
             item=item,
             request=MockRequest,
             refresh=True,
         )
     else:
+        item_collection = api.ItemCollection(**item)
+        # print(item_collection.features[0])
         await txn_client.create_item(
-            collection_id=item["features"][0]["collection"],
-            item=item,
+            collection_id=item_collection.features[0].collection,
+            item=item_collection,
             request=MockRequest,
             refresh=True,
         )

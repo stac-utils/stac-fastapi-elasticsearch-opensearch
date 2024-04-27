@@ -297,7 +297,7 @@ async def test_feature_collection_insert(
     await create_item(txn_client, feature_collection)
 
     fc = await core_client.item_collection(ctx.collection["id"], request=MockRequest())
-    assert len(fc["features"]) >= 10
+    assert len(fc.features) >= 10
 
 
 @pytest.mark.asyncio
