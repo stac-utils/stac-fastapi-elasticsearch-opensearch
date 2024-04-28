@@ -10,7 +10,7 @@ from enum import auto
 from types import DynamicClassAttribute
 from typing import Any, Callable, Dict, Optional, Union
 
-from pydantic import BaseModel, root_validator
+from pydantic import BaseModel  # , root_validator
 from stac_pydantic.utils import AutoValueEnum
 
 from stac_fastapi.extensions.core.query import QueryExtension as QueryExtensionBase
@@ -63,12 +63,14 @@ class QueryExtensionPostRequest(BaseModel):
     to raise errors for unsupported querys.
     """
 
-    query: Optional[Dict[Queryables, Dict[Operator, Any]]] = None
+    # query: Optional[Dict[Queryables, Dict[Operator, Any]]] = None
 
-    @root_validator(pre=True)
-    def validate_query_fields(cls, values: Dict) -> Dict:
-        """Validate query fields."""
-        ...
+    query: Optional[Dict[str, Dict[Operator, Any]]] = None
+
+    # @root_validator(pre=True)
+    # def validate_query_fields(cls, values: Dict) -> Dict:
+    #     """Validate query fields."""
+    #     ...
 
 
 class QueryExtension(QueryExtensionBase):

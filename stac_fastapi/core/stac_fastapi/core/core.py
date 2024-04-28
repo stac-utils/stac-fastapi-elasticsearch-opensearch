@@ -24,9 +24,8 @@ from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.models.links import PagingLinks
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.session import Session
-from stac_fastapi.core.types.core import (
+from stac_fastapi.core.types.core import (  # AsyncBaseFiltersClient,
     AsyncBaseCoreClient,
-    AsyncBaseFiltersClient,
     AsyncBaseTransactionsClient,
 )
 from stac_fastapi.extensions.third_party.bulk_transactions import (
@@ -37,11 +36,11 @@ from stac_fastapi.extensions.third_party.bulk_transactions import (
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.config import Settings
 from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
+from stac_fastapi.types.core import AsyncBaseFiltersClient
 from stac_fastapi.types.extension import ApiExtension
 from stac_fastapi.types.requests import get_base_url
 from stac_fastapi.types.rfc3339 import DateTimeType
 from stac_fastapi.types.search import BaseSearchPostRequest
-from stac_fastapi.types.stac import Collections
 
 logger = logging.getLogger(__name__)
 
@@ -190,7 +189,7 @@ class CoreClient(AsyncBaseCoreClient):
 
         return landing_page
 
-    async def all_collections(self, **kwargs) -> Collections:
+    async def all_collections(self, **kwargs) -> stac_types.Collections:
         """Read all collections from the database.
 
         Args:
@@ -222,7 +221,7 @@ class CoreClient(AsyncBaseCoreClient):
             next_link = PagingLinks(next=next_token, request=request).link_next()
             links.append(next_link)
 
-        return Collections(collections=collections, links=links)
+        return stac_types.Collections(collections=collections, links=links)
 
     async def get_collection(
         self, collection_id: str, **kwargs
@@ -241,6 +240,7 @@ class CoreClient(AsyncBaseCoreClient):
         """
         base_url = str(kwargs["request"].base_url)
         collection = await self.database.find_collection(collection_id=collection_id)
+        print("COLLECTION FROM DB: ", collection)
         return self.collection_serializer.db_to_stac(
             collection=collection, base_url=base_url
         )
@@ -406,6 +406,24 @@ class CoreClient(AsyncBaseCoreClient):
 
         return result
 
+    def _format_datetime_range(self, date_tuple: DateTimeType) -> str:
+        """
+        Convert a tuple of datetime objects or None into a formatted string for API requests.
+
+        Args:
+            date_tuple (tuple): A tuple containing two elements, each can be a datetime object or None.
+
+        Returns:
+            str: A string formatted as 'YYYY-MM-DDTHH:MM:SS.sssZ/YYYY-MM-DDTHH:MM:SS.sssZ', with '..' used if any element is None.
+        """
+
+        def format_datetime(dt):
+            """Format a single datetime object to the ISO8601 extended format with 'Z'."""
+            return dt.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z" if dt else ".."
+
+        start, end = date_tuple
+        return f"{format_datetime(start)}/{format_datetime(end)}"
+
     async def get_search(
         self,
         request: Request,
@@ -462,7 +480,7 @@ class CoreClient(AsyncBaseCoreClient):
                 filter_lang = match.group(1)
 
         if datetime:
-            base_args["datetime"] = datetime
+            base_args["datetime"] = self._format_datetime_range(datetime)
 
         if intersects:
             base_args["intersects"] = orjson.loads(unquote_plus(intersects))
@@ -541,6 +559,7 @@ class CoreClient(AsyncBaseCoreClient):
 
         if search_request.datetime:
             datetime_search = self._return_date(search_request.datetime)
+            print("post date search: ", datetime_search)
             search = self.database.apply_datetime_filter(
                 search=search, datetime_search=datetime_search
             )
@@ -758,7 +777,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             collection, base_url
         )
         await self.database.create_collection(collection=collection)
-
+        print("COLLECTION: ", collection)
         return CollectionSerializer.db_to_stac(collection, base_url)
 
     @overrides
@@ -786,6 +805,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         collection = (
             collection if "id" in collection else collection.model_dump(mode="json")
         )
+        print("UPDATE COLLECTION: ", collection)
 
         base_url = str(kwargs["request"].base_url)
 
@@ -920,6 +940,7 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
         Returns:
             Dict[str, Any]: A dictionary containing the queryables for the given collection.
         """
+        print("es async base filter client")
         return {
             "$schema": "https://json-schema.org/draft/2019-09/schema",
             "$id": "https://stac-api.example.com/queryables",

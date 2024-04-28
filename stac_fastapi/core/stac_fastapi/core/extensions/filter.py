@@ -17,7 +17,7 @@ import re
 from enum import Enum
 from typing import List, Union
 
-from geojson_pydantic import (
+from geojson_pydantic.geometries import (
     GeometryCollection,
     LineString,
     MultiLineString,
@@ -132,20 +132,18 @@ class Date(BaseModel):
 class FloatInt(float):
     """Representation of Float/Int."""
 
-    pass
+    @classmethod
+    def __get_validators__(cls):
+        """Return validator to use."""
+        yield cls.validate
 
-    # @classmethod
-    # def __get_validators__(cls):
-    #     """Return validator to use."""
-    #     yield cls.validate
-
-    # @classmethod
-    # def validate(cls, v):
-    #     """Validate input value."""
-    #     if isinstance(v, float):
-    #         return v
-    #     else:
-    #         return int(v)
+    @classmethod
+    def validate(cls, v):
+        """Validate input value."""
+        if isinstance(v, float):
+            return v
+        else:
+            return int(v)
 
 
 Arg = Union[
@@ -160,7 +158,7 @@ Arg = Union[
     Polygon,
     MultiPolygon,
     GeometryCollection,
-    # FloatInt,
+    FloatInt,
     str,
     bool,
 ]

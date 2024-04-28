@@ -106,9 +106,7 @@ async def test_app_context_extension(app_client, txn_client, ctx, load_test_data
     resp_json = resp.json()
     assert resp_json["id"] == test_collection["id"]
 
-    resp = await app_client.post(
-        "/search", json={"query": {}, "collections": ["test-collection-2"]}
-    )
+    resp = await app_client.post("/search", json={"collections": ["test-collection-2"]})
     assert resp.status_code == 200
 
     resp_json = resp.json()
@@ -129,10 +127,11 @@ async def test_app_fields_extension(app_client, ctx, txn_client):
 
 @pytest.mark.asyncio
 async def test_app_fields_extension_query(app_client, ctx, txn_client):
+    item = ctx.item
     resp = await app_client.post(
         "/search",
         json={
-            "query": {"proj:epsg": {"gte": ctx.item["properties"]["proj:epsg"]}},
+            "query": {"proj:epsg": {"gte": item["properties"]["proj:epsg"]}},
             "collections": ["test-collection"],
         },
     )
@@ -158,7 +157,6 @@ async def test_app_fields_extension_no_properties_post(app_client, ctx, txn_clie
         json={
             "collections": ["test-collection"],
             "fields": {"exclude": ["properties"]},
-            "query": {},
         },
     )
     assert resp.status_code == 200
@@ -229,14 +227,14 @@ async def test_app_query_extension_limit_lt0(app_client):
 
 @pytest.mark.asyncio
 async def test_app_query_extension_limit_gt10000(app_client):
-    resp = await app_client.post("/search", json={"query": {}, "limit": 10001})
+    resp = await app_client.post("/search", json={"limit": 10001})
     assert resp.status_code == 200
     assert resp.json()["context"]["limit"] == 10000
 
 
 @pytest.mark.asyncio
 async def test_app_query_extension_limit_10000(app_client):
-    params = {"query": {}, "limit": 10000}
+    params = {"limit": 10000}
     resp = await app_client.post("/search", json=params)
     assert resp.status_code == 200
 
@@ -295,7 +293,6 @@ async def test_app_sort_extension_post_asc(app_client, txn_client, ctx):
     params = {
         "collections": [first_item["collection"]],
         "sortby": [{"field": "properties.datetime", "direction": "asc"}],
-        "query": {},
     }
     resp = await app_client.post("/search", json=params)
     assert resp.status_code == 200
@@ -319,7 +316,6 @@ async def test_app_sort_extension_post_desc(app_client, txn_client, ctx):
     params = {
         "collections": [first_item["collection"]],
         "sortby": [{"field": "properties.datetime", "direction": "desc"}],
-        "query": {},
     }
     resp = await app_client.post("/search", json=params)
     assert resp.status_code == 200
@@ -369,7 +365,6 @@ async def test_search_point_intersects_post(app_client, ctx):
     params = {
         "intersects": intersects,
         "collections": [ctx.item["collection"]],
-        "query": {},
     }
     resp = await app_client.post("/search", json=params)
 
@@ -386,7 +381,6 @@ async def test_search_point_does_not_intersect(app_client, ctx):
     params = {
         "intersects": intersects,
         "collections": [ctx.item["collection"]],
-        "query": {},
     }
     resp = await app_client.post("/search", json=params)
 
@@ -408,7 +402,6 @@ async def test_datetime_non_interval(app_client, ctx):
         params = {
             "datetime": dt,
             "collections": [ctx.item["collection"]],
-            "query": {},
         }
 
         resp = await app_client.post("/search", json=params)
@@ -424,7 +417,6 @@ async def test_bbox_3d(app_client, ctx):
     params = {
         "bbox": australia_bbox,
         "collections": [ctx.item["collection"]],
-        "query": {},
     }
     resp = await app_client.post("/search", json=params)
     assert resp.status_code == 200
@@ -439,7 +431,6 @@ async def test_search_line_string_intersects(app_client, ctx):
     params = {
         "intersects": intersects,
         "collections": [ctx.item["collection"]],
-        "query": {},
     }
 
     resp = await app_client.post("/search", json=params)
