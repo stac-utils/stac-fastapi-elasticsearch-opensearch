@@ -240,7 +240,6 @@ class CoreClient(AsyncBaseCoreClient):
         """
         base_url = str(kwargs["request"].base_url)
         collection = await self.database.find_collection(collection_id=collection_id)
-        print("COLLECTION FROM DB: ", collection)
         return self.collection_serializer.db_to_stac(
             collection=collection, base_url=base_url
         )
@@ -541,8 +540,6 @@ class CoreClient(AsyncBaseCoreClient):
         Raises:
             HTTPException: If there is an error with the cql2_json filter.
         """
-        print("POST")
-        print("search request: ", search_request)
         base_url = str(request.base_url)
 
         search = self.database.make_search()
@@ -559,7 +556,6 @@ class CoreClient(AsyncBaseCoreClient):
 
         if search_request.datetime:
             datetime_search = self._return_date(search_request.datetime)
-            print("post date search: ", datetime_search)
             search = self.database.apply_datetime_filter(
                 search=search, datetime_search=datetime_search
             )
@@ -725,7 +721,6 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             NotFound: If the specified collection is not found in the database.
 
         """
-        print("type item: ", type(item))
         item = item.model_dump(mode="json")
         base_url = str(kwargs["request"].base_url)
         now = datetime_type.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -777,7 +772,6 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             collection, base_url
         )
         await self.database.create_collection(collection=collection)
-        print("COLLECTION: ", collection)
         return CollectionSerializer.db_to_stac(collection, base_url)
 
     @overrides
@@ -805,7 +799,6 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         collection = (
             collection if "id" in collection else collection.model_dump(mode="json")
         )
-        print("UPDATE COLLECTION: ", collection)
 
         base_url = str(kwargs["request"].base_url)
 
@@ -940,7 +933,6 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
         Returns:
             Dict[str, Any]: A dictionary containing the queryables for the given collection.
         """
-        print("es async base filter client")
         return {
             "$schema": "https://json-schema.org/draft/2019-09/schema",
             "$id": "https://stac-api.example.com/queryables",
