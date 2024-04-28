@@ -52,15 +52,14 @@ async def test_delete_missing_collection(app_client):
 
 
 @pytest.mark.asyncio
-async def test_update_collection_already_exists(ctx, app_client):
+async def test_update_collection_already_exists(ctx, app_client, load_test_data):
     """Test updating a collection which already exists"""
-    ctx.collection["keywords"].append("test")
-    resp = await app_client.put(
-        f"/collections/{ctx.collection['id']}", json=ctx.collection
-    )
+    collection = load_test_data("test_collection.json")
+    collection["keywords"].append("test")
+    resp = await app_client.put(f"/collections/{ctx.collection['id']}", json=collection)
     assert resp.status_code == 200
 
-    resp = await app_client.get(f"/collections/{ctx.collection['id']}")
+    resp = await app_client.get(f"/collections/{collection['id']}")
     assert resp.status_code == 200
     resp_json = resp.json()
     assert "test" in resp_json["keywords"]

@@ -764,9 +764,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         Raises:
             ConflictError: If the collection already exists.
         """
-        collection = (
-            collection if "id" in collection else collection.model_dump(mode="json")
-        )
+        collection = collection.model_dump(mode="json")
         base_url = str(kwargs["request"].base_url)
         collection = self.database.collection_serializer.stac_to_db(
             collection, base_url
@@ -796,9 +794,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             A STAC collection that has been updated in the database.
 
         """
-        collection = (
-            collection if "id" in collection else collection.model_dump(mode="json")
-        )
+        collection = collection.model_dump(mode="json")
 
         base_url = str(kwargs["request"].base_url)
 
