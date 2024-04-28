@@ -80,7 +80,7 @@ async def test_delete_resource_insufficient_permissions(app_client_basic_auth, c
 
 @pytest.mark.asyncio
 async def test_delete_resource_sufficient_permissions(app_client_basic_auth, ctx):
-    """Test protected endpoint [DELETE /collections/{collection_id}] with admin user auhtentication which has sufficient permissions"""
+    """Test protected endpoint [DELETE /collections/{collection_id}] with admin user which has sufficient permissions"""
     if not os.getenv("BASIC_AUTH"):
         pytest.skip()
 
