@@ -1,6 +1,5 @@
-import copy
 import uuid
-from datetime import datetime, timedelta
+from datetime import timedelta
 
 import pytest
 
@@ -62,11 +61,11 @@ async def test_router(app):
 
 
 @pytest.mark.asyncio
-async def test_app_transaction_extension(app_client, ctx):
-    item = copy.deepcopy(ctx.item)
+async def test_app_transaction_extension(app_client, ctx, load_test_data):
+    item = load_test_data("test_item.json")
     item["id"] = str(uuid.uuid4())
     resp = await app_client.post(f"/collections/{item['collection']}/items", json=item)
-    assert resp.status_code == 200
+    assert resp.status_code == 201
 
     await app_client.delete(f"/collections/{item['collection']}/items/{item['id']}")
 
@@ -84,11 +83,11 @@ async def test_app_search_response(app_client, ctx):
 
 
 @pytest.mark.asyncio
-async def test_app_context_extension(app_client, ctx, txn_client):
-    test_item = ctx.item
+async def test_app_context_extension(app_client, txn_client, ctx, load_test_data):
+    test_item = load_test_data("test_item.json")
     test_item["id"] = "test-item-2"
     test_item["collection"] = "test-collection-2"
-    test_collection = ctx.collection
+    test_collection = load_test_data("test_collection.json")
     test_collection["id"] = "test-collection-2"
 
     await create_collection(txn_client, test_collection)
@@ -107,8 +106,11 @@ async def test_app_context_extension(app_client, ctx, txn_client):
     resp_json = resp.json()
     assert resp_json["id"] == test_collection["id"]
 
-    resp = await app_client.post("/search", json={"collections": ["test-collection-2"]})
+    resp = await app_client.post(
+        "/search", json={"query": {}, "collections": ["test-collection-2"]}
+    )
     assert resp.status_code == 200
+
     resp_json = resp.json()
     assert len(resp_json["features"]) == 1
     assert "context" in resp_json
@@ -156,6 +158,7 @@ async def test_app_fields_extension_no_properties_post(app_client, ctx, txn_clie
         json={
             "collections": ["test-collection"],
             "fields": {"exclude": ["properties"]},
+            "query": {},
         },
     )
     assert resp.status_code == 200
@@ -181,8 +184,10 @@ async def test_app_fields_extension_no_null_fields(app_client, ctx, txn_client):
 
 
 @pytest.mark.asyncio
-async def test_app_fields_extension_return_all_properties(app_client, ctx, txn_client):
-    item = ctx.item
+async def test_app_fields_extension_return_all_properties(
+    app_client, ctx, txn_client, load_test_data
+):
+    item = load_test_data("test_item.json")
     resp = await app_client.get(
         "/search", params={"collections": ["test-collection"], "fields": "properties"}
     )
@@ -217,19 +222,21 @@ async def test_app_query_extension_gte(app_client, ctx):
 
 @pytest.mark.asyncio
 async def test_app_query_extension_limit_lt0(app_client):
-    assert (await app_client.post("/search", json={"limit": -1})).status_code == 400
+    assert (
+        await app_client.post("/search", json={"query": {}, "limit": -1})
+    ).status_code == 400
 
 
 @pytest.mark.asyncio
 async def test_app_query_extension_limit_gt10000(app_client):
-    resp = await app_client.post("/search", json={"limit": 10001})
+    resp = await app_client.post("/search", json={"query": {}, "limit": 10001})
     assert resp.status_code == 200
     assert resp.json()["context"]["limit"] == 10000
 
 
 @pytest.mark.asyncio
 async def test_app_query_extension_limit_10000(app_client):
-    params = {"limit": 10000}
+    params = {"query": {}, "limit": 10000}
     resp = await app_client.post("/search", json=params)
     assert resp.status_code == 200
 
@@ -237,16 +244,14 @@ async def test_app_query_extension_limit_10000(app_client):
 @pytest.mark.asyncio
 async def test_app_sort_extension_get_asc(app_client, txn_client, ctx):
     first_item = ctx.item
-    item_date = datetime.strptime(
-        first_item["properties"]["datetime"], "%Y-%m-%dT%H:%M:%SZ"
-    )
 
     second_item = dict(first_item)
     second_item["id"] = "another-item"
-    another_item_date = item_date - timedelta(days=1)
-    second_item["properties"]["datetime"] = another_item_date.strftime(
-        "%Y-%m-%dT%H:%M:%SZ"
+    another_item_date = first_item["properties"]["datetime"] - timedelta(days=1)
+    second_item["properties"]["datetime"] = another_item_date.isoformat().replace(
+        "+00:00", "Z"
     )
+
     await create_item(txn_client, second_item)
 
     resp = await app_client.get("/search?sortby=+properties.datetime")
@@ -259,15 +264,12 @@ async def test_app_sort_extension_get_asc(app_client, txn_client, ctx):
 @pytest.mark.asyncio
 async def test_app_sort_extension_get_desc(app_client, txn_client, ctx):
     first_item = ctx.item
-    item_date = datetime.strptime(
-        first_item["properties"]["datetime"], "%Y-%m-%dT%H:%M:%SZ"
-    )
 
     second_item = dict(first_item)
     second_item["id"] = "another-item"
-    another_item_date = item_date - timedelta(days=1)
-    second_item["properties"]["datetime"] = another_item_date.strftime(
-        "%Y-%m-%dT%H:%M:%SZ"
+    another_item_date = first_item["properties"]["datetime"] - timedelta(days=1)
+    second_item["properties"]["datetime"] = another_item_date.isoformat().replace(
+        "+00:00", "Z"
     )
     await create_item(txn_client, second_item)
 
@@ -281,21 +283,19 @@ async def test_app_sort_extension_get_desc(app_client, txn_client, ctx):
 @pytest.mark.asyncio
 async def test_app_sort_extension_post_asc(app_client, txn_client, ctx):
     first_item = ctx.item
-    item_date = datetime.strptime(
-        first_item["properties"]["datetime"], "%Y-%m-%dT%H:%M:%SZ"
-    )
 
     second_item = dict(first_item)
     second_item["id"] = "another-item"
-    another_item_date = item_date - timedelta(days=1)
-    second_item["properties"]["datetime"] = another_item_date.strftime(
-        "%Y-%m-%dT%H:%M:%SZ"
+    another_item_date = first_item["properties"]["datetime"] - timedelta(days=1)
+    second_item["properties"]["datetime"] = another_item_date.isoformat().replace(
+        "+00:00", "Z"
     )
     await create_item(txn_client, second_item)
 
     params = {
         "collections": [first_item["collection"]],
         "sortby": [{"field": "properties.datetime", "direction": "asc"}],
+        "query": {},
     }
     resp = await app_client.post("/search", json=params)
     assert resp.status_code == 200
@@ -307,21 +307,19 @@ async def test_app_sort_extension_post_asc(app_client, txn_client, ctx):
 @pytest.mark.asyncio
 async def test_app_sort_extension_post_desc(app_client, txn_client, ctx):
     first_item = ctx.item
-    item_date = datetime.strptime(
-        first_item["properties"]["datetime"], "%Y-%m-%dT%H:%M:%SZ"
-    )
 
     second_item = dict(first_item)
     second_item["id"] = "another-item"
-    another_item_date = item_date - timedelta(days=1)
-    second_item["properties"]["datetime"] = another_item_date.strftime(
-        "%Y-%m-%dT%H:%M:%SZ"
+    another_item_date = first_item["properties"]["datetime"] - timedelta(days=1)
+    second_item["properties"]["datetime"] = another_item_date.isoformat().replace(
+        "+00:00", "Z"
     )
     await create_item(txn_client, second_item)
 
     params = {
         "collections": [first_item["collection"]],
         "sortby": [{"field": "properties.datetime", "direction": "desc"}],
+        "query": {},
     }
     resp = await app_client.post("/search", json=params)
     assert resp.status_code == 200
@@ -371,6 +369,7 @@ async def test_search_point_intersects_post(app_client, ctx):
     params = {
         "intersects": intersects,
         "collections": [ctx.item["collection"]],
+        "query": {},
     }
     resp = await app_client.post("/search", json=params)
 
@@ -387,6 +386,7 @@ async def test_search_point_does_not_intersect(app_client, ctx):
     params = {
         "intersects": intersects,
         "collections": [ctx.item["collection"]],
+        "query": {},
     }
     resp = await app_client.post("/search", json=params)
 
@@ -408,6 +408,7 @@ async def test_datetime_non_interval(app_client, ctx):
         params = {
             "datetime": dt,
             "collections": [ctx.item["collection"]],
+            "query": {},
         }
 
         resp = await app_client.post("/search", json=params)
@@ -423,6 +424,7 @@ async def test_bbox_3d(app_client, ctx):
     params = {
         "bbox": australia_bbox,
         "collections": [ctx.item["collection"]],
+        "query": {},
     }
     resp = await app_client.post("/search", json=params)
     assert resp.status_code == 200
@@ -437,6 +439,7 @@ async def test_search_line_string_intersects(app_client, ctx):
     params = {
         "intersects": intersects,
         "collections": [ctx.item["collection"]],
+        "query": {},
     }
 
     resp = await app_client.post("/search", json=params)

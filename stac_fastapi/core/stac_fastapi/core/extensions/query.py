@@ -63,7 +63,7 @@ class QueryExtensionPostRequest(BaseModel):
     to raise errors for unsupported querys.
     """
 
-    query: Optional[Dict[Queryables, Dict[Operator, Any]]]
+    query: Optional[Dict[Queryables, Dict[Operator, Any]]] = None
 
     @root_validator(pre=True)
     def validate_query_fields(cls, values: Dict) -> Dict:
@@ -78,4 +78,4 @@ class QueryExtension(QueryExtensionBase):
     supported fields
     """
 
-    ...
+    POST = QueryExtensionPostRequest

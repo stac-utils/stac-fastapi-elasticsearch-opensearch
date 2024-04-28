@@ -18,7 +18,9 @@ async def test_search_filters_post(app_client, ctx):
             filters.append(json.loads(f.read()))
 
     for _filter in filters:
-        resp = await app_client.post("/search", json={"filter": _filter})
+        print("filter: ", _filter)
+        resp = await app_client.post("/search", json={"query": {}, "filter": _filter})
+        print("resp: ", resp)
         assert resp.status_code == 200
 
 
@@ -34,7 +36,10 @@ async def test_search_filter_extension_eq_get(app_client, ctx):
 
 @pytest.mark.asyncio
 async def test_search_filter_extension_eq_post(app_client, ctx):
-    params = {"filter": {"op": "=", "args": [{"property": "id"}, ctx.item["id"]]}}
+    params = {
+        "query": {},
+        "filter": {"op": "=", "args": [{"property": "id"}, ctx.item["id"]]},
+    }
     resp = await app_client.post("/search", json=params)
     assert resp.status_code == 200
     resp_json = resp.json()

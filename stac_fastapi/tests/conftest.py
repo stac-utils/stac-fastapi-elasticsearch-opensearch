@@ -7,6 +7,7 @@ from typing import Any, Callable, Dict, Optional
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
+from stac_pydantic import api
 
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import create_get_request_model, create_post_request_model
@@ -115,7 +116,7 @@ def test_collection() -> Dict:
 
 async def create_collection(txn_client: TransactionsClient, collection: Dict) -> None:
     await txn_client.create_collection(
-        dict(collection), request=MockRequest, refresh=True
+        api.Collection(**dict(collection)), request=MockRequest, refresh=True
     )
 
 
@@ -123,14 +124,14 @@ async def create_item(txn_client: TransactionsClient, item: Dict) -> None:
     if "collection" in item:
         await txn_client.create_item(
             collection_id=item["collection"],
-            item=item,
+            item=api.Item(**item),
             request=MockRequest,
             refresh=True,
         )
     else:
         await txn_client.create_item(
             collection_id=item["features"][0]["collection"],
-            item=item,
+            item=api.ItemCollection(**item),
             request=MockRequest,
             refresh=True,
         )

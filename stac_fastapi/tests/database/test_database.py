@@ -1,6 +1,5 @@
 import os
 import uuid
-from copy import deepcopy
 
 import pytest
 
@@ -35,8 +34,8 @@ async def test_index_mapping_collections(ctx):
 
 
 @pytest.mark.asyncio
-async def test_index_mapping_items(ctx, txn_client):
-    collection = deepcopy(ctx.collection)
+async def test_index_mapping_items(txn_client, load_test_data):
+    collection = load_test_data("test_collection.json")
     collection["id"] = str(uuid.uuid4())
     await txn_client.create_collection(collection, request=MockRequest)
     response = await database.client.indices.get_mapping(

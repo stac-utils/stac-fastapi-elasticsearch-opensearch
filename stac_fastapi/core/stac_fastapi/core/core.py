@@ -325,7 +325,7 @@ class CoreClient(AsyncBaseCoreClient):
         if next_token:
             links = await PagingLinks(request=request, next=next_token).get_links()
 
-        return ItemCollection(
+        return stac_types.ItemCollection(
             type="FeatureCollection",
             features=items,
             links=links,
@@ -523,6 +523,8 @@ class CoreClient(AsyncBaseCoreClient):
         Raises:
             HTTPException: If there is an error with the cql2_json filter.
         """
+        print("POST")
+        print("search request: ", search_request)
         base_url = str(request.base_url)
 
         search = self.database.make_search()
@@ -628,7 +630,7 @@ class CoreClient(AsyncBaseCoreClient):
         if next_token:
             links = await PagingLinks(request=request, next=next_token).get_links()
 
-        return ItemCollection(
+        return stac_types.ItemCollection(
             type="FeatureCollection",
             features=items,
             links=links,
@@ -704,6 +706,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             NotFound: If the specified collection is not found in the database.
 
         """
+        print("type item: ", type(item))
         item = item.model_dump(mode="json")
         base_url = str(kwargs["request"].base_url)
         now = datetime_type.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -711,7 +714,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         await self.database.check_collection_exists(collection_id)
         await self.delete_item(item_id=item_id, collection_id=collection_id)
-        await self.create_item(collection_id=collection_id, item=item, **kwargs)
+        await self.create_item(collection_id=collection_id, item=Item(**item), **kwargs)
 
         return ItemSerializer.db_to_stac(item, base_url)
 
@@ -747,7 +750,9 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         Raises:
             ConflictError: If the collection already exists.
         """
-        collection = collection.model_dump(mode="json")
+        collection = (
+            collection if "id" in collection else collection.model_dump(mode="json")
+        )
         base_url = str(kwargs["request"].base_url)
         collection = self.database.collection_serializer.stac_to_db(
             collection, base_url
@@ -778,7 +783,10 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             A STAC collection that has been updated in the database.
 
         """
-        collection = collection.model_dump(mode="json")
+        collection = (
+            collection if "id" in collection else collection.model_dump(mode="json")
+        )
+
         base_url = str(kwargs["request"].base_url)
 
         collection_id = kwargs["request"].query_params.get(

@@ -56,14 +56,14 @@ async def test_create_and_delete_item(app_client, ctx, txn_client):
 
 
 @pytest.mark.asyncio
-async def test_create_item_conflict(app_client, ctx):
+async def test_create_item_conflict(app_client, load_test_data):
     """Test creation of an item which already exists (transactions extension)"""
-
-    test_item = ctx.item
+    test_item = load_test_data("test_item.json")
 
     resp = await app_client.post(
         f"/collections/{test_item['collection']}/items", json=test_item
     )
+    print("resp: ", resp)
     assert resp.status_code == 409
 
 
@@ -121,9 +121,9 @@ async def test_update_item_already_exists(app_client, ctx):
 
 
 @pytest.mark.asyncio
-async def test_update_new_item(app_client, ctx):
+async def test_update_new_item(app_client, load_test_data):
     """Test updating an item which does not exist (transactions extension)"""
-    test_item = ctx.item
+    test_item = load_test_data("test_item.json")
     test_item["id"] = "a"
 
     resp = await app_client.put(
