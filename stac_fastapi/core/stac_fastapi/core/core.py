@@ -677,7 +677,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         else:
             item = await self.database.prep_create_item(item=item, base_url=base_url)
             await self.database.create_item(item, refresh=kwargs.get("refresh", False))
-            return item
+            return ItemSerializer.db_to_stac(item, base_url)
 
     @overrides
     async def update_item(
