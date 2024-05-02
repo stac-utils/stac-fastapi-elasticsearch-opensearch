@@ -107,6 +107,7 @@ async def test_returns_valid_collection(ctx, app_client):
     collection.validate()
 
 
+@pytest.mark.skip(reason="Broken as of stac-fastapi v2.5.5")
 @pytest.mark.asyncio
 async def test_collection_extensions(ctx, app_client):
     """Test that extensions can be used to define additional top-level properties"""
