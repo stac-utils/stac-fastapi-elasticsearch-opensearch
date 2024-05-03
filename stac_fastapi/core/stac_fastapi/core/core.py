@@ -1025,7 +1025,8 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
         ]
 
         if next_token:
-            links = await PagingLinks(request=request, next=next_token).get_links()
+            next_link = PagingLinks(next=next_token, request=request).link_next()
+            links.append(next_link)
 
         return Collections(collections=collections, links=links)
 
