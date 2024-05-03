@@ -222,7 +222,7 @@ class CoreClient(AsyncBaseCoreClient):
         ]
 
         if next_token:
-            next_link = await PagingLinks(next=next_token, request=request).link_next()
+            next_link = PagingLinks(next=next_token, request=request).link_next()
             links.append(next_link)
 
         return Collections(collections=collections, links=links)
