@@ -1016,7 +1016,7 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
 
         links = [
             {"rel": Relations.root.value, "type": MimeTypes.json, "href": base_url},
-            {"rel": Relations.parent.value, "type": MimeTypes.json, "href": "testingvalue"},
+            {"rel": Relations.parent.value, "type": MimeTypes.json, "href": base_url},
             {
                 "rel": Relations.self.value,
                 "type": MimeTypes.json,
