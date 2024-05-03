@@ -222,7 +222,7 @@ class CoreClient(AsyncBaseCoreClient):
         ]
 
         if next_token:
-            next_link = PagingLinks(next=next_token, request=request).link_next()
+            next_link = await PagingLinks(next=next_token, request=request).link_next()
             links.append(next_link)
 
         return Collections(collections=collections, links=links)
@@ -1001,8 +1001,6 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
         if search_request.limit:
             limit = search_request.limit
 
-        base_url = str(request.base_url)
-
         collections, maybe_count, next_token = (
             await self.database.execute_collection_search(
                 search=search,
@@ -1013,6 +1011,8 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
                 base_url=base_url,
             )
         )
+
+        print(base_url)
 
         links = [
             {"rel": Relations.root.value, "type": MimeTypes.json, "href": base_url},
