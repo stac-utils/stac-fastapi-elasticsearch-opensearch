@@ -55,7 +55,7 @@ class BaseLinks:
 
     def link_self(self) -> Dict:
         """Return the self link."""
-        return dict(rel=Relations.self.value, type=MimeTypes.json.value, href=self.url)
+        return dict(rel=Relations.self.value, type=MimeTypes.json.value, href=self.base_url)
 
     def link_root(self) -> Dict:
         """Return the catalog root."""
@@ -118,7 +118,7 @@ class PagingLinks(BaseLinks):
         if self.next is not None:
             method = self.request.method
             if method == "GET":
-                href = merge_params(self.url, {"token": self.next})
+                href = merge_params(self.base_url, {"token": self.next})
                 link = dict(
                     rel=Relations.next.value,
                     type=MimeTypes.json.value,
