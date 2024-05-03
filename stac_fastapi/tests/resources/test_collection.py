@@ -107,9 +107,26 @@ async def test_returns_valid_collection(ctx, app_client):
     collection.validate()
 
 
-@pytest.mark.skip(reason="Broken as of stac-fastapi v2.5.5")
 @pytest.mark.asyncio
 async def test_collection_extensions(ctx, app_client):
+    """Test that extensions can be used to define additional top-level properties"""
+    ctx.collection.get("stac_extensions", []).append(
+        "https://stac-extensions.github.io/item-assets/v1.0.0/schema.json"
+    )
+    test_asset = {"title": "test", "description": "test", "type": "test"}
+    ctx.collection["item_assets"] = {"test": test_asset}
+    ctx.collection["id"] = "test-item-assets"
+    resp = await app_client.post("/collections", json=ctx.collection)
+
+    assert resp.status_code == 200
+    assert resp.json().get("item_assets", {}).get("test") == test_asset
+
+
+@pytest.mark.skip(
+    reason="Broken as of stac-fastapi v2.5.5, the PUT collections route is not allowing the item_assets field to persist."
+)
+@pytest.mark.asyncio
+async def test_collection_extensions_with_put(ctx, app_client):
     """Test that extensions can be used to define additional top-level properties"""
     ctx.collection.get("stac_extensions", []).append(
         "https://stac-extensions.github.io/item-assets/v1.0.0/schema.json"
