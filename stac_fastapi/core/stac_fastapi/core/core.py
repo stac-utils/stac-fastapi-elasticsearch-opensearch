@@ -619,9 +619,7 @@ class CoreClient(AsyncBaseCoreClient):
             if maybe_count is not None:
                 context_obj["matched"] = maybe_count
 
-        links = []
-        if next_token:
-            links = await PagingLinks(request=request, next=next_token).get_links()
+        links = await PagingLinks(request=request, next=next_token).get_links()
 
         return ItemCollection(
             type="FeatureCollection",
