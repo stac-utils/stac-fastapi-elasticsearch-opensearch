@@ -492,8 +492,8 @@ async def test_item_search_temporal_window_timezone_get(app_client, ctx):
         "datetime": f"{datetime_to_str(item_date_before)}/{datetime_to_str(item_date_after)}",
     }
     resp = await app_client.get("/search", params=params)
-    resp_json = resp.json()
     assert resp.status_code == 200
+    resp_json = resp.json()
     assert resp_json["features"][0]["id"] == test_item["id"]
 
 
