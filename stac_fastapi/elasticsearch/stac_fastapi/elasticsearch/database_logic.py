@@ -584,7 +584,6 @@ class DatabaseLogic:
         items = (hit["_source"] for hit in hits)
 
         next_token = None
-
         if matched > page * limit:
             if hits and (sort_array := hits[-1].get("sort")):
                 next_token = urlsafe_b64encode(
