@@ -582,9 +582,16 @@ class DatabaseLogic:
         query = search.query.to_dict() if search.query else None
         if query:
             search_body["query"] = query
+        
+        search_after = None
+        page = 1
         if token:
-            search_after = urlsafe_b64decode(token.encode()).decode().split(",")
-            search_body["search_after"] = search_after
+            decoded_token = urlsafe_b64decode(token.encode()).decode().split(",")
+            search_after = decoded_token[:-1]
+            page = int(decoded_token[-1]) + 1
+        if search_after:
+            search_body["search_after"] = search_after + [page]
+        
         search_body["sort"] = sort if sort else DEFAULT_SORT
 
         index_param = indices(collection_ids)
@@ -598,14 +605,6 @@ class DatabaseLogic:
             )
         )
 
-        count_task = asyncio.create_task(
-            self.client.count(
-                index=index_param,
-                ignore_unavailable=ignore_unavailable,
-                body=search.to_dict(count=True),
-            )
-        )
-
         try:
             es_response = await search_task
         except exceptions.NotFoundError:
@@ -614,22 +613,15 @@ class DatabaseLogic:
         hits = es_response["hits"]["hits"]
         items = (hit["_source"] for hit in hits)
 
+        matched = es_response["hits"]["total"]["value"]
+
         next_token = None
         if hits and (sort_array := hits[-1].get("sort")):
             next_token = urlsafe_b64encode(
-                ",".join([str(x) for x in sort_array]).encode()
+                ",".join([str(x) for x in sort_array] + [str(page)]).encode()
             ).decode()
 
-        # (1) count should not block returning results, so don't wait for it to be done
-        # (2) don't cancel the task so that it will populate the ES cache for subsequent counts
-        maybe_count = None
-        if count_task.done():
-            try:
-                maybe_count = count_task.result().get("count")
-            except Exception as e:
-                logger.error(f"Count task failed: {e}")
-
-        return items, maybe_count, next_token
+        return items, matched, next_token
 
     """ TRANSACTION LOGIC """
 
