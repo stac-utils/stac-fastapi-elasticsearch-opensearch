@@ -582,7 +582,7 @@ class DatabaseLogic:
         query = search.query.to_dict() if search.query else None
         if query:
             search_body["query"] = query
-        
+
         search_after = None
         page = 1
         if token:
@@ -591,7 +591,7 @@ class DatabaseLogic:
             page = int(decoded_token[-1]) + 1
         if search_after:
             search_body["search_after"] = search_after + [page]
-        
+
         search_body["sort"] = sort if sort else DEFAULT_SORT
 
         index_param = indices(collection_ids)
