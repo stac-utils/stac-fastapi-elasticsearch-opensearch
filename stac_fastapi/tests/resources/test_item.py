@@ -493,11 +493,8 @@ async def test_item_search_temporal_window_timezone_get(app_client, ctx):
     }
     resp = await app_client.get("/search", params=params)
     resp_json = resp.json()
-    next_link = next(link for link in resp_json["links"] if link["rel"] == "next")[
-        "href"
-    ]
-    resp = await app_client.get(next_link)
     assert resp.status_code == 200
+    assert resp_json["features"][0]["id"] == test_item["id"]
 
 
 @pytest.mark.asyncio
