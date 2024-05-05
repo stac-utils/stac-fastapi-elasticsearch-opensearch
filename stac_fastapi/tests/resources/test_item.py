@@ -626,10 +626,8 @@ async def test_pagination_post(app_client, ctx, txn_client):
     # Paginate through all 5 items with a limit of 1 (expecting 5 requests)
     request_body = {"ids": ids, "limit": 1}
     page = await app_client.post("/search", json=request_body)
-    idx = 0
     item_ids = []
-    for _ in range(100):
-        idx += 1
+    for idx in range(1, 100):
         page_data = page.json()
         next_link = list(filter(lambda link: link["rel"] == "next", page_data["links"]))
         if not next_link:
@@ -642,7 +640,7 @@ async def test_pagination_post(app_client, ctx, txn_client):
         page = await app_client.post("/search", json=request_body)
 
     # Our limit is 1, so we expect len(ids) number of requests before we run out of pages
-    assert idx == len(ids) + 1
+    assert idx == len(ids)
 
     # Confirm we have paginated through all items
     assert not set(item_ids) - set(ids)
