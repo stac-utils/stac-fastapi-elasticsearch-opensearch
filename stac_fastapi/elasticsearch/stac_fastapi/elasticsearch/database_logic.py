@@ -552,8 +552,12 @@ class DatabaseLogic:
             NotFoundError: If the collections specified in `collection_ids` do not exist.
         """
         search_after = None
+        page = 1  # Default page number
+
         if token:
-            search_after = urlsafe_b64decode(token.encode()).decode().split(",")
+            decoded_token = urlsafe_b64decode(token.encode()).decode().split(",")
+            search_after = decoded_token[:-1]  # Extract sort values from the token
+            page = int(decoded_token[-1]) + 1  # Extract previous page number from the token and increment for next page
 
         query = search.query.to_dict() if search.query else None
 
@@ -569,39 +573,25 @@ class DatabaseLogic:
                 size=limit,
             )
         )
-
-        count_task = asyncio.create_task(
-            self.client.count(
-                index=index_param,
-                ignore_unavailable=ignore_unavailable,
-                body=search.to_dict(count=True),
-            )
-        )
-
+        
         try:
             es_response = await search_task
         except exceptions.NotFoundError:
             raise NotFoundError(f"Collections '{collection_ids}' do not exist")
-
+        
+        matched = es_response["hits"]["total"]["value"]
         hits = es_response["hits"]["hits"]
         items = (hit["_source"] for hit in hits)
 
         next_token = None
-        if hits and (sort_array := hits[-1].get("sort")):
-            next_token = urlsafe_b64encode(
-                ",".join([str(x) for x in sort_array]).encode()
-            ).decode()
+        
+        if matched > page * limit:  # Check if there are more results beyond the current page
+            if hits and (sort_array := hits[-1].get("sort")):
+                next_token = urlsafe_b64encode(
+                    ",".join([str(x) for x in sort_array] + [str(page)]).encode()
+                ).decode()
 
-        # (1) count should not block returning results, so don't wait for it to be done
-        # (2) don't cancel the task so that it will populate the ES cache for subsequent counts
-        maybe_count = None
-        if count_task.done():
-            try:
-                maybe_count = count_task.result().get("count")
-            except Exception as e:
-                logger.error(f"Count task failed: {e}")
-
-        return items, maybe_count, next_token
+        return items, matched, next_token
 
     """ TRANSACTION LOGIC """
 
