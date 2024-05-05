@@ -552,12 +552,12 @@ class DatabaseLogic:
             NotFoundError: If the collections specified in `collection_ids` do not exist.
         """
         search_after = None
-        page = 1  # Default page number
+        page = 1
 
         if token:
             decoded_token = urlsafe_b64decode(token.encode()).decode().split(",")
-            search_after = decoded_token[:-1]  # Extract sort values from the token
-            page = int(decoded_token[-1]) + 1  # Extract previous page number from the token and increment for next page
+            search_after = decoded_token[:-1]
+            page = int(decoded_token[-1]) + 1
 
         query = search.query.to_dict() if search.query else None
 
@@ -573,19 +573,19 @@ class DatabaseLogic:
                 size=limit,
             )
         )
-        
+
         try:
             es_response = await search_task
         except exceptions.NotFoundError:
             raise NotFoundError(f"Collections '{collection_ids}' do not exist")
-        
+
         matched = es_response["hits"]["total"]["value"]
         hits = es_response["hits"]["hits"]
         items = (hit["_source"] for hit in hits)
 
         next_token = None
-        
-        if matched > page * limit:  # Check if there are more results beyond the current page
+
+        if matched > page * limit:
             if hits and (sort_array := hits[-1].get("sort")):
                 next_token = urlsafe_b64encode(
                     ",".join([str(x) for x in sort_array] + [str(page)]).encode()
