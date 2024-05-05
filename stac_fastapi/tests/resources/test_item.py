@@ -654,8 +654,8 @@ async def test_pagination_token_idempotent(app_client, ctx, txn_client):
     # Ingest 5 items
     for _ in range(5):
         ctx.item["id"] = str(uuid.uuid4())
-    await create_item(txn_client, ctx.item)
-    ids.append(ctx.item["id"])
+        await create_item(txn_client, ctx.item)
+        ids.append(ctx.item["id"])
 
     page = await app_client.get("/search", params={"ids": ",".join(ids), "limit": 3})
     page_data = page.json()
