@@ -590,7 +590,7 @@ class DatabaseLogic:
             search_after = decoded_token[:-1]
             page = int(decoded_token[-1]) + 1
         if search_after:
-            search_body["search_after"] = search_after + [page]
+            search_body["search_after"] = search_after
 
         search_body["sort"] = sort if sort else DEFAULT_SORT
 
@@ -612,14 +612,14 @@ class DatabaseLogic:
 
         hits = es_response["hits"]["hits"]
         items = (hit["_source"] for hit in hits)
-
         matched = es_response["hits"]["total"]["value"]
 
         next_token = None
-        if hits and (sort_array := hits[-1].get("sort")):
-            next_token = urlsafe_b64encode(
-                ",".join([str(x) for x in sort_array] + [str(page)]).encode()
-            ).decode()
+        if matched > page * limit:
+            if hits and (sort_array := hits[-1].get("sort")):
+                next_token = urlsafe_b64encode(
+                    ",".join([str(x) for x in sort_array] + [str(page)]).encode()
+                ).decode()
 
         return items, matched, next_token
 
