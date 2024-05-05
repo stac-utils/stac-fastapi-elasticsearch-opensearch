@@ -571,6 +571,15 @@ async def test_get_missing_item_collection(app_client):
 
 
 @pytest.mark.asyncio
+async def test_pagination_base_links(app_client, ctx):
+    """Test that a search query always contains basic links"""
+    page = await app_client.get(f"/collections/{ctx.item['collection']}/items")
+
+    page_data = page.json()
+    assert {"self", "root"}.issubset({link["rel"] for link in page_data["links"]})
+
+
+@pytest.mark.asyncio
 async def test_pagination_item_collection(app_client, ctx, txn_client):
     """Test item collection pagination links (paging extension)"""
     ids = [ctx.item["id"]]
