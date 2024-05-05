@@ -587,18 +587,17 @@ async def test_pagination_item_collection(app_client, ctx, txn_client):
         await create_item(txn_client, item=ctx.item)
         ids.append(ctx.item["id"])
 
-    # Paginate through all 6 items with a limit of 1 (expecting 7 requests)
+    # Paginate through all 6 items with a limit of 1 (expecting 6 requests)
     page = await app_client.get(
         f"/collections/{ctx.item['collection']}/items", params={"limit": 1}
     )
 
     item_ids = []
-    idx = 0
-    for idx in range(100):
+    for idx in range(1, 100):
         page_data = page.json()
         next_link = list(filter(lambda link: link["rel"] == "next", page_data["links"]))
         if not next_link:
-            assert not page_data["features"]
+            assert idx == 6
             break
 
         assert len(page_data["features"]) == 1
