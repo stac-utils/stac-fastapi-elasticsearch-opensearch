@@ -580,6 +580,48 @@ async def test_pagination_base_links(app_client, ctx):
 
 
 @pytest.mark.asyncio
+async def test_pagination_links_behavior(app_client, ctx, txn_client):
+    """Test the links in pagination specifically look for last page behavior."""
+
+    # Ingest 5 items
+    for _ in range(5):
+        ctx.item["id"] = str(uuid.uuid4())
+        await create_item(txn_client, item=ctx.item)
+
+    # Setting a limit to ensure the creation of multiple pages
+    limit = 1
+    first_page = await app_client.get(
+        f"/collections/{ctx.item['collection']}/items?limit={limit}"
+    )
+    first_page_data = first_page.json()
+
+    # Test for 'next' link in the first page
+    next_link = next(
+        (link for link in first_page_data["links"] if link["rel"] == "next"), None
+    )
+    assert next_link, "Missing 'next' link on the first page"
+
+    # Follow to the last page using 'next' links
+    current_page_data = first_page_data
+    while "next" in {link["rel"] for link in current_page_data["links"]}:
+        next_page_url = next(
+            (
+                link["href"]
+                for link in current_page_data["links"]
+                if link["rel"] == "next"
+            ),
+            None,
+        )
+        next_page = await app_client.get(next_page_url)
+        current_page_data = next_page.json()
+
+    # Verify the last page does not have a 'next' link
+    assert "next" not in {
+        link["rel"] for link in current_page_data["links"]
+    }, "Unexpected 'next' link on the last page"
+
+
+@pytest.mark.asyncio
 async def test_pagination_item_collection(app_client, ctx, txn_client):
     """Test item collection pagination links (paging extension)"""
     ids = [ctx.item["id"]]
