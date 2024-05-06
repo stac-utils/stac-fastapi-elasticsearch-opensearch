@@ -605,6 +605,14 @@ class DatabaseLogic:
             )
         )
 
+        count_task = asyncio.create_task(
+            self.client.count(
+                index=index_param,
+                ignore_unavailable=ignore_unavailable,
+                body=search.to_dict(count=True),
+            )
+        )
+
         try:
             es_response = await search_task
         except exceptions.NotFoundError:
@@ -612,7 +620,16 @@ class DatabaseLogic:
 
         hits = es_response["hits"]["hits"]
         items = (hit["_source"] for hit in hits)
+
         matched = es_response["hits"]["total"]["value"]
+        if es_response["hits"]["total"]["relation"] != "eq":
+            if count_task.done():
+                try:
+                    matched = count_task.result().get("count")
+                except Exception as e:
+                    logger.error(f"Count task failed: {e}")
+        else:
+            count_task.cancel()
 
         next_token = None
         if matched > page * limit:
