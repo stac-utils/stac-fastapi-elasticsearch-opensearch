@@ -584,11 +584,9 @@ class DatabaseLogic:
             search_body["query"] = query
 
         search_after = None
-        page = 1
+
         if token:
-            decoded_token = urlsafe_b64decode(token.encode()).decode().split(",")
-            search_after = decoded_token[:-1]
-            page = int(decoded_token[-1]) + 1
+            search_after = urlsafe_b64decode(token.encode()).decode().split(",")
         if search_after:
             search_body["search_after"] = search_after
 
@@ -596,12 +594,16 @@ class DatabaseLogic:
 
         index_param = indices(collection_ids)
 
+        max_result_window = 10000
+
+        size_limit = min(limit + 1, max_result_window)
+
         search_task = asyncio.create_task(
             self.client.search(
                 index=index_param,
                 ignore_unavailable=ignore_unavailable,
                 body=search_body,
-                size=limit,
+                size=size_limit,
             )
         )
 
@@ -619,24 +621,21 @@ class DatabaseLogic:
             raise NotFoundError(f"Collections '{collection_ids}' do not exist")
 
         hits = es_response["hits"]["hits"]
-        items = (hit["_source"] for hit in hits)
-
-        matched = es_response["hits"]["total"]["value"]
-        if es_response["hits"]["total"]["relation"] != "eq":
-            if count_task.done():
-                try:
-                    matched = count_task.result().get("count")
-                except Exception as e:
-                    logger.error(f"Count task failed: {e}")
-        else:
-            count_task.cancel()
+        items = (hit["_source"] for hit in hits[:limit])
 
         next_token = None
-        if matched > page * limit:
-            if hits and (sort_array := hits[-1].get("sort")):
+        if len(hits) > limit and limit < max_result_window:
+            if hits and (sort_array := hits[limit - 1].get("sort")):
                 next_token = urlsafe_b64encode(
-                    ",".join([str(x) for x in sort_array] + [str(page)]).encode()
+                    ",".join([str(x) for x in sort_array]).encode()
                 ).decode()
+
+        matched = None
+        if count_task.done():
+            try:
+                matched = count_task.result().get("count")
+            except Exception as e:
+                logger.error(f"Count task failed: {e}")
 
         return items, matched, next_token
 

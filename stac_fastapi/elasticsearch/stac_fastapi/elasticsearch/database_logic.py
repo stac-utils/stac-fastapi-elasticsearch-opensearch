@@ -560,17 +560,6 @@ class DatabaseLogic:
 
         index_param = indices(collection_ids)
 
-        print(">>>>>>>>>>>>>>>>>>>>>>>>>>")
-        index_settings = await self.client.indices.get_settings(index=index_param)
-        max_result_window = int(
-            index_settings[index_param]["settings"]["index"]["max_result_window"][
-                "max_result_window"
-            ]
-        )
-        print(max_result_window)
-        print(index_settings)
-        print(">>>>>>>>>>>>>>>>>>>>>>>>>>")
-
         max_result_window = 10000
 
         size_limit = min(limit + 1, max_result_window)
