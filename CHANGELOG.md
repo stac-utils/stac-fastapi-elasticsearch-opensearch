@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added 
 
-- A test to ensure that pagination correctly returns expected links, particularly verifying the absence of a 'next' link on the last page of results [#241](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/241)
+- A test to ensure that pagination correctly returns expected links, particularly verifying the absence of a 'next' link on the last page of results [#244](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/244)
 
 ### Fixed
 
