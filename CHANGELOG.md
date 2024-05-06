@@ -9,8 +9,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
-- Fixed issue where paginated search queries would return a `next_token` on the last page [243](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/243)
-- Fixed issue where searches return an empty `links` array [241](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/241)
+- Fixed issue where paginated search queries would return a `next_token` on the last page [#243](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/243)
+- Fixed issue where searches return an empty `links` array [#241](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/241)
 
 ## [v2.4.0]
 
