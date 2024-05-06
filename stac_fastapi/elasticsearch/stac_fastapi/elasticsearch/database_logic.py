@@ -560,6 +560,21 @@ class DatabaseLogic:
 
         index_param = indices(collection_ids)
 
+        print(">>>>>>>>>>>>>>>>>>>>>>>>>>")
+        index_settings = await self.client.indices.get_settings(index=index_param)
+        max_result_window = int(
+            index_settings[index_param]["settings"]["index"]["max_result_window"][
+                "max_result_window"
+            ]
+        )
+        print(max_result_window)
+        print(index_settings)
+        print(">>>>>>>>>>>>>>>>>>>>>>>>>>")
+
+        max_result_window = 10000
+
+        size_limit = min(limit + 1, max_result_window)
+
         search_task = asyncio.create_task(
             self.client.search(
                 index=index_param,
@@ -567,7 +582,7 @@ class DatabaseLogic:
                 query=query,
                 sort=sort or DEFAULT_SORT,
                 search_after=search_after,
-                size=limit + 1,  # Fetch one more result than the limit
+                size=size_limit,
             )
         )
 
@@ -588,7 +603,7 @@ class DatabaseLogic:
         items = (hit["_source"] for hit in hits[:limit])
 
         next_token = None
-        if len(hits) > limit:
+        if len(hits) > limit and limit < max_result_window:
             if hits and (sort_array := hits[limit - 1].get("sort")):
                 next_token = urlsafe_b64encode(
                     ",".join([str(x) for x in sort_array]).encode()
