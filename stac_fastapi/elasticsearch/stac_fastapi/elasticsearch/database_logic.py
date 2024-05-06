@@ -552,12 +552,9 @@ class DatabaseLogic:
             NotFoundError: If the collections specified in `collection_ids` do not exist.
         """
         search_after = None
-        page = 1
 
         if token:
-            decoded_token = urlsafe_b64decode(token.encode()).decode().split(",")
-            search_after = decoded_token[:-1]
-            page = int(decoded_token[-1]) + 1
+            search_after = urlsafe_b64decode(token.encode()).decode().split(",")
 
         query = search.query.to_dict() if search.query else None
 
@@ -570,7 +567,7 @@ class DatabaseLogic:
                 query=query,
                 sort=sort or DEFAULT_SORT,
                 search_after=search_after,
-                size=limit,
+                size=limit + 1,  # Fetch one more result than the limit
             )
         )
 
@@ -588,24 +585,21 @@ class DatabaseLogic:
             raise NotFoundError(f"Collections '{collection_ids}' do not exist")
 
         hits = es_response["hits"]["hits"]
-        items = (hit["_source"] for hit in hits)
-
-        matched = es_response["hits"]["total"]["value"]
-        if es_response["hits"]["total"]["relation"] != "eq":
-            if count_task.done():
-                try:
-                    matched = count_task.result().get("count")
-                except Exception as e:
-                    logger.error(f"Count task failed: {e}")
-        else:
-            count_task.cancel()
+        items = (hit["_source"] for hit in hits[:limit])
 
         next_token = None
-        if matched > page * limit:
-            if hits and (sort_array := hits[-1].get("sort")):
+        if len(hits) > limit:
+            if hits and (sort_array := hits[limit - 1].get("sort")):
                 next_token = urlsafe_b64encode(
-                    ",".join([str(x) for x in sort_array] + [str(page)]).encode()
+                    ",".join([str(x) for x in sort_array]).encode()
                 ).decode()
+
+        matched = None
+        if count_task.done():
+            try:
+                matched = count_task.result().get("count")
+            except Exception as e:
+                logger.error(f"Count task failed: {e}")
 
         return items, matched, next_token
 
