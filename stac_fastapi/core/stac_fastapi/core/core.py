@@ -3,6 +3,7 @@ import logging
 import re
 from datetime import datetime as datetime_type
 from datetime import timezone
+from enum import Enum
 from typing import Any, Dict, List, Optional, Set, Type, Union
 from urllib.parse import unquote_plus, urljoin
 
@@ -571,14 +572,14 @@ class CoreClient(AsyncBaseCoreClient):
             )
 
         if search_request.query:
-            print("search request query: ", search_request.query)
             for field_name, expr in search_request.query.items():
                 field = "properties__" + field_name
                 for op, value in expr.items():
+                    # Convert enum to string
+                    operator = op.value if isinstance(op, Enum) else op
                     search = self.database.apply_stacql_filter(
-                        search=search, op=op, field=field, value=value
+                        search=search, op=operator, field=field, value=value
                     )
-                    print("Constructed Elasticsearch query: ", search.to_dict())
 
         # only cql2_json is supported here
         if hasattr(search_request, "filter"):
