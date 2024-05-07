@@ -102,7 +102,7 @@ jobs:
       #     pipenv run pytest -svvv
       #   env:
       #     ENVIRONMENT: testing
-      #     ES_PORT: 9200
+      #     ES_PORT: 9400
       #     ES_HOST: 172.17.0.1
       #     ES_USE_SSL: false
       #     ES_VERIFY_CERTS: false
@@ -113,7 +113,7 @@ jobs:
           pipenv run pytest -svvv
         env:
           ENVIRONMENT: testing
-          ES_PORT: 9400
+          ES_PORT: 9200
           ES_HOST: 172.17.0.1
           ES_USE_SSL: false
           ES_VERIFY_CERTS: false
