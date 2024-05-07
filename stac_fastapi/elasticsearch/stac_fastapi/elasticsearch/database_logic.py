@@ -3,6 +3,7 @@ import asyncio
 import logging
 import os
 from base64 import urlsafe_b64decode, urlsafe_b64encode
+from enum import Enum
 from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple, Type, Union
 
 import attr
@@ -498,11 +499,18 @@ class DatabaseLogic:
         Returns:
             search (Search): The search object with the specified filter applied.
         """
+        print("Initial op type: ", type(op))
+        if isinstance(op, Enum):
+            op = op.value  # Ensuring it's a string
+        print("Filtered op type: ", type(op), "op:", op)
+
         if op != "eq":
-            key_filter = {field: {f"{op}": value}}
+            key_filter = {field: {op: value}}
             search = search.filter(Q("range", **key_filter))
         else:
             search = search.filter("term", **{field: value})
+
+        print("Constructed Elasticsearch query: ", search.to_dict())
 
         return search
 
@@ -526,8 +534,10 @@ class DatabaseLogic:
             Search: The modified Search object with the filter applied if a filter is provided,
                     otherwise the original Search object.
         """
+        print("FILTER: ", _filter)
         if _filter is not None:
             es_query = filter.to_es(_filter)
+            print("ES QUERY: ", es_query)
             search = search.query(es_query)
 
         return search

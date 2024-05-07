@@ -571,12 +571,14 @@ class CoreClient(AsyncBaseCoreClient):
             )
 
         if search_request.query:
+            print("search request query: ", search_request.query)
             for field_name, expr in search_request.query.items():
                 field = "properties__" + field_name
                 for op, value in expr.items():
                     search = self.database.apply_stacql_filter(
                         search=search, op=op, field=field, value=value
                     )
+                    print("Constructed Elasticsearch query: ", search.to_dict())
 
         # only cql2_json is supported here
         if hasattr(search_request, "filter"):
@@ -608,7 +610,9 @@ class CoreClient(AsyncBaseCoreClient):
             self.item_serializer.db_to_stac(item, base_url=base_url) for item in items
         ]
 
+        print("HI")
         if self.extension_is_enabled("FieldsExtension"):
+            print("FIELDS! ")
             if search_request.query is not None:
                 query_include: Set[str] = set(
                     [
@@ -622,6 +626,8 @@ class CoreClient(AsyncBaseCoreClient):
                     search_request.fields.include.union(query_include)
 
             filter_kwargs = search_request.fields.filter_fields
+
+            print("filter_kwargs: ", filter_kwargs)
 
             items = [
                 orjson.loads(
