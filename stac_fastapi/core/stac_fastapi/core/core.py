@@ -1012,23 +1012,6 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
             )
         )
 
-        print(base_url)
-
-        links = [
-            {"rel": Relations.root.value, "type": MimeTypes.json, "href": base_url},
-            {"rel": Relations.parent.value, "type": MimeTypes.json, "href": base_url},
-            {
-                "rel": Relations.self.value,
-                "type": MimeTypes.json,
-                "href": urljoin(base_url, "collections"),
-            },
-        ]
-
-        # if next_token:
-        #     print("calculating next link")
-        #     next_link = PagingLinks(next=next_token, request=request).link_next()
-        #     links.append(next_link)
-
         links = []
         if next_token:
             links = await PagingLinks(request=request, next=next_token).get_links()
