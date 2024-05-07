@@ -69,7 +69,6 @@ class BaseLinks:
         for name in dir(self):
             if name.startswith("link_") and callable(getattr(self, name)):
                 link = getattr(self, name)()
-                print(f"getting link for {name}")
                 if link is not None:
                     links.append(link)
         return links
