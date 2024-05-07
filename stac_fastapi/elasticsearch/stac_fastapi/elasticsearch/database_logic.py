@@ -563,8 +563,6 @@ class DatabaseLogic:
 
         max_result_window = stac_fastapi.types.search.Limit.le
 
-        print(max_result_window)
-
         size_limit = min(limit + 1, max_result_window)
 
         search_task = asyncio.create_task(
