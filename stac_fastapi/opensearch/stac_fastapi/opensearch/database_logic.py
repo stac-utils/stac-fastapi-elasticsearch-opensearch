@@ -535,9 +535,28 @@ class DatabaseLogic:
 
     @staticmethod
     def apply_cql2_filter(search: Search, _filter: Optional[Dict[str, Any]]):
-        """Database logic to perform query for search endpoint."""
+        """
+        Apply a CQL2 filter to an Opensearch Search object.
+
+        This method transforms a dictionary representing a CQL2 filter into an Opensearch query
+        and applies it to the provided Search object. If the filter is None, the original Search
+        object is returned unmodified.
+
+        Args:
+            search (Search): The Opensearch Search object to which the filter will be applied.
+            _filter (Optional[Dict[str, Any]]): The filter in dictionary form that needs to be applied
+                                                to the search. The dictionary should follow the structure
+                                                required by the `to_es` function which converts it
+                                                to an Opensearch query.
+
+        Returns:
+            Search: The modified Search object with the filter applied if a filter is provided,
+                    otherwise the original Search object.
+        """
         if _filter is not None:
-            search = search.filter(filter.Clause.parse_obj(_filter).to_es())
+            es_query = filter.to_es(_filter)
+            search = search.filter(es_query)
+
         return search
 
     @staticmethod
