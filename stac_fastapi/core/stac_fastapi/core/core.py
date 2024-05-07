@@ -1024,10 +1024,14 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
             },
         ]
 
+        # if next_token:
+        #     print("calculating next link")
+        #     next_link = PagingLinks(next=next_token, request=request).link_next()
+        #     links.append(next_link)
+
+        links = []
         if next_token:
-            print("calculating next link")
-            next_link = PagingLinks(next=next_token, request=request).link_next()
-            links.append(next_link)
+            links = await PagingLinks(request=request, next=next_token).get_links()
 
         return Collections(collections=collections, links=links)
 
