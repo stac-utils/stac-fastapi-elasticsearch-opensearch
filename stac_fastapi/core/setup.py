@@ -18,6 +18,7 @@ install_requires = [
     "overrides",
     "geojson-pydantic",
     "pygeofilter==0.2.1",
+    "typing_extensions==4.4.0",
 ]
 
 setup(

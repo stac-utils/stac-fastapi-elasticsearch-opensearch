@@ -1,0 +1,94 @@
+version: '3.9'
+
+services:
+  app-elasticsearch:
+    container_name: stac-fastapi-es
+    image: stac-utils/stac-fastapi-es
+    restart: always
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.dev.es
+    environment:
+      - STAC_FASTAPI_TITLE=stac-fastapi-elasticsearch
+      - STAC_FASTAPI_DESCRIPTION=A STAC FastAPI with an Elasticsearch backend
+      - STAC_FASTAPI_VERSION=2.1
+      - APP_HOST=0.0.0.0
+      - APP_PORT=8080
+      - RELOAD=true
+      - ENVIRONMENT=local
+      - WEB_CONCURRENCY=10
+      - ES_HOST=elasticsearch
+      - ES_PORT=9200
+      - ES_USE_SSL=false
+      - ES_VERIFY_CERTS=false
+      - BACKEND=elasticsearch
+      - BASIC_AUTH={"users":[{"username":"admin","password":"admin","permissions":"*"},{"username":"reader","password":"reader","permissions":[{"path":"/","method":["GET"]},{"path":"/conformance","method":["GET"]},{"path":"/collections/{collection_id}/items/{item_id}","method":["GET"]},{"path":"/search","method":["GET","POST"]},{"path":"/collections","method":["GET"]},{"path":"/collections/{collection_id}","method":["GET"]},{"path":"/collections/{collection_id}/items","method":["GET"]},{"path":"/queryables","method":["GET"]},{"path":"/queryables/collections/{collection_id}/queryables","method":["GET"]},{"path":"/_mgmt/ping","method":["GET"]}]}]}
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./stac_fastapi:/app/stac_fastapi
+      - ./scripts:/app/scripts
+      - ./esdata:/usr/share/elasticsearch/data
+    depends_on:
+      - elasticsearch
+    command:
+      bash -c "./scripts/wait-for-it-es.sh es-container:9200 && python -m stac_fastapi.elasticsearch.app"
+
+  app-opensearch:
+    container_name: stac-fastapi-os
+    image: stac-utils/stac-fastapi-os
+    restart: always
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.dev.os
+    environment:
+      - STAC_FASTAPI_TITLE=stac-fastapi-opensearch
+      - STAC_FASTAPI_DESCRIPTION=A STAC FastAPI with an Opensearch backend
+      - STAC_FASTAPI_VERSION=2.1
+      - APP_HOST=0.0.0.0
+      - APP_PORT=8082
+      - RELOAD=true
+      - ENVIRONMENT=local
+      - WEB_CONCURRENCY=10
+      - ES_HOST=opensearch
+      - ES_PORT=9202
+      - ES_USE_SSL=false
+      - ES_VERIFY_CERTS=false
+      - BACKEND=opensearch
+      - BASIC_AUTH={"users":[{"username":"admin","password":"admin","permissions":"*"},{"username":"reader","password":"reader","permissions":[{"path":"/","method":["GET"]},{"path":"/conformance","method":["GET"]},{"path":"/collections/{collection_id}/items/{item_id}","method":["GET"]},{"path":"/search","method":["GET","POST"]},{"path":"/collections","method":["GET"]},{"path":"/collections/{collection_id}","method":["GET"]},{"path":"/collections/{collection_id}/items","method":["GET"]},{"path":"/queryables","method":["GET"]},{"path":"/queryables/collections/{collection_id}/queryables","method":["GET"]},{"path":"/_mgmt/ping","method":["GET"]}]}]}
+    ports:
+      - "8082:8082"
+    volumes:
+      - ./stac_fastapi:/app/stac_fastapi
+      - ./scripts:/app/scripts
+      - ./osdata:/usr/share/opensearch/data
+    depends_on:
+      - opensearch
+    command:
+      bash -c "./scripts/wait-for-it-es.sh os-container:9202 && python -m stac_fastapi.opensearch.app"
+
+  elasticsearch:
+    container_name: es-container
+    image: docker.elastic.co/elasticsearch/elasticsearch:${ELASTICSEARCH_VERSION:-8.11.0}
+    hostname: elasticsearch
+    environment:
+      ES_JAVA_OPTS: -Xms512m -Xmx1g
+    volumes:
+      - ./elasticsearch/config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
+      - ./elasticsearch/snapshots:/usr/share/elasticsearch/snapshots
+    ports:
+      - "9200:9200"
+
+  opensearch:
+    container_name: os-container
+    image: opensearchproject/opensearch:${OPENSEARCH_VERSION:-2.11.1}
+    hostname: opensearch
+    environment:
+      - discovery.type=single-node
+      - plugins.security.disabled=true
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+    volumes:
+      - ./opensearch/config/opensearch.yml:/usr/share/opensearch/config/opensearch.yml
+      - ./opensearch/snapshots:/usr/share/opensearch/snapshots
+    ports:
+      - "9202:9202"
