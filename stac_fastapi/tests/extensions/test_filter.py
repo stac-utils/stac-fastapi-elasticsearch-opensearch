@@ -18,9 +18,7 @@ async def test_search_filters_post(app_client, ctx):
             filters.append(json.loads(f.read()))
 
     for _filter in filters:
-        print("filter: ", _filter)
         resp = await app_client.post("/search", json={"query": {}, "filter": _filter})
-        print("resp: ", resp)
         assert resp.status_code == 200
 
 

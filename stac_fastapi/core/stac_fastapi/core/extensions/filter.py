@@ -1,32 +1,82 @@
-"""
-Implements Filter Extension.
+"""Filter extension logic for es conversion."""
 
-Basic CQL2 (AND, OR, NOT), comparison operators (=, <>, <, <=, >, >=), and IS NULL.
-The comparison operators are allowed against string, numeric, boolean, date, and datetime types.
+# """
+# Implements Filter Extension.
 
-Advanced comparison operators (http://www.opengis.net/spec/cql2/1.0/req/advanced-comparison-operators)
-defines the LIKE, IN, and BETWEEN operators.
+# Basic CQL2 (AND, OR, NOT), comparison operators (=, <>, <, <=, >, >=), and IS NULL.
+# The comparison operators are allowed against string, numeric, boolean, date, and datetime types.
 
-Basic Spatial Operators (http://www.opengis.net/spec/cql2/1.0/conf/basic-spatial-operators)
-defines the intersects operator (S_INTERSECTS).
-"""
-from __future__ import annotations
+# Advanced comparison operators (http://www.opengis.net/spec/cql2/1.0/req/advanced-comparison-operators)
+# defines the LIKE, IN, and BETWEEN operators.
 
-import datetime
+# Basic Spatial Operators (http://www.opengis.net/spec/cql2/1.0/conf/basic-spatial-operators)
+# defines the intersects operator (S_INTERSECTS).
+# """
+
 import re
 from enum import Enum
-from typing import List, Union
+from typing import Any, Dict
 
-from geojson_pydantic.geometries import (
-    GeometryCollection,
-    LineString,
-    MultiLineString,
-    MultiPoint,
-    MultiPolygon,
-    Point,
-    Polygon,
-)
-from pydantic import BaseModel
+
+def cql2_like_to_es(string: str) -> str:
+    """
+    Convert CQL2 wildcard characters to Elasticsearch wildcard characters. Specifically, it converts '_' to '?' and '%' to '*', handling escape characters properly.
+
+    Args:
+        string (str): The string containing CQL2 wildcard characters.
+
+    Returns:
+        str: The converted string with Elasticsearch compatible wildcards.
+    """
+    # Translate '%' and '_' only if they are not preceded by a backslash '\'
+    percent_pattern = r"(?<!\\)%"
+    underscore_pattern = r"(?<!\\)_"
+    # Remove the escape character before '%' or '_'
+    escape_pattern = r"\\(?=[_%])"
+
+    # Replace '%' with '*' for broad wildcard matching
+    string = re.sub(percent_pattern, "*", string)
+    # Replace '_' with '?' for single character wildcard matching
+    string = re.sub(underscore_pattern, "?", string)
+    # Remove the escape character used in the CQL2 format
+    string = re.sub(escape_pattern, "", string)
+
+    return string
+
+
+class LogicalOp(str, Enum):
+    """Enumeration for logical operators used in constructing Elasticsearch queries."""
+
+    AND = "and"
+    OR = "or"
+    NOT = "not"
+
+
+class ComparisonOp(str, Enum):
+    """Enumeration for comparison operators used in filtering queries according to CQL2 standards."""
+
+    EQ = "="
+    NEQ = "<>"
+    LT = "<"
+    LTE = "<="
+    GT = ">"
+    GTE = ">="
+    IS_NULL = "isNull"
+
+
+class AdvancedComparisonOp(str, Enum):
+    """Enumeration for advanced comparison operators like 'like', 'between', and 'in'."""
+
+    LIKE = "like"
+    BETWEEN = "between"
+    IN = "in"
+
+
+class SpatialIntersectsOp(str, Enum):
+    """Enumeration for spatial intersection operator as per CQL2 standards."""
+
+    S_INTERSECTS = "s_intersects"
+
 
 queryables_mapping = {
     "id": "id",
@@ -41,227 +91,90 @@ queryables_mapping = {
 }
 
 
-class LogicalOp(str, Enum):
-    """Logical operator.
-
-    CQL2 logical operators and, or, and not.
+def to_es_field(field: str) -> str:
     """
+    Map a given field to its corresponding Elasticsearch field according to a predefined mapping.
 
-    _and = "and"
-    _or = "or"
-    _not = "not"
+    Args:
+        field (str): The field name from a user query or filter.
 
-
-class ComparisonOp(str, Enum):
-    """Comparison operator.
-
-    CQL2 comparison operators =, <>, <, <=, >, >=, and isNull.
+    Returns:
+        str: The mapped field name suitable for Elasticsearch queries.
     """
-
-    eq = "="
-    neq = "<>"
-    lt = "<"
-    lte = "<="
-    gt = ">"
-    gte = ">="
-    is_null = "isNull"
-
-    def to_es(self):
-        """Generate an Elasticsearch term operator."""
-        if self == ComparisonOp.lt:
-            return "lt"
-        elif self == ComparisonOp.lte:
-            return "lte"
-        elif self == ComparisonOp.gt:
-            return "gt"
-        elif self == ComparisonOp.gte:
-            return "gte"
-        else:
-            raise RuntimeError(
-                f"Comparison op {self.value} does not have an Elasticsearch term operator equivalent."
-            )
+    return queryables_mapping.get(field, field)
 
 
-class AdvancedComparisonOp(str, Enum):
-    """Advanced Comparison operator.
-
-    CQL2 advanced comparison operators like (~), between, and in.
+def to_es(query: Dict[str, Any]) -> Dict[str, Any]:
     """
+    Transform a simplified CQL2 query structure to an Elasticsearch compatible query DSL.
 
-    like = "like"
-    between = "between"
-    _in = "in"
+    Args:
+        query (Dict[str, Any]): The query dictionary containing 'op' and 'args'.
 
+    Returns:
+        Dict[str, Any]: The corresponding Elasticsearch query in the form of a dictionary.
+    """
+    if query["op"] in [LogicalOp.AND, LogicalOp.OR, LogicalOp.NOT]:
+        bool_type = {
+            LogicalOp.AND: "must",
+            LogicalOp.OR: "should",
+            LogicalOp.NOT: "must_not",
+        }[query["op"]]
+        return {"bool": {bool_type: [to_es(sub_query) for sub_query in query["args"]]}}
 
-class SpatialIntersectsOp(str, Enum):
-    """Spatial intersections operator s_intersects."""
-
-    s_intersects = "s_intersects"
-
-
-class PropertyReference(BaseModel):
-    """Property reference."""
-
-    property: str
-
-    def to_es(self):
-        """Produce a term value for this, possibly mapped by a queryable."""
-        return queryables_mapping.get(self.property, self.property)
-
-
-class Timestamp(BaseModel):
-    """Representation of an RFC 3339 datetime value object."""
-
-    timestamp: datetime.datetime
-
-    def to_es(self):
-        """Produce an RFC 3339 datetime string."""
-        return self.timestamp.isoformat()
-
-
-class Date(BaseModel):
-    """Representation of an ISO 8601 date value object."""
-
-    date: datetime.date
-
-    def to_es(self):
-        """Produce an ISO 8601 date string."""
-        return self.date.isoformat()
-
-
-class FloatInt(float):
-    """Representation of Float/Int."""
-
-    @classmethod
-    def __get_validators__(cls):
-        """Return validator to use."""
-        yield cls.validate
-
-    @classmethod
-    def validate(cls, v):
-        """Validate input value."""
-        if isinstance(v, float):
-            return v
-        else:
-            return int(v)
-
-
-Arg = Union[
-    "Clause",
-    PropertyReference,
-    Timestamp,
-    Date,
-    Point,
-    MultiPoint,
-    LineString,
-    MultiLineString,
-    Polygon,
-    MultiPolygon,
-    GeometryCollection,
-    FloatInt,
-    str,
-    bool,
-]
-
-
-class Clause(BaseModel):
-    """Filter extension clause."""
-
-    op: Union[LogicalOp, ComparisonOp, AdvancedComparisonOp, SpatialIntersectsOp]
-    args: List[Union[Arg, List[Arg]]]
-
-    def to_es(self):
-        """Generate an Elasticsearch expression for this Clause."""
-        if self.op == LogicalOp._and:
-            return {"bool": {"filter": [to_es(arg) for arg in self.args]}}
-        elif self.op == LogicalOp._or:
-            return {"bool": {"should": [to_es(arg) for arg in self.args]}}
-        elif self.op == LogicalOp._not:
-            return {"bool": {"must_not": [to_es(arg) for arg in self.args]}}
-        elif self.op == ComparisonOp.eq:
-            return {"term": {to_es(self.args[0]): to_es(self.args[1])}}
-        elif self.op == ComparisonOp.neq:
-            return {
-                "bool": {
-                    "must_not": [{"term": {to_es(self.args[0]): to_es(self.args[1])}}]
-                }
-            }
-        elif self.op == AdvancedComparisonOp.like:
-            return {
-                "wildcard": {
-                    to_es(self.args[0]): {
-                        "value": cql2_like_to_es(str(to_es(self.args[1]))),
-                        "case_insensitive": "false",
-                    }
-                }
-            }
-        elif self.op == AdvancedComparisonOp.between:
-            return {
-                "range": {
-                    to_es(self.args[0]): {
-                        "gte": to_es(self.args[1]),
-                        "lte": to_es(self.args[2]),
-                    }
-                }
-            }
-        elif self.op == AdvancedComparisonOp._in:
-            if not isinstance(self.args[1], List):
-                raise RuntimeError(f"Arg {self.args[1]} is not a list")
-            return {
-                "terms": {to_es(self.args[0]): [to_es(arg) for arg in self.args[1]]}
-            }
-        elif (
-            self.op == ComparisonOp.lt
-            or self.op == ComparisonOp.lte
-            or self.op == ComparisonOp.gt
-            or self.op == ComparisonOp.gte
-        ):
-            return {
-                "range": {to_es(self.args[0]): {to_es(self.op): to_es(self.args[1])}}
-            }
-        elif self.op == ComparisonOp.is_null:
-            return {"bool": {"must_not": {"exists": {"field": to_es(self.args[0])}}}}
-        elif self.op == SpatialIntersectsOp.s_intersects:
-            return {
-                "geo_shape": {
-                    to_es(self.args[0]): {
-                        "shape": to_es(self.args[1]),
-                        "relation": "intersects",
-                    }
-                }
-            }
-
-
-def to_es(arg: Arg):
-    """Generate an Elasticsearch expression for this Arg."""
-    if (to_es_method := getattr(arg, "to_es", None)) and callable(to_es_method):
-        return to_es_method()
-    elif gi := getattr(arg, "__geo_interface__", None):
-        return gi
-    elif isinstance(arg, GeometryCollection):
-        return arg.dict()
-    elif (
-        isinstance(arg, int)
-        or isinstance(arg, float)
-        or isinstance(arg, str)
-        or isinstance(arg, bool)
-    ):
-        return arg
-    else:
-        raise RuntimeError(f"unknown arg {repr(arg)}")
-
-
-def cql2_like_to_es(string):
-    """Convert wildcard characters in CQL2 ('_' and '%') to Elasticsearch wildcard characters ('?' and '*', respectively). Handle escape characters and pass through Elasticsearch wildcards."""
-    percent_pattern = r"(?<!\\)%"
-    underscore_pattern = r"(?<!\\)_"
-    escape_pattern = r"\\(?=[_%])"
-
-    for pattern in [
-        (percent_pattern, "*"),
-        (underscore_pattern, "?"),
-        (escape_pattern, ""),
+    elif query["op"] in [
+        ComparisonOp.EQ,
+        ComparisonOp.NEQ,
+        ComparisonOp.LT,
+        ComparisonOp.LTE,
+        ComparisonOp.GT,
+        ComparisonOp.GTE,
     ]:
-        string = re.sub(pattern[0], pattern[1], string)
+        field = to_es_field(query["args"][0]["property"])
+        value = query["args"][1]
+        if isinstance(value, dict) and "timestamp" in value:
+            # Handle timestamp fields specifically
+            value = value["timestamp"]
+        if query["op"] == ComparisonOp.IS_NULL:
+            return {"bool": {"must_not": {"exists": {"field": field}}}}
+        else:
+            if query["op"] == ComparisonOp.EQ:
+                return {"term": {field: value}}
+            elif query["op"] == ComparisonOp.NEQ:
+                return {"bool": {"must_not": [{"term": {field: value}}]}}
+            else:
+                range_op = {
+                    ComparisonOp.LT: "lt",
+                    ComparisonOp.LTE: "lte",
+                    ComparisonOp.GT: "gt",
+                    ComparisonOp.GTE: "gte",
+                }[query["op"]]
+                return {"range": {field: {range_op: value}}}
 
-    return string
+    elif query["op"] == AdvancedComparisonOp.BETWEEN:
+        field = to_es_field(query["args"][0]["property"])
+        gte, lte = query["args"][1], query["args"][2]
+        if isinstance(gte, dict) and "timestamp" in gte:
+            gte = gte["timestamp"]
+        if isinstance(lte, dict) and "timestamp" in lte:
+            lte = lte["timestamp"]
+        return {"range": {field: {"gte": gte, "lte": lte}}}
+
+    elif query["op"] == AdvancedComparisonOp.IN:
+        field = to_es_field(query["args"][0]["property"])
+        values = query["args"][1]
+        if not isinstance(values, list):
+            raise ValueError(f"Arg {values} is not a list")
+        return {"terms": {field: values}}
+
+    elif query["op"] == AdvancedComparisonOp.LIKE:
+        field = to_es_field(query["args"][0]["property"])
+        pattern = cql2_like_to_es(query["args"][1])
+        return {"wildcard": {field: {"value": pattern, "case_insensitive": True}}}
+
+    elif query["op"] == SpatialIntersectsOp.S_INTERSECTS:
+        field = to_es_field(query["args"][0]["property"])
+        geometry = query["args"][1]
+        return {"geo_shape": {field: {"shape": geometry, "relation": "intersects"}}}
+
+    return {}
