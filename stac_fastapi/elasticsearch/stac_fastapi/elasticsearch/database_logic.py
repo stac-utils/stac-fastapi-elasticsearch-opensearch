@@ -526,10 +526,8 @@ class DatabaseLogic:
             Search: The modified Search object with the filter applied if a filter is provided,
                     otherwise the original Search object.
         """
-        print("FILTER: ", _filter)
         if _filter is not None:
             es_query = filter.to_es(_filter)
-            print("ES QUERY: ", es_query)
             search = search.query(es_query)
 
         return search

@@ -611,9 +611,7 @@ class CoreClient(AsyncBaseCoreClient):
             self.item_serializer.db_to_stac(item, base_url=base_url) for item in items
         ]
 
-        print("HI")
         if self.extension_is_enabled("FieldsExtension"):
-            print("FIELDS! ")
             if search_request.query is not None:
                 query_include: Set[str] = set(
                     [
@@ -627,8 +625,6 @@ class CoreClient(AsyncBaseCoreClient):
                     search_request.fields.include.union(query_include)
 
             filter_kwargs = search_request.fields.filter_fields
-
-            print("filter_kwargs: ", filter_kwargs)
 
             items = [
                 orjson.loads(

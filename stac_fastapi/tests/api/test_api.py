@@ -128,7 +128,6 @@ async def test_app_fields_extension(app_client, ctx, txn_client):
 @pytest.mark.asyncio
 async def test_app_fields_extension_query(app_client, ctx, txn_client):
     item = ctx.item
-    print("IN TEST")
     resp = await app_client.post(
         "/search",
         json={
