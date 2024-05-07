@@ -32,21 +32,21 @@ jobs:
         ports:
           - 9200:9200
 
-      # elasticsearch_7_svc:
-      #   image: docker.elastic.co/elasticsearch/elasticsearch:7.17.1
-      #   env:
-      #     cluster.name: stac-cluster
-      #     node.name: es01
-      #     network.host: 0.0.0.0
-      #     transport.host: 0.0.0.0
-      #     discovery.type: single-node
-      #     http.port: 9400
-      #     xpack.license.self_generated.type: basic
-      #     xpack.security.enabled: false
-      #     xpack.security.transport.ssl.enabled: false
-      #     ES_JAVA_OPTS: -Xms512m -Xmx1g
-      #   ports:
-      #     - 9400:9400
+      elasticsearch_7_svc:
+        image: docker.elastic.co/elasticsearch/elasticsearch:7.17.1
+        env:
+          cluster.name: stac-cluster
+          node.name: es01
+          network.host: 0.0.0.0
+          transport.host: 0.0.0.0
+          discovery.type: single-node
+          http.port: 9400
+          xpack.license.self_generated.type: basic
+          xpack.security.enabled: false
+          xpack.security.transport.ssl.enabled: false
+          ES_JAVA_OPTS: -Xms512m -Xmx1g
+        ports:
+          - 9400:9400
 
       opensearch_2_11:
         image: opensearchproject/opensearch:2.11.1
@@ -85,6 +85,10 @@ jobs:
         run: |
           python -m pip install --upgrade pipenv wheel
 
+      - name: Install core library stac-fastapi
+        run: |
+          pip install ./stac_fastapi/core
+
       - name: Install elasticsearch stac-fastapi
         run: |
           pip install ./stac_fastapi/elasticsearch[dev,server]
@@ -93,20 +97,16 @@ jobs:
         run: |
           pip install ./stac_fastapi/opensearch[dev,server]
 
-      - name: Install core library stac-fastapi
+      - name: Run test suite against Elasticsearch 7.x
         run: |
-          pip install ./stac_fastapi/core
-
-      # - name: Run test suite against Elasticsearch 7.x
-      #   run: |
-      #     pipenv run pytest -svvv
-      #   env:
-      #     ENVIRONMENT: testing
-      #     ES_PORT: 9400
-      #     ES_HOST: 172.17.0.1
-      #     ES_USE_SSL: false
-      #     ES_VERIFY_CERTS: false
-      #     BACKEND: elasticsearch
+          pipenv run pytest -svvv
+        env:
+          ENVIRONMENT: testing
+          ES_PORT: 9400
+          ES_HOST: 172.17.0.1
+          ES_USE_SSL: false
+          ES_VERIFY_CERTS: false
+          BACKEND: elasticsearch
 
       - name: Run test suite against Elasticsearch 8.x
         run: |
