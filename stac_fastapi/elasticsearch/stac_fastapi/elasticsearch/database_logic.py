@@ -8,6 +8,7 @@ from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple, Type, U
 import attr
 from elasticsearch_dsl import Q, Search
 
+import stac_fastapi.types.search
 from elasticsearch import exceptions, helpers  # type: ignore
 from stac_fastapi.core.extensions import filter
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
@@ -560,7 +561,9 @@ class DatabaseLogic:
 
         index_param = indices(collection_ids)
 
-        max_result_window = 10000
+        max_result_window = stac_fastapi.types.search.Limit.le
+
+        print(max_result_window)
 
         size_limit = min(limit + 1, max_result_window)
 

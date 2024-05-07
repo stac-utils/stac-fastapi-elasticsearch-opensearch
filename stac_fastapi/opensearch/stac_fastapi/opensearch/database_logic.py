@@ -11,6 +11,7 @@ from opensearchpy.exceptions import TransportError
 from opensearchpy.helpers.query import Q
 from opensearchpy.helpers.search import Search
 
+import stac_fastapi.types.search
 from stac_fastapi.core import serializers
 from stac_fastapi.core.extensions import filter
 from stac_fastapi.core.utilities import bbox2polygon
@@ -594,7 +595,7 @@ class DatabaseLogic:
 
         index_param = indices(collection_ids)
 
-        max_result_window = 10000
+        max_result_window = stac_fastapi.types.search.Limit.le
 
         size_limit = min(limit + 1, max_result_window)
 
