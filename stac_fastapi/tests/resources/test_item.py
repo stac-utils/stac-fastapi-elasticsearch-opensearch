@@ -68,7 +68,6 @@ async def test_create_item_conflict(app_client, ctx, load_test_data):
     resp = await app_client.post(
         f"/collections/{test_item['collection']}/items", json=test_item
     )
-    print("resp: ", resp.json())
     assert resp.status_code == 409
 
 
@@ -470,19 +469,13 @@ async def test_item_search_temporal_window_get(app_client, ctx, load_test_data):
     item_date_before = item_date - timedelta(hours=1)
     item_date_after = item_date + timedelta(hours=1)
 
-    print("item date: ", item_date)
-    print(
-        "datetime: ",
-        f"{datetime_to_str(item_date_before)}/{datetime_to_str(item_date_after)}",
-    )
     params = {
-        # "collections": test_item["collection"],
-        # "bbox": ",".join([str(coord) for coord in test_item["bbox"]]),
+        "collections": test_item["collection"],
+        "bbox": ",".join([str(coord) for coord in test_item["bbox"]]),
         "datetime": f"{datetime_to_str(item_date_before)}/{datetime_to_str(item_date_after)}",
     }
     resp = await app_client.get("/search", params=params)
     resp_json = resp.json()
-    print(resp_json)
     assert resp_json["features"][0]["id"] == test_item["id"]
 
 

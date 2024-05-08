@@ -35,7 +35,6 @@ async def test_search_filter_extension_eq_get(app_client, ctx):
 @pytest.mark.asyncio
 async def test_search_filter_extension_eq_post(app_client, ctx):
     params = {
-        "query": {},
         "filter": {"op": "=", "args": [{"property": "id"}, ctx.item["id"]]},
     }
     resp = await app_client.post("/search", json=params)
