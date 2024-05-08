@@ -498,12 +498,9 @@ async def test_item_search_temporal_window_timezone_get(
         "datetime": f"{datetime_to_str(item_date_before)}/{datetime_to_str(item_date_after)}",
     }
     resp = await app_client.get("/search", params=params)
-    resp_json = resp.json()
-    next_link = next(link for link in resp_json["links"] if link["rel"] == "next")[
-        "href"
-    ]
-    resp = await app_client.get(next_link)
     assert resp.status_code == 200
+    resp_json = resp.json()
+    assert resp_json["features"][0]["id"] == test_item["id"]
 
 
 @pytest.mark.asyncio
@@ -638,18 +635,17 @@ async def test_pagination_item_collection(app_client, ctx, txn_client):
         await create_item(txn_client, item=ctx.item)
         ids.append(ctx.item["id"])
 
-    # Paginate through all 6 items with a limit of 1 (expecting 7 requests)
+    # Paginate through all 6 items with a limit of 1 (expecting 6 requests)
     page = await app_client.get(
         f"/collections/{ctx.item['collection']}/items", params={"limit": 1}
     )
 
     item_ids = []
-    idx = 0
-    for idx in range(100):
+    for idx in range(1, 100):
         page_data = page.json()
         next_link = list(filter(lambda link: link["rel"] == "next", page_data["links"]))
         if not next_link:
-            assert not page_data["features"]
+            assert idx == 6
             break
 
         assert len(page_data["features"]) == 1
@@ -678,10 +674,8 @@ async def test_pagination_post(app_client, ctx, txn_client):
     # Paginate through all 5 items with a limit of 1 (expecting 5 requests)
     request_body = {"ids": ids, "limit": 1}
     page = await app_client.post("/search", json=request_body)
-    idx = 0
     item_ids = []
-    for _ in range(100):
-        idx += 1
+    for idx in range(1, 100):
         page_data = page.json()
         next_link = list(filter(lambda link: link["rel"] == "next", page_data["links"]))
         if not next_link:
@@ -694,7 +688,7 @@ async def test_pagination_post(app_client, ctx, txn_client):
         page = await app_client.post("/search", json=request_body)
 
     # Our limit is 1, so we expect len(ids) number of requests before we run out of pages
-    assert idx == len(ids) + 1
+    assert idx == len(ids)
 
     # Confirm we have paginated through all items
     assert not set(item_ids) - set(ids)
@@ -708,8 +702,8 @@ async def test_pagination_token_idempotent(app_client, ctx, txn_client):
     # Ingest 5 items
     for _ in range(5):
         ctx.item["id"] = str(uuid.uuid4())
-    await create_item(txn_client, ctx.item)
-    ids.append(ctx.item["id"])
+        await create_item(txn_client, ctx.item)
+        ids.append(ctx.item["id"])
 
     page = await app_client.get("/search", params={"ids": ",".join(ids), "limit": 3})
     page_data = page.json()

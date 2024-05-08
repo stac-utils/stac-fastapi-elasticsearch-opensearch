@@ -11,6 +11,7 @@ from opensearchpy.exceptions import TransportError
 from opensearchpy.helpers.query import Q
 from opensearchpy.helpers.search import Search
 
+import stac_fastapi.types.search
 from stac_fastapi.core import serializers
 from stac_fastapi.core.extensions import filter
 from stac_fastapi.core.utilities import bbox2polygon
@@ -601,19 +602,28 @@ class DatabaseLogic:
         query = search.query.to_dict() if search.query else None
         if query:
             search_body["query"] = query
+
+        search_after = None
+
         if token:
             search_after = urlsafe_b64decode(token.encode()).decode().split(",")
+        if search_after:
             search_body["search_after"] = search_after
+
         search_body["sort"] = sort if sort else DEFAULT_SORT
 
         index_param = indices(collection_ids)
+
+        max_result_window = stac_fastapi.types.search.Limit.le
+
+        size_limit = min(limit + 1, max_result_window)
 
         search_task = asyncio.create_task(
             self.client.search(
                 index=index_param,
                 ignore_unavailable=ignore_unavailable,
                 body=search_body,
-                size=limit,
+                size=size_limit,
             )
         )
 
@@ -631,24 +641,27 @@ class DatabaseLogic:
             raise NotFoundError(f"Collections '{collection_ids}' do not exist")
 
         hits = es_response["hits"]["hits"]
-        items = (hit["_source"] for hit in hits)
+        items = (hit["_source"] for hit in hits[:limit])
 
         next_token = None
-        if hits and (sort_array := hits[-1].get("sort")):
-            next_token = urlsafe_b64encode(
-                ",".join([str(x) for x in sort_array]).encode()
-            ).decode()
+        if len(hits) > limit and limit < max_result_window:
+            if hits and (sort_array := hits[limit - 1].get("sort")):
+                next_token = urlsafe_b64encode(
+                    ",".join([str(x) for x in sort_array]).encode()
+                ).decode()
 
-        # (1) count should not block returning results, so don't wait for it to be done
-        # (2) don't cancel the task so that it will populate the ES cache for subsequent counts
-        maybe_count = None
+        matched = (
+            es_response["hits"]["total"]["value"]
+            if es_response["hits"]["total"]["relation"] == "eq"
+            else None
+        )
         if count_task.done():
             try:
-                maybe_count = count_task.result().get("count")
+                matched = count_task.result().get("count")
             except Exception as e:
                 logger.error(f"Count task failed: {e}")
 
-        return items, maybe_count, next_token
+        return items, matched, next_token
 
     """ TRANSACTION LOGIC """
 
