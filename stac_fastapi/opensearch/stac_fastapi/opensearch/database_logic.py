@@ -631,7 +631,11 @@ class DatabaseLogic:
                     ",".join([str(x) for x in sort_array]).encode()
                 ).decode()
 
-        matched = es_response["hits"]["total"]["value"]
+        matched = (
+            es_response["hits"]["total"]["value"]
+            if es_response["hits"]["total"]["relation"] == "eq"
+            else None
+        )
         if count_task.done():
             try:
                 matched = count_task.result().get("count")
