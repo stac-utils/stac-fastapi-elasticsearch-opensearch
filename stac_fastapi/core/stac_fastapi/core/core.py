@@ -1001,8 +1001,6 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
         if search_request.limit:
             limit = search_request.limit
 
-        base_url = str(request.base_url)
-
         collections, maybe_count, next_token = (
             await self.database.execute_collection_search(
                 search=search,
@@ -1014,16 +1012,7 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
             )
         )
 
-        links = [
-            {"rel": Relations.root.value, "type": MimeTypes.json, "href": base_url},
-            {"rel": Relations.parent.value, "type": MimeTypes.json, "href": base_url},
-            {
-                "rel": Relations.self.value,
-                "type": MimeTypes.json,
-                "href": urljoin(base_url, "collections"),
-            },
-        ]
-
+        links = []
         if next_token:
             links = await PagingLinks(request=request, next=next_token).get_links()
 
