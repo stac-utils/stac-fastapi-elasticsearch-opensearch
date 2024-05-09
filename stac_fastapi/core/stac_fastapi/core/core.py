@@ -29,6 +29,7 @@ from stac_fastapi.core.types.core import (
     AsyncBaseFiltersClient,
     AsyncCollectionSearchClient,
     AsyncBaseTransactionsClient,
+    AsyncDiscoverySearchClient,
 )
 from stac_fastapi.extensions.third_party.bulk_transactions import (
     BaseBulkTransactionsClient,
@@ -43,6 +44,7 @@ from stac_fastapi.types.requests import get_base_url
 from stac_fastapi.types.search import (
     BaseSearchPostRequest,
     BaseCollectionSearchPostRequest,
+    BaseDiscoverySearchPostRequest,
 )
 from stac_fastapi.types.stac import Collection, Collections, Item, ItemCollection, Catalogs
 
@@ -805,7 +807,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         catalog = self.database.catalog_serializer.stac_to_db(
             catalog, base_url
         )
-                
+
         await self.database.create_catalog(catalog=catalog)
 
         return CatalogSerializer.db_to_stac(catalog, base_url)
@@ -1067,6 +1069,12 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
                 search=search, bbox=bbox
             )
 
+        if search_request.q:
+            keyword = search_request.q
+            search = self.database.apply_keyword_collections_filter(
+                search=search, keyword=keyword
+            )
+
         sort = None
 
         limit = 10
@@ -1097,6 +1105,7 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
         bbox: Optional[List[NumType]] = None,
         datetime: Optional[Union[str, datetime_type]] = None,
         limit: Optional[int] = 10,
+        q: Optional[str] = None,
         **kwargs,
     ) -> Collections:
         """Get search results from the database for collections.
@@ -1118,6 +1127,7 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
         base_args = {
             "bbox": bbox,
             "limit": limit,
+            "q": q,
         }
 
         if datetime:
@@ -1128,6 +1138,106 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
         except ValidationError:
             raise HTTPException(status_code=400, detail="Invalid parameters provided")
         resp = await self.post_collection_search(
+            search_request=search_request, request=request
+        )
+
+        return resp
+    
+
+@attr.s
+class EsAsyncDiscoverySearchClient(AsyncDiscoverySearchClient):
+    """Defines a pattern for implementing the STAC collection search extension."""
+
+    database: BaseDatabaseLogic = attr.ib()
+    post_request_model = attr.ib(default=BaseDiscoverySearchPostRequest)
+    catalog_serializer: Type[CatalogSerializer] = attr.ib(
+        default=CatalogSerializer
+    )
+
+    async def post_discovery_search(
+        self,
+        search_request: BaseDiscoverySearchPostRequest,
+        request: Request,
+        **kwargs,
+    ) -> Collections:
+        """
+        Perform a POST search on the collections in the catalog.
+
+        Args:
+            search_request (BaseCollectionSearchPostRequest): Request object that includes the parameters for the search.
+            kwargs: Keyword arguments passed to the function.
+
+        Returns:
+            A tuple of (collections, next pagination token if any).
+
+        Raises:
+            HTTPException: If there is an error with the cql2_json filter.
+        """
+        base_url = str(request.base_url)
+
+        search = self.database.make_discovery_search()
+
+        if search_request.q:
+            keyword = search_request.q
+            search = self.database.apply_keyword_discovery_filter(
+                search=search, keyword=keyword
+            )
+
+        sort = None
+
+        limit = 10
+
+        catalogs, maybe_count, next_token = (
+            await self.database.execute_discovery_search(
+                search=search,
+                limit=limit,
+                token=None,
+                sort=sort,
+                catalog_ids=None,  # search_request.collections,
+                base_url=base_url,
+            )
+        )
+
+        links = []
+        if next_token:
+            links = await PagingLinks(request=request, next=next_token).get_links()
+
+        return Catalogs(catalogs=catalogs, links=links)
+
+    # todo: use the ES _mapping endpoint to dynamically find what fields exist
+    async def get_discovery_search(
+        self,
+        request: Request,
+        q: Optional[str] = None,
+        limit: Optional[int] = 10,
+        **kwargs,
+    ) -> Collections:
+        """Get search results from the database for collections.
+        Called with `GET /collection-search`.
+        Args:
+            bbox (Optional[List[NumType]]): Bounding box to search in.
+            datetime (Optional[Union[str, datetime_type]]): Filter items based on the datetime field.
+            limit (Optional[int]): Maximum number of results to return.
+            token (Optional[str]): Access token to use when searching the catalog.
+            kwargs: Additional parameters to be passed to the API.
+
+        Returns:
+            A tuple of (collections, next pagination token if any).
+
+        Raises:
+            HTTPException: If any error occurs while searching the catalog.
+        """
+
+        base_args = {
+            "keyword": q,
+            "limit": limit,
+        }
+
+        try:
+            search_request = self.post_request_model(**base_args)
+        except ValidationError:
+            raise HTTPException(status_code=400, detail="Invalid parameters provided")
+        resp = await self.post_discovery_search(
             search_request=search_request, request=request
         )
 

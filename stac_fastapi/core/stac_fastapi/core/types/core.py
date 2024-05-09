@@ -354,6 +354,7 @@ class AsyncCollectionSearchClient(abc.ABC):
         bbox: Optional[List[NumType]] = None,
         datetime: Optional[Union[str, datetime]] = None,
         limit: Optional[int] = 10,
+        q: Optional[str] = None,
         **kwargs,
     ) -> stac_types.ItemCollection:
         """Cross catalog search (GET) for collections.
@@ -368,15 +369,13 @@ class AsyncCollectionSearchClient(abc.ABC):
         """
         ...
 
-
 @attr.s
-class CollectionSearchClient(abc.ABC):
+class AsyncDiscoverySearchClient(abc.ABC):
     """Defines a pattern for implementing the STAC Collection Search extension."""
 
-    async def get_collection_search(
+    async def get_discovery_search(
         self,
-        bbox: Optional[List[NumType]] = None,
-        datetime: Optional[Union[str, datetime]] = None,
+        q: Optional[str] = None,
         limit: Optional[int] = 10,
         **kwargs,
     ) -> stac_types.ItemCollection:
