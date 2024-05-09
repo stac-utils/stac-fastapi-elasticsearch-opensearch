@@ -25,7 +25,7 @@ from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.models.links import PagingLinks
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.session import Session
-from stac_fastapi.core.types.core import (  # AsyncBaseFiltersClient,
+from stac_fastapi.core.types.core import (
     AsyncBaseCoreClient,
     AsyncBaseTransactionsClient,
 )
