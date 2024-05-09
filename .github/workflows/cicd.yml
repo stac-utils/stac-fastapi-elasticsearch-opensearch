@@ -78,8 +78,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+
       - name: Lint code
-        uses: pre-commit/action@v3.0.1
+        if: ${{ matrix.python-version == 3.11 }}
+        run: |
+          python -m pip install pre-commit
+          pre-commit run --all-files
 
       - name: Install pipenv
         run: |
