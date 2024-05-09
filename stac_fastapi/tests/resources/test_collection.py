@@ -1,8 +1,8 @@
 import copy
 import uuid
 
-import pystac
 import pytest
+from stac_pydantic import api
 
 from ..conftest import create_collection, delete_collections_and_items, refresh_indices
 
@@ -96,14 +96,7 @@ async def test_returns_valid_collection(ctx, app_client):
     assert resp.status_code == 200
     resp_json = resp.json()
 
-    # Mock root to allow validation
-    mock_root = pystac.Catalog(
-        id="test", description="test desc", href="https://example.com"
-    )
-    collection = pystac.Collection.from_dict(
-        resp_json, root=mock_root, preserve_dict=False
-    )
-    collection.validate()
+    assert resp_json == api.Collection(**resp_json).model_dump(mode="json")
 
 
 @pytest.mark.asyncio

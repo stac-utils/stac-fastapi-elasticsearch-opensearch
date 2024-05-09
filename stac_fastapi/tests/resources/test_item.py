@@ -7,13 +7,12 @@ from random import randint
 from urllib.parse import parse_qs, urlparse, urlsplit
 
 import ciso8601
-import pystac
 import pytest
 from geojson_pydantic.geometries import Polygon
-from pystac.utils import datetime_to_str
+from stac_pydantic import api
 
 from stac_fastapi.core.core import CoreClient
-from stac_fastapi.core.datetime_utils import now_to_rfc3339_str
+from stac_fastapi.core.datetime_utils import datetime_to_str, now_to_rfc3339_str
 from stac_fastapi.types.core import LandingPageMixin
 
 from ..conftest import create_item, refresh_indices
@@ -199,12 +198,8 @@ async def test_returns_valid_item(app_client, ctx):
     )
     assert get_item.status_code == 200
     item_dict = get_item.json()
-    # Mock root to allow validation
-    mock_root = pystac.Catalog(
-        id="test", description="test desc", href="https://example.com"
-    )
-    item = pystac.Item.from_dict(item_dict, preserve_dict=False, root=mock_root)
-    item.validate()
+
+    assert api.Item(**item_dict).model_dump(mode="json")
 
 
 @pytest.mark.asyncio

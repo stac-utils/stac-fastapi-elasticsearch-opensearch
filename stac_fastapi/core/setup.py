@@ -13,7 +13,6 @@ install_requires = [
     "stac-fastapi.types==3.0.0a",
     "stac-fastapi.api==3.0.0a",
     "stac-fastapi.extensions==3.0.0a",
-    "pystac[validation]",
     "orjson",
     "overrides",
     "geojson-pydantic",
