@@ -97,6 +97,22 @@ class AsyncBaseTransactionsClient(abc.ABC):
         ...
 
     @abc.abstractmethod
+    async def create_catalog(
+        self, catalog: stac_types.Catalog, **kwargs
+    ) -> Optional[Union[stac_types.Catalog, Response]]:
+        """Create a new catalog.
+
+        Called with `POST /catalogs`.
+
+        Args:
+            catalog: the catalog
+
+        Returns:
+            The catalog that was created.
+        """
+        ...
+
+    @abc.abstractmethod
     async def update_collection(
         self, collection: stac_types.Collection, **kwargs
     ) -> Optional[Union[stac_types.Collection, Response]]:
@@ -237,6 +253,28 @@ class AsyncBaseCoreClient(abc.ABC):
 
         Returns:
             A list of collections.
+        """
+        ...
+
+    @abc.abstractmethod
+    async def all_collections(self, **kwargs) -> stac_types.Collections:
+        """Get all available collections.
+
+        Called with `GET /collections`.
+
+        Returns:
+            A list of collections.
+        """
+        ...
+        
+    @abc.abstractmethod
+    async def all_catalogs(self, **kwargs) -> stac_types.Catalogs:
+        """Get all available catalogs.
+
+        Called with `GET /catalogs`.
+
+        Returns:
+            A list of catalogs.
         """
         ...
 

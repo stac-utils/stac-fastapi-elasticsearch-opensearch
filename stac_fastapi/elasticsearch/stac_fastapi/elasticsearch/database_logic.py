@@ -11,19 +11,20 @@ from elasticsearch_dsl import Q, Search
 
 from elasticsearch import exceptions, helpers  # type: ignore
 from stac_fastapi.core.extensions import filter
-from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
+from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer, CatalogSerializer
 from stac_fastapi.core.utilities import bbox2polygon
 from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
 from stac_fastapi.elasticsearch.config import (
     ElasticsearchSettings as SyncElasticsearchSettings,
 )
 from stac_fastapi.types.errors import ConflictError, NotFoundError
-from stac_fastapi.types.stac import Collection, Item
+from stac_fastapi.types.stac import Collection, Item, Catalog
 
 logger = logging.getLogger(__name__)
 
 NumType = Union[float, int]
 
+CATALOGS_INDEX = os.getenv("STAC_CATALOGS_INDEX", "catalogs")
 COLLECTIONS_INDEX = os.getenv("STAC_COLLECTIONS_INDEX", "collections")
 ITEMS_INDEX_PREFIX = os.getenv("STAC_ITEMS_INDEX_PREFIX", "items_")
 ES_INDEX_NAME_UNSUPPORTED_CHARS = {
@@ -217,6 +218,14 @@ ES_COLLECTIONS_MAPPINGS = {
     },
 }
 
+ES_CATALOGS_MAPPINGS = {
+    "numeric_detection": False,
+    #"dynamic_templates": ES_MAPPINGS_DYNAMIC_TEMPLATES,
+    "properties": {
+        "id": {"type": "keyword"},
+        "links": {"type": "object", "enabled": False},
+    },
+}
 
 def index_by_collection_id(collection_id: str) -> str:
     """
@@ -271,6 +280,13 @@ async def create_index_templates() -> None:
             "mappings": ES_ITEMS_MAPPINGS,
         },
     )
+    await client.indices.put_template(
+        name=f"template_{CATALOGS_INDEX}",
+        body={
+            "index_patterns": [f"{CATALOGS_INDEX}*"],
+            "mappings": ES_CATALOGS_MAPPINGS,
+        },
+    )
     await client.close()
 
 
@@ -287,6 +303,23 @@ async def create_collection_index() -> None:
     await client.options(ignore_status=400).indices.create(
         index=f"{COLLECTIONS_INDEX}-000001",
         aliases={COLLECTIONS_INDEX: {}},
+    )
+    
+    await client.close()
+
+async def create_catalog_index() -> None:
+    """
+    Create the index for a Catalog. The settings of the index template will be used implicitly.
+
+    Returns:
+        None
+
+    """
+    client = AsyncElasticsearchSettings().create_client
+
+    await client.options(ignore_status=400).indices.create(
+        index=f"{CATALOGS_INDEX}-000001",
+        aliases={CATALOGS_INDEX: {}},
     )
     await client.close()
 
@@ -387,6 +420,9 @@ class DatabaseLogic:
     collection_serializer: Type[CollectionSerializer] = attr.ib(
         default=CollectionSerializer
     )
+    catalog_serializer: Type[CatalogSerializer] = attr.ib(
+        default=CatalogSerializer
+    )
 
     """CORE LOGIC"""
 
@@ -428,6 +464,47 @@ class DatabaseLogic:
             next_token = hits[-1]["sort"][0]
 
         return collections, next_token
+    
+
+    async def get_all_catalogs(
+        self, token: Optional[str], limit: int, base_url: str
+    ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+        """Retrieve a list of all catalogs from Elasticsearch, supporting pagination.
+
+        Args:
+            token (Optional[str]): The pagination token.
+            limit (int): The number of results to return.
+
+        Returns:
+            A tuple of (catalogs, next pagination token if any).
+        """
+        search_after = None
+        if token:
+            search_after = [token]
+
+        response = await self.client.search(
+            index=CATALOGS_INDEX,
+            body={
+                "sort": [{"id": {"order": "asc"}}],
+                "size": limit,
+                "search_after": search_after,
+            },
+        )
+
+        hits = response["hits"]["hits"]
+        catalogs = [
+            self.catalog_serializer.db_to_stac(
+                catalog=hit["_source"], base_url=base_url
+            )
+            for hit in hits
+        ]
+
+
+        next_token = None
+        if len(hits) == limit:
+            next_token = hits[-1]["sort"][0]
+
+        return catalogs, next_token
 
     async def get_one_item(self, collection_id: str, item_id: str) -> Dict:
         """Retrieve a single item from the database.
@@ -1058,6 +1135,31 @@ class DatabaseLogic:
         )
 
         await create_item_index(collection_id)
+
+    async def create_catalog(self, catalog: Catalog, refresh: bool = False):
+        """Create a single catalog in the database.
+
+        Args:
+            catalog (Catalog): The Catalog object to be created.
+            refresh (bool, optional): Whether to refresh the index after the creation. Default is False.
+
+        Raises:
+            ConflictError: If a Catalog with the same id already exists in the database.
+
+        Notes:
+            A new index is created for the collections in the Catalog using the `create_catalog_index` function.
+        """
+        catalog_id = catalog["id"]
+
+        if await self.client.exists(index=CATALOGS_INDEX, id=catalog_id):
+            raise ConflictError(f"Catalog {catalog_id} already exists")
+
+        output = await self.client.index(
+            index=CATALOGS_INDEX,
+            id=catalog_id,
+            document=catalog,
+            refresh=refresh,
+        )
 
     async def find_collection(self, collection_id: str) -> Collection:
         """Find and return a collection from the database.

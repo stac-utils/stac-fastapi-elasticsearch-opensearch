@@ -20,6 +20,13 @@ class BaseDatabaseLogic(abc.ABC):
         pass
 
     @abc.abstractmethod
+    async def get_all_catalogs(
+        self, token: Optional[str], limit: int
+    ) -> Iterable[Dict[str, Any]]:
+        """Retrieve a list of all catalogs from the database."""
+        pass
+
+    @abc.abstractmethod
     async def get_one_item(self, collection_id: str, item_id: str) -> Dict:
         """Retrieve a single item from the database."""
         pass
@@ -39,6 +46,11 @@ class BaseDatabaseLogic(abc.ABC):
     @abc.abstractmethod
     async def create_collection(self, collection: Dict, refresh: bool = False) -> None:
         """Create a collection in the database."""
+        pass
+
+    @abc.abstractmethod
+    async def create_catalog(self, catalog: Dict, refresh: bool = False) -> None:
+        """Create a catalog in the database."""
         pass
 
     @abc.abstractmethod

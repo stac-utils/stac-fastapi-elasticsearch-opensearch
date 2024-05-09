@@ -18,6 +18,7 @@ from stac_fastapi.elasticsearch.database_logic import (
     DatabaseLogic,
     create_collection_index,
     create_index_templates,
+    create_catalog_index,
 )
 from stac_fastapi.extensions.core import (
     ContextExtension,
@@ -92,6 +93,7 @@ app.root_path = os.getenv("STAC_FASTAPI_ROOT_PATH", "")
 async def _startup_event() -> None:
     await create_index_templates()
     await create_collection_index()
+    await create_catalog_index()
 
 
 def run() -> None:

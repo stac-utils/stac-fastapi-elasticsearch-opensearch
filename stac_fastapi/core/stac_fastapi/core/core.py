@@ -22,7 +22,7 @@ from stac_pydantic.version import STAC_VERSION
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.models.links import PagingLinks
-from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
+from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer, CatalogSerializer
 from stac_fastapi.core.session import Session
 from stac_fastapi.core.types.core import (
     AsyncBaseCoreClient,
@@ -44,7 +44,7 @@ from stac_fastapi.types.search import (
     BaseSearchPostRequest,
     BaseCollectionSearchPostRequest,
 )
-from stac_fastapi.types.stac import Collection, Collections, Item, ItemCollection
+from stac_fastapi.types.stac import Collection, Collections, Item, ItemCollection, Catalogs
 
 logger = logging.getLogger(__name__)
 
@@ -156,14 +156,24 @@ class CoreClient(AsyncBaseCoreClient):
             conformance_classes=self.conformance_classes(),
             extension_schemas=[],
         )
-        collections = await self.all_collections(request=kwargs["request"])
-        for collection in collections["collections"]:
+        # collections = await self.all_collections(request=kwargs["request"])
+        # for collection in collections["collections"]:
+        #     landing_page["links"].append(
+        #         {
+        #             "rel": Relations.child.value,
+        #             "type": MimeTypes.json.value,
+        #             "title": collection.get("title") or collection.get("id"),
+        #             "href": urljoin(base_url, f"collections/{collection['id']}"),
+        #         }
+        #     )
+        catalogs = await self.all_catalogs(request=kwargs["request"])
+        for catalog in catalogs["catalogs"]:
             landing_page["links"].append(
                 {
                     "rel": Relations.child.value,
                     "type": MimeTypes.json.value,
-                    "title": collection.get("title") or collection.get("id"),
-                    "href": urljoin(base_url, f"collections/{collection['id']}"),
+                    "title": catalog.get("title") or catalog.get("id"),
+                    "href": urljoin(base_url, f"collections/{catalog['id']}"),
                 }
             )
 
@@ -226,6 +236,40 @@ class CoreClient(AsyncBaseCoreClient):
             links.append(next_link)
 
         return Collections(collections=collections, links=links)
+    
+    async def all_catalogs(self, **kwargs) -> Catalogs:
+        """Read all catalogs from the database.
+
+        Args:
+            **kwargs: Keyword arguments from the request.
+
+        Returns:
+            A Catalogs object containing all the catalogs in the database and links to various resources.
+        """
+        request = kwargs["request"]
+        base_url = str(request.base_url)
+        limit = int(request.query_params.get("limit", 10))
+        token = request.query_params.get("token")
+
+        catalogs, next_token = await self.database.get_all_catalogs(
+            token=token, limit=limit, base_url=base_url
+        )
+
+        links = [
+            {"rel": Relations.root.value, "type": MimeTypes.json, "href": base_url},
+            {"rel": Relations.parent.value, "type": MimeTypes.json, "href": base_url},
+            {
+                "rel": Relations.self.value,
+                "type": MimeTypes.json,
+                "href": urljoin(base_url, "catalogs"),
+            },
+        ]
+
+        if next_token:
+            next_link = PagingLinks(next=next_token, request=request).link_next()
+            links.append(next_link)
+
+        return Catalogs(catalogs=catalogs, links=links)
 
     async def get_collection(self, collection_id: str, **kwargs) -> Collection:
         """Get a collection from the database by its id.
@@ -730,13 +774,41 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         Raises:
             ConflictError: If the collection already exists.
         """
+
         base_url = str(kwargs["request"].base_url)
         collection = self.database.collection_serializer.stac_to_db(
             collection, base_url
         )
+
         await self.database.create_collection(collection=collection)
 
         return CollectionSerializer.db_to_stac(collection, base_url)
+
+    @overrides
+    async def create_catalog(
+        self, catalog: stac_types.Catalog, **kwargs
+    ) -> stac_types.Catalog:
+        """Create a new catalog in the database.
+
+        Args:
+            catalog (stac_types.Catalog): The catalog to be created.
+            kwargs: Additional keyword arguments.
+
+        Returns:
+            stac_types.Catalog: The created catalog object.
+
+        Raises:
+            ConflictError: If the catalog already exists.
+        """
+
+        base_url = str(kwargs["request"].base_url)
+        catalog = self.database.catalog_serializer.stac_to_db(
+            catalog, base_url
+        )
+                
+        await self.database.create_catalog(catalog=catalog)
+
+        return CatalogSerializer.db_to_stac(catalog, base_url)
 
     @overrides
     async def update_collection(
