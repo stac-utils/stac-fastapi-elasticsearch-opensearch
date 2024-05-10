@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- Support for Python 3.12 [#234](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/234)
+
+### Changed
+
+- Updated stac-fastapi parent libraries to v3.0.0a0 [#234](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/234)
+- Removed pystac dependency [#234](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/234)
+
+### Fixed 
+
+- Fixed issue where paginated search queries would return a `next_token` on the last page [#243](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/243)
+
 ## [v2.4.1]
 
 ### Added 

@@ -11,7 +11,7 @@ from elasticsearch_dsl import Q, Search
 from elasticsearch import exceptions, helpers  # type: ignore
 from stac_fastapi.core.extensions import filter
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
-from stac_fastapi.core.utilities import bbox2polygon
+from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon
 from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
 from stac_fastapi.elasticsearch.config import (
     ElasticsearchSettings as SyncElasticsearchSettings,
@@ -499,7 +499,7 @@ class DatabaseLogic:
             search (Search): The search object with the specified filter applied.
         """
         if op != "eq":
-            key_filter = {field: {f"{op}": value}}
+            key_filter = {field: {op: value}}
             search = search.filter(Q("range", **key_filter))
         else:
             search = search.filter("term", **{field: value})
@@ -508,9 +508,28 @@ class DatabaseLogic:
 
     @staticmethod
     def apply_cql2_filter(search: Search, _filter: Optional[Dict[str, Any]]):
-        """Database logic to perform query for search endpoint."""
+        """
+        Apply a CQL2 filter to an Elasticsearch Search object.
+
+        This method transforms a dictionary representing a CQL2 filter into an Elasticsearch query
+        and applies it to the provided Search object. If the filter is None, the original Search
+        object is returned unmodified.
+
+        Args:
+            search (Search): The Elasticsearch Search object to which the filter will be applied.
+            _filter (Optional[Dict[str, Any]]): The filter in dictionary form that needs to be applied
+                                                to the search. The dictionary should follow the structure
+                                                required by the `to_es` function which converts it
+                                                to an Elasticsearch query.
+
+        Returns:
+            Search: The modified Search object with the filter applied if a filter is provided,
+                    otherwise the original Search object.
+        """
         if _filter is not None:
-            search = search.filter(filter.Clause.parse_obj(_filter).to_es())
+            es_query = filter.to_es(_filter)
+            search = search.query(es_query)
+
         return search
 
     @staticmethod
@@ -552,12 +571,17 @@ class DatabaseLogic:
             NotFoundError: If the collections specified in `collection_ids` do not exist.
         """
         search_after = None
+
         if token:
             search_after = urlsafe_b64decode(token.encode()).decode().split(",")
 
         query = search.query.to_dict() if search.query else None
 
         index_param = indices(collection_ids)
+
+        max_result_window = MAX_LIMIT
+
+        size_limit = min(limit + 1, max_result_window)
 
         search_task = asyncio.create_task(
             self.client.search(
@@ -566,7 +590,7 @@ class DatabaseLogic:
                 query=query,
                 sort=sort or DEFAULT_SORT,
                 search_after=search_after,
-                size=limit,
+                size=size_limit,
             )
         )
 
@@ -584,24 +608,27 @@ class DatabaseLogic:
             raise NotFoundError(f"Collections '{collection_ids}' do not exist")
 
         hits = es_response["hits"]["hits"]
-        items = (hit["_source"] for hit in hits)
+        items = (hit["_source"] for hit in hits[:limit])
 
         next_token = None
-        if hits and (sort_array := hits[-1].get("sort")):
-            next_token = urlsafe_b64encode(
-                ",".join([str(x) for x in sort_array]).encode()
-            ).decode()
+        if len(hits) > limit and limit < max_result_window:
+            if hits and (sort_array := hits[limit - 1].get("sort")):
+                next_token = urlsafe_b64encode(
+                    ",".join([str(x) for x in sort_array]).encode()
+                ).decode()
 
-        # (1) count should not block returning results, so don't wait for it to be done
-        # (2) don't cancel the task so that it will populate the ES cache for subsequent counts
-        maybe_count = None
+        matched = (
+            es_response["hits"]["total"]["value"]
+            if es_response["hits"]["total"]["relation"] == "eq"
+            else None
+        )
         if count_task.done():
             try:
-                maybe_count = count_task.result().get("count")
+                matched = count_task.result().get("count")
             except Exception as e:
                 logger.error(f"Count task failed: {e}")
 
-        return items, maybe_count, next_token
+        return items, matched, next_token
 
     """ TRANSACTION LOGIC """
 

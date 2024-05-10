@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional, Union
 
 import attr
+from stac_pydantic import Collection, Item, ItemCollection
 from starlette.responses import Response
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
@@ -27,7 +28,7 @@ class AsyncBaseTransactionsClient(abc.ABC):
     async def create_item(
         self,
         collection_id: str,
-        item: Union[stac_types.Item, stac_types.ItemCollection],
+        item: Union[Item, ItemCollection],
         **kwargs,
     ) -> Optional[Union[stac_types.Item, Response, None]]:
         """Create a new item.
@@ -45,7 +46,7 @@ class AsyncBaseTransactionsClient(abc.ABC):
 
     @abc.abstractmethod
     async def update_item(
-        self, collection_id: str, item_id: str, item: stac_types.Item, **kwargs
+        self, collection_id: str, item_id: str, item: Item, **kwargs
     ) -> Optional[Union[stac_types.Item, Response]]:
         """Perform a complete update on an existing item.
 
@@ -81,7 +82,7 @@ class AsyncBaseTransactionsClient(abc.ABC):
 
     @abc.abstractmethod
     async def create_collection(
-        self, collection: stac_types.Collection, **kwargs
+        self, collection: Collection, **kwargs
     ) -> Optional[Union[stac_types.Collection, Response]]:
         """Create a new collection.
 
@@ -97,7 +98,7 @@ class AsyncBaseTransactionsClient(abc.ABC):
 
     @abc.abstractmethod
     async def update_collection(
-        self, collection: stac_types.Collection, **kwargs
+        self, collection: Collection, **kwargs
     ) -> Optional[Union[stac_types.Collection, Response]]:
         """Perform a complete update on an existing collection.
 
@@ -278,29 +279,3 @@ class AsyncBaseCoreClient(abc.ABC):
             An ItemCollection.
         """
         ...
-
-
-@attr.s
-class AsyncBaseFiltersClient(abc.ABC):
-    """Defines a pattern for implementing the STAC filter extension."""
-
-    async def get_queryables(
-        self, collection_id: Optional[str] = None, **kwargs
-    ) -> Dict[str, Any]:
-        """Get the queryables available for the given collection_id.
-
-        If collection_id is None, returns the intersection of all queryables over all
-        collections.
-
-        This base implementation returns a blank queryable schema. This is not allowed
-        under OGC CQL but it is allowed by the STAC API Filter Extension
-        https://github.com/radiantearth/stac-api-spec/tree/master/fragments/filter#queryables
-        """
-        return {
-            "$schema": "https://json-schema.org/draft/2019-09/schema",
-            "$id": "https://example.org/queryables",
-            "type": "object",
-            "title": "Queryables for Example STAC API",
-            "description": "Queryable names for the example STAC API Item Search filter.",
-            "properties": {},
-        }
