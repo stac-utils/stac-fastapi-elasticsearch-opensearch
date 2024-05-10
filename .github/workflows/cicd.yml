@@ -65,7 +65,7 @@ jobs:
           - 9202:9202
     strategy:
       matrix:
-        python-version: [ "3.8", "3.9", "3.10", "3.11"]
+        python-version: [ "3.8", "3.9", "3.10", "3.11", "3.12"]
 
     name: Python ${{ matrix.python-version }} testing
 
@@ -78,12 +78,20 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
+
       - name: Lint code
-        uses: pre-commit/action@v3.0.1
+        if: ${{ matrix.python-version == 3.11 }}
+        run: |
+          python -m pip install pre-commit
+          pre-commit run --all-files
 
       - name: Install pipenv
         run: |
           python -m pip install --upgrade pipenv wheel
+
+      - name: Install core library stac-fastapi
+        run: |
+          pip install ./stac_fastapi/core
 
       - name: Install elasticsearch stac-fastapi
         run: |
@@ -93,16 +101,12 @@ jobs:
         run: |
           pip install ./stac_fastapi/opensearch[dev,server]
 
-      - name: Install core library stac-fastapi
-        run: |
-          pip install ./stac_fastapi/core
-
       - name: Run test suite against Elasticsearch 7.x
         run: |
           pipenv run pytest -svvv
         env:
           ENVIRONMENT: testing
-          ES_PORT: 9200
+          ES_PORT: 9400
           ES_HOST: 172.17.0.1
           ES_USE_SSL: false
           ES_VERIFY_CERTS: false
@@ -113,7 +117,7 @@ jobs:
           pipenv run pytest -svvv
         env:
           ENVIRONMENT: testing
-          ES_PORT: 9400
+          ES_PORT: 9200
           ES_HOST: 172.17.0.1
           ES_USE_SSL: false
           ES_VERIFY_CERTS: false

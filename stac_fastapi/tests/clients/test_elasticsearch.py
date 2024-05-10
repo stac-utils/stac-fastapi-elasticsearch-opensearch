@@ -3,7 +3,7 @@ from copy import deepcopy
 from typing import Callable
 
 import pytest
-from stac_pydantic import Item
+from stac_pydantic import Item, api
 
 from stac_fastapi.extensions.third_party.bulk_transactions import Items
 from stac_fastapi.types.errors import ConflictError, NotFoundError
@@ -15,7 +15,7 @@ from ..conftest import MockRequest, create_item
 async def test_create_collection(app_client, ctx, core_client, txn_client):
     in_coll = deepcopy(ctx.collection)
     in_coll["id"] = str(uuid.uuid4())
-    await txn_client.create_collection(in_coll, request=MockRequest)
+    await txn_client.create_collection(api.Collection(**in_coll), request=MockRequest)
     got_coll = await core_client.get_collection(in_coll["id"], request=MockRequest)
     assert got_coll["id"] == in_coll["id"]
     await txn_client.delete_collection(in_coll["id"])
@@ -29,7 +29,7 @@ async def test_create_collection_already_exists(app_client, ctx, txn_client):
     data["_id"] = str(uuid.uuid4())
 
     with pytest.raises(ConflictError):
-        await txn_client.create_collection(data, request=MockRequest)
+        await txn_client.create_collection(api.Collection(**data), request=MockRequest)
 
     await txn_client.delete_collection(data["id"])
 
@@ -43,16 +43,20 @@ async def test_update_collection(
     collection_data = load_test_data("test_collection.json")
     item_data = load_test_data("test_item.json")
 
-    await txn_client.create_collection(collection_data, request=MockRequest)
+    await txn_client.create_collection(
+        api.Collection(**collection_data), request=MockRequest
+    )
     await txn_client.create_item(
         collection_id=collection_data["id"],
-        item=item_data,
+        item=api.Item(**item_data),
         request=MockRequest,
         refresh=True,
     )
 
     collection_data["keywords"].append("new keyword")
-    await txn_client.update_collection(collection_data, request=MockRequest)
+    await txn_client.update_collection(
+        api.Collection(**collection_data), request=MockRequest
+    )
 
     coll = await core_client.get_collection(collection_data["id"], request=MockRequest)
     assert "new keyword" in coll["keywords"]
@@ -78,10 +82,12 @@ async def test_update_collection_id(
     item_data = load_test_data("test_item.json")
     new_collection_id = "new-test-collection"
 
-    await txn_client.create_collection(collection_data, request=MockRequest)
+    await txn_client.create_collection(
+        api.Collection(**collection_data), request=MockRequest
+    )
     await txn_client.create_item(
         collection_id=collection_data["id"],
-        item=item_data,
+        item=api.Item(**item_data),
         request=MockRequest,
         refresh=True,
     )
@@ -90,7 +96,7 @@ async def test_update_collection_id(
     collection_data["id"] = new_collection_id
 
     await txn_client.update_collection(
-        collection=collection_data,
+        collection=api.Collection(**collection_data),
         request=MockRequest(
             query_params={
                 "collection_id": old_collection_id,
@@ -133,7 +139,7 @@ async def test_delete_collection(
     load_test_data: Callable,
 ):
     data = load_test_data("test_collection.json")
-    await txn_client.create_collection(data, request=MockRequest)
+    await txn_client.create_collection(api.Collection(**data), request=MockRequest)
 
     await txn_client.delete_collection(data["id"])
 
@@ -148,7 +154,7 @@ async def test_get_collection(
     load_test_data: Callable,
 ):
     data = load_test_data("test_collection.json")
-    await txn_client.create_collection(data, request=MockRequest)
+    await txn_client.create_collection(api.Collection(**data), request=MockRequest)
     coll = await core_client.get_collection(data["id"], request=MockRequest)
     assert coll["id"] == data["id"]
 
@@ -175,7 +181,7 @@ async def test_get_collection_items(app_client, ctx, core_client, txn_client):
         item["id"] = str(uuid.uuid4())
         await txn_client.create_item(
             collection_id=item["collection"],
-            item=item,
+            item=api.Item(**item),
             request=MockRequest,
             refresh=True,
         )
@@ -202,7 +208,7 @@ async def test_create_item_already_exists(ctx, txn_client):
     with pytest.raises(ConflictError):
         await txn_client.create_item(
             collection_id=ctx.item["collection"],
-            item=ctx.item,
+            item=api.Item(**ctx.item),
             request=MockRequest,
             refresh=True,
         )
@@ -210,11 +216,15 @@ async def test_create_item_already_exists(ctx, txn_client):
 
 @pytest.mark.asyncio
 async def test_update_item(ctx, core_client, txn_client):
-    ctx.item["properties"]["foo"] = "bar"
-    collection_id = ctx.item["collection"]
-    item_id = ctx.item["id"]
+    item = ctx.item
+    item["properties"]["foo"] = "bar"
+    collection_id = item["collection"]
+    item_id = item["id"]
     await txn_client.update_item(
-        collection_id=collection_id, item_id=item_id, item=ctx.item, request=MockRequest
+        collection_id=collection_id,
+        item_id=item_id,
+        item=api.Item(**item),
+        request=MockRequest,
     )
 
     updated_item = await core_client.get_item(
@@ -239,7 +249,10 @@ async def test_update_geometry(ctx, core_client, txn_client):
     collection_id = ctx.item["collection"]
     item_id = ctx.item["id"]
     await txn_client.update_item(
-        collection_id=collection_id, item_id=item_id, item=ctx.item, request=MockRequest
+        collection_id=collection_id,
+        item_id=item_id,
+        item=api.Item(**ctx.item),
+        request=MockRequest,
     )
 
     updated_item = await core_client.get_item(
@@ -304,7 +317,9 @@ async def test_feature_collection_insert(
 async def test_landing_page_no_collection_title(ctx, core_client, txn_client, app):
     ctx.collection["id"] = "new_id"
     del ctx.collection["title"]
-    await txn_client.create_collection(ctx.collection, request=MockRequest)
+    await txn_client.create_collection(
+        api.Collection(**ctx.collection), request=MockRequest
+    )
 
     landing_page = await core_client.landing_page(request=MockRequest(app=app))
     for link in landing_page["links"]:
