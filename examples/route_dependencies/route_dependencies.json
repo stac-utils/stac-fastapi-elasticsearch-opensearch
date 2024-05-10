@@ -1,0 +1,18 @@
+[
+  {
+    "routes": [
+      {
+        "method": "PUT",
+        "paths": "/collections"
+      }
+    ],
+    "dependencies": [
+      {
+        "function": "fastapi.security.OAuth2PasswordBearer",
+        "kwargs": {
+          "tokenUrl": "token"
+        }
+      }
+    ]
+  }
+]
