@@ -1,13 +1,36 @@
 # stac-fastapi-elasticsearch-opensearch (sfeos)
 
-## Elasticsearch and Opensearch backends for the stac-fastapi project  
+<!-- markdownlint-disable MD033 MD041 -->
+
+<p align="left">
+  <img src="https://github.com/radiantearth/stac-site/raw/master/images/logo/stac-030-long.png" width=600>
+  <p align="left"><b>Elasticsearch and Opensearch backends for the stac-fastapi project.</b></p>
+</p>
+
   
   [![PyPI version](https://badge.fury.io/py/stac-fastapi.elasticsearch.svg)](https://badge.fury.io/py/stac-fastapi.elasticsearch)  
+  [![Join the chat at https://gitter.im/stac-fastapi-elasticsearch/community](https://badges.gitter.im/stac-fastapi-elasticsearch/community.svg)](https://gitter.im/stac-fastapi-elasticsearch/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+    
+
+---
+
+**Online Documentation**: [https://stac-utils.github.io/stac-fastapi-elasticsearch-opensearch](https://stac-utils.github.io/stac-fastapi-elasticsearch-opensearch/)
+
+**Source Code**: [https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch)
+
+
+---
+
+### Notes:    
   
 - Our Api core library can be used to create custom backends. See [stac-fastapi-mongo](https://github.com/Healy-Hyperspatial/stac-fastapi-mongo) for a working example.  
 - Reach out on our [Gitter](https://app.gitter.im/#/room/#stac-fastapi-elasticsearch_community:gitter.im) channel or feel free to add to our [Discussions](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/discussions) page here on github.
 - There is [Postman](https://documenter.getpostman.com/view/12888943/2s8ZDSdRHA) documentation here for examples on how to run some of the API routes locally - after starting the elasticsearch backend via the docker-compose.yml file.
-- The `/examples` folder shows an example of running stac-fastapi-elasticsearch from PyPI in docker without needing any code from the repository. There is also a Postman collection here that you can load into Postman for testing the API routes. 
+- The `/examples` folder shows an example of running stac-fastapi-elasticsearch from PyPI in docker without needing any code from the repository. There is also a Postman collection here that you can load into Postman for testing the API routes.  
+    
+- For changes, see the [Changelog](CHANGELOG.md)   
+- We are always welcoming contributions. For the development notes: [Contributing](CONTRIBUTING.md)     
+
 
 ### To install from PyPI:
 
@@ -18,43 +41,15 @@ or
 ```
 pip install stac_fastapi.opensearch
 ```
-
-#### For changes, see the [Changelog](CHANGELOG.md)
-
-
-## Development Environment Setup
-
-To install the classes in your local Python env, run:
-
-```shell
-pip install -e 'stac_fastapi/elasticsearch[dev]'
-```
-
-or
-
-```shell
-pip install -e 'stac_fastapi/opensearch[dev]'
-```
-
-
-### Pre-commit
-
-Install [pre-commit](https://pre-commit.com/#install).
-
-Prior to commit, run:
-
-```shell
-pre-commit run --all-files
-```
-
-## Build Elasticsearh API backend
+    
+## Build Elasticsearch API backend
 
 ```shell
 docker-compose up elasticsearch
 docker-compose build app-elasticsearch
 ```
   
-## Running Elasticsearh API on localhost:8080
+## Running Elasticsearch API on localhost:8080
 
 ```shell
 docker-compose up app-elasticsearch
@@ -120,22 +115,6 @@ Options:
 python3 data_loader.py --base-url http://localhost:8080
 ```  
 
-## Testing
-
-```shell
-make test
-```
-Test against OpenSearch only
-
-```shell
-make test-opensearch
-```
-
-Test against Elasticsearch only
-
-```shell
-make test-elasticsearch
-```  
 
 ## Elasticsearch Mappings
 
@@ -293,3 +272,83 @@ curl -X "POST" "http://localhost:9200/_aliases" \
 ```
 
 The modified Items with lowercase identifiers will now be visible to users accessing `my-collection` in the STAC API.
+
+
+## Basic Auth
+
+#### Environment Variable Configuration
+
+Basic authentication is an optional feature. You can enable it by setting the environment variable `BASIC_AUTH` as a JSON string.
+
+Example:
+```
+BASIC_AUTH={"users":[{"username":"user","password":"pass","permissions":"*"}]}
+```
+
+### User Permissions Configuration
+
+In order to set endpoints with specific access permissions, you can configure the `users` key with a list of user objects. Each user object should contain the username, password, and their respective permissions.
+
+Example: This example illustrates the configuration for two users: an **admin** user with full permissions (*) and a **reader** user with limited permissions to specific read-only endpoints.
+```json
+{
+    "users": [
+        {
+            "username": "admin",
+            "password": "admin",
+            "permissions": "*"
+        },
+        {
+            "username": "reader",
+            "password": "reader",
+            "permissions": [
+                {"path": "/", "method": ["GET"]},
+                {"path": "/conformance", "method": ["GET"]},
+                {"path": "/collections/{collection_id}/items/{item_id}", "method": ["GET"]},
+                {"path": "/search", "method": ["GET", "POST"]},
+                {"path": "/collections", "method": ["GET"]},
+                {"path": "/collections/{collection_id}", "method": ["GET"]},
+                {"path": "/collections/{collection_id}/items", "method": ["GET"]},
+                {"path": "/queryables", "method": ["GET"]},
+                {"path": "/queryables/collections/{collection_id}/queryables", "method": ["GET"]},
+                {"path": "/_mgmt/ping", "method": ["GET"]}
+            ]
+        }
+    ]
+}
+```
+
+
+### Public Endpoints Configuration
+
+In order to set endpoints with public access, you can configure the public_endpoints key with a list of endpoint objects. Each endpoint object should specify the path and method of the endpoint.
+
+Example: This example demonstrates the configuration for public endpoints, allowing access without authentication to read-only endpoints.
+```json
+{
+    "public_endpoints": [
+        {"path": "/", "method": "GET"},
+        {"path": "/conformance", "method": "GET"},
+        {"path": "/collections/{collection_id}/items/{item_id}", "method": "GET"},
+        {"path": "/search", "method": "GET"},
+        {"path": "/search", "method": "POST"},
+        {"path": "/collections", "method": "GET"},
+        {"path": "/collections/{collection_id}", "method": "GET"},
+        {"path": "/collections/{collection_id}/items", "method": "GET"},
+        {"path": "/queryables", "method": "GET"},
+        {"path": "/queryables/collections/{collection_id}/queryables", "method": "GET"},
+        {"path": "/_mgmt/ping", "method": "GET"}
+    ],
+    "users": [
+        {
+            "username": "admin",
+            "password": "admin",
+            "permissions": "*"
+        }
+    ]
+}
+```
+
+### Docker Compose Configurations
+
+See `docker-compose.basic_auth_protected.yml` and `docker-compose.basic_auth_public.yml` for basic authentication configurations.

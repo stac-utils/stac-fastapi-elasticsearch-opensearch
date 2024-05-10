@@ -1,8 +1,10 @@
-"""Item crud client."""
+"""Core client."""
+
 import logging
 import re
 from datetime import datetime as datetime_type
 from datetime import timezone
+from enum import Enum
 from typing import Any, Dict, List, Optional, Set, Type, Union
 from urllib.parse import unquote_plus, urljoin
 
@@ -14,8 +16,9 @@ from overrides import overrides
 from pydantic import ValidationError
 from pygeofilter.backends.cql2_json import to_cql2
 from pygeofilter.parsers.cql2_text import parse as parse_cql2_text
+from stac_pydantic import Collection, Item, ItemCollection
 from stac_pydantic.links import Relations
-from stac_pydantic.shared import MimeTypes
+from stac_pydantic.shared import BBox, MimeTypes
 from stac_pydantic.version import STAC_VERSION
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
@@ -25,7 +28,6 @@ from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.session import Session
 from stac_fastapi.core.types.core import (
     AsyncBaseCoreClient,
-    AsyncBaseFiltersClient,
     AsyncBaseTransactionsClient,
 )
 from stac_fastapi.extensions.third_party.bulk_transactions import (
@@ -36,10 +38,11 @@ from stac_fastapi.extensions.third_party.bulk_transactions import (
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.config import Settings
 from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
+from stac_fastapi.types.core import AsyncBaseFiltersClient
 from stac_fastapi.types.extension import ApiExtension
 from stac_fastapi.types.requests import get_base_url
+from stac_fastapi.types.rfc3339 import DateTimeType
 from stac_fastapi.types.search import BaseSearchPostRequest
-from stac_fastapi.types.stac import Collection, Collections, Item, ItemCollection
 
 logger = logging.getLogger(__name__)
 
@@ -188,7 +191,7 @@ class CoreClient(AsyncBaseCoreClient):
 
         return landing_page
 
-    async def all_collections(self, **kwargs) -> Collections:
+    async def all_collections(self, **kwargs) -> stac_types.Collections:
         """Read all collections from the database.
 
         Args:
@@ -220,9 +223,11 @@ class CoreClient(AsyncBaseCoreClient):
             next_link = PagingLinks(next=next_token, request=request).link_next()
             links.append(next_link)
 
-        return Collections(collections=collections, links=links)
+        return stac_types.Collections(collections=collections, links=links)
 
-    async def get_collection(self, collection_id: str, **kwargs) -> Collection:
+    async def get_collection(
+        self, collection_id: str, **kwargs
+    ) -> stac_types.Collection:
         """Get a collection from the database by its id.
 
         Args:
@@ -244,18 +249,18 @@ class CoreClient(AsyncBaseCoreClient):
     async def item_collection(
         self,
         collection_id: str,
-        bbox: Optional[List[NumType]] = None,
-        datetime: Union[str, datetime_type, None] = None,
+        bbox: Optional[BBox] = None,
+        datetime: Optional[DateTimeType] = None,
         limit: int = 10,
         token: str = None,
         **kwargs,
-    ) -> ItemCollection:
+    ) -> stac_types.ItemCollection:
         """Read items from a specific collection in the database.
 
         Args:
             collection_id (str): The identifier of the collection to read items from.
-            bbox (Optional[List[NumType]]): The bounding box to filter items by.
-            datetime (Union[str, datetime_type, None]): The datetime range to filter items by.
+            bbox (Optional[BBox]): The bounding box to filter items by.
+            datetime (Optional[DateTimeType]): The datetime range to filter items by.
             limit (int): The maximum number of items to return. The default value is 10.
             token (str): A token used for pagination.
             request (Request): The incoming request.
@@ -317,18 +322,18 @@ class CoreClient(AsyncBaseCoreClient):
             if maybe_count is not None:
                 context_obj["matched"] = maybe_count
 
-        links = []
-        if next_token:
-            links = await PagingLinks(request=request, next=next_token).get_links()
+        links = await PagingLinks(request=request, next=next_token).get_links()
 
-        return ItemCollection(
+        return stac_types.ItemCollection(
             type="FeatureCollection",
             features=items,
             links=links,
             context=context_obj,
         )
 
-    async def get_item(self, item_id: str, collection_id: str, **kwargs) -> Item:
+    async def get_item(
+        self, item_id: str, collection_id: str, **kwargs
+    ) -> stac_types.Item:
         """Get an item from the database based on its id and collection id.
 
         Args:
@@ -349,41 +354,82 @@ class CoreClient(AsyncBaseCoreClient):
         return self.item_serializer.db_to_stac(item, base_url)
 
     @staticmethod
-    def _return_date(interval_str):
+    def _return_date(
+        interval: Optional[Union[DateTimeType, str]]
+    ) -> Dict[str, Optional[str]]:
         """
-        Convert a date interval string into a dictionary for filtering search results.
+        Convert a date interval.
 
-        The date interval string should be formatted as either a single date or a range of dates separated
-        by "/". The date format should be ISO-8601 (YYYY-MM-DDTHH:MM:SSZ). If the interval string is a
-        single date, it will be converted to a dictionary with a single "eq" key whose value is the date in
-        the ISO-8601 format. If the interval string is a range of dates, it will be converted to a
-        dictionary with "gte" (greater than or equal to) and "lte" (less than or equal to) keys. If the
-        interval string is a range of dates with ".." instead of "/", the start and end dates will be
-        assigned default values to encompass the entire possible date range.
+        (which may be a datetime, a tuple of one or two datetimes a string
+        representing a datetime or range, or None) into a dictionary for filtering
+        search results with Elasticsearch.
+
+        This function ensures the output dictionary contains 'gte' and 'lte' keys,
+        even if they are set to None, to prevent KeyError in the consuming logic.
 
         Args:
-            interval_str (str): The date interval string to be converted.
+            interval (Optional[Union[DateTimeType, str]]): The date interval, which might be a single datetime,
+                a tuple with one or two datetimes, a string, or None.
 
         Returns:
-            dict: A dictionary representing the date interval for use in filtering search results.
+            dict: A dictionary representing the date interval for use in filtering search results,
+                always containing 'gte' and 'lte' keys.
         """
-        intervals = interval_str.split("/")
-        if len(intervals) == 1:
-            datetime = f"{intervals[0][0:19]}Z"
-            return {"eq": datetime}
-        else:
-            start_date = f"{intervals[0][0:19]}Z" if intervals[0] != ".." else None
-            end_date = f"{intervals[1][0:19]}Z" if intervals[1] != ".." else None
+        result: Dict[str, Optional[str]] = {"gte": None, "lte": None}
 
-            return {"lte": end_date, "gte": start_date}
+        if interval is None:
+            return result
+
+        if isinstance(interval, str):
+            if "/" in interval:
+                parts = interval.split("/")
+                result["gte"] = parts[0] if parts[0] != ".." else None
+                result["lte"] = (
+                    parts[1] if len(parts) > 1 and parts[1] != ".." else None
+                )
+            else:
+                converted_time = interval if interval != ".." else None
+                result["gte"] = result["lte"] = converted_time
+            return result
+
+        if isinstance(interval, datetime_type):
+            datetime_iso = interval.isoformat()
+            result["gte"] = result["lte"] = datetime_iso
+        elif isinstance(interval, tuple):
+            start, end = interval
+            # Ensure datetimes are converted to UTC and formatted with 'Z'
+            if start:
+                result["gte"] = start.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+            if end:
+                result["lte"] = end.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+        return result
+
+    def _format_datetime_range(self, date_tuple: DateTimeType) -> str:
+        """
+        Convert a tuple of datetime objects or None into a formatted string for API requests.
+
+        Args:
+            date_tuple (tuple): A tuple containing two elements, each can be a datetime object or None.
+
+        Returns:
+            str: A string formatted as 'YYYY-MM-DDTHH:MM:SS.sssZ/YYYY-MM-DDTHH:MM:SS.sssZ', with '..' used if any element is None.
+        """
+
+        def format_datetime(dt):
+            """Format a single datetime object to the ISO8601 extended format with 'Z'."""
+            return dt.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z" if dt else ".."
+
+        start, end = date_tuple
+        return f"{format_datetime(start)}/{format_datetime(end)}"
 
     async def get_search(
         self,
         request: Request,
         collections: Optional[List[str]] = None,
         ids: Optional[List[str]] = None,
-        bbox: Optional[List[NumType]] = None,
-        datetime: Optional[Union[str, datetime_type]] = None,
+        bbox: Optional[BBox] = None,
+        datetime: Optional[DateTimeType] = None,
         limit: Optional[int] = 10,
         query: Optional[str] = None,
         token: Optional[str] = None,
@@ -393,14 +439,14 @@ class CoreClient(AsyncBaseCoreClient):
         filter: Optional[str] = None,
         filter_lang: Optional[str] = None,
         **kwargs,
-    ) -> ItemCollection:
+    ) -> stac_types.ItemCollection:
         """Get search results from the database.
 
         Args:
             collections (Optional[List[str]]): List of collection IDs to search in.
             ids (Optional[List[str]]): List of item IDs to search for.
-            bbox (Optional[List[NumType]]): Bounding box to search in.
-            datetime (Optional[Union[str, datetime_type]]): Filter items based on the datetime field.
+            bbox (Optional[BBox]): Bounding box to search in.
+            datetime (Optional[DateTimeType]): Filter items based on the datetime field.
             limit (Optional[int]): Maximum number of results to return.
             query (Optional[str]): Query string to filter the results.
             token (Optional[str]): Access token to use when searching the catalog.
@@ -433,7 +479,7 @@ class CoreClient(AsyncBaseCoreClient):
                 filter_lang = match.group(1)
 
         if datetime:
-            base_args["datetime"] = datetime
+            base_args["datetime"] = self._format_datetime_range(datetime)
 
         if intersects:
             base_args["intersects"] = orjson.loads(unquote_plus(intersects))
@@ -447,7 +493,6 @@ class CoreClient(AsyncBaseCoreClient):
                         "direction": "desc" if sort[0] == "-" else "asc",
                     }
                 )
-            print(sort_param)
             base_args["sortby"] = sort_param
 
         if filter:
@@ -481,7 +526,7 @@ class CoreClient(AsyncBaseCoreClient):
 
     async def post_search(
         self, search_request: BaseSearchPostRequest, request: Request
-    ) -> ItemCollection:
+    ) -> stac_types.ItemCollection:
         """
         Perform a POST search on the catalog.
 
@@ -531,8 +576,10 @@ class CoreClient(AsyncBaseCoreClient):
             for field_name, expr in search_request.query.items():
                 field = "properties__" + field_name
                 for op, value in expr.items():
+                    # Convert enum to string
+                    operator = op.value if isinstance(op, Enum) else op
                     search = self.database.apply_stacql_filter(
-                        search=search, op=op, field=field, value=value
+                        search=search, op=operator, field=field, value=value
                     )
 
         # only cql2_json is supported here
@@ -596,11 +643,9 @@ class CoreClient(AsyncBaseCoreClient):
             if maybe_count is not None:
                 context_obj["matched"] = maybe_count
 
-        links = []
-        if next_token:
-            links = await PagingLinks(request=request, next=next_token).get_links()
+        links = await PagingLinks(request=request, next=next_token).get_links()
 
-        return ItemCollection(
+        return stac_types.ItemCollection(
             type="FeatureCollection",
             features=items,
             links=links,
@@ -618,7 +663,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def create_item(
-        self, collection_id: str, item: stac_types.Item, **kwargs
+        self, collection_id: str, item: Union[Item, ItemCollection], **kwargs
     ) -> Optional[stac_types.Item]:
         """Create an item in the collection.
 
@@ -635,6 +680,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             ConflictError: If the item in the specified collection already exists.
 
         """
+        item = item.model_dump(mode="json")
         base_url = str(kwargs["request"].base_url)
 
         # If a feature collection is posted
@@ -654,11 +700,11 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         else:
             item = await self.database.prep_create_item(item=item, base_url=base_url)
             await self.database.create_item(item, refresh=kwargs.get("refresh", False))
-            return item
+            return ItemSerializer.db_to_stac(item, base_url)
 
     @overrides
     async def update_item(
-        self, collection_id: str, item_id: str, item: stac_types.Item, **kwargs
+        self, collection_id: str, item_id: str, item: Item, **kwargs
     ) -> stac_types.Item:
         """Update an item in the collection.
 
@@ -675,13 +721,14 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             NotFound: If the specified collection is not found in the database.
 
         """
+        item = item.model_dump(mode="json")
         base_url = str(kwargs["request"].base_url)
         now = datetime_type.now(timezone.utc).isoformat().replace("+00:00", "Z")
         item["properties"]["updated"] = now
 
         await self.database.check_collection_exists(collection_id)
         await self.delete_item(item_id=item_id, collection_id=collection_id)
-        await self.create_item(collection_id=collection_id, item=item, **kwargs)
+        await self.create_item(collection_id=collection_id, item=Item(**item), **kwargs)
 
         return ItemSerializer.db_to_stac(item, base_url)
 
@@ -703,7 +750,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def create_collection(
-        self, collection: stac_types.Collection, **kwargs
+        self, collection: Collection, **kwargs
     ) -> stac_types.Collection:
         """Create a new collection in the database.
 
@@ -717,17 +764,17 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         Raises:
             ConflictError: If the collection already exists.
         """
+        collection = collection.model_dump(mode="json")
         base_url = str(kwargs["request"].base_url)
         collection = self.database.collection_serializer.stac_to_db(
             collection, base_url
         )
         await self.database.create_collection(collection=collection)
-
         return CollectionSerializer.db_to_stac(collection, base_url)
 
     @overrides
     async def update_collection(
-        self, collection: stac_types.Collection, **kwargs
+        self, collection: Collection, **kwargs
     ) -> stac_types.Collection:
         """
         Update a collection.
@@ -747,6 +794,8 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             A STAC collection that has been updated in the database.
 
         """
+        collection = collection.model_dump(mode="json")
+
         base_url = str(kwargs["request"].base_url)
 
         collection_id = kwargs["request"].query_params.get(

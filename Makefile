@@ -104,3 +104,13 @@ install-es: pybase-install
 .PHONY: install-os
 install-os: pybase-install
 	pip install -e ./stac_fastapi/opensearch[dev,server]
+
+.PHONY: docs-image
+docs-image:
+	docker-compose -f docker-compose.docs.yml \
+		build
+
+.PHONY: docs
+docs: docs-image
+	docker-compose -f docker-compose.docs.yml \
+		run docs

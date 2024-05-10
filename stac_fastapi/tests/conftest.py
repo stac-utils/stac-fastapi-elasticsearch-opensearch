@@ -7,9 +7,11 @@ from typing import Any, Callable, Dict, Optional
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
+from stac_pydantic import api
 
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import create_get_request_model, create_post_request_model
+from stac_fastapi.core.basic_auth import apply_basic_auth
 from stac_fastapi.core.core import (
     BulkTransactionsClient,
     CoreClient,
@@ -115,7 +117,7 @@ def test_collection() -> Dict:
 
 async def create_collection(txn_client: TransactionsClient, collection: Dict) -> None:
     await txn_client.create_collection(
-        dict(collection), request=MockRequest, refresh=True
+        api.Collection(**dict(collection)), request=MockRequest, refresh=True
     )
 
 
@@ -123,14 +125,14 @@ async def create_item(txn_client: TransactionsClient, item: Dict) -> None:
     if "collection" in item:
         await txn_client.create_item(
             collection_id=item["collection"],
-            item=item,
+            item=api.Item(**item),
             request=MockRequest,
             refresh=True,
         )
     else:
         await txn_client.create_item(
             collection_id=item["features"][0]["collection"],
-            item=item,
+            item=api.ItemCollection(**item),
             request=MockRequest,
             refresh=True,
         )
@@ -221,4 +223,76 @@ async def app_client(app):
     await create_collection_index()
 
     async with AsyncClient(app=app, base_url="http://test-server") as c:
+        yield c
+
+
+@pytest_asyncio.fixture(scope="session")
+async def app_basic_auth():
+    settings = AsyncSettings()
+    extensions = [
+        TransactionExtension(
+            client=TransactionsClient(
+                database=database, session=None, settings=settings
+            ),
+            settings=settings,
+        ),
+        ContextExtension(),
+        SortExtension(),
+        FieldsExtension(),
+        QueryExtension(),
+        TokenPaginationExtension(),
+        FilterExtension(),
+    ]
+
+    post_request_model = create_post_request_model(extensions)
+
+    stac_api = StacApi(
+        settings=settings,
+        client=CoreClient(
+            database=database,
+            session=None,
+            extensions=extensions,
+            post_request_model=post_request_model,
+        ),
+        extensions=extensions,
+        search_get_request_model=create_get_request_model(extensions),
+        search_post_request_model=post_request_model,
+    )
+
+    os.environ[
+        "BASIC_AUTH"
+    ] = """{
+        "public_endpoints": [
+            {"path": "/", "method": "GET"},
+            {"path": "/search", "method": "GET"}
+        ],
+        "users": [
+            {"username": "admin", "password": "admin", "permissions": "*"},
+            {
+                "username": "reader", "password": "reader",
+                "permissions": [
+                    {"path": "/conformance", "method": ["GET"]},
+                    {"path": "/collections/{collection_id}/items/{item_id}", "method": ["GET"]},
+                    {"path": "/search", "method": ["POST"]},
+                    {"path": "/collections", "method": ["GET"]},
+                    {"path": "/collections/{collection_id}", "method": ["GET"]},
+                    {"path": "/collections/{collection_id}/items", "method": ["GET"]},
+                    {"path": "/queryables", "method": ["GET"]},
+                    {"path": "/queryables/collections/{collection_id}/queryables", "method": ["GET"]},
+                    {"path": "/_mgmt/ping", "method": ["GET"]}
+                ]
+            }
+        ]
+    }"""
+    apply_basic_auth(stac_api)
+
+    return stac_api.app
+
+
+@pytest_asyncio.fixture(scope="session")
+async def app_client_basic_auth(app_basic_auth):
+    await create_index_templates()
+    await create_collection_index()
+
+    async with AsyncClient(app=app_basic_auth, base_url="http://test-server") as c:
         yield c

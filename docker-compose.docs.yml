@@ -1,0 +1,14 @@
+version: '3'
+
+services:
+  docs:
+    container_name: stac-fastapi-docs-dev
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.docs
+    platform: linux/amd64
+    environment:
+    - APP_PORT=8082
+    - ES_PORT=9202
+    volumes:
+      - .:/opt/src
