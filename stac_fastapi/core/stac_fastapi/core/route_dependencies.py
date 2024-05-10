@@ -12,6 +12,8 @@ _LOGGER = logging.getLogger("uvicorn.default")
 
 def get_route_dependencies() -> list:
     """
+    Route dependencies generator.
+
     Generate a set of route dependencies for authentication to the
     provided FastAPI application.
     """
@@ -22,7 +24,7 @@ def get_route_dependencies() -> list:
         _LOGGER.info("Authentication enabled.")
 
         if os.path.exists(route_dependencies_env):
-            with os.open(route_dependencies_env) as route_dependencies_file:
+            with open(route_dependencies_env) as route_dependencies_file:
                 route_dependencies_conf = json.load(route_dependencies_file)
 
         else:
