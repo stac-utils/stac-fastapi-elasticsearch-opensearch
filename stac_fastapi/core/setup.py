@@ -6,19 +6,18 @@ with open("README.md") as f:
     desc = f.read()
 
 install_requires = [
-    "fastapi",
-    "attrs",
-    "pydantic[dotenv]<2",
-    "stac_pydantic==2.0.*",
-    "stac-fastapi.types==2.5.5.post1",
-    "stac-fastapi.api==2.5.5.post1",
-    "stac-fastapi.extensions==2.5.5.post1",
-    "pystac[validation]",
+    "fastapi-slim",
+    "attrs>=23.2.0",
+    "pydantic[dotenv]",
+    "stac_pydantic>=3",
+    "stac-fastapi.types==3.0.0a",
+    "stac-fastapi.api==3.0.0a",
+    "stac-fastapi.extensions==3.0.0a",
     "orjson",
     "overrides",
     "geojson-pydantic",
     "pygeofilter==0.2.1",
-    "typing_extensions==4.4.0",
+    "typing_extensions==4.8.0",
 ]
 
 setup(
@@ -35,6 +34,7 @@ setup(
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
         "License :: OSI Approved :: MIT License",
     ],
     url="https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch",
