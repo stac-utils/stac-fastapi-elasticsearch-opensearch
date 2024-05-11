@@ -6,7 +6,7 @@ with open("README.md") as f:
     desc = f.read()
 
 install_requires = [
-    "stac-fastapi.core==2.4.1",
+    "stac-fastapi.core==3.0.0a0",
     "opensearch-py==2.4.2",
     "opensearch-py[async]==2.4.2",
     "uvicorn",
