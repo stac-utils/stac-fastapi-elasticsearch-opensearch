@@ -7,10 +7,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+
 ## [v3.0.0a0]
 
 ### Added
 
+- Symlinks from project-specific readme files to main readme [#250](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/250)
 - Support for Python 3.12 [#234](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/234)
 
 ### Changed

@@ -5,6 +5,7 @@
 <p align="left">
   <img src="https://github.com/radiantearth/stac-site/raw/master/images/logo/stac-030-long.png" width=600>
   <p align="left"><b>Elasticsearch and Opensearch backends for the stac-fastapi project.</b></p>
+  <p align="left"><b>Featuring stac-fastapi.core for simplifying the creation and maintenance of custom STAC api backends.</b></p>
 </p>
 
   

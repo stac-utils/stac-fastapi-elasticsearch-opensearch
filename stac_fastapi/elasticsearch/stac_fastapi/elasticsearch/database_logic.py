@@ -11,7 +11,7 @@ from elasticsearch_dsl import Q, Search
 from elasticsearch import exceptions, helpers  # type: ignore
 from stac_fastapi.core.extensions import filter
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
-from stac_fastapi.core.utilities import bbox2polygon
+from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon
 from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
 from stac_fastapi.elasticsearch.config import (
     ElasticsearchSettings as SyncElasticsearchSettings,
@@ -579,7 +579,7 @@ class DatabaseLogic:
 
         index_param = indices(collection_ids)
 
-        max_result_window = 10000
+        max_result_window = MAX_LIMIT
 
         size_limit = min(limit + 1, max_result_window)
 

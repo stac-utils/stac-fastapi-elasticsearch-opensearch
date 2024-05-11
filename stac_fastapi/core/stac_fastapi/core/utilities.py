@@ -5,6 +5,8 @@ such as converting bounding boxes to polygon representations.
 """
 from typing import List
 
+MAX_LIMIT = 10000
+
 
 def bbox2polygon(b0: float, b1: float, b2: float, b3: float) -> List[List[List[float]]]:
     """Transform a bounding box represented by its four coordinates `b0`, `b1`, `b2`, and `b3` into a polygon.
