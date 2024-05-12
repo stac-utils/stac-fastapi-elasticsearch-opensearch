@@ -215,7 +215,7 @@ async def test_get_item_collection(app_client, ctx, txn_client):
     assert resp.status_code == 200
 
     item_collection = resp.json()
-    if matched := item_collection.get("num_matched"):
+    if matched := item_collection.get("numMatched"):
         assert matched == item_count + 1
 
 
