@@ -312,14 +312,12 @@ class CoreClient(AsyncBaseCoreClient):
             self.item_serializer.db_to_stac(item, base_url=base_url) for item in items
         ]
 
-        context_obj = None
-        if self.extension_is_enabled("ContextExtension"):
-            context_obj = {
-                "returned": len(items),
-                "limit": limit,
-            }
-            if maybe_count is not None:
-                context_obj["matched"] = maybe_count
+        context_obj = {
+            "returned": len(items),
+            "limit": limit,
+        }
+        if maybe_count is not None:
+            context_obj["matched"] = maybe_count
 
         links = await PagingLinks(request=request, next=next_token).get_links()
 
@@ -633,14 +631,12 @@ class CoreClient(AsyncBaseCoreClient):
                 for feat in items
             ]
 
-        context_obj = None
-        if self.extension_is_enabled("ContextExtension"):
-            context_obj = {
-                "returned": len(items),
-                "limit": limit,
-            }
-            if maybe_count is not None:
-                context_obj["matched"] = maybe_count
+        context_obj = {
+            "returned": len(items),
+            "limit": limit,
+        }
+        if maybe_count is not None:
+            context_obj["matched"] = maybe_count
 
         links = await PagingLinks(request=request, next=next_token).get_links()
 

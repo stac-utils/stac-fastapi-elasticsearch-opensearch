@@ -83,7 +83,7 @@ async def test_app_search_response(app_client, ctx):
 
 
 @pytest.mark.asyncio
-async def test_app_context_extension(app_client, txn_client, ctx, load_test_data):
+async def test_app_context_results(app_client, txn_client, ctx, load_test_data):
     test_item = load_test_data("test_item.json")
     test_item["id"] = "test-item-2"
     test_item["collection"] = "test-collection-2"
