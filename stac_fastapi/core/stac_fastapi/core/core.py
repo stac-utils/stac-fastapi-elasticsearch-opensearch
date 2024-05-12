@@ -312,12 +312,8 @@ class CoreClient(AsyncBaseCoreClient):
             self.item_serializer.db_to_stac(item, base_url=base_url) for item in items
         ]
 
-        context_obj = {
-            "returned": len(items),
-            "limit": limit,
-        }
-        if maybe_count is not None:
-            context_obj["matched"] = maybe_count
+        num_returned = len(items)
+        num_matched = maybe_count if maybe_count is not None else None
 
         links = await PagingLinks(request=request, next=next_token).get_links()
 
@@ -325,7 +321,8 @@ class CoreClient(AsyncBaseCoreClient):
             type="FeatureCollection",
             features=items,
             links=links,
-            context=context_obj,
+            num_returned=num_returned,
+            num_matched=num_matched,
         )
 
     async def get_item(
@@ -631,12 +628,8 @@ class CoreClient(AsyncBaseCoreClient):
                 for feat in items
             ]
 
-        context_obj = {
-            "returned": len(items),
-            "limit": limit,
-        }
-        if maybe_count is not None:
-            context_obj["matched"] = maybe_count
+        num_returned = len(items)
+        num_matched = maybe_count if maybe_count is not None else None
 
         links = await PagingLinks(request=request, next=next_token).get_links()
 
@@ -644,7 +637,8 @@ class CoreClient(AsyncBaseCoreClient):
             type="FeatureCollection",
             features=items,
             links=links,
-            context=context_obj,
+            num_returned=num_returned,
+            num_matched=num_matched,
         )
 
 
