@@ -111,8 +111,8 @@ async def test_app_context_results(app_client, txn_client, ctx, load_test_data):
 
     resp_json = resp.json()
     assert len(resp_json["features"]) == 1
-    assert resp_json["num_returned"] == 1
-    if matched := resp_json.get("num_matched"):
+    assert resp_json["numReturned"] == 1
+    if matched := resp_json.get("numMatched"):
         assert matched == 1
 
 

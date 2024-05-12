@@ -321,8 +321,8 @@ class CoreClient(AsyncBaseCoreClient):
             type="FeatureCollection",
             features=items,
             links=links,
-            num_returned=num_returned,
-            num_matched=num_matched,
+            numReturned=num_returned,
+            numMatched=num_matched,
         )
 
     async def get_item(
@@ -637,8 +637,8 @@ class CoreClient(AsyncBaseCoreClient):
             type="FeatureCollection",
             features=items,
             links=links,
-            num_returned=num_returned,
-            num_matched=num_matched,
+            numReturned=num_returned,
+            numMatched=num_matched,
         )
 
 
