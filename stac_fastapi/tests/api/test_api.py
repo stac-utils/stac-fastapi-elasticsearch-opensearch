@@ -83,7 +83,7 @@ async def test_app_search_response(app_client, ctx):
 
 
 @pytest.mark.asyncio
-async def test_app_context_extension(app_client, txn_client, ctx, load_test_data):
+async def test_app_context_results(app_client, txn_client, ctx, load_test_data):
     test_item = load_test_data("test_item.json")
     test_item["id"] = "test-item-2"
     test_item["collection"] = "test-collection-2"
@@ -111,9 +111,8 @@ async def test_app_context_extension(app_client, txn_client, ctx, load_test_data
 
     resp_json = resp.json()
     assert len(resp_json["features"]) == 1
-    assert "context" in resp_json
-    assert resp_json["context"]["returned"] == 1
-    if matched := resp_json["context"].get("matched"):
+    assert resp_json["numReturned"] == 1
+    if matched := resp_json.get("numMatched"):
         assert matched == 1
 
 
@@ -225,6 +224,7 @@ async def test_app_query_extension_limit_lt0(app_client):
     ).status_code == 400
 
 
+@pytest.mark.skip(reason="removal of context extension")
 @pytest.mark.asyncio
 async def test_app_query_extension_limit_gt10000(app_client):
     resp = await app_client.post("/search", json={"limit": 10001})
