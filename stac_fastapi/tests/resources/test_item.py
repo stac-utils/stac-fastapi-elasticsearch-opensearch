@@ -393,7 +393,6 @@ async def test_item_search_temporal_window_post(app_client, ctx, load_test_data)
 
 
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="KeyError: 'features")
 async def test_item_search_temporal_open_window(app_client, ctx):
     """Test POST search with open spatio-temporal query (core)"""
     test_item = ctx.item

@@ -9,8 +9,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 
+- Unskip temporal open window test [#254](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/254)
 - Removed deprecated context extension [#255](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/255)
-
 
 ## [v3.0.0a0]
 
