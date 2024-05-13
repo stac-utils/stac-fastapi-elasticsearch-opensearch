@@ -25,10 +25,6 @@ from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.models.links import PagingLinks
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.session import Session
-from stac_fastapi.core.types.core import (
-    AsyncBaseCoreClient,
-    AsyncBaseTransactionsClient,
-)
 from stac_fastapi.extensions.third_party.bulk_transactions import (
     BaseBulkTransactionsClient,
     BulkTransactionMethod,
@@ -37,7 +33,11 @@ from stac_fastapi.extensions.third_party.bulk_transactions import (
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.config import Settings
 from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
-from stac_fastapi.types.core import AsyncBaseFiltersClient
+from stac_fastapi.types.core import (
+    AsyncBaseCoreClient,
+    AsyncBaseFiltersClient,
+    AsyncBaseTransactionsClient,
+)
 from stac_fastapi.types.extension import ApiExtension
 from stac_fastapi.types.requests import get_base_url
 from stac_fastapi.types.rfc3339 import DateTimeType
@@ -757,7 +757,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def update_collection(
-        self, collection: Collection, **kwargs
+        self, collection_id: str, collection: Collection, **kwargs
     ) -> stac_types.Collection:
         """
         Update a collection.
@@ -770,6 +770,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         The updated collection is then returned.
 
         Args:
+            collection_id: id of the existing collection to be updated
             collection: A STAC collection that needs to be updated.
             kwargs: Additional keyword arguments.
 
@@ -780,10 +781,6 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         collection = collection.model_dump(mode="json")
 
         base_url = str(kwargs["request"].base_url)
-
-        collection_id = kwargs["request"].query_params.get(
-            "collection_id", collection["id"]
-        )
 
         collection = self.database.collection_serializer.stac_to_db(
             collection, base_url

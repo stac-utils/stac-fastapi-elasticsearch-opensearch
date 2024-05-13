@@ -55,7 +55,7 @@ async def test_update_collection(
 
     collection_data["keywords"].append("new keyword")
     await txn_client.update_collection(
-        api.Collection(**collection_data), request=MockRequest
+        collection_data["id"], api.Collection(**collection_data), request=MockRequest
     )
 
     coll = await core_client.get_collection(collection_data["id"], request=MockRequest)
@@ -96,6 +96,7 @@ async def test_update_collection_id(
     collection_data["id"] = new_collection_id
 
     await txn_client.update_collection(
+        collection_id=collection_data["id"],
         collection=api.Collection(**collection_data),
         request=MockRequest(
             query_params={
