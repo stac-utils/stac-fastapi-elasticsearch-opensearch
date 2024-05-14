@@ -2,8 +2,8 @@
   {
     "routes": [
       {
-        "method": "PUT",
-        "paths": "/collections"
+        "method": "GET",
+        "path": "/collections"
       }
     ],
     "dependencies": [

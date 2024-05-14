@@ -24,7 +24,9 @@ def get_route_dependencies() -> list:
         _LOGGER.info("Authentication enabled.")
 
         if os.path.exists(route_dependencies_env):
-            with open(route_dependencies_env) as route_dependencies_file:
+            with open(
+                route_dependencies_env, encoding="utf-8"
+            ) as route_dependencies_file:
                 route_dependencies_conf = json.load(route_dependencies_file)
 
         else:
@@ -43,15 +45,15 @@ def get_route_dependencies() -> list:
             dependencies = []
             for dependency_conf in dependencies_conf:
 
-                module_name, function_name = dependency_conf["method"].rsplit(".", 1)
+                module_name, function_name = dependency_conf["function"].rsplit(".", 1)
 
                 module = importlib.import_module(module_name)
 
                 function = getattr(module, function_name)
 
                 dependency = function(
-                    *dependency_conf.get("input_args", []),
-                    **dependency_conf.get("input_kwargs", {})
+                    *dependency_conf.get("args", []),
+                    **dependency_conf.get("kwargs", {})
                 )
 
                 dependencies.append(Depends(dependency))

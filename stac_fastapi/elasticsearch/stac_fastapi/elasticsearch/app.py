@@ -12,10 +12,8 @@ from stac_fastapi.core.core import (
     TransactionsClient,
 )
 from stac_fastapi.core.extensions import QueryExtension
+from stac_fastapi.core.route_dependencies import get_route_dependencies
 from stac_fastapi.core.session import Session
-from stac_fastapi.core.stac_fastapi.core.route_dependencies import (
-    get_route_dependencies,
-)
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
 from stac_fastapi.elasticsearch.database_logic import (
     DatabaseLogic,

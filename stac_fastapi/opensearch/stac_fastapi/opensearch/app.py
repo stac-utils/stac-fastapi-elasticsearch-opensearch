@@ -12,6 +12,7 @@ from stac_fastapi.core.core import (
     TransactionsClient,
 )
 from stac_fastapi.core.extensions import QueryExtension
+from stac_fastapi.core.route_dependencies import get_route_dependencies
 from stac_fastapi.core.session import Session
 from stac_fastapi.extensions.core import (
     ContextExtension,
@@ -74,6 +75,7 @@ api = StacApi(
     ),
     search_get_request_model=create_get_request_model(extensions),
     search_post_request_model=post_request_model,
+    route_dependencies=get_route_dependencies(),
 )
 app = api.app
 app.root_path = os.getenv("STAC_FASTAPI_ROOT_PATH", "")
