@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, Optional
 
 import pytest
 import pytest_asyncio
+from fastapi import Depends, HTTPException, security, status
 from httpx import AsyncClient
 from stac_pydantic import api
 
@@ -18,6 +19,7 @@ from stac_fastapi.core.core import (
     TransactionsClient,
 )
 from stac_fastapi.core.extensions import QueryExtension
+from stac_fastapi.core.route_dependencies import get_route_dependencies
 
 if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
     from stac_fastapi.opensearch.config import AsyncOpensearchSettings as AsyncSettings
@@ -295,4 +297,81 @@ async def app_client_basic_auth(app_basic_auth):
     await create_collection_index()
 
     async with AsyncClient(app=app_basic_auth, base_url="http://test-server") as c:
+        yield c
+
+
+def must_be_bob(
+    credentials: security.HTTPBasicCredentials = Depends(security.HTTPBasic()),
+):
+    if credentials.username == "bob":
+        return True
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="You're not Bob",
+        headers={"WWW-Authenticate": "Basic"},
+    )
+
+
+@pytest_asyncio.fixture(scope="session")
+async def route_dependencies_app():
+    settings = AsyncSettings()
+    extensions = [
+        TransactionExtension(
+            client=TransactionsClient(
+                database=database, session=None, settings=settings
+            ),
+            settings=settings,
+        ),
+        ContextExtension(),
+        SortExtension(),
+        FieldsExtension(),
+        QueryExtension(),
+        TokenPaginationExtension(),
+        FilterExtension(),
+    ]
+
+    post_request_model = create_post_request_model(extensions)
+
+    os.environ[
+        "STAC_FASTAPI_ROUTE_DEPENDENCIES"
+    ] = """[
+            {
+                "routes": [
+                    {
+                        "method": "GET",
+                        "path": "/collections"
+                    }
+                ],
+                "dependencies": [
+                    {
+                        "function": "stac_fastapi.tests.conftest.must_be_bob",
+                    }
+                ]
+            }
+        ]"""
+
+    return StacApi(
+        settings=settings,
+        client=CoreClient(
+            database=database,
+            session=None,
+            extensions=extensions,
+            post_request_model=post_request_model,
+        ),
+        extensions=extensions,
+        search_get_request_model=create_get_request_model(extensions),
+        search_post_request_model=post_request_model,
+        route_dependencies=get_route_dependencies(),
+    ).app
+
+
+@pytest_asyncio.fixture(scope="session")
+async def route_dependencies_client(route_dependencies_app):
+    await create_index_templates()
+    await create_collection_index()
+
+    async with AsyncClient(
+        app=route_dependencies_app, base_url="http://test-server"
+    ) as c:
         yield c
