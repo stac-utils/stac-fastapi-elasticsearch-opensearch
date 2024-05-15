@@ -10,14 +10,16 @@ from fastapi import Depends
 _LOGGER = logging.getLogger("uvicorn.default")
 
 
-def get_route_dependencies() -> list:
+def get_route_dependencies(route_dependencies_env: str = "") -> list:
     """
     Route dependencies generator.
 
     Generate a set of route dependencies for authentication to the
     provided FastAPI application.
     """
-    route_dependencies_env = os.environ.get("STAC_FASTAPI_ROUTE_DEPENDENCIES")
+    route_dependencies_env = os.environ.get(
+        "STAC_FASTAPI_ROUTE_DEPENDENCIES", route_dependencies_env
+    )
     route_dependencies = []
 
     if route_dependencies_env:

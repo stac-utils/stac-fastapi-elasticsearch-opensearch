@@ -315,6 +315,23 @@ def must_be_bob(
 
 @pytest_asyncio.fixture(scope="session")
 async def route_dependencies_app():
+
+    stac_fastapi_route_dependencies = """[
+            {
+                "routes": [
+                    {
+                        "method": "GET",
+                        "path": "/collections"
+                    }
+                ],
+                "dependencies": [
+                    {
+                        "function": "stac_fastapi.tests.conftest.must_be_bob",
+                    }
+                ]
+            }
+        ]"""
+
     settings = AsyncSettings()
     extensions = [
         TransactionExtension(
@@ -333,24 +350,6 @@ async def route_dependencies_app():
 
     post_request_model = create_post_request_model(extensions)
 
-    os.environ[
-        "STAC_FASTAPI_ROUTE_DEPENDENCIES"
-    ] = """[
-            {
-                "routes": [
-                    {
-                        "method": "GET",
-                        "path": "/collections"
-                    }
-                ],
-                "dependencies": [
-                    {
-                        "function": "stac_fastapi.tests.conftest.must_be_bob",
-                    }
-                ]
-            }
-        ]"""
-
     return StacApi(
         settings=settings,
         client=CoreClient(
@@ -362,7 +361,7 @@ async def route_dependencies_app():
         extensions=extensions,
         search_get_request_model=create_get_request_model(extensions),
         search_post_request_model=post_request_model,
-        route_dependencies=get_route_dependencies(),
+        route_dependencies=get_route_dependencies(stac_fastapi_route_dependencies),
     ).app
 
 
