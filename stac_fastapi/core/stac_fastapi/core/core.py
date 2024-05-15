@@ -306,7 +306,7 @@ class CoreClient(AsyncBaseCoreClient):
             catalog_id=catalog_id, collection_id=collection_id
         )
         return self.collection_serializer.db_to_stac(
-            collection=collection, base_url=base_url
+            catalog_id=catalog_id, collection=collection, base_url=base_url
         )
 
     async def get_catalog(self, catalog_id: str, **kwargs) -> Collection:
@@ -364,7 +364,9 @@ class CoreClient(AsyncBaseCoreClient):
         )
 
         collections = [
-            self.collection_serializer.db_to_stac(collection, base_url=base_url)
+            self.collection_serializer.db_to_stac(
+                catalog_id=catalog_id, collection=collection, base_url=base_url
+            )
             for collection in collections
         ]
 
@@ -439,7 +441,10 @@ class CoreClient(AsyncBaseCoreClient):
         )
 
         items = [
-            self.item_serializer.db_to_stac(item, base_url=base_url) for item in items
+            self.item_serializer.db_to_stac(
+                catalog_id=catalog_id, item=item, base_url=base_url
+            )
+            for item in items
         ]
 
         context_obj = None
@@ -484,7 +489,9 @@ class CoreClient(AsyncBaseCoreClient):
             collection_id=collection_id,
             catalog_id=catalog_id,
         )
-        return self.item_serializer.db_to_stac(item, base_url)
+        return self.item_serializer.db_to_stac(
+            catalog_id=catalog_id, item=item, base_url=base_url
+        )
 
     @staticmethod
     def _return_date(interval_str):
@@ -710,7 +717,8 @@ class CoreClient(AsyncBaseCoreClient):
         )
 
         items = [
-            self.item_serializer.db_to_stac(item, base_url=base_url) for item in items
+            self.item_serializer.db_to_stac(item=item, base_url=base_url)
+            for item in items
         ]
 
         if self.extension_is_enabled("FieldsExtension"):
@@ -856,7 +864,9 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             catalog_id=catalog_id, collection_id=collection_id, item=item, **kwargs
         )
 
-        return ItemSerializer.db_to_stac(item, base_url)
+        return ItemSerializer.db_to_stac(
+            catalog_id=catalog_id, item=item, base_url=base_url
+        )
 
     @overrides
     async def delete_item(
@@ -903,7 +913,9 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         await self.database.create_collection(
             catalog_id=catalog_id, collection=collection
         )
-        return CollectionSerializer.db_to_stac(collection, base_url)
+        return CollectionSerializer.db_to_stac(
+            catalog_id=catalog_id, collection=collection, base_url=base_url
+        )
 
     @overrides
     async def update_collection(
@@ -944,7 +956,9 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             catalog_id=catalog_id, collection_id=collection_id, collection=collection
         )
 
-        return CollectionSerializer.db_to_stac(collection, base_url)
+        return CollectionSerializer.db_to_stac(
+            catalog_id=catalog_id, collection=collection, base_url=base_url
+        )
 
     @overrides
     async def delete_collection(
@@ -992,7 +1006,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         await self.database.create_catalog(catalog=catalog)
 
-        return CatalogSerializer.db_to_stac(catalog, base_url)
+        return CatalogSerializer.db_to_stac(catalog=catalog, base_url=base_url)
 
     @overrides
     async def update_catalog(
@@ -1021,7 +1035,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         catalog = self.database.catalog_serializer.stac_to_db(catalog, base_url)
         await self.database.update_catalog(catalog_id=catalog_id, catalog=catalog)
 
-        return CatalogSerializer.db_to_stac(catalog, base_url)
+        return CatalogSerializer.db_to_stac(catalog=catalog, base_url=base_url)
 
     @overrides
     async def delete_catalog(
