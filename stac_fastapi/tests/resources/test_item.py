@@ -215,7 +215,7 @@ async def test_get_item_collection(app_client, ctx, txn_client):
     assert resp.status_code == 200
 
     item_collection = resp.json()
-    if matched := item_collection["context"].get("matched"):
+    if matched := item_collection.get("numMatched"):
         assert matched == item_count + 1
 
 
@@ -283,13 +283,13 @@ async def test_pagination(app_client, load_test_data):
     )
     assert resp.status_code == 200
     first_page = resp.json()
-    assert first_page["context"]["returned"] == 3
+    assert first_page["numReturned"] == 3
 
     url_components = urlsplit(first_page["links"][0]["href"])
     resp = await app_client.get(f"{url_components.path}?{url_components.query}")
     assert resp.status_code == 200
     second_page = resp.json()
-    assert second_page["context"]["returned"] == 3
+    assert second_page["numReturned"] == 3
 
 
 @pytest.mark.skip(reason="created and updated fields not be added with stac fastapi 3?")
@@ -393,7 +393,6 @@ async def test_item_search_temporal_window_post(app_client, ctx, load_test_data)
 
 
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="KeyError: 'features")
 async def test_item_search_temporal_open_window(app_client, ctx):
     """Test POST search with open spatio-temporal query (core)"""
     test_item = ctx.item
@@ -547,14 +546,14 @@ async def test_item_search_get_query_extension(app_client, ctx):
         ),
     }
     resp = await app_client.get("/search", params=params)
-    assert resp.json()["context"]["returned"] == 0
+    assert resp.json()["numReturned"] == 0
 
     params["query"] = json.dumps(
         {"proj:epsg": {"eq": test_item["properties"]["proj:epsg"]}}
     )
     resp = await app_client.get("/search", params=params)
     resp_json = resp.json()
-    assert resp_json["context"]["returned"] == 1
+    assert resp_json["numReturned"] == 1
     assert (
         resp_json["features"][0]["properties"]["proj:epsg"]
         == test_item["properties"]["proj:epsg"]

@@ -21,7 +21,6 @@ from stac_fastapi.elasticsearch.database_logic import (
     create_index_templates,
 )
 from stac_fastapi.extensions.core import (
-    ContextExtension,
     FieldsExtension,
     FilterExtension,
     SortExtension,
@@ -58,7 +57,6 @@ extensions = [
     QueryExtension(),
     SortExtension(),
     TokenPaginationExtension(),
-    ContextExtension(),
     filter_extension,
 ]
 
