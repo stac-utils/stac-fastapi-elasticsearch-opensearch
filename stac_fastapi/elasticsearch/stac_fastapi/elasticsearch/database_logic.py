@@ -1649,7 +1649,12 @@ class DatabaseLogic:
             id=mk_collection_id(collection_id, catalog_id),
             refresh=refresh,
         )
-        await delete_item_index(collection_id=collection_id, catalog_id=catalog_id)
+        try:
+            await delete_item_index(collection_id=collection_id, catalog_id=catalog_id)
+        except exceptions.NotFoundError:
+            logger.info(
+                f"Collection {collection_id} in catalog {catalog_id} has no items, so index does not exist and cannot be deleted, continuing as normal."
+            )
 
     async def create_catalog(self, catalog: Catalog, refresh: bool = False):
         """Create a single catalog in the database.
@@ -1765,9 +1770,22 @@ class DatabaseLogic:
         await self.find_catalog(catalog_id=catalog_id)
         await self.client.delete(index=CATALOGS_INDEX, id=catalog_id, refresh=refresh)
         try:
+            # Need to delete all items contained in this collection
+            index_param = collection_indices(catalog_ids=[catalog_id])
+            response = await self.client.search(
+                index=index_param,
+                body={"sort": [{"id": {"order": "asc"}}]},
+            )
+            collection_ids = [hit["_id"] for hit in response["hits"]["hits"]]
+            for collection_id in collection_ids:
+                await delete_item_index(
+                    collection_id=collection_id.split("|")[0], catalog_id=catalog_id
+                )
             await delete_collection_index(catalog_id)
         except exceptions.NotFoundError:
-            raise NotFoundError(f"Catalog {catalog_id} does not exist")
+            logger.info(
+                f"Catalog {catalog_id} has no collections, or items, so index does not exist and cannot be deleted, continuing as normal."
+            )
 
     async def bulk_async(
         self,
