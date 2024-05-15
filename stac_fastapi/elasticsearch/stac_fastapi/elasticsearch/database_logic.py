@@ -240,7 +240,9 @@ ES_CATALOGS_MAPPINGS = {
 }
 
 
-def index_by_collection_id(collection_id: str = None, catalog_id: Optional[str] = None) -> str:
+def index_by_collection_id(
+    collection_id: str = None, catalog_id: Optional[str] = None
+) -> str:
     """
     Translate a collection id into an Elasticsearch index name.
 
@@ -272,7 +274,9 @@ def index_by_catalog_id(catalog_id: str) -> str:
     return f"{COLLECTIONS_INDEX_PREFIX}{''.join(c for c in catalog_id.lower() if c not in ES_INDEX_NAME_UNSUPPORTED_CHARS)}"
 
 
-def indices(collection_ids: Optional[List[str]] = None, catalog_ids: Optional[List[str]] = None) -> str:
+def indices(
+    collection_ids: Optional[List[str]] = None, catalog_ids: Optional[List[str]] = None
+) -> str:
     """
     Get a comma-separated string of index names for a given list of collection ids.
 
@@ -287,7 +291,14 @@ def indices(collection_ids: Optional[List[str]] = None, catalog_ids: Optional[Li
     else:
         if not collection_ids:
             collection_ids = [None]
-        return ",".join([index_by_collection_id(collection_id=coll, catalog_id=cat) for coll in collection_ids for cat in catalog_ids])
+        return ",".join(
+            [
+                index_by_collection_id(collection_id=coll, catalog_id=cat)
+                for coll in collection_ids
+                for cat in catalog_ids
+            ]
+        )
+
 
 def collection_indices(catalog_ids: Optional[List[str]]) -> str:
     """
@@ -386,7 +397,9 @@ async def create_item_index(collection_id: str, catalog_id: str):
 
     """
     client = AsyncElasticsearchSettings().create_client
-    index_name = index_by_collection_id(collection_id=collection_id, catalog_id=catalog_id)
+    index_name = index_by_collection_id(
+        collection_id=collection_id, catalog_id=catalog_id
+    )
 
     await client.options(ignore_status=400).indices.create(
         index=f"{index_name}-000001",
@@ -413,6 +426,7 @@ async def delete_item_index(collection_id: str, catalog_id: str):
         await client.indices.delete(index=name)
     await client.close()
 
+
 async def delete_collection_index(catalog_id: str):
     """Delete the index for collections in a catalog.
 
@@ -426,13 +440,17 @@ async def delete_collection_index(catalog_id: str):
     try:
         if "aliases" in resolved and resolved["aliases"]:
             [alias] = resolved["aliases"]
-            await client.indices.delete_alias(index=alias["indices"], name=alias["name"])
+            await client.indices.delete_alias(
+                index=alias["indices"], name=alias["name"]
+            )
             await client.indices.delete(index=alias["indices"])
         else:
             await client.indices.delete(index=name)
         await client.close()
     except exceptions.NotFoundError:
-        raise NotFoundError(f"Catalog {catalog_id} does not have any associated collections.")
+        raise NotFoundError(
+            f"Catalog {catalog_id} does not have any associated collections."
+        )
 
 
 def mk_item_id(item_id: str, collection_id: str, catalog_id: str):
@@ -447,6 +465,7 @@ def mk_item_id(item_id: str, collection_id: str, catalog_id: str):
         str: The document id for the Item, combining the Item id, the Collection id and the Catalog id, separated by `|` characters.
     """
     return f"{item_id}|{collection_id}|{catalog_id}"
+
 
 def mk_collection_id(collection_id: str, catalog_id: str):
     """Create the document id for a collection in Elasticsearch.
@@ -477,23 +496,30 @@ def mk_actions(catalog_id: str, collection_id: str, processed_items: List[Item])
     """
     return [
         {
-            "_index": index_by_collection_id(collection_id=collection_id, catalog_id=catalog_id),
-            "_id": mk_item_id(item_id=item["id"], collection_id=item["collection"], catalog_id=catalog_id),
+            "_index": index_by_collection_id(
+                collection_id=collection_id, catalog_id=catalog_id
+            ),
+            "_id": mk_item_id(
+                item_id=item["id"],
+                collection_id=item["collection"],
+                catalog_id=catalog_id,
+            ),
             "_source": item,
         }
         for item in processed_items
     ]
 
+
 def get_catalog_id_from_root(collection: Collection):
-        collection_links = collection["links"]
-        for link in collection_links:
-            if link["rel"] == "root":
-                root_href = link["href"]
-                root_href_split = root_href.split("/")
-                catalog_index = root_href_split.index("catalog.json")
-                catalog_id = root_href_split[catalog_index-1]
-                return catalog_id
-        return "uncatalogued-entries"
+    collection_links = collection["links"]
+    for link in collection_links:
+        if link["rel"] == "root":
+            root_href = link["href"]
+            root_href_split = root_href.split("/")
+            catalog_index = root_href_split.index("catalog.json")
+            catalog_id = root_href_split[catalog_index - 1]
+            return catalog_id
+    return "uncatalogued-entries"
 
 
 # stac_pydantic classes extend _GeometryBase, which doesn't have a type field,
@@ -560,7 +586,7 @@ class DatabaseLogic:
             next_token = hits[-1]["sort"][0]
 
         return collections, next_token
-    
+
     async def get_catalog_collections(
         self, catalog_ids: List[str], token: Optional[str], limit: int, base_url: str
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
@@ -651,7 +677,9 @@ class DatabaseLogic:
 
         return catalogs, next_token
 
-    async def get_one_item(self, catalog_id: str, collection_id: str, item_id: str) -> Dict:
+    async def get_one_item(
+        self, catalog_id: str, collection_id: str, item_id: str
+    ) -> Dict:
         """Retrieve a single item from the database.
 
         Args:
@@ -670,8 +698,12 @@ class DatabaseLogic:
         """
         try:
             item = await self.client.get(
-                index=index_by_collection_id(collection_id=collection_id, catalog_id=catalog_id),
-                id=mk_item_id(item_id=item_id, collection_id=collection_id, catalog_id=catalog_id),
+                index=index_by_collection_id(
+                    collection_id=collection_id, catalog_id=catalog_id
+                ),
+                id=mk_item_id(
+                    item_id=item_id, collection_id=collection_id, catalog_id=catalog_id
+                ),
             )
         except exceptions.NotFoundError:
             raise NotFoundError(
@@ -1089,7 +1121,9 @@ class DatabaseLogic:
 
         # Can only provide a collection if you also provide the containing catalog
         if collection_ids and not catalog_ids:
-            raise Exception("To search specific collection, you must provide the containing catalog.")
+            raise Exception(
+                "To search specific collection, you must provide the containing catalog."
+            )
 
         search_after = None
         if token:
@@ -1100,7 +1134,9 @@ class DatabaseLogic:
         index_param = f"{ITEMS_INDEX_PREFIX}*"
 
         if collection_ids and catalog_ids:
-            index_param = indices(collection_ids=collection_ids, catalog_ids=catalog_ids)
+            index_param = indices(
+                collection_ids=collection_ids, catalog_ids=catalog_ids
+            )
         elif catalog_ids:
             index_param = indices(catalog_ids=catalog_ids).replace("items_", "items_*")
 
@@ -1147,7 +1183,6 @@ class DatabaseLogic:
                 logger.error(f"Count task failed: {e}")
 
         return items, maybe_count, next_token
-    
 
     async def execute_collection_search(
         self,
@@ -1241,11 +1276,15 @@ class DatabaseLogic:
 
     async def check_collection_exists(self, collection_id: str, catalog_id: str):
         """Database logic to check if a collection exists."""
-        full_collection_id = mk_collection_id(collection_id=collection_id, catalog_id=catalog_id)
+        full_collection_id = mk_collection_id(
+            collection_id=collection_id, catalog_id=catalog_id
+        )
         index = index_by_catalog_id(catalog_id=catalog_id)
         if not await self.client.exists(index=index, id=full_collection_id):
-            raise NotFoundError(f"Collection {collection_id} in catalog {catalog_id} does not exist")
-        
+            raise NotFoundError(
+                f"Collection {collection_id} in catalog {catalog_id} does not exist"
+            )
+
     async def check_catalog_exists(self, catalog_id: str):
         """Database logic to check if a catalog exists."""
         if not await self.client.exists(index=f"{CATALOGS_INDEX}", id=catalog_id):
@@ -1269,11 +1308,19 @@ class DatabaseLogic:
             ConflictError: If the item already exists in the database.
 
         """
-        await self.check_collection_exists(collection_id=item["collection"], catalog_id=catalog_id)
+        await self.check_collection_exists(
+            collection_id=item["collection"], catalog_id=catalog_id
+        )
 
         if not exist_ok and await self.client.exists(
-            index=index_by_collection_id(collection_id=item["collection"], catalog_id=catalog_id),
-            id=mk_item_id(item_id=item["id"], collection_id=item["collection"], catalog_id=catalog_id),
+            index=index_by_collection_id(
+                collection_id=item["collection"], catalog_id=catalog_id
+            ),
+            id=mk_item_id(
+                item_id=item["id"],
+                collection_id=item["collection"],
+                catalog_id=catalog_id,
+            ),
         ):
             raise ConflictError(
                 f"Item {item['id']} in collection {item['collection']} already exists"
@@ -1309,8 +1356,12 @@ class DatabaseLogic:
             raise NotFoundError(f"Collection {collection_id} does not exist")
 
         if not exist_ok and self.sync_client.exists(
-            index=index_by_collection_id(collection_id=collection_id, catalog_id=catalog_id),
-            id=mk_item_id(item_id=item_id, collection_id=collection_id, catalog_id=catalog_id),
+            index=index_by_collection_id(
+                collection_id=collection_id, catalog_id=catalog_id
+            ),
+            id=mk_item_id(
+                item_id=item_id, collection_id=collection_id, catalog_id=catalog_id
+            ),
         ):
             raise ConflictError(
                 f"Item {item_id} in collection {collection_id} already exists"
@@ -1335,8 +1386,12 @@ class DatabaseLogic:
         item_id = item["id"]
         collection_id = item["collection"]
         es_resp = await self.client.index(
-            index=index_by_collection_id(collection_id=collection_id, catalog_id=catalog_id),
-            id=mk_item_id(item_id=item_id, collection_id=collection_id, catalog_id=catalog_id),
+            index=index_by_collection_id(
+                collection_id=collection_id, catalog_id=catalog_id
+            ),
+            id=mk_item_id(
+                item_id=item_id, collection_id=collection_id, catalog_id=catalog_id
+            ),
             document=item,
             refresh=refresh,
         )
@@ -1361,18 +1416,25 @@ class DatabaseLogic:
         """
         try:
             await self.client.delete(
-                index=index_by_collection_id(collection_id=collection_id, catalog_id=catalog_id),
-                id=mk_item_id(item_id=item_id, collection_id=collection_id, catalog_id=catalog_id),
+                index=index_by_collection_id(
+                    collection_id=collection_id, catalog_id=catalog_id
+                ),
+                id=mk_item_id(
+                    item_id=item_id, collection_id=collection_id, catalog_id=catalog_id
+                ),
                 refresh=refresh,
             )
         except exceptions.NotFoundError:
             raise NotFoundError(
                 f"Item {item_id} in collection {collection_id} in catalog {catalog_id} not found"
             )
-        
-        
+
     async def prep_create_collection(
-        self, catalog_id: str, collection: Collection, base_url: str, exist_ok: bool = False
+        self,
+        catalog_id: str,
+        collection: Collection,
+        base_url: str,
+        exist_ok: bool = False,
     ) -> Item:
         """
         Preps a collection for insertion into the database.
@@ -1402,7 +1464,11 @@ class DatabaseLogic:
         return self.collection_serializer.stac_to_db(collection, base_url)
 
     def sync_prep_create_collection(
-        self, catalog_id: str, collection: Collection, base_url: str, exist_ok: bool = False
+        self,
+        catalog_id: str,
+        collection: Collection,
+        base_url: str,
+        exist_ok: bool = False,
     ) -> Item:
         """
         Prepare an item for insertion into the database.
@@ -1439,7 +1505,9 @@ class DatabaseLogic:
 
         return self.collection_serializer.stac_to_db(collection, base_url)
 
-    async def create_collection(self, catalog_id: str, collection: Collection, refresh: bool = False):
+    async def create_collection(
+        self, catalog_id: str, collection: Collection, refresh: bool = False
+    ):
         """Database logic for creating one item.
 
         Args:
@@ -1467,7 +1535,6 @@ class DatabaseLogic:
                 f"Collection {collection_id} in catalog {catalog_id} already exists"
             )
 
-
     async def find_collection(self, catalog_id: str, collection_id: str) -> Collection:
         """Find and return a collection from the database.
 
@@ -1492,13 +1559,18 @@ class DatabaseLogic:
                 index=index_by_catalog_id(catalog_id), id=full_collection_id
             )
         except exceptions.NotFoundError:
-            raise NotFoundError(f"Collection {collection_id} in catalog {catalog_id} not found")
+            raise NotFoundError(
+                f"Collection {collection_id} in catalog {catalog_id} not found"
+            )
 
         return collection["_source"]
-    
 
     async def update_collection(
-        self, catalog_id: str, collection_id: str, collection: Collection, refresh: bool = False
+        self,
+        catalog_id: str,
+        collection_id: str,
+        collection: Collection,
+        refresh: bool = False,
     ):
         """Update a collection from the database.
 
@@ -1524,8 +1596,12 @@ class DatabaseLogic:
 
             await self.client.reindex(
                 body={
-                    "dest": {"index": f"{ITEMS_INDEX_PREFIX}{collection['id']}_{catalog_id}"},
-                    "source": {"index": f"{ITEMS_INDEX_PREFIX}{collection_id}_{catalog_id}"},
+                    "dest": {
+                        "index": f"{ITEMS_INDEX_PREFIX}{collection['id']}_{catalog_id}"
+                    },
+                    "source": {
+                        "index": f"{ITEMS_INDEX_PREFIX}{collection_id}_{catalog_id}"
+                    },
                     "script": {
                         "lang": "painless",
                         "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection["id"]}'); ctx._source.collection = '{collection["id"]}' ;""",
@@ -1535,7 +1611,9 @@ class DatabaseLogic:
                 refresh=refresh,
             )
 
-            await self.delete_collection(catalog_id=catalog_id, collection_id=collection_id)
+            await self.delete_collection(
+                catalog_id=catalog_id, collection_id=collection_id
+            )
 
         else:
             collections_index = index_by_catalog_id(catalog_id)
@@ -1546,7 +1624,9 @@ class DatabaseLogic:
                 refresh=refresh,
             )
 
-    async def delete_collection(self, catalog_id: str, collection_id: str, refresh: bool = False):
+    async def delete_collection(
+        self, catalog_id: str, collection_id: str, refresh: bool = False
+    ):
         """Delete a collection from the database.
 
         Parameters:
@@ -1565,10 +1645,11 @@ class DatabaseLogic:
         """
         await self.find_collection(catalog_id=catalog_id, collection_id=collection_id)
         await self.client.delete(
-            index=index_by_catalog_id(catalog_id), id=mk_collection_id(collection_id, catalog_id), refresh=refresh
+            index=index_by_catalog_id(catalog_id),
+            id=mk_collection_id(collection_id, catalog_id),
+            refresh=refresh,
         )
         await delete_item_index(collection_id=collection_id, catalog_id=catalog_id)
-
 
     async def create_catalog(self, catalog: Catalog, refresh: bool = False):
         """Create a single catalog in the database.
@@ -1595,8 +1676,6 @@ class DatabaseLogic:
             refresh=refresh,
         )
 
-
-
     async def find_catalog(self, catalog_id: str) -> Catalog:
         """Find and return a collection from the database.
 
@@ -1615,14 +1694,11 @@ class DatabaseLogic:
             collection as a `Collection` object. If the collection is not found, a `NotFoundError` is raised.
         """
         try:
-            catalog = await self.client.get(
-                index=CATALOGS_INDEX, id=catalog_id
-            )
+            catalog = await self.client.get(index=CATALOGS_INDEX, id=catalog_id)
         except exceptions.NotFoundError:
             raise NotFoundError(f"Catalog {catalog_id} not found")
 
         return catalog["_source"]
-    
 
     async def update_catalog(
         self, catalog_id: str, catalog: Catalog, refresh: bool = False
@@ -1687,17 +1763,18 @@ class DatabaseLogic:
             function also calls `delete_collection_index` to delete the index for the collections in the catalog.
         """
         await self.find_catalog(catalog_id=catalog_id)
-        await self.client.delete(
-            index=CATALOGS_INDEX, id=catalog_id, refresh=refresh
-        )
+        await self.client.delete(index=CATALOGS_INDEX, id=catalog_id, refresh=refresh)
         try:
             await delete_collection_index(catalog_id)
         except exceptions.NotFoundError:
             raise NotFoundError(f"Catalog {catalog_id} does not exist")
 
-
     async def bulk_async(
-        self, catalog_id: str, collection_id: str, processed_items: List[Item], refresh: bool = False
+        self,
+        catalog_id: str,
+        collection_id: str,
+        processed_items: List[Item],
+        refresh: bool = False,
     ) -> None:
         """Perform a bulk insert of items into the database asynchronously.
 
@@ -1721,7 +1798,11 @@ class DatabaseLogic:
         )
 
     def bulk_sync(
-        self, catalog_id: str, collection_id: str, processed_items: List[Item], refresh: bool = False
+        self,
+        catalog_id: str,
+        collection_id: str,
+        processed_items: List[Item],
+        refresh: bool = False,
     ) -> None:
         """Perform a bulk insert of items into the database synchronously.
 

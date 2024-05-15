@@ -47,7 +47,12 @@ class AsyncBaseTransactionsClient(abc.ABC):
 
     @abc.abstractmethod
     async def update_item(
-        self, catalog_id: str, collection_id: str, item_id: str, item: stac_types.Item, **kwargs
+        self,
+        catalog_id: str,
+        collection_id: str,
+        item_id: str,
+        item: stac_types.Item,
+        **kwargs,
     ) -> Optional[Union[stac_types.Item, Response]]:
         """Perform a complete update on an existing item.
 
@@ -99,7 +104,11 @@ class AsyncBaseTransactionsClient(abc.ABC):
 
     @abc.abstractmethod
     async def update_collection(
-        self, catalog_id: str, collection_id: str, collection: stac_types.Collection, **kwargs
+        self,
+        catalog_id: str,
+        collection_id: str,
+        collection: stac_types.Collection,
+        **kwargs,
     ) -> Optional[Union[stac_types.Collection, Response]]:
         """Perform a complete update on an existing collection.
 
@@ -293,17 +302,6 @@ class AsyncBaseCoreClient(abc.ABC):
         ...
 
     @abc.abstractmethod
-    async def all_collections(self, **kwargs) -> stac_types.Collections:
-        """Get all available collections.
-
-        Called with `GET /collections`.
-
-        Returns:
-            A list of collections.
-        """
-        ...
-
-    @abc.abstractmethod
     async def all_catalogs(self, **kwargs) -> stac_types.Catalogs:
         """Get all available catalogs.
 
@@ -331,9 +329,7 @@ class AsyncBaseCoreClient(abc.ABC):
         ...
 
     @abc.abstractmethod
-    async def get_catalog(
-        self, catalog_id: str, **kwargs
-    ) -> stac_types.Catalog:
+    async def get_catalog(self, catalog_id: str, **kwargs) -> stac_types.Catalog:
         """Get catalog by id.
 
         Called with `GET /catalogs/{catalog_id}`.

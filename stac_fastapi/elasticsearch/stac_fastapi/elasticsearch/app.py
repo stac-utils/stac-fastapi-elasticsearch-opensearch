@@ -57,8 +57,7 @@ discovery_search_extension = DiscoverySearchExtension(
     client=EsAsyncDiscoverySearchClient(database_logic)
 )
 discovery_search_extension.conformance_classes.extend(
-    ["/catalogues",
-    "/discovery-search"]
+    ["/catalogues", "/discovery-search"]
 )
 
 extensions = [

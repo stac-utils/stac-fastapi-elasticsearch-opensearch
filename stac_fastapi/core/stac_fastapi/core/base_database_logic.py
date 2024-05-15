@@ -32,7 +32,9 @@ class BaseDatabaseLogic(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def create_item(self, catalog_id: str, item: Dict, refresh: bool = False) -> None:
+    async def create_item(
+        self, catalog_id: str, item: Dict, refresh: bool = False
+    ) -> None:
         """Create an item in the database."""
         pass
 
@@ -47,7 +49,6 @@ class BaseDatabaseLogic(abc.ABC):
     async def create_collection(self, collection: Dict, refresh: bool = False) -> None:
         """Create a collection in the database."""
         pass
-
 
     @abc.abstractmethod
     async def find_collection(self, catalog_id: str, collection_id: str) -> Dict:
@@ -72,8 +73,6 @@ class BaseDatabaseLogic(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def delete_catalog(
-        self, catalog_id: str, refresh: bool = False
-    ) -> None:
+    async def delete_catalog(self, catalog_id: str, refresh: bool = False) -> None:
         """Delete a catalog from the database."""
         pass
