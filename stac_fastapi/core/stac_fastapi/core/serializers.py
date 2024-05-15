@@ -25,7 +25,7 @@ class Serializer(abc.ABC):
 
     @classmethod
     @abc.abstractmethod
-    def db_to_stac(cls, item: dict, base_url: str) -> Any:
+    def db_to_stac(cls, item: dict, base_url: str, catalog_id: str = None) -> Any:
         """Transform database model to STAC object.
 
         Arguments:
@@ -76,7 +76,9 @@ class ItemSerializer(Serializer):
         return stac_data
 
     @classmethod
-    def db_to_stac(cls, item: dict, base_url: str) -> stac_types.Item:
+    def db_to_stac(
+        cls, item: dict, base_url: str, catalog_id: str = None
+    ) -> stac_types.Item:
         """Transform database-ready STAC item to STAC item.
 
         Args:
@@ -89,7 +91,10 @@ class ItemSerializer(Serializer):
         item_id = item["id"]
         collection_id = item["collection"]
         item_links = ItemLinks(
-            collection_id=collection_id, item_id=item_id, base_url=base_url
+            catalog_id=catalog_id,
+            collection_id=collection_id,
+            item_id=item_id,
+            base_url=base_url,
         ).create_links()
 
         original_links = item.get("links", [])
@@ -134,7 +139,9 @@ class CollectionSerializer(Serializer):
         return collection
 
     @classmethod
-    def db_to_stac(cls, collection: dict, base_url: str) -> stac_types.Collection:
+    def db_to_stac(
+        cls, collection: dict, base_url: str, catalog_id: str = None
+    ) -> stac_types.Collection:
         """Transform database model to STAC collection.
 
         Args:
@@ -165,7 +172,7 @@ class CollectionSerializer(Serializer):
 
         # Create the collection links using CollectionLinks
         collection_links = CollectionLinks(
-            collection_id=collection_id, base_url=base_url
+            catalog_id=catalog_id, collection_id=collection_id, base_url=base_url
         ).create_links()
 
         # Add any additional links from the collection dictionary
@@ -277,7 +284,7 @@ class CatalogCollectionSerializer(Serializer):
 
     @classmethod
     def collection_db_to_stac(
-        cls, collection: dict, base_url: str
+        cls, collection: dict, base_url: str, catalog_id: str = None
     ) -> stac_types.Collection:
         """Transform database model to STAC collection.
 
@@ -309,7 +316,7 @@ class CatalogCollectionSerializer(Serializer):
 
         # Create the collection links using CollectionLinks
         collection_links = CollectionLinks(
-            collection_id=collection_id, base_url=base_url
+            cattalog_id=catalog_id, collection_id=collection_id, base_url=base_url
         ).create_links()
 
         # Add any additional links from the collection dictionary
@@ -322,7 +329,9 @@ class CatalogCollectionSerializer(Serializer):
         return stac_types.Collection(**collection)
 
     @classmethod
-    def db_to_stac(cls, data: dict, base_url: str) -> stac_types.Collection:
+    def db_to_stac(
+        cls, data: dict, base_url: str, catalog_id: str = None
+    ) -> stac_types.Collection:
         """Transform database model to STAC catalog or collection.
 
         Args:
@@ -334,6 +343,6 @@ class CatalogCollectionSerializer(Serializer):
         """
         # Determine datatype to serialise and pass to correct serializer function
         if data["type"] == "Collection":
-            return cls.collection_db_to_stac(data, base_url)
+            return cls.collection_db_to_stac(catalog_id, data, base_url)
         elif data["type"] == "Catalog":
             return cls.catalog_db_to_stac(data, base_url)
