@@ -337,7 +337,6 @@ async def route_dependencies_app():
             ),
             settings=settings,
         ),
-        ContextExtension(),
         SortExtension(),
         FieldsExtension(),
         QueryExtension(),
