@@ -46,7 +46,9 @@ class BaseDatabaseLogic(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def create_collection(self, collection: Dict, refresh: bool = False) -> None:
+    async def create_collection(
+        self, catalog_id: str, collection: Dict, refresh: bool = False
+    ) -> None:
         """Create a collection in the database."""
         pass
 
@@ -57,7 +59,7 @@ class BaseDatabaseLogic(abc.ABC):
 
     @abc.abstractmethod
     async def delete_collection(
-        self, collection_id: str, refresh: bool = False
+        self, catalog_id: str, collection_id: str, refresh: bool = False
     ) -> None:
         """Delete a collection from the database."""
         pass
