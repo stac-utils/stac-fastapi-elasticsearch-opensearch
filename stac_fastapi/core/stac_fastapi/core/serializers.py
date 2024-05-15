@@ -8,7 +8,12 @@ import attr
 
 from stac_fastapi.core.datetime_utils import now_to_rfc3339_str
 from stac_fastapi.types import stac as stac_types
-from stac_fastapi.types.links import CollectionLinks, ItemLinks, resolve_links, CatalogLinks
+from stac_fastapi.types.links import (
+    CollectionLinks,
+    ItemLinks,
+    resolve_links,
+    CatalogLinks,
+)
 
 
 @attr.s
@@ -171,7 +176,6 @@ class CollectionSerializer(Serializer):
 
         # Return the stac_types.Collection object
         return stac_types.Collection(**collection)
-    
 
 
 class CatalogSerializer(Serializer):
@@ -216,14 +220,6 @@ class CatalogSerializer(Serializer):
         catalog.setdefault("stac_version", "")
         catalog.setdefault("title", "")
         catalog.setdefault("description", "")
-        catalog.setdefault("keywords", [])
-        catalog.setdefault("license", "")
-        catalog.setdefault("providers", [])
-        catalog.setdefault("summaries", {})
-        catalog.setdefault(
-            "extent", {"spatial": {"bbox": []}, "temporal": {"interval": []}}
-        )
-        catalog.setdefault("assets", {})
 
         # Create the collection links using CatalogLinks
         catalog_links = CatalogLinks(
@@ -238,3 +234,106 @@ class CatalogSerializer(Serializer):
 
         # Return the stac_types.Collection object
         return stac_types.Catalog(**catalog)
+
+
+class CatalogCollectionSerializer(Serializer):
+    """Serialization methods for STAC catalogs."""
+
+    @classmethod
+    def catalog_db_to_stac(cls, catalog: dict, base_url: str) -> stac_types.Catalog:
+        """Transform database model to STAC catalog.
+
+        Args:
+            catalog (dict): The catalog data in dictionary form, extracted from the database.
+            base_url (str): The base URL for the catalog.
+
+        Returns:
+            stac_types.Catalog: The STAC catalog object.
+        """
+        # Avoid modifying the input dict in-place ... doing so breaks some tests
+        catalog = deepcopy(catalog)
+
+        # Set defaults
+        catalog_id = catalog.get("id")
+        catalog.setdefault("type", "Collection")
+        catalog.setdefault("stac_extensions", [])
+        catalog.setdefault("stac_version", "")
+        catalog.setdefault("title", "")
+        catalog.setdefault("description", "")
+
+        # Create the collection links using CatalogLinks
+        catalog_links = CatalogLinks(
+            catalog_id=catalog_id, base_url=base_url
+        ).create_links()
+
+        # Add any additional links from the collection dictionary
+        original_links = catalog.get("links")
+        if original_links:
+            catalog_links += resolve_links(original_links, base_url)
+        catalog["links"] = catalog_links
+
+        # Return the stac_types.Collection object
+        return stac_types.Catalog(**catalog)
+
+    @classmethod
+    def collection_db_to_stac(
+        cls, collection: dict, base_url: str
+    ) -> stac_types.Collection:
+        """Transform database model to STAC collection.
+
+        Args:
+            collection (dict): The collection data in dictionary form, extracted from the database.
+            base_url (str): The base URL for the collection.
+
+        Returns:
+            stac_types.Collection: The STAC collection object.
+        """
+        # Avoid modifying the input dict in-place ... doing so breaks some tests
+        collection = deepcopy(collection)
+
+        # Set defaults
+        collection_id = collection.get("id")
+        collection.setdefault("type", "Collection")
+        collection.setdefault("stac_extensions", [])
+        collection.setdefault("stac_version", "")
+        collection.setdefault("title", "")
+        collection.setdefault("description", "")
+        collection.setdefault("keywords", [])
+        collection.setdefault("license", "")
+        collection.setdefault("providers", [])
+        collection.setdefault("summaries", {})
+        collection.setdefault(
+            "extent", {"spatial": {"bbox": []}, "temporal": {"interval": []}}
+        )
+        collection.setdefault("assets", {})
+
+        # Create the collection links using CollectionLinks
+        collection_links = CollectionLinks(
+            collection_id=collection_id, base_url=base_url
+        ).create_links()
+
+        # Add any additional links from the collection dictionary
+        original_links = collection.get("links")
+        if original_links:
+            collection_links += resolve_links(original_links, base_url)
+        collection["links"] = collection_links
+
+        # Return the stac_types.Collection object
+        return stac_types.Collection(**collection)
+
+    @classmethod
+    def db_to_stac(cls, data: dict, base_url: str) -> stac_types.Collection:
+        """Transform database model to STAC catalog or collection.
+
+        Args:
+            collection (dict): The collection data in dictionary form, extracted from the database.
+            base_url (str): The base URL for the collection.
+
+        Returns:
+            stac_types.Collection: The STAC collection object.
+        """
+        # Determine datatype to serialise and pass to correct serializer function
+        if data["type"] == "Collection":
+            return cls.collection_db_to_stac(data, base_url)
+        elif data["type"] == "Catalog":
+            return cls.catalog_db_to_stac(data, base_url)

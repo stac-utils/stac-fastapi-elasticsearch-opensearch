@@ -22,7 +22,12 @@ from stac_pydantic.version import STAC_VERSION
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.models.links import PagingLinks
-from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer, CatalogSerializer
+from stac_fastapi.core.serializers import (
+    CollectionSerializer,
+    ItemSerializer,
+    CatalogSerializer,
+    CatalogCollectionSerializer,
+)
 from stac_fastapi.core.session import Session
 from stac_fastapi.core.types.core import (
     AsyncBaseCoreClient,
@@ -46,7 +51,14 @@ from stac_fastapi.types.search import (
     BaseCollectionSearchPostRequest,
     BaseDiscoverySearchPostRequest,
 )
-from stac_fastapi.types.stac import Collection, Collections, Item, ItemCollection, Catalogs
+from stac_fastapi.types.stac import (
+    Collection,
+    Collections,
+    Item,
+    ItemCollection,
+    Catalogs,
+    CatalogsAndCollections,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -83,6 +95,9 @@ class CoreClient(AsyncBaseCoreClient):
     collection_serializer: Type[CollectionSerializer] = attr.ib(
         default=CollectionSerializer
     )
+    catalog_serializer: Type[CatalogSerializer] = attr.ib(
+        default=CatalogSerializer
+    )
     post_request_model = attr.ib(default=BaseSearchPostRequest)
     stac_version: str = attr.ib(default=STAC_VERSION)
     landing_page_id: str = attr.ib(default="stac-fastapi")
@@ -116,7 +131,7 @@ class CoreClient(AsyncBaseCoreClient):
                 {
                     "rel": "data",
                     "type": MimeTypes.json,
-                    "href": urljoin(base_url, "collections"),
+                    "href": urljoin(base_url, "catalogs"),
                 },
                 {
                     "rel": Relations.conformance.value,
@@ -175,7 +190,7 @@ class CoreClient(AsyncBaseCoreClient):
                     "rel": Relations.child.value,
                     "type": MimeTypes.json.value,
                     "title": catalog.get("title") or catalog.get("id"),
-                    "href": urljoin(base_url, f"collections/{catalog['id']}"),
+                    "href": urljoin(base_url, f"catalogs/{catalog['id']}"),
                 }
             )
 
@@ -238,7 +253,7 @@ class CoreClient(AsyncBaseCoreClient):
             links.append(next_link)
 
         return Collections(collections=collections, links=links)
-    
+
     async def all_catalogs(self, **kwargs) -> Catalogs:
         """Read all catalogs from the database.
 
@@ -273,7 +288,7 @@ class CoreClient(AsyncBaseCoreClient):
 
         return Catalogs(catalogs=catalogs, links=links)
 
-    async def get_collection(self, collection_id: str, **kwargs) -> Collection:
+    async def get_collection(self, catalog_id: str, collection_id: str, **kwargs) -> Collection:
         """Get a collection from the database by its id.
 
         Args:
@@ -287,13 +302,82 @@ class CoreClient(AsyncBaseCoreClient):
             NotFoundError: If the collection with the given id cannot be found in the database.
         """
         base_url = str(kwargs["request"].base_url)
-        collection = await self.database.find_collection(collection_id=collection_id)
+        collection = await self.database.find_collection(catalog_id=catalog_id, collection_id=collection_id)
         return self.collection_serializer.db_to_stac(
             collection=collection, base_url=base_url
         )
+    
+    async def get_catalog(self, catalog_id: str, **kwargs) -> Collection:
+        """Get a catalog from the database by its id.
+
+        Args:
+            catalog_id (str): The id of the catalog to retrieve.
+            kwargs: Additional keyword arguments passed to the API call.
+
+        Returns:
+            Catalog: A `Catalog` object representing the requested collection.
+
+        Raises:
+            NotFoundError: If the catalog with the given id cannot be found in the database.
+        """
+        base_url = str(kwargs["request"].base_url)
+        catalog = await self.database.find_catalog(catalog_id=catalog_id)
+        return self.catalog_serializer.db_to_stac(
+            catalog=catalog, base_url=base_url
+        )
+    
+    async def get_catalog_collections(
+        self,
+        catalog_id: str,
+        limit: int = 10,
+        token: str = None,
+        **kwargs,
+    ) -> Collections:
+        """Read collections from a specific catalog in the database.
+
+        Args:
+            catalog_id (str): The identifier of the catalog to read collections from.
+            limit (int): The maximum number of items to return. The default value is 10.
+            token (str): A token used for pagination.
+            request (Request): The incoming request.
+
+        Returns:
+            A Collections object containing all the collections in the specific catalog and links to various resources.
+
+        Raises:
+            HTTPException: If the specified catalog is not found.
+            Exception: If any error occurs while reading the collections from the database.
+        """
+        request: Request = kwargs["request"]
+        base_url = str(request.base_url)
+
+        catalog = await self.get_catalog(
+            catalog_id=catalog_id, request=request
+        )
+        catalog_id = catalog.get("id")
+        if catalog_id is None:
+            raise HTTPException(status_code=404, detail="Catalog not found")
+
+        collections, next_token = await self.database.get_catalog_collections(
+            catalog_ids=[catalog_id],
+            token=token,  # type: ignore
+            limit=limit,
+            base_url=base_url,
+        )
+
+        collections = [
+            self.collection_serializer.db_to_stac(collection, base_url=base_url) for collection in collections
+        ]
+
+        links = []
+        if next_token:
+            links = await PagingLinks(request=request, next=next_token).get_links()
+
+        return Collections(collections=collections, links=links)
 
     async def item_collection(
         self,
+        catalog_id: str,
         collection_id: str,
         bbox: Optional[List[NumType]] = None,
         datetime: Union[str, datetime_type, None] = None,
@@ -321,9 +405,8 @@ class CoreClient(AsyncBaseCoreClient):
         """
         request: Request = kwargs["request"]
         base_url = str(request.base_url)
-
         collection = await self.get_collection(
-            collection_id=collection_id, request=request
+            catalog_id=catalog_id, collection_id=collection_id, request=request
         )
         collection_id = collection.get("id")
         if collection_id is None:
@@ -349,6 +432,7 @@ class CoreClient(AsyncBaseCoreClient):
 
         items, maybe_count, next_token = await self.database.execute_search(
             search=search,
+            catalog_ids=[catalog_id],
             limit=limit,
             sort=None,
             token=token,  # type: ignore
@@ -379,7 +463,7 @@ class CoreClient(AsyncBaseCoreClient):
             context=context_obj,
         )
 
-    async def get_item(self, item_id: str, collection_id: str, **kwargs) -> Item:
+    async def get_item(self, item_id: str, collection_id: str, catalog_id: str, **kwargs) -> Item:
         """Get an item from the database based on its id and collection id.
 
         Args:
@@ -395,7 +479,7 @@ class CoreClient(AsyncBaseCoreClient):
         """
         base_url = str(kwargs["request"].base_url)
         item = await self.database.get_one_item(
-            item_id=item_id, collection_id=collection_id
+            item_id=item_id, collection_id=collection_id, catalog_id=catalog_id,
         )
         return self.item_serializer.db_to_stac(item, base_url)
 
@@ -440,6 +524,7 @@ class CoreClient(AsyncBaseCoreClient):
         self,
         request: Request,
         collections: Optional[List[str]] = None,
+        catalogs: Optional[List[str]] = None,
         ids: Optional[List[str]] = None,
         bbox: Optional[List[NumType]] = None,
         datetime: Optional[Union[str, datetime_type]] = None,
@@ -476,6 +561,7 @@ class CoreClient(AsyncBaseCoreClient):
         """
         base_args = {
             "collections": collections,
+            "catalogs": catalogs,
             "ids": ids,
             "bbox": bbox,
             "limit": limit,
@@ -506,7 +592,6 @@ class CoreClient(AsyncBaseCoreClient):
                         "direction": "desc" if sort[0] == "-" else "asc",
                     }
                 )
-            print(sort_param)
             base_args["sortby"] = sort_param
 
         if filter:
@@ -618,6 +703,7 @@ class CoreClient(AsyncBaseCoreClient):
             token=search_request.token,  # type: ignore
             sort=sort,
             collection_ids=search_request.collections,
+            catalog_ids=search_request.catalogs,
         )
 
         items = [
@@ -677,7 +763,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def create_item(
-        self, collection_id: str, item: stac_types.Item, **kwargs
+        self, catalog_id: str, collection_id: str, item: stac_types.Item, **kwargs
     ) -> Optional[stac_types.Item]:
         """Create an item in the collection.
 
@@ -696,6 +782,9 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         """
         base_url = str(kwargs["request"].base_url)
 
+        if collection_id != item["collection"]:
+            raise Exception(f"The provided collection id and that found in the item do not match: {collection_id}, {item['collection']}")
+
         # If a feature collection is posted
         if item["type"] == "FeatureCollection":
             bulk_client = BulkTransactionsClient(
@@ -706,18 +795,18 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             ]
 
             await self.database.bulk_async(
-                collection_id, processed_items, refresh=kwargs.get("refresh", False)
+                catalog_id, collection_id, processed_items, refresh=kwargs.get("refresh", False)
             )
 
             return None
         else:
-            item = await self.database.prep_create_item(item=item, base_url=base_url)
-            await self.database.create_item(item, refresh=kwargs.get("refresh", False))
+            item = await self.database.prep_create_item(catalog_id=catalog_id, item=item, base_url=base_url)
+            await self.database.create_item(catalog_id=catalog_id, item=item, refresh=kwargs.get("refresh", False))
             return item
 
     @overrides
     async def update_item(
-        self, collection_id: str, item_id: str, item: stac_types.Item, **kwargs
+        self, catalog_id: str, collection_id: str, item_id: str, item: stac_types.Item, **kwargs
     ) -> stac_types.Item:
         """Update an item in the collection.
 
@@ -738,15 +827,17 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         now = datetime_type.now(timezone.utc).isoformat().replace("+00:00", "Z")
         item["properties"]["updated"] = now
 
-        await self.database.check_collection_exists(collection_id)
-        await self.delete_item(item_id=item_id, collection_id=collection_id)
-        await self.create_item(collection_id=collection_id, item=item, **kwargs)
+        # Note, if the provided item is not valid stac, this may delete the item and them fail to create the new one
+
+        await self.database.check_collection_exists(collection_id=collection_id, catalog_id=catalog_id)
+        await self.delete_item(item_id=item_id, collection_id=collection_id, catalog_id=catalog_id)
+        await self.create_item(catalog_id=catalog_id, collection_id=collection_id, item=item, **kwargs)
 
         return ItemSerializer.db_to_stac(item, base_url)
 
     @overrides
     async def delete_item(
-        self, item_id: str, collection_id: str, **kwargs
+        self, item_id: str, collection_id: str, catalog_id: str, **kwargs
     ) -> Optional[stac_types.Item]:
         """Delete an item from a collection.
 
@@ -757,12 +848,12 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         Returns:
             Optional[stac_types.Item]: The deleted item, or `None` if the item was successfully deleted.
         """
-        await self.database.delete_item(item_id=item_id, collection_id=collection_id)
+        await self.database.delete_item(item_id=item_id, collection_id=collection_id, catalog_id=catalog_id)
         return None
 
     @overrides
     async def create_collection(
-        self, collection: stac_types.Collection, **kwargs
+        self, catalog_id: str, collection: stac_types.Collection, **kwargs
     ) -> stac_types.Collection:
         """Create a new collection in the database.
 
@@ -781,40 +872,14 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         collection = self.database.collection_serializer.stac_to_db(
             collection, base_url
         )
-
-        await self.database.create_collection(collection=collection)
-
+        collection = await self.database.prep_create_collection(catalog_id=catalog_id, collection=collection, base_url=base_url)
+        await self.database.create_collection(catalog_id=catalog_id, collection=collection)
         return CollectionSerializer.db_to_stac(collection, base_url)
 
-    @overrides
-    async def create_catalog(
-        self, catalog: stac_types.Catalog, **kwargs
-    ) -> stac_types.Catalog:
-        """Create a new catalog in the database.
-
-        Args:
-            catalog (stac_types.Catalog): The catalog to be created.
-            kwargs: Additional keyword arguments.
-
-        Returns:
-            stac_types.Catalog: The created catalog object.
-
-        Raises:
-            ConflictError: If the catalog already exists.
-        """
-
-        base_url = str(kwargs["request"].base_url)
-        catalog = self.database.catalog_serializer.stac_to_db(
-            catalog, base_url
-        )
-
-        await self.database.create_catalog(catalog=catalog)
-
-        return CatalogSerializer.db_to_stac(catalog, base_url)
 
     @overrides
     async def update_collection(
-        self, collection: stac_types.Collection, **kwargs
+        self, catalog_id: str, collection_id: str, collection: stac_types.Collection, **kwargs
     ) -> stac_types.Collection:
         """
         Update a collection.
@@ -836,22 +901,22 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         """
         base_url = str(kwargs["request"].base_url)
 
-        collection_id = kwargs["request"].query_params.get(
-            "collection_id", collection["id"]
-        )
+        # collection_id = kwargs["request"].query_params.get(
+        #     "collection_id", collection["id"]
+        # )
 
         collection = self.database.collection_serializer.stac_to_db(
             collection, base_url
         )
         await self.database.update_collection(
-            collection_id=collection_id, collection=collection
+            catalog_id=catalog_id, collection_id=collection_id, collection=collection
         )
 
         return CollectionSerializer.db_to_stac(collection, base_url)
 
     @overrides
     async def delete_collection(
-        self, collection_id: str, **kwargs
+        self, catalog_id: str, collection_id: str, **kwargs
     ) -> Optional[stac_types.Collection]:
         """
         Delete a collection.
@@ -868,7 +933,87 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         Raises:
             NotFoundError: If the collection doesn't exist.
         """
-        await self.database.delete_collection(collection_id=collection_id)
+        await self.database.delete_collection(collection_id=collection_id, catalog_id=catalog_id)
+        return None
+    
+    
+    @overrides
+    async def create_catalog(
+        self, catalog: stac_types.Catalog, **kwargs
+    ) -> stac_types.Catalog:
+        """Create a new catalog in the database.
+
+        Args:
+            catalog (stac_types.Catalog): The catalog to be created.
+            kwargs: Additional keyword arguments.
+
+        Returns:
+            stac_types.Catalog: The created catalog object.
+
+        Raises:
+            ConflictError: If the catalog already exists.
+        """
+
+        base_url = str(kwargs["request"].base_url)
+        catalog = self.database.catalog_serializer.stac_to_db(catalog, base_url)
+
+        await self.database.create_catalog(catalog=catalog)
+
+        return CatalogSerializer.db_to_stac(catalog, base_url)
+    
+    @overrides
+    async def update_catalog(
+        self, catalog_id: str, catalog: stac_types.Catalog, **kwargs
+    ) -> stac_types.Catalog:
+        """
+        Update a collection.
+
+        This method updates an existing collection in the database by first finding
+        the collection by the id given in the keyword argument `collection_id`.
+        If no `collection_id` is given the id of the given collection object is used.
+        If the object and keyword collection ids don't match the sub items
+        collection id is updated else the items are left unchanged.
+        The updated collection is then returned.
+
+        Args:
+            collection: A STAC collection that needs to be updated.
+            kwargs: Additional keyword arguments.
+
+        Returns:
+            A STAC collection that has been updated in the database.
+
+        """
+        base_url = str(kwargs["request"].base_url)
+
+        catalog = self.database.catalog_serializer.stac_to_db(
+            catalog, base_url
+        )
+        await self.database.update_catalog(
+            catalog_id=catalog_id, catalog=catalog
+        )
+
+        return CatalogSerializer.db_to_stac(catalog, base_url)
+
+    @overrides
+    async def delete_catalog(
+        self, catalog_id: str, **kwargs
+    ) -> Optional[stac_types.Catalog]:
+        """
+        Delete a collection.
+
+        This method deletes an existing collection in the database.
+
+        Args:
+            collection_id (str): The identifier of the collection that contains the item.
+            kwargs: Additional keyword arguments.
+
+        Returns:
+            None.
+
+        Raises:
+            NotFoundError: If the collection doesn't exist.
+        """
+        await self.database.delete_catalog(catalog_id=catalog_id)
         return None
 
 
@@ -909,7 +1054,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
 
     @overrides
     def bulk_item_insert(
-        self, items: Items, chunk_size: Optional[int] = None, **kwargs
+        self, catalog_id: str, items: Items, chunk_size: Optional[int] = None, **kwargs
     ) -> str:
         """Perform a bulk insertion of items into the database using Elasticsearch.
 
@@ -936,7 +1081,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         collection_id = processed_items[0]["collection"]
 
         self.database.bulk_sync(
-            collection_id, processed_items, refresh=kwargs.get("refresh", False)
+            catalog_id, collection_id, processed_items, refresh=kwargs.get("refresh", False)
         )
 
         return f"Successfully added {len(processed_items)} Items."
@@ -1070,9 +1215,9 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
             )
 
         if search_request.q:
-            keyword = search_request.q
+            q = search_request.q
             search = self.database.apply_keyword_collections_filter(
-                search=search, keyword=keyword
+                search=search, q=q
             )
 
         sort = None
@@ -1142,7 +1287,7 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
         )
 
         return resp
-    
+
 
 @attr.s
 class EsAsyncDiscoverySearchClient(AsyncDiscoverySearchClient):
@@ -1150,8 +1295,8 @@ class EsAsyncDiscoverySearchClient(AsyncDiscoverySearchClient):
 
     database: BaseDatabaseLogic = attr.ib()
     post_request_model = attr.ib(default=BaseDiscoverySearchPostRequest)
-    catalog_serializer: Type[CatalogSerializer] = attr.ib(
-        default=CatalogSerializer
+    catalog_collection_serializer: Type[CatalogCollectionSerializer] = attr.ib(
+        default=CatalogCollectionSerializer
     )
 
     async def post_discovery_search(
@@ -1178,16 +1323,16 @@ class EsAsyncDiscoverySearchClient(AsyncDiscoverySearchClient):
         search = self.database.make_discovery_search()
 
         if search_request.q:
-            keyword = search_request.q
-            search = self.database.apply_keyword_discovery_filter(
-                search=search, keyword=keyword
-            )
+            q = search_request.q
+            search = self.database.apply_keyword_discovery_filter(search=search, q=q)
 
-        sort = None
+        sort = [
+            {"_score": {"order": "desc"}},
+        ]
 
         limit = 10
 
-        catalogs, maybe_count, next_token = (
+        catalogs_and_collections, maybe_count, next_token = (
             await self.database.execute_discovery_search(
                 search=search,
                 limit=limit,
@@ -1202,7 +1347,9 @@ class EsAsyncDiscoverySearchClient(AsyncDiscoverySearchClient):
         if next_token:
             links = await PagingLinks(request=request, next=next_token).get_links()
 
-        return Catalogs(catalogs=catalogs, links=links)
+        return CatalogsAndCollections(
+            catalogs_and_collections=catalogs_and_collections, links=links
+        )
 
     # todo: use the ES _mapping endpoint to dynamically find what fields exist
     async def get_discovery_search(
@@ -1212,8 +1359,8 @@ class EsAsyncDiscoverySearchClient(AsyncDiscoverySearchClient):
         limit: Optional[int] = 10,
         **kwargs,
     ) -> Collections:
-        """Get search results from the database for collections.
-        Called with `GET /collection-search`.
+        """Get search results from the database for catalogues.
+        Called with `GET /catalogues`.
         Args:
             bbox (Optional[List[NumType]]): Bounding box to search in.
             datetime (Optional[Union[str, datetime_type]]): Filter items based on the datetime field.
@@ -1229,7 +1376,7 @@ class EsAsyncDiscoverySearchClient(AsyncDiscoverySearchClient):
         """
 
         base_args = {
-            "keyword": q,
+            "q": q,
             "limit": limit,
         }
 

@@ -46,16 +46,19 @@ database_logic = DatabaseLogic()
 collection_search_extension = CollectionSearchExtension(
     client=EsAsyncCollectionSearchClient(database_logic)
 )
-collection_search_extension.conformance_classes.extend([
-    "https://api.stacspec.org/v1.0.0-rc.1/collection-search",
-    "https://api.stacspec.org/v1.0.0-rc.1/collection-search#free-text",]
+collection_search_extension.conformance_classes.extend(
+    [
+        "https://api.stacspec.org/v1.0.0-rc.1/collection-search",
+        "https://api.stacspec.org/v1.0.0-rc.1/collection-search#free-text",
+    ]
 )
 
 discovery_search_extension = DiscoverySearchExtension(
     client=EsAsyncDiscoverySearchClient(database_logic)
 )
-discovery_search_extension.conformance_classes.append(
-    "temporary-discovery-search-extension"
+discovery_search_extension.conformance_classes.extend(
+    ["/catalogues",
+    "/discovery-search"]
 )
 
 extensions = [
