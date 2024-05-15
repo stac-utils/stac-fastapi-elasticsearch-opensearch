@@ -8,7 +8,7 @@ async def test_not_authenticated(route_dependencies_client, ctx):
 
     response = await route_dependencies_client.get("/search", params=params)
 
-    assert response.status_code == 401, response
+    assert response.status_code == 401
 
 
 @pytest.mark.asyncio
@@ -24,5 +24,5 @@ async def test_authenticated(route_dependencies_client, ctx):
         headers={"content-type": "application/json"},
     )
 
-    assert response.status_code == 200, response
+    assert response.status_code == 200
     assert len(response.json()["features"]) == 1
