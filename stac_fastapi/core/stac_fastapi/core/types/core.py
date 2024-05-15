@@ -27,6 +27,7 @@ class AsyncBaseTransactionsClient(abc.ABC):
     @abc.abstractmethod
     async def create_item(
         self,
+        catalog_id: str,
         collection_id: str,
         item: Union[stac_types.Item, stac_types.ItemCollection],
         **kwargs,
@@ -46,7 +47,12 @@ class AsyncBaseTransactionsClient(abc.ABC):
 
     @abc.abstractmethod
     async def update_item(
-        self, collection_id: str, item_id: str, item: stac_types.Item, **kwargs
+        self,
+        catalog_id: str,
+        collection_id: str,
+        item_id: str,
+        item: stac_types.Item,
+        **kwargs,
     ) -> Optional[Union[stac_types.Item, Response]]:
         """Perform a complete update on an existing item.
 
@@ -65,7 +71,7 @@ class AsyncBaseTransactionsClient(abc.ABC):
 
     @abc.abstractmethod
     async def delete_item(
-        self, item_id: str, collection_id: str, **kwargs
+        self, item_id: str, collection_id: str, catalog_id: str, **kwargs
     ) -> Optional[Union[stac_types.Item, Response]]:
         """Delete an item from a collection.
 
@@ -82,7 +88,7 @@ class AsyncBaseTransactionsClient(abc.ABC):
 
     @abc.abstractmethod
     async def create_collection(
-        self, collection: stac_types.Collection, **kwargs
+        self, catalog_id: str, collection: stac_types.Collection, **kwargs
     ) -> Optional[Union[stac_types.Collection, Response]]:
         """Create a new collection.
 
@@ -98,7 +104,11 @@ class AsyncBaseTransactionsClient(abc.ABC):
 
     @abc.abstractmethod
     async def update_collection(
-        self, collection: stac_types.Collection, **kwargs
+        self,
+        catalog_id: str,
+        collection_id: str,
+        collection: stac_types.Collection,
+        **kwargs,
     ) -> Optional[Union[stac_types.Collection, Response]]:
         """Perform a complete update on an existing collection.
 
@@ -117,8 +127,59 @@ class AsyncBaseTransactionsClient(abc.ABC):
 
     @abc.abstractmethod
     async def delete_collection(
-        self, collection_id: str, **kwargs
+        self, catalog_id: str, collection_id: str, **kwargs
     ) -> Optional[Union[stac_types.Collection, Response]]:
+        """Delete a collection.
+
+        Called with `DELETE /collections/{collection_id}`
+
+        Args:
+            collection_id: id of the collection.
+
+        Returns:
+            The deleted collection.
+        """
+        ...
+
+    @abc.abstractmethod
+    async def create_catalog(
+        self, catalog: stac_types.Catalog, **kwargs
+    ) -> Optional[Union[stac_types.Catalog, Response]]:
+        """Create a new catalog.
+
+        Called with `POST /catalogs`.
+
+        Args:
+            catalog: the catalog
+
+        Returns:
+            The catalog that was created.
+        """
+        ...
+
+    @abc.abstractmethod
+    async def update_catalog(
+        self, catalog_id: str, catalog: stac_types.Catalog, **kwargs
+    ) -> Optional[Union[stac_types.Catalog, Response]]:
+        """Perform a complete update on an existing collection.
+
+        Called with `PUT /collections`. It is expected that this item already
+        exists.  The update should do a diff against the saved collection and
+        perform any necessary updates.  Partial updates are not supported by the
+        transactions extension.
+
+        Args:
+            collection: the collection (must be complete)
+
+        Returns:
+            The updated collection.
+        """
+        ...
+
+    @abc.abstractmethod
+    async def delete_catalog(
+        self, catalog_id: str, **kwargs
+    ) -> Optional[Union[stac_types.Catalog, Response]]:
         """Delete a collection.
 
         Called with `DELETE /collections/{collection_id}`
@@ -214,7 +275,7 @@ class AsyncBaseCoreClient(abc.ABC):
 
     @abc.abstractmethod
     async def get_item(
-        self, item_id: str, collection_id: str, **kwargs
+        self, item_id: str, collection_id: str, catalog_id: str, **kwargs
     ) -> stac_types.Item:
         """Get item by id.
 
@@ -241,8 +302,19 @@ class AsyncBaseCoreClient(abc.ABC):
         ...
 
     @abc.abstractmethod
+    async def all_catalogs(self, **kwargs) -> stac_types.Catalogs:
+        """Get all available catalogs.
+
+        Called with `GET /catalogs`.
+
+        Returns:
+            A list of catalogs.
+        """
+        ...
+
+    @abc.abstractmethod
     async def get_collection(
-        self, collection_id: str, **kwargs
+        self, catalog_id: str, collection_id: str, **kwargs
     ) -> stac_types.Collection:
         """Get collection by id.
 
@@ -253,6 +325,36 @@ class AsyncBaseCoreClient(abc.ABC):
 
         Returns:
             Collection.
+        """
+        ...
+
+    @abc.abstractmethod
+    async def get_catalog(self, catalog_id: str, **kwargs) -> stac_types.Catalog:
+        """Get catalog by id.
+
+        Called with `GET /catalogs/{catalog_id}`.
+
+        Args:
+            catalog_id: Id of the catalog.
+
+        Returns:
+            Catalog.
+        """
+        ...
+
+    @abc.abstractmethod
+    async def get_catalog_collections(
+        self, catalog_id: str, **kwargs
+    ) -> stac_types.Collections:
+        """Get collections by catalog id.
+
+        Called with `GET /catalogs/{catalog_id}/collections`.
+
+        Args:
+            catalog_id: Id of the catalog.
+
+        Returns:
+            Collections.
         """
         ...
 
@@ -316,6 +418,7 @@ class AsyncCollectionSearchClient(abc.ABC):
         bbox: Optional[List[NumType]] = None,
         datetime: Optional[Union[str, datetime]] = None,
         limit: Optional[int] = 10,
+        q: Optional[str] = None,
         **kwargs,
     ) -> stac_types.ItemCollection:
         """Cross catalog search (GET) for collections.
@@ -332,13 +435,12 @@ class AsyncCollectionSearchClient(abc.ABC):
 
 
 @attr.s
-class CollectionSearchClient(abc.ABC):
+class AsyncDiscoverySearchClient(abc.ABC):
     """Defines a pattern for implementing the STAC Collection Search extension."""
 
-    async def get_collection_search(
+    async def get_discovery_search(
         self,
-        bbox: Optional[List[NumType]] = None,
-        datetime: Optional[Union[str, datetime]] = None,
+        q: Optional[str] = None,
         limit: Optional[int] = 10,
         **kwargs,
     ) -> stac_types.ItemCollection:

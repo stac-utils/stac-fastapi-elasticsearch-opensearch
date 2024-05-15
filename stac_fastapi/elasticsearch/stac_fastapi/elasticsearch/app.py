@@ -9,6 +9,7 @@ from stac_fastapi.core.core import (
     CoreClient,
     EsAsyncBaseFiltersClient,
     EsAsyncCollectionSearchClient,
+    EsAsyncDiscoverySearchClient,
     TransactionsClient,
 )
 from stac_fastapi.core.extensions import QueryExtension
@@ -18,6 +19,7 @@ from stac_fastapi.elasticsearch.database_logic import (
     DatabaseLogic,
     create_collection_index,
     create_index_templates,
+    create_catalog_index,
 )
 from stac_fastapi.extensions.core import (
     ContextExtension,
@@ -27,6 +29,7 @@ from stac_fastapi.extensions.core import (
     TokenPaginationExtension,
     TransactionExtension,
     CollectionSearchExtension,
+    DiscoverySearchExtension,
 )
 from stac_fastapi.extensions.third_party import BulkTransactionExtension
 
@@ -43,8 +46,18 @@ database_logic = DatabaseLogic()
 collection_search_extension = CollectionSearchExtension(
     client=EsAsyncCollectionSearchClient(database_logic)
 )
-collection_search_extension.conformance_classes.append(
-    "https://api.stacspec.org/v1.0.0-rc.1/collection-search"
+collection_search_extension.conformance_classes.extend(
+    [
+        "https://api.stacspec.org/v1.0.0-rc.1/collection-search",
+        "https://api.stacspec.org/v1.0.0-rc.1/collection-search#free-text",
+    ]
+)
+
+discovery_search_extension = DiscoverySearchExtension(
+    client=EsAsyncDiscoverySearchClient(database_logic)
+)
+discovery_search_extension.conformance_classes.extend(
+    ["/catalogues", "/discovery-search"]
 )
 
 extensions = [
@@ -66,8 +79,9 @@ extensions = [
     SortExtension(),
     TokenPaginationExtension(),
     ContextExtension(),
-    filter_extension,
     collection_search_extension,
+    filter_extension,
+    discovery_search_extension,
 ]
 
 post_request_model = create_post_request_model(extensions)
@@ -92,6 +106,7 @@ app.root_path = os.getenv("STAC_FASTAPI_ROOT_PATH", "")
 async def _startup_event() -> None:
     await create_index_templates()
     await create_collection_index()
+    await create_catalog_index()
 
 
 def run() -> None:

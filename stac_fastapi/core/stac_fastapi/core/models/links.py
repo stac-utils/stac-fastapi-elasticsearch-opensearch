@@ -55,7 +55,9 @@ class BaseLinks:
 
     def link_self(self) -> Dict:
         """Return the self link."""
-        return dict(rel=Relations.self.value, type=MimeTypes.json.value, href=self.base_url)
+        return dict(
+            rel=Relations.self.value, type=MimeTypes.json.value, href=self.base_url
+        )
 
     def link_root(self) -> Dict:
         """Return the catalog root."""
