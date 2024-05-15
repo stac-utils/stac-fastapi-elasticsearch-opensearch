@@ -316,7 +316,7 @@ class CatalogCollectionSerializer(Serializer):
 
         # Create the collection links using CollectionLinks
         collection_links = CollectionLinks(
-            cattalog_id=catalog_id, collection_id=collection_id, base_url=base_url
+            catalog_id=catalog_id, collection_id=collection_id, base_url=base_url
         ).create_links()
 
         # Add any additional links from the collection dictionary
@@ -343,6 +343,8 @@ class CatalogCollectionSerializer(Serializer):
         """
         # Determine datatype to serialise and pass to correct serializer function
         if data["type"] == "Collection":
-            return cls.collection_db_to_stac(catalog_id, data, base_url)
+            return cls.collection_db_to_stac(
+                catalog_id=catalog_id, collection=data, base_url=base_url
+            )
         elif data["type"] == "Catalog":
             return cls.catalog_db_to_stac(data, base_url)
