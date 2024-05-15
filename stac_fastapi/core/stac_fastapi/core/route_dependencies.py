@@ -1,6 +1,7 @@
 """Route Dependencies Module."""
 
 import importlib
+import inspect
 import json
 import logging
 import os
@@ -47,16 +48,18 @@ def get_route_dependencies(route_dependencies_env: str = "") -> list:
             dependencies = []
             for dependency_conf in dependencies_conf:
 
-                module_name, function_name = dependency_conf["function"].rsplit(".", 1)
+                module_name, method_name = dependency_conf["method"].rsplit(".", 1)
 
                 module = importlib.import_module(module_name)
 
-                function = getattr(module, function_name)
+                dependency = getattr(module, method_name)
 
-                dependency = function(
-                    *dependency_conf.get("args", []),
-                    **dependency_conf.get("kwargs", {})
-                )
+                if inspect.isclass(dependency):
+
+                    dependency = dependency(
+                        *dependency_conf.get("args", []),
+                        **dependency_conf.get("kwargs", {})
+                    )
 
                 dependencies.append(Depends(dependency))
 

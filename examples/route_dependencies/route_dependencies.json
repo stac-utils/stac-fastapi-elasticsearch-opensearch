@@ -8,10 +8,13 @@
     ],
     "dependencies": [
       {
-        "function": "fastapi.security.OAuth2PasswordBearer",
+        "method": "fastapi.security.OAuth2PasswordBearer",
         "kwargs": {
           "tokenUrl": "token"
         }
+      },
+      {
+        "method": "stac_fastapi.conftest.must_be_bob"
       }
     ]
   }
