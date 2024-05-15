@@ -14,7 +14,7 @@ async def test_not_authenticated(route_dependencies_client):
 async def test_authenticated(route_dependencies_client):
     """Test protected endpoint [GET /collections] with permissions"""
 
-    response = await route_dependencies_client.post(
+    response = await route_dependencies_client.get(
         "/collections",
         auth=("bob", "dobbs"),
     )
