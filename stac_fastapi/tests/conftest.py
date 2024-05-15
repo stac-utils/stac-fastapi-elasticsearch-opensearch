@@ -323,7 +323,7 @@ async def route_dependencies_app():
                 ],
                 "dependencies": [
                     {
-                        "function": "stac_fastapi.tests.conftest.must_be_bob"
+                        "method": "stac_fastapi.tests.conftest.must_be_bob"
                     }
                 ]
             }
