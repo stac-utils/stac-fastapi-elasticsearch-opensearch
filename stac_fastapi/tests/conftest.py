@@ -40,8 +40,7 @@ else:
         create_index_templates,
     )
 
-from stac_fastapi.extensions.core import (  # FieldsExtension,
-    ContextExtension,
+from stac_fastapi.extensions.core import (
     FieldsExtension,
     FilterExtension,
     SortExtension,
@@ -195,7 +194,6 @@ async def app():
             ),
             settings=settings,
         ),
-        ContextExtension(),
         SortExtension(),
         FieldsExtension(),
         QueryExtension(),
@@ -238,7 +236,6 @@ async def app_basic_auth():
             ),
             settings=settings,
         ),
-        ContextExtension(),
         SortExtension(),
         FieldsExtension(),
         QueryExtension(),

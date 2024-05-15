@@ -7,8 +7,19 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [v3.0.0a1]
+
+### Changed
+
+- Unskip temporal open window test [#254](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/254)
+- Removed deprecated context extension [#255](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/255)
+- Remove duplicated code from stac_fastapi.types [#257](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/257)
+
+## [v3.0.0a0]
+
 ### Added
 
+- Symlinks from project-specific readme files to main readme [#250](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/250)
 - Support for Python 3.12 [#234](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/234)
 
 ### Changed
@@ -193,7 +204,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Added db_to_stac serializer to item_collection method in core.py.
 
 
-[Unreleased]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.4.1...main>
+[Unreleased]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.0.0a1...main>
+[v3.0.0a1]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.0.0a0...v3.0.0a1>
+[v3.0.0a0]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.4.1...v3.0.0a0>
 [v2.4.1]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.4.0...v2.4.1>
 [v2.4.0]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.3.0...v2.4.0>
 [v2.3.0]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.2.0...v2.3.0>
