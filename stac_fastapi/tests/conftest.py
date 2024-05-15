@@ -314,7 +314,7 @@ def must_be_bob(
 @pytest_asyncio.fixture(scope="session")
 async def route_dependencies_app():
     # Add file to python path to allow get_route_dependencies to import must_be_bob
-    sys.path.append(os.path.abspath(__file__))
+    sys.path.append(os.path.dirname(__file__))
 
     stac_fastapi_route_dependencies = """[
             {
