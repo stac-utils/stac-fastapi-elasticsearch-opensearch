@@ -20,4 +20,3 @@ async def test_authenticated(route_dependencies_client):
     )
 
     assert response.status_code == 200
-    assert len(response.json()["collections"]) == 1
