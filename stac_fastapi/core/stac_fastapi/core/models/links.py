@@ -117,11 +117,10 @@ class PagingLinks(BaseLinks):
 
     def link_next(self) -> Optional[Dict[str, Any]]:
         """Create link for next page."""
-        request_url = str(self.request.url)
         if self.next is not None:
             method = self.request.method
             if method == "GET":
-                href = merge_params(request_url, {"token": self.next})
+                href = merge_params(self.url, {"token": self.next})
                 link = dict(
                     rel=Relations.next.value,
                     type=MimeTypes.json.value,
