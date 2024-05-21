@@ -717,7 +717,7 @@ class CoreClient(AsyncBaseCoreClient):
         )
 
         items = [
-            self.item_serializer.db_to_stac(item=item, base_url=base_url)
+            self.item_serializer.db_to_stac(item=item[0], base_url=base_url, catalog_id=item[1])
             for item in items
         ]
 
