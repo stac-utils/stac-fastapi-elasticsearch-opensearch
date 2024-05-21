@@ -576,7 +576,9 @@ class DatabaseLogic:
         hits = response["hits"]["hits"]
         collections = [
             self.collection_serializer.db_to_stac(
-                collection=hit["_source"], base_url=base_url, catalog_id=hit["_id"].rsplit("|", 1)[1],
+                collection=hit["_source"],
+                base_url=base_url,
+                catalog_id=hit["_id"].rsplit("|", 1)[1],
             )
             for hit in hits
         ]
@@ -627,7 +629,9 @@ class DatabaseLogic:
             hits = response["hits"]["hits"]
             collections = [
                 self.collection_serializer.db_to_stac(
-                    collection=hit["_source"], base_url=base_url, catalog_id=hit["id"].rsplit("|", 1)[1],
+                    collection=hit["_source"],
+                    base_url=base_url,
+                    catalog_id=hit["_id"].rsplit("|", 1)[1],
                 )
                 for hit in hits
             ]
@@ -1165,9 +1169,9 @@ class DatabaseLogic:
             raise NotFoundError(f"Collections '{collection_ids}' do not exist")
 
         hits = es_response["hits"]["hits"]
-        
+
         # Need to identify catalog for each item
-        items = ((hit["_source"],hit["_id"].rsplit("|",1)[1]) for hit in hits)
+        items = ((hit["_source"], hit["_id"].rsplit("|", 1)[1]) for hit in hits)
 
         next_token = None
         if hits and (sort_array := hits[-1].get("sort")):
@@ -1252,7 +1256,9 @@ class DatabaseLogic:
         hits = es_response["hits"]["hits"]
         collections = [
             self.collection_serializer.db_to_stac(
-                collection=hit["_source"], base_url=base_url, catalog_id=hit["id"].rsplit("|", 1)[1],
+                collection=hit["_source"],
+                base_url=base_url,
+                catalog_id=hit["_id"].rsplit("|", 1)[1],
             )
             for hit in hits
         ]
@@ -1929,7 +1935,9 @@ class DatabaseLogic:
         hits = es_response["hits"]["hits"]
         data = [
             self.catalog_collection_serializer.db_to_stac(
-                data=hit["_source"], base_url=base_url, catalog_id=hit["id"].rsplit("|", 1)[1],
+                data=hit["_source"],
+                base_url=base_url,
+                catalog_id=hit["id"].rsplit("|", 1)[1],
             )
             for hit in hits
         ]
