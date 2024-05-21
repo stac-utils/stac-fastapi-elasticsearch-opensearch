@@ -1382,7 +1382,6 @@ class EsAsyncDiscoverySearchClient(AsyncDiscoverySearchClient):
                 limit=limit,
                 token=None,
                 sort=sort,
-                catalog_ids=None,  # search_request.collections,
                 base_url=base_url,
             )
         )
