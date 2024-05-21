@@ -1937,7 +1937,7 @@ class DatabaseLogic:
             self.catalog_collection_serializer.db_to_stac(
                 data=hit["_source"],
                 base_url=base_url,
-                catalog_id=hit["id"].rsplit("|", 1)[1],
+                catalog_id=hit["_id"].rsplit("|", 1)[1],
             )
             for hit in hits
         ]
