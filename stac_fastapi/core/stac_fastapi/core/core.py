@@ -1384,8 +1384,6 @@ class EsAsyncDiscoverySearchClient(AsyncDiscoverySearchClient):
             {"_score": {"order": "desc"}},
         ]
 
-        limit = 10
-
         catalogs_and_collections, maybe_count, next_token = (
             await self.database.execute_discovery_search(
                 search=search,
