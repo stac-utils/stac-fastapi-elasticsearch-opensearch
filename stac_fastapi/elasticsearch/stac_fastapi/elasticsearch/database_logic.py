@@ -1165,7 +1165,9 @@ class DatabaseLogic:
             raise NotFoundError(f"Collections '{collection_ids}' do not exist")
 
         hits = es_response["hits"]["hits"]
-        items = (hit["_source"] for hit in hits)
+        
+        # Need to identify catalog for each item
+        items = ((hit["_source"],hit["_id"].rsplit("|",1)[1]) for hit in hits)
 
         next_token = None
         if hits and (sort_array := hits[-1].get("sort")):
