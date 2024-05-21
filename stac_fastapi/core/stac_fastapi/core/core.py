@@ -1252,6 +1252,8 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
             HTTPException: If there is an error with the cql2_json filter.
         """
         base_url = str(request.base_url)
+        token = request.query_params.get("token")
+        limit = int(request.query_params.get("limit", 10))
 
         search = self.database.make_collection_search()
 
@@ -1276,15 +1278,11 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
 
         sort = None
 
-        limit = 10
-        if search_request.limit:
-            limit = search_request.limit
-
         collections, maybe_count, next_token = (
             await self.database.execute_collection_search(
                 search=search,
                 limit=limit,
-                token=None,
+                token=token,
                 sort=sort,
                 collection_ids=None,  # search_request.collections,
                 base_url=base_url,
@@ -1373,6 +1371,8 @@ class EsAsyncDiscoverySearchClient(AsyncDiscoverySearchClient):
             HTTPException: If there is an error with the cql2_json filter.
         """
         base_url = str(request.base_url)
+        token = request.query_params.get("token")
+        limit = int(request.query_params.get("limit", 10))
 
         search = self.database.make_discovery_search()
 
@@ -1390,7 +1390,7 @@ class EsAsyncDiscoverySearchClient(AsyncDiscoverySearchClient):
             await self.database.execute_discovery_search(
                 search=search,
                 limit=limit,
-                token=None,
+                token=token,
                 sort=sort,
                 catalog_ids=None,  # search_request.collections,
                 base_url=base_url,
