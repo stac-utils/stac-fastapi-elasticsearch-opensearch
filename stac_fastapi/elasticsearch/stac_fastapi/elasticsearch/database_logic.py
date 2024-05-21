@@ -1728,6 +1728,7 @@ class DatabaseLogic:
         if catalog_id != catalog["id"]:
             await self.create_catalog(catalog, refresh=refresh)
 
+            # Reindex collections within this catalog
             await self.client.reindex(
                 body={
                     "dest": {"index": f"{COLLECTIONS_INDEX_PREFIX}{catalog['id']}"},
@@ -1956,7 +1957,7 @@ class DatabaseLogic:
         try:
             es_response = await search_task
         except exceptions.NotFoundError:
-            raise NotFoundError(f"Catalog or Collection missing during search.")
+            raise NotFoundError("Catalog or Collection missing during search.")
 
         hits = es_response["hits"]["hits"]
         data = [
