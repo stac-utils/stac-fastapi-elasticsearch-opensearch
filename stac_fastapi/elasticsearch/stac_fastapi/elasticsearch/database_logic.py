@@ -12,10 +12,10 @@ from elasticsearch_dsl import Q, Search
 from elasticsearch import exceptions, helpers  # type: ignore
 from stac_fastapi.core.extensions import filter
 from stac_fastapi.core.serializers import (
+    CatalogCollectionSerializer,
+    CatalogSerializer,
     CollectionSerializer,
     ItemSerializer,
-    CatalogSerializer,
-    CatalogCollectionSerializer,
 )
 from stac_fastapi.core.utilities import bbox2polygon
 from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
@@ -23,7 +23,7 @@ from stac_fastapi.elasticsearch.config import (
     ElasticsearchSettings as SyncElasticsearchSettings,
 )
 from stac_fastapi.types.errors import ConflictError, NotFoundError
-from stac_fastapi.types.stac import Collection, Item, Catalog
+from stac_fastapi.types.stac import Catalog, Collection, Item
 
 logger = logging.getLogger(__name__)
 
@@ -1728,7 +1728,7 @@ class DatabaseLogic:
         if catalog_id != catalog["id"]:
             await self.create_catalog(catalog, refresh=refresh)
 
-            # Reindex collections within this catalog
+            # Reindex collections in this catalog
             await self.client.reindex(
                 body={
                     "dest": {"index": f"{COLLECTIONS_INDEX_PREFIX}{catalog['id']}"},
@@ -1742,7 +1742,7 @@ class DatabaseLogic:
                 refresh=refresh,
             )
 
-            # Reindex items within each collection within this catalog
+            # Reindex items within each collection in this catalog
             try:
                 # Get all collections contained in this catalog
                 index_param = collection_indices(catalog_ids=[catalog_id])
