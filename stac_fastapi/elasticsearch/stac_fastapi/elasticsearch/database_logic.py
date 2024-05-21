@@ -576,7 +576,7 @@ class DatabaseLogic:
         hits = response["hits"]["hits"]
         collections = [
             self.collection_serializer.db_to_stac(
-                collection=hit["_source"], base_url=base_url
+                collection=hit["_source"], base_url=base_url, catalog_id=hit["_id"].rsplit("|", 1)[1],
             )
             for hit in hits
         ]
@@ -627,7 +627,7 @@ class DatabaseLogic:
             hits = response["hits"]["hits"]
             collections = [
                 self.collection_serializer.db_to_stac(
-                    collection=hit["_source"], base_url=base_url
+                    collection=hit["_source"], base_url=base_url, catalog_id=hit["id"].rsplit("|", 1)[1],
                 )
                 for hit in hits
             ]
@@ -1250,7 +1250,7 @@ class DatabaseLogic:
         hits = es_response["hits"]["hits"]
         collections = [
             self.collection_serializer.db_to_stac(
-                collection=hit["_source"], base_url=base_url
+                collection=hit["_source"], base_url=base_url, catalog_id=hit["id"].rsplit("|", 1)[1],
             )
             for hit in hits
         ]
@@ -1927,7 +1927,7 @@ class DatabaseLogic:
         hits = es_response["hits"]["hits"]
         data = [
             self.catalog_collection_serializer.db_to_stac(
-                data=hit["_source"], base_url=base_url
+                data=hit["_source"], base_url=base_url, catalog_id=hit["id"].rsplit("|", 1)[1],
             )
             for hit in hits
         ]
