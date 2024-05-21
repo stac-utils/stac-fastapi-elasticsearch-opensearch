@@ -329,8 +329,6 @@ class CoreClient(AsyncBaseCoreClient):
     async def get_catalog_collections(
         self,
         catalog_id: str,
-        limit: int = 10,
-        token: str = None,
         **kwargs,
     ) -> Collections:
         """Read collections from a specific catalog in the database.
@@ -349,6 +347,8 @@ class CoreClient(AsyncBaseCoreClient):
             Exception: If any error occurs while reading the collections from the database.
         """
         request: Request = kwargs["request"]
+        token = request.query_params.get("token")
+        limit = int(request.query_params.get("limit", 10))
         base_url = str(request.base_url)
 
         catalog = await self.get_catalog(catalog_id=catalog_id, request=request)
@@ -363,16 +363,19 @@ class CoreClient(AsyncBaseCoreClient):
             base_url=base_url,
         )
 
-        collections = [
-            self.collection_serializer.db_to_stac(
-                catalog_id=catalog_id, collection=collection, base_url=base_url
-            )
-            for collection in collections
+        links = [
+            {"rel": Relations.root.value, "type": MimeTypes.json, "href": base_url},
+            {"rel": Relations.parent.value, "type": MimeTypes.json, "href": base_url},
+            {
+                "rel": Relations.self.value,
+                "type": MimeTypes.json,
+                "href": urljoin(base_url, f"catalogs/{catalog_id}/collections"),
+            },
         ]
 
-        links = []
         if next_token:
-            links = await PagingLinks(request=request, next=next_token).get_links()
+            next_link = PagingLinks(next=next_token, request=request).link_next()
+            links.append(next_link)
 
         return Collections(collections=collections, links=links)
 
@@ -441,7 +444,7 @@ class CoreClient(AsyncBaseCoreClient):
             collection_ids=[collection_id],
         )
 
-        # To handle catalog_id in links execute_search also returns the catalog_id 
+        # To handle catalog_id in links execute_search also returns the catalog_id
         # from search results in a tuple
         items = [
             self.item_serializer.db_to_stac(
@@ -719,10 +722,12 @@ class CoreClient(AsyncBaseCoreClient):
             catalog_ids=search_request.catalogs,
         )
 
-        # To handle catalog_id in links execute_search also returns the catalog_id 
+        # To handle catalog_id in links execute_search also returns the catalog_id
         # from search results in a tuple
         items = [
-            self.item_serializer.db_to_stac(item=item[0], base_url=base_url, catalog_id=item[1])
+            self.item_serializer.db_to_stac(
+                item=item[0], base_url=base_url, catalog_id=item[1]
+            )
             for item in items
         ]
 
