@@ -246,7 +246,6 @@ class CatalogSerializer(Serializer):
 class CatalogCollectionSerializer(Serializer):
     """Serialization methods for STAC catalogs."""
 
-
     def stac_to_db(cls, stac_object: Any, base_url: str) -> dict:
         """Transform STAC object to database model.
 
