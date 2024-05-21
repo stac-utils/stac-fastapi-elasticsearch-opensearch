@@ -389,6 +389,7 @@ class CoreClient(AsyncBaseCoreClient):
         """Read items from a specific collection in the database.
 
         Args:
+            catalog_id (str): The identifier of the catalog to read the collection from.
             collection_id (str): The identifier of the collection to read items from.
             bbox (Optional[List[NumType]]): The bounding box to filter items by.
             datetime (Union[str, datetime_type, None]): The datetime range to filter items by.
@@ -440,9 +441,11 @@ class CoreClient(AsyncBaseCoreClient):
             collection_ids=[collection_id],
         )
 
+        # To handle catalog_id in links execute_search also returns the catalog_id 
+        # from search results in a tuple
         items = [
             self.item_serializer.db_to_stac(
-                catalog_id=catalog_id, item=item, base_url=base_url
+                catalog_id=catalog_id, item=item[0], base_url=base_url
             )
             for item in items
         ]
@@ -716,6 +719,8 @@ class CoreClient(AsyncBaseCoreClient):
             catalog_ids=search_request.catalogs,
         )
 
+        # To handle catalog_id in links execute_search also returns the catalog_id 
+        # from search results in a tuple
         items = [
             self.item_serializer.db_to_stac(item=item[0], base_url=base_url, catalog_id=item[1])
             for item in items
