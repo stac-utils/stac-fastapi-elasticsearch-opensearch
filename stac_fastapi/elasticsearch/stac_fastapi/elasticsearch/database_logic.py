@@ -12,10 +12,10 @@ from elasticsearch_dsl import Q, Search
 from elasticsearch import exceptions, helpers  # type: ignore
 from stac_fastapi.core.extensions import filter
 from stac_fastapi.core.serializers import (
+    CatalogCollectionSerializer,
+    CatalogSerializer,
     CollectionSerializer,
     ItemSerializer,
-    CatalogSerializer,
-    CatalogCollectionSerializer,
 )
 from stac_fastapi.core.utilities import bbox2polygon
 from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
@@ -23,7 +23,7 @@ from stac_fastapi.elasticsearch.config import (
     ElasticsearchSettings as SyncElasticsearchSettings,
 )
 from stac_fastapi.types.errors import ConflictError, NotFoundError
-from stac_fastapi.types.stac import Collection, Item, Catalog
+from stac_fastapi.types.stac import Catalog, Collection, Item
 
 logger = logging.getLogger(__name__)
 
