@@ -17,19 +17,19 @@ from stac_fastapi.core.session import Session
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
 from stac_fastapi.elasticsearch.database_logic import (
     DatabaseLogic,
+    create_catalog_index,
     create_collection_index,
     create_index_templates,
-    create_catalog_index,
 )
 from stac_fastapi.extensions.core import (
+    CollectionSearchExtension,
     ContextExtension,
+    DiscoverySearchExtension,
     FieldsExtension,
     FilterExtension,
     SortExtension,
     TokenPaginationExtension,
     TransactionExtension,
-    CollectionSearchExtension,
-    DiscoverySearchExtension,
 )
 from stac_fastapi.extensions.third_party import BulkTransactionExtension
 
