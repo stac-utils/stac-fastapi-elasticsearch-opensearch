@@ -17,19 +17,19 @@ from stac_fastapi.core.session import Session
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
 from stac_fastapi.elasticsearch.database_logic import (
     DatabaseLogic,
+    create_catalog_index,
     create_collection_index,
     create_index_templates,
-    create_catalog_index,
 )
 from stac_fastapi.extensions.core import (
+    CollectionSearchExtension,
     ContextExtension,
+    DiscoverySearchExtension,
     FieldsExtension,
     FilterExtension,
     SortExtension,
     TokenPaginationExtension,
     TransactionExtension,
-    CollectionSearchExtension,
-    DiscoverySearchExtension,
 )
 from stac_fastapi.extensions.third_party import BulkTransactionExtension
 
@@ -61,19 +61,6 @@ discovery_search_extension.conformance_classes.extend(
 )
 
 extensions = [
-    TransactionExtension(
-        client=TransactionsClient(
-            database=database_logic, session=session, settings=settings
-        ),
-        settings=settings,
-    ),
-    BulkTransactionExtension(
-        client=BulkTransactionsClient(
-            database=database_logic,
-            session=session,
-            settings=settings,
-        )
-    ),
     FieldsExtension(),
     QueryExtension(),
     SortExtension(),
@@ -83,6 +70,27 @@ extensions = [
     filter_extension,
     discovery_search_extension,
 ]
+
+# Disable transaction extensions by default
+# They are enabled by environment variable
+if os.getenv("STAC_FASTAPI_ENABLE_TRANSACTIONS", "false") == "true":
+    extensions.append(
+        TransactionExtension(
+            client=TransactionsClient(
+                database=database_logic, session=session, settings=settings
+            ),
+            settings=settings,
+        )
+    )
+    extensions.append(
+        BulkTransactionExtension(
+            client=BulkTransactionsClient(
+                database=database_logic,
+                session=session,
+                settings=settings,
+            )
+        )
+    )
 
 post_request_model = create_post_request_model(extensions)
 
