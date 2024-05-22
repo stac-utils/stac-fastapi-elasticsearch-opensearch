@@ -1,4 +1,5 @@
 """Core client."""
+
 import logging
 import re
 from datetime import datetime as datetime_type
@@ -61,8 +62,6 @@ class CoreClient(AsyncBaseCoreClient):
         session (Session): A requests session instance to be used for all HTTP requests.
         item_serializer (Type[serializers.ItemSerializer]): A serializer class to be used to convert
             between STAC items and database records.
-        collection_serializer (Type[serializers.CollectionSerializer]): A serializer class to be
-            used to convert between STAC collections and database records.
         database (DatabaseLogic): An instance of the `DatabaseLogic` class that is used to interact
             with the database.
     """
@@ -75,120 +74,11 @@ class CoreClient(AsyncBaseCoreClient):
 
     session: Session = attr.ib(default=attr.Factory(Session.create_from_env))
     item_serializer: Type[ItemSerializer] = attr.ib(default=ItemSerializer)
-    collection_serializer: Type[CollectionSerializer] = attr.ib(
-        default=CollectionSerializer
-    )
     post_request_model = attr.ib(default=BaseSearchPostRequest)
     stac_version: str = attr.ib(default=STAC_VERSION)
     landing_page_id: str = attr.ib(default="stac-fastapi")
     title: str = attr.ib(default="stac-fastapi")
     description: str = attr.ib(default="stac-fastapi")
-
-    def _landing_page(
-        self,
-        base_url: str,
-        conformance_classes: List[str],
-        extension_schemas: List[str],
-    ) -> stac_types.LandingPage:
-        landing_page = stac_types.LandingPage(
-            type="Catalog",
-            id=self.landing_page_id,
-            title=self.title,
-            description=self.description,
-            stac_version=self.stac_version,
-            conformsTo=conformance_classes,
-            links=[
-                {
-                    "rel": Relations.self.value,
-                    "type": MimeTypes.json,
-                    "href": base_url,
-                },
-                {
-                    "rel": Relations.root.value,
-                    "type": MimeTypes.json,
-                    "href": base_url,
-                },
-                {
-                    "rel": "data",
-                    "type": MimeTypes.json,
-                    "href": urljoin(base_url, "collections"),
-                },
-                {
-                    "rel": Relations.conformance.value,
-                    "type": MimeTypes.json,
-                    "title": "STAC/WFS3 conformance classes implemented by this server",
-                    "href": urljoin(base_url, "conformance"),
-                },
-                {
-                    "rel": Relations.search.value,
-                    "type": MimeTypes.geojson,
-                    "title": "STAC search",
-                    "href": urljoin(base_url, "search"),
-                    "method": "GET",
-                },
-                {
-                    "rel": Relations.search.value,
-                    "type": MimeTypes.geojson,
-                    "title": "STAC search",
-                    "href": urljoin(base_url, "search"),
-                    "method": "POST",
-                },
-            ],
-            stac_extensions=extension_schemas,
-        )
-        return landing_page
-
-    async def landing_page(self, **kwargs) -> stac_types.LandingPage:
-        """Landing page.
-
-        Called with `GET /`.
-
-        Returns:
-            API landing page, serving as an entry point to the API.
-        """
-        request: Request = kwargs["request"]
-        base_url = get_base_url(request)
-        landing_page = self._landing_page(
-            base_url=base_url,
-            conformance_classes=self.conformance_classes(),
-            extension_schemas=[],
-        )
-        collections = await self.all_collections(request=kwargs["request"])
-        for collection in collections["collections"]:
-            landing_page["links"].append(
-                {
-                    "rel": Relations.child.value,
-                    "type": MimeTypes.json.value,
-                    "title": collection.get("title") or collection.get("id"),
-                    "href": urljoin(base_url, f"collections/{collection['id']}"),
-                }
-            )
-
-        # Add OpenAPI URL
-        landing_page["links"].append(
-            {
-                "rel": "service-desc",
-                "type": "application/vnd.oai.openapi+json;version=3.0",
-                "title": "OpenAPI service description",
-                "href": urljoin(
-                    str(request.base_url), request.app.openapi_url.lstrip("/")
-                ),
-            }
-        )
-
-        # Add human readable service-doc
-        landing_page["links"].append(
-            {
-                "rel": "service-doc",
-                "type": "text/html",
-                "title": "OpenAPI service documentation",
-                "href": urljoin(
-                    str(request.base_url), request.app.docs_url.lstrip("/")
-                ),
-            }
-        )
-
-        return landing_page
 
     async def all_collections(self, **kwargs) -> stac_types.Collections:
         """Read all collections from the database.
@@ -199,30 +89,7 @@ class CoreClient(AsyncBaseCoreClient):
         Returns:
             A Collections object containing all the collections in the database and links to various resources.
         """
-        request = kwargs["request"]
-        base_url = str(request.base_url)
-        limit = int(request.query_params.get("limit", 10))
-        token = request.query_params.get("token")
-
-        collections, next_token = await self.database.get_all_collections(
-            token=token, limit=limit, base_url=base_url
-        )
-
-        links = [
-            {"rel": Relations.root.value, "type": MimeTypes.json, "href": base_url},
-            {"rel": Relations.parent.value, "type": MimeTypes.json, "href": base_url},
-            {
-                "rel": Relations.self.value,
-                "type": MimeTypes.json,
-                "href": urljoin(base_url, "collections"),
-            },
-        ]
-
-        if next_token:
-            next_link = PagingLinks(next=next_token, request=request).link_next()
-            links.append(next_link)
-
-        return stac_types.Collections(collections=collections, links=links)
+        return await self.database.get_all_collections(request=kwargs["request"])
 
     async def get_collection(
         self, collection_id: str, **kwargs
@@ -239,10 +106,8 @@ class CoreClient(AsyncBaseCoreClient):
         Raises:
             NotFoundError: If the collection with the given id cannot be found in the database.
         """
-        base_url = str(kwargs["request"].base_url)
-        collection = await self.database.find_collection(collection_id=collection_id)
-        return self.collection_serializer.db_to_stac(
-            collection=collection, base_url=base_url
+        return await self.database.find_collection(
+            collection_id=collection_id, request=kwargs["request"]
         )
 
     async def item_collection(
@@ -272,54 +137,13 @@ class CoreClient(AsyncBaseCoreClient):
             HTTPException: If the specified collection is not found.
             Exception: If any error occurs while reading the items from the database.
         """
-        request: Request = kwargs["request"]
-        base_url = str(request.base_url)
-
-        collection = await self.get_collection(
-            collection_id=collection_id, request=request
-        )
-        collection_id = collection.get("id")
-        if collection_id is None:
-            raise HTTPException(status_code=404, detail="Collection not found")
-
-        search = self.database.make_search()
-        search = self.database.apply_collections_filter(
-            search=search, collection_ids=[collection_id]
-        )
-
-        if datetime:
-            datetime_search = self._return_date(datetime)
-            search = self.database.apply_datetime_filter(
-                search=search, datetime_search=datetime_search
-            )
-
-        if bbox:
-            bbox = [float(x) for x in bbox]
-            if len(bbox) == 6:
-                bbox = [bbox[0], bbox[1], bbox[3], bbox[4]]
-
-            search = self.database.apply_bbox_filter(search=search, bbox=bbox)
-
-        items, maybe_count, next_token = await self.database.execute_search(
-            search=search,
+        return self.get_search(
+            request=kwargs["request"],
+            collections=[collection_id],
+            bbox=bbox,
+            datetime=datetime,
             limit=limit,
-            sort=None,
-            token=token,  # type: ignore
-            collection_ids=[collection_id],
-        )
-
-        items = [
-            self.item_serializer.db_to_stac(item, base_url=base_url) for item in items
-        ]
-
-        links = await PagingLinks(request=request, next=next_token).get_links()
-
-        return stac_types.ItemCollection(
-            type="FeatureCollection",
-            features=items,
-            links=links,
-            numReturned=len(items),
-            numMatched=maybe_count,
+            token=token,
         )
 
     async def get_item(
@@ -531,108 +355,8 @@ class CoreClient(AsyncBaseCoreClient):
         Raises:
             HTTPException: If there is an error with the cql2_json filter.
         """
-        base_url = str(request.base_url)
-
-        search = self.database.make_search()
-
-        if search_request.ids:
-            search = self.database.apply_ids_filter(
-                search=search, item_ids=search_request.ids
-            )
-
-        if search_request.collections:
-            search = self.database.apply_collections_filter(
-                search=search, collection_ids=search_request.collections
-            )
-
-        if search_request.datetime:
-            datetime_search = self._return_date(search_request.datetime)
-            search = self.database.apply_datetime_filter(
-                search=search, datetime_search=datetime_search
-            )
-
-        if search_request.bbox:
-            bbox = search_request.bbox
-            if len(bbox) == 6:
-                bbox = [bbox[0], bbox[1], bbox[3], bbox[4]]
-
-            search = self.database.apply_bbox_filter(search=search, bbox=bbox)
-
-        if search_request.intersects:
-            search = self.database.apply_intersects_filter(
-                search=search, intersects=search_request.intersects
-            )
-
-        if search_request.query:
-            for field_name, expr in search_request.query.items():
-                field = "properties__" + field_name
-                for op, value in expr.items():
-                    # Convert enum to string
-                    operator = op.value if isinstance(op, Enum) else op
-                    search = self.database.apply_stacql_filter(
-                        search=search, op=operator, field=field, value=value
-                    )
-
-        # only cql2_json is supported here
-        if hasattr(search_request, "filter"):
-            cql2_filter = getattr(search_request, "filter", None)
-            try:
-                search = self.database.apply_cql2_filter(search, cql2_filter)
-            except Exception as e:
-                raise HTTPException(
-                    status_code=400, detail=f"Error with cql2_json filter: {e}"
-                )
-
-        sort = None
-        if search_request.sortby:
-            sort = self.database.populate_sort(search_request.sortby)
-
-        limit = 10
-        if search_request.limit:
-            limit = search_request.limit
-
-        items, maybe_count, next_token = await self.database.execute_search(
-            search=search,
-            limit=limit,
-            token=search_request.token,  # type: ignore
-            sort=sort,
-            collection_ids=search_request.collections,
-        )
-
-        items = [
-            self.item_serializer.db_to_stac(item, base_url=base_url) for item in items
-        ]
-
-        if self.extension_is_enabled("FieldsExtension"):
-            if search_request.query is not None:
-                query_include: Set[str] = set(
-                    [
-                        k if k in Settings.get().indexed_fields else f"properties.{k}"
-                        for k in search_request.query.keys()
-                    ]
-                )
-                if not search_request.fields.include:
-                    search_request.fields.include = query_include
-                else:
-                    search_request.fields.include.union(query_include)
-
-            filter_kwargs = search_request.fields.filter_fields
-
-            items = [
-                orjson.loads(
-                    stac_pydantic.Item(**feat).json(**filter_kwargs, exclude_unset=True)
-                )
-                for feat in items
-            ]
-
-        links = await PagingLinks(request=request, next=next_token).get_links()
-
-        return stac_types.ItemCollection(
-            type="FeatureCollection",
-            features=items,
-            links=links,
-            numReturned=len(items),
-            numMatched=maybe_count,
+        return await self.database.execute_search(
+            search_request=search_request, request=request
         )
 
 
@@ -747,13 +471,9 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         Raises:
             ConflictError: If the collection already exists.
         """
-        collection = collection.model_dump(mode="json")
-        base_url = str(kwargs["request"].base_url)
-        collection = self.database.collection_serializer.stac_to_db(
-            collection, base_url
+        return await self.database.create_collection(
+            collection=collection, request=kwargs["request"]
         )
-        await self.database.create_collection(collection=collection)
-        return CollectionSerializer.db_to_stac(collection, base_url)
 
     @overrides
     async def update_collection(
@@ -778,18 +498,11 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             A STAC collection that has been updated in the database.
 
         """
-        collection = collection.model_dump(mode="json")
-
-        base_url = str(kwargs["request"].base_url)
-
-        collection = self.database.collection_serializer.stac_to_db(
-            collection, base_url
+        return await self.database.update_collection(
+            collection_id=collection_id,
+            collection=collection,
+            request=kwargs["request"],
         )
-        await self.database.update_collection(
-            collection_id=collection_id, collection=collection
-        )
-
-        return CollectionSerializer.db_to_stac(collection, base_url)
 
     @overrides
     async def delete_collection(
@@ -810,8 +523,9 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         Raises:
             NotFoundError: If the collection doesn't exist.
         """
-        await self.database.delete_collection(collection_id=collection_id)
-        return None
+        return await self.database.delete_collection(
+            collection_id=collection_id, request=kwargs["request"]
+        )
 
 
 @attr.s

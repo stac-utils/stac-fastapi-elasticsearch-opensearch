@@ -20,8 +20,8 @@ class BaseDatabaseLogic(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def get_one_item(self, collection_id: str, item_id: str) -> Dict:
-        """Retrieve a single item from the database."""
+    async def get_item(self, collection_id: str, item_id: str) -> Dict:
+        """Retrieve an item from the database."""
         pass
 
     @abc.abstractmethod
@@ -37,13 +37,20 @@ class BaseDatabaseLogic(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def create_collection(self, collection: Dict, refresh: bool = False) -> None:
-        """Create a collection in the database."""
+    async def item_search(
+        self, item_id: str, collection_id: str, refresh: bool = False
+    ) -> None:
+        """Retrieve items that match query from the database."""
         pass
 
     @abc.abstractmethod
-    async def find_collection(self, collection_id: str) -> Dict:
-        """Find a collection in the database."""
+    async def get_collection(self, collection_id: str) -> Dict:
+        """Retrieve a collection in the database."""
+        pass
+
+    @abc.abstractmethod
+    async def create_collection(self, collection: Dict, refresh: bool = False) -> None:
+        """Create a collection in the database."""
         pass
 
     @abc.abstractmethod
