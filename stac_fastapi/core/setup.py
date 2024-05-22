@@ -9,7 +9,7 @@ install_requires = [
     "fastapi-slim",
     "attrs>=23.2.0",
     "pydantic[dotenv]",
-    "stac_pydantic>=3",
+    "stac_pydantic>=3.1.0",
     "stac-fastapi.types==3.0.0a",
     "stac-fastapi.api==3.0.0a",
     "stac-fastapi.extensions==3.0.0a",
