@@ -112,9 +112,10 @@ app.root_path = os.getenv("STAC_FASTAPI_ROOT_PATH", "")
 
 @app.on_event("startup")
 async def _startup_event() -> None:
-    await create_index_templates()
-    await create_collection_index()
-    await create_catalog_index()
+    if os.getenv("STAC_FASTAPI_ENABLE_TRANSACTIONS", "false") == "true":
+        await create_index_templates()
+        await create_collection_index()
+        await create_catalog_index()
 
 
 def run() -> None:
