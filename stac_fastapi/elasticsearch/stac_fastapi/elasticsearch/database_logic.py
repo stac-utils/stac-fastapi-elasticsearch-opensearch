@@ -1221,8 +1221,6 @@ class DatabaseLogic:
 
         query = search.query.to_dict() if search.query else None
 
-        index_param = "document"  # indices(collection_ids)
-
         search_task = asyncio.create_task(
             self.client.search(
                 index=f"{COLLECTIONS_INDEX_PREFIX}*",
@@ -1236,16 +1234,13 @@ class DatabaseLogic:
 
         count_task = asyncio.create_task(
             self.client.count(
-                index=index_param,
+                index=f"{COLLECTIONS_INDEX_PREFIX}*",
                 ignore_unavailable=ignore_unavailable,
                 body=search.to_dict(count=True),
             )
         )
 
-        try:
-            es_response = await search_task
-        except exceptions.NotFoundError:
-            raise NotFoundError(f"Collections '{collection_ids}' do not exist")
+        es_response = await search_task
 
         hits = es_response["hits"]["hits"]
         collections = [
@@ -1933,8 +1928,6 @@ class DatabaseLogic:
 
         query = search.query.to_dict() if search.query else None
 
-        index_param = "document"  # indices(collection_ids)
-
         search_task = asyncio.create_task(
             self.client.search(
                 index=[CATALOGS_INDEX, f"{COLLECTIONS_INDEX_PREFIX}*"],
@@ -1948,16 +1941,13 @@ class DatabaseLogic:
 
         count_task = asyncio.create_task(
             self.client.count(
-                index=index_param,
+                index=[CATALOGS_INDEX, f"{COLLECTIONS_INDEX_PREFIX}*"],
                 ignore_unavailable=ignore_unavailable,
                 body=search.to_dict(count=True),
             )
         )
 
-        try:
-            es_response = await search_task
-        except exceptions.NotFoundError:
-            raise NotFoundError("Catalog or Collection missing during search.")
+        es_response = await search_task
 
         hits = es_response["hits"]["hits"]
         data = [
