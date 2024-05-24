@@ -350,6 +350,49 @@ Example: This example demonstrates the configuration for public endpoints, allow
 }
 ```
 
+## Route Dependencies
+
+### Configuration
+
+Route dependencies for endpoints can enable through the `STAC_FASTAPI_ROUTE_DEPENDENCIES` 
+environment variable as a path to a JSON file or a JSON string.
+
+#### Route Dependency
+
+A Route Dependency must include `routes`, a list of at least one [Route](#routes), and `dependencies` a
+list of at least one [Dependency](#dependencies).
+
+#### Routes
+
+A Route must include a `path`, the relative path to the endpoint, and a `method`, the request method of the path.
+
+#### Dependencies
+
+A Dependency must include the `method`, a dot seperated path to the Class or Function, and 
+can include any `args` or `kwargs` for the method.
+
+#### Example
+```
+STAC_FASTAPI_ROUTE_DEPENDENCIES=[
+  {
+    "routes": [
+      {
+        "method": "GET",
+        "path": "/collections"
+      }
+    ],
+    "dependencies": [
+      {
+        "method": "fastapi.security.OAuth2PasswordBearer",
+        "kwargs": {
+          "tokenUrl": "token"
+        }
+      }
+    ]
+  }
+]
+```
+
 ### Docker Compose Configurations
 
 See `docker-compose.basic_auth_protected.yml` and `docker-compose.basic_auth_public.yml` for basic authentication configurations.
