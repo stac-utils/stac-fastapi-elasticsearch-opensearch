@@ -11,6 +11,7 @@ install_requires = [
     "opensearch-py[async]==2.4.2",
     "uvicorn",
     "starlette",
+    "stac_pydantic @ git+ssh://git@github.com/stac-utils/stac-pydantic@1417932609410b40ece93db9ff6551da4a17d104#egg=stac_pydantic",
 ]
 
 extra_reqs = {
