@@ -23,17 +23,17 @@ from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.models.links import PagingLinks
 from stac_fastapi.core.serializers import (
+    CatalogCollectionSerializer,
+    CatalogSerializer,
     CollectionSerializer,
     ItemSerializer,
-    CatalogSerializer,
-    CatalogCollectionSerializer,
 )
 from stac_fastapi.core.session import Session
 from stac_fastapi.core.types.core import (
     AsyncBaseCoreClient,
     AsyncBaseFiltersClient,
-    AsyncCollectionSearchClient,
     AsyncBaseTransactionsClient,
+    AsyncCollectionSearchClient,
     AsyncDiscoverySearchClient,
 )
 from stac_fastapi.extensions.third_party.bulk_transactions import (
@@ -47,17 +47,17 @@ from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
 from stac_fastapi.types.extension import ApiExtension
 from stac_fastapi.types.requests import get_base_url
 from stac_fastapi.types.search import (
-    BaseSearchPostRequest,
     BaseCollectionSearchPostRequest,
     BaseDiscoverySearchPostRequest,
+    BaseSearchPostRequest,
 )
 from stac_fastapi.types.stac import (
+    Catalogs,
+    CatalogsAndCollections,
     Collection,
     Collections,
     Item,
     ItemCollection,
-    Catalogs,
-    CatalogsAndCollections,
 )
 
 logger = logging.getLogger(__name__)
@@ -1382,7 +1382,6 @@ class EsAsyncDiscoverySearchClient(AsyncDiscoverySearchClient):
                 limit=limit,
                 token=None,
                 sort=sort,
-                catalog_ids=None,  # search_request.collections,
                 base_url=base_url,
             )
         )

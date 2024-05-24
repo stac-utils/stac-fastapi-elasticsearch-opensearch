@@ -9,10 +9,10 @@ import attr
 from stac_fastapi.core.datetime_utils import now_to_rfc3339_str
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.links import (
+    CatalogLinks,
     CollectionLinks,
     ItemLinks,
     resolve_links,
-    CatalogLinks,
 )
 
 
