@@ -153,6 +153,19 @@ class CoreClient(AsyncBaseCoreClient):
             conformance_classes=self.conformance_classes(),
             extension_schemas=[],
         )
+
+        if self.extension_is_enabled("FilterExtension"):
+            landing_page["links"].append(
+                {
+                    # TODO: replace this with Relations.queryables.value,
+                    "rel": "http://www.opengis.net/def/rel/ogc/1.0/queryables",
+                    # TODO: replace this with MimeTypes.jsonschema,
+                    "type": "application/schema+json",
+                    "title": "Queryables",
+                    "href": urljoin(base_url, "queryables")
+                }
+            )
+            
         collections = await self.all_collections(request=kwargs["request"])
         for collection in collections["collections"]:
             landing_page["links"].append(
