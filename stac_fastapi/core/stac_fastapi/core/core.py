@@ -158,7 +158,7 @@ class CoreClient(AsyncBaseCoreClient):
             landing_page["links"].append(
                 {
                     # TODO: replace this with Relations.queryables.value,
-                    "rel": "http://www.opengis.net/def/rel/ogc/1.0/queryables",
+                    "rel": "queryables",
                     # TODO: replace this with MimeTypes.jsonschema,
                     "type": "application/schema+json",
                     "title": "Queryables",

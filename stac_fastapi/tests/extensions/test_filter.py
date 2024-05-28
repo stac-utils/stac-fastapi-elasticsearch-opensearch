@@ -9,6 +9,17 @@ THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
 @pytest.mark.asyncio
+async def test_filter_extension_landing_page_link(app_client, ctx):
+    resp = await app_client.get(
+       "/"
+    )
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    keys = [link["rel"] for link in resp_json["links"]]
+    assert "queryables" in keys
+
+
+@pytest.mark.asyncio
 async def test_search_filters_post(app_client, ctx):
 
     filters = []
