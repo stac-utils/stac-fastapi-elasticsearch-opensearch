@@ -1389,9 +1389,9 @@ class EsAsyncDiscoverySearchClient(AsyncDiscoverySearchClient):
             await self.database.execute_discovery_search(
                 search=search,
                 limit=limit,
-                token=token,
-                sort=None,
-                catalog_ids=None,  # search_request.collections,
+                token=None,
+                sort=sort,
+
                 base_url=base_url,
             )
         )

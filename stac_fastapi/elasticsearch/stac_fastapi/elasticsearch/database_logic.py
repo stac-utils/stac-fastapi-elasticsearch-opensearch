@@ -1227,8 +1227,6 @@ class DatabaseLogic:
 
         query = search.query.to_dict() if search.query else None
 
-        index_param = "document"  # indices(collection_ids)
-
         search_task = asyncio.create_task(
             self.client.search(
                 index=f"{COLLECTIONS_INDEX_PREFIX}*",
@@ -1242,16 +1240,13 @@ class DatabaseLogic:
 
         count_task = asyncio.create_task(
             self.client.count(
-                index=index_param,
+                index=f"{COLLECTIONS_INDEX_PREFIX}*",
                 ignore_unavailable=ignore_unavailable,
                 body=search.to_dict(count=True),
             )
         )
 
-        try:
-            es_response = await search_task
-        except exceptions.NotFoundError:
-            raise NotFoundError(f"Collections '{collection_ids}' do not exist")
+        es_response = await search_task
 
         hits = es_response["hits"]["hits"]
         collections = [
@@ -1736,6 +1731,7 @@ class DatabaseLogic:
         if catalog_id != catalog["id"]:
             await self.create_catalog(catalog, refresh=refresh)
 
+            # Reindex collections in this catalog
             await self.client.reindex(
                 body={
                     "dest": {"index": f"{COLLECTIONS_INDEX_PREFIX}{catalog['id']}"},
@@ -1748,6 +1744,41 @@ class DatabaseLogic:
                 wait_for_completion=True,
                 refresh=refresh,
             )
+
+            # Reindex items within each collection in this catalog
+            try:
+                # Get all collections contained in this catalog
+                index_param = collection_indices(catalog_ids=[catalog_id])
+                response = await self.client.search(
+                    index=index_param,
+                    body={"sort": [{"id": {"order": "asc"}}]},
+                )
+                collection_ids = [hit["_id"] for hit in response["hits"]["hits"]]
+
+                # For each collection, reindex the containing items by catalog id
+                for collection_id in collection_ids:
+                    await self.client.reindex(
+                        body={
+                            "dest": {
+                                "index": index_by_collection_id(
+                                    collection_id=collection_id.split("|")[0],
+                                    catalog_id=catalog["id"],
+                                )
+                            },
+                            "source": {
+                                "index": index_by_collection_id(
+                                    collection_id=collection_id.split("|")[0],
+                                    catalog_id=catalog_id,
+                                )
+                            },
+                        },
+                        wait_for_completion=True,
+                        refresh=refresh,
+                    )
+            except exceptions.NotFoundError:
+                logger.info(
+                    f"Catalog {catalog_id} has no collections, or items, so index does not exist and cannot be deleted, continuing as normal."
+                )
 
             await self.delete_catalog(catalog_id)
 
@@ -1876,7 +1907,6 @@ class DatabaseLogic:
         base_url: str,
         token: Optional[str],
         sort: Optional[Dict[str, Dict[str, str]]],
-        catalog_ids: Optional[List[str]],
         ignore_unavailable: bool = True,
     ) -> Tuple[Iterable[Dict[str, Any]], Optional[int], Optional[str]]:
         """Execute a search query with limit and other optional parameters.
@@ -1906,8 +1936,6 @@ class DatabaseLogic:
 
         query = search.query.to_dict() if search.query else None
 
-        index_param = "document"  # indices(collection_ids)
-
         search_task = asyncio.create_task(
             self.client.search(
                 index=[CATALOGS_INDEX, f"{COLLECTIONS_INDEX_PREFIX}*"],
@@ -1921,16 +1949,13 @@ class DatabaseLogic:
 
         count_task = asyncio.create_task(
             self.client.count(
-                index=index_param,
+                index=[CATALOGS_INDEX, f"{COLLECTIONS_INDEX_PREFIX}*"],
                 ignore_unavailable=ignore_unavailable,
                 body=search.to_dict(count=True),
             )
         )
 
-        try:
-            es_response = await search_task
-        except exceptions.NotFoundError:
-            raise NotFoundError(f"Catalogs '{catalog_ids}' do not exist")
+        es_response = await search_task
 
         hits = es_response["hits"]["hits"]
         data = [
