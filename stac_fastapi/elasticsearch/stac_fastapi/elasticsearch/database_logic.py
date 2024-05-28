@@ -576,7 +576,9 @@ class DatabaseLogic:
         hits = response["hits"]["hits"]
         collections = [
             self.collection_serializer.db_to_stac(
-                collection=hit["_source"], base_url=base_url
+                collection=hit["_source"],
+                base_url=base_url,
+                catalog_id=hit["_id"].rsplit("|", 1)[1],
             )
             for hit in hits
         ]
@@ -627,7 +629,9 @@ class DatabaseLogic:
             hits = response["hits"]["hits"]
             collections = [
                 self.collection_serializer.db_to_stac(
-                    collection=hit["_source"], base_url=base_url
+                    collection=hit["_source"],
+                    base_url=base_url,
+                    catalog_id=hit["_id"].rsplit("|", 1)[1],
                 )
                 for hit in hits
             ]
@@ -1165,7 +1169,9 @@ class DatabaseLogic:
             raise NotFoundError(f"Collections '{collection_ids}' do not exist")
 
         hits = es_response["hits"]["hits"]
-        items = (hit["_source"] for hit in hits)
+
+        # Need to identify catalog for each item
+        items = ((hit["_source"], hit["_id"].rsplit("|", 1)[1]) for hit in hits)
 
         next_token = None
         if hits and (sort_array := hits[-1].get("sort")):
@@ -1245,7 +1251,9 @@ class DatabaseLogic:
         hits = es_response["hits"]["hits"]
         collections = [
             self.collection_serializer.db_to_stac(
-                collection=hit["_source"], base_url=base_url
+                collection=hit["_source"],
+                base_url=base_url,
+                catalog_id=hit["_id"].rsplit("|", 1)[1],
             )
             for hit in hits
         ]
@@ -1933,7 +1941,7 @@ class DatabaseLogic:
                 index=[CATALOGS_INDEX, f"{COLLECTIONS_INDEX_PREFIX}*"],
                 ignore_unavailable=ignore_unavailable,
                 query=query,
-                sort=sort or DEFAULT_DISCOVERY_SORT,
+                sort=DEFAULT_DISCOVERY_SORT,  # set to default for time being to support token pagination
                 search_after=search_after,
                 size=limit,
             )
@@ -1952,7 +1960,9 @@ class DatabaseLogic:
         hits = es_response["hits"]["hits"]
         data = [
             self.catalog_collection_serializer.db_to_stac(
-                data=hit["_source"], base_url=base_url
+                data=hit["_source"],
+                base_url=base_url,
+                catalog_id=hit["_id"].rsplit("|", 1)[-1],
             )
             for hit in hits
         ]

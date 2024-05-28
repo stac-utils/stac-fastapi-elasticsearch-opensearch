@@ -246,6 +246,21 @@ class CatalogSerializer(Serializer):
 class CatalogCollectionSerializer(Serializer):
     """Serialization methods for STAC catalogs."""
 
+    def stac_to_db(cls, stac_object: Any, base_url: str) -> dict:
+        """Transform STAC object to database model.
+
+        NOT IMPLEMENTED AS COLLECTIONS AND CATALOGS WILL BE CREATED INDEPENDENTLY.
+        See above implementation classes and functions.
+
+        Arguments:
+            stac_object (Any): A STAC object, e.g. an `Item` or `Collection`.
+            base_url (str): The base URL of the STAC API.
+
+        Returns:
+            dict: A dictionary representing the database model.
+        """
+        raise NotImplementedError
+
     @classmethod
     def catalog_db_to_stac(cls, catalog: dict, base_url: str) -> stac_types.Catalog:
         """Transform database model to STAC catalog.
