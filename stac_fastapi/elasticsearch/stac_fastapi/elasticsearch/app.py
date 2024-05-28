@@ -61,19 +61,6 @@ discovery_search_extension.conformance_classes.extend(
 )
 
 extensions = [
-    TransactionExtension(
-        client=TransactionsClient(
-            database=database_logic, session=session, settings=settings
-        ),
-        settings=settings,
-    ),
-    BulkTransactionExtension(
-        client=BulkTransactionsClient(
-            database=database_logic,
-            session=session,
-            settings=settings,
-        )
-    ),
     FieldsExtension(),
     QueryExtension(),
     SortExtension(),
@@ -83,6 +70,27 @@ extensions = [
     filter_extension,
     discovery_search_extension,
 ]
+
+# Disable transaction extensions by default
+# They are enabled by environment variable
+if os.getenv("STAC_FASTAPI_ENABLE_TRANSACTIONS", "false") == "true":
+    extensions.append(
+        TransactionExtension(
+            client=TransactionsClient(
+                database=database_logic, session=session, settings=settings
+            ),
+            settings=settings,
+        )
+    )
+    extensions.append(
+        BulkTransactionExtension(
+            client=BulkTransactionsClient(
+                database=database_logic,
+                session=session,
+                settings=settings,
+            )
+        )
+    )
 
 post_request_model = create_post_request_model(extensions)
 
@@ -104,9 +112,10 @@ app.root_path = os.getenv("STAC_FASTAPI_ROOT_PATH", "")
 
 @app.on_event("startup")
 async def _startup_event() -> None:
-    await create_index_templates()
-    await create_collection_index()
-    await create_catalog_index()
+    if os.getenv("STAC_FASTAPI_ENABLE_TRANSACTIONS", "false") == "true":
+        await create_index_templates()
+        await create_collection_index()
+        await create_catalog_index()
 
 
 def run() -> None:
