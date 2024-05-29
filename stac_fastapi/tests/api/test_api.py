@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -248,8 +248,10 @@ async def test_app_sort_extension_get_asc(app_client, txn_client, ctx):
 
     another_item_date = datetime.strptime(
         first_item["properties"]["datetime"], "%Y-%m-%dT%H:%M:%SZ"
-    ) - timedelta(days=1)
-    second_item["properties"]["datetime"] = another_item_date.isoformat() + "Z"
+    ).replace(tzinfo=timezone.utc) - timedelta(days=1)
+    second_item["properties"]["datetime"] = another_item_date.isoformat().replace(
+        "+00:00", "Z"
+    )
 
     await create_item(txn_client, second_item)
 
@@ -268,8 +270,10 @@ async def test_app_sort_extension_get_desc(app_client, txn_client, ctx):
     second_item["id"] = "another-item"
     another_item_date = datetime.strptime(
         first_item["properties"]["datetime"], "%Y-%m-%dT%H:%M:%SZ"
-    ) - timedelta(days=1)
-    second_item["properties"]["datetime"] = another_item_date.isoformat() + "Z"
+    ).replace(tzinfo=timezone.utc) - timedelta(days=1)
+    second_item["properties"]["datetime"] = another_item_date.isoformat().replace(
+        "+00:00", "Z"
+    )
     await create_item(txn_client, second_item)
 
     resp = await app_client.get("/search?sortby=-properties.datetime")
@@ -287,8 +291,10 @@ async def test_app_sort_extension_post_asc(app_client, txn_client, ctx):
     second_item["id"] = "another-item"
     another_item_date = datetime.strptime(
         first_item["properties"]["datetime"], "%Y-%m-%dT%H:%M:%SZ"
-    ) - timedelta(days=1)
-    second_item["properties"]["datetime"] = another_item_date.isoformat() + "Z"
+    ).replace(tzinfo=timezone.utc) - timedelta(days=1)
+    second_item["properties"]["datetime"] = another_item_date.isoformat().replace(
+        "+00:00", "Z"
+    )
     await create_item(txn_client, second_item)
 
     params = {
@@ -310,8 +316,10 @@ async def test_app_sort_extension_post_desc(app_client, txn_client, ctx):
     second_item["id"] = "another-item"
     another_item_date = datetime.strptime(
         first_item["properties"]["datetime"], "%Y-%m-%dT%H:%M:%SZ"
-    ) - timedelta(days=1)
-    second_item["properties"]["datetime"] = another_item_date.isoformat() + "Z"
+    ).replace(tzinfo=timezone.utc) - timedelta(days=1)
+    second_item["properties"]["datetime"] = another_item_date.isoformat().replace(
+        "+00:00", "Z"
+    )
     await create_item(txn_client, second_item)
 
     params = {
