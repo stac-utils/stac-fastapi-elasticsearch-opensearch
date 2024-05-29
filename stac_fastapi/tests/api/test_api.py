@@ -245,7 +245,6 @@ async def test_app_sort_extension_get_asc(app_client, txn_client, ctx):
 
     second_item = dict(first_item)
     second_item["id"] = "another-item"
-
     another_item_date = datetime.strptime(
         first_item["properties"]["datetime"], "%Y-%m-%dT%H:%M:%SZ"
     ).replace(tzinfo=timezone.utc) - timedelta(days=1)
