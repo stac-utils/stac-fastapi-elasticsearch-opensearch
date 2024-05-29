@@ -1,5 +1,5 @@
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -245,7 +245,9 @@ async def test_app_sort_extension_get_asc(app_client, txn_client, ctx):
 
     second_item = dict(first_item)
     second_item["id"] = "another-item"
-    another_item_date = first_item["properties"]["datetime"] - timedelta(days=1)
+    another_item_date = datetime.strptime(
+        first_item["properties"]["datetime"], "%Y-%m-%dT%H:%M:%SZ"
+    ).replace(tzinfo=timezone.utc) - timedelta(days=1)
     second_item["properties"]["datetime"] = another_item_date.isoformat().replace(
         "+00:00", "Z"
     )
@@ -265,7 +267,9 @@ async def test_app_sort_extension_get_desc(app_client, txn_client, ctx):
 
     second_item = dict(first_item)
     second_item["id"] = "another-item"
-    another_item_date = first_item["properties"]["datetime"] - timedelta(days=1)
+    another_item_date = datetime.strptime(
+        first_item["properties"]["datetime"], "%Y-%m-%dT%H:%M:%SZ"
+    ).replace(tzinfo=timezone.utc) - timedelta(days=1)
     second_item["properties"]["datetime"] = another_item_date.isoformat().replace(
         "+00:00", "Z"
     )
@@ -284,7 +288,9 @@ async def test_app_sort_extension_post_asc(app_client, txn_client, ctx):
 
     second_item = dict(first_item)
     second_item["id"] = "another-item"
-    another_item_date = first_item["properties"]["datetime"] - timedelta(days=1)
+    another_item_date = datetime.strptime(
+        first_item["properties"]["datetime"], "%Y-%m-%dT%H:%M:%SZ"
+    ).replace(tzinfo=timezone.utc) - timedelta(days=1)
     second_item["properties"]["datetime"] = another_item_date.isoformat().replace(
         "+00:00", "Z"
     )
@@ -307,7 +313,9 @@ async def test_app_sort_extension_post_desc(app_client, txn_client, ctx):
 
     second_item = dict(first_item)
     second_item["id"] = "another-item"
-    another_item_date = first_item["properties"]["datetime"] - timedelta(days=1)
+    another_item_date = datetime.strptime(
+        first_item["properties"]["datetime"], "%Y-%m-%dT%H:%M:%SZ"
+    ).replace(tzinfo=timezone.utc) - timedelta(days=1)
     second_item["properties"]["datetime"] = another_item_date.isoformat().replace(
         "+00:00", "Z"
     )
