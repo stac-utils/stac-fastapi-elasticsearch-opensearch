@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 - Updated stac-fastapi libraries to v3.0.0a1
 
+### Fixed
+
+- API sort extension tests [#264](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/264)
+
 ## [v3.0.0a1]
 
 ### Changed
