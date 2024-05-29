@@ -218,7 +218,7 @@ class CoreClient(AsyncBaseCoreClient):
         token = request.query_params.get("token")
 
         collections, next_token = await self.database.get_all_collections(
-            token=token, limit=limit, base_url=base_url
+            token=token, limit=limit, request=request
         )
 
         links = [
@@ -252,10 +252,10 @@ class CoreClient(AsyncBaseCoreClient):
         Raises:
             NotFoundError: If the collection with the given id cannot be found in the database.
         """
-        base_url = str(kwargs["request"].base_url)
+        request = kwargs["request"]
         collection = await self.database.find_collection(collection_id=collection_id)
         return self.collection_serializer.db_to_stac(
-            collection=collection, base_url=base_url
+            collection=collection, request=request
         )
 
     async def item_collection(
@@ -761,12 +761,12 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             ConflictError: If the collection already exists.
         """
         collection = collection.model_dump(mode="json")
-        base_url = str(kwargs["request"].base_url)
+        request = kwargs["request"]
         collection = self.database.collection_serializer.stac_to_db(
-            collection, base_url
+            collection, request
         )
         await self.database.create_collection(collection=collection)
-        return CollectionSerializer.db_to_stac(collection, base_url)
+        return CollectionSerializer.db_to_stac(collection, request)
 
     @overrides
     async def update_collection(
@@ -793,16 +793,16 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         """
         collection = collection.model_dump(mode="json")
 
-        base_url = str(kwargs["request"].base_url)
+        request = kwargs["request"]
 
         collection = self.database.collection_serializer.stac_to_db(
-            collection, base_url
+            collection, request
         )
         await self.database.update_collection(
             collection_id=collection_id, collection=collection
         )
 
-        return CollectionSerializer.db_to_stac(collection, base_url)
+        return CollectionSerializer.db_to_stac(collection, request)
 
     @overrides
     async def delete_collection(

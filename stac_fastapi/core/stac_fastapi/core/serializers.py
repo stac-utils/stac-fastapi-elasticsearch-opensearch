@@ -7,7 +7,9 @@ import attr
 
 from stac_fastapi.core.datetime_utils import now_to_rfc3339_str
 from stac_fastapi.types import stac as stac_types
-from stac_fastapi.types.links import CollectionLinks, ItemLinks, resolve_links
+from stac_fastapi.core.models.links import CollectionLinks
+from stac_fastapi.types.links import ItemLinks, resolve_links
+from starlette.requests import Request
 
 
 @attr.s
@@ -126,7 +128,7 @@ class CollectionSerializer(Serializer):
         return collection
 
     @classmethod
-    def db_to_stac(cls, collection: dict, base_url: str) -> stac_types.Collection:
+    def db_to_stac(cls, collection: dict, request: Request) -> stac_types.Collection:
         """Transform database model to STAC collection.
 
         Args:
@@ -157,13 +159,13 @@ class CollectionSerializer(Serializer):
 
         # Create the collection links using CollectionLinks
         collection_links = CollectionLinks(
-            collection_id=collection_id, base_url=base_url
+            collection_id=collection_id, request=request
         ).create_links()
 
         # Add any additional links from the collection dictionary
         original_links = collection.get("links")
         if original_links:
-            collection_links += resolve_links(original_links, base_url)
+            collection_links += resolve_links(original_links, str(request.base_url))
         collection["links"] = collection_links
 
         # Return the stac_types.Collection object
