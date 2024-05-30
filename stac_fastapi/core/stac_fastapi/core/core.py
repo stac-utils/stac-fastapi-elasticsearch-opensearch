@@ -1390,7 +1390,7 @@ class EsAsyncDiscoverySearchClient(AsyncDiscoverySearchClient):
                 search=search,
                 limit=limit,
                 token=token,
-                sort=None,  # use dafault sort for the minute
+                sort=None,  # use default sort for the minute
                 base_url=base_url,
             )
         )
