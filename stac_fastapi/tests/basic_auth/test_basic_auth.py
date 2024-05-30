@@ -74,7 +74,7 @@ async def test_delete_resource_insufficient_permissions(app_client_basic_auth, c
 
     assert response.status_code == 403
     assert response.json() == {
-        "detail": "Insufficient permissions for [DELETE /collections/test-collection]"
+        "detail": "Insufficient permissions for [DELETE /collections/{collection_id}]"
     }
 
 
