@@ -1389,9 +1389,8 @@ class EsAsyncDiscoverySearchClient(AsyncDiscoverySearchClient):
             await self.database.execute_discovery_search(
                 search=search,
                 limit=limit,
-                token=None,
-                sort=sort,
-
+                token=token,
+                sort=None,  # use default sort for the minute
                 base_url=base_url,
             )
         )
