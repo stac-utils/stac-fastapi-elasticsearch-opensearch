@@ -122,7 +122,7 @@ class PagingLinks(BaseLinks):
             parsed_url = urlparse(self.url)
             netloc = parsed_url.netloc + "/"
             query_url = self.url.split(netloc)[1]
-            new_url = self.base_url + query_url
+            new_url = self.resolve(query_url)
             method = self.request.method
             if method == "GET":
                 href = merge_params(new_url, {"token": self.next})
