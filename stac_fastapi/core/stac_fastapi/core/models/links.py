@@ -105,7 +105,8 @@ class BaseLinks:
             ]
 
         return links
-    
+
+
 @attr.s
 class CollectionLinks(BaseLinks):
     """Create inferred links specific to collections."""
@@ -125,7 +126,7 @@ class CollectionLinks(BaseLinks):
         )
 
     def link_queryables(self) -> Dict[str, Any]:
-        """create the `queryables` link."""
+        """Create the `queryables` link."""
         return dict(
             rel="queryables",
             type=MimeTypes.json.value,

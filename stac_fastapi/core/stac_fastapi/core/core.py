@@ -162,10 +162,10 @@ class CoreClient(AsyncBaseCoreClient):
                     # TODO: replace this with MimeTypes.jsonschema,
                     "type": "application/schema+json",
                     "title": "Queryables",
-                    "href": urljoin(base_url, "queryables")
+                    "href": urljoin(base_url, "queryables"),
                 }
             )
-            
+
         collections = await self.all_collections(request=kwargs["request"])
         for collection in collections["collections"]:
             landing_page["links"].append(
@@ -762,9 +762,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         """
         collection = collection.model_dump(mode="json")
         request = kwargs["request"]
-        collection = self.database.collection_serializer.stac_to_db(
-            collection, request
-        )
+        collection = self.database.collection_serializer.stac_to_db(collection, request)
         await self.database.create_collection(collection=collection)
         return CollectionSerializer.db_to_stac(collection, request)
 
@@ -795,9 +793,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         request = kwargs["request"]
 
-        collection = self.database.collection_serializer.stac_to_db(
-            collection, request
-        )
+        collection = self.database.collection_serializer.stac_to_db(collection, request)
         await self.database.update_collection(
             collection_id=collection_id, collection=collection
         )

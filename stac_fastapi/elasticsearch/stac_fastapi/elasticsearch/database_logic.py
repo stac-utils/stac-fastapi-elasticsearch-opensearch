@@ -7,6 +7,7 @@ from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple, Type, U
 
 import attr
 from elasticsearch_dsl import Q, Search
+from starlette.requests import Request
 
 from elasticsearch import exceptions, helpers  # type: ignore
 from stac_fastapi.core.extensions import filter
@@ -315,7 +316,7 @@ class DatabaseLogic:
     """CORE LOGIC"""
 
     async def get_all_collections(
-        self, token: Optional[str], limit: int, base_url: str
+        self, token: Optional[str], limit: int, request: Request
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
         """Retrieve a list of all collections from Elasticsearch, supporting pagination.
 
@@ -342,7 +343,7 @@ class DatabaseLogic:
         hits = response["hits"]["hits"]
         collections = [
             self.collection_serializer.db_to_stac(
-                collection=hit["_source"], base_url=base_url
+                collection=hit["_source"], request=request
             )
             for hit in hits
         ]

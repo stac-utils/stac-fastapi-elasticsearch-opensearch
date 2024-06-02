@@ -4,12 +4,12 @@ from copy import deepcopy
 from typing import Any
 
 import attr
+from starlette.requests import Request
 
 from stac_fastapi.core.datetime_utils import now_to_rfc3339_str
-from stac_fastapi.types import stac as stac_types
 from stac_fastapi.core.models.links import CollectionLinks
+from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.links import ItemLinks, resolve_links
-from starlette.requests import Request
 
 
 @attr.s
@@ -111,20 +111,22 @@ class CollectionSerializer(Serializer):
 
     @classmethod
     def stac_to_db(
-        cls, collection: stac_types.Collection, base_url: str
+        cls, collection: stac_types.Collection, request: Request
     ) -> stac_types.Collection:
         """
         Transform STAC Collection to database-ready STAC collection.
 
         Args:
             stac_data: the STAC Collection object to be transformed
-            base_url: the base URL for the STAC API
+            starlette.requests.Request: the API request
 
         Returns:
             stac_types.Collection: The database-ready STAC Collection object.
         """
         collection = deepcopy(collection)
-        collection["links"] = resolve_links(collection.get("links", []), base_url)
+        collection["links"] = resolve_links(
+            collection.get("links", []), str(request.base_url)
+        )
         return collection
 
     @classmethod
@@ -133,7 +135,7 @@ class CollectionSerializer(Serializer):
 
         Args:
             collection (dict): The collection data in dictionary form, extracted from the database.
-            base_url (str): The base URL for the collection.
+            bstarlette.requests.Request: the API request
 
         Returns:
             stac_types.Collection: The STAC collection object.

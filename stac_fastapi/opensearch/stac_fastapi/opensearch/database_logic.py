@@ -10,6 +10,7 @@ from opensearchpy import exceptions, helpers
 from opensearchpy.exceptions import TransportError
 from opensearchpy.helpers.query import Q
 from opensearchpy.helpers.search import Search
+from starlette.requests import Request
 
 from stac_fastapi.core import serializers
 from stac_fastapi.core.extensions import filter
@@ -20,7 +21,6 @@ from stac_fastapi.opensearch.config import (
 from stac_fastapi.opensearch.config import OpensearchSettings as SyncSearchSettings
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.stac import Collection, Item
-from starlette.requests import Request
 
 logger = logging.getLogger(__name__)
 
