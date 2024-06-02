@@ -137,7 +137,8 @@ class CollectionSerializer(Serializer):
 
         Args:
             collection (dict): The collection data in dictionary form, extracted from the database.
-            bstarlette.requests.Request: the API request
+            starlette.requests.Request: the API request
+            extensions: A list of the extension class names (`ext.__name__`) or all enabled STAC API extensions.
 
         Returns:
             stac_types.Collection: The STAC collection object.
