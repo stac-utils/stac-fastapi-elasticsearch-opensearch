@@ -112,6 +112,7 @@ class CollectionLinks(BaseLinks):
     """Create inferred links specific to collections."""
 
     collection_id: str = attr.ib()
+    extensions: List[str] = attr.ib(default=attr.Factory(list))
 
     def link_parent(self) -> Dict[str, Any]:
         """Create the `parent` link."""
@@ -127,11 +128,16 @@ class CollectionLinks(BaseLinks):
 
     def link_queryables(self) -> Dict[str, Any]:
         """Create the `queryables` link."""
-        return dict(
-            rel="queryables",
-            type=MimeTypes.json.value,
-            href=urljoin(self.base_url, f"collections/{self.collection_id}/quaryables"),
-        )
+        if "FilterExtension" in self.extensions:
+            return dict(
+                rel="queryables",
+                type=MimeTypes.json.value,
+                href=urljoin(
+                    self.base_url, f"collections/{self.collection_id}/queryables"
+                ),
+            )
+        else:
+            return None
 
 
 @attr.s

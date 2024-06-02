@@ -1,7 +1,7 @@
 """Serializers."""
 import abc
 from copy import deepcopy
-from typing import Any
+from typing import Any, List, Optional
 
 import attr
 from starlette.requests import Request
@@ -130,7 +130,9 @@ class CollectionSerializer(Serializer):
         return collection
 
     @classmethod
-    def db_to_stac(cls, collection: dict, request: Request) -> stac_types.Collection:
+    def db_to_stac(
+        cls, collection: dict, request: Request, extensions: Optional[List[str]] = []
+    ) -> stac_types.Collection:
         """Transform database model to STAC collection.
 
         Args:
@@ -161,7 +163,7 @@ class CollectionSerializer(Serializer):
 
         # Create the collection links using CollectionLinks
         collection_links = CollectionLinks(
-            collection_id=collection_id, request=request
+            collection_id=collection_id, request=request, extensions=extensions
         ).create_links()
 
         # Add any additional links from the collection dictionary

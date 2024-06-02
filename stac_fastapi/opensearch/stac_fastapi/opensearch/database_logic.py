@@ -334,6 +334,8 @@ class DatabaseLogic:
         default=serializers.CollectionSerializer
     )
 
+    extensions: List[str] = attr.ib(default=attr.Factory(list))
+
     """CORE LOGIC"""
 
     async def get_all_collections(
@@ -367,7 +369,7 @@ class DatabaseLogic:
         hits = response["hits"]["hits"]
         collections = [
             self.collection_serializer.db_to_stac(
-                collection=hit["_source"], request=request
+                collection=hit["_source"], request=request, extensions=self.extensions
             )
             for hit in hits
         ]

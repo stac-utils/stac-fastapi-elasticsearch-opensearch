@@ -1,6 +1,7 @@
 {
   "id":"sentinel-s2-l2a-cogs-test",
   "stac_version":"1.0.0",
+  "type": "Collection",
   "description":"Sentinel-2a and Sentinel-2b imagery, processed to Level 2A (Surface Reflectance) and converted to Cloud-Optimized GeoTIFFs",
   "links":[
       {"rel":"self","href":"https://earth-search.aws.element84.com/v0/collections/sentinel-s2-l2a-cogs"},

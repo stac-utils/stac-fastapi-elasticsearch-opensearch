@@ -255,7 +255,9 @@ class CoreClient(AsyncBaseCoreClient):
         request = kwargs["request"]
         collection = await self.database.find_collection(collection_id=collection_id)
         return self.collection_serializer.db_to_stac(
-            collection=collection, request=request
+            collection=collection,
+            request=request,
+            extensions=[type(ext).__name__ for ext in self.extensions],
         )
 
     async def item_collection(
@@ -764,7 +766,11 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         request = kwargs["request"]
         collection = self.database.collection_serializer.stac_to_db(collection, request)
         await self.database.create_collection(collection=collection)
-        return CollectionSerializer.db_to_stac(collection, request)
+        return CollectionSerializer.db_to_stac(
+            collection,
+            request,
+            extensions=[type(ext).__name__ for ext in self.database.extensions],
+        )
 
     @overrides
     async def update_collection(
@@ -798,7 +804,11 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             collection_id=collection_id, collection=collection
         )
 
-        return CollectionSerializer.db_to_stac(collection, request)
+        return CollectionSerializer.db_to_stac(
+            collection,
+            request,
+            extensions=[type(ext).__name__ for ext in self.database.extensions],
+        )
 
     @overrides
     async def delete_collection(

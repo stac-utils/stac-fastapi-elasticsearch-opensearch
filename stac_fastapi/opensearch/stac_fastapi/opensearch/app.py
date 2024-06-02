@@ -59,6 +59,8 @@ extensions = [
     filter_extension,
 ]
 
+database_logic.extensions = [type(ext).__name__ for ext in extensions]
+
 post_request_model = create_post_request_model(extensions)
 
 api = StacApi(
