@@ -1,4 +1,5 @@
 import uuid
+from copy import deepcopy
 from datetime import datetime, timedelta
 
 import pytest
@@ -407,15 +408,15 @@ async def test_search_point_does_not_intersect(app_client, ctx):
 
 @pytest.mark.asyncio
 async def test_datetime_response_format(app_client, txn_client, ctx):
-    first_item = ctx.item
+    first_item = dict(ctx.item)
 
-    second_item = dict(first_item)
+    second_item = deepcopy(first_item)
     second_item["id"] = "second-item"
     second_item["properties"]["datetime"] = None
 
     await create_item(txn_client, second_item)
 
-    third_item = dict(first_item)
+    third_item = deepcopy(first_item)
     third_item["id"] = "third-item"
     del third_item["properties"]["start_datetime"]
     del third_item["properties"]["end_datetime"]
@@ -444,15 +445,15 @@ async def test_datetime_response_format(app_client, txn_client, ctx):
 
 @pytest.mark.asyncio
 async def test_datetime_non_interval(app_client, txn_client, ctx):
-    first_item = ctx.item
+    first_item = dict(ctx.item)
 
-    second_item = dict(first_item)
+    second_item = deepcopy(first_item)
     second_item["id"] = "second-item"
     second_item["properties"]["datetime"] = None
 
     await create_item(txn_client, second_item)
 
-    third_item = dict(first_item)
+    third_item = deepcopy(first_item)
     third_item["id"] = "third-item"
     del third_item["properties"]["start_datetime"]
     del third_item["properties"]["end_datetime"]
@@ -480,15 +481,15 @@ async def test_datetime_non_interval(app_client, txn_client, ctx):
 
 @pytest.mark.asyncio
 async def test_datetime_interval(app_client, txn_client, ctx):
-    first_item = ctx.item
+    first_item = dict(ctx.item)
 
-    second_item = dict(first_item)
+    second_item = deepcopy(first_item)
     second_item["id"] = "second-item"
     second_item["properties"]["datetime"] = None
 
     await create_item(txn_client, second_item)
 
-    third_item = dict(first_item)
+    third_item = deepcopy(first_item)
     third_item["id"] = "third-item"
     del third_item["properties"]["start_datetime"]
     del third_item["properties"]["end_datetime"]
@@ -516,15 +517,15 @@ async def test_datetime_interval(app_client, txn_client, ctx):
 
 @pytest.mark.asyncio
 async def test_datetime_bad_non_interval(app_client, txn_client, ctx):
-    first_item = ctx.item
+    first_item = dict(ctx.item)
 
-    second_item = dict(first_item)
+    second_item = deepcopy(first_item)
     second_item["id"] = "second-item"
     second_item["properties"]["datetime"] = None
 
     await create_item(txn_client, second_item)
 
-    third_item = dict(first_item)
+    third_item = deepcopy(first_item)
     third_item["id"] = "third-item"
     del third_item["properties"]["start_datetime"]
     del third_item["properties"]["end_datetime"]
@@ -552,15 +553,15 @@ async def test_datetime_bad_non_interval(app_client, txn_client, ctx):
 
 @pytest.mark.asyncio
 async def test_datetime_bad_interval(app_client, txn_client, ctx):
-    first_item = ctx.item
+    first_item = dict(ctx.item)
 
-    second_item = dict(first_item)
+    second_item = deepcopy(first_item)
     second_item["id"] = "second-item"
     second_item["properties"]["datetime"] = None
 
     await create_item(txn_client, second_item)
 
-    third_item = dict(first_item)
+    third_item = deepcopy(first_item)
     third_item["id"] = "third-item"
     del third_item["properties"]["start_datetime"]
     del third_item["properties"]["end_datetime"]
