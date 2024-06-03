@@ -61,7 +61,7 @@ def has_access(
         )
 
     permissions = user.get("permissions", [])
-    path = request.url.path
+    path = request.scope.get("route").path
     method = request.method
 
     if permissions == "*":

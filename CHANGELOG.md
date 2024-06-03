@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Changed
+
+- Updated stac-fastapi libraries to v3.0.0a1 [#265](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/265)
+
+### Fixed
+
+- API sort extension tests [#264](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/264)
+- Basic auth permission fix for checking route path instead of absolute path [#266](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/266)
+
 ## [v3.0.0a1]
 
 ### Changed
