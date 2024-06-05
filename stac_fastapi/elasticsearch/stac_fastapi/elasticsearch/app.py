@@ -3,7 +3,17 @@
 import os
 
 from stac_fastapi.api.app import StacApi
-from stac_fastapi.api.models import create_get_request_model, create_post_request_model
+from pydantic import BaseModel
+from stac_fastapi.api.models import (
+    create_get_request_model,
+    create_post_request_model,
+    EmptyRequest,
+    create_get_collections_request_model,
+    create_post_collections_request_model,
+    create_get_catalog_request_model,
+    create_post_catalog_full_request_model,
+    create_post_catalog_request_model,
+)
 from stac_fastapi.core.core import (
     BulkTransactionsClient,
     CoreClient,
@@ -30,6 +40,10 @@ from stac_fastapi.extensions.core import (
     SortExtension,
     TokenPaginationExtension,
     TransactionExtension,
+)
+from stac_fastapi.types.search import (
+    BaseCatalogSearchPostRequest,
+    BaseCatalogSearchGetRequest,
 )
 from stac_fastapi.extensions.third_party import BulkTransactionExtension
 
@@ -93,6 +107,31 @@ if os.getenv("STAC_FASTAPI_ENABLE_TRANSACTIONS", "false") == "true":
     )
 
 post_request_model = create_post_request_model(extensions)
+get_request_model = create_get_request_model(extensions)
+
+# Includes catalog_id as a path attribute
+catalog_post_full_request_model = create_post_catalog_full_request_model(extensions=extensions, base_model=BaseCatalogSearchPostRequest)
+# Does not include catalog_id as a path attribute
+catalog_post_request_model = create_post_catalog_request_model(extensions=extensions, base_model=BaseCatalogSearchPostRequest)
+
+catalog_get_request_model = create_get_catalog_request_model(extensions=extensions, base_model=BaseCatalogSearchGetRequest)
+
+# TODO: combine into single create_post/get_request_model function
+# could add another parameter here for the model name e.g. "CollectionsGetRequest" to combine
+# these 'create_request_model' functions with those above
+collections_get_request_model = create_get_collections_request_model([], EmptyRequest)
+collections_post_request_model = create_post_collections_request_model([], BaseModel)
+
+# Check if collection search extension is selected
+for extension in extensions:
+    if isinstance(extension, CollectionSearchExtension):
+        collections_get_request_model = create_get_collections_request_model(
+            [extension], EmptyRequest
+        )
+        collections_post_request_model = create_post_collections_request_model(
+            [extension], BaseModel
+        )
+        break
 
 api = StacApi(
     title=os.getenv("STAC_FASTAPI_TITLE", "stac-fastapi-elasticsearch"),
@@ -101,10 +140,14 @@ api = StacApi(
     settings=settings,
     extensions=extensions,
     client=CoreClient(
-        database=database_logic, session=session, post_request_model=post_request_model
+        database=database_logic, session=session, post_request_model=post_request_model, catalog_post_request_model=catalog_post_request_model
     ),
-    search_get_request_model=create_get_request_model(extensions),
+    search_get_request_model=get_request_model,
     search_post_request_model=post_request_model,
+    collections_get_request_model=collections_get_request_model,
+    collections_post_request_model=collections_post_request_model,
+    search_catalog_get_request_model=catalog_get_request_model,
+    search_catalog_post_request_model=catalog_post_full_request_model,
 )
 app = api.app
 app.root_path = os.getenv("STAC_FASTAPI_ROOT_PATH", "")
