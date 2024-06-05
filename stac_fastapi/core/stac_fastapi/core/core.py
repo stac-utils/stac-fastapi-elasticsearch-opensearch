@@ -50,6 +50,7 @@ from stac_fastapi.types.search import (
     BaseCollectionSearchPostRequest,
     BaseDiscoverySearchPostRequest,
     BaseSearchPostRequest,
+    BaseCatalogSearchPostRequest,
 )
 from stac_fastapi.types.stac import (
     Catalogs,
@@ -97,6 +98,7 @@ class CoreClient(AsyncBaseCoreClient):
     )
     catalog_serializer: Type[CatalogSerializer] = attr.ib(default=CatalogSerializer)
     post_request_model = attr.ib(default=BaseSearchPostRequest)
+    catalog_post_request_model = attr.ib(default=BaseCatalogSearchPostRequest)
     stac_version: str = attr.ib(default=STAC_VERSION)
     landing_page_id: str = attr.ib(default="stac-fastapi")
     title: str = attr.ib(default="stac-fastapi")
@@ -267,7 +269,7 @@ class CoreClient(AsyncBaseCoreClient):
         token = request.query_params.get("token")
 
         catalogs, next_token = await self.database.get_all_catalogs(
-            token=token, limit=limit, base_url=base_url
+            token=token, limit=limit, base_url=base_url, conformance_classes = self.conformance_classes(),
         )
 
         links = [
@@ -324,7 +326,9 @@ class CoreClient(AsyncBaseCoreClient):
         """
         base_url = str(kwargs["request"].base_url)
         catalog = await self.database.find_catalog(catalog_id=catalog_id)
-        return self.catalog_serializer.db_to_stac(catalog=catalog, base_url=base_url)
+        # Assume at most 100 collections in a catalog for the time being, may need to increase
+        collections, _ = await self.database.get_catalog_collections(catalog_ids=[catalog_id], base_url=base_url, limit=100, token=None)
+        return self.catalog_serializer.db_to_stac(catalog=catalog, base_url=base_url, collections=collections, conformance_classes=self.conformance_classes())
 
     async def get_catalog_collections(
         self,
@@ -536,7 +540,7 @@ class CoreClient(AsyncBaseCoreClient):
 
         return {"lte": end_date, "gte": start_date}
 
-    async def get_search(
+    async def get_global_search(
         self,
         request: Request,
         collections: Optional[List[str]] = None,
@@ -635,11 +639,11 @@ class CoreClient(AsyncBaseCoreClient):
             search_request = self.post_request_model(**base_args)
         except ValidationError:
             raise HTTPException(status_code=400, detail="Invalid parameters provided")
-        resp = await self.post_search(search_request=search_request, request=request)
+        resp = await self.post_global_search(search_request=search_request, request=request)
 
         return resp
 
-    async def post_search(
+    async def post_global_search(
         self, search_request: BaseSearchPostRequest, request: Request
     ) -> ItemCollection:
         """
@@ -720,6 +724,245 @@ class CoreClient(AsyncBaseCoreClient):
             sort=sort,
             collection_ids=search_request.collections,
             catalog_ids=search_request.catalogs,
+        )
+
+        # To handle catalog_id in links execute_search also returns the catalog_id
+        # from search results in a tuple
+        items = [
+            self.item_serializer.db_to_stac(
+                item=item[0], base_url=base_url, catalog_id=item[1]
+            )
+            for item in items
+        ]
+
+        if self.extension_is_enabled("FieldsExtension"):
+            if search_request.query is not None:
+                query_include: Set[str] = set(
+                    [
+                        k if k in Settings.get().indexed_fields else f"properties.{k}"
+                        for k in search_request.query.keys()
+                    ]
+                )
+                if not search_request.fields.include:
+                    search_request.fields.include = query_include
+                else:
+                    search_request.fields.include.union(query_include)
+
+            filter_kwargs = search_request.fields.filter_fields
+
+            items = [
+                orjson.loads(
+                    stac_pydantic.Item(**feat).json(**filter_kwargs, exclude_unset=True)
+                )
+                for feat in items
+            ]
+
+        context_obj = None
+        if self.extension_is_enabled("ContextExtension"):
+            context_obj = {
+                "returned": len(items),
+                "limit": limit,
+            }
+            if maybe_count is not None:
+                context_obj["matched"] = maybe_count
+
+        links = []
+        if next_token:
+            links = await PagingLinks(request=request, next=next_token).get_links()
+
+        return ItemCollection(
+            type="FeatureCollection",
+            features=items,
+            links=links,
+            context=context_obj,
+        )
+    
+    async def get_search(
+        self,
+        request: Request,
+        catalog_id: str,
+        collections: Optional[List[str]] = None,
+        ids: Optional[List[str]] = None,
+        bbox: Optional[List[NumType]] = None,
+        datetime: Optional[Union[str, datetime_type]] = None,
+        limit: Optional[int] = 10,
+        query: Optional[str] = None,
+        token: Optional[str] = None,
+        fields: Optional[List[str]] = None,
+        sortby: Optional[str] = None,
+        intersects: Optional[str] = None,
+        filter: Optional[str] = None,
+        filter_lang: Optional[str] = None,
+        **kwargs,
+    ) -> ItemCollection:
+        """Get search results from the database.
+
+        Args:
+            collections (Optional[List[str]]): List of collection IDs to search in.
+            ids (Optional[List[str]]): List of item IDs to search for.
+            bbox (Optional[List[NumType]]): Bounding box to search in.
+            datetime (Optional[Union[str, datetime_type]]): Filter items based on the datetime field.
+            limit (Optional[int]): Maximum number of results to return.
+            query (Optional[str]): Query string to filter the results.
+            token (Optional[str]): Access token to use when searching the catalog.
+            fields (Optional[List[str]]): Fields to include or exclude from the results.
+            sortby (Optional[str]): Sorting options for the results.
+            intersects (Optional[str]): GeoJSON geometry to search in.
+            kwargs: Additional parameters to be passed to the API.
+
+        Returns:
+            ItemCollection: Collection of `Item` objects representing the search results.
+
+        Raises:
+            HTTPException: If any error occurs while searching the catalog.
+        """
+        base_args = {
+            "collections": collections,
+            "catalogs": [catalog_id],
+            "ids": ids,
+            "bbox": bbox,
+            "limit": limit,
+            "token": token,
+            "query": orjson.loads(query) if query else query,
+        }
+
+        # this is borrowed from stac-fastapi-pgstac
+        # Kludgy fix because using factory does not allow alias for filter-lan
+        query_params = str(request.query_params)
+        if filter_lang is None:
+            match = re.search(r"filter-lang=([a-z0-9-]+)", query_params, re.IGNORECASE)
+            if match:
+                filter_lang = match.group(1)
+
+        if datetime:
+            base_args["datetime"] = datetime
+
+        if intersects:
+            base_args["intersects"] = orjson.loads(unquote_plus(intersects))
+
+        if sortby:
+            sort_param = []
+            for sort in sortby:
+                sort_param.append(
+                    {
+                        "field": sort[1:],
+                        "direction": "desc" if sort[0] == "-" else "asc",
+                    }
+                )
+            base_args["sortby"] = sort_param
+
+        if filter:
+            if filter_lang == "cql2-json":
+                base_args["filter-lang"] = "cql2-json"
+                base_args["filter"] = orjson.loads(unquote_plus(filter))
+            else:
+                base_args["filter-lang"] = "cql2-json"
+                base_args["filter"] = orjson.loads(to_cql2(parse_cql2_text(filter)))
+
+        if fields:
+            includes = set()
+            excludes = set()
+            for field in fields:
+                if field[0] == "-":
+                    excludes.add(field[1:])
+                elif field[0] == "+":
+                    includes.add(field[1:])
+                else:
+                    includes.add(field)
+            base_args["fields"] = {"include": includes, "exclude": excludes}
+
+        # Do the request
+        try:
+            search_request = self.catalog_post_request_model(**base_args)
+        except ValidationError:
+            raise HTTPException(status_code=400, detail="Invalid parameters provided")
+        resp = await self.post_search(catalog_id=catalog_id, search_request=search_request, request=request)
+
+        return resp
+
+    async def post_search(
+        self, catalog_id: str, search_request: BaseCatalogSearchPostRequest, request: Request, **kwargs
+    ) -> ItemCollection:
+        """
+        Perform a POST search on the catalog.
+
+        Args:
+            search_request (BaseCatalogSearchPostRequest): Request object that includes the parameters for the search.
+            kwargs: Keyword arguments passed to the function.
+
+        Returns:
+            ItemCollection: A collection of items matching the search criteria.
+
+        Raises:
+            HTTPException: If there is an error with the cql2_json filter.
+        """
+        base_url = str(request.base_url)
+
+        print(search_request.dict())
+
+        search = self.database.make_search()
+
+        if search_request.ids:
+            search = self.database.apply_ids_filter(
+                search=search, item_ids=search_request.ids
+            )
+
+        if search_request.collections:
+            search = self.database.apply_collections_filter(
+                search=search, collection_ids=search_request.collections
+            )
+
+        if search_request.datetime:
+            datetime_search = self._return_date(search_request.datetime)
+            search = self.database.apply_datetime_filter(
+                search=search, datetime_search=datetime_search
+            )
+
+        if search_request.bbox:
+            bbox = search_request.bbox
+            if len(bbox) == 6:
+                bbox = [bbox[0], bbox[1], bbox[3], bbox[4]]
+
+            search = self.database.apply_bbox_filter(search=search, bbox=bbox)
+
+        if search_request.intersects:
+            search = self.database.apply_intersects_filter(
+                search=search, intersects=search_request.intersects
+            )
+
+        if search_request.query:
+            for field_name, expr in search_request.query.items():
+                field = "properties__" + field_name
+                for op, value in expr.items():
+                    search = self.database.apply_stacql_filter(
+                        search=search, op=op, field=field, value=value
+                    )
+
+        # only cql2_json is supported here
+        if hasattr(search_request, "filter"):
+            cql2_filter = getattr(search_request, "filter", None)
+            try:
+                search = self.database.apply_cql2_filter(search, cql2_filter)
+            except Exception as e:
+                raise HTTPException(
+                    status_code=400, detail=f"Error with cql2_json filter: {e}"
+                )
+
+        sort = None
+        if search_request.sortby:
+            sort = self.database.populate_sort(search_request.sortby)
+
+        limit = 10
+        if search_request.limit:
+            limit = search_request.limit
+
+        items, maybe_count, next_token = await self.database.execute_search(
+            search=search,
+            limit=limit,
+            token=None, #search_request.token,  # type: ignore
+            sort=sort,
+            collection_ids=search_request.collections,
+            catalog_ids=[catalog_id],
         )
 
         # To handle catalog_id in links execute_search also returns the catalog_id
@@ -1012,7 +1255,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         """
 
         base_url = str(kwargs["request"].base_url)
-        catalog = self.database.catalog_serializer.stac_to_db(catalog, base_url)
+        catalog = self.database.catalog_serializer.stac_to_db(catalog=catalog, base_url=base_url, conformance_classes=self.conformance_classes())
 
         await self.database.create_catalog(catalog=catalog)
 
@@ -1042,7 +1285,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         """
         base_url = str(kwargs["request"].base_url)
 
-        catalog = self.database.catalog_serializer.stac_to_db(catalog, base_url)
+        catalog = self.database.catalog_serializer.stac_to_db(catalog=catalog, base_url=base_url, conformance_classes=self.conformance_classes())
         await self.database.update_catalog(catalog_id=catalog_id, catalog=catalog)
 
         return CatalogSerializer.db_to_stac(catalog=catalog, base_url=base_url)
@@ -1232,7 +1475,7 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
         default=CollectionSerializer
     )
 
-    async def post_collection_search(
+    async def post_all_collections(
         self,
         search_request: BaseCollectionSearchPostRequest,
         request: Request,
@@ -1277,6 +1520,10 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
             search = self.database.apply_keyword_collections_filter(search=search, q=q)
 
         sort = None
+
+        limit = 10
+        if search_request.limit:
+            limit = search_request.limit
 
         collections, maybe_count, next_token = (
             await self.database.execute_collection_search(
@@ -1389,10 +1636,10 @@ class EsAsyncDiscoverySearchClient(AsyncDiscoverySearchClient):
             await self.database.execute_discovery_search(
                 search=search,
                 limit=limit,
-                token=None,
-                sort=sort,
-
+                token=token,
+                sort=None, # use default sort for the minute
                 base_url=base_url,
+                conformance_classes=self.conformance_classes(),
             )
         )
 
