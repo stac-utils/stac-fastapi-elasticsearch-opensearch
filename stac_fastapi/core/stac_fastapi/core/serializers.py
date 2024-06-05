@@ -207,7 +207,7 @@ class CatalogSerializer(Serializer):
         return catalog
 
     @classmethod
-    def db_to_stac(cls, catalog: dict, base_url: str) -> stac_types.Catalog:
+    def db_to_stac(cls, catalog: dict, base_url: str, collections: list = [], conformance_classes: list = []) -> stac_types.Catalog:
         """Transform database model to STAC catalog.
 
         Args:
@@ -228,6 +228,9 @@ class CatalogSerializer(Serializer):
         catalog.setdefault("title", "")
         catalog.setdefault("description", "")
 
+        # Set conformance for catalog
+        catalog.update({"conformsTo": conformance_classes})
+
         # Create the collection links using CatalogLinks
         catalog_links = CatalogLinks(
             catalog_id=catalog_id, base_url=base_url
@@ -237,6 +240,36 @@ class CatalogSerializer(Serializer):
         original_links = catalog.get("links")
         if original_links:
             catalog_links += resolve_links(original_links, base_url)
+        
+        # The data link should be rewritten for collections within this catalog
+        for link in catalog_links:
+            if link["rel"] == "data":
+                link["href"] = base_url + "catalogs/"+ catalog_id + "/collections"
+                break
+            elif link["rel"] == "conformance":
+                link["href"] = base_url + "conformance"
+            elif link["rel"] == "root":
+                link["href"] = base_url + "catalogs/"+ catalog_id
+            elif link["rel"] == "self":
+                link["href"] = base_url + "catalogs/"+ catalog_id
+            elif link["rel"] == "search":
+                link["href"] = base_url + "catalogs/"+ catalog_id + "/search"
+
+        else:
+            catalog_links.append({"rel": "data",
+                                  "type": "application/json",
+                                  "href": base_url + "catalogs/"+ catalog_id + "/collections"
+                                  })
+
+        for collection in collections:
+            collection_id = collection.get("id")
+            child_link = {
+                "rel": "child",
+                "type": "application/json",
+                "href": base_url + "catalogs/"+ catalog_id + "/collections/" + collection_id
+            }
+            catalog_links.append(child_link)
+
         catalog["links"] = catalog_links
 
         # Return the stac_types.Collection object

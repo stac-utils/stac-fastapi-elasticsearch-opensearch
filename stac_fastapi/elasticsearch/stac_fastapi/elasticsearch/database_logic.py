@@ -278,10 +278,11 @@ def indices(
     collection_ids: Optional[List[str]] = None, catalog_ids: Optional[List[str]] = None
 ) -> str:
     """
-    Get a comma-separated string of index names for a given list of collection ids.
+    Get a comma-separated string of index names for a given list of collection and catalog ids.
 
     Args:
         collection_ids: A list of collection ids.
+        catalog_ids: A list of catalog ids.
 
     Returns:
         A string of comma-separated index names. If `collection_ids` is None, returns the default indices.
@@ -643,7 +644,7 @@ class DatabaseLogic:
         return collections, next_token
 
     async def get_all_catalogs(
-        self, token: Optional[str], limit: int, base_url: str
+        self, token: Optional[str], limit: int, base_url: str, conformance_classes: list = [],
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
         """Retrieve a list of all catalogs from Elasticsearch, supporting pagination.
 
@@ -668,12 +669,17 @@ class DatabaseLogic:
         )
 
         hits = response["hits"]["hits"]
-        catalogs = [
-            self.catalog_serializer.db_to_stac(
-                catalog=hit["_source"], base_url=base_url
+        catalogs = []
+        for hit in hits:
+            collections, _ = await self.get_catalog_collections(catalog_ids=[hit["_source"].get("id")], base_url=base_url, limit=100, token=None)
+            catalogs.append(
+                self.catalog_serializer.db_to_stac(
+                    catalog=hit["_source"], 
+                    base_url=base_url, 
+                    collections=collections,
+                    conformance_classes=conformance_classes,
+                )
             )
-            for hit in hits
-        ]
 
         next_token = None
         if len(hits) == limit:
@@ -1143,6 +1149,8 @@ class DatabaseLogic:
             )
         elif catalog_ids:
             index_param = indices(catalog_ids=catalog_ids).replace("items_", "items_*")
+
+        print((index_param.split(",")))
 
         search_task = asyncio.create_task(
             self.client.search(
@@ -1908,6 +1916,7 @@ class DatabaseLogic:
         token: Optional[str],
         sort: Optional[Dict[str, Dict[str, str]]],
         ignore_unavailable: bool = True,
+        conformance_classes: list = [],
     ) -> Tuple[Iterable[Dict[str, Any]], Optional[int], Optional[str]]:
         """Execute a search query with limit and other optional parameters.
 
@@ -1963,6 +1972,7 @@ class DatabaseLogic:
                 data=hit["_source"],
                 base_url=base_url,
                 catalog_id=hit["_id"].rsplit("|", 1)[-1],
+                conformance_classes=conformance_classes,
             )
             for hit in hits
         ]
