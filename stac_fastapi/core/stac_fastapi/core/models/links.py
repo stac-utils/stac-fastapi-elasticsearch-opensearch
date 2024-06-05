@@ -108,6 +108,39 @@ class BaseLinks:
 
 
 @attr.s
+class CollectionLinks(BaseLinks):
+    """Create inferred links specific to collections."""
+
+    collection_id: str = attr.ib()
+    extensions: List[str] = attr.ib(default=attr.Factory(list))
+
+    def link_parent(self) -> Dict[str, Any]:
+        """Create the `parent` link."""
+        return dict(rel=Relations.parent, type=MimeTypes.json.value, href=self.base_url)
+
+    def link_items(self) -> Dict[str, Any]:
+        """Create the `items` link."""
+        return dict(
+            rel="items",
+            type=MimeTypes.geojson.value,
+            href=urljoin(self.base_url, f"collections/{self.collection_id}/items"),
+        )
+
+    def link_queryables(self) -> Dict[str, Any]:
+        """Create the `queryables` link."""
+        if "FilterExtension" in self.extensions:
+            return dict(
+                rel="queryables",
+                type=MimeTypes.json.value,
+                href=urljoin(
+                    self.base_url, f"collections/{self.collection_id}/queryables"
+                ),
+            )
+        else:
+            return None
+
+
+@attr.s
 class PagingLinks(BaseLinks):
     """Create links for paging."""
 
