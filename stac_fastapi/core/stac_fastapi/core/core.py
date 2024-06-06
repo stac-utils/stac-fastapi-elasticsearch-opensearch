@@ -47,10 +47,10 @@ from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
 from stac_fastapi.types.extension import ApiExtension
 from stac_fastapi.types.requests import get_base_url
 from stac_fastapi.types.search import (
+    BaseCatalogSearchPostRequest,
     BaseCollectionSearchPostRequest,
     BaseDiscoverySearchPostRequest,
     BaseSearchPostRequest,
-    BaseCatalogSearchPostRequest,
 )
 from stac_fastapi.types.stac import (
     Catalogs,
@@ -257,18 +257,20 @@ class CoreClient(AsyncBaseCoreClient):
                 )
 
             if q:
-                search = self.database.apply_keyword_collections_filter(search=search, q=q)
+                search = self.database.apply_keyword_collections_filter(
+                    search=search, q=q
+                )
 
             collections, maybe_count, next_token = (
-            await self.database.execute_collection_search(
-                search=search,
-                limit=limit,
-                token=token,
-                sort=sort,
-                collection_ids=None,  # search_request.collections,
-                base_url=base_url,
+                await self.database.execute_collection_search(
+                    search=search,
+                    limit=limit,
+                    token=token,
+                    sort=sort,
+                    collection_ids=None,  # search_request.collections,
+                    base_url=base_url,
+                )
             )
-        )
 
         collections, next_token = await self.database.get_all_collections(
             token=token, limit=limit, base_url=base_url
@@ -305,7 +307,10 @@ class CoreClient(AsyncBaseCoreClient):
         token = request.query_params.get("token")
 
         catalogs, next_token = await self.database.get_all_catalogs(
-            token=token, limit=limit, base_url=base_url, conformance_classes = self.conformance_classes(),
+            token=token,
+            limit=limit,
+            base_url=base_url,
+            conformance_classes=self.conformance_classes(),
         )
 
         links = [
@@ -363,8 +368,15 @@ class CoreClient(AsyncBaseCoreClient):
         base_url = str(kwargs["request"].base_url)
         catalog = await self.database.find_catalog(catalog_id=catalog_id)
         # Assume at most 100 collections in a catalog for the time being, may need to increase
-        collections, _ = await self.database.get_catalog_collections(catalog_ids=[catalog_id], base_url=base_url, limit=100, token=None)
-        return self.catalog_serializer.db_to_stac(catalog=catalog, base_url=base_url, collections=collections, conformance_classes=self.conformance_classes())
+        collections, _ = await self.database.get_catalog_collections(
+            catalog_ids=[catalog_id], base_url=base_url, limit=100, token=None
+        )
+        return self.catalog_serializer.db_to_stac(
+            catalog=catalog,
+            base_url=base_url,
+            collections=collections,
+            conformance_classes=self.conformance_classes(),
+        )
 
     async def get_catalog_collections(
         self,
@@ -675,7 +687,9 @@ class CoreClient(AsyncBaseCoreClient):
             search_request = self.post_request_model(**base_args)
         except ValidationError:
             raise HTTPException(status_code=400, detail="Invalid parameters provided")
-        resp = await self.post_global_search(search_request=search_request, request=request)
+        resp = await self.post_global_search(
+            search_request=search_request, request=request
+        )
 
         return resp
 
@@ -812,7 +826,7 @@ class CoreClient(AsyncBaseCoreClient):
             links=links,
             context=context_obj,
         )
-    
+
     async def get_search(
         self,
         request: Request,
@@ -912,12 +926,18 @@ class CoreClient(AsyncBaseCoreClient):
             search_request = self.catalog_post_request_model(**base_args)
         except ValidationError:
             raise HTTPException(status_code=400, detail="Invalid parameters provided")
-        resp = await self.post_search(catalog_id=catalog_id, search_request=search_request, request=request)
+        resp = await self.post_search(
+            catalog_id=catalog_id, search_request=search_request, request=request
+        )
 
         return resp
 
     async def post_search(
-        self, catalog_id: str, search_request: BaseCatalogSearchPostRequest, request: Request, **kwargs
+        self,
+        catalog_id: str,
+        search_request: BaseCatalogSearchPostRequest,
+        request: Request,
+        **kwargs,
     ) -> ItemCollection:
         """
         Perform a POST search on the catalog.
@@ -995,7 +1015,7 @@ class CoreClient(AsyncBaseCoreClient):
         items, maybe_count, next_token = await self.database.execute_search(
             search=search,
             limit=limit,
-            token=None, #search_request.token,  # type: ignore
+            token=None,  # search_request.token,  # type: ignore
             sort=sort,
             collection_ids=search_request.collections,
             catalog_ids=[catalog_id],
@@ -1291,11 +1311,15 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         """
 
         base_url = str(kwargs["request"].base_url)
-        catalog = self.database.catalog_serializer.stac_to_db(catalog=catalog, base_url=base_url)
+        catalog = self.database.catalog_serializer.stac_to_db(
+            catalog=catalog, base_url=base_url
+        )
 
         await self.database.create_catalog(catalog=catalog)
 
-        return CatalogSerializer.db_to_stac(catalog=catalog, base_url=base_url, conformance_classes=None) # not needed here: conformance_classes=self.conformance_classes()) conformance_classes=self.conformance_classes())
+        return CatalogSerializer.db_to_stac(
+            catalog=catalog, base_url=base_url, conformance_classes=None
+        )  # not needed here: conformance_classes=self.conformance_classes()) conformance_classes=self.conformance_classes())
 
     @overrides
     async def update_catalog(
@@ -1321,10 +1345,14 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         """
         base_url = str(kwargs["request"].base_url)
 
-        catalog = self.database.catalog_serializer.stac_to_db(catalog=catalog, base_url=base_url)
+        catalog = self.database.catalog_serializer.stac_to_db(
+            catalog=catalog, base_url=base_url
+        )
         await self.database.update_catalog(catalog_id=catalog_id, catalog=catalog)
 
-        return CatalogSerializer.db_to_stac(catalog=catalog, base_url=base_url, conformance_classes=None) # not needed here: conformance_classes=self.conformance_classes())
+        return CatalogSerializer.db_to_stac(
+            catalog=catalog, base_url=base_url, conformance_classes=None
+        )  # not needed here: conformance_classes=self.conformance_classes())
 
     @overrides
     async def delete_catalog(
@@ -1689,7 +1717,7 @@ class EsAsyncDiscoverySearchClient(AsyncDiscoverySearchClient):
                 search=search,
                 limit=limit,
                 token=token,
-                sort=None, # use default sort for the minute
+                sort=None,  # use default sort for the minute
                 base_url=base_url,
                 conformance_classes=self.conformance_classes(),
             )

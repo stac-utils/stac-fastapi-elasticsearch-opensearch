@@ -2,17 +2,18 @@
 
 import os
 
-from stac_fastapi.api.app import StacApi
 from pydantic import BaseModel
+
+from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import (
-    create_get_request_model,
-    create_post_request_model,
     EmptyRequest,
-    create_get_collections_request_model,
-    create_post_collections_request_model,
     create_get_catalog_request_model,
+    create_get_collections_request_model,
+    create_get_request_model,
     create_post_catalog_full_request_model,
     create_post_catalog_request_model,
+    create_post_collections_request_model,
+    create_post_request_model,
 )
 from stac_fastapi.core.core import (
     BulkTransactionsClient,
@@ -41,11 +42,11 @@ from stac_fastapi.extensions.core import (
     TokenPaginationExtension,
     TransactionExtension,
 )
-from stac_fastapi.types.search import (
-    BaseCatalogSearchPostRequest,
-    BaseCatalogSearchGetRequest,
-)
 from stac_fastapi.extensions.third_party import BulkTransactionExtension
+from stac_fastapi.types.search import (
+    BaseCatalogSearchGetRequest,
+    BaseCatalogSearchPostRequest,
+)
 
 settings = ElasticsearchSettings()
 session = Session.create_from_settings(settings)
@@ -102,11 +103,17 @@ post_request_model = create_post_request_model(extensions)
 get_request_model = create_get_request_model(extensions)
 
 # Includes catalog_id as a path attribute
-catalog_post_full_request_model = create_post_catalog_full_request_model(extensions=extensions, base_model=BaseCatalogSearchPostRequest)
+catalog_post_full_request_model = create_post_catalog_full_request_model(
+    extensions=extensions, base_model=BaseCatalogSearchPostRequest
+)
 # Does not include catalog_id as a path attribute
-catalog_post_request_model = create_post_catalog_request_model(extensions=extensions, base_model=BaseCatalogSearchPostRequest)
+catalog_post_request_model = create_post_catalog_request_model(
+    extensions=extensions, base_model=BaseCatalogSearchPostRequest
+)
 
-catalog_get_request_model = create_get_catalog_request_model(extensions=extensions, base_model=BaseCatalogSearchGetRequest)
+catalog_get_request_model = create_get_catalog_request_model(
+    extensions=extensions, base_model=BaseCatalogSearchGetRequest
+)
 
 # TODO: combine into single create_post/get_request_model function
 # could add another parameter here for the model name e.g. "CollectionsGetRequest" to combine
@@ -116,7 +123,8 @@ collections_post_request_model = create_post_collections_request_model([], BaseM
 
 # Add discovery search here as it requires all other extensions to be passed to it for conformance classes to be identified
 discovery_search_extension = DiscoverySearchExtension(
-    client=EsAsyncDiscoverySearchClient(database=database_logic, extensions=extensions),)
+    client=EsAsyncDiscoverySearchClient(database=database_logic, extensions=extensions),
+)
 discovery_search_extension.conformance_classes.extend(
     ["/catalogues", "/discovery-search"]
 )
@@ -141,7 +149,10 @@ api = StacApi(
     settings=settings,
     extensions=extensions,
     client=CoreClient(
-        database=database_logic, session=session, post_request_model=post_request_model, catalog_post_request_model=catalog_post_request_model
+        database=database_logic,
+        session=session,
+        post_request_model=post_request_model,
+        catalog_post_request_model=catalog_post_request_model,
     ),
     search_get_request_model=get_request_model,
     search_post_request_model=post_request_model,

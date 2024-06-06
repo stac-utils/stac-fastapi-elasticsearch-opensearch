@@ -11,7 +11,10 @@ from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
 from stac_fastapi.types.extension import ApiExtension
-from stac_fastapi.types.search import BaseSearchPostRequest, BaseCatalogSearchPostRequest
+from stac_fastapi.types.search import (
+    BaseCatalogSearchPostRequest,
+    BaseSearchPostRequest,
+)
 from stac_fastapi.types.stac import Conformance
 
 NumType = Union[float, int]

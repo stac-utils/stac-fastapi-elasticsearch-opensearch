@@ -644,7 +644,11 @@ class DatabaseLogic:
         return collections, next_token
 
     async def get_all_catalogs(
-        self, token: Optional[str], limit: int, base_url: str, conformance_classes: list = [],
+        self,
+        token: Optional[str],
+        limit: int,
+        base_url: str,
+        conformance_classes: list = [],
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
         """Retrieve a list of all catalogs from Elasticsearch, supporting pagination.
 
@@ -671,11 +675,16 @@ class DatabaseLogic:
         hits = response["hits"]["hits"]
         catalogs = []
         for hit in hits:
-            collections, _ = await self.get_catalog_collections(catalog_ids=[hit["_source"].get("id")], base_url=base_url, limit=100, token=None)
+            collections, _ = await self.get_catalog_collections(
+                catalog_ids=[hit["_source"].get("id")],
+                base_url=base_url,
+                limit=100,
+                token=None,
+            )
             catalogs.append(
                 self.catalog_serializer.db_to_stac(
-                    catalog=hit["_source"], 
-                    base_url=base_url, 
+                    catalog=hit["_source"],
+                    base_url=base_url,
                     collections=collections,
                     conformance_classes=conformance_classes,
                 )
@@ -1969,7 +1978,12 @@ class DatabaseLogic:
         for hit in hits:
             collections = []
             if hit["_source"]["type"] == "Catalog":
-                collections, _ = await self.get_catalog_collections(catalog_ids=[hit["_source"].get("id")], base_url=base_url, limit=100, token=None)
+                collections, _ = await self.get_catalog_collections(
+                    catalog_ids=[hit["_source"].get("id")],
+                    base_url=base_url,
+                    limit=100,
+                    token=None,
+                )
             data.append(
                 self.catalog_collection_serializer.db_to_stac(
                     data=hit["_source"],
