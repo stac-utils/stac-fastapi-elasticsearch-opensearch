@@ -1634,6 +1634,22 @@ class EsAsyncDiscoverySearchClient(AsyncDiscoverySearchClient):
         default=CatalogCollectionSerializer
     )
 
+    extensions: List[ApiExtension] = attr.ib(default=attr.Factory(list))
+    base_conformance_classes: List[str] = attr.ib(
+        factory=lambda: BASE_CONFORMANCE_CLASSES
+    )
+
+    def conformance_classes(self) -> List[str]:
+        """Generate conformance classes by adding extension conformance to base
+        conformance classes."""
+        base_conformance_classes = self.base_conformance_classes.copy()
+
+        for extension in self.extensions:
+            extension_classes = getattr(extension, "conformance_classes", [])
+            base_conformance_classes.extend(extension_classes)
+
+        return list(set(base_conformance_classes))
+
     async def post_discovery_search(
         self,
         search_request: BaseDiscoverySearchPostRequest,

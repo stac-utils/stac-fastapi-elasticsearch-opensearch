@@ -67,13 +67,6 @@ collection_search_extension.conformance_classes.extend(
     ]
 )
 
-discovery_search_extension = DiscoverySearchExtension(
-    client=EsAsyncDiscoverySearchClient(database_logic)
-)
-discovery_search_extension.conformance_classes.extend(
-    ["/catalogues", "/discovery-search"]
-)
-
 extensions = [
     FieldsExtension(),
     QueryExtension(),
@@ -82,7 +75,6 @@ extensions = [
     ContextExtension(),
     collection_search_extension,
     filter_extension,
-    discovery_search_extension,
 ]
 
 # Disable transaction extensions by default
@@ -121,6 +113,15 @@ catalog_get_request_model = create_get_catalog_request_model(extensions=extensio
 # these 'create_request_model' functions with those above
 collections_get_request_model = create_get_collections_request_model([], EmptyRequest)
 collections_post_request_model = create_post_collections_request_model([], BaseModel)
+
+# Add discovery search here as it requires all other extensions to be passed to it for conformance classes to be identified
+discovery_search_extension = DiscoverySearchExtension(
+    client=EsAsyncDiscoverySearchClient(database=database_logic, extensions=extensions),)
+discovery_search_extension.conformance_classes.extend(
+    ["/catalogues", "/discovery-search"]
+)
+
+extensions.append(discovery_search_extension)
 
 # Check if collection search extension is selected
 for extension in extensions:

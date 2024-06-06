@@ -1965,15 +1965,20 @@ class DatabaseLogic:
         es_response = await search_task
 
         hits = es_response["hits"]["hits"]
-        data = [
-            self.catalog_collection_serializer.db_to_stac(
-                data=hit["_source"],
-                base_url=base_url,
-                catalog_id=hit["_id"].rsplit("|", 1)[-1],
-                conformance_classes=conformance_classes,
+        data = []
+        for hit in hits:
+            collections = []
+            if hit["_source"]["type"] == "Catalog":
+                collections, _ = await self.get_catalog_collections(catalog_ids=[hit["_source"].get("id")], base_url=base_url, limit=100, token=None)
+            data.append(
+                self.catalog_collection_serializer.db_to_stac(
+                    data=hit["_source"],
+                    base_url=base_url,
+                    catalog_id=hit["_id"].rsplit("|", 1)[-1],
+                    collections=collections,
+                    conformance_classes=conformance_classes,
+                )
             )
-            for hit in hits
-        ]
 
         next_token = None
         if hits and (sort_array := hits[-1].get("sort")):
