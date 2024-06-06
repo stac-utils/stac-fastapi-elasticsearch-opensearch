@@ -241,8 +241,10 @@ class CatalogSerializer(Serializer):
         if original_links:
             catalog_links += resolve_links(original_links, base_url)
         
-        # The data link should be rewritten for collections within this catalog
+        # The following link should be rewritten for collections within this catalog
+        link_rels = []
         for link in catalog_links:
+            link_rels.append(link["rel"])
             if link["rel"] == "data":
                 link["href"] = base_url + "catalogs/"+ catalog_id + "/collections"
                 break
@@ -253,13 +255,44 @@ class CatalogSerializer(Serializer):
             elif link["rel"] == "self":
                 link["href"] = base_url + "catalogs/"+ catalog_id
             elif link["rel"] == "search":
+                if link["method"] == "POST":
+                    link_rels.append("search_post")
+                elif link["method"] == "GET":
+                    link_rels.append("search_get")
                 link["href"] = base_url + "catalogs/"+ catalog_id + "/search"
 
-        else:
+        if "data" not in link_rels:
             catalog_links.append({"rel": "data",
-                                  "type": "application/json",
-                                  "href": base_url + "catalogs/"+ catalog_id + "/collections"
-                                  })
+                                    "type": "application/json",
+                                    "href": base_url + "catalogs/"+ catalog_id + "/collections"
+                                    })
+        if "conformance" not in link_rels:
+            catalog_links.append({"rel": "conformance",
+                                    "type": "application/json",
+                                    "href": base_url + "conformance"
+                                    })
+        if "root" not in link_rels:
+            catalog_links.append({"rel": "root",
+                                    "type": "application/json",
+                                    "href": base_url + "catalogs/"+ catalog_id
+                                    })
+        if "self" not in link_rels:
+            catalog_links.append({"rel": "self",
+                                    "type": "application/json",
+                                    "href": base_url + "catalogs/"+ catalog_id
+                                    })
+        if "search_post" not in link_rels:
+            catalog_links.append({"rel": "search",
+                                    "type": "application/json",
+                                    "href": base_url + "catalogs/"+ catalog_id + "/search",
+                                    "method": "POST"
+                                    })
+        if "search_get" not in link_rels:
+            catalog_links.append({"rel": "search",
+                                    "type": "application/geo+json",
+                                    "href": base_url + "catalogs/"+ catalog_id + "/search",
+                                    "method": "GET"
+                                    })
 
         for collection in collections:
             collection_id = collection.get("id")
