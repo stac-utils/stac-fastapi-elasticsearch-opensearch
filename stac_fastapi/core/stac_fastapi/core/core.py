@@ -1255,11 +1255,11 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         """
 
         base_url = str(kwargs["request"].base_url)
-        catalog = self.database.catalog_serializer.stac_to_db(catalog=catalog, base_url=base_url, conformance_classes=self.conformance_classes())
+        catalog = self.database.catalog_serializer.stac_to_db(catalog=catalog, base_url=base_url)
 
         await self.database.create_catalog(catalog=catalog)
 
-        return CatalogSerializer.db_to_stac(catalog=catalog, base_url=base_url)
+        return CatalogSerializer.db_to_stac(catalog=catalog, base_url=base_url, conformance_classes=None) # not needed here: conformance_classes=self.conformance_classes()) conformance_classes=self.conformance_classes())
 
     @overrides
     async def update_catalog(
@@ -1285,10 +1285,10 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         """
         base_url = str(kwargs["request"].base_url)
 
-        catalog = self.database.catalog_serializer.stac_to_db(catalog=catalog, base_url=base_url, conformance_classes=self.conformance_classes())
+        catalog = self.database.catalog_serializer.stac_to_db(catalog=catalog, base_url=base_url)
         await self.database.update_catalog(catalog_id=catalog_id, catalog=catalog)
 
-        return CatalogSerializer.db_to_stac(catalog=catalog, base_url=base_url)
+        return CatalogSerializer.db_to_stac(catalog=catalog, base_url=base_url, conformance_classes=None) # not needed here: conformance_classes=self.conformance_classes())
 
     @overrides
     async def delete_catalog(
