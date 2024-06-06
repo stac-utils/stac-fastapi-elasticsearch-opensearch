@@ -233,6 +233,42 @@ class CoreClient(AsyncBaseCoreClient):
         base_url = str(request.base_url)
         limit = int(request.query_params.get("limit", 10))
         token = request.query_params.get("token")
+        sort = None
+
+        if self.extension_is_enabled("CollectionSearchExtension"):
+            q = request.query_params.get("q")
+            datetime = request.query_params.get("datetime")
+            bbox = request.query_params.get("bbox")
+
+            search = self.database.make_collection_search()
+
+            if datetime:
+                datetime_search = self._return_date(datetime)
+                search = self.database.apply_datetime_collections_filter(
+                    search=search, datetime_search=datetime_search
+                )
+
+            if bbox:
+                if len(bbox) == 6:
+                    bbox = [bbox[0], bbox[1], bbox[3], bbox[4]]
+
+                search = self.database.apply_bbox_collections_filter(
+                    search=search, bbox=bbox
+                )
+
+            if q:
+                search = self.database.apply_keyword_collections_filter(search=search, q=q)
+
+            collections, maybe_count, next_token = (
+            await self.database.execute_collection_search(
+                search=search,
+                limit=limit,
+                token=token,
+                sort=sort,
+                collection_ids=None,  # search_request.collections,
+                base_url=base_url,
+            )
+        )
 
         collections, next_token = await self.database.get_all_collections(
             token=token, limit=limit, base_url=base_url
