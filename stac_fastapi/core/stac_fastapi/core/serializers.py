@@ -3,6 +3,7 @@
 import abc
 from copy import deepcopy
 from typing import Any
+from urllib.parse import urljoin
 
 import attr
 
@@ -246,51 +247,51 @@ class CatalogSerializer(Serializer):
         for link in catalog_links:
             link_rels.append(link["rel"])
             if link["rel"] == "data":
-                link["href"] = base_url + "catalogs/"+ catalog_id + "/collections"
+                link["href"] = urljoin(base_url + f"catalogs/{catalog_id}/collections")
                 break
             elif link["rel"] == "conformance":
-                link["href"] = base_url + "conformance"
+                link["href"] = urljoin(base_url, f"conformance")
             elif link["rel"] == "root":
-                link["href"] = base_url + "catalogs/"+ catalog_id
+                link["href"] = urljoin(base_url, f"catalogs/{catalog_id}")
             elif link["rel"] == "self":
-                link["href"] = base_url + "catalogs/"+ catalog_id
+                link["href"] = urljoin(base_url, f"catalogs/{catalog_id}")
             elif link["rel"] == "search":
                 if link["method"] == "POST":
                     link_rels.append("search_post")
                 elif link["method"] == "GET":
                     link_rels.append("search_get")
-                link["href"] = base_url + "catalogs/"+ catalog_id + "/search"
+                link["href"] = urljoin(base_url, f"catalogs/{catalog_id}/search")
 
         if "data" not in link_rels:
             catalog_links.append({"rel": "data",
                                     "type": "application/json",
-                                    "href": base_url + "catalogs/"+ catalog_id + "/collections"
+                                    "href": urljoin(base_url, f"catalogs/{catalog_id}/collections")
                                     })
         if "conformance" not in link_rels:
             catalog_links.append({"rel": "conformance",
                                     "type": "application/json",
-                                    "href": base_url + "conformance"
+                                    "href": urljoin(base_url, "conformance")
                                     })
         if "root" not in link_rels:
             catalog_links.append({"rel": "root",
                                     "type": "application/json",
-                                    "href": base_url + "catalogs/"+ catalog_id
+                                    "href": urljoin(base_url, f"catalogs/{catalog_id}")
                                     })
         if "self" not in link_rels:
             catalog_links.append({"rel": "self",
                                     "type": "application/json",
-                                    "href": base_url + "catalogs/"+ catalog_id
+                                    "href": urljoin(base_url + f"catalogs/{catalog_id}")
                                     })
         if "search_post" not in link_rels:
             catalog_links.append({"rel": "search",
                                     "type": "application/json",
-                                    "href": base_url + "catalogs/"+ catalog_id + "/search",
+                                    "href": urljoin(base_url, f"catalogs/{catalog_id}/search"),
                                     "method": "POST"
                                     })
         if "search_get" not in link_rels:
             catalog_links.append({"rel": "search",
                                     "type": "application/geo+json",
-                                    "href": base_url + "catalogs/"+ catalog_id + "/search",
+                                    "href": urljoin(base_url, f"catalogs/{catalog_id}/search"),
                                     "method": "GET"
                                     })
 
@@ -299,7 +300,7 @@ class CatalogSerializer(Serializer):
             child_link = {
                 "rel": "child",
                 "type": "application/json",
-                "href": base_url + "catalogs/"+ catalog_id + "/collections/" + collection_id
+                "href": urljoin(base_url, f"catalogs/{catalog_id}/collections/{collection_id}")
             }
             catalog_links.append(child_link)
 

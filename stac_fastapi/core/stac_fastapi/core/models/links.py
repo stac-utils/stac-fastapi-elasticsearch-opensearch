@@ -120,7 +120,7 @@ class PagingLinks(BaseLinks):
         if self.next is not None:
             # Need to generate next link by combining the current url, including base url, with the next token
             parsed_url = urlparse(self.url)
-            netloc = parsed_url.netloc + "/"
+            netloc = urljoin(parsed_url.netloc, "/")
             query_url = self.url.split(netloc)[1]
             new_url = self.resolve(query_url)
             method = self.request.method
