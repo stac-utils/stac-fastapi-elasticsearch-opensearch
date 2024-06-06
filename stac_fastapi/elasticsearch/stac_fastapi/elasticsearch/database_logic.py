@@ -1150,8 +1150,6 @@ class DatabaseLogic:
         elif catalog_ids:
             index_param = indices(catalog_ids=catalog_ids).replace("items_", "items_*")
 
-        print((index_param.split(",")))
-
         search_task = asyncio.create_task(
             self.client.search(
                 index=index_param,
