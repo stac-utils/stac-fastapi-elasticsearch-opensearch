@@ -271,10 +271,10 @@ class CoreClient(AsyncBaseCoreClient):
                     base_url=base_url,
                 )
             )
-
-        collections, next_token = await self.database.get_all_collections(
-            token=token, limit=limit, base_url=base_url
-        )
+        else:
+            collections, next_token = await self.database.get_all_collections(
+                token=token, limit=limit, base_url=base_url
+            )
 
         links = [
             {"rel": Relations.root.value, "type": MimeTypes.json, "href": base_url},
