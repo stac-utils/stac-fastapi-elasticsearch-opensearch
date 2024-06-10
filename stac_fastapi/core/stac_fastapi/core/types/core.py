@@ -11,7 +11,10 @@ from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
 from stac_fastapi.types.extension import ApiExtension
-from stac_fastapi.types.search import BaseSearchPostRequest
+from stac_fastapi.types.search import (
+    BaseCatalogSearchPostRequest,
+    BaseSearchPostRequest,
+)
 from stac_fastapi.types.stac import Conformance
 
 NumType = Union[float, int]
@@ -234,8 +237,49 @@ class AsyncBaseCoreClient(abc.ABC):
         return Conformance(conformsTo=self.conformance_classes())
 
     @abc.abstractmethod
-    async def post_search(
+    async def post_global_search(
         self, search_request: BaseSearchPostRequest, **kwargs
+    ) -> stac_types.ItemCollection:
+        """Cross catalog search (POST).
+
+        Called with `POST /search`.
+
+        Args:
+            search_request: search request parameters.
+
+        Returns:
+            ItemCollection containing items which match the search criteria.
+        """
+        ...
+
+    @abc.abstractmethod
+    async def get_global_search(
+        self,
+        catalogs: Optional[List[str]] = None,
+        collections: Optional[List[str]] = None,
+        ids: Optional[List[str]] = None,
+        bbox: Optional[List[NumType]] = None,
+        datetime: Optional[Union[str, datetime]] = None,
+        limit: Optional[int] = 10,
+        query: Optional[str] = None,
+        token: Optional[str] = None,
+        fields: Optional[List[str]] = None,
+        sortby: Optional[str] = None,
+        intersects: Optional[str] = None,
+        **kwargs,
+    ) -> stac_types.ItemCollection:
+        """Cross catalog search (GET).
+
+        Called with `GET /search`.
+
+        Returns:
+            ItemCollection containing items which match the search criteria.
+        """
+        ...
+
+    @abc.abstractmethod
+    async def post_search(
+        self, catalog_id: str, search_request: BaseCatalogSearchPostRequest, **kwargs
     ) -> stac_types.ItemCollection:
         """Cross catalog search (POST).
 
@@ -252,6 +296,7 @@ class AsyncBaseCoreClient(abc.ABC):
     @abc.abstractmethod
     async def get_search(
         self,
+        catalog_id: str,
         collections: Optional[List[str]] = None,
         ids: Optional[List[str]] = None,
         bbox: Optional[List[NumType]] = None,

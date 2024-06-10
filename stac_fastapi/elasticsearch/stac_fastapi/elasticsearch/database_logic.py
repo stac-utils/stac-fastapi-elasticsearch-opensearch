@@ -29,6 +29,8 @@ logger = logging.getLogger(__name__)
 
 NumType = Union[float, int]
 
+NUMBER_OF_CATALOG_COLLECTIONS = os.getenv("NUMBER_OF_CATALOG_COLLECTIONS", 100)
+
 CATALOGS_INDEX = os.getenv("STAC_CATALOGS_INDEX", "catalogs")
 COLLECTIONS_INDEX = os.getenv("STAC_COLLECTIONS_INDEX", "collections")
 COLLECTIONS_INDEX_PREFIX = os.getenv("STAC_COLLECTIONS_INDEX_PREFIX", "collections_")
@@ -278,10 +280,11 @@ def indices(
     collection_ids: Optional[List[str]] = None, catalog_ids: Optional[List[str]] = None
 ) -> str:
     """
-    Get a comma-separated string of index names for a given list of collection ids.
+    Get a comma-separated string of index names for a given list of collection and catalog ids.
 
     Args:
         collection_ids: A list of collection ids.
+        catalog_ids: A list of catalog ids.
 
     Returns:
         A string of comma-separated index names. If `collection_ids` is None, returns the default indices.
@@ -643,7 +646,11 @@ class DatabaseLogic:
         return collections, next_token
 
     async def get_all_catalogs(
-        self, token: Optional[str], limit: int, base_url: str
+        self,
+        token: Optional[str],
+        limit: int,
+        base_url: str,
+        conformance_classes: list = [],
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
         """Retrieve a list of all catalogs from Elasticsearch, supporting pagination.
 
@@ -668,12 +675,31 @@ class DatabaseLogic:
         )
 
         hits = response["hits"]["hits"]
-        catalogs = [
-            self.catalog_serializer.db_to_stac(
-                catalog=hit["_source"], base_url=base_url
-            )
-            for hit in hits
-        ]
+        catalogs = []
+
+        results = await asyncio.gather(
+            *[
+                self.get_catalog_collections(
+                    catalog_ids=[hit["_source"].get("id")],
+                    base_url=base_url,
+                    limit=NUMBER_OF_CATALOG_COLLECTIONS,
+                    token=None,
+                )
+                for hit in hits
+            ],
+            return_exceptions=True,
+        )
+
+        for i, result in enumerate(results):
+            if not isinstance(result, Exception):
+                catalogs.append(
+                    self.catalog_serializer.db_to_stac(
+                        catalog=hits[i]["_source"],
+                        base_url=base_url,
+                        collections=result[0],
+                        conformance_classes=conformance_classes,
+                    )
+                )
 
         next_token = None
         if len(hits) == limit:
@@ -1908,6 +1934,7 @@ class DatabaseLogic:
         token: Optional[str],
         sort: Optional[Dict[str, Dict[str, str]]],
         ignore_unavailable: bool = True,
+        conformance_classes: list = [],
     ) -> Tuple[Iterable[Dict[str, Any]], Optional[int], Optional[str]]:
         """Execute a search query with limit and other optional parameters.
 
@@ -1958,14 +1985,32 @@ class DatabaseLogic:
         es_response = await search_task
 
         hits = es_response["hits"]["hits"]
-        data = [
-            self.catalog_collection_serializer.db_to_stac(
-                data=hit["_source"],
-                base_url=base_url,
-                catalog_id=hit["_id"].rsplit("|", 1)[-1],
-            )
-            for hit in hits
-        ]
+        data = []
+
+        results = await asyncio.gather(
+            *[
+                self.get_catalog_collections(
+                    catalog_ids=[hit["_source"].get("id")],
+                    base_url=base_url,
+                    limit=NUMBER_OF_CATALOG_COLLECTIONS,
+                    token=None,
+                )
+                for hit in hits
+            ],
+            return_exceptions=True,
+        )
+
+        for i, result in enumerate(results):
+            if not isinstance(result, Exception):
+                data.append(
+                    self.catalog_collection_serializer.db_to_stac(
+                        data=hits[i]["_source"],
+                        base_url=base_url,
+                        catalog_id=hits[i]["_id"].rsplit("|", 1)[-1],
+                        collections=result[0],
+                        conformance_classes=conformance_classes,
+                    )
+                )
 
         next_token = None
         if hits and (sort_array := hits[-1].get("sort")):
