@@ -1,6 +1,7 @@
 """Item crud client."""
 
 import logging
+import os
 import re
 from datetime import datetime as datetime_type
 from datetime import timezone
@@ -64,6 +65,8 @@ from stac_fastapi.types.stac import (
 logger = logging.getLogger(__name__)
 
 NumType = Union[float, int]
+
+NUMBER_OF_CATALOG_COLLECTIONS = os.getenv("NUMBER_OF_CATALOG_COLLECTIONS", 100)
 
 
 @attr.s
@@ -369,7 +372,10 @@ class CoreClient(AsyncBaseCoreClient):
         catalog = await self.database.find_catalog(catalog_id=catalog_id)
         # Assume at most 100 collections in a catalog for the time being, may need to increase
         collections, _ = await self.database.get_catalog_collections(
-            catalog_ids=[catalog_id], base_url=base_url, limit=100, token=None
+            catalog_ids=[catalog_id],
+            base_url=base_url,
+            limit=NUMBER_OF_CATALOG_COLLECTIONS,
+            token=None,
         )
         return self.catalog_serializer.db_to_stac(
             catalog=catalog,
