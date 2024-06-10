@@ -691,14 +691,15 @@ class DatabaseLogic:
         )
 
         for i, result in enumerate(results):
-            catalogs.append(
-                self.catalog_serializer.db_to_stac(
-                    catalog=hits[i]["_source"],
-                    base_url=base_url,
-                    collections=result[0],
-                    conformance_classes=conformance_classes,
+            if not isinstance(result, Exception):
+                catalogs.append(
+                    self.catalog_serializer.db_to_stac(
+                        catalog=hits[i]["_source"],
+                        base_url=base_url,
+                        collections=result[0],
+                        conformance_classes=conformance_classes,
+                    )
                 )
-            )
 
         next_token = None
         if len(hits) == limit:
@@ -2000,15 +2001,16 @@ class DatabaseLogic:
         )
 
         for i, result in enumerate(results):
-            data.append(
-                self.catalog_collection_serializer.db_to_stac(
-                    data=hits[i]["_source"],
-                    base_url=base_url,
-                    catalog_id=hits[i]["_id"].rsplit("|", 1)[-1],
-                    collections=result[0],
-                    conformance_classes=conformance_classes,
+            if not isinstance(result, Exception):
+                data.append(
+                    self.catalog_collection_serializer.db_to_stac(
+                        data=hits[i]["_source"],
+                        base_url=base_url,
+                        catalog_id=hits[i]["_id"].rsplit("|", 1)[-1],
+                        collections=result[0],
+                        conformance_classes=conformance_classes,
+                    )
                 )
-            )
 
         next_token = None
         if hits and (sort_array := hits[-1].get("sort")):
