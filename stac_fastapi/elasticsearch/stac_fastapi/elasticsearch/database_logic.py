@@ -29,6 +29,8 @@ logger = logging.getLogger(__name__)
 
 NumType = Union[float, int]
 
+NUMBER_OF_CATALOG_COLLECTIONS = os.getenv("NUMBER_OF_CATALOG_COLLECTIONS", 100)
+
 CATALOGS_INDEX = os.getenv("STAC_CATALOGS_INDEX", "catalogs")
 COLLECTIONS_INDEX = os.getenv("STAC_COLLECTIONS_INDEX", "collections")
 COLLECTIONS_INDEX_PREFIX = os.getenv("STAC_COLLECTIONS_INDEX_PREFIX", "collections_")
@@ -674,18 +676,26 @@ class DatabaseLogic:
 
         hits = response["hits"]["hits"]
         catalogs = []
-        for hit in hits:
-            collections, _ = await self.get_catalog_collections(
-                catalog_ids=[hit["_source"].get("id")],
-                base_url=base_url,
-                limit=100,
-                token=None,
-            )
+
+        results = await asyncio.gather(
+            *[
+                self.get_catalog_collections(
+                    catalog_ids=[hit["_source"].get("id")],
+                    base_url=base_url,
+                    limit=NUMBER_OF_CATALOG_COLLECTIONS,
+                    token=None,
+                )
+                for hit in hits
+            ],
+            return_exceptions=True,
+        )
+
+        for i, result in enumerate(results):
             catalogs.append(
                 self.catalog_serializer.db_to_stac(
-                    catalog=hit["_source"],
+                    catalog=hits[i]["_source"],
                     base_url=base_url,
-                    collections=collections,
+                    collections=result[0],
                     conformance_classes=conformance_classes,
                 )
             )
@@ -1975,21 +1985,27 @@ class DatabaseLogic:
 
         hits = es_response["hits"]["hits"]
         data = []
-        for hit in hits:
-            collections = []
-            if hit["_source"]["type"] == "Catalog":
-                collections, _ = await self.get_catalog_collections(
+
+        results = await asyncio.gather(
+            *[
+                self.get_catalog_collections(
                     catalog_ids=[hit["_source"].get("id")],
                     base_url=base_url,
-                    limit=100,
+                    limit=NUMBER_OF_CATALOG_COLLECTIONS,
                     token=None,
                 )
+                for hit in hits
+            ],
+            return_exceptions=True,
+        )
+
+        for i, result in enumerate(results):
             data.append(
                 self.catalog_collection_serializer.db_to_stac(
-                    data=hit["_source"],
+                    data=hits[i]["_source"],
                     base_url=base_url,
-                    catalog_id=hit["_id"].rsplit("|", 1)[-1],
-                    collections=collections,
+                    catalog_id=hits[i]["_id"].rsplit("|", 1)[-1],
+                    collections=result[0],
                     conformance_classes=conformance_classes,
                 )
             )
