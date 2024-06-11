@@ -10,6 +10,7 @@ from opensearchpy import exceptions, helpers
 from opensearchpy.exceptions import TransportError
 from opensearchpy.helpers.query import Q
 from opensearchpy.helpers.search import Search
+from starlette.requests import Request
 
 from stac_fastapi.core import serializers
 from stac_fastapi.core.extensions import filter
@@ -333,10 +334,12 @@ class DatabaseLogic:
         default=serializers.CollectionSerializer
     )
 
+    extensions: List[str] = attr.ib(default=attr.Factory(list))
+
     """CORE LOGIC"""
 
     async def get_all_collections(
-        self, token: Optional[str], limit: int, base_url: str
+        self, token: Optional[str], limit: int, request: Request
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
         """
         Retrieve a list of all collections from Opensearch, supporting pagination.
@@ -366,7 +369,7 @@ class DatabaseLogic:
         hits = response["hits"]["hits"]
         collections = [
             self.collection_serializer.db_to_stac(
-                collection=hit["_source"], base_url=base_url
+                collection=hit["_source"], request=request, extensions=self.extensions
             )
             for hit in hits
         ]

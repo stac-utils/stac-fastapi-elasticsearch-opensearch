@@ -61,6 +61,7 @@ class Context:
 
 class MockRequest:
     base_url = "http://test-server"
+    url = "http://test-server/test"
     query_params = {}
 
     def __init__(
