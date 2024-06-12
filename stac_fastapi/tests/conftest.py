@@ -13,7 +13,6 @@ from stac_pydantic import api
 
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import create_get_request_model, create_post_request_model
-from stac_fastapi.core.basic_auth import apply_basic_auth
 from stac_fastapi.core.core import (
     BulkTransactionsClient,
     CoreClient,
@@ -229,6 +228,39 @@ async def app_client(app):
 
 @pytest_asyncio.fixture(scope="session")
 async def app_basic_auth():
+
+    stac_fastapi_route_dependencies = """[
+        {
+            "routes":[{"method":"*","path":"*"}],
+            "dependencies":[
+                {
+                    "method":"stac_fastapi.core.basic_auth.BasicAuth",
+                    "kwargs":{"credentials":[{"username":"admin","password":"admin"}]}
+                }
+            ]
+        },
+        {
+            "routes":[
+                {"path":"/","method":["GET"]},
+                {"path":"/conformance","method":["GET"]},
+                {"path":"/collections/{collection_id}/items/{item_id}","method":["GET"]},
+                {"path":"/search","method":["GET","POST"]},
+                {"path":"/collections","method":["GET"]},
+                {"path":"/collections/{collection_id}","method":["GET"]},
+                {"path":"/collections/{collection_id}/items","method":["GET"]},
+                {"path":"/queryables","method":["GET"]},
+                {"path":"/queryables/collections/{collection_id}/queryables","method":["GET"]},
+                {"path":"/_mgmt/ping","method":["GET"]}
+            ],
+            "dependencies":[
+                {
+                    "method":"stac_fastapi.core.basic_auth.BasicAuth",
+                    "kwargs":{"credentials":[{"username":"reader","password":"reader"}]}
+                }
+            ]
+        }
+    ]"""
+
     settings = AsyncSettings()
     extensions = [
         TransactionExtension(
@@ -257,34 +289,8 @@ async def app_basic_auth():
         extensions=extensions,
         search_get_request_model=create_get_request_model(extensions),
         search_post_request_model=post_request_model,
+        route_dependencies=get_route_dependencies(stac_fastapi_route_dependencies),
     )
-
-    os.environ[
-        "BASIC_AUTH"
-    ] = """{
-        "public_endpoints": [
-            {"path": "/", "method": "GET"},
-            {"path": "/search", "method": "GET"}
-        ],
-        "users": [
-            {"username": "admin", "password": "admin", "permissions": "*"},
-            {
-                "username": "reader", "password": "reader",
-                "permissions": [
-                    {"path": "/conformance", "method": ["GET"]},
-                    {"path": "/collections/{collection_id}/items/{item_id}", "method": ["GET"]},
-                    {"path": "/search", "method": ["POST"]},
-                    {"path": "/collections", "method": ["GET"]},
-                    {"path": "/collections/{collection_id}", "method": ["GET"]},
-                    {"path": "/collections/{collection_id}/items", "method": ["GET"]},
-                    {"path": "/queryables", "method": ["GET"]},
-                    {"path": "/queryables/collections/{collection_id}/queryables", "method": ["GET"]},
-                    {"path": "/_mgmt/ping", "method": ["GET"]}
-                ]
-            }
-        ]
-    }"""
-    apply_basic_auth(stac_api)
 
     return stac_api.app
 

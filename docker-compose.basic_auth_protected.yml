@@ -22,7 +22,7 @@ services:
       - ES_USE_SSL=false
       - ES_VERIFY_CERTS=false
       - BACKEND=elasticsearch
-      - BASIC_AUTH={"users":[{"username":"admin","password":"admin","permissions":"*"},{"username":"reader","password":"reader","permissions":[{"path":"/","method":["GET"]},{"path":"/conformance","method":["GET"]},{"path":"/collections/{collection_id}/items/{item_id}","method":["GET"]},{"path":"/search","method":["GET","POST"]},{"path":"/collections","method":["GET"]},{"path":"/collections/{collection_id}","method":["GET"]},{"path":"/collections/{collection_id}/items","method":["GET"]},{"path":"/queryables","method":["GET"]},{"path":"/queryables/collections/{collection_id}/queryables","method":["GET"]},{"path":"/_mgmt/ping","method":["GET"]}]}]}
+      - STAC_FASTAPI_ROUTE_DEPENDENCIES=[{"routes":[{"method":"*","path":"*"}],"dependencies":[{"method":"stac_fastapi.core.basic_auth.BasicAuth","kwargs":{"credentials":[{"username":"admin","password":"admin"}]}}]},{"routes":[{"path":"/","method":["GET"]},{"path":"/conformance","method":["GET"]},{"path":"/collections/{collection_id}/items/{item_id}","method":["GET"]},{"path":"/search","method":["GET","POST"]},{"path":"/collections","method":["GET"]},{"path":"/collections/{collection_id}","method":["GET"]},{"path":"/collections/{collection_id}/items","method":["GET"]},{"path":"/queryables","method":["GET"]},{"path":"/queryables/collections/{collection_id}/queryables","method":["GET"]},{"path":"/_mgmt/ping","method":["GET"]}],"dependencies":[{"method":"stac_fastapi.core.basic_auth.BasicAuth","kwargs":{"credentials":[{"username":"reader","password":"reader"}]}}]}]
     ports:
       - "8080:8080"
     volumes:
