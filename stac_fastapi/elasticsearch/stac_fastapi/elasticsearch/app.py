@@ -28,7 +28,6 @@ from stac_fastapi.core.session import Session
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
 from stac_fastapi.elasticsearch.database_logic import (
     DatabaseLogic,
-    create_base_catalog_index,
     create_catalog_index,
     create_collection_index,
     create_index_templates,
@@ -172,7 +171,6 @@ async def _startup_event() -> None:
         await create_index_templates()
         await create_collection_index()
         await create_catalog_index()
-        await create_base_catalog_index()
 
 
 def run() -> None:
