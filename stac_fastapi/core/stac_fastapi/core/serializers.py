@@ -352,6 +352,8 @@ class CatalogSerializer(Serializer):
 
         # Add child links for contained collections or catalogs
         for collection in collections:
+            if not collection:
+                continue
             collection_id = collection.get("id")
             child_link = {
                 "rel": Relations.child.value,
@@ -361,6 +363,8 @@ class CatalogSerializer(Serializer):
             catalog_links.append(child_link)
 
         for sub_catalog in sub_catalogs:
+            if not sub_catalog:
+                continue
             sub_catalog_id = sub_catalog.get("id")
             child_link = {
                 "rel": Relations.child.value,

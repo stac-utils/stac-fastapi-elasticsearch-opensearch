@@ -856,35 +856,34 @@ class DatabaseLogic:
             catalogs = []
             hits = []
 
-        catalogs = []
+        # Construct async tasks
+        catalog_indices_list = []
         for hit in hits:
-            # Calculate catalog path for found catalog
+            # Construct required catalog indices
             catalog_index = hit["_index"].split("_", 1)[1]
             catalog_id = hit["_id"]
             catalog_index_list = catalog_index.split("_x_")
             catalog_index_list.reverse()
             catalog_index_list.append(catalog_id)
-            catalog_index = "/".join(catalog_index_list)
-            # Identify all contained catalogs
-            try:
-                sub_catalogs_responses = await self.client.search(
-                    index=index_catalogs_by_catalog_id(
+            catalog_indices_list.append(catalog_index_list)
+
+        sub_catalogs_results = await asyncio.gather(
+            *[
+                self.get_catalog_collections(
+                    catalog_path=index_catalogs_by_catalog_id(
                         catalog_path_list=catalog_index_list
                     ),
-                    body={
-                        "sort": [{"id": {"order": "asc"}}],
-                    },
+                    base_url=base_url,
+                    limit=NUMBER_OF_CATALOG_COLLECTIONS,
+                    token=None,
                 )
-                sub_catalogs_responses = sub_catalogs_responses["hits"]["hits"]
-                sub_catalogs = [
-                    sub_catalogs_response["_source"]
-                    for sub_catalogs_response in sub_catalogs_responses
-                ]
-            except exceptions.NotFoundError:
-                sub_catalogs = []
-            # Identify all contained collections
-            try:
-                collection_responses = await self.client.search(
+                for catalog_index_list in catalog_indices_list
+            ],
+            return_exceptions=True,
+        )
+        collection_results = await asyncio.gather(
+            *[
+                self.client.search(
                     index=index_collections_by_catalog_id(
                         catalog_path_list=catalog_index_list
                     ),
@@ -892,13 +891,41 @@ class DatabaseLogic:
                         "sort": [{"id": {"order": "asc"}}],
                     },
                 )
-                collection_responses = collection_responses["hits"]["hits"]
-                collections = [
-                    collection_response["_source"]
-                    for collection_response in collection_responses
-                ]
-            except exceptions.NotFoundError:
-                collections = []
+                for catalog_index_list in catalog_indices_list
+            ],
+            return_exceptions=True,
+        )
+
+        sub_catalogs_responses = [
+            (
+                sub_catalogs_result["hits"]["hits"]
+                if not isinstance(sub_catalogs_result, Exception)
+                else [{"_source": None}]
+            )
+            for sub_catalogs_result in sub_catalogs_results
+        ]
+        collection_responses = [
+            (
+                collection_result["hits"]["hits"]
+                if not isinstance(collection_result, Exception)
+                else [{"_source": None}]
+            )
+            for collection_result in collection_results
+        ]
+
+        child_data = list(zip(sub_catalogs_responses, collection_responses))
+
+        catalogs = []
+        for i, hit in enumerate(hits):
+            sub_data_catalogs_and_collections = child_data[i]
+            # Extract sub-catalogs
+            sub_catalogs = []
+            for catalog in sub_data_catalogs_and_collections[0]:
+                sub_catalogs.append(catalog["_source"])
+            # Extract collections
+            collections = []
+            for collection in sub_data_catalogs_and_collections[1]:
+                collections.append(collection["_source"])
             catalogs.append(
                 self.catalog_serializer.db_to_stac(
                     catalog_path=catalog_path,
@@ -2183,6 +2210,8 @@ class DatabaseLogic:
             refresh=refresh,
         )
 
+        # print(f"create {catalog_id} in index {BASE_CATALOGS_INDEX}")
+
     async def find_catalog(self, catalog_path: str) -> Catalog:
         """Find and return a collection from the database.
 
@@ -2334,10 +2363,9 @@ class DatabaseLogic:
             )
             collection_ids = [hit["_id"] for hit in response["hits"]["hits"]]
 
-            # For each collection, reindex the containing items by catalog id
-            for collection_id in collection_ids:
-                try:
-                    await self.client.reindex(
+            results = await asyncio.gather(
+                *[
+                    self.client.reindex(
                         body={
                             "dest": {
                                 "index": index_by_collection_id(
@@ -2355,10 +2383,11 @@ class DatabaseLogic:
                         wait_for_completion=True,
                         refresh=refresh,
                     )
-                except exceptions.NotFoundError:
-                    logger.info(
-                        f"Collection {collection_id} at path {catalog_path} has no items, so index does not exist and cannot be updated, continuing as normal."
-                    )
+                    for collection_id in collection_ids
+                ],
+                return_exceptions=True,
+            )
+
         except exceptions.NotFoundError:
             logger.info(
                 f"Catalog {catalog_path_list[-1]} at path {catalog_path} has no collections, or items, so index does not exist and cannot be updated, continuing as normal."
@@ -2414,22 +2443,30 @@ class DatabaseLogic:
                 },
             )
             hits = response["hits"]["hits"]
-            catalog_paths = []
+
+            # Calculate catalog path for found catalog
+            source_indices_list = []
+            dest_indices_list = []
+            old_catalog_path_lists = []
             for hit in hits:
-                # Calculate catalog path for found catalog
                 old_catalog_path = hit["_index"].split("_", 1)[1]
                 sub_catalog_id = hit["_id"]
                 old_catalog_path_list = old_catalog_path.split("_x_")
                 # Reverse for ordered descending path
                 old_catalog_path_list.reverse()
+                old_catalog_path_lists.append(old_catalog_path_list)
                 source_index = index_catalogs_by_catalog_id(
                     catalog_path_list=old_catalog_path_list
                 )
+                source_indices_list.append(source_index)
                 dest_index = index_catalogs_by_catalog_id(
                     catalog_path_list=new_catalog_path_list
                 )
-                try:
-                    await self.client.reindex(
+                dest_indices_list.append(dest_index)
+
+            results = await asyncio.gather(
+                *[
+                    self.client.reindex(
                         body={
                             "dest": {"index": dest_index},
                             "source": {"index": source_index},
@@ -2437,21 +2474,45 @@ class DatabaseLogic:
                         wait_for_completion=True,
                         refresh=refresh,
                     )
-                except exceptions.NotFoundError:
-                    logger.info(
-                        f"Catalog {sub_catalog_id} at path {old_catalog_path} has no collections, so index does not exist and cannot be updated, continuing as normal."
+                    for (dest_index, source_index) in zip(
+                        dest_indices_list, source_indices_list
                     )
-                # Reindex sub-catalogs, recursively
+                ],
+                return_exceptions=True,
+            )
+
+            # Reindex sub-catalogs, recursively
+            old_sub_catalog_path_list = []
+            new_sub_catalog_path_list = []
+            for old_catalog_path_list in old_catalog_path_lists:
                 old_catalog_path_list.append(sub_catalog_id)
                 new_catalog_path_list.append(sub_catalog_id)
                 old_sub_catalog_path = "/".join(old_catalog_path_list)
+                old_sub_catalog_path_list.append(old_sub_catalog_path)
                 new_sub_catalog_path = "/".join(new_catalog_path_list)
-                await self.reindex_sub_catalogs(
-                    catalog_path=old_sub_catalog_path,
-                    new_catalog_path=new_sub_catalog_path,
-                    refresh=refresh,
-                )
+                new_sub_catalog_path_list.append(new_sub_catalog_path)
 
+            await self.reindex_sub_catalogs(
+                catalog_path=old_sub_catalog_path,
+                new_catalog_path=new_sub_catalog_path,
+                refresh=refresh,
+            )
+
+            results = await asyncio.gather(
+                *[
+                    self.reindex_sub_catalogs(
+                        catalog_path=old_sub_catalog_path,
+                        new_catalog_path=new_sub_catalog_path,
+                        refresh=refresh,
+                    )
+                    for (old_sub_catalog_path, new_sub_catalog_path) in zip(
+                        old_sub_catalog_path_list, new_sub_catalog_path_list
+                    )
+                ],
+                return_exceptions=True,
+            )
+
+            catalog_paths = []
             # Reindex collections in this catalog with new catalog_id
             old_catalog_path_list = catalog_path_list
             new_catalog_path_list = catalog_path_list[:-1]
@@ -2490,10 +2551,9 @@ class DatabaseLogic:
                 )
                 collection_ids = [hit["_id"] for hit in response["hits"]["hits"]]
 
-                # For each collection, reindex the containing items by catalog id
-                for collection_id in collection_ids:
-                    try:
-                        await self.client.reindex(
+                results = await asyncio.gather(
+                    *[
+                        self.client.reindex(
                             body={
                                 "dest": {
                                     "index": index_by_collection_id(
@@ -2511,10 +2571,10 @@ class DatabaseLogic:
                             wait_for_completion=True,
                             refresh=refresh,
                         )
-                    except exceptions.NotFoundError:
-                        logger.info(
-                            f"Collection {collection_id} at path {catalog_path} has no items, so index does not exist and cannot be updated, continuing as normal."
-                        )
+                        for collection_id in collection_ids
+                    ],
+                    return_exceptions=True,
+                )
             except exceptions.NotFoundError:
                 logger.info(
                     f"Catalog {catalog_id} at path {catalog_path} has no collections, or items, so index does not exist and cannot be updated, continuing as normal."
@@ -2578,10 +2638,13 @@ class DatabaseLogic:
                 body={"sort": [{"id": {"order": "asc"}}]},
             )
             # Delete each catalog recursively
-            for hit in response["hits"]["hits"]:
-                sub_catalog_id = hit["_id"]
-                sub_catalog_path = f"{catalog_path}/{sub_catalog_id}"
-                await self.delete_catalog(catalog_path=sub_catalog_path)
+            results = await asyncio.gather(
+                *[
+                    self.delete_catalog(catalog_path=f"{catalog_path}/{hit['_id']}")
+                    for hit in response["hits"]["hits"]
+                ],
+                return_exceptions=True,
+            )
 
             # Need to delete all collections contained in this catalog
             index_param = collection_indices(catalog_paths=[catalog_path_list])
@@ -2590,10 +2653,16 @@ class DatabaseLogic:
                 body={"sort": [{"id": {"order": "asc"}}]},
             )
             collection_ids = [hit["_id"] for hit in response["hits"]["hits"]]
-            for collection_id in collection_ids:
-                await delete_item_index(
-                    collection_id=collection_id, catalog_path_list=catalog_path_list
-                )
+            results = await asyncio.gather(
+                *[
+                    delete_item_index(
+                        collection_id=collection_id, catalog_path_list=catalog_path_list
+                    )
+                    for collection_id in collection_ids
+                ],
+                return_exceptions=True,
+            )
+
             await delete_collection_index(catalog_path_list=catalog_path_list)
             await delete_catalog_index(catalog_path_list=catalog_path_list)
         except exceptions.NotFoundError:
@@ -2760,9 +2829,8 @@ class DatabaseLogic:
         hits = es_response["hits"]["hits"]
 
         data = []
+        catalog_index_lists_for_catalogs = []
         for hit in hits:
-            sub_catalogs = []
-            collections = []
             if hit["_source"]["type"] == "Catalog":
                 # Calculate catalog path for found catalog
                 catalog_index = hit["_index"].split("_", 1)[1]
@@ -2770,46 +2838,96 @@ class DatabaseLogic:
                 catalog_index_list = catalog_index.split("_x_")
                 catalog_index_list.reverse()
                 catalog_index_list.append(catalog_id)
+                catalog_index_lists_for_catalogs.append(catalog_index_list)
                 catalog_index = "/".join(catalog_index_list)
-                # Identify all contained catalogs
-                try:
-                    sub_catalogs_responses = await self.client.search(
-                        index=index_catalogs_by_catalog_id(
-                            catalog_path_list=catalog_index_list
-                        ),
-                        body={
-                            "sort": [{"id": {"order": "asc"}}],
-                        },
-                    )
-                    sub_catalogs_responses = sub_catalogs_responses["hits"]["hits"]
-                    sub_catalogs = [
-                        sub_catalogs_response["_source"]
-                        for sub_catalogs_response in sub_catalogs_responses
-                    ]
-                except exceptions.NotFoundError:
-                    pass
-                # Identify all contained collections
-                try:
-                    collection_responses = await self.client.search(
-                        index=index_collections_by_catalog_id(
-                            catalog_path_list=catalog_index_list
-                        ),
-                        body={
-                            "sort": [{"id": {"order": "asc"}}],
-                        },
-                    )
-                    collection_responses = collection_responses["hits"]["hits"]
-                    collections = [
-                        collection_response["_source"]
-                        for collection_response in collection_responses
-                    ]
-                except exceptions.NotFoundError:
-                    pass
+
+        catalogs_results = await asyncio.gather(
+            *[
+                self.client.search(
+                    index=index_catalogs_by_catalog_id(
+                        catalog_path_list=catalog_index_list
+                    ),
+                    body={
+                        "sort": [{"id": {"order": "asc"}}],
+                    },
+                )
+                for catalog_index_list in catalog_index_lists_for_catalogs
+            ],
+            return_exceptions=True,
+        )
+
+        # Remove exceptions and replace with empty list
+        catalogs_results = [
+            (
+                result
+                if not isinstance(result, Exception)
+                else {"hits": {"hits": [{"_source": []}]}}
+            )
+            for result in catalogs_results
+        ]
+        sub_catalogs_responses = [
+            sub_catalogs_response["hits"]["hits"]
+            for sub_catalogs_response in catalogs_results
+        ]
+        # sub_catalogs = [[sub_catalogs_response["_source"]] for sub_catalogs_response in sub_catalogs_responses]
+
+        collections_results = await asyncio.gather(
+            *[
+                self.client.search(
+                    index=index_collections_by_catalog_id(
+                        catalog_path_list=catalog_index_list
+                    ),
+                    body={
+                        "sort": [{"id": {"order": "asc"}}],
+                    },
+                )
+                for catalog_index_list in catalog_index_lists_for_catalogs
+            ],
+            return_exceptions=True,
+        )
+
+        # Remove exceptions and replace with empty list
+        collections_results = [
+            (
+                result
+                if not isinstance(result, Exception)
+                else {"hits": {"hits": [{"_source": []}]}}
+            )
+            for result in collections_results
+        ]
+        collection_responses = [
+            collection_response["hits"]["hits"]
+            for collection_response in collections_results
+        ]
+
+        child_data = list(zip(sub_catalogs_responses, collection_responses))
+
+        for i, hit in enumerate(hits):
+            if hit["_source"]["type"] == "Catalog":
+                catalog_index_list = hit["_index"].split("_", 1)[1].split("_x_")
+                catalog_index_list.reverse()
+                # catalog_index_list = catalog_index_list[:-1]
+                catalog_index = "/".join(catalog_index_list)
+                print("index path is")
+                print(hit["_index"])
+                print(catalog_index)
+                sub_data_catalogs_and_collections = child_data[i]
+                # Extract sub-catalogs
+                sub_catalogs = []
+                for catalog in sub_data_catalogs_and_collections[0]:
+                    sub_catalogs.append(catalog["_source"])
+                # Extract collections
+                collections = []
+                for collection in sub_data_catalogs_and_collections[1]:
+                    collections.append(collection["_source"])
             elif hit["_source"]["type"] == "Collection":
                 catalog_index = hit["_index"].split("_", 1)[1]
                 catalog_index_list = catalog_index.split("_x_")
                 catalog_index_list.reverse()
                 catalog_index = "/".join(catalog_index_list)
+                sub_catalogs = []
+                collections = []
+
             data.append(
                 self.catalog_collection_serializer.db_to_stac(
                     collection_serializer=self.collection_serializer,
