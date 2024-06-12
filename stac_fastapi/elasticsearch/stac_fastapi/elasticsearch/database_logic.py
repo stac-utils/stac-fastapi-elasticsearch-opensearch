@@ -4,25 +4,43 @@ import asyncio
 import logging
 import os
 from base64 import urlsafe_b64decode, urlsafe_b64encode
+from datetime import datetime as datetime_type
+from datetime import timezone
 from mimetypes import MimeTypes
-from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple, Type, Union
+from typing import (
+    Any,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Protocol,
+    Set,
+    Tuple,
+    Type,
+    Union,
+)
 from urllib.parse import urljoin
 
 import attr
+import orjson
 from elasticsearch_dsl import Q, Search
 from fastapi import Request
+from stac_pydantic.links import Relations
+from stac_pydantic.shared import MimeTypes
 
 from elasticsearch import exceptions, helpers  # type: ignore
 from stac_fastapi.core.extensions import filter
 from stac_fastapi.core.models.links import PagingLinks
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
-from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon
+from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon, return_date
 from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
 from stac_fastapi.elasticsearch.config import (
     ElasticsearchSettings as SyncElasticsearchSettings,
 )
+from stac_fastapi.types.config import Settings
 from stac_fastapi.types.errors import ConflictError, NotFoundError
-from stac_fastapi.types.stac import Collection, Item
+from stac_fastapi.types.search import BaseSearchPostRequest
+from stac_fastapi.types.stac import Collection, Item, ItemCollection
 
 logger = logging.getLogger(__name__)
 
@@ -376,7 +394,9 @@ class DatabaseLogic:
 
         return stac_types.Collections(collections=collections, links=links)
 
-    async def get_item(self, collection_id: str, item_id: str) -> Dict:
+    async def get_item(
+        self, collection_id: str, item_id: str, request: Request
+    ) -> Dict:
         """Retrieve a single item from the database.
 
         Args:
@@ -402,7 +422,9 @@ class DatabaseLogic:
             raise NotFoundError(
                 f"Item {item_id} does not exist in Collection {collection_id}"
             )
-        return item["_source"]
+        return self.item_serializer.db_to_stac(
+            item=item["_source"], base_url=str(request.base_url)
+        )
 
     @staticmethod
     def make_search():
@@ -601,7 +623,7 @@ class DatabaseLogic:
             )
 
         if search_request.datetime:
-            datetime_search = self._return_date(search_request.datetime)
+            datetime_search = return_date(search_request.datetime)
             search = self.apply_datetime_filter(
                 search=search, datetime_search=datetime_search
             )
@@ -633,10 +655,8 @@ class DatabaseLogic:
             cql2_filter = getattr(search_request, "filter", None)
             try:
                 search = self.apply_cql2_filter(search, cql2_filter)
-            except Exception as e:
-                raise HTTPException(
-                    status_code=400, detail=f"Error with cql2_json filter: {e}"
-                )
+            except Exception as exc:
+                raise Exception("Error with cql2_json filter") from exc
 
         sort = None
         if search_request.sortby:
@@ -646,21 +666,15 @@ class DatabaseLogic:
         if search_request.limit:
             limit = search_request.limit
 
-        items, maybe_count, next_token = await self.database.execute_search(
-            search=search,
-            limit=limit,
-            token=search_request.token,  # type: ignore
-            sort=sort,
-            collection_ids=search_request.collections,
-        )
-
         search_after = None
-        if token:
-            search_after = urlsafe_b64decode(token.encode()).decode().split(",")
+        if hasattr(search_request, "token"):
+            search_after = (
+                urlsafe_b64decode(search_request.token.encode()).decode().split(",")
+            )
 
         query = search.query.to_dict() if search.query else None
 
-        index_param = indices(collection_ids)
+        index_param = indices(search_request.collections)
 
         max_result_window = MAX_LIMIT
 
@@ -687,8 +701,10 @@ class DatabaseLogic:
 
         try:
             es_response = await search_task
-        except exceptions.NotFoundError:
-            raise NotFoundError(f"Collections '{collection_ids}' do not exist")
+        except exceptions.NotFoundError as exc:
+            raise NotFoundError(
+                f"Collections '{search_request.collections}' do not exist"
+            ) from exc
 
         hits = es_response["hits"]["hits"]
         items = (hit["_source"] for hit in hits[:limit])
@@ -708,8 +724,8 @@ class DatabaseLogic:
         if count_task.done():
             try:
                 matched = count_task.result().get("count")
-            except Exception as e:
-                logger.error(f"Count task failed: {e}")
+            except Exception as exc:
+                logger.error("Count task failed: %s", exc)
 
         items = [
             self.item_serializer.db_to_stac(item, base_url=str(request.base_url))
@@ -732,20 +748,18 @@ class DatabaseLogic:
             filter_kwargs = search_request.fields.filter_fields
 
             items = [
-                orjson.loads(
-                    stac_pydantic.Item(**feat).json(**filter_kwargs, exclude_unset=True)
-                )
-                for feat in items
+                orjson.loads(item.json(**filter_kwargs, exclude_unset=True))
+                for item in items
             ]
 
         links = await PagingLinks(request=request, next=next_token).get_links()
 
-        return stac_types.ItemCollection(
+        return ItemCollection(
             type="FeatureCollection",
             features=items,
             links=links,
             numReturned=len(items),
-            numMatched=maybe_count,
+            numMatched=matched,
         )
 
     """ TRANSACTION LOGIC """
@@ -822,7 +836,7 @@ class DatabaseLogic:
 
         return self.item_serializer.stac_to_db(item, base_url)
 
-    async def create_item(self, item: Item, refresh: bool = False):
+    async def create_item(self, item: Item, request: Request, refresh: bool = False):
         """Database logic for creating one item.
 
         Args:
@@ -836,6 +850,8 @@ class DatabaseLogic:
             None
         """
         # todo: check if collection exists, but cache
+        self.prep_create_item(item=item, base_url=request.base_url)
+
         item_id = item["id"]
         collection_id = item["collection"]
         es_resp = await self.client.index(
@@ -849,6 +865,8 @@ class DatabaseLogic:
             raise ConflictError(
                 f"Item {item_id} in collection {collection_id} already exists"
             )
+
+        return self.item_serializer.db_to_stac(item, request.base_url)
 
     async def delete_item(
         self, item_id: str, collection_id: str, refresh: bool = False
@@ -873,6 +891,33 @@ class DatabaseLogic:
             raise NotFoundError(
                 f"Item {item_id} in collection {collection_id} not found"
             )
+
+    async def update_item(
+        self,
+        item_id: str,
+        collection_id: str,
+        item: Item,
+        request: Request,
+        refresh: bool = False,
+    ):
+        """Update an item from the database.
+
+        Args:
+            item_id (str): The id of the Item to be updated.
+            collection_id (str): The id of the Collection that the Item belongs to.
+            item (Item): The updated item.
+            refresh (bool, optional): Whether to refresh the index after the deletion. Default is False.
+
+        Raises:
+            NotFoundError: If the Item does not exist in the database.
+        """
+        item.properties["updated"] = (
+            datetime_type.now(timezone.utc).isoformat().replace("+00:00", "Z")
+        )
+
+        await self.check_collection_exists(collection_id)
+        await self.delete_item(item_id=item_id, collection_id=collection_id)
+        return await self.create_item(item=item, refresh=refresh, request=request)
 
     async def create_collection(
         self, collection: Collection, request: Request, refresh: bool = False
@@ -981,7 +1026,7 @@ class DatabaseLogic:
                 refresh=refresh,
             )
 
-            await self.delete_collection(collection_id)
+            await self.delete_collection(collection_id=collection_id, request=request)
 
         else:
             await self.client.index(

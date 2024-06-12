@@ -2,29 +2,22 @@
 
 import logging
 import re
-from datetime import datetime as datetime_type
-from datetime import timezone
-from enum import Enum
-from typing import Any, Dict, List, Optional, Set, Type, Union
-from urllib.parse import unquote_plus, urljoin
+from typing import Any, Dict, List, Optional, Union
+from urllib.parse import unquote_plus
 
 import attr
 import orjson
-import stac_pydantic
 from fastapi import HTTPException, Request
 from overrides import overrides
 from pydantic import ValidationError
 from pygeofilter.backends.cql2_json import to_cql2
 from pygeofilter.parsers.cql2_text import parse as parse_cql2_text
 from stac_pydantic import Collection, Item, ItemCollection
-from stac_pydantic.links import Relations
-from stac_pydantic.shared import BBox, MimeTypes
+from stac_pydantic.shared import BBox
 from stac_pydantic.version import STAC_VERSION
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
-from stac_fastapi.core.models.links import PagingLinks
-from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.session import Session
 from stac_fastapi.extensions.third_party.bulk_transactions import (
     BaseBulkTransactionsClient,
@@ -32,7 +25,6 @@ from stac_fastapi.extensions.third_party.bulk_transactions import (
     Items,
 )
 from stac_fastapi.types import stac as stac_types
-from stac_fastapi.types.config import Settings
 from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
 from stac_fastapi.types.core import (
     AsyncBaseCoreClient,
@@ -40,7 +32,6 @@ from stac_fastapi.types.core import (
     AsyncBaseTransactionsClient,
 )
 from stac_fastapi.types.extension import ApiExtension
-from stac_fastapi.types.requests import get_base_url
 from stac_fastapi.types.rfc3339 import DateTimeType
 from stac_fastapi.types.search import BaseSearchPostRequest
 
@@ -55,13 +46,10 @@ class CoreClient(AsyncBaseCoreClient):
 
     This class is a implementation of `AsyncBaseCoreClient` that implements the core endpoints
     defined by the STAC specification. It uses the `DatabaseLogic` class to interact with the
-    database, and `ItemSerializer` and `CollectionSerializer` to convert between STAC objects and
     database records.
 
     Attributes:
         session (Session): A requests session instance to be used for all HTTP requests.
-        item_serializer (Type[serializers.ItemSerializer]): A serializer class to be used to convert
-            between STAC items and database records.
         database (DatabaseLogic): An instance of the `DatabaseLogic` class that is used to interact
             with the database.
     """
@@ -73,7 +61,6 @@ class CoreClient(AsyncBaseCoreClient):
     extensions: List[ApiExtension] = attr.ib(default=attr.Factory(list))
 
     session: Session = attr.ib(default=attr.Factory(Session.create_from_env))
-    item_serializer: Type[ItemSerializer] = attr.ib(default=ItemSerializer)
     post_request_model = attr.ib(default=BaseSearchPostRequest)
     stac_version: str = attr.ib(default=STAC_VERSION)
     landing_page_id: str = attr.ib(default="stac-fastapi")
@@ -106,7 +93,7 @@ class CoreClient(AsyncBaseCoreClient):
         Raises:
             NotFoundError: If the collection with the given id cannot be found in the database.
         """
-        return await self.database.find_collection(
+        return await self.database.get_collection(
             collection_id=collection_id, request=kwargs["request"]
         )
 
@@ -162,63 +149,9 @@ class CoreClient(AsyncBaseCoreClient):
             Exception: If any error occurs while getting the item from the database.
             NotFoundError: If the item does not exist in the specified collection.
         """
-        base_url = str(kwargs["request"].base_url)
-        item = await self.database.get_one_item(
-            item_id=item_id, collection_id=collection_id
+        return await self.database.get_item(
+            item_id=item_id, collection_id=collection_id, request=kwargs["request"]
         )
-        return self.item_serializer.db_to_stac(item, base_url)
-
-    @staticmethod
-    def _return_date(
-        interval: Optional[Union[DateTimeType, str]]
-    ) -> Dict[str, Optional[str]]:
-        """
-        Convert a date interval.
-
-        (which may be a datetime, a tuple of one or two datetimes a string
-        representing a datetime or range, or None) into a dictionary for filtering
-        search results with Elasticsearch.
-
-        This function ensures the output dictionary contains 'gte' and 'lte' keys,
-        even if they are set to None, to prevent KeyError in the consuming logic.
-
-        Args:
-            interval (Optional[Union[DateTimeType, str]]): The date interval, which might be a single datetime,
-                a tuple with one or two datetimes, a string, or None.
-
-        Returns:
-            dict: A dictionary representing the date interval for use in filtering search results,
-                always containing 'gte' and 'lte' keys.
-        """
-        result: Dict[str, Optional[str]] = {"gte": None, "lte": None}
-
-        if interval is None:
-            return result
-
-        if isinstance(interval, str):
-            if "/" in interval:
-                parts = interval.split("/")
-                result["gte"] = parts[0] if parts[0] != ".." else None
-                result["lte"] = (
-                    parts[1] if len(parts) > 1 and parts[1] != ".." else None
-                )
-            else:
-                converted_time = interval if interval != ".." else None
-                result["gte"] = result["lte"] = converted_time
-            return result
-
-        if isinstance(interval, datetime_type):
-            datetime_iso = interval.isoformat()
-            result["gte"] = result["lte"] = datetime_iso
-        elif isinstance(interval, tuple):
-            start, end = interval
-            # Ensure datetimes are converted to UTC and formatted with 'Z'
-            if start:
-                result["gte"] = start.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-            if end:
-                result["lte"] = end.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-
-        return result
 
     def _format_datetime_range(self, date_tuple: DateTimeType) -> str:
         """
@@ -335,9 +268,7 @@ class CoreClient(AsyncBaseCoreClient):
             search_request = self.post_request_model(**base_args)
         except ValidationError:
             raise HTTPException(status_code=400, detail="Invalid parameters provided")
-        resp = await self.post_search(search_request=search_request, request=request)
-
-        return resp
+        return await self.post_search(search_request=search_request, request=request)
 
     async def post_search(
         self, search_request: BaseSearchPostRequest, request: Request
@@ -405,9 +336,9 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
             return None
         else:
-            item = await self.database.prep_create_item(item=item, base_url=base_url)
-            await self.database.create_item(item, refresh=kwargs.get("refresh", False))
-            return ItemSerializer.db_to_stac(item, base_url)
+            return await self.database.create_item(
+                item, refresh=kwargs.get("refresh", False), request=kwargs["request"]
+            )
 
     @overrides
     async def update_item(
@@ -428,16 +359,13 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             NotFound: If the specified collection is not found in the database.
 
         """
-        item = item.model_dump(mode="json")
-        base_url = str(kwargs["request"].base_url)
-        now = datetime_type.now(timezone.utc).isoformat().replace("+00:00", "Z")
-        item["properties"]["updated"] = now
 
-        await self.database.check_collection_exists(collection_id)
-        await self.delete_item(item_id=item_id, collection_id=collection_id)
-        await self.create_item(collection_id=collection_id, item=Item(**item), **kwargs)
-
-        return ItemSerializer.db_to_stac(item, base_url)
+        return self.database.update_item(
+            collection_id=collection_id,
+            item_id=item,
+            item=item,
+            request=kwargs["request"],
+        )
 
     @overrides
     async def delete_item(
