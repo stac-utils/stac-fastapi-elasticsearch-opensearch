@@ -6,6 +6,8 @@ from typing import Any
 from urllib.parse import urljoin
 
 import attr
+from stac_pydantic.links import Relations
+from stac_pydantic.shared import MimeTypes
 
 from stac_fastapi.core.datetime_utils import now_to_rfc3339_str
 from stac_fastapi.types import stac as stac_types
@@ -26,7 +28,7 @@ class Serializer(abc.ABC):
 
     @classmethod
     @abc.abstractmethod
-    def db_to_stac(cls, item: dict, base_url: str, catalog_id: str = None) -> Any:
+    def db_to_stac(cls, item: dict, base_url: str, catalog_path: str = None) -> Any:
         """Transform database model to STAC object.
 
         Arguments:
@@ -78,7 +80,7 @@ class ItemSerializer(Serializer):
 
     @classmethod
     def db_to_stac(
-        cls, item: dict, base_url: str, catalog_id: str = None
+        cls, item: dict, base_url: str, catalog_path: str = None
     ) -> stac_types.Item:
         """Transform database-ready STAC item to STAC item.
 
@@ -92,7 +94,7 @@ class ItemSerializer(Serializer):
         item_id = item["id"]
         collection_id = item["collection"]
         item_links = ItemLinks(
-            catalog_id=catalog_id,
+            catalog_path=catalog_path,
             collection_id=collection_id,
             item_id=item_id,
             base_url=base_url,
@@ -141,7 +143,7 @@ class CollectionSerializer(Serializer):
 
     @classmethod
     def db_to_stac(
-        cls, collection: dict, base_url: str, catalog_id: str = None
+        cls, collection: dict, base_url: str, catalog_path: str = None
     ) -> stac_types.Collection:
         """Transform database model to STAC collection.
 
@@ -173,7 +175,7 @@ class CollectionSerializer(Serializer):
 
         # Create the collection links using CollectionLinks
         collection_links = CollectionLinks(
-            catalog_id=catalog_id, collection_id=collection_id, base_url=base_url
+            catalog_path=catalog_path, collection_id=collection_id, base_url=base_url
         ).create_links()
 
         # Add any additional links from the collection dictionary
@@ -212,7 +214,9 @@ class CatalogSerializer(Serializer):
         cls,
         catalog: dict,
         base_url: str,
+        catalog_path: str = None,
         collections: list = [],
+        sub_catalogs: list = [],
         conformance_classes: list = [],
     ) -> stac_types.Catalog:
         """Transform database model to STAC catalog.
@@ -220,6 +224,10 @@ class CatalogSerializer(Serializer):
         Args:
             catalog (dict): The catalog data in dictionary form, extracted from the database.
             base_url (str): The base URL for the catalog.
+            catalog_path (str): The path to the chosen catalog, NOT including the catalog_id of the current catalog.
+            collections (str): The list of collections contained within the catalog.
+            sub_catalogs (str): The list of catalogs contained within the catalog.
+            conformance_classes (str): The list of conformance classes for this catalog.
 
         Returns:
             stac_types.Catalog: The STAC catalog object.
@@ -229,7 +237,7 @@ class CatalogSerializer(Serializer):
 
         # Set defaults
         catalog_id = catalog.get("id")
-        catalog.setdefault("type", "Collection")
+        catalog.setdefault("type", "Catalog")
         catalog.setdefault("stac_extensions", [])
         catalog.setdefault("stac_version", "")
         catalog.setdefault("title", "")
@@ -239,8 +247,14 @@ class CatalogSerializer(Serializer):
         catalog.update({"conformsTo": conformance_classes})
 
         # Create the collection links using CatalogLinks
+        full_catalog_path = catalog_id
+        if catalog_path:
+            full_catalog_path = f"{catalog_path}/{full_catalog_path}"
+            parent_url = f"catalogs/{catalog_path}"
+        else:
+            parent_url = ""
         catalog_links = CatalogLinks(
-            catalog_id=catalog_id, base_url=base_url
+            catalog_path=full_catalog_path, base_url=base_url
         ).create_links()
 
         # Add any additional links from the collection dictionary
@@ -248,85 +262,110 @@ class CatalogSerializer(Serializer):
         if original_links:
             catalog_links += resolve_links(original_links, base_url)
 
-        # The following link should be rewritten for collections within this catalog
+        # Construct catalog url path prefix
+        catalog_url = f"catalogs/{full_catalog_path}"
+
+        # The following links should be rewritten for this catalog
         link_rels = []
         for link in catalog_links:
             link_rels.append(link["rel"])
-            if link["rel"] == "data":
-                link["href"] = urljoin(base_url, f"catalogs/{catalog_id}/collections")
-                break
-            elif link["rel"] == "conformance":
-                link["href"] = urljoin(base_url, "conformance")
+            if link["rel"] == "conformance":
+                link["href"] = urljoin(base_url, f"conformance")
             elif link["rel"] == "root":
-                link["href"] = urljoin(base_url, f"catalogs/{catalog_id}")
+                link["href"] = urljoin(base_url, f"{catalog_url}")
             elif link["rel"] == "self":
-                link["href"] = urljoin(base_url, f"catalogs/{catalog_id}")
+                link["href"] = urljoin(base_url, f"{catalog_url}")
             elif link["rel"] == "search":
                 if link["method"] == "POST":
                     link_rels.append("search_post")
                 elif link["method"] == "GET":
                     link_rels.append("search_get")
-                link["href"] = urljoin(base_url, f"catalogs/{catalog_id}/search")
+                link["href"] = urljoin(base_url, f"{catalog_url}/search")
+            elif link["rel"] == "parent":
+                link["href"] = urljoin(base_url, f"{parent_url}")
 
-        if "data" not in link_rels:
-            catalog_links.append(
-                {
-                    "rel": "data",
-                    "type": "application/json",
-                    "href": urljoin(base_url, f"catalogs/{catalog_id}/collections"),
-                }
-            )
+        # Add data links for collections and catalogs (note these might be empty)
+        catalog_links.append(
+            {
+                "rel": "data",
+                "type": MimeTypes.json,
+                "href": urljoin(base_url, f"{catalog_url}/collections"),
+            }
+        )
+        catalog_links.append(
+            {
+                "rel": "data",
+                "type": MimeTypes.json,
+                "href": urljoin(base_url, f"{catalog_url}/catalogs"),
+            }
+        )
         if "conformance" not in link_rels:
             catalog_links.append(
                 {
-                    "rel": "conformance",
-                    "type": "application/json",
-                    "href": urljoin(base_url, "conformance"),
+                    "rel": Relations.conformance.value,
+                    "type": MimeTypes.json,
+                    "href": urljoin(base_url, f"conformance"),
                 }
             )
         if "root" not in link_rels:
             catalog_links.append(
                 {
-                    "rel": "root",
-                    "type": "application/json",
-                    "href": urljoin(base_url, f"catalogs/{catalog_id}"),
+                    "rel": Relations.root.value,
+                    "type": MimeTypes.json,
+                    "href": urljoin(base_url, f"{catalog_url}"),
                 }
             )
         if "self" not in link_rels:
             catalog_links.append(
                 {
-                    "rel": "self",
-                    "type": "application/json",
-                    "href": urljoin(base_url, f"catalogs/{catalog_id}"),
+                    "rel": Relations.self.value,
+                    "type": MimeTypes.json,
+                    "href": urljoin(base_url + f"{catalog_url}"),
                 }
             )
         if "search_post" not in link_rels:
             catalog_links.append(
                 {
-                    "rel": "search",
-                    "type": "application/json",
-                    "href": urljoin(base_url, f"catalogs/{catalog_id}/search"),
+                    "rel": Relations.search.value,
+                    "type": MimeTypes.json,
+                    "href": urljoin(base_url, f"{catalog_url}/search"),
                     "method": "POST",
                 }
             )
         if "search_get" not in link_rels:
             catalog_links.append(
                 {
-                    "rel": "search",
-                    "type": "application/geo+json",
-                    "href": urljoin(base_url, f"catalogs/{catalog_id}/search"),
+                    "rel": Relations.search.value,
+                    "type": MimeTypes.geojson,
+                    "href": urljoin(base_url, f"{catalog_url}/search"),
                     "method": "GET",
                 }
             )
+        if "parent" not in link_rels:
+            catalog_links.append(
+                {
+                    "rel": Relations.parent.value,
+                    "type": MimeTypes.json,
+                    "href": urljoin(base_url, f"{catalog_path}"),
+                }
+            )
 
+        # Add child links for contained collections or catalogs
         for collection in collections:
             collection_id = collection.get("id")
             child_link = {
-                "rel": "child",
-                "type": "application/json",
-                "href": urljoin(
-                    base_url, f"catalogs/{catalog_id}/collections/{collection_id}"
-                ),
+                "rel": Relations.child.value,
+                "type": MimeTypes.json,
+                "href": urljoin(base_url, f"{catalog_url}/collections/{collection_id}"),
+            }
+            catalog_links.append(child_link)
+
+        for sub_catalog in sub_catalogs:
+            sub_catalog_id = sub_catalog.get("id")
+            child_link = {
+                "rel": Relations.child.value,
+                "type": MimeTypes.json,
+                "href": urljoin(base_url, f"{catalog_url}/{sub_catalog_id}"),
             }
             catalog_links.append(child_link)
 
@@ -355,186 +394,15 @@ class CatalogCollectionSerializer(Serializer):
         raise NotImplementedError
 
     @classmethod
-    def catalog_db_to_stac(
-        cls,
-        catalog: dict,
-        base_url: str,
-        collections: list = [],
-        conformance_classes: list = [],
-    ) -> stac_types.Catalog:
-        """Transform database model to STAC catalog.
-
-        Args:
-            catalog (dict): The catalog data in dictionary form, extracted from the database.
-            base_url (str): The base URL for the catalog.
-
-        Returns:
-            stac_types.Catalog: The STAC catalog object.
-        """
-        # Avoid modifying the input dict in-place ... doing so breaks some tests
-        catalog = deepcopy(catalog)
-
-        # Set defaults
-        catalog_id = catalog.get("id")
-        catalog.setdefault("type", "Collection")
-        catalog.setdefault("stac_extensions", [])
-        catalog.setdefault("stac_version", "")
-        catalog.setdefault("title", "")
-        catalog.setdefault("description", "")
-
-        # Set conformance for catalog
-        catalog.update({"conformsTo": conformance_classes})
-
-        # Create the collection links using CatalogLinks
-        catalog_links = CatalogLinks(
-            catalog_id=catalog_id, base_url=base_url
-        ).create_links()
-
-        # Add any additional links from the collection dictionary
-        original_links = catalog.get("links")
-        if original_links:
-            catalog_links += resolve_links(original_links, base_url)
-
-        # The following link should be rewritten for collections within this catalog
-        link_rels = []
-        for link in catalog_links:
-            link_rels.append(link["rel"])
-            if link["rel"] == "data":
-                link["href"] = urljoin(base_url, f"catalogs/{catalog_id}/collections")
-                break
-            elif link["rel"] == "conformance":
-                link["href"] = urljoin(base_url, "conformance")
-            elif link["rel"] == "root":
-                link["href"] = urljoin(base_url, f"catalogs/{catalog_id}")
-            elif link["rel"] == "self":
-                link["href"] = urljoin(base_url, f"catalogs/{catalog_id}")
-            elif link["rel"] == "search":
-                if link["method"] == "POST":
-                    link_rels.append("search_post")
-                elif link["method"] == "GET":
-                    link_rels.append("search_get")
-                link["href"] = urljoin(base_url, f"catalogs/{catalog_id}/search")
-
-        if "data" not in link_rels:
-            catalog_links.append(
-                {
-                    "rel": "data",
-                    "type": "application/json",
-                    "href": urljoin(base_url, f"catalogs/{catalog_id}/collections"),
-                }
-            )
-        if "conformance" not in link_rels:
-            catalog_links.append(
-                {
-                    "rel": "conformance",
-                    "type": "application/json",
-                    "href": urljoin(base_url, "conformance"),
-                }
-            )
-        if "root" not in link_rels:
-            catalog_links.append(
-                {
-                    "rel": "root",
-                    "type": "application/json",
-                    "href": urljoin(base_url, f"catalogs/{catalog_id}"),
-                }
-            )
-        if "self" not in link_rels:
-            catalog_links.append(
-                {
-                    "rel": "self",
-                    "type": "application/json",
-                    "href": urljoin(base_url, f"catalogs/{catalog_id}"),
-                }
-            )
-        if "search_post" not in link_rels:
-            catalog_links.append(
-                {
-                    "rel": "search",
-                    "type": "application/json",
-                    "href": urljoin(base_url, f"catalogs/{catalog_id}/search"),
-                    "method": "POST",
-                }
-            )
-        if "search_get" not in link_rels:
-            catalog_links.append(
-                {
-                    "rel": "search",
-                    "type": "application/geo+json",
-                    "href": urljoin(base_url, f"catalogs/{catalog_id}/search"),
-                    "method": "GET",
-                }
-            )
-
-        for collection in collections:
-            collection_id = collection.get("id")
-            child_link = {
-                "rel": "child",
-                "type": "application/json",
-                "href": urljoin(
-                    base_url, f"catalogs/{catalog_id}/collections/{collection_id}"
-                ),
-            }
-            catalog_links.append(child_link)
-
-        catalog["links"] = catalog_links
-
-        # Return the stac_types.Collection object
-        return stac_types.Catalog(**catalog)
-
-    @classmethod
-    def collection_db_to_stac(
-        cls, collection: dict, base_url: str, catalog_id: str = None
-    ) -> stac_types.Collection:
-        """Transform database model to STAC collection.
-
-        Args:
-            collection (dict): The collection data in dictionary form, extracted from the database.
-            base_url (str): The base URL for the collection.
-
-        Returns:
-            stac_types.Collection: The STAC collection object.
-        """
-        # Avoid modifying the input dict in-place ... doing so breaks some tests
-        collection = deepcopy(collection)
-
-        # Set defaults
-        collection_id = collection.get("id")
-        collection.setdefault("type", "Collection")
-        collection.setdefault("stac_extensions", [])
-        collection.setdefault("stac_version", "")
-        collection.setdefault("title", "")
-        collection.setdefault("description", "")
-        collection.setdefault("keywords", [])
-        collection.setdefault("license", "")
-        collection.setdefault("providers", [])
-        collection.setdefault("summaries", {})
-        collection.setdefault(
-            "extent", {"spatial": {"bbox": []}, "temporal": {"interval": []}}
-        )
-        collection.setdefault("assets", {})
-
-        # Create the collection links using CollectionLinks
-        collection_links = CollectionLinks(
-            catalog_id=catalog_id, collection_id=collection_id, base_url=base_url
-        ).create_links()
-
-        # Add any additional links from the collection dictionary
-        original_links = collection.get("links")
-        if original_links:
-            collection_links += resolve_links(original_links, base_url)
-        collection["links"] = collection_links
-
-        # Return the stac_types.Collection object
-        return stac_types.Collection(**collection)
-
-    @classmethod
     def db_to_stac(
         cls,
+        collection_serializer: CollectionSerializer,
+        catalog_serializer: CatalogSerializer,
         data: dict,
         base_url: str,
-        catalog_id: str = None,
+        catalog_path: str,
         collections: list = [],
+        sub_catalogs: list = [],
         conformance_classes: list = [],
     ) -> stac_types.Collection:
         """Transform database model to STAC catalog or collection.
@@ -548,10 +416,15 @@ class CatalogCollectionSerializer(Serializer):
         """
         # Determine datatype to serialise and pass to correct serializer function
         if data["type"] == "Collection":
-            return cls.collection_db_to_stac(
-                catalog_id=catalog_id, collection=data, base_url=base_url
+            return collection_serializer.db_to_stac(
+                catalog_path=catalog_path, collection=data, base_url=base_url
             )
         elif data["type"] == "Catalog":
-            return cls.catalog_db_to_stac(
-                data, base_url, collections, conformance_classes
+            return catalog_serializer.db_to_stac(
+                catalog=data,
+                base_url=base_url,
+                catalog_path=catalog_path,
+                collections=collections,
+                sub_catalogs=sub_catalogs,
+                conformance_classes=conformance_classes,
             )
