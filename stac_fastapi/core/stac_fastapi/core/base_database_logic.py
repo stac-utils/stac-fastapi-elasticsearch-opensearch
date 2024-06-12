@@ -33,48 +33,55 @@ class BaseDatabaseLogic(abc.ABC):
 
     @abc.abstractmethod
     async def create_item(
-        self, catalog_id: str, item: Dict, refresh: bool = False
+        self, catalog_path: str, item: Dict, refresh: bool = False
     ) -> None:
         """Create an item in the database."""
         pass
 
     @abc.abstractmethod
     async def delete_item(
-        self, item_id: str, collection_id: str, catalog_id: str, refresh: bool = False
+        self, item_id: str, collection_id: str, catalog_path: str, refresh: bool = False
     ) -> None:
         """Delete an item from the database."""
         pass
 
     @abc.abstractmethod
     async def create_collection(
-        self, catalog_id: str, collection: Dict, refresh: bool = False
+        self, catalog_path: str, collection: Dict, refresh: bool = False
     ) -> None:
         """Create a collection in the database."""
         pass
 
     @abc.abstractmethod
-    async def find_collection(self, catalog_id: str, collection_id: str) -> Dict:
+    async def find_collection(self, catalog_path: str, collection_id: str) -> Dict:
         """Find a collection in the database."""
         pass
 
     @abc.abstractmethod
     async def delete_collection(
-        self, catalog_id: str, collection_id: str, refresh: bool = False
+        self, catalog_path: str, collection_id: str, refresh: bool = False
     ) -> None:
         """Delete a collection from the database."""
         pass
 
     @abc.abstractmethod
-    async def create_catalog(self, catalog: Dict, refresh: bool = False) -> None:
+    async def create_catalog(
+        self, catalog: Dict, catalog_path: Optional[str], refresh: bool = False
+    ) -> None:
         """Create a catalog in the database."""
         pass
 
     @abc.abstractmethod
-    async def find_catalog(self, catalog_id: str) -> Dict:
+    async def create_super_catalog(self, catalog: Dict, refresh: bool = False) -> None:
+        """Create a catalog in the database."""
+        pass
+
+    @abc.abstractmethod
+    async def find_catalog(self, catalog_path: str) -> Dict:
         """Find a catalog in the database."""
         pass
 
     @abc.abstractmethod
-    async def delete_catalog(self, catalog_id: str, refresh: bool = False) -> None:
+    async def delete_catalog(self, catalog_path: str, refresh: bool = False) -> None:
         """Delete a catalog from the database."""
         pass
