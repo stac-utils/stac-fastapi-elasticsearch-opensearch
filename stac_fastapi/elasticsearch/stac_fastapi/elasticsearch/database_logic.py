@@ -31,9 +31,15 @@ NumType = Union[float, int]
 
 NUMBER_OF_CATALOG_COLLECTIONS = os.getenv("NUMBER_OF_CATALOG_COLLECTIONS", 100)
 
+BASE_CATALOGS_INDEX = os.getenv("STAC_BASE_CATALOGS_INDEX", "base")
+BASE_CATALOGS_INDEX_PREFIX = os.getenv("STAC_BASE_CATALOGS_INDEX", "base_")
+
 CATALOGS_INDEX = os.getenv("STAC_CATALOGS_INDEX", "catalogs")
+CATALOGS_INDEX_PREFIX = os.getenv("STAC_CATALOGS_INDEX", "catalogs_")
+
 COLLECTIONS_INDEX = os.getenv("STAC_COLLECTIONS_INDEX", "collections")
 COLLECTIONS_INDEX_PREFIX = os.getenv("STAC_COLLECTIONS_INDEX_PREFIX", "collections_")
+
 ITEMS_INDEX_PREFIX = os.getenv("STAC_ITEMS_INDEX_PREFIX", "items_")
 ES_INDEX_NAME_UNSUPPORTED_CHARS = {
     "\\",
@@ -52,6 +58,7 @@ ES_INDEX_NAME_UNSUPPORTED_CHARS = {
 
 ITEM_INDICES = f"{ITEMS_INDEX_PREFIX}*,-*kibana*,-{COLLECTIONS_INDEX}*"
 COLLECTION_INDICES = f"{COLLECTIONS_INDEX_PREFIX}*,-*kibana*,-{CATALOGS_INDEX}*"
+CATALOG_INDICES = f"{CATALOGS_INDEX_PREFIX}*,-*kibana*,-{BASE_CATALOGS_INDEX}*"
 
 DEFAULT_SORT = {
     "properties.datetime": {"order": "desc"},
@@ -243,80 +250,147 @@ ES_CATALOGS_MAPPINGS = {
 
 
 def index_by_collection_id(
-    collection_id: str = None, catalog_id: Optional[str] = None
+    collection_id: Optional[str] = None, catalog_path_list: Optional[List[str]] = None
 ) -> str:
     """
     Translate a collection id into an Elasticsearch index name.
 
     Args:
         collection_id (str): The collection id to translate into an index name.
-        catalog_id (str): The catalog id to translate into an index name.
+        catalog_path_list (str): The catalog id to translate into an index name.
 
     Returns:
         str: The index name derived from the collection id and catalog id.
     """
-    if not collection_id:
-        collection_id = ""
-    collection_and_catalog_id = collection_id
-    if catalog_id:
-        collection_and_catalog_id = collection_and_catalog_id + "_" + catalog_id
-    return f"{ITEMS_INDEX_PREFIX}{''.join(c for c in collection_and_catalog_id.lower() if c not in ES_INDEX_NAME_UNSUPPORTED_CHARS)}"
+    index = ITEMS_INDEX_PREFIX
+    if collection_id:
+        index += f"{''.join(c for c in collection_id.lower() if c not in ES_INDEX_NAME_UNSUPPORTED_CHARS)}_xx_"  # "//" means end of each group, e.g. collections, catalogs
+    else:
+        index += "*_xx_"
+    if catalog_path_list:
+        new_catalog_path_list = catalog_path_list.copy()
+        new_catalog_path_list.reverse()
+        new_catalog_path_list = "_x_".join(
+            "".join(
+                c
+                for c in catalog_id.lower()
+                if c not in ES_INDEX_NAME_UNSUPPORTED_CHARS
+            )
+            for catalog_id in new_catalog_path_list
+        )
+        index += new_catalog_path_list
+    else:
+        index += "*"
+    return index
 
 
-def index_by_catalog_id(catalog_id: str) -> str:
+def index_collections_by_catalog_id(catalog_path_list: List[str]) -> str:
     """
     Translate a catalog id into an Elasticsearch index name.
 
     Args:
+        super_catalog_id (str): The super_catalog id to translate into an index name.
         catalog_id (str): The catalog id to translate into an index name.
 
     Returns:
-        str: The index name derived from the catalog id.
+        str: The index name derived from the provided catalog ids.
     """
-    return f"{COLLECTIONS_INDEX_PREFIX}{''.join(c for c in catalog_id.lower() if c not in ES_INDEX_NAME_UNSUPPORTED_CHARS)}"
+    new_catalog_path_list = catalog_path_list.copy()
+    new_catalog_path_list.reverse()
+    output_index = f"{COLLECTIONS_INDEX_PREFIX}{'_x_'.join(''.join(c for c in catalog_id.lower() if c not in ES_INDEX_NAME_UNSUPPORTED_CHARS) for catalog_id in new_catalog_path_list)}"
+    return output_index
+
+
+def index_catalogs_by_catalog_id(catalog_path_list: Optional[List[str]] = None) -> str:
+    """
+    Translate a catalog id into an Elasticsearch index name.
+
+    Args:
+        catalog_path (list[str]): The catalog path to translate into an index name.
+
+    Returns:
+        str: The index name derived from the provided catalog ids.
+    """
+    if catalog_path_list:
+        # want return to be catalogs_lower-catalog_upper-catalog_super-catalog
+        new_catalog_path_list = catalog_path_list.copy()
+        new_catalog_path_list.reverse()
+        return f"{CATALOGS_INDEX_PREFIX}{'_x_'.join(''.join(c for c in catalog_id.lower() if c not in ES_INDEX_NAME_UNSUPPORTED_CHARS) for catalog_id in new_catalog_path_list)}"
+    # Potentially may only want top-level catalogs, so need to add BASE to index here
+    return f"{CATALOGS_INDEX_PREFIX}*"
 
 
 def indices(
-    collection_ids: Optional[List[str]] = None, catalog_ids: Optional[List[str]] = None
+    collection_ids: Optional[List[str]] = None,
+    catalog_paths: Optional[List[List[str]]] = None,
 ) -> str:
     """
-    Get a comma-separated string of index names for a given list of collection and catalog ids.
+    Get a comma-separated string of item index names for a given list of collection and catalog ids.
 
     Args:
         collection_ids: A list of collection ids.
-        catalog_ids: A list of catalog ids.
+        catalog_paths: A list of catalog paths.
 
     Returns:
-        A string of comma-separated index names. If `collection_ids` is None, returns the default indices.
+        A string of comma-separated item index names. If `collection_ids` is None, returns the default item indices.
     """
-    if not collection_ids and not catalog_ids:
+    if not (collection_ids or catalog_paths):
         return ITEM_INDICES
-    else:
-        if not collection_ids:
-            collection_ids = [None]
-        return ",".join(
-            [
-                index_by_collection_id(collection_id=coll, catalog_id=cat)
-                for coll in collection_ids
-                for cat in catalog_ids
-            ]
+    if not collection_ids:
+        collection_ids = [None]
+    if not catalog_paths:
+        raise Exception(
+            "To identify collections, you must identify the containing catalog path."
         )
+    return ",".join(
+        [
+            index_by_collection_id(collection_id=coll, catalog_path_list=cat_path)
+            for coll in collection_ids
+            for cat_path in catalog_paths
+        ]
+    )
 
 
-def collection_indices(catalog_ids: Optional[List[str]]) -> str:
+def collection_indices(catalog_paths: Optional[List[List[str]]] = None) -> str:
     """
     Get a comma-separated string of index names for a given list of catalog ids.
 
     Args:
-        catalog_ids: A list of catalog ids.
+        catalog_ids: A list of catalog paths.
 
     Returns:
         A string of comma-separated index names. If `catalog_ids` is None, returns the default collection indices.
     """
-    if catalog_ids is None:
+    ## If neither provided, return index for all collections
+    if not catalog_paths:
         return COLLECTION_INDICES
-    else:
-        return ",".join([index_by_catalog_id(c) for c in catalog_ids])
+    return ",".join(
+        [
+            index_collections_by_catalog_id(catalog_path_list=cat_path)
+            for cat_path in catalog_paths
+        ]
+    )
+
+
+def catalog_indices(catalog_paths: Optional[List[List[str]]] = None) -> str:
+    """
+    Get a comma-separated string of index names for a given list of catalog ids.
+
+    Args:
+        catalog_ids: A list of catalog paths.
+
+    Returns:
+        A string of comma-separated index names. If `catalog_ids` is None, returns the default collection indices.
+    """
+    ## If neither provided, return index for all collections
+    if not catalog_paths:
+        return COLLECTION_INDICES
+    return ",".join(
+        [
+            index_collections_by_catalog_id(catalog_path_list=cat_path)
+            for cat_path in catalog_paths
+        ]
+    )
 
 
 async def create_index_templates() -> None:
@@ -346,7 +420,14 @@ async def create_index_templates() -> None:
     await client.indices.put_template(
         name=f"template_{CATALOGS_INDEX}",
         body={
-            "index_patterns": [f"{CATALOGS_INDEX}*"],
+            "index_patterns": [f"{CATALOGS_INDEX_PREFIX}*"],
+            "mappings": ES_CATALOGS_MAPPINGS,
+        },
+    )
+    await client.indices.put_template(
+        name=f"template_{BASE_CATALOGS_INDEX}",
+        body={
+            "index_patterns": [f"{BASE_CATALOGS_INDEX_PREFIX}*"],
             "mappings": ES_CATALOGS_MAPPINGS,
         },
     )
@@ -388,12 +469,30 @@ async def create_catalog_index() -> None:
     await client.close()
 
 
-async def create_item_index(collection_id: str, catalog_id: str):
+async def create_base_catalog_index() -> None:
+    """
+    Create the index for a Catalog. The settings of the index template will be used implicitly.
+
+    Returns:
+        None
+
+    """
+    client = AsyncElasticsearchSettings().create_client
+
+    await client.options(ignore_status=400).indices.create(
+        index=f"{BASE_CATALOGS_INDEX}-000001",
+        aliases={BASE_CATALOGS_INDEX: {}},
+    )
+    await client.close()
+
+
+async def create_item_index(collection_id: str, catalog_path_list: List[str]):
     """
     Create the index for Items. The settings of the index template will be used implicitly.
 
     Args:
         collection_id (str): Collection identifier.
+        catalog_path (str): Catalog identifier, including path for nested catalogs
 
     Returns:
         None
@@ -401,7 +500,7 @@ async def create_item_index(collection_id: str, catalog_id: str):
     """
     client = AsyncElasticsearchSettings().create_client
     index_name = index_by_collection_id(
-        collection_id=collection_id, catalog_id=catalog_id
+        collection_id=collection_id, catalog_path_list=catalog_path_list
     )
 
     await client.options(ignore_status=400).indices.create(
@@ -411,15 +510,19 @@ async def create_item_index(collection_id: str, catalog_id: str):
     await client.close()
 
 
-async def delete_item_index(collection_id: str, catalog_id: str):
-    """Delete the index for items in a collection.
+async def delete_item_index(collection_id: str, catalog_path_list: List[str]):
+    """Delete the index for items in a collection, specifying the catalog and top-level catalog.
 
     Args:
         collection_id (str): The ID of the collection whose items index will be deleted.
+        catalog_path (List[str]): The path for the catalog whose items index will be deleted.
+        super_catalog_id (str): The ID of the top-level catalog whose items index will be deleted.
     """
     client = AsyncElasticsearchSettings().create_client
 
-    name = index_by_collection_id(collection_id=collection_id, catalog_id=catalog_id)
+    name = index_by_collection_id(
+        collection_id=collection_id, catalog_path_list=catalog_path_list
+    )
     resolved = await client.indices.resolve_index(name=name)
     if "aliases" in resolved and resolved["aliases"]:
         [alias] = resolved["aliases"]
@@ -430,15 +533,16 @@ async def delete_item_index(collection_id: str, catalog_id: str):
     await client.close()
 
 
-async def delete_collection_index(catalog_id: str):
-    """Delete the index for collections in a catalog.
+async def delete_collection_index(catalog_path_list: List[str]):
+    """Delete the index for collections in a catalog, specifying the top-level catalog.
 
     Args:
         catalog_id (str): The ID of the catalog whose collections index will be deleted.
+        super_catalog_id (str): The ID of the top-level catalog whose collections index will be deleted.
     """
     client = AsyncElasticsearchSettings().create_client
 
-    name = index_by_catalog_id(catalog_id)
+    name = index_collections_by_catalog_id(catalog_path_list=catalog_path_list)
     resolved = await client.indices.resolve_index(name=name)
     try:
         if "aliases" in resolved and resolved["aliases"]:
@@ -452,41 +556,77 @@ async def delete_collection_index(catalog_id: str):
         await client.close()
     except exceptions.NotFoundError:
         raise NotFoundError(
-            f"Catalog {catalog_id} does not have any associated collections."
+            f"Catalog path {''.join(catalog_path_list)} does not have any associated collections."
         )
 
 
-def mk_item_id(item_id: str, collection_id: str, catalog_id: str):
+async def delete_catalog_index(catalog_path_list: List[str]):
+    """Delete the index for collections in a catalog, specifying the top-level catalog.
+
+    Args:
+        catalog_path_list (List[str]): The ID of the catalog whose collections index will be deleted.
+    """
+    client = AsyncElasticsearchSettings().create_client
+
+    name = index_catalogs_by_catalog_id(catalog_path_list=catalog_path_list)
+    resolved = await client.indices.resolve_index(name=name)
+    try:
+        if "aliases" in resolved and resolved["aliases"]:
+            [alias] = resolved["aliases"]
+            await client.indices.delete_alias(
+                index=alias["indices"], name=alias["name"]
+            )
+            await client.indices.delete(index=alias["indices"])
+        else:
+            await client.indices.delete(index=name)
+        await client.close()
+    except exceptions.NotFoundError:
+        raise NotFoundError(
+            f"Catalog path {''.join(catalog_path_list)} does not have any associated catalogs."
+        )
+
+
+def mk_item_id(item_id: str, collection_id: str, catalog_path_list: List[str]):
     """Create the document id for an Item in Elasticsearch.
 
     Args:
         item_id (str): The id of the Item.
         collection_id (str): The id of the Collection that the Item belongs to.
         catalog_id (str): The id of the Catalog that the Collection belongs to.
+        super_catalog_id (str): The id of the Top-level Catalog that the Collection belongs to.
 
     Returns:
-        str: The document id for the Item, combining the Item id, the Collection id and the Catalog id, separated by `|` characters.
+        str: The document id for the Item, combining the Item id, the Collection id, the Catalog id and top-level Catalog id, separated by `|` characters.
     """
-    return f"{item_id}|{collection_id}|{catalog_id}"
+    # Instead of indexing with all attributes, we can use the items_id and specify the attributes in the index containing the document instead
+    # return f"{item_id}|{collection_id}|{catalog_id}|{super_catalog_id}"
+    return item_id
 
 
-def mk_collection_id(collection_id: str, catalog_id: str):
+def mk_collection_id(collection_id: str, catalog_path_list: List[str]):
     """Create the document id for a collection in Elasticsearch.
 
     Args:
         collection_id (str): The id of the Collection.
         catalog_id (str): The id of the Catalog that the Collection belongs to.
+        super_catalog_id (str): The id of the Top-level Catalog that the Collection belongs to.
 
     Returns:
-        str: The document id for the Collection, combining the Collection id and the Catalog id, separated by a `|` character.
+        str: The document id for the Collection, combining the Collection id, the Catalog id and Top-level Catalog id, separated by a `|` character.
     """
-    return f"{collection_id}|{catalog_id}"
+    # Instead of indexing with all attributes, we can use the collection_id and specify the attributes in the index containing the document instead
+    # return f"{collection_id}|{catalog_id}|{super_catalog_id}"
+    return collection_id
 
 
-def mk_actions(catalog_id: str, collection_id: str, processed_items: List[Item]):
+def mk_actions(
+    catalog_path_list: List[str], collection_id: str, processed_items: List[Item]
+):
     """Create Elasticsearch bulk actions for a list of processed items.
 
     Args:
+        super_catalog_id (str): The identifier for the Top-level catalog the items belong to.
+        catalog_id (str): The identifier for the catalog the items belong to.
         collection_id (str): The identifier for the collection the items belong to.
         processed_items (List[Item]): The list of processed items to be bulk indexed.
 
@@ -500,12 +640,12 @@ def mk_actions(catalog_id: str, collection_id: str, processed_items: List[Item])
     return [
         {
             "_index": index_by_collection_id(
-                collection_id=collection_id, catalog_id=catalog_id
+                collection_id=collection_id, catalog_path_list=catalog_path_list
             ),
             "_id": mk_item_id(
                 item_id=item["id"],
                 collection_id=item["collection"],
-                catalog_id=catalog_id,
+                catalog_path_list=catalog_path_list,
             ),
             "_source": item,
         }
@@ -513,16 +653,16 @@ def mk_actions(catalog_id: str, collection_id: str, processed_items: List[Item])
     ]
 
 
-def get_catalog_id_from_root(collection: Collection):
-    collection_links = collection["links"]
-    for link in collection_links:
-        if link["rel"] == "root":
-            root_href = link["href"]
-            root_href_split = root_href.split("/")
-            catalog_index = root_href_split.index("catalog.json")
-            catalog_id = root_href_split[catalog_index - 1]
-            return catalog_id
-    return "uncatalogued-entries"
+# def get_catalog_id_from_root(collection: Collection):
+#     collection_links = collection["links"]
+#     for link in collection_links:
+#         if link["rel"] == "root":
+#             root_href = link["href"]
+#             root_href_split = root_href.split("/")
+#             catalog_index = root_href_split.index("catalog.json")
+#             catalog_id = root_href_split[catalog_index - 1]
+#             return catalog_id
+#     return "uncatalogued-entries"
 
 
 # stac_pydantic classes extend _GeometryBase, which doesn't have a type field,
@@ -555,14 +695,17 @@ class DatabaseLogic:
         self, token: Optional[str], limit: int, base_url: str
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
         """Retrieve a list of all collections from Elasticsearch, supporting pagination.
+        This goes across all catalogs and top-level catalogs.
 
         Args:
             token (Optional[str]): The pagination token.
             limit (int): The number of results to return.
+            base_url (str): The base URL used to create the item's self URL.
 
         Returns:
             A tuple of (collections, next pagination token if any).
         """
+
         search_after = None
         if token:
             search_after = [token]
@@ -576,15 +719,20 @@ class DatabaseLogic:
             },
         )
 
+        collections = []
         hits = response["hits"]["hits"]
-        collections = [
-            self.collection_serializer.db_to_stac(
-                collection=hit["_source"],
-                base_url=base_url,
-                catalog_id=hit["_id"].rsplit("|", 1)[1],
+        for hit in hits:
+            catalog_path = hit["_index"].split("_", 1)[1]
+            catalog_path_list = catalog_path.split("_x_")
+            catalog_path_list.reverse()
+            catalog_path = "/".join(catalog_path_list)
+            collections.append(
+                self.collection_serializer.db_to_stac(
+                    collection=hit["_source"],
+                    base_url=base_url,
+                    catalog_path=catalog_path,
+                )
             )
-            for hit in hits
-        ]
 
         next_token = None
         if len(hits) == limit:
@@ -593,26 +741,30 @@ class DatabaseLogic:
         return collections, next_token
 
     async def get_catalog_collections(
-        self, catalog_ids: List[str], token: Optional[str], limit: int, base_url: str
+        self, catalog_path: str, token: Optional[str], limit: int, base_url: str
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
         """Retrieve a list of all collections in a catalog from Elasticsearch, supporting pagination.
 
         Args:
-            catalog_ids (Optional[List[str]]): The catalog ids to search.
+            catalog_paths (List[str]): The path to catalog to search.
             token (Optional[str]): The pagination token.
             limit (int): The number of results to return.
+            base_url (str): The base URL used to create the item's self URL.
 
         Returns:
             A tuple of (collections, next pagination token if any).
         """
+
+        # Create list of nested catalog ids
+        catalog_path_list = catalog_path.split("/")
+
         search_after = None
         if token:
             search_after = [token]
 
-        for catalog_id in catalog_ids:
-            await self.check_catalog_exists(catalog_id=catalog_id)
+        await self.check_catalog_exists(catalog_path_list=catalog_path_list)
 
-        index_param = collection_indices(catalog_ids=catalog_ids)
+        index_param = collection_indices(catalog_paths=[catalog_path_list])
 
         try:
             response = await self.client.search(
@@ -629,15 +781,20 @@ class DatabaseLogic:
             hits = None
 
         if response:
+            collections = []
             hits = response["hits"]["hits"]
-            collections = [
-                self.collection_serializer.db_to_stac(
-                    collection=hit["_source"],
-                    base_url=base_url,
-                    catalog_id=hit["_id"].rsplit("|", 1)[1],
+            for hit in hits:
+                catalog_path = hit["_index"].split("_", 1)[1]
+                catalog_path_list = catalog_path.split("_x_")
+                catalog_path_list.reverse()
+                catalog_path = "/".join(catalog_path_list)
+                collections.append(
+                    self.collection_serializer.db_to_stac(
+                        collection=hit["_source"],
+                        base_url=base_url,
+                        catalog_path=catalog_path,
+                    )
                 )
-                for hit in hits
-            ]
 
         next_token = None
         if hits and len(hits) == limit:
@@ -648,58 +805,110 @@ class DatabaseLogic:
     async def get_all_catalogs(
         self,
         token: Optional[str],
-        limit: int,
+        limit: Optional[int],
         base_url: str,
+        catalog_path: Optional[str] = None,
         conformance_classes: list = [],
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
         """Retrieve a list of all catalogs from Elasticsearch, supporting pagination.
 
         Args:
+            super_catalog_id (str): The top-level catalog id to search.
             token (Optional[str]): The pagination token.
             limit (int): The number of results to return.
+            base_url (str): The base URL used to create the required links.
+            conformance_classes (list): The list of conformance classes to include in the catalog.
 
         Returns:
             A tuple of (catalogs, next pagination token if any).
         """
+
+        if catalog_path:
+            # Create list of nested catalog ids
+            catalog_path_list = catalog_path.split("/")
+            if len(catalog_path_list) > 1:
+                parent_catalog_path = "/".join(catalog_path_list[:-1])
+            else:
+                parent_catalog_path = None
+        else:
+            catalog_path_list = None
+            parent_catalog_path = None
+
+        params_index = index_catalogs_by_catalog_id(catalog_path_list=catalog_path_list)
+
         search_after = None
         if token:
             search_after = [token]
 
-        response = await self.client.search(
-            index=CATALOGS_INDEX,
-            body={
-                "sort": [{"id": {"order": "asc"}}],
-                "size": limit,
-                "search_after": search_after,
-            },
-        )
+        # Get all contained catalogs
+        try:
+            response = await self.client.search(
+                index=params_index,
+                body={
+                    "sort": [{"id": {"order": "asc"}}],
+                    "size": limit,
+                    "search_after": search_after,
+                },
+            )
+            hits = response["hits"]["hits"]
+        except exceptions.NotFoundError:
+            response = None
+            catalogs = []
+            hits = []
 
-        hits = response["hits"]["hits"]
         catalogs = []
-
-        results = await asyncio.gather(
-            *[
-                self.get_catalog_collections(
-                    catalog_ids=[hit["_source"].get("id")],
+        for hit in hits:
+            # Calculate catalog path for found catalog
+            catalog_index = hit["_index"].split("_", 1)[1]
+            catalog_id = hit["_id"]
+            catalog_index_list = catalog_index.split("_x_")
+            catalog_index_list.reverse()
+            catalog_index_list.append(catalog_id)
+            catalog_index = "/".join(catalog_index_list)
+            # Identify all contained catalogs
+            try:
+                sub_catalogs_responses = await self.client.search(
+                    index=index_catalogs_by_catalog_id(
+                        catalog_path_list=catalog_index_list
+                    ),
+                    body={
+                        "sort": [{"id": {"order": "asc"}}],
+                    },
+                )
+                sub_catalogs_responses = sub_catalogs_responses["hits"]["hits"]
+                sub_catalogs = [
+                    sub_catalogs_response["_source"]
+                    for sub_catalogs_response in sub_catalogs_responses
+                ]
+            except exceptions.NotFoundError:
+                sub_catalogs = []
+            # Identify all contained collections
+            try:
+                collection_responses = await self.client.search(
+                    index=index_collections_by_catalog_id(
+                        catalog_path_list=catalog_index_list
+                    ),
+                    body={
+                        "sort": [{"id": {"order": "asc"}}],
+                    },
+                )
+                collection_responses = collection_responses["hits"]["hits"]
+                collections = [
+                    collection_response["_source"]
+                    for collection_response in collection_responses
+                ]
+            except exceptions.NotFoundError:
+                collections = []
+            catalogs.append(
+                self.catalog_serializer.db_to_stac(
+                    catalog_path=catalog_path,
+                    catalog=hit["_source"],
                     base_url=base_url,
-                    limit=NUMBER_OF_CATALOG_COLLECTIONS,
-                    token=None,
+                    sub_catalogs=sub_catalogs,
+                    collections=collections,
+                    conformance_classes=conformance_classes,
                 )
-                for hit in hits
-            ],
-            return_exceptions=True,
-        )
-
-        for i, result in enumerate(results):
-            if not isinstance(result, Exception):
-                catalogs.append(
-                    self.catalog_serializer.db_to_stac(
-                        catalog=hits[i]["_source"],
-                        base_url=base_url,
-                        collections=result[0],
-                        conformance_classes=conformance_classes,
-                    )
-                )
+            )
 
         next_token = None
         if len(hits) == limit:
@@ -707,12 +916,84 @@ class DatabaseLogic:
 
         return catalogs, next_token
 
+    async def get_catalog_subcatalogs(
+        self,
+        token: Optional[str],
+        limit: int,
+        base_url: str,
+        catalog_path: Optional[str] = None,
+    ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+        """Retrieve a list of all collections in a catalog from Elasticsearch, supporting pagination.
+
+        Args:
+            catalog_paths (List[str]): The path to catalog to search.
+            token (Optional[str]): The pagination token.
+            limit (int): The number of results to return.
+            base_url (str): The base URL used to create the item's self URL.
+
+        Returns:
+            A tuple of (collections, next pagination token if any).
+        """
+
+        if catalog_path:
+            # Create list of nested catalog ids
+            catalog_path_list = catalog_path.split("/")
+            if len(catalog_path_list) > 1:
+                parent_catalog_path = "/".join(catalog_path_list[:-1])
+            else:
+                parent_catalog_path = None
+            index_param = index_catalogs_by_catalog_id(
+                catalog_path_list=catalog_path_list
+            )
+            await self.check_catalog_exists(catalog_path_list=catalog_path_list)
+        else:
+            # This is a BASE catalog so index using top-level index
+            index_param = CATALOGS_INDEX
+            parent_catalog_path = None
+
+        search_after = None
+        if token:
+            search_after = [token]
+
+        try:
+            response = await self.client.search(
+                index=index_param,
+                body={
+                    # "sort": [{"id": {"order": "asc"}}],
+                    "size": limit,
+                    "search_after": search_after,
+                },
+            )
+        except exceptions.NotFoundError:
+            response = None
+            catalogs = []
+            hits = None
+
+        if response:
+            hits = response["hits"]["hits"]
+            catalogs = [
+                self.catalog_serializer.db_to_stac(
+                    catalog_path=parent_catalog_path,
+                    catalog=hit["_source"],
+                    base_url=base_url,
+                )
+                for hit in hits
+            ]
+
+        next_token = None
+        if hits and len(hits) == limit:
+            next_token = hits[-1]["sort"][0]
+
+        return catalogs, next_token
+
     async def get_one_item(
-        self, catalog_id: str, collection_id: str, item_id: str
+        self, catalog_path: str, collection_id: str, item_id: str
     ) -> Dict:
         """Retrieve a single item from the database.
 
         Args:
+            super_catalog_id (str): The super_catalog id to translate into an index name.
+            catalog_id (str): The id of the Catalog that the Collection belongs to.
             collection_id (str): The id of the Collection that the Item belongs to.
             item_id (str): The id of the Item.
 
@@ -720,24 +1001,29 @@ class DatabaseLogic:
             item (Dict): A dictionary containing the source data for the Item.
 
         Raises:
-            NotFoundError: If the specified Item does not exist in the Collection.
+            NotFoundError: If the specified Item does not exist in the Collection in the specified Catalogs.
 
         Notes:
             The Item is retrieved from the Elasticsearch database using the `client.get` method,
             with the index for the Collection as the target index and the combined `mk_item_id` as the document id.
         """
+
+        # Create list of nested catalog ids
+        catalog_path_list = catalog_path.split("/")
         try:
             item = await self.client.get(
                 index=index_by_collection_id(
-                    collection_id=collection_id, catalog_id=catalog_id
+                    collection_id=collection_id, catalog_path_list=catalog_path_list
                 ),
                 id=mk_item_id(
-                    item_id=item_id, collection_id=collection_id, catalog_id=catalog_id
+                    item_id=item_id,
+                    collection_id=collection_id,
+                    catalog_path_list=catalog_path_list,
                 ),
             )
         except exceptions.NotFoundError:
             raise NotFoundError(
-                f"Item {item_id} does not exist in Collection {collection_id}"
+                f"Item {item_id} does not exist in Collection {collection_id} in Catalog path {'/'.join(catalog_path_list)}."
             )
         return item["_source"]
 
@@ -1120,10 +1406,10 @@ class DatabaseLogic:
     async def execute_search(
         self,
         search: Search,
-        catalog_ids: Optional[List[str]],
         limit: int,
         token: Optional[str],
         sort: Optional[Dict[str, Dict[str, str]]],
+        catalog_paths: Optional[List[str]],
         collection_ids: Optional[List[str]],
         ignore_unavailable: bool = True,
     ) -> Tuple[Iterable[Dict[str, Any]], Optional[int], Optional[str]]:
@@ -1134,7 +1420,8 @@ class DatabaseLogic:
             limit (int): The maximum number of results to be returned.
             token (Optional[str]): The token used to return the next set of results.
             sort (Optional[Dict[str, Dict[str, str]]]): Specifies how the results should be sorted.
-            collection_ids (Optional[List[str]]): The collection ids to search.
+            catalog_paths (str): The catalog paths to search
+            collection_ids (Optional[List[str]]): The collection ids to search, only used when catalog_paths (single path) is provided.
             ignore_unavailable (bool, optional): Whether to ignore unavailable collections. Defaults to True.
 
         Returns:
@@ -1149,11 +1436,20 @@ class DatabaseLogic:
             NotFoundError: If the collections specified in `collection_ids` do not exist.
         """
 
-        # Can only provide a collection if you also provide the containing catalog
-        if collection_ids and not catalog_ids:
+        # Can only provide collections if you also provide the containing catalogs
+        if collection_ids and not catalog_paths:
             raise Exception(
-                "To search specific collection, you must provide the containing catalog."
+                "To search specific collection(s), you must provide the containing catalog."
             )
+        # Can only provide collections if you also provide the single containing catalog
+        elif collection_ids and len(catalog_paths) > 1:
+            raise Exception(
+                "To search specific collections, you must provide only one containing catalog."
+            )
+        elif catalog_paths:
+            catalog_paths_list = [
+                catalog_path.split("/") for catalog_path in catalog_paths
+            ]
 
         search_after = None
         if token:
@@ -1163,12 +1459,12 @@ class DatabaseLogic:
 
         index_param = f"{ITEMS_INDEX_PREFIX}*"
 
-        if collection_ids and catalog_ids:
+        if collection_ids and catalog_paths:
             index_param = indices(
-                collection_ids=collection_ids, catalog_ids=catalog_ids
+                collection_ids=collection_ids, catalog_paths=catalog_paths_list
             )
-        elif catalog_ids:
-            index_param = indices(catalog_ids=catalog_ids).replace("items_", "items_*")
+        elif catalog_paths:
+            index_param = indices(catalog_paths=catalog_paths_list)
 
         search_task = asyncio.create_task(
             self.client.search(
@@ -1192,12 +1488,20 @@ class DatabaseLogic:
         try:
             es_response = await search_task
         except exceptions.NotFoundError:
-            raise NotFoundError(f"Collections '{collection_ids}' do not exist")
+            raise NotFoundError(
+                f"Either Collections '{','.join(collection_ids)}' or Catalog paths '{','.join(catalog_paths)}' do not exist"
+            )
 
         hits = es_response["hits"]["hits"]
 
         # Need to identify catalog for each item
-        items = ((hit["_source"], hit["_id"].rsplit("|", 1)[1]) for hit in hits)
+        items = []
+        for hit in hits:
+            item_catalog_path = hit["_index"].split("_xx_", 1)[1]
+            item_catalog_path_list = item_catalog_path.split("_x_")
+            item_catalog_path_list.reverse()
+            item_catalog_path = "/".join(item_catalog_path_list)
+            items.append((hit["_source"], item_catalog_path))
 
         next_token = None
         if hits and (sort_array := hits[-1].get("sort")):
@@ -1223,7 +1527,6 @@ class DatabaseLogic:
         base_url: str,
         token: Optional[str],
         sort: Optional[Dict[str, Dict[str, str]]],
-        collection_ids: Optional[List[str]],
         ignore_unavailable: bool = True,
     ) -> Tuple[Iterable[Dict[str, Any]], Optional[int], Optional[str]]:
         """Execute a search query with limit and other optional parameters.
@@ -1279,7 +1582,7 @@ class DatabaseLogic:
             self.collection_serializer.db_to_stac(
                 collection=hit["_source"],
                 base_url=base_url,
-                catalog_id=hit["_id"].rsplit("|", 1)[1],
+                catalog_path=hit["_index"].split("_", 1),
             )
             for hit in hits
         ]
@@ -1303,29 +1606,49 @@ class DatabaseLogic:
 
     """ TRANSACTION LOGIC """
 
-    async def check_collection_exists(self, collection_id: str, catalog_id: str):
+    async def check_collection_exists(self, collection_id: str, catalog_path: str):
         """Database logic to check if a collection exists."""
+
+        # Create list of nested catalog ids
+        catalog_path_list = catalog_path.split("/")
+
+        catalog_id = catalog_path_list[-1]
+
         full_collection_id = mk_collection_id(
-            collection_id=collection_id, catalog_id=catalog_id
+            collection_id=collection_id, catalog_path_list=catalog_path_list
         )
-        index = index_by_catalog_id(catalog_id=catalog_id)
+        index = index_collections_by_catalog_id(catalog_path_list=catalog_path_list)
         if not await self.client.exists(index=index, id=full_collection_id):
             raise NotFoundError(
-                f"Collection {collection_id} in catalog {catalog_id} does not exist"
+                f"Collection {collection_id} in catalog {catalog_id} at path {catalog_path} does not exist"
             )
 
-    async def check_catalog_exists(self, catalog_id: str):
+    async def check_catalog_exists(self, catalog_path_list: List[str] = None):
         """Database logic to check if a catalog exists."""
-        if not await self.client.exists(index=f"{CATALOGS_INDEX}", id=catalog_id):
-            raise NotFoundError(f"Catalog {catalog_id} does not exist")
+
+        catalog_id = catalog_path_list[-1]
+        if len(catalog_path_list) > 1:
+            search_catalog_path_list = catalog_path_list[:-1]
+            index_param = index_catalogs_by_catalog_id(
+                catalog_path_list=search_catalog_path_list
+            )
+        else:
+            index_param = CATALOGS_INDEX
+
+        # Check if that catalog exists in the correct path
+        if not await self.client.exists(index=index_param, id=catalog_id):
+            raise NotFoundError(
+                f"Catalog {catalog_id} does not exist at {'/'.join(catalog_path_list)}"
+            )
 
     async def prep_create_item(
-        self, catalog_id: str, item: Item, base_url: str, exist_ok: bool = False
+        self, catalog_path: str, item: Item, base_url: str, exist_ok: bool = False
     ) -> Item:
         """
         Preps an item for insertion into the database.
 
         Args:
+            catalog_path (str) : The path to the catalog into which the item will be inserted.
             item (Item): The item to be prepped for insertion.
             base_url (str): The base URL used to create the item's self URL.
             exist_ok (bool): Indicates whether the item can exist already.
@@ -1337,28 +1660,34 @@ class DatabaseLogic:
             ConflictError: If the item already exists in the database.
 
         """
+
+        # Create list of nested catalog ids
+        catalog_path_list = catalog_path.split("/")
+
+        catalog_id = catalog_path_list[-1]
+
         await self.check_collection_exists(
-            collection_id=item["collection"], catalog_id=catalog_id
+            collection_id=item["collection"], catalog_path=catalog_path
         )
 
         if not exist_ok and await self.client.exists(
             index=index_by_collection_id(
-                collection_id=item["collection"], catalog_id=catalog_id
+                collection_id=item["collection"], catalog_path_list=catalog_path_list
             ),
             id=mk_item_id(
                 item_id=item["id"],
                 collection_id=item["collection"],
-                catalog_id=catalog_id,
+                catalog_path_list=catalog_path_list,
             ),
         ):
             raise ConflictError(
-                f"Item {item['id']} in collection {item['collection']} already exists"
+                f"Item {item['id']} in collection {item['collection']} in catalog {catalog_id} at path {catalog_path} already exists"
             )
 
         return self.item_serializer.stac_to_db(item, base_url)
 
     def sync_prep_create_item(
-        self, catalog_id: str, item: Item, base_url: str, exist_ok: bool = False
+        self, catalog_path: str, item: Item, base_url: str, exist_ok: bool = False
     ) -> Item:
         """
         Prepare an item for insertion into the database.
@@ -1368,6 +1697,7 @@ class DatabaseLogic:
         and optionally verifying that an item with the same ID does not already exist in the database.
 
         Args:
+            catalog_path (str) : The path to the catalog into which the item will be inserted.
             item (Item): The item to be inserted into the database.
             base_url (str): The base URL used for constructing URLs for the item.
             exist_ok (bool): Indicates whether the item can exist already.
@@ -1379,29 +1709,41 @@ class DatabaseLogic:
             NotFoundError: If the collection that the item belongs to does not exist in the database.
             ConflictError: If an item with the same ID already exists in the collection.
         """
+
+        # Create list of nested catalog ids
+        catalog_path_list = catalog_path.split("/")
+
+        catalog_id = catalog_path_list[-1]
+
         item_id = item["id"]
         collection_id = item["collection"]
-        if not self.sync_client.exists(index=COLLECTIONS_INDEX, id=collection_id):
-            raise NotFoundError(f"Collection {collection_id} does not exist")
+        index = (index_collections_by_catalog_id(catalog_path_list=catalog_path_list),)
+        if not self.sync_client.exists(index=index, id=collection_id):
+            raise NotFoundError(
+                f"Collection {collection_id} does not exist in catalog {catalog_id} at path {catalog_path}"
+            )
 
         if not exist_ok and self.sync_client.exists(
             index=index_by_collection_id(
-                collection_id=collection_id, catalog_id=catalog_id
+                collection_id=collection_id, catalog_path_list=catalog_path_list
             ),
             id=mk_item_id(
-                item_id=item_id, collection_id=collection_id, catalog_id=catalog_id
+                item_id=item_id,
+                collection_id=collection_id,
+                catalog_path_list=catalog_path_list,
             ),
         ):
             raise ConflictError(
-                f"Item {item_id} in collection {collection_id} already exists"
+                f"Item {item_id} in collection {collection_id} in catalog {catalog_id} at path {catalog_path} already exists"
             )
 
         return self.item_serializer.stac_to_db(item, base_url)
 
-    async def create_item(self, catalog_id: str, item: Item, refresh: bool = False):
+    async def create_item(self, catalog_path: str, item: Item, refresh: bool = False):
         """Database logic for creating one item.
 
         Args:
+            catalog_path (str) : The path to the catalog into which the item will be inserted.
             item (Item): The item to be created.
             refresh (bool, optional): Refresh the index after performing the operation. Defaults to False.
 
@@ -1411,15 +1753,23 @@ class DatabaseLogic:
         Returns:
             None
         """
+
+        # Create list of nested catalog ids
+        catalog_path_list = catalog_path.split("/")
+
+        catalog_id = catalog_path_list[-1]
+
         # todo: check if collection exists, but cache
         item_id = item["id"]
         collection_id = item["collection"]
         es_resp = await self.client.index(
             index=index_by_collection_id(
-                collection_id=collection_id, catalog_id=catalog_id
+                collection_id=collection_id, catalog_path_list=catalog_path_list
             ),
             id=mk_item_id(
-                item_id=item_id, collection_id=collection_id, catalog_id=catalog_id
+                item_id=item_id,
+                collection_id=collection_id,
+                catalog_path_list=catalog_path_list,
             ),
             document=item,
             refresh=refresh,
@@ -1427,40 +1777,50 @@ class DatabaseLogic:
 
         if (meta := es_resp.get("meta")) and meta.get("status") == 409:
             raise ConflictError(
-                f"Item {item_id} in collection {collection_id} in catalog {catalog_id} already exists"
+                f"Item {item_id} in collection {collection_id} in catalog {catalog_id} at path {catalog_path} already exists"
             )
 
     async def delete_item(
-        self, item_id: str, collection_id: str, catalog_id: str, refresh: bool = False
+        self, item_id: str, collection_id: str, catalog_path: str, refresh: bool = False
     ):
         """Delete a single item from the database.
 
         Args:
             item_id (str): The id of the Item to be deleted.
             collection_id (str): The id of the Collection that the Item belongs to.
+            catalog_id (str) : The id of the catalog into which the item will be inserted.
+            super_catalog_id (str) : The id of the top-level catalog into which the item will be inserted.
             refresh (bool, optional): Whether to refresh the index after the deletion. Default is False.
 
         Raises:
             NotFoundError: If the Item does not exist in the database.
         """
+
+        # Create list of nested catalog ids
+        catalog_path_list = catalog_path.split("/")
+
+        catalog_id = catalog_path_list[-1]
+
         try:
             await self.client.delete(
                 index=index_by_collection_id(
-                    collection_id=collection_id, catalog_id=catalog_id
+                    collection_id=collection_id, catalog_path_list=catalog_path_list
                 ),
                 id=mk_item_id(
-                    item_id=item_id, collection_id=collection_id, catalog_id=catalog_id
+                    item_id=item_id,
+                    collection_id=collection_id,
+                    catalog_path_list=catalog_path_list,
                 ),
                 refresh=refresh,
             )
         except exceptions.NotFoundError:
             raise NotFoundError(
-                f"Item {item_id} in collection {collection_id} in catalog {catalog_id} not found"
+                f"Item {item_id} in collection {collection_id} in catalog {catalog_id} at path {catalog_path} not found"
             )
 
     async def prep_create_collection(
         self,
-        catalog_id: str,
+        catalog_path: str,
         collection: Collection,
         base_url: str,
         exist_ok: bool = False,
@@ -1469,6 +1829,7 @@ class DatabaseLogic:
         Preps a collection for insertion into the database.
 
         Args:
+            super_catalog_id (str) : The id of the top-level catalog into which the collection will be inserted.
             catalog_id (str) : The id of the catalog into which the collection will be inserted.
             collection (Collection): The collection to be prepped for insertion.
             base_url (str): The base URL used to create the collection's self URL.
@@ -1481,20 +1842,26 @@ class DatabaseLogic:
             ConflictError: If the collection already exists in the catalog in the database.
 
         """
-        await self.check_catalog_exists(catalog_id=catalog_id)
+
+        # Create list of nested catalog ids
+        catalog_path_list = catalog_path.split("/")
+
+        catalog_id = catalog_path_list[-1]
+
+        await self.check_catalog_exists(catalog_path_list=catalog_path_list)
         if not exist_ok and await self.client.exists(
-            index=index_by_catalog_id(catalog_id),
+            index=index_collections_by_catalog_id(catalog_path_list=catalog_path_list),
             id=mk_collection_id(collection["id"], catalog_id),
         ):
             raise ConflictError(
-                f"Collection {collection['id']} in catalog {catalog_id} already exists"
+                f"Collection {collection['id']} in catalog {catalog_id} in catalog {catalog_id} at {''.join(catalog_path_list)} already exists"
             )
 
         return self.collection_serializer.stac_to_db(collection, base_url)
 
     def sync_prep_create_collection(
         self,
-        catalog_id: str,
+        catalog_path: str,
         collection: Collection,
         base_url: str,
         exist_ok: bool = False,
@@ -1507,6 +1874,7 @@ class DatabaseLogic:
         and optionally verifying that an item with the same ID does not already exist in the database.
 
         Args:
+            super_catalog_id (str) : The id of the top-level catalog into which the collection will be inserted.
             catalog_id (str) : The id of the catalog into which the collection will be inserted.
             collection (Collection): The collection to be prepped for insertion.
             base_url (str): The base URL used for constructing URLs for the item.
@@ -1519,27 +1887,40 @@ class DatabaseLogic:
             NotFoundError: If the collection that the item belongs to does not exist in the database.
             ConflictError: If a collection with the same ID already exists in the catalog.
         """
+
+        # Create list of nested catalog ids
+        catalog_path_list = catalog_path.split("/")
+
+        catalog_id = catalog_path_list[-1]
+
         collection_id = collection["id"]
-        catalog_id = catalog_id
-        if not self.sync_client.exists(index=CATALOGS_INDEX, id=catalog_id):
-            raise NotFoundError(f"Catalog {catalog_id} does not exist")
+        index = index_catalogs_by_catalog_id(catalog_path_list=catalog_path_list)
+        if not self.sync_client.exists(index=index, id=catalog_id):
+            raise NotFoundError(
+                f"Catalog {catalog_id} at path {''.join(catalog_path_list)} does not exist"
+            )
 
         if not exist_ok and self.sync_client.exists(
-            index=index_by_catalog_id(catalog_id),
-            id=mk_collection_id(collection_id=collection_id, catalog_id=catalog_id),
+            index=index_collections_by_catalog_id(
+                catalog_path_list=catalog_path_list, catalog_id=catalog_id
+            ),
+            id=mk_collection_id(
+                collection_id=collection_id, catalog_path_list=catalog_path_list
+            ),
         ):
             raise ConflictError(
-                f"Collection {collection_id} in catalog {catalog_id} already exists"
+                f"Collection {collection_id} in catalog {catalog_id} at path {''.join(catalog_path_list)} already exists"
             )
 
         return self.collection_serializer.stac_to_db(collection, base_url)
 
     async def create_collection(
-        self, catalog_id: str, collection: Collection, refresh: bool = False
+        self, catalog_path: str, collection: Collection, refresh: bool = False
     ):
         """Database logic for creating one item.
 
         Args:
+            super_catalog_id (str) : The id of the top-level catalog into which the collection will be inserted.
             catalog_id (str) : The id of the catalog into which the collection will be inserted.
             collection (Collection): The collection to be created.
             refresh (bool, optional): Refresh the index after performing the operation. Defaults to False.
@@ -1550,26 +1931,37 @@ class DatabaseLogic:
         Returns:
             None
         """
+
+        # Create list of nested catalog ids
+        catalog_path_list = catalog_path.split("/")
+
+        catalog_id = catalog_path_list[-1]
+
         # todo: check if collection exists, but cache
         collection_id = collection["id"]
         es_resp = await self.client.index(
-            index=index_by_catalog_id(catalog_id),
-            id=mk_collection_id(collection_id, catalog_id),
+            index=index_collections_by_catalog_id(catalog_path_list=catalog_path_list),
+            id=mk_collection_id(
+                collection_id=collection_id, catalog_path_list=catalog_path_list
+            ),
             document=collection,
             refresh=refresh,
         )
 
         if (meta := es_resp.get("meta")) and meta.get("status") == 409:
             raise ConflictError(
-                f"Collection {collection_id} in catalog {catalog_id} already exists"
+                f"Collection {collection_id} in catalog {catalog_id} at path {''.join(catalog_path_list)} already exists"
             )
 
-    async def find_collection(self, catalog_id: str, collection_id: str) -> Collection:
+    async def find_collection(
+        self, catalog_path: str, collection_id: str
+    ) -> Collection:
         """Find and return a collection from the database.
 
         Args:
             self: The instance of the object calling this function.
-            catalog_id (str): The ID of the collection to be found.
+            super_catalog_id (str) : The ID of the top-level catalog in which the collection is to be found.
+            catalog_id (str): The ID of the catalog in which the collection is to be found.
             collection_id (str): The ID of the collection to be found.
 
         Returns:
@@ -1582,21 +1974,32 @@ class DatabaseLogic:
             This function searches for a collection in the database using the specified `collection_id` and returns the found
             collection as a `Collection` object. If the collection is not found, a `NotFoundError` is raised.
         """
-        full_collection_id = mk_collection_id(collection_id, catalog_id)
+
+        # Create list of nested catalog ids
+        catalog_path_list = catalog_path.split("/")
+
+        catalog_id = catalog_path_list[-1]
+
+        full_collection_id = mk_collection_id(
+            collection_id=collection_id, catalog_path_list=catalog_path_list
+        )
         try:
             collection = await self.client.get(
-                index=index_by_catalog_id(catalog_id), id=full_collection_id
+                index=index_collections_by_catalog_id(
+                    catalog_path_list=catalog_path_list
+                ),
+                id=full_collection_id,
             )
         except exceptions.NotFoundError:
             raise NotFoundError(
-                f"Collection {collection_id} in catalog {catalog_id} not found"
+                f"Collection {collection_id} in catalog {catalog_id} at path {''.join(catalog_path_list)} not found"
             )
 
         return collection["_source"]
 
     async def update_collection(
         self,
-        catalog_id: str,
+        catalog_path: str,
         collection_id: str,
         collection: Collection,
         refresh: bool = False,
@@ -1605,7 +2008,7 @@ class DatabaseLogic:
 
         Args:
             self: The instance of the object calling this function.
-            catalog_id (str): The ID of the catalog containing the collection to be updated.
+            catalog_path (str): The ID of the catalog containing the collection to be updated, including parent catalogs, e.g. parentCat/cat
             collection_id (str): The ID of the collection to be updated.
             collection (Collection): The Collection object to be used for the update.
 
@@ -1618,43 +2021,61 @@ class DatabaseLogic:
             `collection_id` and with the collection specified in the `Collection` object.
             If the collection is not found, a `NotFoundError` is raised.
         """
-        await self.find_collection(catalog_id=catalog_id, collection_id=collection_id)
+
+        # Create list of nested catalog ids
+        catalog_path_list = catalog_path.split("/")
+
+        await self.find_collection(
+            catalog_path=catalog_path, collection_id=collection_id
+        )
 
         if collection_id != collection["id"]:
-            await self.create_collection(catalog_id, collection, refresh=refresh)
-
-            await self.client.reindex(
-                body={
-                    "dest": {
-                        "index": f"{ITEMS_INDEX_PREFIX}{collection['id']}_{catalog_id}"
-                    },
-                    "source": {
-                        "index": f"{ITEMS_INDEX_PREFIX}{collection_id}_{catalog_id}"
-                    },
-                    "script": {
-                        "lang": "painless",
-                        "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection["id"]}'); ctx._source.collection = '{collection["id"]}' ;""",
-                    },
-                },
-                wait_for_completion=True,
-                refresh=refresh,
+            await self.create_collection(
+                catalog_path=catalog_path, collection=collection, refresh=refresh
             )
+            dest_index = index_by_collection_id(
+                collection_id=collection["id"], catalog_path_list=catalog_path_list
+            )
+            source_index = index_by_collection_id(
+                collection_id=collection_id, catalog_path_list=catalog_path_list
+            )
+            try:
+                await self.client.reindex(
+                    body={
+                        "dest": {"index": dest_index},
+                        "source": {"index": source_index},
+                        "script": {
+                            "lang": "painless",
+                            "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection["id"]}'); ctx._source.collection = '{collection["id"]}' ;""",
+                        },
+                    },
+                    wait_for_completion=True,
+                    refresh=refresh,
+                )
+            except exceptions.NotFoundError:
+                logger.error(
+                    f"Collection {collection_id} in catalog {catalog_path} has no items, so reindexing is not possible, continuing as normal."
+                )
 
             await self.delete_collection(
-                catalog_id=catalog_id, collection_id=collection_id
+                catalog_path=catalog_path, collection_id=collection_id
             )
 
         else:
-            collections_index = index_by_catalog_id(catalog_id)
+            collections_index = index_collections_by_catalog_id(
+                catalog_path_list=catalog_path_list
+            )
             await self.client.index(
                 index=collections_index,
-                id=mk_collection_id(collection_id, catalog_id),
+                id=mk_collection_id(
+                    collection_id=collection_id, catalog_path_list=catalog_path_list
+                ),
                 document=collection,
                 refresh=refresh,
             )
 
     async def delete_collection(
-        self, catalog_id: str, collection_id: str, refresh: bool = False
+        self, catalog_path: str, collection_id: str, refresh: bool = False
     ):
         """Delete a collection from the database.
 
@@ -1672,20 +2093,72 @@ class DatabaseLogic:
             deletes the collection. If `refresh` is set to True, the index is refreshed after the deletion. Additionally, this
             function also calls `delete_item_index` to delete the index for the items in the collection.
         """
-        await self.find_collection(catalog_id=catalog_id, collection_id=collection_id)
+
+        # Create list of nested catalog ids
+        catalog_path_list = catalog_path.split("/")
+
+        catalog_id = catalog_path_list[-1]
+
+        await self.find_collection(
+            catalog_path=catalog_path, collection_id=collection_id
+        )
         await self.client.delete(
-            index=index_by_catalog_id(catalog_id),
-            id=mk_collection_id(collection_id, catalog_id),
+            index=index_collections_by_catalog_id(catalog_path_list=catalog_path_list),
+            id=mk_collection_id(
+                collection_id=collection_id, catalog_path_list=catalog_path_list
+            ),
             refresh=refresh,
         )
         try:
-            await delete_item_index(collection_id=collection_id, catalog_id=catalog_id)
+            await delete_item_index(
+                collection_id=collection_id, catalog_path_list=catalog_path_list
+            )
         except exceptions.NotFoundError:
             logger.info(
-                f"Collection {collection_id} in catalog {catalog_id} has no items, so index does not exist and cannot be deleted, continuing as normal."
+                f"Collection {collection_id} in catalog {catalog_id} at path {catalog_path} has no items, so index does not exist and cannot be deleted, continuing as normal."
             )
 
-    async def create_catalog(self, catalog: Catalog, refresh: bool = False):
+    async def create_catalog(
+        self,
+        catalog: Catalog,
+        catalog_path: Optional[str] = None,
+        refresh: bool = False,
+    ):
+        """Create a single catalog in the database.
+
+        Args:
+            catalog (Catalog): The Catalog object to be created.
+            refresh (bool, optional): Whether to refresh the index after the creation. Default is False.
+
+        Raises:
+            ConflictError: If a Catalog with the same id already exists in the database.
+
+        Notes:
+            A new index is created for the collections in the Catalog using the `create_catalog_index` function.
+        """
+        catalog_id = catalog["id"]
+        if catalog_path:
+            # Create list of nested catalog ids
+            catalog_path_list = catalog_path.split("/")
+            index = index_catalogs_by_catalog_id(catalog_path_list=catalog_path_list)
+        else:
+            catalog_path_list = catalog_id
+            # Creating a new BASE catalog so index using top-level index
+            index = CATALOGS_INDEX
+
+        if await self.client.exists(index=index, id=catalog_id):
+            raise ConflictError(
+                f"Catalog {catalog_id} already exists at path {catalog_path if catalog_path else 'Top-Level'}"
+            )
+
+        await self.client.index(
+            index=index,
+            id=catalog_id,
+            document=catalog,
+            refresh=refresh,
+        )
+
+    async def create_super_catalog(self, catalog: Catalog, refresh: bool = False):
         """Create a single catalog in the database.
 
         Args:
@@ -1700,17 +2173,17 @@ class DatabaseLogic:
         """
         catalog_id = catalog["id"]
 
-        if await self.client.exists(index=CATALOGS_INDEX, id=catalog_id):
+        if await self.client.exists(index=BASE_CATALOGS_INDEX, id=catalog_id):
             raise ConflictError(f"Catalog {catalog_id} already exists")
 
         await self.client.index(
-            index=CATALOGS_INDEX,
+            index=BASE_CATALOGS_INDEX,
             id=catalog_id,
             document=catalog,
             refresh=refresh,
         )
 
-    async def find_catalog(self, catalog_id: str) -> Catalog:
+    async def find_catalog(self, catalog_path: str) -> Catalog:
         """Find and return a collection from the database.
 
         Args:
@@ -1727,15 +2200,172 @@ class DatabaseLogic:
             This function searches for a collection in the database using the specified `collection_id` and returns the found
             collection as a `Collection` object. If the collection is not found, a `NotFoundError` is raised.
         """
+
+        # Create list of nested catalog ids
+        catalog_path_list = catalog_path.split("/")
+
+        catalog_id = catalog_path_list[-1]
+
+        # Handle case where we are looking at nested catalog
+        if len(catalog_path_list) > 1:
+            search_catalog_path_list = catalog_path_list[:-1]
+            index = index_catalogs_by_catalog_id(
+                catalog_path_list=search_catalog_path_list
+            )
+        # Handle case where we are looking at base catalog
+        else:
+            index = CATALOGS_INDEX
+
         try:
-            catalog = await self.client.get(index=CATALOGS_INDEX, id=catalog_id)
+            catalog = await self.client.get(index=index, id=catalog_id)
         except exceptions.NotFoundError:
-            raise NotFoundError(f"Catalog {catalog_id} not found")
+            raise NotFoundError(
+                f"Catalog {catalog_id} at path {catalog_path} not found"
+            )
 
         return catalog["_source"]
 
+    async def reindex_sub_catalogs(
+        self, catalog_path: str, new_catalog_path: str, refresh: bool = False
+    ):
+        """Updates index for all catalogs in the given catalog.
+
+        Args:
+            self: The instance of the object calling this function.
+            catalog_path (str): The path to the top-level catalog.
+            new_catalog_path (str): The updated path to the top-level catalog.
+        """
+
+        # Create list of nested catalog ids for old catalog id
+        catalog_path_list = catalog_path.split("/")
+
+        # Create list of nested catalog ids for new catalog id
+        new_catalog_path_list = new_catalog_path.split("/")
+
+        # Get full set of catalogs in this catalog
+        params_index = index_catalogs_by_catalog_id(catalog_path_list=catalog_path_list)
+        try:
+            response = await self.client.search(
+                index=params_index,
+                body={
+                    "sort": [{"id": {"order": "asc"}}],
+                },
+            )
+            hits = response["hits"]["hits"]
+        except exceptions.NotFoundError:
+            hits = []
+        # Reindex all contained catalogs
+        for hit in hits:
+            # Get sub-catalog id
+            sub_catalog_id = hit["_id"]
+
+            # Construct new sub-catalog path
+            new_sub_catalog_path = f"{new_catalog_path}/{sub_catalog_id}"
+            new_sub_catalog_path_list = new_sub_catalog_path.split("/")
+
+            # Calculate sub-catalog path for found catalog
+            sub_catalog_path = hit["_index"].split("_", 1)[1]
+            sub_catalog_path_list = sub_catalog_path.split("_x_")
+            sub_catalog_path_list.reverse()
+            sub_catalog_path_list.append(sub_catalog_id)
+            sub_catalog_path = "/".join(sub_catalog_path_list)
+
+            # assert f"{catalog_path}/{sub_catalog_id}" == sub_catalog_path
+
+            # This is the current index for this catalog
+            source_index = index_catalogs_by_catalog_id(
+                catalog_path_list=catalog_path_list
+            )
+
+            # This is the updated index for this catalog
+            dest_index = index_catalogs_by_catalog_id(
+                catalog_path_list=new_catalog_path_list
+            )
+            try:
+                await self.client.reindex(
+                    body={
+                        "dest": {"index": dest_index},
+                        "source": {"index": source_index},
+                    },
+                    wait_for_completion=True,
+                    refresh=refresh,
+                )
+            except exceptions.NotFoundError:
+                logger.info(
+                    f"Catalog {sub_catalog_id} at path {catalog_path} has no collections, so index does not exist and cannot be updated, continuing as normal."
+                )
+            next_sub_catalog_path_list = catalog_path_list.copy()
+            next_sub_catalog_path_list.append(sub_catalog_id)
+            next_sub_catalog_path = "/".join(next_sub_catalog_path_list)
+            await self.reindex_sub_catalogs(
+                catalog_path=next_sub_catalog_path,
+                new_catalog_path=new_sub_catalog_path,
+                refresh=refresh,
+            )
+
+        # Reindex collections in this catalog with new catalog_id
+        source_index = index_collections_by_catalog_id(
+            catalog_path_list=catalog_path_list
+        )
+        dest_index = index_collections_by_catalog_id(
+            catalog_path_list=new_catalog_path_list
+        )
+        try:
+            await self.client.reindex(
+                body={
+                    "dest": {"index": dest_index},
+                    "source": {"index": source_index},
+                },
+                wait_for_completion=True,
+                refresh=refresh,
+            )
+        except exceptions.NotFoundError:
+            logger.info(
+                f"Catalog {catalog_path_list[-1]} at path {catalog_path} has no collections, so index does not exist and cannot be updated, continuing as normal."
+            )
+
+        # Reindex items within each collection in this catalog
+        try:
+            # Get all collections contained in this catalog
+            index_param = collection_indices(catalog_paths=[catalog_path_list])
+            response = await self.client.search(
+                index=index_param,
+                body={"sort": [{"id": {"order": "asc"}}]},
+            )
+            collection_ids = [hit["_id"] for hit in response["hits"]["hits"]]
+
+            # For each collection, reindex the containing items by catalog id
+            for collection_id in collection_ids:
+                try:
+                    await self.client.reindex(
+                        body={
+                            "dest": {
+                                "index": index_by_collection_id(
+                                    collection_id=collection_id,
+                                    catalog_path_list=new_catalog_path_list,
+                                )
+                            },
+                            "source": {
+                                "index": index_by_collection_id(
+                                    collection_id=collection_id,
+                                    catalog_path_list=catalog_path_list,
+                                )
+                            },
+                        },
+                        wait_for_completion=True,
+                        refresh=refresh,
+                    )
+                except exceptions.NotFoundError:
+                    logger.info(
+                        f"Collection {collection_id} at path {catalog_path} has no items, so index does not exist and cannot be updated, continuing as normal."
+                    )
+        except exceptions.NotFoundError:
+            logger.info(
+                f"Catalog {catalog_path_list[-1]} at path {catalog_path} has no collections, or items, so index does not exist and cannot be updated, continuing as normal."
+            )
+
     async def update_catalog(
-        self, catalog_id: str, catalog: Catalog, refresh: bool = False
+        self, catalog_path: str, catalog: Catalog, refresh: bool = False
     ):
         """Update a collection from the database.
 
@@ -1753,28 +2383,107 @@ class DatabaseLogic:
             `collection_id` and with the collection specified in the `Collection` object.
             If the collection is not found, a `NotFoundError` is raised.
         """
-        await self.find_catalog(catalog_id=catalog_id)
-        if catalog_id != catalog["id"]:
-            await self.create_catalog(catalog, refresh=refresh)
 
-            # Reindex collections in this catalog
-            await self.client.reindex(
-                body={
-                    "dest": {"index": f"{COLLECTIONS_INDEX_PREFIX}{catalog['id']}"},
-                    "source": {"index": index_by_catalog_id(catalog_id)},
-                    "script": {
-                        "lang": "painless",
-                        "source": f"""ctx._id = ctx._id.replace('{catalog_id}', '{catalog["id"]}'); ctx._source.collection = '{catalog["id"]}' ;""",
-                    },
-                },
-                wait_for_completion=True,
-                refresh=refresh,
+        # Create list of nested catalog ids
+        catalog_path_list = catalog_path.split("/")
+
+        catalog_id = catalog_path_list[-1]
+
+        await self.find_catalog(catalog_path=catalog_path)
+
+        if catalog_id != catalog["id"]:
+            old_catalog_path_list = catalog_path_list.copy()
+            # Remove old catalog_id and replace with new one
+            new_catalog_path_list = catalog_path_list[:-1]
+            new_catalog_parent_path = "/".join(new_catalog_path_list)
+            new_catalog_path_list.append(catalog["id"])
+
+            await self.create_catalog(
+                catalog_path=new_catalog_parent_path, catalog=catalog, refresh=refresh
             )
+
+            # Recursively update all catalogs within this catalog
+            # get full set of catalogs in this catalog
+            params_index = index_catalogs_by_catalog_id(
+                catalog_path_list=catalog_path_list
+            )
+            response = await self.client.search(
+                index=params_index,
+                body={
+                    "sort": [{"id": {"order": "asc"}}],
+                },
+            )
+            hits = response["hits"]["hits"]
+            catalog_paths = []
+            for hit in hits:
+                # Calculate catalog path for found catalog
+                old_catalog_path = hit["_index"].split("_", 1)[1]
+                sub_catalog_id = hit["_id"]
+                old_catalog_path_list = old_catalog_path.split("_x_")
+                # Reverse for ordered descending path
+                old_catalog_path_list.reverse()
+                source_index = index_catalogs_by_catalog_id(
+                    catalog_path_list=old_catalog_path_list
+                )
+                dest_index = index_catalogs_by_catalog_id(
+                    catalog_path_list=new_catalog_path_list
+                )
+                try:
+                    await self.client.reindex(
+                        body={
+                            "dest": {"index": dest_index},
+                            "source": {"index": source_index},
+                        },
+                        wait_for_completion=True,
+                        refresh=refresh,
+                    )
+                except exceptions.NotFoundError:
+                    logger.info(
+                        f"Catalog {sub_catalog_id} at path {old_catalog_path} has no collections, so index does not exist and cannot be updated, continuing as normal."
+                    )
+                # Reindex sub-catalogs, recursively
+                old_catalog_path_list.append(sub_catalog_id)
+                new_catalog_path_list.append(sub_catalog_id)
+                old_sub_catalog_path = "/".join(old_catalog_path_list)
+                new_sub_catalog_path = "/".join(new_catalog_path_list)
+                await self.reindex_sub_catalogs(
+                    catalog_path=old_sub_catalog_path,
+                    new_catalog_path=new_sub_catalog_path,
+                    refresh=refresh,
+                )
+
+            # Reindex collections in this catalog with new catalog_id
+            old_catalog_path_list = catalog_path_list
+            new_catalog_path_list = catalog_path_list[:-1]
+            new_catalog_path_list.append(catalog["id"])
+            source_index = index_collections_by_catalog_id(
+                catalog_path_list=old_catalog_path_list
+            )
+            dest_index = index_collections_by_catalog_id(
+                catalog_path_list=new_catalog_path_list
+            )
+            try:
+                await self.client.reindex(
+                    body={
+                        "dest": {"index": dest_index},
+                        "source": {"index": source_index},
+                        "script": {  # The catalog id in the collection itself is only updated for the first catalog
+                            "lang": "painless",
+                            "source": f"""ctx._id = ctx._id.replace('{catalog_id}', '{catalog["id"]}'); ctx._source.collection = '{catalog["id"]}' ;""",
+                        },
+                    },
+                    wait_for_completion=True,
+                    refresh=refresh,
+                )
+            except exceptions.NotFoundError:
+                logger.info(
+                    f"Catalog {catalog_id} at path {catalog_path} has no collections, so index does not exist and cannot be updated, continuing as normal."
+                )
 
             # Reindex items within each collection in this catalog
             try:
                 # Get all collections contained in this catalog
-                index_param = collection_indices(catalog_ids=[catalog_id])
+                index_param = collection_indices(catalog_paths=[old_catalog_path_list])
                 response = await self.client.search(
                     index=index_param,
                     body={"sort": [{"id": {"order": "asc"}}]},
@@ -1783,40 +2492,48 @@ class DatabaseLogic:
 
                 # For each collection, reindex the containing items by catalog id
                 for collection_id in collection_ids:
-                    await self.client.reindex(
-                        body={
-                            "dest": {
-                                "index": index_by_collection_id(
-                                    collection_id=collection_id.split("|")[0],
-                                    catalog_id=catalog["id"],
-                                )
+                    try:
+                        await self.client.reindex(
+                            body={
+                                "dest": {
+                                    "index": index_by_collection_id(
+                                        collection_id=collection_id,
+                                        catalog_path_list=catalog_path_list,
+                                    )
+                                },
+                                "source": {
+                                    "index": index_by_collection_id(
+                                        collection_id=collection_id,
+                                        catalog_path_list=old_catalog_path_list,
+                                    )
+                                },
                             },
-                            "source": {
-                                "index": index_by_collection_id(
-                                    collection_id=collection_id.split("|")[0],
-                                    catalog_id=catalog_id,
-                                )
-                            },
-                        },
-                        wait_for_completion=True,
-                        refresh=refresh,
-                    )
+                            wait_for_completion=True,
+                            refresh=refresh,
+                        )
+                    except exceptions.NotFoundError:
+                        logger.info(
+                            f"Collection {collection_id} at path {catalog_path} has no items, so index does not exist and cannot be updated, continuing as normal."
+                        )
             except exceptions.NotFoundError:
                 logger.info(
-                    f"Catalog {catalog_id} has no collections, or items, so index does not exist and cannot be deleted, continuing as normal."
+                    f"Catalog {catalog_id} at path {catalog_path} has no collections, or items, so index does not exist and cannot be updated, continuing as normal."
                 )
 
-            await self.delete_catalog(catalog_id)
+            await self.delete_catalog(catalog_path=catalog_path)
 
         else:
+            index_param = index_catalogs_by_catalog_id(
+                catalog_path_list=catalog_path_list[:-1]
+            )
             await self.client.index(
-                index=CATALOGS_INDEX,
+                index=index_param,
                 id=catalog_id,
                 document=catalog,
                 refresh=refresh,
             )
 
-    async def delete_catalog(self, catalog_id: str, refresh: bool = False):
+    async def delete_catalog(self, catalog_path: str, refresh: bool = False):
         """Delete a collection from the database.
 
         Parameters:
@@ -1832,11 +2549,42 @@ class DatabaseLogic:
             deletes the collection. If `refresh` is set to True, the index is refreshed after the deletion. Additionally, this
             function also calls `delete_collection_index` to delete the index for the collections in the catalog.
         """
-        await self.find_catalog(catalog_id=catalog_id)
-        await self.client.delete(index=CATALOGS_INDEX, id=catalog_id, refresh=refresh)
+
+        # Create list of nested catalog ids
+        catalog_path_list = catalog_path.split("/")
+
+        catalog_id = catalog_path_list[-1]
+
+        await self.find_catalog(catalog_path=catalog_path)
+
+        # Handle case where we are looking at a nested catalog
+        if len(catalog_path_list) > 1:
+            search_catalog_path_list = catalog_path_list[:-1]
+            index = index_catalogs_by_catalog_id(
+                catalog_path_list=search_catalog_path_list
+            )
+        # Handle case where we are looking at base catalog
+        else:
+            index = CATALOGS_INDEX
+
+        await self.client.delete(index=index, id=catalog_id, refresh=refresh)
         try:
-            # Need to delete all items contained in this collection
-            index_param = collection_indices(catalog_ids=[catalog_id])
+            # Need to delete all catalogs contained in this catalog
+            index_param = index_catalogs_by_catalog_id(
+                catalog_path_list=catalog_path_list
+            )
+            response = await self.client.search(
+                index=index_param,
+                body={"sort": [{"id": {"order": "asc"}}]},
+            )
+            # Delete each catalog recursively
+            for hit in response["hits"]["hits"]:
+                sub_catalog_id = hit["_id"]
+                sub_catalog_path = f"{catalog_path}/{sub_catalog_id}"
+                await self.delete_catalog(catalog_path=sub_catalog_path)
+
+            # Need to delete all collections contained in this catalog
+            index_param = collection_indices(catalog_paths=[catalog_path_list])
             response = await self.client.search(
                 index=index_param,
                 body={"sort": [{"id": {"order": "asc"}}]},
@@ -1844,17 +2592,18 @@ class DatabaseLogic:
             collection_ids = [hit["_id"] for hit in response["hits"]["hits"]]
             for collection_id in collection_ids:
                 await delete_item_index(
-                    collection_id=collection_id.split("|")[0], catalog_id=catalog_id
+                    collection_id=collection_id, catalog_path_list=catalog_path_list
                 )
-            await delete_collection_index(catalog_id)
+            await delete_collection_index(catalog_path_list=catalog_path_list)
+            await delete_catalog_index(catalog_path_list=catalog_path_list)
         except exceptions.NotFoundError:
             logger.info(
-                f"Catalog {catalog_id} has no collections, or items, so index does not exist and cannot be deleted, continuing as normal."
+                f"Catalog {catalog_id} at path {catalog_path} has no collections, or items, so index does not exist and cannot be deleted, continuing as normal."
             )
 
     async def bulk_async(
         self,
-        catalog_id: str,
+        catalog_path: str,
         collection_id: str,
         processed_items: List[Item],
         refresh: bool = False,
@@ -1863,6 +2612,8 @@ class DatabaseLogic:
 
         Args:
             self: The instance of the object calling this function.
+            super_catalog_id (str): The identifier for the Top-level catalog the items belong to.
+            catalog_id (str): The identifier for the catalog the items belong to.
             collection_id (str): The ID of the collection to which the items belong.
             processed_items (List[Item]): A list of `Item` objects to be inserted into the database.
             refresh (bool): Whether to refresh the index after the bulk insert (default: False).
@@ -1873,16 +2624,26 @@ class DatabaseLogic:
             `mk_actions` function is called to generate a list of actions for the bulk insert. If `refresh` is set to True, the
             index is refreshed after the bulk insert. The function does not return any value.
         """
+
+        # Create list of nested catalog ids
+        catalog_path_list = catalog_path.split("/")
+
+        catalog_id = catalog_path_list[-1]
+
         await helpers.async_bulk(
             self.client,
-            mk_actions(catalog_id, collection_id, processed_items),
+            mk_actions(
+                catalog_path_list=catalog_path_list,
+                collection_id=collection_id,
+                processed_items=processed_items,
+            ),
             refresh=refresh,
             raise_on_error=False,
         )
 
     def bulk_sync(
         self,
-        catalog_id: str,
+        catalog_path: str,
         collection_id: str,
         processed_items: List[Item],
         refresh: bool = False,
@@ -1891,6 +2652,8 @@ class DatabaseLogic:
 
         Args:
             self: The instance of the object calling this function.
+            super_catalog_id (str): The identifier for the Top-level catalog the items belong to.
+            catalog_id (str): The identifier for the catalog the items belong to.
             collection_id (str): The ID of the collection to which the items belong.
             processed_items (List[Item]): A list of `Item` objects to be inserted into the database.
             refresh (bool): Whether to refresh the index after the bulk insert (default: False).
@@ -1901,9 +2664,19 @@ class DatabaseLogic:
             completed. The `mk_actions` function is called to generate a list of actions for the bulk insert. If `refresh` is set to
             True, the index is refreshed after the bulk insert. The function does not return any value.
         """
+
+        # Create list of nested catalog ids
+        catalog_path_list = catalog_path.split("/")
+
+        catalog_id = catalog_path_list[-1]
+
         helpers.bulk(
             self.sync_client,
-            mk_actions(catalog_id, collection_id, processed_items),
+            mk_actions(
+                catalog_path_list=catalog_path_list,
+                collection_id=collection_id,
+                processed_items=processed_items,
+            ),
             refresh=refresh,
             raise_on_error=False,
         )
@@ -1965,7 +2738,7 @@ class DatabaseLogic:
 
         search_task = asyncio.create_task(
             self.client.search(
-                index=[CATALOGS_INDEX, f"{COLLECTIONS_INDEX_PREFIX}*"],
+                index=[f"{CATALOGS_INDEX_PREFIX}*", f"{COLLECTIONS_INDEX_PREFIX}*"],
                 ignore_unavailable=ignore_unavailable,
                 query=query,
                 sort=DEFAULT_DISCOVERY_SORT,  # set to default for time being to support token pagination
@@ -1976,7 +2749,7 @@ class DatabaseLogic:
 
         count_task = asyncio.create_task(
             self.client.count(
-                index=[CATALOGS_INDEX, f"{COLLECTIONS_INDEX_PREFIX}*"],
+                index=[f"{CATALOGS_INDEX_PREFIX}*", f"{COLLECTIONS_INDEX_PREFIX}*"],
                 ignore_unavailable=ignore_unavailable,
                 body=search.to_dict(count=True),
             )
@@ -1985,32 +2758,70 @@ class DatabaseLogic:
         es_response = await search_task
 
         hits = es_response["hits"]["hits"]
+
         data = []
-
-        results = await asyncio.gather(
-            *[
-                self.get_catalog_collections(
-                    catalog_ids=[hit["_source"].get("id")],
-                    base_url=base_url,
-                    limit=NUMBER_OF_CATALOG_COLLECTIONS,
-                    token=None,
-                )
-                for hit in hits
-            ],
-            return_exceptions=True,
-        )
-
-        for i, result in enumerate(results):
-            if not isinstance(result, Exception):
-                data.append(
-                    self.catalog_collection_serializer.db_to_stac(
-                        data=hits[i]["_source"],
-                        base_url=base_url,
-                        catalog_id=hits[i]["_id"].rsplit("|", 1)[-1],
-                        collections=result[0],
-                        conformance_classes=conformance_classes,
+        for hit in hits:
+            sub_catalogs = []
+            collections = []
+            if hit["_source"]["type"] == "Catalog":
+                # Calculate catalog path for found catalog
+                catalog_index = hit["_index"].split("_", 1)[1]
+                catalog_id = hit["_id"]
+                catalog_index_list = catalog_index.split("_x_")
+                catalog_index_list.reverse()
+                catalog_index_list.append(catalog_id)
+                catalog_index = "/".join(catalog_index_list)
+                # Identify all contained catalogs
+                try:
+                    sub_catalogs_responses = await self.client.search(
+                        index=index_catalogs_by_catalog_id(
+                            catalog_path_list=catalog_index_list
+                        ),
+                        body={
+                            "sort": [{"id": {"order": "asc"}}],
+                        },
                     )
+                    sub_catalogs_responses = sub_catalogs_responses["hits"]["hits"]
+                    sub_catalogs = [
+                        sub_catalogs_response["_source"]
+                        for sub_catalogs_response in sub_catalogs_responses
+                    ]
+                except exceptions.NotFoundError:
+                    pass
+                # Identify all contained collections
+                try:
+                    collection_responses = await self.client.search(
+                        index=index_collections_by_catalog_id(
+                            catalog_path_list=catalog_index_list
+                        ),
+                        body={
+                            "sort": [{"id": {"order": "asc"}}],
+                        },
+                    )
+                    collection_responses = collection_responses["hits"]["hits"]
+                    collections = [
+                        collection_response["_source"]
+                        for collection_response in collection_responses
+                    ]
+                except exceptions.NotFoundError:
+                    pass
+            elif hit["_source"]["type"] == "Collection":
+                catalog_index = hit["_index"].split("_", 1)[1]
+                catalog_index_list = catalog_index.split("_x_")
+                catalog_index_list.reverse()
+                catalog_index = "/".join(catalog_index_list)
+            data.append(
+                self.catalog_collection_serializer.db_to_stac(
+                    collection_serializer=self.collection_serializer,
+                    catalog_serializer=self.catalog_serializer,
+                    data=hit["_source"],
+                    base_url=base_url,
+                    catalog_path=catalog_index,
+                    sub_catalogs=sub_catalogs,
+                    collections=collections,
+                    conformance_classes=conformance_classes,
                 )
+            )
 
         next_token = None
         if hits and (sort_array := hits[-1].get("sort")):
