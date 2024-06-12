@@ -30,7 +30,7 @@ class AsyncBaseTransactionsClient(abc.ABC):
     @abc.abstractmethod
     async def create_item(
         self,
-        catalog_id: str,
+        catalog_path: str,
         collection_id: str,
         item: Union[stac_types.Item, stac_types.ItemCollection],
         **kwargs,
@@ -51,7 +51,7 @@ class AsyncBaseTransactionsClient(abc.ABC):
     @abc.abstractmethod
     async def update_item(
         self,
-        catalog_id: str,
+        catalog_path: str,
         collection_id: str,
         item_id: str,
         item: stac_types.Item,
@@ -74,7 +74,7 @@ class AsyncBaseTransactionsClient(abc.ABC):
 
     @abc.abstractmethod
     async def delete_item(
-        self, item_id: str, collection_id: str, catalog_id: str, **kwargs
+        self, item_id: str, collection_id: str, catalog_path: str, **kwargs
     ) -> Optional[Union[stac_types.Item, Response]]:
         """Delete an item from a collection.
 
@@ -91,7 +91,7 @@ class AsyncBaseTransactionsClient(abc.ABC):
 
     @abc.abstractmethod
     async def create_collection(
-        self, catalog_id: str, collection: stac_types.Collection, **kwargs
+        self, catalog_path: str, collection: stac_types.Collection, **kwargs
     ) -> Optional[Union[stac_types.Collection, Response]]:
         """Create a new collection.
 
@@ -108,7 +108,7 @@ class AsyncBaseTransactionsClient(abc.ABC):
     @abc.abstractmethod
     async def update_collection(
         self,
-        catalog_id: str,
+        catalog_path: str,
         collection_id: str,
         collection: stac_types.Collection,
         **kwargs,
@@ -130,7 +130,7 @@ class AsyncBaseTransactionsClient(abc.ABC):
 
     @abc.abstractmethod
     async def delete_collection(
-        self, catalog_id: str, collection_id: str, **kwargs
+        self, catalog_path: str, collection_id: str, **kwargs
     ) -> Optional[Union[stac_types.Collection, Response]]:
         """Delete a collection.
 
@@ -146,7 +146,7 @@ class AsyncBaseTransactionsClient(abc.ABC):
 
     @abc.abstractmethod
     async def create_catalog(
-        self, catalog: stac_types.Catalog, **kwargs
+        self, catalog: stac_types.Catalog, catalog_path: Optional[str], **kwargs
     ) -> Optional[Union[stac_types.Catalog, Response]]:
         """Create a new catalog.
 
@@ -161,8 +161,24 @@ class AsyncBaseTransactionsClient(abc.ABC):
         ...
 
     @abc.abstractmethod
+    async def create_super_catalog(
+        self, catalog: stac_types.Catalog, **kwargs
+    ) -> Optional[Union[stac_types.Catalog, Response]]:
+        """Create a new top-level catalog.
+
+        Called with `POST /`.
+
+        Args:
+            catalog: the catalog
+
+        Returns:
+            The catalog that was created.
+        """
+        ...
+
+    @abc.abstractmethod
     async def update_catalog(
-        self, catalog_id: str, catalog: stac_types.Catalog, **kwargs
+        self, catalog_path: str, catalog: stac_types.Catalog, **kwargs
     ) -> Optional[Union[stac_types.Catalog, Response]]:
         """Perform a complete update on an existing collection.
 
@@ -181,7 +197,7 @@ class AsyncBaseTransactionsClient(abc.ABC):
 
     @abc.abstractmethod
     async def delete_catalog(
-        self, catalog_id: str, **kwargs
+        self, catalog_path: str, **kwargs
     ) -> Optional[Union[stac_types.Catalog, Response]]:
         """Delete a collection.
 
@@ -255,7 +271,7 @@ class AsyncBaseCoreClient(abc.ABC):
     @abc.abstractmethod
     async def get_global_search(
         self,
-        catalogs: Optional[List[str]] = None,
+        catalog_paths: Optional[List[str]] = None,
         collections: Optional[List[str]] = None,
         ids: Optional[List[str]] = None,
         bbox: Optional[List[NumType]] = None,
@@ -279,7 +295,7 @@ class AsyncBaseCoreClient(abc.ABC):
 
     @abc.abstractmethod
     async def post_search(
-        self, catalog_id: str, search_request: BaseCatalogSearchPostRequest, **kwargs
+        self, catalog_path: str, search_request: BaseCatalogSearchPostRequest, **kwargs
     ) -> stac_types.ItemCollection:
         """Cross catalog search (POST).
 
@@ -296,7 +312,7 @@ class AsyncBaseCoreClient(abc.ABC):
     @abc.abstractmethod
     async def get_search(
         self,
-        catalog_id: str,
+        catalog_path: str,
         collections: Optional[List[str]] = None,
         ids: Optional[List[str]] = None,
         bbox: Optional[List[NumType]] = None,
@@ -320,7 +336,7 @@ class AsyncBaseCoreClient(abc.ABC):
 
     @abc.abstractmethod
     async def get_item(
-        self, item_id: str, collection_id: str, catalog_id: str, **kwargs
+        self, item_id: str, collection_id: str, catalog_path: str, **kwargs
     ) -> stac_types.Item:
         """Get item by id.
 
@@ -347,7 +363,9 @@ class AsyncBaseCoreClient(abc.ABC):
         ...
 
     @abc.abstractmethod
-    async def all_catalogs(self, **kwargs) -> stac_types.Catalogs:
+    async def all_catalogs(
+        self, catalog_path: Optional[str] = None, **kwargs
+    ) -> stac_types.Catalogs:
         """Get all available catalogs.
 
         Called with `GET /catalogs`.
@@ -357,9 +375,20 @@ class AsyncBaseCoreClient(abc.ABC):
         """
         ...
 
+    # @abc.abstractmethod
+    # async def all_nested_catalogs(self, **kwargs) -> stac_types.Catalogs:
+    #     """Get all available catalogs.
+
+    #     Called with `GET {catalog_path}/catalogs`.
+
+    #     Returns:
+    #         A list of catalogs.
+    #     """
+    #     ...
+
     @abc.abstractmethod
     async def get_collection(
-        self, catalog_id: str, collection_id: str, **kwargs
+        self, catalog_path: str, collection_id: str, **kwargs
     ) -> stac_types.Collection:
         """Get collection by id.
 
@@ -374,13 +403,14 @@ class AsyncBaseCoreClient(abc.ABC):
         ...
 
     @abc.abstractmethod
-    async def get_catalog(self, catalog_id: str, **kwargs) -> stac_types.Catalog:
+    async def get_catalog(self, catalog_path: str, **kwargs) -> stac_types.Catalog:
         """Get catalog by id.
 
         Called with `GET /catalogs/{catalog_id}`.
 
         Args:
             catalog_id: Id of the catalog.
+            super_catalog_id: Id of the top-level catalog.
 
         Returns:
             Catalog.
@@ -389,7 +419,7 @@ class AsyncBaseCoreClient(abc.ABC):
 
     @abc.abstractmethod
     async def get_catalog_collections(
-        self, catalog_id: str, **kwargs
+        self, catalog_path: str, **kwargs
     ) -> stac_types.Collections:
         """Get collections by catalog id.
 
@@ -397,6 +427,7 @@ class AsyncBaseCoreClient(abc.ABC):
 
         Args:
             catalog_id: Id of the catalog.
+            super_catalog_id: Id of the top-level catalog.
 
         Returns:
             Collections.
