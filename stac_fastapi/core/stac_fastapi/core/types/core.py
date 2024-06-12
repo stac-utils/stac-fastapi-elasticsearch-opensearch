@@ -147,7 +147,7 @@ class AsyncBaseTransactionsClient(abc.ABC):
     @abc.abstractmethod
     async def create_catalog(
         self, catalog: stac_types.Catalog, catalog_path: Optional[str], **kwargs
-    ) -> Optional[Union[stac_types.Catalog, Response]]:
+    ) -> Optional[stac_types.Catalog | Response]:
         """Create a new catalog.
 
         Called with `POST /catalogs`.
@@ -163,7 +163,7 @@ class AsyncBaseTransactionsClient(abc.ABC):
     @abc.abstractmethod
     async def create_super_catalog(
         self, catalog: stac_types.Catalog, **kwargs
-    ) -> Optional[Union[stac_types.Catalog, Response]]:
+    ) -> Optional[stac_types.Catalog | Response]:
         """Create a new top-level catalog.
 
         Called with `POST /`.
@@ -179,7 +179,7 @@ class AsyncBaseTransactionsClient(abc.ABC):
     @abc.abstractmethod
     async def update_catalog(
         self, catalog_path: str, catalog: stac_types.Catalog, **kwargs
-    ) -> Optional[Union[stac_types.Catalog, Response]]:
+    ) -> Optional[stac_types.Catalog | Response]:
         """Perform a complete update on an existing collection.
 
         Called with `PUT /collections`. It is expected that this item already
@@ -198,7 +198,7 @@ class AsyncBaseTransactionsClient(abc.ABC):
     @abc.abstractmethod
     async def delete_catalog(
         self, catalog_path: str, **kwargs
-    ) -> Optional[Union[stac_types.Catalog, Response]]:
+    ) -> Optional[stac_types.Catalog | Response]:
         """Delete a collection.
 
         Called with `DELETE /collections/{collection_id}`
