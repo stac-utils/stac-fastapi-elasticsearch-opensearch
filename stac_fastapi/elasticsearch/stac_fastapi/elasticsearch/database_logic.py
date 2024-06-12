@@ -31,6 +31,8 @@ NumType = Union[float, int]
 
 NUMBER_OF_CATALOG_COLLECTIONS = os.getenv("NUMBER_OF_CATALOG_COLLECTIONS", 100)
 
+CATALOG_SEPARATOR = os.getenv("CATALOG_SEPARATOR", "_x_")
+
 BASE_CATALOGS_INDEX = os.getenv("STAC_BASE_CATALOGS_INDEX", "base")
 BASE_CATALOGS_INDEX_PREFIX = os.getenv("STAC_BASE_CATALOGS_INDEX", "base_")
 
@@ -58,7 +60,7 @@ ES_INDEX_NAME_UNSUPPORTED_CHARS = {
 
 ITEM_INDICES = f"{ITEMS_INDEX_PREFIX}*,-*kibana*,-{COLLECTIONS_INDEX}*"
 COLLECTION_INDICES = f"{COLLECTIONS_INDEX_PREFIX}*,-*kibana*,-{CATALOGS_INDEX}*"
-CATALOG_INDICES = f"{CATALOGS_INDEX_PREFIX}*,-*kibana*,-{BASE_CATALOGS_INDEX}*"
+CATALOG_INDICES = f"{CATALOGS_INDEX_PREFIX}*,-*kibana*,-{CATALOGS_INDEX}*"
 
 DEFAULT_SORT = {
     "properties.datetime": {"order": "desc"},
@@ -270,7 +272,7 @@ def index_by_collection_id(
     if catalog_path_list:
         new_catalog_path_list = catalog_path_list.copy()
         new_catalog_path_list.reverse()
-        new_catalog_path_list = "_x_".join(
+        new_catalog_path_list = CATALOG_SEPARATOR.join(
             "".join(
                 c
                 for c in catalog_id.lower()
@@ -297,7 +299,7 @@ def index_collections_by_catalog_id(catalog_path_list: List[str]) -> str:
     """
     new_catalog_path_list = catalog_path_list.copy()
     new_catalog_path_list.reverse()
-    output_index = f"{COLLECTIONS_INDEX_PREFIX}{'_x_'.join(''.join(c for c in catalog_id.lower() if c not in ES_INDEX_NAME_UNSUPPORTED_CHARS) for catalog_id in new_catalog_path_list)}"
+    output_index = f"{COLLECTIONS_INDEX_PREFIX}{CATALOG_SEPARATOR.join(''.join(c for c in catalog_id.lower() if c not in ES_INDEX_NAME_UNSUPPORTED_CHARS) for catalog_id in new_catalog_path_list)}"
     return output_index
 
 
@@ -315,7 +317,7 @@ def index_catalogs_by_catalog_id(catalog_path_list: Optional[List[str]] = None) 
         # want return to be catalogs_lower-catalog_upper-catalog_super-catalog
         new_catalog_path_list = catalog_path_list.copy()
         new_catalog_path_list.reverse()
-        return f"{CATALOGS_INDEX_PREFIX}{'_x_'.join(''.join(c for c in catalog_id.lower() if c not in ES_INDEX_NAME_UNSUPPORTED_CHARS) for catalog_id in new_catalog_path_list)}"
+        return f"{CATALOGS_INDEX_PREFIX}{CATALOG_SEPARATOR.join(''.join(c for c in catalog_id.lower() if c not in ES_INDEX_NAME_UNSUPPORTED_CHARS) for catalog_id in new_catalog_path_list)}"
     # Potentially may only want top-level catalogs, so need to add BASE to index here
     return f"{CATALOGS_INDEX_PREFIX}*"
 
@@ -384,10 +386,10 @@ def catalog_indices(catalog_paths: Optional[List[List[str]]] = None) -> str:
     """
     ## If neither provided, return index for all collections
     if not catalog_paths:
-        return COLLECTION_INDICES
+        return CATALOG_INDICES
     return ",".join(
         [
-            index_collections_by_catalog_id(catalog_path_list=cat_path)
+            index_catalogs_by_catalog_id(catalog_path_list=cat_path)
             for cat_path in catalog_paths
         ]
     )
@@ -421,13 +423,6 @@ async def create_index_templates() -> None:
         name=f"template_{CATALOGS_INDEX}",
         body={
             "index_patterns": [f"{CATALOGS_INDEX_PREFIX}*"],
-            "mappings": ES_CATALOGS_MAPPINGS,
-        },
-    )
-    await client.indices.put_template(
-        name=f"template_{BASE_CATALOGS_INDEX}",
-        body={
-            "index_patterns": [f"{BASE_CATALOGS_INDEX_PREFIX}*"],
             "mappings": ES_CATALOGS_MAPPINGS,
         },
     )
@@ -465,23 +460,6 @@ async def create_catalog_index() -> None:
     await client.options(ignore_status=400).indices.create(
         index=f"{CATALOGS_INDEX}-000001",
         aliases={CATALOGS_INDEX: {}},
-    )
-    await client.close()
-
-
-async def create_base_catalog_index() -> None:
-    """
-    Create the index for a Catalog. The settings of the index template will be used implicitly.
-
-    Returns:
-        None
-
-    """
-    client = AsyncElasticsearchSettings().create_client
-
-    await client.options(ignore_status=400).indices.create(
-        index=f"{BASE_CATALOGS_INDEX}-000001",
-        aliases={BASE_CATALOGS_INDEX: {}},
     )
     await client.close()
 
@@ -625,8 +603,7 @@ def mk_actions(
     """Create Elasticsearch bulk actions for a list of processed items.
 
     Args:
-        super_catalog_id (str): The identifier for the Top-level catalog the items belong to.
-        catalog_id (str): The identifier for the catalog the items belong to.
+        catalog_path_list (List[str]): The identifier for the catalog the items belong to.
         collection_id (str): The identifier for the collection the items belong to.
         processed_items (List[Item]): The list of processed items to be bulk indexed.
 
@@ -651,18 +628,6 @@ def mk_actions(
         }
         for item in processed_items
     ]
-
-
-# def get_catalog_id_from_root(collection: Collection):
-#     collection_links = collection["links"]
-#     for link in collection_links:
-#         if link["rel"] == "root":
-#             root_href = link["href"]
-#             root_href_split = root_href.split("/")
-#             catalog_index = root_href_split.index("catalog.json")
-#             catalog_id = root_href_split[catalog_index - 1]
-#             return catalog_id
-#     return "uncatalogued-entries"
 
 
 # stac_pydantic classes extend _GeometryBase, which doesn't have a type field,
@@ -723,7 +688,7 @@ class DatabaseLogic:
         hits = response["hits"]["hits"]
         for hit in hits:
             catalog_path = hit["_index"].split("_", 1)[1]
-            catalog_path_list = catalog_path.split("_x_")
+            catalog_path_list = catalog_path.split(CATALOG_SEPARATOR)
             catalog_path_list.reverse()
             catalog_path = "/".join(catalog_path_list)
             collections.append(
@@ -785,7 +750,7 @@ class DatabaseLogic:
             hits = response["hits"]["hits"]
             for hit in hits:
                 catalog_path = hit["_index"].split("_", 1)[1]
-                catalog_path_list = catalog_path.split("_x_")
+                catalog_path_list = catalog_path.split(CATALOG_SEPARATOR)
                 catalog_path_list.reverse()
                 catalog_path = "/".join(catalog_path_list)
                 collections.append(
@@ -851,6 +816,7 @@ class DatabaseLogic:
                 },
             )
             hits = response["hits"]["hits"]
+            print(hits)
         except exceptions.NotFoundError:
             response = None
             catalogs = []
@@ -862,7 +828,7 @@ class DatabaseLogic:
             # Construct required catalog indices
             catalog_index = hit["_index"].split("_", 1)[1]
             catalog_id = hit["_id"]
-            catalog_index_list = catalog_index.split("_x_")
+            catalog_index_list = catalog_index.split(CATALOG_SEPARATOR)
             catalog_index_list.reverse()
             catalog_index_list.append(catalog_id)
             catalog_indices_list.append(catalog_index_list)
@@ -1525,7 +1491,7 @@ class DatabaseLogic:
         items = []
         for hit in hits:
             item_catalog_path = hit["_index"].split("_xx_", 1)[1]
-            item_catalog_path_list = item_catalog_path.split("_x_")
+            item_catalog_path_list = item_catalog_path.split(CATALOG_SEPARATOR)
             item_catalog_path_list.reverse()
             item_catalog_path = "/".join(item_catalog_path_list)
             items.append((hit["_source"], item_catalog_path))
@@ -2178,39 +2144,14 @@ class DatabaseLogic:
                 f"Catalog {catalog_id} already exists at path {catalog_path if catalog_path else 'Top-Level'}"
             )
 
+        print("creating at index " + index)
+
         await self.client.index(
             index=index,
             id=catalog_id,
             document=catalog,
             refresh=refresh,
         )
-
-    async def create_super_catalog(self, catalog: Catalog, refresh: bool = False):
-        """Create a single catalog in the database.
-
-        Args:
-            catalog (Catalog): The Catalog object to be created.
-            refresh (bool, optional): Whether to refresh the index after the creation. Default is False.
-
-        Raises:
-            ConflictError: If a Catalog with the same id already exists in the database.
-
-        Notes:
-            A new index is created for the collections in the Catalog using the `create_catalog_index` function.
-        """
-        catalog_id = catalog["id"]
-
-        if await self.client.exists(index=BASE_CATALOGS_INDEX, id=catalog_id):
-            raise ConflictError(f"Catalog {catalog_id} already exists")
-
-        await self.client.index(
-            index=BASE_CATALOGS_INDEX,
-            id=catalog_id,
-            document=catalog,
-            refresh=refresh,
-        )
-
-        # print(f"create {catalog_id} in index {BASE_CATALOGS_INDEX}")
 
     async def find_catalog(self, catalog_path: str) -> Catalog:
         """Find and return a collection from the database.
@@ -2294,7 +2235,7 @@ class DatabaseLogic:
 
             # Calculate sub-catalog path for found catalog
             sub_catalog_path = hit["_index"].split("_", 1)[1]
-            sub_catalog_path_list = sub_catalog_path.split("_x_")
+            sub_catalog_path_list = sub_catalog_path.split(CATALOG_SEPARATOR)
             sub_catalog_path_list.reverse()
             sub_catalog_path_list.append(sub_catalog_id)
             sub_catalog_path = "/".join(sub_catalog_path_list)
@@ -2451,7 +2392,7 @@ class DatabaseLogic:
             for hit in hits:
                 old_catalog_path = hit["_index"].split("_", 1)[1]
                 sub_catalog_id = hit["_id"]
-                old_catalog_path_list = old_catalog_path.split("_x_")
+                old_catalog_path_list = old_catalog_path.split(CATALOG_SEPARATOR)
                 # Reverse for ordered descending path
                 old_catalog_path_list.reverse()
                 old_catalog_path_lists.append(old_catalog_path_list)
@@ -2835,7 +2776,7 @@ class DatabaseLogic:
                 # Calculate catalog path for found catalog
                 catalog_index = hit["_index"].split("_", 1)[1]
                 catalog_id = hit["_id"]
-                catalog_index_list = catalog_index.split("_x_")
+                catalog_index_list = catalog_index.split(CATALOG_SEPARATOR)
                 catalog_index_list.reverse()
                 catalog_index_list.append(catalog_id)
                 catalog_index_lists_for_catalogs.append(catalog_index_list)
@@ -2904,7 +2845,9 @@ class DatabaseLogic:
 
         for i, hit in enumerate(hits):
             if hit["_source"]["type"] == "Catalog":
-                catalog_index_list = hit["_index"].split("_", 1)[1].split("_x_")
+                catalog_index_list = (
+                    hit["_index"].split("_", 1)[1].split(CATALOG_SEPARATOR)
+                )
                 catalog_index_list.reverse()
                 # catalog_index_list = catalog_index_list[:-1]
                 catalog_index = "/".join(catalog_index_list)
@@ -2922,7 +2865,7 @@ class DatabaseLogic:
                     collections.append(collection["_source"])
             elif hit["_source"]["type"] == "Collection":
                 catalog_index = hit["_index"].split("_", 1)[1]
-                catalog_index_list = catalog_index.split("_x_")
+                catalog_index_list = catalog_index.split(CATALOG_SEPARATOR)
                 catalog_index_list.reverse()
                 catalog_index = "/".join(catalog_index_list)
                 sub_catalogs = []
