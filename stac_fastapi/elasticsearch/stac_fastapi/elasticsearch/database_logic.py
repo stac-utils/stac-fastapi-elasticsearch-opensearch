@@ -31,7 +31,9 @@ NumType = Union[float, int]
 
 NUMBER_OF_CATALOG_COLLECTIONS = os.getenv("NUMBER_OF_CATALOG_COLLECTIONS", 100)
 
-CATALOG_SEPARATOR = os.getenv("CATALOG_SEPARATOR", "_x_")
+CATALOG_SEPARATOR = os.getenv(
+    "CATALOG_SEPARATOR", "____"
+)  # 4 underscores, as this should not appear in any catalog or collection id
 
 BASE_CATALOGS_INDEX = os.getenv("STAC_BASE_CATALOGS_INDEX", "base")
 BASE_CATALOGS_INDEX_PREFIX = os.getenv("STAC_BASE_CATALOGS_INDEX", "base_")
@@ -791,13 +793,8 @@ class DatabaseLogic:
         if catalog_path:
             # Create list of nested catalog ids
             catalog_path_list = catalog_path.split("/")
-            if len(catalog_path_list) > 1:
-                parent_catalog_path = "/".join(catalog_path_list[:-1])
-            else:
-                parent_catalog_path = None
         else:
             catalog_path_list = None
-            parent_catalog_path = None
 
         params_index = index_catalogs_by_catalog_id(catalog_path_list=catalog_path_list)
 
@@ -816,7 +813,6 @@ class DatabaseLogic:
                 },
             )
             hits = response["hits"]["hits"]
-            print(hits)
         except exceptions.NotFoundError:
             response = None
             catalogs = []
@@ -826,22 +822,27 @@ class DatabaseLogic:
         catalog_indices_list = []
         for hit in hits:
             # Construct required catalog indices
-            catalog_index = hit["_index"].split("_", 1)[1]
+            catalog_index = hit["_index"].split("_", 1)
             catalog_id = hit["_id"]
-            catalog_index_list = catalog_index.split(CATALOG_SEPARATOR)
-            catalog_index_list.reverse()
-            catalog_index_list.append(catalog_id)
-            catalog_indices_list.append(catalog_index_list)
+            try:
+                catalog_index = catalog_index[1]
+                catalog_index_list = catalog_index.split(CATALOG_SEPARATOR)
+                catalog_index_list.reverse()
+                catalog_index_list.append(catalog_id)
+                catalog_indices_list.append(catalog_index_list)
+            except IndexError:
+                catalog_index_list = [catalog_id]
+                catalog_indices_list.append(catalog_index_list)
 
         sub_catalogs_results = await asyncio.gather(
             *[
-                self.get_catalog_collections(
-                    catalog_path=index_catalogs_by_catalog_id(
+                self.client.search(
+                    index=index_catalogs_by_catalog_id(
                         catalog_path_list=catalog_index_list
                     ),
-                    base_url=base_url,
-                    limit=NUMBER_OF_CATALOG_COLLECTIONS,
-                    token=None,
+                    body={
+                        "sort": [{"id": {"order": "asc"}}],
+                    },
                 )
                 for catalog_index_list in catalog_indices_list
             ],
@@ -2144,8 +2145,6 @@ class DatabaseLogic:
                 f"Catalog {catalog_id} already exists at path {catalog_path if catalog_path else 'Top-Level'}"
             )
 
-        print("creating at index " + index)
-
         await self.client.index(
             index=index,
             id=catalog_id,
@@ -2453,7 +2452,6 @@ class DatabaseLogic:
                 return_exceptions=True,
             )
 
-            catalog_paths = []
             # Reindex collections in this catalog with new catalog_id
             old_catalog_path_list = catalog_path_list
             new_catalog_path_list = catalog_path_list[:-1]
@@ -2849,11 +2847,7 @@ class DatabaseLogic:
                     hit["_index"].split("_", 1)[1].split(CATALOG_SEPARATOR)
                 )
                 catalog_index_list.reverse()
-                # catalog_index_list = catalog_index_list[:-1]
                 catalog_index = "/".join(catalog_index_list)
-                print("index path is")
-                print(hit["_index"])
-                print(catalog_index)
                 sub_data_catalogs_and_collections = child_data[i]
                 # Extract sub-catalogs
                 sub_catalogs = []
