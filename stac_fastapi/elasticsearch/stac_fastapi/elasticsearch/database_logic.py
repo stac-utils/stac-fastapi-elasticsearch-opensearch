@@ -823,9 +823,8 @@ class DatabaseLogic:
         for hit in hits:
             # Construct required catalog indices
             try:
-                catalog_index = hit["_index"].split("_", 1)
                 catalog_id = hit["_id"]
-                catalog_index = catalog_index[1]
+                catalog_index = hit["_index"].split("_", 1)[1]
                 catalog_index_list = catalog_index.split(CATALOG_SEPARATOR)
                 catalog_index_list.reverse()
                 catalog_index_list.append(catalog_id)
