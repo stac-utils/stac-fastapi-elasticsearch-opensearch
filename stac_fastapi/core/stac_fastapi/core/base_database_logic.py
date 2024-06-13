@@ -72,11 +72,6 @@ class BaseDatabaseLogic(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def create_super_catalog(self, catalog: Dict, refresh: bool = False) -> None:
-        """Create a catalog in the database."""
-        pass
-
-    @abc.abstractmethod
     async def find_catalog(self, catalog_path: str) -> Dict:
         """Find a catalog in the database."""
         pass

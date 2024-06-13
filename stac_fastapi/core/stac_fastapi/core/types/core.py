@@ -161,22 +161,6 @@ class AsyncBaseTransactionsClient(abc.ABC):
         ...
 
     @abc.abstractmethod
-    async def create_super_catalog(
-        self, catalog: stac_types.Catalog, **kwargs
-    ) -> Optional[stac_types.Catalog | Response]:
-        """Create a new top-level catalog.
-
-        Called with `POST /`.
-
-        Args:
-            catalog: the catalog
-
-        Returns:
-            The catalog that was created.
-        """
-        ...
-
-    @abc.abstractmethod
     async def update_catalog(
         self, catalog_path: str, catalog: stac_types.Catalog, **kwargs
     ) -> Optional[stac_types.Catalog | Response]:

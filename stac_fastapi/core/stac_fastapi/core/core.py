@@ -262,7 +262,6 @@ class CoreClient(AsyncBaseCoreClient):
                     limit=limit,
                     token=token,
                     sort=sort,
-                    collection_ids=None,  # search_request.collections,
                     base_url=base_url,
                 )
             )
@@ -1346,35 +1345,6 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             catalog=catalog,
             base_url=base_url,
         )  # not needed here: conformance_classes=self.conformance_classes())
-
-    @overrides
-    async def create_super_catalog(
-        self, catalog: stac_types.Catalog, **kwargs
-    ) -> stac_types.Catalog:
-        """Create a new catalog in the database.
-
-        Args:
-            catalog (stac_types.Catalog): The catalog to be created.
-            kwargs: Additional keyword arguments.
-
-        Returns:
-            stac_types.Catalog: The created catalog object.
-
-        Raises:
-            ConflictError: If the catalog already exists.
-        """
-
-        base_url = str(kwargs["request"].base_url)
-        catalog = CatalogSerializer.stac_to_db(catalog=catalog, base_url=base_url)
-
-        # await self.database.create_super_catalog(catalog=catalog)
-
-        await self.database.create_catalog(catalog=catalog)
-
-        # This catalog does not yet have any collections or sub-catalogs
-        return CatalogSerializer.db_to_stac(
-            catalog_path="base", catalog=catalog, base_url=base_url, sub_catalogs=[]
-        )  # not needed here: conformance_classes=self.conformance_classes()) conformance_classes=self.conformance_classes())
 
     @overrides
     async def update_catalog(
