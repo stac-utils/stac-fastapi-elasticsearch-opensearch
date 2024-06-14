@@ -1570,15 +1570,20 @@ class DatabaseLogic:
 
         es_response = await search_task
 
+        collections = []
         hits = es_response["hits"]["hits"]
-        collections = [
-            self.collection_serializer.db_to_stac(
-                collection=hit["_source"],
-                base_url=base_url,
-                catalog_path=hit["_index"].split("_", 1),
+        for hit in hits:
+            catalog_path = hit["_index"].split("_",1)[1]
+            catalog_path_list = catalog_path.split(CATALOG_SEPARATOR)
+            catalog_path_list.reverse()
+            catalog_path = '/'.join(catalog_path_list)
+            collections.append(
+                self.collection_serializer.db_to_stac(
+                    collection=hit["_source"],
+                    base_url=base_url,
+                    catalog_path=catalog_path,
+                )
             )
-            for hit in hits
-        ]
 
         next_token = None
         if hits and (sort_array := hits[-1].get("sort")):
