@@ -102,9 +102,6 @@ def filter_fields(  # noqa: C901
                     # The key's value is not a dict, or there is no sub-key to remove. The
                     # entire key can be removed from the source.
                     source.pop(key_root, None)
-            else:
-                # The key to remove does not exist on the source, so it is ignored
-                pass
 
     # Coalesce incoming type to a dict
     item = dict(item)

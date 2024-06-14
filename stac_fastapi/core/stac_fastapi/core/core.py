@@ -611,17 +611,22 @@ class CoreClient(AsyncBaseCoreClient):
             collection_ids=search_request.collections,
         )
 
+        fields = (
+            getattr(search_request, "fields", None)
+            if self.extension_is_enabled("FieldsExtension")
+            else None
+        )
+        include: Set[str] = fields.include if fields and fields.include else set()
+        exclude: Set[str] = fields.exclude if fields and fields.exclude else set()
+
         items = [
-            self.item_serializer.db_to_stac(item, base_url=base_url) for item in items
+            filter_fields(
+                self.item_serializer.db_to_stac(item, base_url=base_url),
+                include,
+                exclude,
+            )
+            for item in items
         ]
-
-        if self.extension_is_enabled("FieldsExtension"):
-            fields = getattr(search_request, "fields", None)
-            include: Set[str] = fields.include if fields and fields.include else set()
-            exclude: Set[str] = fields.exclude if fields and fields.exclude else set()
-
-            items = [filter_fields(feature, include, exclude) for feature in items]
-
         links = await PagingLinks(request=request, next=next_token).get_links()
 
         return stac_types.ItemCollection(
