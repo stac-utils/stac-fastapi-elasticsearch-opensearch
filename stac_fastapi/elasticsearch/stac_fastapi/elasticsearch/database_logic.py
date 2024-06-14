@@ -6,6 +6,7 @@ import os
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from datetime import datetime as datetime_type
 from datetime import timezone
+from enum import Enum
 from mimetypes import MimeTypes
 from typing import (
     Any,
@@ -345,6 +346,10 @@ class DatabaseLogic:
             extenstions (list): list of extensions to add.
         """
         self.extensions.extend(extensions)
+
+    def extension_is_enabled(self, extension: str) -> bool:
+        """Check if an api extension is enabled."""
+        return any([type(ext).__name__ == extension for ext in self.extensions])
 
     async def get_all_collections(
         self, request: Request
