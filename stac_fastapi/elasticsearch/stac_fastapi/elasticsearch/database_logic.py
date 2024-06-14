@@ -40,7 +40,7 @@ from stac_fastapi.elasticsearch.config import (
 from stac_fastapi.types.config import Settings
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.search import BaseSearchPostRequest
-from stac_fastapi.types.stac import Collection, Item, ItemCollection
+from stac_fastapi.types.stac import Collection, Collections, Item, ItemCollection
 
 logger = logging.getLogger(__name__)
 
@@ -329,6 +329,7 @@ class DatabaseLogic:
 
     client = AsyncElasticsearchSettings().create_client
     sync_client = SyncElasticsearchSettings().create_client
+    extensions = attr.ib(default=[])
 
     item_serializer: Type[ItemSerializer] = attr.ib(default=ItemSerializer)
     collection_serializer: Type[CollectionSerializer] = attr.ib(
@@ -336,6 +337,14 @@ class DatabaseLogic:
     )
 
     """CORE LOGIC"""
+
+    def load_extensions(self, extensions: list) -> None:
+        """Add extensions to current extensions list.
+
+        Args:
+            extenstions (list): list of extensions to add.
+        """
+        self.extensions.extend(extensions)
 
     async def get_all_collections(
         self, request: Request
@@ -392,7 +401,7 @@ class DatabaseLogic:
             next_link = PagingLinks(next=next_token, request=request).link_next()
             links.append(next_link)
 
-        return stac_types.Collections(collections=collections, links=links)
+        return Collections(collections=collections, links=links)
 
     async def get_item(
         self, collection_id: str, item_id: str, request: Request

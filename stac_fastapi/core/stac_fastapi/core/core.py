@@ -67,6 +67,14 @@ class CoreClient(AsyncBaseCoreClient):
     title: str = attr.ib(default="stac-fastapi")
     description: str = attr.ib(default="stac-fastapi")
 
+    def __attrs_post_init__(self):
+        """Load extensions into database."""
+        self.database = self.database.load_extensions(self.extensions)
+
+    def extension_is_enabled(self, extension: str) -> bool:
+        """Check if an api extension is enabled."""
+        return any([type(ext).__name__ == extension for ext in self.extensions])
+
     async def all_collections(self, **kwargs) -> stac_types.Collections:
         """Read all collections from the database.
 
