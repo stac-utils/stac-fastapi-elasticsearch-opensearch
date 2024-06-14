@@ -4,12 +4,11 @@ import re
 from datetime import datetime as datetime_type
 from datetime import timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set, Type, Union
+from typing import Any, Dict, List, Optional, Type, Union
 from urllib.parse import unquote_plus, urljoin
 
 import attr
 import orjson
-import stac_pydantic
 from fastapi import HTTPException, Request
 from overrides import overrides
 from pydantic import ValidationError
@@ -25,13 +24,13 @@ from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.models.links import PagingLinks
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.session import Session
+from stac_fastapi.core.utilities import filter_fields
 from stac_fastapi.extensions.third_party.bulk_transactions import (
     BaseBulkTransactionsClient,
     BulkTransactionMethod,
     Items,
 )
 from stac_fastapi.types import stac as stac_types
-from stac_fastapi.types.config import Settings
 from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
 from stac_fastapi.types.core import (
     AsyncBaseCoreClient,
@@ -508,7 +507,6 @@ class CoreClient(AsyncBaseCoreClient):
             else:
                 base_args["filter-lang"] = "cql2-json"
                 base_args["filter"] = orjson.loads(to_cql2(parse_cql2_text(filter)))
-
         if fields:
             includes = set()
             excludes = set()
@@ -516,6 +514,8 @@ class CoreClient(AsyncBaseCoreClient):
                 if field[0] == "-":
                     excludes.add(field[1:])
                 elif field[0] == "+":
+                    includes.add(field[1:])
+                elif field[0] == " ":
                     includes.add(field[1:])
                 else:
                     includes.add(field)
@@ -619,26 +619,14 @@ class CoreClient(AsyncBaseCoreClient):
         ]
 
         if self.extension_is_enabled("FieldsExtension"):
-            if search_request.query is not None:
-                query_include: Set[str] = set(
-                    [
-                        k if k in Settings.get().indexed_fields else f"properties.{k}"
-                        for k in search_request.query.keys()
-                    ]
-                )
-                if not search_request.fields.include:
-                    search_request.fields.include = query_include
-                else:
-                    search_request.fields.include.union(query_include)
+            exclude = search_request.fields.exclude
+            if exclude and len(exclude) == 0:
+                exclude = None
+            include = search_request.fields.include
+            if include and len(include) == 0:
+                include = None
 
-            filter_kwargs = search_request.fields.filter_fields
-
-            items = [
-                orjson.loads(
-                    stac_pydantic.Item(**feat).json(**filter_kwargs, exclude_unset=True)
-                )
-                for feat in items
-            ]
+            items = [filter_fields(feature, include, exclude) for feature in items]
 
         links = await PagingLinks(request=request, next=next_token).get_links()
 

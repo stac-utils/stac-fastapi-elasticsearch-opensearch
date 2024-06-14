@@ -11,7 +11,7 @@ from stac_fastapi.core.core import (
     EsAsyncBaseFiltersClient,
     TransactionsClient,
 )
-from stac_fastapi.core.extensions import QueryExtension
+from stac_fastapi.core.extensions import FieldsExtension, QueryExtension
 from stac_fastapi.core.session import Session
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
 from stac_fastapi.elasticsearch.database_logic import (
@@ -20,7 +20,6 @@ from stac_fastapi.elasticsearch.database_logic import (
     create_index_templates,
 )
 from stac_fastapi.extensions.core import (
-    FieldsExtension,
     FilterExtension,
     SortExtension,
     TokenPaginationExtension,
