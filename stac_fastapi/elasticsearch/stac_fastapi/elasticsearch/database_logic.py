@@ -7,7 +7,6 @@ from base64 import urlsafe_b64decode, urlsafe_b64encode
 from datetime import datetime as datetime_type
 from datetime import timezone
 from enum import Enum
-from mimetypes import MimeTypes
 from typing import (
     Any,
     Dict,
@@ -330,7 +329,7 @@ class DatabaseLogic:
 
     client = AsyncElasticsearchSettings().create_client
     sync_client = SyncElasticsearchSettings().create_client
-    extensions = attr.ib(default=[])
+    extensions: list = attr.ib(default=[])
 
     item_serializer: Type[ItemSerializer] = attr.ib(default=ItemSerializer)
     collection_serializer: Type[CollectionSerializer] = attr.ib(
@@ -721,7 +720,7 @@ class DatabaseLogic:
             ) from exc
 
         hits = es_response["hits"]["hits"]
-        items = (hit["_source"] for hit in hits[:limit])
+        items = [hit["_source"] for hit in hits[:limit]]
 
         next_token = None
         if len(hits) > limit and limit < max_result_window:
@@ -864,7 +863,7 @@ class DatabaseLogic:
             None
         """
         # todo: check if collection exists, but cache
-        self.prep_create_item(item=item, base_url=request.base_url)
+        await self.prep_create_item(item=item, base_url=request.base_url)
 
         item_id = item["id"]
         collection_id = item["collection"]

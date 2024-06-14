@@ -363,7 +363,6 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             NotFound: If the specified collection is not found in the database.
 
         """
-
         return self.database.update_item(
             collection_id=collection_id,
             item_id=item,
