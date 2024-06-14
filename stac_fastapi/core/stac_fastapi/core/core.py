@@ -4,7 +4,7 @@ import re
 from datetime import datetime as datetime_type
 from datetime import timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional, Type, Union
+from typing import Any, Dict, List, Optional, Set, Type, Union
 from urllib.parse import unquote_plus, urljoin
 
 import attr
@@ -25,6 +25,7 @@ from stac_fastapi.core.models.links import PagingLinks
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.session import Session
 from stac_fastapi.core.utilities import filter_fields
+from stac_fastapi.extensions.core.filter.client import AsyncBaseFiltersClient
 from stac_fastapi.extensions.third_party.bulk_transactions import (
     BaseBulkTransactionsClient,
     BulkTransactionMethod,
@@ -32,11 +33,7 @@ from stac_fastapi.extensions.third_party.bulk_transactions import (
 )
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
-from stac_fastapi.types.core import (
-    AsyncBaseCoreClient,
-    AsyncBaseFiltersClient,
-    AsyncBaseTransactionsClient,
-)
+from stac_fastapi.types.core import AsyncBaseCoreClient, AsyncBaseTransactionsClient
 from stac_fastapi.types.extension import ApiExtension
 from stac_fastapi.types.requests import get_base_url
 from stac_fastapi.types.rfc3339 import DateTimeType
@@ -619,12 +616,9 @@ class CoreClient(AsyncBaseCoreClient):
         ]
 
         if self.extension_is_enabled("FieldsExtension"):
-            exclude = search_request.fields.exclude
-            if exclude and len(exclude) == 0:
-                exclude = None
-            include = search_request.fields.include
-            if include and len(include) == 0:
-                include = None
+            fields = getattr(search_request, "fields", None)
+            include: Set[str] = fields.include if fields and fields.include else set()
+            exclude: Set[str] = fields.exclude if fields and fields.exclude else set()
 
             items = [filter_fields(feature, include, exclude) for feature in items]
 
