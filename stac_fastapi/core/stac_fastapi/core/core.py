@@ -134,6 +134,11 @@ class CoreClient(AsyncBaseCoreClient):
                 {
                     "rel": "data",
                     "type": MimeTypes.json,
+                    "href": urljoin(base_url, "collections"),
+                },
+                {
+                    "rel": "data",
+                    "type": MimeTypes.json,
                     "href": urljoin(base_url, "catalogs"),
                 },
                 {
