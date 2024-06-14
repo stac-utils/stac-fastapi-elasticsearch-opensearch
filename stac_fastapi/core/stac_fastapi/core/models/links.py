@@ -121,7 +121,11 @@ class PagingLinks(BaseLinks):
             # Need to generate next link by combining the current url, including base url, with the next token
             method = self.request.method
             if method == "GET":
-                href = merge_params(self.url, {"token": self.next})
+                parsed_url = urlparse(self.url)
+                netloc = parsed_url.netloc + "/"
+                query_url = self.url.split(netloc)[1]
+                new_url = self.resolve(query_url)
+                href = merge_params(new_url, {"token": self.next})
                 link = dict(
                     rel=Relations.next.value,
                     type=MimeTypes.json.value,
