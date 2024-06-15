@@ -493,12 +493,12 @@ class CoreClient(AsyncBaseCoreClient):
             ]
 
         if filter:
-            if filter_lang == "cql2-json":
-                base_args["filter-lang"] = "cql2-json"
-                base_args["filter"] = orjson.loads(unquote_plus(filter))
-            else:
-                base_args["filter-lang"] = "cql2-json"
-                base_args["filter"] = orjson.loads(to_cql2(parse_cql2_text(filter)))
+            base_args["filter-lang"] = "cql2-json"
+            base_args["filter"] = orjson.loads(
+                unquote_plus(filter)
+                if filter_lang == "cql2-json"
+                else to_cql2(parse_cql2_text(filter))
+            )
 
         if fields:
             includes, excludes = set(), set()
