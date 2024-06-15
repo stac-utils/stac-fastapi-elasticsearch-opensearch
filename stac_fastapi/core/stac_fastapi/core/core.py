@@ -504,18 +504,14 @@ class CoreClient(AsyncBaseCoreClient):
             else:
                 base_args["filter-lang"] = "cql2-json"
                 base_args["filter"] = orjson.loads(to_cql2(parse_cql2_text(filter)))
+
         if fields:
-            includes = set()
-            excludes = set()
+            includes, excludes = set(), set()
             for field in fields:
                 if field[0] == "-":
                     excludes.add(field[1:])
-                elif field[0] == "+":
-                    includes.add(field[1:])
-                elif field[0] == " ":
-                    includes.add(field[1:])
                 else:
-                    includes.add(field)
+                    includes.add(field[1:] if field[0] in "+ " else field)
             base_args["fields"] = {"include": includes, "exclude": excludes}
 
         # Do the request
