@@ -42,7 +42,11 @@ or
 ```
 pip install stac_fastapi.opensearch
 ```
-    
+from sources:
+```
+cd stac_fastapi/elasticsearch
+pip install -e .
+``` 
 ## Build Elasticsearch API backend
 
 ```shell
