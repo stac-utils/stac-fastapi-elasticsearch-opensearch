@@ -118,7 +118,10 @@ async def test_app_context_results(app_client, txn_client, ctx, load_test_data):
 
 @pytest.mark.asyncio
 async def test_app_fields_extension(app_client, ctx, txn_client):
-    resp = await app_client.get("/search", params={"collections": ["test-collection"]})
+    resp = await app_client.get(
+        "/search",
+        params={"collections": ["test-collection"], "fields": "+properties.datetime"},
+    )
     assert resp.status_code == 200
     resp_json = resp.json()
     assert list(resp_json["features"][0]["properties"]) == ["datetime"]
@@ -132,11 +135,12 @@ async def test_app_fields_extension_query(app_client, ctx, txn_client):
         json={
             "query": {"proj:epsg": {"gte": item["properties"]["proj:epsg"]}},
             "collections": ["test-collection"],
+            "fields": {"include": ["properties.datetime", "properties.proj:epsg"]},
         },
     )
     assert resp.status_code == 200
     resp_json = resp.json()
-    assert list(resp_json["features"][0]["properties"]) == ["datetime", "proj:epsg"]
+    assert set(resp_json["features"][0]["properties"]) == set(["datetime", "proj:epsg"])
 
 
 @pytest.mark.asyncio

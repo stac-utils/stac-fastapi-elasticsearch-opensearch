@@ -9,7 +9,6 @@ from urllib.parse import unquote_plus, urljoin
 
 import attr
 import orjson
-import stac_pydantic
 from fastapi import HTTPException, Request
 from overrides import overrides
 from pydantic import ValidationError
@@ -25,19 +24,16 @@ from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.models.links import PagingLinks
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.session import Session
+from stac_fastapi.core.utilities import filter_fields
+from stac_fastapi.extensions.core.filter.client import AsyncBaseFiltersClient
 from stac_fastapi.extensions.third_party.bulk_transactions import (
     BaseBulkTransactionsClient,
     BulkTransactionMethod,
     Items,
 )
 from stac_fastapi.types import stac as stac_types
-from stac_fastapi.types.config import Settings
 from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
-from stac_fastapi.types.core import (
-    AsyncBaseCoreClient,
-    AsyncBaseFiltersClient,
-    AsyncBaseTransactionsClient,
-)
+from stac_fastapi.types.core import AsyncBaseCoreClient, AsyncBaseTransactionsClient
 from stac_fastapi.types.extension import ApiExtension
 from stac_fastapi.types.requests import get_base_url
 from stac_fastapi.types.rfc3339 import DateTimeType
@@ -491,34 +487,26 @@ class CoreClient(AsyncBaseCoreClient):
             base_args["intersects"] = orjson.loads(unquote_plus(intersects))
 
         if sortby:
-            sort_param = []
-            for sort in sortby:
-                sort_param.append(
-                    {
-                        "field": sort[1:],
-                        "direction": "desc" if sort[0] == "-" else "asc",
-                    }
-                )
-            base_args["sortby"] = sort_param
+            base_args["sortby"] = [
+                {"field": sort[1:], "direction": "desc" if sort[0] == "-" else "asc"}
+                for sort in sortby
+            ]
 
         if filter:
-            if filter_lang == "cql2-json":
-                base_args["filter-lang"] = "cql2-json"
-                base_args["filter"] = orjson.loads(unquote_plus(filter))
-            else:
-                base_args["filter-lang"] = "cql2-json"
-                base_args["filter"] = orjson.loads(to_cql2(parse_cql2_text(filter)))
+            base_args["filter-lang"] = "cql2-json"
+            base_args["filter"] = orjson.loads(
+                unquote_plus(filter)
+                if filter_lang == "cql2-json"
+                else to_cql2(parse_cql2_text(filter))
+            )
 
         if fields:
-            includes = set()
-            excludes = set()
+            includes, excludes = set(), set()
             for field in fields:
                 if field[0] == "-":
                     excludes.add(field[1:])
-                elif field[0] == "+":
-                    includes.add(field[1:])
                 else:
-                    includes.add(field)
+                    includes.add(field[1:] if field[0] in "+ " else field)
             base_args["fields"] = {"include": includes, "exclude": excludes}
 
         # Do the request
@@ -614,32 +602,22 @@ class CoreClient(AsyncBaseCoreClient):
             collection_ids=search_request.collections,
         )
 
+        fields = (
+            getattr(search_request, "fields", None)
+            if self.extension_is_enabled("FieldsExtension")
+            else None
+        )
+        include: Set[str] = fields.include if fields and fields.include else set()
+        exclude: Set[str] = fields.exclude if fields and fields.exclude else set()
+
         items = [
-            self.item_serializer.db_to_stac(item, base_url=base_url) for item in items
+            filter_fields(
+                self.item_serializer.db_to_stac(item, base_url=base_url),
+                include,
+                exclude,
+            )
+            for item in items
         ]
-
-        if self.extension_is_enabled("FieldsExtension"):
-            if search_request.query is not None:
-                query_include: Set[str] = set(
-                    [
-                        k if k in Settings.get().indexed_fields else f"properties.{k}"
-                        for k in search_request.query.keys()
-                    ]
-                )
-                if not search_request.fields.include:
-                    search_request.fields.include = query_include
-                else:
-                    search_request.fields.include.union(query_include)
-
-            filter_kwargs = search_request.fields.filter_fields
-
-            items = [
-                orjson.loads(
-                    stac_pydantic.Item(**feat).json(**filter_kwargs, exclude_unset=True)
-                )
-                for feat in items
-            ]
-
         links = await PagingLinks(request=request, next=next_token).get_links()
 
         return stac_types.ItemCollection(
