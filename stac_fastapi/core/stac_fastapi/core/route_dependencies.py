@@ -18,50 +18,44 @@ route_dependencies_schema = {
         "type": "object",
         "properties": {
             "routes": {
-                "type": "object",
-                "properties": {
-                    "method": {
-                        "anyOf": [
-                            {"$ref": "#/$defs/method"},
-                            {
-                                "type": "array",
-                                "items": {"$ref": "#/$defs/method"},
-                                "uniqueItems": True,
-                            },
-                        ]
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "method": {
+                            "anyOf": [
+                                {"$ref": "#/$defs/method"},
+                                {
+                                    "type": "array",
+                                    "items": {"$ref": "#/$defs/method"},
+                                    "uniqueItems": True,
+                                },
+                            ]
+                        },
+                        "path": {
+                            "anyOf": [
+                                {"$ref": "#/$defs/path"},
+                                {
+                                    "type": "array",
+                                    "items": {"$ref": "#/$defs/path"},
+                                    "uniqueItems": True,
+                                },
+                            ]
+                        },
+                        "type": {"type": "string"},
                     },
-                    "path": {
-                        "anyOf": [
-                            {"$ref": "#/$defs/path"},
-                            {
-                                "type": "array",
-                                "items": {"$ref": "#/$defs/path"},
-                                "uniqueItems": True,
-                            },
-                        ]
-                    },
-                    "type": {"type": "string"},
                     "required": ["method", "path"],
                     "additionalProperties": False,
                 },
             },
             "dependencies": {
-                "type": "object",
-                "properties": {
-                    "method": {
-                        "anyOf": [
-                            {"$ref": "#/$defs/method"},
-                            {
-                                "type": "array",
-                                "items": {"$ref": "#/$defs/method"},
-                                "uniqueItems": True,
-                            },
-                        ]
-                    },
-                    "args": {"type": "string"},
-                    "kwargs": {
-                        "type": "object",
-                        "properties": {"type": "string"},
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "method": {"type": "string"},
+                        "args": {"type": "string"},
+                        "kwargs": {"type": "object"},
                     },
                     "required": ["method"],
                     "additionalProperties": False,
@@ -77,11 +71,11 @@ route_dependencies_schema = {
     "$defs": {
         "method": {
             "type": "string",
-            "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"],
+            "enum": ["*", "GET", "POST", "PUT", "PATCH", "DELETE"],
         },
         "path": {
             "type": "string",
-            "pattern": r"^\/.*",
+            "pattern": r"^\*$|\/.*",
         },
     },
 }
