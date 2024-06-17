@@ -88,9 +88,7 @@ route_dependencies_schema = {
 
 
 def get_route_dependencies_conf(route_dependencies_env: str) -> list:
-    """
-    Get Route dependencies configuration from file or environment variable.
-    """
+    """Get Route dependencies configuration from file or environment variable."""
     if os.path.exists(route_dependencies_env):
         with open(route_dependencies_env, encoding="utf-8") as route_dependencies_file:
             route_dependencies_conf = json.load(route_dependencies_file)
@@ -108,9 +106,7 @@ def get_route_dependencies_conf(route_dependencies_env: str) -> list:
 
 
 def get_routes(route_dependency_conf: dict) -> list:
-    """
-    Get routes from route dependency configuration.
-    """
+    """Get routes from route dependency configuration."""
     # seperate out any path lists
     intermediate_routes = []
     for route in route_dependency_conf["routes"]:
@@ -137,9 +133,7 @@ def get_routes(route_dependency_conf: dict) -> list:
 
 
 def get_dependencies(route_dependency_conf: dict) -> list:
-    """
-    Get dependencies from route dependency configuration.
-    """
+    """Get dependencies from route dependency configuration."""
     dependencies = []
     for dependency_conf in route_dependency_conf["dependencies"]:
 
@@ -168,7 +162,7 @@ def get_route_dependencies(route_dependencies_env: str = "") -> list:
     route_dependencies_env = os.environ.get(
         "STAC_FASTAPI_ROUTE_DEPENDENCIES", route_dependencies_env
     )
-    route_dependencies = []
+    route_dependencies: list[tuple] = []
 
     if not route_dependencies_env:
         _LOGGER.info("Authentication skipped.")
