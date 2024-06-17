@@ -336,17 +336,17 @@ class DatabaseLogic:
         Returns:
             A tuple of (collections, next pagination token if any).
         """
+        body={
+            "sort": [{"id": {"order": "asc"}}],
+            "size": limit,
+        }
         search_after = None
         if token:
             search_after = [token]
+            body["search_after"]= search_after
 
         response = await self.client.search(
-            index=COLLECTIONS_INDEX,
-            body={
-                "sort": [{"id": {"order": "asc"}}],
-                "size": limit,
-                "search_after": search_after,
-            },
+            index=COLLECTIONS_INDEX, body=body
         )
         hits = response.body["hits"]["hits"]
         collections = [
