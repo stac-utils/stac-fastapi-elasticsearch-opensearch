@@ -5,7 +5,16 @@ from typing import Any, Dict, Set
 
 import certifi
 
-from elasticsearch import AsyncElasticsearch, Elasticsearch  # type: ignore
+# https://elasticsearch-serverless-python.readthedocs.io/en/stable/api.html#module-elasticsearch_serverless
+# from elasticsearch import AsyncElasticsearch, Elasticsearch  # type: ignore
+from elasticsearch_serverless import Elasticsearch
+
+# WRONG https://elasticsearch-serverless-python.readthedocs.io/en/latest/api.html#elasticsearch_serverless.client.AsyncSearchClient
+# from elasticsearch_serverless.client import AsyncSearchClient
+
+# RIGHT https://elasticsearch-py.readthedocs.io/en/latest/async.html
+from elasticsearch_serverless import AsyncElasticsearch
+
 from stac_fastapi.types.config import ApiSettings
 
 
@@ -42,9 +51,11 @@ def _es_config() -> Dict[str, Any]:
     if api_key := os.getenv("ES_API_KEY"):
         if isinstance(config["headers"], dict):
             headers = {**config["headers"], "x-api-key": api_key}
+            headers = {**config["headers"], "Authorization":  f"ApiKey {api_key}"}
 
         else:
             config["headers"] = {"x-api-key": api_key}
+            config["headers"] = {"Authorization":  f"ApiKey {api_key}"}
 
         config["headers"] = headers
 

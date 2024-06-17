@@ -13,7 +13,7 @@ from elasticsearch import exceptions, helpers  # type: ignore
 from stac_fastapi.core.extensions import filter
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon
-from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
+from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings, ElasticsearchSettings
 from stac_fastapi.elasticsearch.config import (
     ElasticsearchSettings as SyncElasticsearchSettings,
 )
@@ -180,23 +180,30 @@ async def create_index_templates() -> None:
         None
 
     """
-    client = AsyncElasticsearchSettings().create_client
-    await client.indices.put_template(
+    # https://www.elastic.co/guide/en/elasticsearch/reference/current/indices-component-template.html
+    # no asynch is provided for index management over serverless
+    # the body also changes and the name can't start with underscode '_'
+    client = ElasticsearchSettings().create_client
+    client.indices.put_index_template(
         name=f"template_{COLLECTIONS_INDEX}",
         body={
             "index_patterns": [f"{COLLECTIONS_INDEX}*"],
-            "mappings": ES_COLLECTIONS_MAPPINGS,
+            "template": {
+                "mappings": ES_COLLECTIONS_MAPPINGS,
+            }
         },
     )
-    await client.indices.put_template(
-        name=f"template_{ITEMS_INDEX_PREFIX}",
+    client.indices.put_index_template(
+        name=f"index_template_{ITEMS_INDEX_PREFIX}",
         body={
             "index_patterns": [f"{ITEMS_INDEX_PREFIX}*"],
-            "settings": ES_ITEMS_SETTINGS,
-            "mappings": ES_ITEMS_MAPPINGS,
+            "template": {
+                "settings": ES_ITEMS_SETTINGS,
+                "mappings": ES_ITEMS_MAPPINGS,
+            }
         },
     )
-    await client.close()
+    client.close()
 
 
 async def create_collection_index() -> None:
@@ -207,13 +214,13 @@ async def create_collection_index() -> None:
         None
 
     """
-    client = AsyncElasticsearchSettings().create_client
+    client = ElasticsearchSettings().create_client
 
-    await client.options(ignore_status=400).indices.create(
+    client.options(ignore_status=400).indices.create(
         index=f"{COLLECTIONS_INDEX}-000001",
         aliases={COLLECTIONS_INDEX: {}},
     )
-    await client.close()
+    client.close()
 
 
 async def create_item_index(collection_id: str):
@@ -227,14 +234,14 @@ async def create_item_index(collection_id: str):
         None
 
     """
-    client = AsyncElasticsearchSettings().create_client
+    client = ElasticsearchSettings().create_client
     index_name = index_by_collection_id(collection_id)
 
-    await client.options(ignore_status=400).indices.create(
+    client.options(ignore_status=400).indices.create(
         index=f"{index_by_collection_id(collection_id)}-000001",
         aliases={index_name: {}},
     )
-    await client.close()
+    client.close()
 
 
 async def delete_item_index(collection_id: str):
@@ -243,17 +250,17 @@ async def delete_item_index(collection_id: str):
     Args:
         collection_id (str): The ID of the collection whose items index will be deleted.
     """
-    client = AsyncElasticsearchSettings().create_client
+    client = ElasticsearchSettings().create_client
 
     name = index_by_collection_id(collection_id)
-    resolved = await client.indices.resolve_index(name=name)
+    resolved = client.indices.resolve_index(name=name)
     if "aliases" in resolved and resolved["aliases"]:
         [alias] = resolved["aliases"]
-        await client.indices.delete_alias(index=alias["indices"], name=alias["name"])
-        await client.indices.delete(index=alias["indices"])
+        client.indices.delete_alias(index=alias["indices"], name=alias["name"])
+        client.indices.delete(index=alias["indices"])
     else:
-        await client.indices.delete(index=name)
-    await client.close()
+        client.indices.delete(index=name)
+    client.close()
 
 
 def mk_item_id(item_id: str, collection_id: str):
@@ -341,8 +348,7 @@ class DatabaseLogic:
                 "search_after": search_after,
             },
         )
-
-        hits = response["hits"]["hits"]
+        hits = response.body["hits"]["hits"]
         collections = [
             self.collection_serializer.db_to_stac(
                 collection=hit["_source"], request=request, extensions=self.extensions
