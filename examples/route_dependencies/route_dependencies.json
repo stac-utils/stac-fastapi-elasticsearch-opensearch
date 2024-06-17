@@ -2,19 +2,53 @@
   {
     "routes": [
       {
-        "method": "GET",
-        "path": "/collections"
+        "method": "*",
+        "path": "*"
       }
     ],
     "dependencies": [
       {
-        "method": "fastapi.security.OAuth2PasswordBearer",
+        "method": "stac_fastapi.core.basic_auth.BasicAuth",
         "kwargs": {
-          "tokenUrl": "token"
+          "credentials": [
+            {
+              "username": "admin",
+              "password": "admin"
+            }
+          ]
         }
+      }
+    ]
+  },
+  {
+    "routes": [
+      {
+        "path": "/collections/{collection_id}/items/{item_id}",
+        "method": "GET"
       },
       {
-        "method": "stac_fastapi.conftest.must_be_bob"
+        "path": "/search",
+        "method": [
+          "GET",
+          "POST"
+        ]
+      },
+      {
+        "path": "/collections",
+        "method": "GET"
+      }
+    ],
+    "dependencies": [
+      {
+        "method": "stac_fastapi.core.basic_auth.BasicAuth",
+        "kwargs": {
+          "credentials": [
+            {
+              "username": "reader",
+              "password": "reader"
+            }
+          ]
+        }
       }
     ]
   }
