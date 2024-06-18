@@ -773,7 +773,11 @@ async def test_field_extension_post(app_client, ctx):
         "ids": [test_item["id"]],
         "fields": {
             "exclude": ["assets.B1"],
-            "include": ["properties.eo:cloud_cover", "properties.orientation"],
+            "include": [
+                "properties.eo:cloud_cover",
+                "properties.orientation",
+                "assets",
+            ],
         },
     }
 
@@ -801,7 +805,7 @@ async def test_field_extension_exclude_and_include(app_client, ctx):
 
     resp = await app_client.post("/search", json=body)
     resp_json = resp.json()
-    assert "eo:cloud_cover" not in resp_json["features"][0]["properties"]
+    assert "properties" not in resp_json["features"][0]
 
 
 @pytest.mark.asyncio
