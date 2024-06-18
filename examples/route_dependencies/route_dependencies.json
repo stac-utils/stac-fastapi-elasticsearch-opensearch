@@ -8,14 +8,9 @@
     ],
     "dependencies": [
       {
-        "method": "stac_fastapi.core.basic_auth.BasicAuth",
+        "method": "fastapi.security.OAuth2PasswordBearer",
         "kwargs": {
-          "credentials": [
-            {
-              "username": "admin",
-              "password": "admin"
-            }
-          ]
+          "tokenUrl": "http://keycloak:8083/auth/realms/stac/protocol/openid-connect/token"
         }
       }
     ]
