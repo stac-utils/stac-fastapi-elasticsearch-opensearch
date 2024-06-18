@@ -13,6 +13,8 @@ from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
 from stac_fastapi.types.extension import ApiExtension
 from stac_fastapi.types.search import (
     BaseCatalogSearchPostRequest,
+    BaseCollectionSearchPostRequest,
+    BaseDiscoverySearchPostRequest,
     BaseSearchPostRequest,
 )
 from stac_fastapi.types.stac import Conformance
@@ -493,6 +495,16 @@ class AsyncCollectionSearchClient(abc.ABC):
         """
         ...
 
+    async def post_all_collections(
+        self, search_request: BaseCollectionSearchPostRequest, **kwargs
+    ) -> stac_types.Collections:
+        """Get all available collections.
+        Called with `POST /collections`.
+        Returns:
+            A list of collections.
+        """
+        ...
+
 
 @attr.s
 class AsyncDiscoverySearchClient(abc.ABC):
@@ -504,14 +516,29 @@ class AsyncDiscoverySearchClient(abc.ABC):
         limit: Optional[int] = 10,
         **kwargs,
     ) -> stac_types.ItemCollection:
-        """Cross catalog search (GET) for collections.
+        """Cross catalog search (GET) for collections and catalogs.
 
-        Called with `GET /collection-search`.
+        Called with `GET /discovery-search`.
 
         Args:
             search_request: search request parameters.
 
         Returns:
-            A list of collections matching search criteria.
+            A list of collections and catalogs matching search criteria (next pagination token if any).
+        """
+        ...
+
+    async def post_discovery_search(
+        self, search_request: BaseDiscoverySearchPostRequest, **kwargs
+    ) -> stac_types.Collections:
+        """Cross catalog search (POST) for collections and catalogs.
+
+        Called with `POST /discovery-search`.
+
+        Args:
+            search_request: search request parameters.
+
+        Returns:
+            A list of collections and catalogs matching search criteria (next pagination token if any).
         """
         ...
