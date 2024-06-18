@@ -228,47 +228,10 @@ class CoreClient(AsyncBaseCoreClient):
         base_url = str(request.base_url)
         limit = int(request.query_params.get("limit", 10))
         token = request.query_params.get("token")
-        sort = None
-
-        if self.extension_is_enabled("CollectionSearchExtension"):
-            q = request.query_params.get("q")
-            datetime = request.query_params.get("datetime")
-            bbox = request.query_params.get("bbox")
-
-            search = self.database.make_collection_search()
-
-            if datetime:
-                datetime_search = self._return_date(datetime)
-                search = self.database.apply_datetime_collections_filter(
-                    search=search, datetime_search=datetime_search
-                )
-
-            if bbox:
-                if len(bbox) == 6:
-                    bbox = [bbox[0], bbox[1], bbox[3], bbox[4]]
-
-                search = self.database.apply_bbox_collections_filter(
-                    search=search, bbox=bbox
-                )
-
-            if q:
-                search = self.database.apply_keyword_collections_filter(
-                    search=search, q=q
-                )
-
-            collections, maybe_count, next_token = (
-                await self.database.execute_collection_search(
-                    search=search,
-                    limit=limit,
-                    token=token,
-                    sort=sort,
-                    base_url=base_url,
-                )
-            )
-        else:
-            collections, next_token = await self.database.get_all_collections(
-                token=token, limit=limit, base_url=base_url
-            )
+        
+        collections, next_token = await self.database.get_all_collections(
+            token=token, limit=limit, base_url=base_url
+        )
 
         links = [
             {"rel": Relations.root.value, "type": MimeTypes.json, "href": base_url},
@@ -1594,6 +1557,10 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
 
         search = self.database.make_collection_search()
 
+        print(search_request.datetime)
+        print(search_request.bbox)
+        print(search_request.q)
+
         if search_request.datetime:
             datetime_search = CoreClient._return_date(search_request.datetime)
             search = self.database.apply_datetime_collections_filter(
@@ -1609,6 +1576,7 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
                 search=search, bbox=bbox
             )
 
+        # q is a list of keywords
         if search_request.q:
             q = search_request.q
             search = self.database.apply_keyword_collections_filter(search=search, q=q)
@@ -1625,7 +1593,6 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
                 limit=limit,
                 token=token,
                 sort=sort,
-                collection_ids=None,  # search_request.collections,
                 base_url=base_url,
             )
         )
@@ -1637,7 +1604,7 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
         return Collections(collections=collections, links=links)
 
     # todo: use the ES _mapping endpoint to dynamically find what fields exist
-    async def get_collection_search(
+    async def get_all_collections(
         self,
         request: Request,
         bbox: Optional[List[NumType]] = None,
@@ -1662,20 +1629,23 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
             HTTPException: If any error occurs while searching the catalog.
         """
 
+        token = request.query_params.get("token")
+
         base_args = {
-            "bbox": bbox,
             "limit": limit,
-            "q": q,
+            "token": token,
+            "bbox": bbox,
+            "datetime": datetime,
+            "q": q
         }
+        
 
-        if datetime:
-            base_args["datetime"] = datetime
-
+        # Do the request
         try:
             search_request = self.post_request_model(**base_args)
         except ValidationError:
             raise HTTPException(status_code=400, detail="Invalid parameters provided")
-        resp = await self.post_collection_search(
+        resp = await self.post_all_collections(
             search_request=search_request, request=request
         )
 

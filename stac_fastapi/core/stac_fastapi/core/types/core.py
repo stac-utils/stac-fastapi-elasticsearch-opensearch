@@ -473,14 +473,14 @@ class AsyncBaseFiltersClient(abc.ABC):
 class AsyncCollectionSearchClient(abc.ABC):
     """Defines a pattern for implementing the STAC Collection Search extension."""
 
-    async def get_collection_search(
+    async def get_all_collections(
         self,
         bbox: Optional[List[NumType]] = None,
         datetime: Optional[Union[str, datetime]] = None,
         limit: Optional[int] = 10,
         q: Optional[str] = None,
         **kwargs,
-    ) -> stac_types.ItemCollection:
+    ) -> stac_types.Collections:
         """Cross catalog search (GET) for collections.
 
         Called with `GET /collection-search`.
