@@ -19,6 +19,8 @@ from stac_pydantic.version import STAC_VERSION
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.session import Session
+from stac_fastapi.core.utilities import filter_fields
+from stac_fastapi.extensions.core.filter.client import AsyncBaseFiltersClient
 from stac_fastapi.extensions.third_party.bulk_transactions import (
     BaseBulkTransactionsClient,
     BulkTransactionMethod,
@@ -26,11 +28,7 @@ from stac_fastapi.extensions.third_party.bulk_transactions import (
 )
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
-from stac_fastapi.types.core import (
-    AsyncBaseCoreClient,
-    AsyncBaseFiltersClient,
-    AsyncBaseTransactionsClient,
-)
+from stac_fastapi.types.core import AsyncBaseCoreClient, AsyncBaseTransactionsClient
 from stac_fastapi.types.extension import ApiExtension
 from stac_fastapi.types.rfc3339 import DateTimeType
 from stac_fastapi.types.search import BaseSearchPostRequest
@@ -237,34 +235,26 @@ class CoreClient(AsyncBaseCoreClient):
             base_args["intersects"] = orjson.loads(unquote_plus(intersects))
 
         if sortby:
-            sort_param = []
-            for sort in sortby:
-                sort_param.append(
-                    {
-                        "field": sort[1:],
-                        "direction": "desc" if sort[0] == "-" else "asc",
-                    }
-                )
-            base_args["sortby"] = sort_param
+            base_args["sortby"] = [
+                {"field": sort[1:], "direction": "desc" if sort[0] == "-" else "asc"}
+                for sort in sortby
+            ]
 
         if filter:
-            if filter_lang == "cql2-json":
-                base_args["filter-lang"] = "cql2-json"
-                base_args["filter"] = orjson.loads(unquote_plus(filter))
-            else:
-                base_args["filter-lang"] = "cql2-json"
-                base_args["filter"] = orjson.loads(to_cql2(parse_cql2_text(filter)))
+            base_args["filter-lang"] = "cql2-json"
+            base_args["filter"] = orjson.loads(
+                unquote_plus(filter)
+                if filter_lang == "cql2-json"
+                else to_cql2(parse_cql2_text(filter))
+            )
 
         if fields:
-            includes = set()
-            excludes = set()
+            includes, excludes = set(), set()
             for field in fields:
                 if field[0] == "-":
                     excludes.add(field[1:])
-                elif field[0] == "+":
-                    includes.add(field[1:])
                 else:
-                    includes.add(field)
+                    includes.add(field[1:] if field[0] in "+ " else field)
             base_args["fields"] = {"include": includes, "exclude": excludes}
 
         # Do the request

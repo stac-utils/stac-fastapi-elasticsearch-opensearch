@@ -12,9 +12,9 @@ from stac_fastapi.core.core import (
     TransactionsClient,
 )
 from stac_fastapi.core.extensions import QueryExtension
+from stac_fastapi.core.extensions.fields import FieldsExtension
 from stac_fastapi.core.session import Session
 from stac_fastapi.extensions.core import (
-    FieldsExtension,
     FilterExtension,
     SortExtension,
     TokenPaginationExtension,
@@ -58,6 +58,8 @@ extensions = [
     TokenPaginationExtension(),
     filter_extension,
 ]
+
+database_logic.extensions = [type(ext).__name__ for ext in extensions]
 
 post_request_model = create_post_request_model(extensions)
 

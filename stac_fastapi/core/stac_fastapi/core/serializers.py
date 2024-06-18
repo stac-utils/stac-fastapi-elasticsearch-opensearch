@@ -1,13 +1,15 @@
 """Serializers."""
 import abc
 from copy import deepcopy
-from typing import Any
+from typing import Any, List, Optional
 
 import attr
+from starlette.requests import Request
 
 from stac_fastapi.core.datetime_utils import now_to_rfc3339_str
+from stac_fastapi.core.models.links import CollectionLinks
 from stac_fastapi.types import stac as stac_types
-from stac_fastapi.types.links import CollectionLinks, ItemLinks, resolve_links
+from stac_fastapi.types.links import ItemLinks, resolve_links
 
 
 @attr.s
@@ -109,29 +111,34 @@ class CollectionSerializer(Serializer):
 
     @classmethod
     def stac_to_db(
-        cls, collection: stac_types.Collection, base_url: str
+        cls, collection: stac_types.Collection, request: Request
     ) -> stac_types.Collection:
         """
         Transform STAC Collection to database-ready STAC collection.
 
         Args:
             stac_data: the STAC Collection object to be transformed
-            base_url: the base URL for the STAC API
+            starlette.requests.Request: the API request
 
         Returns:
             stac_types.Collection: The database-ready STAC Collection object.
         """
         collection = deepcopy(collection)
-        collection["links"] = resolve_links(collection.get("links", []), base_url)
+        collection["links"] = resolve_links(
+            collection.get("links", []), str(request.base_url)
+        )
         return collection
 
     @classmethod
-    def db_to_stac(cls, collection: dict, base_url: str) -> stac_types.Collection:
+    def db_to_stac(
+        cls, collection: dict, request: Request, extensions: Optional[List[str]] = []
+    ) -> stac_types.Collection:
         """Transform database model to STAC collection.
 
         Args:
             collection (dict): The collection data in dictionary form, extracted from the database.
-            base_url (str): The base URL for the collection.
+            starlette.requests.Request: the API request
+            extensions: A list of the extension class names (`ext.__name__`) or all enabled STAC API extensions.
 
         Returns:
             stac_types.Collection: The STAC collection object.
@@ -157,13 +164,13 @@ class CollectionSerializer(Serializer):
 
         # Create the collection links using CollectionLinks
         collection_links = CollectionLinks(
-            collection_id=collection_id, base_url=base_url
+            collection_id=collection_id, request=request, extensions=extensions
         ).create_links()
 
         # Add any additional links from the collection dictionary
         original_links = collection.get("links")
         if original_links:
-            collection_links += resolve_links(original_links, base_url)
+            collection_links += resolve_links(original_links, str(request.base_url))
         collection["links"] = collection_links
 
         # Return the stac_types.Collection object

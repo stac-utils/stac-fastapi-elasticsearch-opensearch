@@ -27,12 +27,18 @@ from elasticsearch_dsl import Q, Search
 from fastapi import Request
 from stac_pydantic.links import Relations
 from stac_pydantic.shared import MimeTypes
+from starlette.requests import Request
 
 from elasticsearch import exceptions, helpers  # type: ignore
 from stac_fastapi.core.extensions import filter
 from stac_fastapi.core.models.links import PagingLinks
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
-from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon, return_date
+from stac_fastapi.core.utilities import (
+    MAX_LIMIT,
+    bbox2polygon,
+    filter_fields,
+    return_date,
+)
 from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
 from stac_fastapi.elasticsearch.config import (
     ElasticsearchSettings as SyncElasticsearchSettings,
@@ -336,6 +342,8 @@ class DatabaseLogic:
         default=CollectionSerializer
     )
 
+    extensions: List[str] = attr.ib(default=attr.Factory(list))
+
     """CORE LOGIC"""
 
     def load_extensions(self, extensions: list) -> None:
@@ -382,7 +390,7 @@ class DatabaseLogic:
         hits = response["hits"]["hits"]
         collections = [
             self.collection_serializer.db_to_stac(
-                collection=hit["_source"], base_url=base_url
+                collection=hit["_source"], request=request, extensions=self.extensions
             )
             for hit in hits
         ]
@@ -740,30 +748,22 @@ class DatabaseLogic:
             except Exception as exc:
                 logger.error("Count task failed: %s", exc)
 
+        fields = (
+            getattr(search_request, "fields", None)
+            if self.extension_is_enabled("FieldsExtension")
+            else None
+        )
+        include: Set[str] = fields.include if fields and fields.include else set()
+        exclude: Set[str] = fields.exclude if fields and fields.exclude else set()
+
         items = [
-            self.item_serializer.db_to_stac(item, base_url=str(request.base_url))
+            filter_fields(
+                self.item_serializer.db_to_stac(item, base_url=request.base_url),
+                include,
+                exclude,
+            )
             for item in items
         ]
-
-        if self.extension_is_enabled("FieldsExtension"):
-            if search_request.query is not None:
-                query_include: Set[str] = set(
-                    [
-                        k if k in Settings.get().indexed_fields else f"properties.{k}"
-                        for k in search_request.query.keys()
-                    ]
-                )
-                if not search_request.fields.include:
-                    search_request.fields.include = query_include
-                else:
-                    search_request.fields.include.union(query_include)
-
-            filter_kwargs = search_request.fields.filter_fields
-
-            items = [
-                orjson.loads(item.json(**filter_kwargs, exclude_unset=True))
-                for item in items
-            ]
 
         links = await PagingLinks(request=request, next=next_token).get_links()
 
@@ -963,7 +963,9 @@ class DatabaseLogic:
         await create_item_index(collection_id)
 
         return self.collection_serializer.db_to_stac(
-            collection=collection, base_url=str(request.base_url)
+            collection=collection,
+            base_url=str(request.base_url),
+            extensions=[type(ext).__name__ for ext in self.extensions],
         )
 
     async def get_collection(self, collection_id: str, request: Request) -> Collection:
@@ -991,7 +993,9 @@ class DatabaseLogic:
             raise NotFoundError(f"Collection {collection_id} not found") from exc
 
         return self.collection_serializer.db_to_stac(
-            collection=collection["_source"], base_url=str(request.base_url)
+            collection=collection["_source"],
+            base_url=str(request.base_url),
+            extensions=[type(ext).__name__ for ext in self.extensions],
         )
 
     async def update_collection(
@@ -1050,7 +1054,9 @@ class DatabaseLogic:
             )
 
         return self.collection_serializer.db_to_stac(
-            collection=collection, base_url=str(request.base_url)
+            collection=collection,
+            base_url=str(request.base_url),
+            extensions=[type(ext).__name__ for ext in self.extensions],
         )
 
     async def delete_collection(

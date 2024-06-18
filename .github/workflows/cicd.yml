@@ -1,4 +1,4 @@
-name: stac-fastapi-elasticsearch
+name: sfeos
 
 on:
   push:
