@@ -1610,7 +1610,7 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
         bbox: Optional[List[NumType]] = None,
         datetime: Optional[Union[str, datetime_type]] = None,
         limit: Optional[int] = 10,
-        q: Optional[str] = None,
+        q: Optional[List[str]] = None,
         **kwargs,
     ) -> Collections:
         """Get search results from the database for collections.
@@ -1734,7 +1734,7 @@ class EsAsyncDiscoverySearchClient(AsyncDiscoverySearchClient):
     async def get_discovery_search(
         self,
         request: Request,
-        q: Optional[str] = None,
+        q: Optional[List[str]] = None,
         limit: Optional[int] = 10,
         **kwargs,
     ) -> Collections:

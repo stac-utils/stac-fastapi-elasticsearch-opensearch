@@ -478,7 +478,7 @@ class AsyncCollectionSearchClient(abc.ABC):
         bbox: Optional[List[NumType]] = None,
         datetime: Optional[Union[str, datetime]] = None,
         limit: Optional[int] = 10,
-        q: Optional[str] = None,
+        q: Optional[List[str]] = None,
         **kwargs,
     ) -> stac_types.Collections:
         """Cross catalog search (GET) for collections.
@@ -500,7 +500,7 @@ class AsyncDiscoverySearchClient(abc.ABC):
 
     async def get_discovery_search(
         self,
-        q: Optional[str] = None,
+        q: Optional[List[str]] = None,
         limit: Optional[int] = 10,
         **kwargs,
     ) -> stac_types.ItemCollection:
