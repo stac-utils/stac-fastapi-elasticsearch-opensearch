@@ -228,7 +228,7 @@ class CoreClient(AsyncBaseCoreClient):
         base_url = str(request.base_url)
         limit = int(request.query_params.get("limit", 10))
         token = request.query_params.get("token")
-        
+
         collections, next_token = await self.database.get_all_collections(
             token=token, limit=limit, base_url=base_url
         )
@@ -1636,9 +1636,8 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
             "token": token,
             "bbox": bbox,
             "datetime": datetime,
-            "q": q
+            "q": q,
         }
-        
 
         # Do the request
         try:
