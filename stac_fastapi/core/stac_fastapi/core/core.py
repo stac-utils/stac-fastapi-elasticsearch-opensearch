@@ -1557,10 +1557,6 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
 
         search = self.database.make_collection_search()
 
-        print(search_request.datetime)
-        print(search_request.bbox)
-        print(search_request.q)
-
         if search_request.datetime:
             datetime_search = CoreClient._return_date(search_request.datetime)
             search = self.database.apply_datetime_collections_filter(
