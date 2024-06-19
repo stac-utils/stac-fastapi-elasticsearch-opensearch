@@ -884,6 +884,9 @@ class DatabaseLogic:
         catalogs = []
         for i, hit in enumerate(hits):
             catalog_path = hit["_index"].split("_", 1)[1]
+            catalog_path_list = catalog_path.split(CATALOG_SEPARATOR)
+            catalog_path_list.reverse()
+            catalog_path = "/".join(catalog_path_list)
             sub_data_catalogs_and_collections = child_data[i]
             # Extract sub-catalogs
             sub_catalogs = []
