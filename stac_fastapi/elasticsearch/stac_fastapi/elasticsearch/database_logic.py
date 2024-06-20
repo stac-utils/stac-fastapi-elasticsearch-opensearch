@@ -22,7 +22,11 @@ from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
 from stac_fastapi.elasticsearch.config import (
     ElasticsearchSettings as SyncElasticsearchSettings,
 )
-from stac_fastapi.types.errors import ConflictError, NotFoundError
+from stac_fastapi.types.errors import (
+    ConflictError,
+    InvalidQueryParameter,
+    NotFoundError,
+)
 from stac_fastapi.types.stac import Catalog, Collection, Item
 
 logger = logging.getLogger(__name__)
@@ -1434,12 +1438,12 @@ class DatabaseLogic:
 
         # Can only provide collections if you also provide the containing catalogs
         if collection_ids and not catalog_paths:
-            raise Exception(
+            raise InvalidQueryParameter(
                 "To search specific collection(s), you must provide the containing catalog."
             )
         # Can only provide collections if you also provide the single containing catalog
         elif collection_ids and len(catalog_paths) > 1:
-            raise Exception(
+            raise InvalidQueryParameter(
                 "To search specific collections, you must provide only one containing catalog."
             )
         elif catalog_paths:
@@ -2143,8 +2147,6 @@ class DatabaseLogic:
             # Create list of nested catalog ids
             catalog_path_list = catalog_path.split("/")
             index = index_catalogs_by_catalog_id(catalog_path_list=catalog_path_list)
-            print("index is " + index)
-            print(catalog_path_list)
             await self.check_catalog_exists(catalog_path_list=catalog_path_list)
         else:
             catalog_path_list = []
@@ -2653,7 +2655,6 @@ class DatabaseLogic:
             deletes the catalog. If `refresh` is set to True, the index is refreshed after the deletion. Additionally, this
             function also calls `delete_catalog_index` to delete the index for the collections in the catalog.
         """
-
         # Create list of nested catalog ids
         catalog_path_list = catalog_path.split("/")
 
@@ -2672,11 +2673,9 @@ class DatabaseLogic:
             index = CATALOGS_INDEX
 
         await self.client.delete(index=index, id=catalog_id, refresh=refresh)
+        # Need to delete all catalogs contained in this catalog
+        index_param = index_catalogs_by_catalog_id(catalog_path_list=catalog_path_list)
         try:
-            # Need to delete all catalogs contained in this catalog
-            index_param = index_catalogs_by_catalog_id(
-                catalog_path_list=catalog_path_list
-            )
             response = await self.client.search(
                 index=index_param,
                 body={"sort": [{"id": {"order": "asc"}}]},
@@ -2689,9 +2688,14 @@ class DatabaseLogic:
                 ],
                 return_exceptions=True,
             )
+        except exceptions.NotFoundError:
+            logger.info(
+                f"Catalog {catalog_id} at path {catalog_path} has no catalogs, so index does not exist and cannot be deleted, continuing as normal."
+            )
 
-            # Need to delete all collections contained in this catalog
-            index_param = collection_indices(catalog_paths=[catalog_path_list])
+        # Need to delete all collections contained in this catalog
+        index_param = collection_indices(catalog_paths=[catalog_path_list])
+        try:
             response = await self.client.search(
                 index=index_param,
                 body={"sort": [{"id": {"order": "asc"}}]},
@@ -2706,12 +2710,22 @@ class DatabaseLogic:
                 ],
                 return_exceptions=True,
             )
+        except exceptions.NotFoundError:
+            logger.info(
+                f"Some collection at path {catalog_path} has no items, so index does not exist and cannot be deleted, continuing as normal."
+            )
 
+        try:
             await delete_collection_index(catalog_path_list=catalog_path_list)
+        except exceptions.NotFoundError:
+            logger.info(
+                f"Catalog {catalog_id} at path {catalog_path} has no collections, so index does not exist and cannot be deleted, continuing as normal."
+            )
+        try:
             await delete_catalog_index(catalog_path_list=catalog_path_list)
         except exceptions.NotFoundError:
             logger.info(
-                f"Catalog {catalog_id} at path {catalog_path} has no collections, or items, so index does not exist and cannot be deleted, continuing as normal."
+                f"Catalog {catalog_id} at path {catalog_path} has no catalogs, so index does not exist and cannot be deleted, continuing as normal."
             )
 
     async def bulk_async(
