@@ -15,6 +15,7 @@ from stac_fastapi.core.extensions import QueryExtension
 from stac_fastapi.core.extensions.fields import FieldsExtension
 from stac_fastapi.core.session import Session
 from stac_fastapi.extensions.core import (
+    AggregationExtension,
     FilterExtension,
     SortExtension,
     TokenPaginationExtension,
@@ -38,7 +39,9 @@ filter_extension.conformance_classes.append(
 
 database_logic = DatabaseLogic()
 
-extensions = [
+aggregation_extension = AggregationExtension()
+
+search_extensions = [
     TransactionExtension(
         client=TransactionsClient(
             database=database_logic, session=session, settings=settings
@@ -59,9 +62,11 @@ extensions = [
     filter_extension,
 ]
 
+extensions = [aggregation_extension] + search_extensions
+
 database_logic.extensions = [type(ext).__name__ for ext in extensions]
 
-post_request_model = create_post_request_model(extensions)
+post_request_model = create_post_request_model(search_extensions)
 
 api = StacApi(
     title=os.getenv("STAC_FASTAPI_TITLE", "stac-fastapi-opensearch"),
@@ -72,7 +77,7 @@ api = StacApi(
     client=CoreClient(
         database=database_logic, session=session, post_request_model=post_request_model
     ),
-    search_get_request_model=create_get_request_model(extensions),
+    search_get_request_model=create_get_request_model(search_extensions),
     search_post_request_model=post_request_model,
 )
 app = api.app

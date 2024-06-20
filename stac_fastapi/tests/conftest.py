@@ -39,6 +39,7 @@ else:
     )
 
 from stac_fastapi.extensions.core import (
+    AggregationExtension,
     FieldsExtension,
     FilterExtension,
     SortExtension,
@@ -186,7 +187,7 @@ def bulk_txn_client():
 @pytest_asyncio.fixture(scope="session")
 async def app():
     settings = AsyncSettings()
-    extensions = [
+    search_extensions = [
         TransactionExtension(
             client=TransactionsClient(
                 database=database, session=None, settings=settings
@@ -200,7 +201,9 @@ async def app():
         FilterExtension(),
     ]
 
-    post_request_model = create_post_request_model(extensions)
+    extensions = [AggregationExtension()] + search_extensions
+
+    post_request_model = create_post_request_model(search_extensions)
 
     return StacApi(
         settings=settings,
@@ -211,7 +214,7 @@ async def app():
             post_request_model=post_request_model,
         ),
         extensions=extensions,
-        search_get_request_model=create_get_request_model(extensions),
+        search_get_request_model=create_get_request_model(search_extensions),
         search_post_request_model=post_request_model,
     ).app
 

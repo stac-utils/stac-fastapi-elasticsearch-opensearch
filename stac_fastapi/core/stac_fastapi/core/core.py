@@ -162,6 +162,24 @@ class CoreClient(AsyncBaseCoreClient):
                 }
             )
 
+        if self.extension_is_enabled("AggregationExtension"):
+            landing_page["links"].extend(
+                [
+                    {
+                        "rel": "aggregate",
+                        "type": "application/json",
+                        "title": "Aggregate",
+                        "href": urljoin(base_url, "aggregate"),
+                    },
+                    {
+                        "rel": "aggregations",
+                        "type": "application/json",
+                        "title": "Aggregations",
+                        "href": urljoin(base_url, "aggregations"),
+                    },
+                ]
+            )
+
         collections = await self.all_collections(request=kwargs["request"])
         for collection in collections["collections"]:
             landing_page["links"].append(
@@ -512,8 +530,10 @@ class CoreClient(AsyncBaseCoreClient):
         # Do the request
         try:
             search_request = self.post_request_model(**base_args)
-        except ValidationError:
-            raise HTTPException(status_code=400, detail="Invalid parameters provided")
+        except ValidationError as e:
+            raise HTTPException(
+                status_code=400, detail=f"Invalid parameters provided: {e}"
+            )
         resp = await self.post_search(search_request=search_request, request=request)
 
         return resp
