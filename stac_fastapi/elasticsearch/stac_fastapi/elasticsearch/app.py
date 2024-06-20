@@ -6,13 +6,10 @@ from pydantic import BaseModel
 
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import (
-    EmptyRequest,
     create_get_catalog_request_model,
-    create_get_collections_request_model,
     create_get_request_model,
     create_post_catalog_full_request_model,
     create_post_catalog_request_model,
-    create_post_collections_request_model,
     create_post_request_model,
 )
 from stac_fastapi.core.core import (
@@ -115,12 +112,6 @@ catalog_get_request_model = create_get_catalog_request_model(
     extensions=extensions, base_model=BaseCatalogSearchGetRequest
 )
 
-# TODO: combine into single create_post/get_request_model function
-# could add another parameter here for the model name e.g. "CollectionsGetRequest" to combine
-# these 'create_request_model' functions with those above
-collections_get_request_model = create_get_collections_request_model([], EmptyRequest)
-collections_post_request_model = create_post_collections_request_model([], BaseModel)
-
 # Add discovery search here as it requires all other extensions to be passed to it for conformance classes to be identified
 discovery_search_extension = DiscoverySearchExtension(
     client=EsAsyncDiscoverySearchClient(database=database_logic, extensions=extensions),
@@ -131,16 +122,6 @@ discovery_search_extension.conformance_classes.extend(
 
 extensions.append(discovery_search_extension)
 
-# Check if collection search extension is selected
-for extension in extensions:
-    if isinstance(extension, CollectionSearchExtension):
-        collections_get_request_model = create_get_collections_request_model(
-            [extension], EmptyRequest
-        )
-        collections_post_request_model = create_post_collections_request_model(
-            [extension], BaseModel
-        )
-        break
 
 api = StacApi(
     title=os.getenv("STAC_FASTAPI_TITLE", "stac-fastapi-elasticsearch"),
@@ -156,8 +137,6 @@ api = StacApi(
     ),
     search_get_request_model=get_request_model,
     search_post_request_model=post_request_model,
-    collections_get_request_model=collections_get_request_model,
-    collections_post_request_model=collections_post_request_model,
     search_catalog_get_request_model=catalog_get_request_model,
     search_catalog_post_request_model=catalog_post_full_request_model,
 )

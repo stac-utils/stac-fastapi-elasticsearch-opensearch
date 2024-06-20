@@ -883,6 +883,10 @@ class DatabaseLogic:
 
         catalogs = []
         for i, hit in enumerate(hits):
+            catalog_path = hit["_index"].split("_", 1)[1]
+            catalog_path_list = catalog_path.split(CATALOG_SEPARATOR)
+            catalog_path_list.reverse()
+            catalog_path = "/".join(catalog_path_list)
             sub_data_catalogs_and_collections = child_data[i]
             # Extract sub-catalogs
             sub_catalogs = []
@@ -1240,8 +1244,8 @@ class DatabaseLogic:
         return search.query(Q("bool", filter=[Q("bool", must=must)]))
 
     @staticmethod
-    def apply_keyword_collections_filter(search: Search, q: str):
-        keyword_list = [keyword.strip() for keyword in q.split(",")]
+    def apply_keyword_collections_filter(search: Search, q: List[str]):
+        q_str = ",".join(q)
         should = []
         should.extend(
             [
@@ -1250,7 +1254,7 @@ class DatabaseLogic:
                     filter=[
                         Q(
                             "match",
-                            title={"query": q},
+                            title={"query": q_str},
                         ),
                     ],
                 ),
@@ -1259,14 +1263,14 @@ class DatabaseLogic:
                     filter=[
                         Q(
                             "match",
-                            description={"query": q},
+                            description={"query": q_str},
                         ),
                     ],
                 ),
                 Q(
                     "bool",
                     filter=[
-                        Q("terms", keywords=keyword_list),
+                        Q("terms", keywords=q),
                     ],
                 ),
             ]
@@ -1277,8 +1281,8 @@ class DatabaseLogic:
         return search
 
     @staticmethod
-    def apply_keyword_discovery_filter(search: Search, q: str):
-        keyword_list = [keyword.strip() for keyword in q.split(",")]
+    def apply_keyword_discovery_filter(search: Search, q: List[str]):
+        q_str = ",".join(q)
         # Construct search query for keywords
         # For catalogues and collections this searches title and description
         # For collections this also searches keywords
@@ -1288,32 +1292,32 @@ class DatabaseLogic:
                 Q(
                     "bool",
                     filter=[
-                        Q("match", title=q),
+                        Q("match", title=q_str),
                     ],
                 ),
                 Q(
                     "bool",
                     filter=[
-                        Q("match", description=q),
+                        Q("match", description=q_str),
                     ],
                 ),
                 Q(
                     "bool",
                     filter=[
-                        Q("terms", keywords=keyword_list),
+                        Q("terms", keywords=q),
                     ],
                 ),
             ]
         )
         # The following query is then used to score the returned results
         # Calculate scoring for keyword field
-        should_query = [{"term": {"keywords": keyword}} for keyword in keyword_list]
+        should_query = [{"term": {"keywords": keyword}} for keyword in q]
         # Calculate scoring for title and description fields
         should_query.extend(
             [
                 {
                     "multi_match": {
-                        "query": q,
+                        "query": q_str,
                         "fields": ["title", "description"],
                         "type": "most_fields",
                     }
@@ -1573,10 +1577,10 @@ class DatabaseLogic:
         collections = []
         hits = es_response["hits"]["hits"]
         for hit in hits:
-            catalog_path = hit["_index"].split("_",1)[1]
+            catalog_path = hit["_index"].split("_", 1)[1]
             catalog_path_list = catalog_path.split(CATALOG_SEPARATOR)
             catalog_path_list.reverse()
-            catalog_path = '/'.join(catalog_path_list)
+            catalog_path = "/".join(catalog_path_list)
             collections.append(
                 self.collection_serializer.db_to_stac(
                     collection=hit["_source"],
@@ -2772,9 +2776,12 @@ class DatabaseLogic:
         hits = es_response["hits"]["hits"]
 
         data = []
+        catalog_hits = []
+        collection_hits = []
         catalog_index_lists_for_catalogs = []
         for hit in hits:
             if hit["_source"]["type"] == "Catalog":
+                catalog_hits.append(hit)
                 # Calculate catalog path for found catalog
                 catalog_index = hit["_index"].split("_", 1)[1]
                 catalog_id = hit["_id"]
@@ -2783,6 +2790,8 @@ class DatabaseLogic:
                 catalog_index_list.append(catalog_id)
                 catalog_index_lists_for_catalogs.append(catalog_index_list)
                 catalog_index = "/".join(catalog_index_list)
+            else:
+                collection_hits.append(hit)
 
         catalogs_results = await asyncio.gather(
             *[
@@ -2804,7 +2813,7 @@ class DatabaseLogic:
             (
                 result
                 if not isinstance(result, Exception)
-                else {"hits": {"hits": [{"_source": []}]}}
+                else {"hits": {"hits": [{"_source": {}}]}}
             )
             for result in catalogs_results
         ]
@@ -2834,7 +2843,7 @@ class DatabaseLogic:
             (
                 result
                 if not isinstance(result, Exception)
-                else {"hits": {"hits": [{"_source": []}]}}
+                else {"hits": {"hits": [{"_source": {}}]}}
             )
             for result in collections_results
         ]
@@ -2845,7 +2854,7 @@ class DatabaseLogic:
 
         child_data = list(zip(sub_catalogs_responses, collection_responses))
 
-        for i, hit in enumerate(hits):
+        for i, hit in enumerate(catalog_hits):
             if hit["_source"]["type"] == "Catalog":
                 catalog_index_list = (
                     hit["_index"].split("_", 1)[1].split(CATALOG_SEPARATOR)
@@ -2853,6 +2862,7 @@ class DatabaseLogic:
                 catalog_index_list.reverse()
                 catalog_index = "/".join(catalog_index_list)
                 sub_data_catalogs_and_collections = child_data[i]
+
                 # Extract sub-catalogs
                 sub_catalogs = []
                 for catalog in sub_data_catalogs_and_collections[0]:
@@ -2861,26 +2871,38 @@ class DatabaseLogic:
                 collections = []
                 for collection in sub_data_catalogs_and_collections[1]:
                     collections.append(collection["_source"])
-            elif hit["_source"]["type"] == "Collection":
+                data.append(
+                    self.catalog_collection_serializer.db_to_stac(
+                        collection_serializer=self.collection_serializer,
+                        catalog_serializer=self.catalog_serializer,
+                        data=hit["_source"],
+                        base_url=base_url,
+                        catalog_path=catalog_index,
+                        sub_catalogs=sub_catalogs,
+                        collections=collections,
+                        conformance_classes=conformance_classes,
+                    )
+                )
+        for i, hit in enumerate(collection_hits):
+            if hit["_source"]["type"] == "Collection":
                 catalog_index = hit["_index"].split("_", 1)[1]
                 catalog_index_list = catalog_index.split(CATALOG_SEPARATOR)
                 catalog_index_list.reverse()
                 catalog_index = "/".join(catalog_index_list)
                 sub_catalogs = []
                 collections = []
-
-            data.append(
-                self.catalog_collection_serializer.db_to_stac(
-                    collection_serializer=self.collection_serializer,
-                    catalog_serializer=self.catalog_serializer,
-                    data=hit["_source"],
-                    base_url=base_url,
-                    catalog_path=catalog_index,
-                    sub_catalogs=sub_catalogs,
-                    collections=collections,
-                    conformance_classes=conformance_classes,
+                data.append(
+                    self.catalog_collection_serializer.db_to_stac(
+                        collection_serializer=self.collection_serializer,
+                        catalog_serializer=self.catalog_serializer,
+                        data=hit["_source"],
+                        base_url=base_url,
+                        catalog_path=catalog_index,
+                        sub_catalogs=sub_catalogs,
+                        collections=collections,
+                        conformance_classes=conformance_classes,
+                    )
                 )
-            )
 
         next_token = None
         if hits and (sort_array := hits[-1].get("sort")):
