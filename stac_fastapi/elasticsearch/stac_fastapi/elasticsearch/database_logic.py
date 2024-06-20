@@ -713,7 +713,7 @@ class DatabaseLogic:
         """Retrieve a list of all collections in a catalog from Elasticsearch, supporting pagination.
 
         Args:
-            catalog_paths (List[str]): The path to catalog to search.
+            catalog_path (str): The path to catalog to search.
             token (Optional[str]): The pagination token.
             limit (int): The number of results to return.
             base_url (str): The base URL used to create the item's self URL.
@@ -780,10 +780,10 @@ class DatabaseLogic:
         """Retrieve a list of all catalogs from Elasticsearch, supporting pagination.
 
         Args:
-            super_catalog_id (str): The top-level catalog id to search.
             token (Optional[str]): The pagination token.
             limit (int): The number of results to return.
             base_url (str): The base URL used to create the required links.
+            catalog_path (Optional[str]): The parent catalog in which to search (search all top-level catalogs if blank).
             conformance_classes (list): The list of conformance classes to include in the catalog.
 
         Returns:
@@ -920,13 +920,13 @@ class DatabaseLogic:
         base_url: str,
         catalog_path: Optional[str] = None,
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
-        """Retrieve a list of all collections in a catalog from Elasticsearch, supporting pagination.
+        """Retrieve a list of all catalogs in a catalog from Elasticsearch, supporting pagination.
 
         Args:
-            catalog_paths (List[str]): The path to catalog to search.
             token (Optional[str]): The pagination token.
             limit (int): The number of results to return.
             base_url (str): The base URL used to create the item's self URL.
+            catalog_path (Optional[str]): The parent catalog in which to search (search all top-level catalogs if blank).
 
         Returns:
             A tuple of (collections, next pagination token if any).
@@ -989,8 +989,7 @@ class DatabaseLogic:
         """Retrieve a single item from the database.
 
         Args:
-            super_catalog_id (str): The super_catalog id to translate into an index name.
-            catalog_id (str): The id of the Catalog that the Collection belongs to.
+            catalog_path (Optional[str]): The parent catalog in which to search for the collection.
             collection_id (str): The id of the Collection that the Item belongs to.
             item_id (str): The id of the Item.
 
@@ -998,11 +997,11 @@ class DatabaseLogic:
             item (Dict): A dictionary containing the source data for the Item.
 
         Raises:
-            NotFoundError: If the specified Item does not exist in the Collection in the specified Catalogs.
+            NotFoundError: If the specified Item does not exist in the Collection in the specified Catalog.
 
         Notes:
             The Item is retrieved from the Elasticsearch database using the `client.get` method,
-            with the index for the Collection as the target index and the combined `mk_item_id` as the document id.
+            with the index for the Collection in the Catalog as the target index and the combined `mk_item_id` as the document id.
         """
 
         # Create list of nested catalog ids
@@ -1790,8 +1789,7 @@ class DatabaseLogic:
         Args:
             item_id (str): The id of the Item to be deleted.
             collection_id (str): The id of the Collection that the Item belongs to.
-            catalog_id (str) : The id of the catalog into which the item will be inserted.
-            super_catalog_id (str) : The id of the top-level catalog into which the item will be inserted.
+            catalog_path (str) : The path of the catalog that the Collectioj belongs to.
             refresh (bool, optional): Whether to refresh the index after the deletion. Default is False.
 
         Raises:
@@ -1831,8 +1829,7 @@ class DatabaseLogic:
         Preps a collection for insertion into the database.
 
         Args:
-            super_catalog_id (str) : The id of the top-level catalog into which the collection will be inserted.
-            catalog_id (str) : The id of the catalog into which the collection will be inserted.
+            catalog_path (str): The parent catalog into which the Collection will be inserted.
             collection (Collection): The collection to be prepped for insertion.
             base_url (str): The base URL used to create the collection's self URL.
             exist_ok (bool): Indicates whether the collection can exist already.
@@ -1876,8 +1873,7 @@ class DatabaseLogic:
         and optionally verifying that an item with the same ID does not already exist in the database.
 
         Args:
-            super_catalog_id (str) : The id of the top-level catalog into which the collection will be inserted.
-            catalog_id (str) : The id of the catalog into which the collection will be inserted.
+            catalog_path (str): The parent catalog into which the Collection will be inserted.
             collection (Collection): The collection to be prepped for insertion.
             base_url (str): The base URL used for constructing URLs for the item.
             exist_ok (bool): Indicates whether the item can exist already.
@@ -1922,8 +1918,7 @@ class DatabaseLogic:
         """Database logic for creating one item.
 
         Args:
-            super_catalog_id (str) : The id of the top-level catalog into which the collection will be inserted.
-            catalog_id (str) : The id of the catalog into which the collection will be inserted.
+            catalog_path (str): The parent catalog into which the Collection will be inserted.
             collection (Collection): The collection to be created.
             refresh (bool, optional): Refresh the index after performing the operation. Defaults to False.
 
@@ -1962,8 +1957,7 @@ class DatabaseLogic:
 
         Args:
             self: The instance of the object calling this function.
-            super_catalog_id (str) : The ID of the top-level catalog in which the collection is to be found.
-            catalog_id (str): The ID of the catalog in which the collection is to be found.
+            catalog_path (str): The parent catalog in which to search.
             collection_id (str): The ID of the collection to be found.
 
         Returns:
@@ -2010,7 +2004,7 @@ class DatabaseLogic:
 
         Args:
             self: The instance of the object calling this function.
-            catalog_path (str): The ID of the catalog containing the collection to be updated, including parent catalogs, e.g. parentCat/cat
+            catalog_path (str): The path of the catalog containing the collection to be updated, including parent catalogs, e.g. parentCat/cat
             collection_id (str): The ID of the collection to be updated.
             collection (Collection): The Collection object to be used for the update.
 
@@ -2083,7 +2077,7 @@ class DatabaseLogic:
 
         Parameters:
             self: The instance of the object calling this function.
-            catalog_id (str): The ID of the catalog containing the collection to be deleted.
+            catalog_path (str): The parent catalog into in which to delete the Collection.
             collection_id (str): The ID of the collection to be deleted.
             refresh (bool): Whether to refresh the index after the deletion (default: False).
 
@@ -2120,6 +2114,106 @@ class DatabaseLogic:
                 f"Collection {collection_id} in catalog {catalog_id} at path {catalog_path} has no items, so index does not exist and cannot be deleted, continuing as normal."
             )
 
+    async def prep_create_catalog(
+        self,
+        catalog_path: Optional[str],
+        catalog: Catalog,
+        base_url: str,
+        exist_ok: bool = False,
+    ) -> Item:
+        """
+        Preps a catalog for insertion into the database.
+
+        Args:
+            catalog_path (Optional[str]) : The path to the top-level catalog into which the catalog will be inserted.
+            catalog (Catalog): The catalog to be prepped for insertion.
+            base_url (str): The base URL used to create the catalog's self URL.
+            exist_ok (bool): Indicates whether the catalog can exist already.
+
+        Returns:
+            Catalog: The prepped item.
+
+        Raises:
+            NotFoundError: If the catalog that the item belongs to does not exist in the database.
+            ConflictError: If the catalog already exists in the catalog in the database.
+
+        """
+
+        if catalog_path:
+            # Create list of nested catalog ids
+            catalog_path_list = catalog_path.split("/")
+            index = index_catalogs_by_catalog_id(catalog_path_list=catalog_path_list)
+            print("index is " + index)
+            print(catalog_path_list)
+            await self.check_catalog_exists(catalog_path_list=catalog_path_list)
+        else:
+            catalog_path_list = []
+            # Creating a new BASE catalog so index using top-level index
+            index = CATALOGS_INDEX
+
+        if not exist_ok and await self.client.exists(
+            index=index,
+            id=catalog["id"],
+        ):
+            raise ConflictError(
+                f"Catalog {catalog['id']} in catalog {''.join(catalog_path_list)} already exists"
+            )
+
+        return self.catalog_serializer.stac_to_db(catalog, base_url)
+
+    def sync_prep_create_catalog(
+        self,
+        catalog: Catalog,
+        base_url: str,
+        catalog_path: Optional[str] = None,
+        exist_ok: bool = False,
+    ) -> Item:
+        """
+        Prepare an item for insertion into the database.
+
+        This method performs pre-insertion preparation on the given `catalog`,
+        such as checking if the parent catalog the catalog belongs to exists,
+        and optionally verifying that a catalog with the same ID does not already exist in the database.
+
+        Args:
+            catalog (Catalog): The catalog to be prepped for insertion.
+            base_url (str): The base URL used for constructing URLs for the item.
+            catalog_path (str) : The path to the catalog into which the catalog will be inserted. Default is None.
+            exist_ok (bool): Indicates whether the item can exist already.
+
+        Returns:
+            Catalog: The catalog after preparation is done.
+
+        Raises:
+            NotFoundError: If the catalog that the item belongs to does not exist in the database.
+            ConflictError: If a catalog with the same ID already exists in the catalog.
+        """
+
+        if catalog_path:
+            # Create list of nested catalog ids
+            catalog_path_list = catalog_path.split("/")
+            catalog_id = catalog_path_list[-1]
+            index = index_catalogs_by_catalog_id(catalog_path_list=catalog_path_list)
+            # Check if parent catalog exists
+            if not self.sync_client.exists(index=index, id=catalog_id):
+                raise NotFoundError(
+                    f"Catalog {catalog_id} at path {''.join(catalog_path_list)} does not exist"
+                )
+        else:
+            catalog_path_list = ["Base Catalog"]
+            # Creating a new BASE catalog so index using top-level index
+            index = CATALOGS_INDEX
+
+        if not exist_ok and self.sync_client.exists(
+            index=index,
+            id=catalog["id"],
+        ):
+            raise ConflictError(
+                f"Catalog {catalog_id} in catalog {''.join(catalog_path_list)} already exists"
+            )
+
+        return self.catalog_serializer.stac_to_db(catalog, base_url)
+
     async def create_catalog(
         self,
         catalog: Catalog,
@@ -2130,13 +2224,14 @@ class DatabaseLogic:
 
         Args:
             catalog (Catalog): The Catalog object to be created.
+            catalog_path (Optional[str]): The path to the parent catalog into which the new catalog will be inserted. Default is None.
             refresh (bool, optional): Whether to refresh the index after the creation. Default is False.
 
         Raises:
             ConflictError: If a Catalog with the same id already exists in the database.
 
         Notes:
-            A new index is created for the collections in the Catalog using the `create_catalog_index` function.
+            A new index is created for the catalog in the parent catalog using the `create_catalog_index` function.
         """
         catalog_id = catalog["id"]
         if catalog_path:
@@ -2165,17 +2260,17 @@ class DatabaseLogic:
 
         Args:
             self: The instance of the object calling this function.
-            collection_id (str): The ID of the collection to be found.
+            catalog_path (str): The path and id of the Catalog to be found.
 
         Returns:
-            Collection: The found collection, represented as a `Collection` object.
+            Catalog: The found catalog, represented as a `Catalog` object.
 
         Raises:
-            NotFoundError: If the collection with the given `collection_id` is not found in the database.
+            NotFoundError: If the catalog with the given `catalog_path` is not found in the database.
 
         Notes:
-            This function searches for a collection in the database using the specified `collection_id` and returns the found
-            collection as a `Collection` object. If the collection is not found, a `NotFoundError` is raised.
+            This function searches for a catalog in the database using the specified `catalog_path` and returns the found
+            catalog as a `Catalog` object. If the catalog is not found, a `NotFoundError` is raised.
         """
 
         # Create list of nested catalog ids
@@ -2211,6 +2306,7 @@ class DatabaseLogic:
             self: The instance of the object calling this function.
             catalog_path (str): The path to the top-level catalog.
             new_catalog_path (str): The updated path to the top-level catalog.
+            refresh (bool): Whether to refresh the index after the deletion (default: False).
         """
 
         # Create list of nested catalog ids for old catalog id
@@ -2348,17 +2444,18 @@ class DatabaseLogic:
 
         Args:
             self: The instance of the object calling this function.
-            collection_id (str): The ID of the collection to be updated.
-            collection (Collection): The Collection object to be used for the update.
+            catalog_path (str): The path and ID of the catalog to be updated.
+            catalog (Catalog): The Catalog object to be used for the update.
+            refresh (bool): Whether to refresh the index after the deletion (default: False).
 
         Raises:
             NotFoundError: If the collection with the given `collection_id` is not
             found in the database.
 
         Notes:
-            This function updates the collection in the database using the specified
-            `collection_id` and with the collection specified in the `Collection` object.
-            If the collection is not found, a `NotFoundError` is raised.
+            This function updates the catalog in the database using the specified
+            `catalog_path` with the catalog specified in the `Catalog` object.
+            If the catalog is not found, a `NotFoundError` is raised.
         """
 
         # Create list of nested catalog ids
@@ -2541,20 +2638,20 @@ class DatabaseLogic:
             )
 
     async def delete_catalog(self, catalog_path: str, refresh: bool = False):
-        """Delete a collection from the database.
+        """Delete a catalog from the database.
 
         Parameters:
             self: The instance of the object calling this function.
-            collection_id (str): The ID of the collection to be deleted.
+            catalog_path (str): The path and id of the Catalog to be deleted.
             refresh (bool): Whether to refresh the index after the deletion (default: False).
 
         Raises:
-            NotFoundError: If the collection with the given `collection_id` is not found in the database.
+            NotFoundError: If the catalog with the given `catalog_path` is not found in the database.
 
         Notes:
-            This function first verifies that the collection with the specified `collection_id` exists in the database, and then
-            deletes the collection. If `refresh` is set to True, the index is refreshed after the deletion. Additionally, this
-            function also calls `delete_collection_index` to delete the index for the collections in the catalog.
+            This function first verifies that the catalog with the specified `catalog_path` exists in the database, and then
+            deletes the catalog. If `refresh` is set to True, the index is refreshed after the deletion. Additionally, this
+            function also calls `delete_catalog_index` to delete the index for the collections in the catalog.
         """
 
         # Create list of nested catalog ids
@@ -2628,8 +2725,7 @@ class DatabaseLogic:
 
         Args:
             self: The instance of the object calling this function.
-            super_catalog_id (str): The identifier for the Top-level catalog the items belong to.
-            catalog_id (str): The identifier for the catalog the items belong to.
+            catalog_path (str): The path and id of the parent Catalog into which the items will be inserted.
             collection_id (str): The ID of the collection to which the items belong.
             processed_items (List[Item]): A list of `Item` objects to be inserted into the database.
             refresh (bool): Whether to refresh the index after the bulk insert (default: False).
@@ -2668,8 +2764,7 @@ class DatabaseLogic:
 
         Args:
             self: The instance of the object calling this function.
-            super_catalog_id (str): The identifier for the Top-level catalog the items belong to.
-            catalog_id (str): The identifier for the catalog the items belong to.
+            catalog_path (str): The path and id of the parent Catalog into which the items will be inserted.
             collection_id (str): The ID of the collection to which the items belong.
             processed_items (List[Item]): A list of `Item` objects to be inserted into the database.
             refresh (bool): Whether to refresh the index after the bulk insert (default: False).
