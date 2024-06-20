@@ -1299,6 +1299,9 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         catalog = self.database.catalog_serializer.stac_to_db(
             catalog=catalog, base_url=base_url
         )
+        catalog = await self.database.prep_create_catalog(
+            catalog_path=catalog_path, catalog=catalog, base_url=base_url
+        )
 
         await self.database.create_catalog(catalog_path=catalog_path, catalog=catalog)
 
