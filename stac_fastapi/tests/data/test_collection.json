@@ -30,6 +30,65 @@
       ]
     }
   },
+  "aggregations": [
+    {
+      "name": "total_count",
+      "data_type": "integer"
+    },
+    {
+      "name": "datetime_max",
+      "data_type": "datetime"
+    },
+    {
+      "name": "datetime_min",
+      "data_type": "datetime"
+    },
+    {
+      "name": "datetime_frequency",
+      "data_type": "frequency_distribution",
+      "frequency_distribution_data_type": "datetime"
+    },
+    {
+      "name": "sun_elevation_frequency",
+      "data_type": "frequency_distribution",
+      "frequency_distribution_data_type": "numeric"
+    },
+    {
+      "name": "sun_azimuth_frequency",
+      "data_type": "frequency_distribution",
+      "frequency_distribution_data_type": "numeric"
+    },
+    {
+      "name": "geometry_geohash_grid_frequency",
+      "data_type": "frequency_distribution",
+      "frequency_distribution_data_type": "numeric"
+    },
+    {
+      "name": "grid_code_frequency",
+      "data_type": "frequency_distribution",
+      "frequency_distribution_data_type": "string"
+    },
+    {
+      "name": "grid_geohex_frequency",
+      "data_type": "frequency_distribution",
+      "frequency_distribution_data_type": "string"
+    },
+    {
+      "name": "grid_geohash_frequency",
+      "data_type": "frequency_distribution",
+      "frequency_distribution_data_type": "string"
+    },
+    {
+      "name": "grid_geotile_frequency",
+      "data_type": "frequency_distribution",
+      "frequency_distribution_data_type": "string"
+    },
+    {
+      "name": "geometry_geotile_grid_frequency",
+      "data_type": "frequency_distribution",
+      "frequency_distribution_data_type": "string"
+    }
+  ],
   "links": [
     {
       "href": "http://localhost:8081/collections/landsat-8-l1",

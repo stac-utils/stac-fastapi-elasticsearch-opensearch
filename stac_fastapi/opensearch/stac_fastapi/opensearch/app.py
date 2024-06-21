@@ -12,6 +12,11 @@ from stac_fastapi.core.core import (
     TransactionsClient,
 )
 from stac_fastapi.core.extensions import QueryExtension
+from stac_fastapi.core.extensions.aggregation import (
+    EsAsyncAggregationClient,
+    OpenSearchAggregationExtensionGetRequest,
+    OpenSearchAggregationExtensionPostRequest,
+)
 from stac_fastapi.core.extensions.fields import FieldsExtension
 from stac_fastapi.core.session import Session
 from stac_fastapi.extensions.core import (
@@ -39,7 +44,13 @@ filter_extension.conformance_classes.append(
 
 database_logic = DatabaseLogic()
 
-aggregation_extension = AggregationExtension()
+aggregation_extension = AggregationExtension(
+    client=EsAsyncAggregationClient(
+        database=database_logic, session=session, settings=settings
+    )
+)
+aggregation_extension.GET = OpenSearchAggregationExtensionGetRequest
+aggregation_extension.POST = OpenSearchAggregationExtensionPostRequest
 
 search_extensions = [
     TransactionExtension(

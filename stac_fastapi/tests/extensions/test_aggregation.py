@@ -35,3 +35,75 @@ async def test_aggregation_extension_collection_link(app_client, load_test_data)
 
     resp = await app_client.delete(f"/collections/{test_collection['id']}")
     assert resp.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_get_catalog_aggregations(app_client):
+    # there's one item that can match, so one of these queries should match it and the other shouldn't
+    resp = await app_client.get("/aggregations")
+
+    assert resp.status_code == 200
+    assert len(resp.json()["aggregations"]) == 4
+
+
+@pytest.mark.asyncio
+async def test_post_catalog_aggregations(app_client):
+    # there's one item that can match, so one of these queries should match it and the other shouldn't
+    resp = await app_client.post("/aggregations")
+
+    assert resp.status_code == 200
+    assert len(resp.json()["aggregations"]) == 4
+
+
+@pytest.mark.asyncio
+async def test_get_collection_aggregations(app_client, load_test_data):
+    # there's one item that can match, so one of these queries should match it and the other shouldn't
+
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = "test"
+
+    resp = await app_client.post("/collections", json=test_collection)
+    assert resp.status_code == 201
+
+    resp = await app_client.get(f"/collections/{test_collection['id']}/aggregations")
+    assert resp.status_code == 200
+    assert len(resp.json()["aggregations"]) == 12
+
+    resp = await app_client.delete(f"/collections/{test_collection['id']}")
+    assert resp.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_post_collection_aggregations(app_client, load_test_data):
+    # there's one item that can match, so one of these queries should match it and the other shouldn't
+
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = "test"
+
+    resp = await app_client.post("/collections", json=test_collection)
+    assert resp.status_code == 201
+
+    resp = await app_client.post(f"/collections/{test_collection['id']}/aggregations")
+    assert resp.status_code == 200
+    assert len(resp.json()["aggregations"]) == 12
+
+    resp = await app_client.delete(f"/collections/{test_collection['id']}")
+    assert resp.status_code == 204
+
+
+# @pytest.mark.asyncio
+# async def test_aggregate_filter_extension_gte_get(app_client, ctx):
+#     # there's one item that can match, so one of these queries should match it and the other shouldn't
+#     resp = await app_client.get(
+#         '/aggregate?aggregations=grid_geohex_frequency,total_count&grid_geohex_frequency_precision=2&filter={"op":"<=","args":[{"property": "properties.proj:epsg"},32756]}'
+#     )
+
+#     assert resp.status_code == 200
+#     assert resp.json()["aggregations"][0]["value"] == 1
+
+#     resp = await app_client.get(
+#         '/aggregate?aggregations=grid_geohex_frequency,total_count&grid_geohex_frequency_precision=2&filter={"op":">","args":[{"property": "properties.proj:epsg"},32756]}'
+#     )
+
+#     assert resp.status_code == 200
+#     assert resp.json()["aggregations"][0]["value"] == 0
