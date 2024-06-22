@@ -2,22 +2,24 @@ import asyncio
 import copy
 import json
 import os
+import sys
 from typing import Any, Callable, Dict, Optional
 
 import pytest
 import pytest_asyncio
+from fastapi import Depends, HTTPException, security, status
 from httpx import AsyncClient
 from stac_pydantic import api
 
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import create_get_request_model, create_post_request_model
-from stac_fastapi.core.basic_auth import apply_basic_auth
 from stac_fastapi.core.core import (
     BulkTransactionsClient,
     CoreClient,
     TransactionsClient,
 )
 from stac_fastapi.core.extensions import QueryExtension
+from stac_fastapi.core.route_dependencies import get_route_dependencies
 
 if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
     from stac_fastapi.opensearch.config import AsyncOpensearchSettings as AsyncSettings
@@ -227,6 +229,39 @@ async def app_client(app):
 
 @pytest_asyncio.fixture(scope="session")
 async def app_basic_auth():
+
+    stac_fastapi_route_dependencies = """[
+        {
+            "routes":[{"method":"*","path":"*"}],
+            "dependencies":[
+                {
+                    "method":"stac_fastapi.core.basic_auth.BasicAuth",
+                    "kwargs":{"credentials":[{"username":"admin","password":"admin"}]}
+                }
+            ]
+        },
+        {
+            "routes":[
+                {"path":"/","method":["GET"]},
+                {"path":"/conformance","method":["GET"]},
+                {"path":"/collections/{collection_id}/items/{item_id}","method":["GET"]},
+                {"path":"/search","method":["GET","POST"]},
+                {"path":"/collections","method":["GET"]},
+                {"path":"/collections/{collection_id}","method":["GET"]},
+                {"path":"/collections/{collection_id}/items","method":["GET"]},
+                {"path":"/queryables","method":["GET"]},
+                {"path":"/queryables/collections/{collection_id}/queryables","method":["GET"]},
+                {"path":"/_mgmt/ping","method":["GET"]}
+            ],
+            "dependencies":[
+                {
+                    "method":"stac_fastapi.core.basic_auth.BasicAuth",
+                    "kwargs":{"credentials":[{"username":"reader","password":"reader"}]}
+                }
+            ]
+        }
+    ]"""
+
     settings = AsyncSettings()
     extensions = [
         TransactionExtension(
@@ -255,34 +290,8 @@ async def app_basic_auth():
         extensions=extensions,
         search_get_request_model=create_get_request_model(extensions),
         search_post_request_model=post_request_model,
+        route_dependencies=get_route_dependencies(stac_fastapi_route_dependencies),
     )
-
-    os.environ[
-        "BASIC_AUTH"
-    ] = """{
-        "public_endpoints": [
-            {"path": "/", "method": "GET"},
-            {"path": "/search", "method": "GET"}
-        ],
-        "users": [
-            {"username": "admin", "password": "admin", "permissions": "*"},
-            {
-                "username": "reader", "password": "reader",
-                "permissions": [
-                    {"path": "/conformance", "method": ["GET"]},
-                    {"path": "/collections/{collection_id}/items/{item_id}", "method": ["GET"]},
-                    {"path": "/search", "method": ["POST"]},
-                    {"path": "/collections", "method": ["GET"]},
-                    {"path": "/collections/{collection_id}", "method": ["GET"]},
-                    {"path": "/collections/{collection_id}/items", "method": ["GET"]},
-                    {"path": "/queryables", "method": ["GET"]},
-                    {"path": "/queryables/collections/{collection_id}/queryables", "method": ["GET"]},
-                    {"path": "/_mgmt/ping", "method": ["GET"]}
-                ]
-            }
-        ]
-    }"""
-    apply_basic_auth(stac_api)
 
     return stac_api.app
 
@@ -293,4 +302,81 @@ async def app_client_basic_auth(app_basic_auth):
     await create_collection_index()
 
     async with AsyncClient(app=app_basic_auth, base_url="http://test-server") as c:
+        yield c
+
+
+def must_be_bob(
+    credentials: security.HTTPBasicCredentials = Depends(security.HTTPBasic()),
+):
+    if credentials.username == "bob":
+        return True
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="You're not Bob",
+        headers={"WWW-Authenticate": "Basic"},
+    )
+
+
+@pytest_asyncio.fixture(scope="session")
+async def route_dependencies_app():
+    # Add file to python path to allow get_route_dependencies to import must_be_bob
+    sys.path.append(os.path.dirname(__file__))
+
+    stac_fastapi_route_dependencies = """[
+            {
+                "routes": [
+                    {
+                        "method": "GET",
+                        "path": "/collections"
+                    }
+                ],
+                "dependencies": [
+                    {
+                        "method": "conftest.must_be_bob"
+                    }
+                ]
+            }
+        ]"""
+
+    settings = AsyncSettings()
+    extensions = [
+        TransactionExtension(
+            client=TransactionsClient(
+                database=database, session=None, settings=settings
+            ),
+            settings=settings,
+        ),
+        SortExtension(),
+        FieldsExtension(),
+        QueryExtension(),
+        TokenPaginationExtension(),
+        FilterExtension(),
+    ]
+
+    post_request_model = create_post_request_model(extensions)
+
+    return StacApi(
+        settings=settings,
+        client=CoreClient(
+            database=database,
+            session=None,
+            extensions=extensions,
+            post_request_model=post_request_model,
+        ),
+        extensions=extensions,
+        search_get_request_model=create_get_request_model(extensions),
+        search_post_request_model=post_request_model,
+        route_dependencies=get_route_dependencies(stac_fastapi_route_dependencies),
+    ).app
+
+
+@pytest_asyncio.fixture(scope="session")
+async def route_dependencies_client(route_dependencies_app):
+    await create_index_templates()
+    await create_collection_index()
+
+    async with AsyncClient(
+        app=route_dependencies_app, base_url="http://test-server"
+    ) as c:
         yield c
