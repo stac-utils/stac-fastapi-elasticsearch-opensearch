@@ -20,9 +20,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
  - Queryables landing page and collection links when the Filter Extension is enabled [#267](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/267)
- - Added support for route depndencies configuration through the STAC_FASTAPI_ROUTE_DEPENDENCIES environment variable, directly or via json file. Allows for fastapi's inbuilt OAuth2 flows to be used as dependencies. Custom dependencies can also be written, see Basic Auth for an example. [#251](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/251)
- - Added docker-compose.route_dependencies_file.yml that gives an example of OAuth2 workflow using keycloak as the identity provider. [#251](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/251)
- - Added docker-compose.route_dependencies_env.yml that gives an example using the STAC_FASTAPI_ROUTE_DEPENDENCIES environment variable. [#251](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/251)
 
 ### Changed
 
