@@ -18,6 +18,7 @@ install_requires = [
     "geojson-pydantic",
     "pygeofilter==0.2.1",
     "typing_extensions==4.8.0",
+    "jsonschema",
 ]
 
 setup(

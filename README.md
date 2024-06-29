@@ -279,75 +279,106 @@ The modified Items with lowercase identifiers will now be visible to users acces
 
 #### Environment Variable Configuration
 
-Basic authentication is an optional feature. You can enable it by setting the environment variable `BASIC_AUTH` as a JSON string.
+Basic authentication is an optional feature that can be enabled through [Route Dependencies](#route-dependencies). 
 
-Example:
-```
-BASIC_AUTH={"users":[{"username":"user","password":"pass","permissions":"*"}]}
-```
 
-### User Permissions Configuration
+### Example Configuration
 
-In order to set endpoints with specific access permissions, you can configure the `users` key with a list of user objects. Each user object should contain the username, password, and their respective permissions.
-
-Example: This example illustrates the configuration for two users: an **admin** user with full permissions (*) and a **reader** user with limited permissions to specific read-only endpoints.
+This example illustrates the configuration for two users: an **admin** user with full permissions (*) and a **reader** user with limited permissions to specific read-only endpoints.
 ```json
-{
-    "users": [
-        {
-            "username": "admin",
-            "password": "admin",
-            "permissions": "*"
-        },
-        {
-            "username": "reader",
-            "password": "reader",
-            "permissions": [
-                {"path": "/", "method": ["GET"]},
-                {"path": "/conformance", "method": ["GET"]},
-                {"path": "/collections/{collection_id}/items/{item_id}", "method": ["GET"]},
-                {"path": "/search", "method": ["GET", "POST"]},
-                {"path": "/collections", "method": ["GET"]},
-                {"path": "/collections/{collection_id}", "method": ["GET"]},
-                {"path": "/collections/{collection_id}/items", "method": ["GET"]},
-                {"path": "/queryables", "method": ["GET"]},
-                {"path": "/queryables/collections/{collection_id}/queryables", "method": ["GET"]},
-                {"path": "/_mgmt/ping", "method": ["GET"]}
-            ]
-        }
-    ]
-}
-```
-
-
-### Public Endpoints Configuration
-
-In order to set endpoints with public access, you can configure the public_endpoints key with a list of endpoint objects. Each endpoint object should specify the path and method of the endpoint.
-
-Example: This example demonstrates the configuration for public endpoints, allowing access without authentication to read-only endpoints.
-```json
-{
-    "public_endpoints": [
-        {"path": "/", "method": "GET"},
-        {"path": "/conformance", "method": "GET"},
-        {"path": "/collections/{collection_id}/items/{item_id}", "method": "GET"},
-        {"path": "/search", "method": "GET"},
-        {"path": "/search", "method": "POST"},
-        {"path": "/collections", "method": "GET"},
-        {"path": "/collections/{collection_id}", "method": "GET"},
-        {"path": "/collections/{collection_id}/items", "method": "GET"},
-        {"path": "/queryables", "method": "GET"},
-        {"path": "/queryables/collections/{collection_id}/queryables", "method": "GET"},
-        {"path": "/_mgmt/ping", "method": "GET"}
+[
+  {
+    "routes": [
+      {
+        "method": "*",
+        "path": "*"
+      }
     ],
-    "users": [
-        {
-            "username": "admin",
-            "password": "admin",
-            "permissions": "*"
+    "dependencies": [
+      {
+        "method": "stac_fastapi.core.basic_auth.BasicAuth",
+        "kwargs": {
+          "credentials":[
+            {
+              "username": "admin",
+              "password": "admin"
+            }
+          ]
         }
+      }
     ]
-}
+  },
+  {
+    "routes": [
+      {"path": "/", "method": ["GET"]},
+      {"path": "/conformance", "method": ["GET"]},
+      {"path": "/collections/{collection_id}/items/{item_id}", "method": ["GET"]},
+      {"path": "/search", "method": ["GET", "POST"]},
+      {"path": "/collections", "method": ["GET"]},
+      {"path": "/collections/{collection_id}", "method": ["GET"]},
+      {"path": "/collections/{collection_id}/items", "method": ["GET"]},
+      {"path": "/queryables", "method": ["GET"]},
+      {"path": "/queryables/collections/{collection_id}/queryables", "method": ["GET"]},
+      {"path": "/_mgmt/ping", "method": ["GET"]}
+    ],
+    "dependencies": [
+      {
+        "method": "stac_fastapi.core.basic_auth.BasicAuth",
+        "kwargs": {
+          "credentials":[
+            {
+              "username": "reader",
+              "password": "reader"
+            }
+          ]
+        }
+      }
+    ]
+  }
+]
+```
+
+## Route Dependencies
+
+### Configuration
+
+Route dependencies for endpoints can enable through the `STAC_FASTAPI_ROUTE_DEPENDENCIES` 
+environment variable as a path to a JSON file or a JSON string.
+
+#### Route Dependency
+
+A Route Dependency must include `routes`, a list of at least one [Route](#routes), and `dependencies` a
+list of at least one [Dependency](#dependencies).
+
+#### Routes
+
+A Route must include a `path`, the relative path to the endpoint, and a `method`, the request method of the path.
+
+#### Dependencies
+
+A Dependency must include the `method`, a dot seperated path to the Class or Function, and 
+can include any `args` or `kwargs` for the method.
+
+#### Example
+```
+STAC_FASTAPI_ROUTE_DEPENDENCIES=[
+  {
+    "routes": [
+      {
+        "method": "GET",
+        "path": "/collections"
+      }
+    ],
+    "dependencies": [
+      {
+        "method": "fastapi.security.OAuth2PasswordBearer",
+        "kwargs": {
+          "tokenUrl": "token"
+        }
+      }
+    ]
+  }
+]
 ```
 
 ### Docker Compose Configurations

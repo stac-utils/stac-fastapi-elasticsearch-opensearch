@@ -1,0 +1,50 @@
+[
+  {
+    "routes": [
+      {
+        "method": "*",
+        "path": "*"
+      }
+    ],
+    "dependencies": [
+      {
+        "method": "fastapi.security.OAuth2PasswordBearer",
+        "kwargs": {
+          "tokenUrl": "http://keycloak:8083/auth/realms/stac/protocol/openid-connect/token"
+        }
+      }
+    ]
+  },
+  {
+    "routes": [
+      {
+        "path": "/collections/{collection_id}/items/{item_id}",
+        "method": "GET"
+      },
+      {
+        "path": "/search",
+        "method": [
+          "GET",
+          "POST"
+        ]
+      },
+      {
+        "path": "/collections",
+        "method": "GET"
+      }
+    ],
+    "dependencies": [
+      {
+        "method": "stac_fastapi.core.basic_auth.BasicAuth",
+        "kwargs": {
+          "credentials": [
+            {
+              "username": "reader",
+              "password": "reader"
+            }
+          ]
+        }
+      }
+    ]
+  }
+]
