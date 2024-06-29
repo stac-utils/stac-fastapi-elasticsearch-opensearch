@@ -26,10 +26,10 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./stac_fastapi:/app/stac_fastapi
-      - ./examples/route_dependencies:/app/route_dependencies
-      - ./scripts:/app/scripts
-      - ./esdata:/usr/share/elasticsearch/data
+      - ../../stac_fastapi:/app/stac_fastapi
+      - ./route_dependencies:/app/route_dependencies
+      - ../../scripts:/app/scripts
+      - ../../esdata:/usr/share/elasticsearch/data
     depends_on:
       - elasticsearch
     command:
@@ -60,9 +60,9 @@ services:
     ports:
       - "8082:8082"
     volumes:
-      - ./stac_fastapi:/app/stac_fastapi
-      - ./scripts:/app/scripts
-      - ./osdata:/usr/share/opensearch/data
+      - ../../stac_fastapi:/app/stac_fastapi
+      - ../../scripts:/app/scripts
+      - ../../osdata:/usr/share/opensearch/data
     depends_on:
       - opensearch
     command:
@@ -75,8 +75,8 @@ services:
     environment:
       ES_JAVA_OPTS: -Xms512m -Xmx1g
     volumes:
-      - ./elasticsearch/config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
-      - ./elasticsearch/snapshots:/usr/share/elasticsearch/snapshots
+      - ../../elasticsearch/config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
+      - ../../elasticsearch/snapshots:/usr/share/elasticsearch/snapshots
     ports:
       - "9200:9200"
 
@@ -89,8 +89,8 @@ services:
       - plugins.security.disabled=true
       - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
     volumes:
-      - ./opensearch/config/opensearch.yml:/usr/share/opensearch/config/opensearch.yml
-      - ./opensearch/snapshots:/usr/share/opensearch/snapshots
+      - ../../opensearch/config/opensearch.yml:/usr/share/opensearch/config/opensearch.yml
+      - ../../opensearch/snapshots:/usr/share/opensearch/snapshots
     ports:
       - "9202:9202"
 
@@ -120,7 +120,7 @@ services:
       - KC_DB_USERNAME=keycloak
       - KC_DB_PASSWORD=password
     volumes:
-      - ./example/route_dependencies/stac-realm.json:/opt/keycloak/data/import
+      - ./keycloak/stac-realm.json:/opt/keycloak/data/import
     command: start-dev --import-realm
     depends_on:
       - postgres
