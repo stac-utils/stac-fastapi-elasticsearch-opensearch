@@ -5,6 +5,7 @@ import inspect
 import json
 import logging
 import os
+from typing import List
 
 from fastapi import Depends
 from jsonschema import validate
@@ -156,7 +157,7 @@ def get_route_dependencies(route_dependencies_env: str = "") -> list:
     route_dependencies_env = os.environ.get(
         "STAC_FASTAPI_ROUTE_DEPENDENCIES", route_dependencies_env
     )
-    route_dependencies: list[tuple] = []
+    route_dependencies: List[tuple] = []
 
     if not route_dependencies_env:
         _LOGGER.info("Authentication skipped.")
