@@ -92,7 +92,7 @@ async def test_post_collection_aggregations(app_client, load_test_data):
 
 
 @pytest.mark.asyncio
-async def test_aggrgegate_filter_extension_eq_get(app_client, ctx):
+async def test_aggregate_filter_extension_eq_get(app_client, ctx):
     resp = await app_client.get(
         '/aggregate?aggregations=total_count&filter-lang=cql2-json&filter={"op":"=","args":[{"property":"id"},"test-item"]}'
     )
@@ -105,7 +105,7 @@ async def test_aggregate_filter_extension_eq_post(app_client, ctx):
     params = {
         "filter": {"op": "=", "args": [{"property": "id"}, ctx.item["id"]]},
         "filter-lang": "cql2-json",
-        "aggregations": "total_count",
+        "aggregations": ["total_count"],
     }
     resp = await app_client.post("/aggregate", json=params)
     assert resp.status_code == 200
@@ -142,7 +142,7 @@ async def test_aggregate_filter_extension_gte_post(app_client, ctx):
             ],
         },
         "filter-lang": "cql2-json",
-        "aggregations": "total_count",
+        "aggregations": ["total_count"],
     }
     resp = await app_client.post("/aggregate", json=params)
 
@@ -158,7 +158,7 @@ async def test_aggregate_filter_extension_gte_post(app_client, ctx):
             ],
         },
         "filter-lang": "cql2-json",
-        "aggregations": "total_count",
+        "aggregations": ["total_count"],
     }
     resp = await app_client.post("/aggregate", json=params)
 
@@ -245,7 +245,7 @@ async def test_aggregate_filter_ext_and_post(app_client, ctx):
             ],
         },
         "filter-lang": "cql2-json",
-        "aggregations": "total_count",
+        "aggregations": ["total_count"],
     }
     resp = await app_client.post("/aggregate", json=params)
 
@@ -303,7 +303,7 @@ async def test_aggregate_filter_extension_floats_post(app_client, ctx):
             ],
         },
         "filter-lang": "cql2-json",
-        "aggregations": "total_count",
+        "aggregations": ["total_count"],
     }
     resp = await app_client.post("/aggregate", json=params)
 
@@ -338,7 +338,7 @@ async def test_search_aggregate_extension_wildcard_cql2(app_client, ctx):
             ],
         },
         "filter-lang": "cql2-json",
-        "aggregations": "total_count",
+        "aggregations": ["total_count"],
     }
 
     resp = await app_client.post("/aggregate", json=params)
@@ -374,7 +374,7 @@ async def test_aggregate_filter_extension_wildcard_es(app_client, ctx):
             ],
         },
         "filter-lang": "cql2-json",
-        "aggregations": "total_count",
+        "aggregations": ["total_count"],
     }
 
     resp = await app_client.post("/aggregate", json=params)
@@ -404,7 +404,7 @@ async def test_aggregate_filter_extension_escape_chars(app_client, ctx):
             ],
         },
         "filter-lang": "cql2-json",
-        "aggregations": "total_count",
+        "aggregations": ["total_count"],
     }
 
     resp = await app_client.post("/aggregate", json=params)
@@ -432,7 +432,7 @@ async def test_aggregate_filter_extension_in(app_client, ctx):
             ],
         },
         "filter-lang": "cql2-json",
-        "aggregations": "total_count",
+        "aggregations": ["total_count"],
     }
 
     resp = await app_client.post("/aggregate", json=params)
@@ -460,7 +460,7 @@ async def test_aggregate_filter_extension_in_no_list(app_client, ctx):
             ],
         },
         "filter-lang": "cql2-json",
-        "aggregations": "total_count",
+        "aggregations": ["total_count"],
     }
 
     resp = await app_client.post("/aggregate", json=params)
@@ -491,7 +491,7 @@ async def test_aggregate_filter_extension_between(app_client, ctx):
             ],
         },
         "filter-lang": "cql2-json",
-        "aggregations": "total_count",
+        "aggregations": ["total_count"],
     }
     resp = await app_client.post("/aggregate", json=params)
 
