@@ -9,9 +9,9 @@
 </p>
 
   
-  [![PyPI version](https://badge.fury.io/py/stac-fastapi.elasticsearch.svg)](https://badge.fury.io/py/stac-fastapi.elasticsearch)  
+  [![PyPI version](https://badge.fury.io/py/stac-fastapi.elasticsearch.svg)](https://badge.fury.io/py/stac-fastapi.elasticsearch)
   [![Join the chat at https://gitter.im/stac-fastapi-elasticsearch/community](https://badges.gitter.im/stac-fastapi-elasticsearch/community.svg)](https://gitter.im/stac-fastapi-elasticsearch/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
-    
+
 
 ---
 
@@ -22,15 +22,15 @@
 
 ---
 
-### Notes:    
+### Notes:
   
-- Our Api core library can be used to create custom backends. See [stac-fastapi-mongo](https://github.com/Healy-Hyperspatial/stac-fastapi-mongo) for a working example.  
+- Our Api core library can be used to create custom backends. See [stac-fastapi-mongo](https://github.com/Healy-Hyperspatial/stac-fastapi-mongo) for a working example.
 - Reach out on our [Gitter](https://app.gitter.im/#/room/#stac-fastapi-elasticsearch_community:gitter.im) channel or feel free to add to our [Discussions](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/discussions) page here on github.
 - There is [Postman](https://documenter.getpostman.com/view/12888943/2s8ZDSdRHA) documentation here for examples on how to run some of the API routes locally - after starting the elasticsearch backend via the docker-compose.yml file.
-- The `/examples` folder shows an example of running stac-fastapi-elasticsearch from PyPI in docker without needing any code from the repository. There is also a Postman collection here that you can load into Postman for testing the API routes.  
-    
-- For changes, see the [Changelog](CHANGELOG.md)   
-- We are always welcoming contributions. For the development notes: [Contributing](CONTRIBUTING.md)     
+- The `/examples` folder shows an example of running stac-fastapi-elasticsearch from PyPI in docker without needing any code from the repository. There is also a Postman collection here that you can load into Postman for testing the API routes.
+
+- For changes, see the [Changelog](CHANGELOG.md)
+- We are always welcoming contributions. For the development notes: [Contributing](CONTRIBUTING.md)
 
 
 ### To install from PyPI:
@@ -38,25 +38,25 @@
 ```shell
 pip install stac_fastapi.elasticsearch
 ```
-or   
+or
 ```
 pip install stac_fastapi.opensearch
 ```
-    
+
 ## Build Elasticsearch API backend
 
 ```shell
 docker-compose up elasticsearch
 docker-compose build app-elasticsearch
 ```
-  
+
 ## Running Elasticsearch API on localhost:8080
 
 ```shell
 docker-compose up app-elasticsearch
 ```
 
-By default, docker-compose uses Elasticsearch 8.x and OpenSearch 2.11.1. 
+By default, docker-compose uses Elasticsearch 8.x and OpenSearch 2.11.1.
 If you wish to use a different version, put the following in a 
 file named `.env` in the same directory you run docker-compose from:
 
@@ -76,7 +76,7 @@ curl -X "POST" "http://localhost:8080/collections" \
 }'
 ```
 
-Note: this "Collections Transaction" behavior is not part of the STAC API, but may be soon.  
+Note: this "Collections Transaction" behavior is not part of the STAC API, but may be soon.
 
 ## Configure the API
 
@@ -91,12 +91,12 @@ The application root path is left as the base url by default. If deploying to AW
 The collections route handles optional `limit` and `token` parameters. The `links` field that is
 returned from the `/collections` route contains a `next` link with the token that can be used to 
 get the next page of results.
-   
+
 ```shell
 curl -X "GET" "http://localhost:8080/collections?limit=1&token=example_token"
 ```
 
-## Ingesting Sample Data CLI Tool   
+## Ingesting Sample Data CLI Tool
 
 ```shell
 Usage: data_loader.py [OPTIONS]
@@ -114,12 +114,12 @@ Options:
 
 ```shell
 python3 data_loader.py --base-url http://localhost:8080
-```  
+```
 
 
 ## Elasticsearch Mappings
 
-Mappings apply to search index, not source. The mappings are stored in index templates on application startup. 
+Mappings apply to search index, not source. The mappings are stored in index templates on application startup.
 These templates will be used implicitly when creating new Collection and Item indices.
     
 
@@ -275,112 +275,6 @@ curl -X "POST" "http://localhost:9200/_aliases" \
 The modified Items with lowercase identifiers will now be visible to users accessing `my-collection` in the STAC API.
 
 
-## Basic Auth
+## Auth
 
-#### Environment Variable Configuration
-
-Basic authentication is an optional feature that can be enabled through [Route Dependencies](#route-dependencies). 
-
-
-### Example Configuration
-
-This example illustrates the configuration for two users: an **admin** user with full permissions (*) and a **reader** user with limited permissions to specific read-only endpoints.
-```json
-[
-  {
-    "routes": [
-      {
-        "method": "*",
-        "path": "*"
-      }
-    ],
-    "dependencies": [
-      {
-        "method": "stac_fastapi.core.basic_auth.BasicAuth",
-        "kwargs": {
-          "credentials":[
-            {
-              "username": "admin",
-              "password": "admin"
-            }
-          ]
-        }
-      }
-    ]
-  },
-  {
-    "routes": [
-      {"path": "/", "method": ["GET"]},
-      {"path": "/conformance", "method": ["GET"]},
-      {"path": "/collections/{collection_id}/items/{item_id}", "method": ["GET"]},
-      {"path": "/search", "method": ["GET", "POST"]},
-      {"path": "/collections", "method": ["GET"]},
-      {"path": "/collections/{collection_id}", "method": ["GET"]},
-      {"path": "/collections/{collection_id}/items", "method": ["GET"]},
-      {"path": "/queryables", "method": ["GET"]},
-      {"path": "/queryables/collections/{collection_id}/queryables", "method": ["GET"]},
-      {"path": "/_mgmt/ping", "method": ["GET"]}
-    ],
-    "dependencies": [
-      {
-        "method": "stac_fastapi.core.basic_auth.BasicAuth",
-        "kwargs": {
-          "credentials":[
-            {
-              "username": "reader",
-              "password": "reader"
-            }
-          ]
-        }
-      }
-    ]
-  }
-]
-```
-
-## Route Dependencies
-
-### Configuration
-
-Route dependencies for endpoints can enable through the `STAC_FASTAPI_ROUTE_DEPENDENCIES` 
-environment variable as a path to a JSON file or a JSON string.
-
-#### Route Dependency
-
-A Route Dependency must include `routes`, a list of at least one [Route](#routes), and `dependencies` a
-list of at least one [Dependency](#dependencies).
-
-#### Routes
-
-A Route must include a `path`, the relative path to the endpoint, and a `method`, the request method of the path.
-
-#### Dependencies
-
-A Dependency must include the `method`, a dot seperated path to the Class or Function, and 
-can include any `args` or `kwargs` for the method.
-
-#### Example
-```
-STAC_FASTAPI_ROUTE_DEPENDENCIES=[
-  {
-    "routes": [
-      {
-        "method": "GET",
-        "path": "/collections"
-      }
-    ],
-    "dependencies": [
-      {
-        "method": "fastapi.security.OAuth2PasswordBearer",
-        "kwargs": {
-          "tokenUrl": "token"
-        }
-      }
-    ]
-  }
-]
-```
-
-### Docker Compose Configurations
-
-See `docker-compose.basic_auth_protected.yml` and `docker-compose.basic_auth_public.yml` for basic authentication configurations.
+Authentication is an optional feature that can be enabled through `Route Dependencies` examples can be found and a more detailed explanation in [examples/auth](examples/auth).
