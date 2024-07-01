@@ -168,7 +168,7 @@ def indices(collection_ids: Optional[List[str]]) -> str:
     Returns:
         A string of comma-separated index names. If `collection_ids` is None, returns the default indices.
     """
-    if collection_ids is None:
+    if collection_ids is None or collection_ids == []:
         return ITEM_INDICES
     else:
         return ",".join([index_by_collection_id(c) for c in collection_ids])
@@ -672,16 +672,13 @@ class DatabaseLogic:
         collection_ids: Optional[List[str]],
         aggregations: List[str],
         search: Search,
-        geohash_precision: int,
-        geohex_precision: int,
-        geotile_precision: int,
         centroid_geohash_grid_precision: int,
         centroid_geohex_grid_precision: int,
         centroid_geotile_grid_precision: int,
         geometry_geohash_grid_precision: int,
         # geometry_geohex_grid_precision: int,
         geometry_geotile_grid_precision: int,
-        ignore_unavailable: bool = True,
+        ignore_unavailable: Optional[bool] = True,
     ):
         """Return aggregations of STAC Items."""
         ALL_AGGREGATIONS = {
@@ -740,31 +737,6 @@ class DatabaseLogic:
             k: v for k, v in ALL_AGGREGATIONS.items() if k in aggregations
         }
 
-        # deprecated centroid
-        if "grid_geohash_frequency" in aggregations:
-            search_body["aggregations"]["grid_geohash_frequency"] = {
-                "geohash_grid": {
-                    "field": "properties.proj:centroid",
-                    "precision": geohash_precision,
-                }
-            }
-
-        if "grid_geohex_frequency" in aggregations:
-            search_body["aggregations"]["grid_geohex_frequency"] = {
-                "geohex_grid": {
-                    "field": "properties.proj:centroid",
-                    "precision": geohex_precision,
-                }
-            }
-
-        if "grid_geotile_frequency" in aggregations:
-            search_body["aggregations"]["grid_geotile_frequency"] = {
-                "geotile_grid": {
-                    "field": "properties.proj:centroid",
-                    "precision": geotile_precision,
-                }
-            }
-
         # centroid
         if "centroid_geohash_grid_frequency" in aggregations:
             search_body["aggregations"]["centroid_geohash_grid_frequency"] = {
@@ -816,7 +788,6 @@ class DatabaseLogic:
             }
 
         index_param = indices(collection_ids)
-
         search_task = asyncio.create_task(
             self.client.search(
                 index=index_param,

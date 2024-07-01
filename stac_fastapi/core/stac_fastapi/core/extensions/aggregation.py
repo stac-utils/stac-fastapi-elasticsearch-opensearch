@@ -6,7 +6,6 @@ from urllib.parse import unquote_plus, urljoin
 
 import attr
 import orjson
-from attrs import define
 from fastapi import HTTPException, Request
 from pygeofilter.backends.cql2_json import to_cql2
 from pygeofilter.parsers.cql2_text import parse as parse_cql2_text
@@ -33,17 +32,12 @@ from stac_fastapi.types.rfc3339 import DateTimeType
 FilterLang = Literal["cql-json", "cql2-json", "cql2-text"]
 
 
-@define
+@attr.s
 class OpenSearchAggregationExtensionGetRequest(
     AggregationExtensionGetRequest, FilterExtensionGetRequest
 ):
     """Add implementation specific query parameters to AggregationExtensionGetRequest for aggrgeation precision."""
 
-    # filter_lang: Optional[FilterLang] = attr.ib(default="cql2-text")
-
-    grid_geohex_frequency_precision: Optional[int] = attr.ib(default=None)
-    grid_geohash_frequency_precision: Optional[int] = attr.ib(default=None)
-    grid_geotile_frequency_precision: Optional[int] = attr.ib(default=None)
     centroid_geohash_grid_frequency_precision: Optional[int] = attr.ib(default=None)
     centroid_geohex_grid_frequency_precision: Optional[int] = attr.ib(default=None)
     centroid_geotile_grid_frequency_precision: Optional[int] = attr.ib(default=None)
@@ -56,9 +50,6 @@ class OpenSearchAggregationExtensionPostRequest(
 ):
     """Add implementation specific query parameters to AggregationExtensionPostRequest for aggrgeation precision."""
 
-    grid_geohex_frequency_precision: Optional[int] = None
-    grid_geohash_frequency_precision: Optional[int] = None
-    grid_geotile_frequency_precision: Optional[int] = None
     centroid_geohash_grid_frequency_precision: Optional[int] = None
     centroid_geohex_grid_frequency_precision: Optional[int] = None
     centroid_geotile_grid_frequency_precision: Optional[int] = None
@@ -83,25 +74,74 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
             "data_type": "frequency_distribution",
             "frequency_distribution_data_type": "datetime",
         },
+        {
+            "name": "collection_frequency",
+            "data_type": "frequency_distribution",
+            "frequency_distribution_data_type": "string",
+        },
+        {
+            "name": "sun_elevation_frequency",
+            "data_type": "frequency_distribution",
+            "frequency_distribution_data_type": "numeric",
+        },
+        {
+            "name": "platform_frequency",
+            "data_type": "frequency_distribution",
+            "frequency_distribution_data_type": "string",
+        },
+        {
+            "name": "sun_azimuth_frequency",
+            "data_type": "frequency_distribution",
+            "frequency_distribution_data_type": "numeric",
+        },
+        {
+            "name": "off_nadir_frequency",
+            "data_type": "frequency_distribution",
+            "frequency_distribution_data_type": "numeric",
+        },
+        {
+            "name": "cloud_cover_frequency",
+            "data_type": "frequency_distribution",
+            "frequency_distribution_data_type": "numeric",
+        },
     ]
 
-    ALL_AGGREGATION_NAMES = [agg["name"] for agg in DEFAULT_AGGREGATIONS] + [
-        "collection_frequency",
-        "grid_code_frequency",
-        "grid_geohash_frequency",
-        "grid_geohex_frequency",
-        "grid_geotile_frequency",
-        "centroid_geohash_grid_frequency",
-        "centroid_geohex_grid_frequency",
-        "centroid_geotile_grid_frequency",
-        "geometry_geohash_grid_frequency",
-        # 'geometry_geohex_grid_frequency',
-        "geometry_geotile_grid_frequency",
-        "platform_frequency",
-        "sun_elevation_frequency",
-        "sun_azimuth_frequency",
-        "off_nadir_frequency",
-        "cloud_cover_frequency",
+    GEO_AGGREGATIONS = [
+        {
+            "name": "grid_code_frequency",
+            "data_type": "frequency_distribution",
+            "frequency_distribution_data_type": "string",
+        },
+        {
+            "name": "centroid_geohash_grid_frequency",
+            "data_type": "frequency_distribution",
+            "frequency_distribution_data_type": "string",
+        },
+        {
+            "name": "centroid_geohex_grid_frequency",
+            "data_type": "frequency_distribution",
+            "frequency_distribution_data_type": "string",
+        },
+        {
+            "name": "centroid_geotile_grid_frequency",
+            "data_type": "frequency_distribution",
+            "frequency_distribution_data_type": "string",
+        },
+        {
+            "name": "geometry_geohash_grid_frequency",
+            "data_type": "frequency_distribution",
+            "frequency_distribution_data_type": "string",
+        },
+        # {
+        #     "name": "geometry_geohex_grid_frequency",
+        #     "data_type": "frequency_distribution",
+        #     "frequency_distribution_data_type": "string",
+        # },
+        {
+            "name": "geometry_geotile_grid_frequency",
+            "data_type": "frequency_distribution",
+            "frequency_distribution_data_type": "string",
+        },
     ]
 
     MAX_GEOHASH_PRECISION = 12
@@ -166,6 +206,34 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
         else:
             return min_value
 
+    def frequency_agg(self, es_aggs, name, data_type):
+        """Format an aggregation for a frequency distribution aggregation."""
+        buckets = []
+        for bucket in es_aggs.get(name, {}).get("buckets", []):
+            bucket_data = {
+                "key": bucket.get("key_as_string") or bucket.get("key"),
+                "data_type": data_type,
+                "frequency": bucket.get("doc_count"),
+                "to": bucket.get("to"),
+                "from": bucket.get("from"),
+            }
+            buckets.append(bucket_data)
+        return Aggregation(
+            name=name,
+            data_type="frequency_distribution",
+            overflow=es_aggs.get(name, {}).get("sum_other_doc_count", 0),
+            buckets=buckets,
+        )
+
+    def metric_agg(self, es_aggs, name, data_type):
+        """Format an aggregation for a metric aggregation."""
+        return Aggregation(
+            name=name,
+            data_type=data_type,
+            value=es_aggs.get(name, {}).get("value_as_string")
+            or es_aggs.get(name, {}).get("value"),
+        )
+
     async def aggregate(
         self,
         aggregate_request: Optional[OpenSearchAggregationExtensionPostRequest] = None,
@@ -177,9 +245,6 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
         aggregations: Optional[str] = None,
         ids: Optional[List[str]] = None,
         bbox: Optional[BBox] = None,
-        grid_geohex_frequency_precision: Optional[int] = None,
-        grid_geohash_frequency_precision: Optional[int] = None,
-        grid_geotile_frequency_precision: Optional[int] = None,
         centroid_geohash_grid_frequency_precision: Optional[int] = None,
         centroid_geohex_grid_frequency_precision: Optional[int] = None,
         centroid_geotile_grid_frequency_precision: Optional[int] = None,
@@ -214,9 +279,6 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
                 aggregations=",".join(aggregations) if aggregations else None,
                 ids=ids,
                 bbox=bbox,
-                grid_geohex_frequency_precision=grid_geohex_frequency_precision,
-                grid_geohash_frequency_precision=grid_geohash_frequency_precision,
-                grid_geotile_frequency_precision=grid_geotile_frequency_precision,
                 centroid_geohash_grid_frequency_precision=centroid_geohash_grid_frequency_precision,
                 centroid_geohex_grid_frequency_precision=centroid_geohex_grid_frequency_precision,
                 centroid_geotile_grid_frequency_precision=centroid_geotile_grid_frequency_precision,
@@ -225,6 +287,14 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
             )
         else:
             filter_lang = "cql2-json"
+        if (
+            aggregate_request.aggregations is None
+            or aggregate_request.aggregations == []
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="No 'aggregations' found. Use '/aggregations' to return available aggregations",
+            )
 
         if aggregate_request.ids:
             search = self.database.apply_ids_filter(
@@ -254,34 +324,31 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
                 search=search, collection_ids=aggregate_request.collections
             )
             # validate that aggregations are supported for all collections
-            # if aggregations are not defined for a collection, any aggregation may be requested
             for collection_id in aggregate_request.collections:
-                if self.database.check_collection_exists(collection_id):
-                    collection = await self.database.find_collection(collection_id)
-                if isinstance(collection, Exception):
-                    return collection
+                aggs = await self.get_aggregations(
+                    collection_id=collection_id, request=request
+                )
+                supported_aggregations = (
+                    aggs["aggregations"] + self.DEFAULT_AGGREGATIONS
+                )
+                # supported_aggregations = set([x["name"] for x in aggs["aggregations"]] + [x["name"] for x in self.DEFAULT_AGGREGATIONS])
 
-                if (
-                    collection
-                    and collection.get("aggregations")
-                    and aggregate_request.aggregations
-                ):
-                    supported_aggregations = [
-                        x["name"] for x in collection.get("aggregations")
-                    ]
-                    for agg_name in aggregate_request.aggregations:
-                        if agg_name not in supported_aggregations:
-                            raise HTTPException(
-                                status_code=400,
-                                detail=f"Aggregation {agg_name} not supported by collection {collection_id}",
-                            )
-                else:
-                    for agg_name in aggregate_request.aggregations:
-                        if agg_name not in self.ALL_AGGREGATION_NAMES:
-                            raise HTTPException(
-                                status_code=400,
-                                detail=f"Aggregation {agg_name} not supported at catalog level",
-                            )
+                for agg_name in aggregate_request.aggregations:
+                    if agg_name not in set([x["name"] for x in supported_aggregations]):
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Aggregation {agg_name} not supported by collection {collection_id}",
+                        )
+        else:
+            # Validate that the aggregations requested are supported by the catalog
+            aggs = await self.get_aggregations(request=request)
+            supported_aggregations = aggs["aggregations"]
+            for agg_name in aggregate_request.aggregations:
+                if agg_name not in [x["name"] for x in supported_aggregations]:
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Aggregation {agg_name} not supported at catalog level",
+                    )
 
         if aggregate_request.filter:
             if filter_lang == "cql2-text":
@@ -306,24 +373,6 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
                 raise HTTPException(
                     status_code=400, detail=f"Error with cql2_json filter: {e}"
                 )
-
-        geohash_precision = self.extract_precision(
-            aggregate_request.grid_geohash_frequency_precision,
-            1,
-            self.MAX_GEOHASH_PRECISION,
-        )
-
-        geohex_precision = self.extract_precision(
-            aggregate_request.grid_geohex_frequency_precision,
-            0,
-            self.MAX_GEOHEX_PRECISION,
-        )
-
-        geotile_precision = self.extract_precision(
-            aggregate_request.grid_geotile_frequency_precision,
-            0,
-            self.MAX_GEOTILE_PRECISION,
-        )
 
         centroid_geohash_grid_precision = self.extract_precision(
             aggregate_request.centroid_geohash_grid_frequency_precision,
@@ -364,9 +413,6 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
                 collections,
                 aggregate_request.aggregations,
                 search,
-                geohash_precision,
-                geohex_precision,
-                geotile_precision,
                 centroid_geohash_grid_precision,
                 centroid_geohex_grid_precision,
                 centroid_geotile_grid_precision,
@@ -381,48 +427,18 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
         if db_response:
             result_aggs = db_response.get("aggregations", {})
 
-            if "total_count" in aggregate_request.aggregations:
-                aggs.append(
-                    Aggregation(
-                        name="total_count",
-                        data_type="integer",
-                        value=result_aggs.get("total_count", {}).get("value", None),
-                    )
-                )
-
-            if "datetime_max" in aggregate_request.aggregations:
-                aggs.append(
-                    Aggregation(
-                        name="datetime_max",
-                        data_type="datetime",
-                        value=result_aggs.get("datetime_max", {}).get(
-                            "value_as_string", None
-                        ),
-                    )
-                )
-
-            if "datetime_min" in aggregate_request.aggregations:
-                aggs.append(
-                    Aggregation(
-                        name="datetime_min",
-                        data_type="datetime",
-                        value=result_aggs.get("datetime_min", {}).get(
-                            "value_as_string", None
-                        ),
-                    )
-                )
-
-            for agg_name in self.ALL_AGGREGATION_NAMES:
-                if agg_name in aggregate_request.aggregations:
-                    aggs.append(
-                        Aggregation(
-                            name=agg_name,
-                            data_type="string",
-                            value=result_aggs.get(agg_name, {}).get(
-                                "value_as_string", None
-                            ),
+            for agg in supported_aggregations + self.GEO_AGGREGATIONS:
+                if agg["name"] in aggregate_request.aggregations:
+                    if agg["name"].endswith("_frequency"):
+                        aggs.append(
+                            self.frequency_agg(
+                                result_aggs, agg["name"], agg["data_type"]
+                            )
                         )
-                    )
+                    else:
+                        aggs.append(
+                            self.metric_agg(result_aggs, agg["name"], agg["data_type"])
+                        )
 
         links = [
             {
