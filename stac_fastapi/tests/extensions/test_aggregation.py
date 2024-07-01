@@ -43,7 +43,7 @@ async def test_get_catalog_aggregations(app_client):
     resp = await app_client.get("/aggregations")
 
     assert resp.status_code == 200
-    assert len(resp.json()["aggregations"]) == 10
+    assert len(resp.json()["aggregations"]) == 5
 
 
 @pytest.mark.asyncio
@@ -52,7 +52,7 @@ async def test_post_catalog_aggregations(app_client):
     resp = await app_client.post("/aggregations")
 
     assert resp.status_code == 200
-    assert len(resp.json()["aggregations"]) == 10
+    assert len(resp.json()["aggregations"]) == 5
 
 
 @pytest.mark.asyncio
@@ -729,6 +729,10 @@ async def test_post_aggregate_centroid_geohash_frequency(app_client, ctx):
 @pytest.mark.asyncio
 async def test_get_aggregate_centroid_geohex_frequency(app_client, ctx):
 
+    # geohex is only available on a commercial license of ES
+    if os.getenv("BACKEND", "elasticsearch").lower() == "elasticsearch":
+        pytest.skip()
+
     resp = await app_client.get(
         "/aggregate?aggregations=centroid_geohex_grid_frequency&centroid_geohex_grid_frequency_precision=5&collections=test-collection"
     )
@@ -740,6 +744,10 @@ async def test_get_aggregate_centroid_geohex_frequency(app_client, ctx):
 
 @pytest.mark.asyncio
 async def test_post_aggregate_centroid_geohex_frequency(app_client, ctx):
+
+    # geohex is only available on a commercial license of ES
+    if os.getenv("BACKEND", "elasticsearch").lower() == "elasticsearch":
+        pytest.skip()
 
     params = {
         "aggregations": ["centroid_geohex_grid_frequency"],
@@ -785,6 +793,10 @@ async def test_post_aggregate_centroid_geotile_frequency(app_client, ctx):
 @pytest.mark.asyncio
 async def test_get_aggregate_geometry_geotile_frequency(app_client, ctx):
 
+    # geometry geo-aggregation is only available on a commercial license of ES
+    if os.getenv("BACKEND", "elasticsearch").lower() == "elasticsearch":
+        pytest.skip()
+
     resp = await app_client.get(
         "/aggregate?aggregations=geometry_geotile_grid_frequency&geometry_geotile_grid_frequency_precision=5&collections=test-collection"
     )
@@ -796,6 +808,10 @@ async def test_get_aggregate_geometry_geotile_frequency(app_client, ctx):
 
 @pytest.mark.asyncio
 async def test_post_aggregate_geometry_geotile_frequency(app_client, ctx):
+
+    # geometry geo-aggregation is only available on a commercial license of ES
+    if os.getenv("BACKEND", "elasticsearch").lower() == "elasticsearch":
+        pytest.skip()
 
     params = {
         "aggregations": ["geometry_geotile_grid_frequency"],
@@ -813,6 +829,10 @@ async def test_post_aggregate_geometry_geotile_frequency(app_client, ctx):
 @pytest.mark.asyncio
 async def test_get_aggregate_geometry_geohash_frequency(app_client, ctx):
 
+    # geo-aggregation is only available on a commercial license of ES
+    if os.getenv("BACKEND", "elasticsearch").lower() == "elasticsearch":
+        pytest.skip()
+
     resp = await app_client.get(
         "/aggregate?aggregations=geometry_geohash_grid_frequency&geometry_geohash_grid_frequency_precision=5&collections=test-collection"
     )
@@ -824,6 +844,10 @@ async def test_get_aggregate_geometry_geohash_frequency(app_client, ctx):
 
 @pytest.mark.asyncio
 async def test_post_aggregate_geometry_geohash_frequency(app_client, ctx):
+
+    # geo-aggregation is only available on a commercial license of ES
+    if os.getenv("BACKEND", "elasticsearch").lower() == "elasticsearch":
+        pytest.skip()
 
     params = {
         "aggregations": ["geometry_geohash_grid_frequency"],

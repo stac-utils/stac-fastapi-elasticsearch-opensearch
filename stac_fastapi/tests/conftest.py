@@ -20,9 +20,9 @@ from stac_fastapi.core.core import (
 )
 from stac_fastapi.core.extensions import QueryExtension
 from stac_fastapi.core.extensions.aggregation import (
+    EsAggregationExtensionGetRequest,
+    EsAggregationExtensionPostRequest,
     EsAsyncAggregationClient,
-    OpenSearchAggregationExtensionGetRequest,
-    OpenSearchAggregationExtensionPostRequest,
 )
 from stac_fastapi.core.route_dependencies import get_route_dependencies
 
@@ -200,8 +200,8 @@ async def app():
             database=database, session=None, settings=settings
         )
     )
-    aggregation_extension.GET = OpenSearchAggregationExtensionGetRequest
-    aggregation_extension.POST = OpenSearchAggregationExtensionPostRequest
+    aggregation_extension.GET = EsAggregationExtensionGetRequest
+    aggregation_extension.POST = EsAggregationExtensionPostRequest
 
     search_extensions = [
         TransactionExtension(
@@ -286,8 +286,8 @@ async def app_basic_auth():
             database=database, session=None, settings=settings
         )
     )
-    aggregation_extension.GET = OpenSearchAggregationExtensionGetRequest
-    aggregation_extension.POST = OpenSearchAggregationExtensionPostRequest
+    aggregation_extension.GET = EsAggregationExtensionGetRequest
+    aggregation_extension.POST = EsAggregationExtensionPostRequest
 
     search_extensions = [
         TransactionExtension(

@@ -33,7 +33,7 @@ FilterLang = Literal["cql-json", "cql2-json", "cql2-text"]
 
 
 @attr.s
-class OpenSearchAggregationExtensionGetRequest(
+class EsAggregationExtensionGetRequest(
     AggregationExtensionGetRequest, FilterExtensionGetRequest
 ):
     """Add implementation specific query parameters to AggregationExtensionGetRequest for aggrgeation precision."""
@@ -45,7 +45,7 @@ class OpenSearchAggregationExtensionGetRequest(
     geometry_geotile_grid_frequency_precision: Optional[int] = attr.ib(default=None)
 
 
-class OpenSearchAggregationExtensionPostRequest(
+class EsAggregationExtensionPostRequest(
     AggregationExtensionPostRequest, FilterExtensionPostRequest
 ):
     """Add implementation specific query parameters to AggregationExtensionPostRequest for aggrgeation precision."""
@@ -78,31 +78,6 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
             "name": "collection_frequency",
             "data_type": "frequency_distribution",
             "frequency_distribution_data_type": "string",
-        },
-        {
-            "name": "sun_elevation_frequency",
-            "data_type": "frequency_distribution",
-            "frequency_distribution_data_type": "numeric",
-        },
-        {
-            "name": "platform_frequency",
-            "data_type": "frequency_distribution",
-            "frequency_distribution_data_type": "string",
-        },
-        {
-            "name": "sun_azimuth_frequency",
-            "data_type": "frequency_distribution",
-            "frequency_distribution_data_type": "numeric",
-        },
-        {
-            "name": "off_nadir_frequency",
-            "data_type": "frequency_distribution",
-            "frequency_distribution_data_type": "numeric",
-        },
-        {
-            "name": "cloud_cover_frequency",
-            "data_type": "frequency_distribution",
-            "frequency_distribution_data_type": "numeric",
         },
     ]
 
@@ -236,7 +211,7 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
 
     async def aggregate(
         self,
-        aggregate_request: Optional[OpenSearchAggregationExtensionPostRequest] = None,
+        aggregate_request: Optional[EsAggregationExtensionPostRequest] = None,
         collections: Optional[List[str]] = [],
         datetime: Optional[DateTimeType] = None,
         intersects: Optional[str] = None,
@@ -256,7 +231,6 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
         request: Request = kwargs["request"]
         base_url = str(request.base_url)
         search = self.database.make_search()
-
         if aggregate_request is None:
             # this is borrowed from stac-fastapi-pgstac
             # Kludgy fix because using factory does not allow alias for filter-lang
@@ -271,7 +245,7 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
                 else:
                     filter_lang = "cql2-text"
 
-            aggregate_request = OpenSearchAggregationExtensionGetRequest(
+            aggregate_request = EsAggregationExtensionGetRequest(
                 collections=",".join(collections) if collections else None,
                 datetime=datetime,
                 intersects=intersects,

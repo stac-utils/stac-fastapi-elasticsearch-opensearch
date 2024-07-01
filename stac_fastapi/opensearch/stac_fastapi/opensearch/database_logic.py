@@ -681,7 +681,7 @@ class DatabaseLogic:
         ignore_unavailable: Optional[bool] = True,
     ):
         """Return aggregations of STAC Items."""
-        ALL_AGGREGATIONS = {
+        agg_2_es = {
             "total_count": {"value_count": {"field": "id"}},
             "collection_frequency": {"terms": {"field": "collection", "size": 100}},
             "platform_frequency": {
@@ -729,12 +729,10 @@ class DatabaseLogic:
         if query:
             search_body["query"] = query
 
-        logger.debug("Aggregations: %s", aggregations)
-
         # include all aggregations specified
         # this will ignore aggregations with the wrong names
         search_body["aggregations"] = {
-            k: v for k, v in ALL_AGGREGATIONS.items() if k in aggregations
+            k: v for k, v in agg_2_es.items() if k in aggregations
         }
 
         # centroid
