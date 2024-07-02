@@ -246,13 +246,13 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
                     filter_lang = "cql2-text"
 
             aggregate_request = EsAggregationExtensionGetRequest(
-                collections=",".join(collections) if collections else None,
-                datetime=datetime,
-                intersects=intersects,
-                filter=filter,
-                aggregations=",".join(aggregations) if aggregations else None,
-                ids=ids,
-                bbox=bbox,
+                collections=",".join(collections) if collections else None,  # type: ignore [call-arg]
+                datetime=datetime,  # type: ignore [call-arg]
+                intersects=intersects,  # type: ignore [call-arg]
+                filter=filter,  # type: ignore [call-arg]
+                aggregations=",".join(aggregations) if aggregations else None,  # type: ignore [call-arg]
+                ids=ids,  # type: ignore [call-arg]
+                bbox=bbox,  # type: ignore [call-arg]
                 centroid_geohash_grid_frequency_precision=centroid_geohash_grid_frequency_precision,
                 centroid_geohex_grid_frequency_precision=centroid_geohex_grid_frequency_precision,
                 centroid_geotile_grid_frequency_precision=centroid_geotile_grid_frequency_precision,
