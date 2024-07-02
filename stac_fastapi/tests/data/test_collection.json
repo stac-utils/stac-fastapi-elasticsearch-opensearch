@@ -30,6 +30,80 @@
       ]
     }
   },
+  "aggregations": [
+    {
+      "name": "total_count",
+      "data_type": "integer"
+    },
+    {
+      "name": "datetime_max",
+      "data_type": "datetime"
+    },
+    {
+      "name": "datetime_min",
+      "data_type": "datetime"
+    },
+    {
+      "name": "datetime_frequency",
+      "data_type": "frequency_distribution",
+      "frequency_distribution_data_type": "datetime"
+    },
+    {
+      "name": "sun_elevation_frequency",
+      "data_type": "frequency_distribution",
+      "frequency_distribution_data_type": "numeric"
+    },
+    {
+      "name": "platform_frequency", 
+      "data_type": "frequency_distribution",
+      "frequency_distribution_data_type": "string"
+    },
+    {
+      "name": "sun_azimuth_frequency",
+      "data_type": "frequency_distribution",
+      "frequency_distribution_data_type": "numeric"
+    },
+    {
+      "name": "off_nadir_frequency",
+      "data_type": "frequency_distribution",
+      "frequency_distribution_data_type": "numeric"
+    },
+    {
+      "name": "cloud_cover_frequency",
+      "data_type": "frequency_distribution",
+      "frequency_distribution_data_type": "numeric"
+    },
+    {
+      "name": "grid_code_frequency",
+      "data_type": "frequency_distribution",
+      "frequency_distribution_data_type": "string"
+    },
+    {
+      "name": "centroid_geohash_grid_frequency",
+      "data_type": "frequency_distribution",
+      "frequency_distribution_data_type": "string"
+    },
+    {
+        "name": "centroid_geohex_grid_frequency",
+        "data_type": "frequency_distribution",
+        "frequency_distribution_data_type": "string"
+    },
+    {
+        "name": "centroid_geotile_grid_frequency",
+        "data_type": "frequency_distribution",
+        "frequency_distribution_data_type": "string"
+    },
+    {
+      "name": "geometry_geohash_grid_frequency",
+      "data_type": "frequency_distribution",
+      "frequency_distribution_data_type": "numeric"
+    },
+    {
+      "name": "geometry_geotile_grid_frequency",
+      "data_type": "frequency_distribution",
+      "frequency_distribution_data_type": "string"
+    }
+  ],
   "links": [
     {
       "href": "http://localhost:8081/collections/landsat-8-l1",
