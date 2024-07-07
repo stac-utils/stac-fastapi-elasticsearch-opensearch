@@ -43,7 +43,7 @@ async def test_get_catalog_aggregations(app_client):
     resp = await app_client.get("/aggregations")
 
     assert resp.status_code == 200
-    assert len(resp.json()["aggregations"]) == 5
+    assert len(resp.json()["aggregations"]) == 7
 
 
 @pytest.mark.asyncio
@@ -52,7 +52,7 @@ async def test_post_catalog_aggregations(app_client):
     resp = await app_client.post("/aggregations")
 
     assert resp.status_code == 200
-    assert len(resp.json()["aggregations"]) == 5
+    assert len(resp.json()["aggregations"]) == 7
 
 
 @pytest.mark.asyncio
@@ -92,12 +92,19 @@ async def test_post_collection_aggregations(app_client, ctx, load_test_data):
 
 
 @pytest.mark.asyncio
-async def test_aggregate_filter_extension_eq_get(app_client, ctx):
-    resp = await app_client.get(
-        '/aggregate?aggregations=total_count&filter-lang=cql2-json&filter={"op":"=","args":[{"property":"id"},"test-item"]}'
-    )
+async def test_aggregate_search_point_does_not_intersect(app_client, ctx):
+    point = [15.04, -3.14]
+    intersects = {"type": "Point", "coordinates": point}
+
+    params = {
+        "intersects": intersects,
+        "collections": [ctx.item["collection"]],
+        "aggregations": ["total_count"],
+    }
+    resp = await app_client.post("/aggregate", json=params)
+
     assert resp.status_code == 200
-    assert resp.json()["aggregations"][0]["value"] == 1
+    assert resp.json()["aggregations"][0]["value"] == 0
 
 
 @pytest.mark.asyncio
@@ -469,6 +476,23 @@ async def test_aggregate_filter_extension_in_no_list(app_client, ctx):
     assert resp.json() == {
         "detail": f"Error with cql2_json filter: Arg {product_id} is not a list"
     }
+
+
+@pytest.mark.asyncio
+async def test_aggrgeate_datetime_non_interval(app_client, ctx):
+    dt_formats = [
+        "2020-02-12T12:30:22+00:00",
+        "2020-02-12T12:30:22.00Z",
+        "2020-02-12T12:30:22Z",
+        "2020-02-12T12:30:22.00+00:00",
+    ]
+
+    for dt in dt_formats:
+        params = {"datetime": dt, "aggregations": ["total_count"]}
+
+        resp = await app_client.post("/aggregate", json=params)
+        assert resp.status_code == 200
+        assert resp.json()["aggregations"][0]["value"] == 1
 
 
 @pytest.mark.asyncio

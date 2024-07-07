@@ -1,6 +1,7 @@
 """Request model for the Aggregation extension."""
 
 import re
+from datetime import datetime as datetime_type
 from typing import Dict, List, Literal, Optional, Union
 from urllib.parse import unquote_plus, urljoin
 
@@ -79,9 +80,24 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
             "data_type": "frequency_distribution",
             "frequency_distribution_data_type": "string",
         },
+        {
+            "name": "geometry_geohash_grid_frequency",
+            "data_type": "frequency_distribution",
+            "frequency_distribution_data_type": "string",
+        },
+        # {
+        #     "name": "geometry_geohex_grid_frequency",
+        #     "data_type": "frequency_distribution",
+        #     "frequency_distribution_data_type": "string",
+        # },
+        {
+            "name": "geometry_geotile_grid_frequency",
+            "data_type": "frequency_distribution",
+            "frequency_distribution_data_type": "string",
+        },
     ]
 
-    GEO_AGGREGATIONS = [
+    GEO_POINT_AGGREGATIONS = [
         {
             "name": "grid_code_frequency",
             "data_type": "frequency_distribution",
@@ -99,21 +115,6 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
         },
         {
             "name": "centroid_geotile_grid_frequency",
-            "data_type": "frequency_distribution",
-            "frequency_distribution_data_type": "string",
-        },
-        {
-            "name": "geometry_geohash_grid_frequency",
-            "data_type": "frequency_distribution",
-            "frequency_distribution_data_type": "string",
-        },
-        # {
-        #     "name": "geometry_geohex_grid_frequency",
-        #     "data_type": "frequency_distribution",
-        #     "frequency_distribution_data_type": "string",
-        # },
-        {
-            "name": "geometry_geotile_grid_frequency",
             "data_type": "frequency_distribution",
             "frequency_distribution_data_type": "string",
         },
@@ -181,6 +182,58 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
         else:
             return min_value
 
+    @staticmethod
+    def _return_date(
+        interval: Optional[Union[DateTimeType, str]]
+    ) -> Dict[str, Optional[str]]:
+        """
+        Convert a date interval.
+
+        (which may be a datetime, a tuple of one or two datetimes a string
+        representing a datetime or range, or None) into a dictionary for filtering
+        search results with Elasticsearch.
+
+        This function ensures the output dictionary contains 'gte' and 'lte' keys,
+        even if they are set to None, to prevent KeyError in the consuming logic.
+
+        Args:
+            interval (Optional[Union[DateTimeType, str]]): The date interval, which might be a single datetime,
+                a tuple with one or two datetimes, a string, or None.
+
+        Returns:
+            dict: A dictionary representing the date interval for use in filtering search results,
+                always containing 'gte' and 'lte' keys.
+        """
+        result: Dict[str, Optional[str]] = {"gte": None, "lte": None}
+
+        if interval is None:
+            return result
+
+        if isinstance(interval, str):
+            if "/" in interval:
+                parts = interval.split("/")
+                result["gte"] = parts[0] if parts[0] != ".." else None
+                result["lte"] = (
+                    parts[1] if len(parts) > 1 and parts[1] != ".." else None
+                )
+            else:
+                converted_time = interval if interval != ".." else None
+                result["gte"] = result["lte"] = converted_time
+            return result
+
+        if isinstance(interval, datetime_type):
+            datetime_iso = interval.isoformat()
+            result["gte"] = result["lte"] = datetime_iso
+        elif isinstance(interval, tuple):
+            start, end = interval
+            # Ensure datetimes are converted to UTC and formatted with 'Z'
+            if start:
+                result["gte"] = start.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+            if end:
+                result["lte"] = end.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+        return result
+
     def frequency_agg(self, es_aggs, name, data_type):
         """Format an aggregation for a frequency distribution aggregation."""
         buckets = []
@@ -209,6 +262,39 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
             or es_aggs.get(name, {}).get("value"),
         )
 
+    def get_filter(self, filter, filter_lang):
+        """Format the filter parameter in cql2-json or cql2-text"""
+        if filter_lang == "cql2-text":
+            return orjson.loads(unquote_plus(to_cql2(parse_cql2_text(filter))))
+        elif filter_lang == "cql2-json":
+            if isinstance(filter, str):
+                return orjson.loads(unquote_plus(filter))
+            else:
+                return filter
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown filter-lang: {filter_lang}. Only cql2-json or cql2-text are supported.",
+            )
+
+    def _format_datetime_range(self, date_tuple: DateTimeType) -> str:
+        """
+        Convert a tuple of datetime objects or None into a formatted string for API requests.
+
+        Args:
+            date_tuple (tuple): A tuple containing two elements, each can be a datetime object or None.
+
+        Returns:
+            str: A string formatted as 'YYYY-MM-DDTHH:MM:SS.sssZ/YYYY-MM-DDTHH:MM:SS.sssZ', with '..' used if any element is None.
+        """
+
+        def format_datetime(dt):
+            """Format a single datetime object to the ISO8601 extended format with 'Z'."""
+            return dt.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z" if dt else ".."
+
+        start, end = date_tuple
+        return f"{format_datetime(start)}/{format_datetime(end)}"
+
     async def aggregate(
         self,
         aggregate_request: Optional[EsAggregationExtensionPostRequest] = None,
@@ -231,7 +317,26 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
         request: Request = kwargs["request"]
         base_url = str(request.base_url)
         search = self.database.make_search()
+
         if aggregate_request is None:
+            base_args = {
+                "collections": collections,
+                "ids": ids,
+                "bbox": bbox,
+                "aggregations": aggregations,
+                "centroid_geohash_grid_frequency_precision": centroid_geohash_grid_frequency_precision,
+                "centroid_geohex_grid_frequency_precision": centroid_geohex_grid_frequency_precision,
+                "centroid_geotile_grid_frequency_precision": centroid_geotile_grid_frequency_precision,
+                "geometry_geohash_grid_frequency_precision": geometry_geohash_grid_frequency_precision,
+                "geometry_geotile_grid_frequency_precision": geometry_geotile_grid_frequency_precision,
+            }
+
+            if intersects:
+                base_args["intersects"] = orjson.loads(unquote_plus(intersects))
+
+            if datetime:
+                base_args["datetime"] = self._format_datetime_range(datetime)
+
             # this is borrowed from stac-fastapi-pgstac
             # Kludgy fix because using factory does not allow alias for filter-lang
             # If the value is the default, check if the request is different.
@@ -245,22 +350,17 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
                 else:
                     filter_lang = "cql2-text"
 
-            aggregate_request = EsAggregationExtensionGetRequest(
-                collections=",".join(collections) if collections else None,  # type: ignore [call-arg]
-                datetime=datetime,  # type: ignore [call-arg]
-                intersects=intersects,  # type: ignore [call-arg]
-                filter=filter,  # type: ignore [call-arg]
-                aggregations=",".join(aggregations) if aggregations else None,  # type: ignore [call-arg]
-                ids=ids,  # type: ignore [call-arg]
-                bbox=bbox,  # type: ignore [call-arg]
-                centroid_geohash_grid_frequency_precision=centroid_geohash_grid_frequency_precision,
-                centroid_geohex_grid_frequency_precision=centroid_geohex_grid_frequency_precision,
-                centroid_geotile_grid_frequency_precision=centroid_geotile_grid_frequency_precision,
-                geometry_geohash_grid_frequency_precision=geometry_geohash_grid_frequency_precision,
-                geometry_geotile_grid_frequency_precision=geometry_geotile_grid_frequency_precision,
-            )
+            if filter:
+                base_args["filter"] = self.get_filter(filter, filter_lang)
+
+            aggregate_request = EsAggregationExtensionPostRequest(**base_args)
         else:
             filter_lang = "cql2-json"
+            if aggregate_request.filter:
+                aggregate_request.filter = self.get_filter(
+                    aggregate_request.filter, filter_lang
+                )
+
         if (
             aggregate_request.aggregations is None
             or aggregate_request.aggregations == []
@@ -305,7 +405,6 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
                 supported_aggregations = (
                     aggs["aggregations"] + self.DEFAULT_AGGREGATIONS
                 )
-                # supported_aggregations = set([x["name"] for x in aggs["aggregations"]] + [x["name"] for x in self.DEFAULT_AGGREGATIONS])
 
                 for agg_name in aggregate_request.aggregations:
                     if agg_name not in set([x["name"] for x in supported_aggregations]):
@@ -323,29 +422,13 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
                         status_code=400,
                         detail=f"Aggregation {agg_name} not supported at catalog level",
                     )
-
-        if aggregate_request.filter:
-            if filter_lang == "cql2-text":
-                aggregate_request.filter = orjson.loads(
-                    unquote_plus(to_cql2(parse_cql2_text(aggregate_request.filter)))
-                )
-            elif filter_lang == "cql2-json":
-                if isinstance(aggregate_request.filter, str):
-                    aggregate_request.filter = orjson.loads(
-                        unquote_plus(aggregate_request.filter)
-                    )
-            else:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Unknown filter-lang: {aggregate_request.filter_lang}. Filter-lang or cql2-json and cql2-text are supported.",
-                )
             try:
                 search = self.database.apply_cql2_filter(
                     search, aggregate_request.filter
                 )
             except Exception as e:
                 raise HTTPException(
-                    status_code=400, detail=f"Error with cql2_json filter: {e}"
+                    status_code=400, detail=f"Error with cql2 filter: {e}"
                 )
 
         centroid_geohash_grid_precision = self.extract_precision(
@@ -373,7 +456,9 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
         )
 
         # geometry_geohex_grid_frequency_precision = self.extract_precision(
-        #     aggregate_request.geometry_geohex_grid_frequency_precision, 0, self.MAX_GEOHASH_PRECISION
+        # aggregate_request.geometry_geohex_grid_frequency_precision,
+        # 0,
+        # self.MAX_GEOHEX_PRECISION
         # )
 
         geometry_geotile_grid_precision = self.extract_precision(
@@ -401,7 +486,7 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
         if db_response:
             result_aggs = db_response.get("aggregations", {})
 
-            for agg in supported_aggregations + self.GEO_AGGREGATIONS:
+            for agg in supported_aggregations + self.GEO_POINT_AGGREGATIONS:
                 if agg["name"] in aggregate_request.aggregations:
                     if agg["name"].endswith("_frequency"):
                         aggs.append(

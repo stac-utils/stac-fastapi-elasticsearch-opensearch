@@ -200,8 +200,8 @@ async def app():
             database=database, session=None, settings=settings
         )
     )
-    aggregation_extension.GET = EsAggregationExtensionGetRequest
     aggregation_extension.POST = EsAggregationExtensionPostRequest
+    aggregation_extension.GET = EsAggregationExtensionGetRequest
 
     search_extensions = [
         TransactionExtension(
@@ -286,8 +286,8 @@ async def app_basic_auth():
             database=database, session=None, settings=settings
         )
     )
-    aggregation_extension.GET = EsAggregationExtensionGetRequest
     aggregation_extension.POST = EsAggregationExtensionPostRequest
+    aggregation_extension.GET = EsAggregationExtensionGetRequest
 
     search_extensions = [
         TransactionExtension(
