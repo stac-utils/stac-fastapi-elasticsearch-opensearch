@@ -474,7 +474,7 @@ async def test_aggregate_filter_extension_in_no_list(app_client, ctx):
 
     assert resp.status_code == 400
     assert resp.json() == {
-        "detail": f"Error with cql2_json filter: Arg {product_id} is not a list"
+        "detail": f"Error with cql2 filter: Arg {product_id} is not a list"
     }
 
 
