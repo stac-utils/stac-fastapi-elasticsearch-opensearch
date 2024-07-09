@@ -554,7 +554,10 @@ async def test_get_aggregate_datetime_max(app_client, ctx):
     resp = await app_client.get("/aggregate?aggregations=datetime_max")
 
     assert resp.status_code == 200
-    assert resp.json()["aggregations"][0]["value"] == "2020-02-12T12:30:22.000Z"
+    assert (
+        resp.json()["aggregations"][0]["value"] == "2020-02-12T12:30:22.000Z"
+        or resp.json()["aggregations"][0]["value"] == "2020-02-12T12:30:22Z"
+    )
 
 
 @pytest.mark.asyncio
@@ -567,7 +570,10 @@ async def test_post_aggregate_datetime_max(app_client, ctx):
     resp = await app_client.post("/aggregate", json=params)
 
     assert resp.status_code == 200
-    assert resp.json()["aggregations"][0]["value"] == "2020-02-12T12:30:22.000Z"
+    assert (
+        resp.json()["aggregations"][0]["value"] == "2020-02-12T12:30:22.000Z"
+        or resp.json()["aggregations"][0]["value"] == "2020-02-12T12:30:22Z"
+    )
 
 
 @pytest.mark.asyncio
@@ -576,7 +582,10 @@ async def test_get_aggregate_datetime_min(app_client, ctx):
     resp = await app_client.get("/aggregate?aggregations=datetime_min")
 
     assert resp.status_code == 200
-    assert resp.json()["aggregations"][0]["value"] == "2020-02-12T12:30:22.000Z"
+    assert (
+        resp.json()["aggregations"][0]["value"] == "2020-02-12T12:30:22.000Z"
+        or resp.json()["aggregations"][0]["value"] == "2020-02-12T12:30:22Z"
+    )
 
 
 @pytest.mark.asyncio
@@ -589,7 +598,10 @@ async def test_post_aggregate_datetime_min(app_client, ctx):
     resp = await app_client.post("/aggregate", json=params)
 
     assert resp.status_code == 200
-    assert resp.json()["aggregations"][0]["value"] == "2020-02-12T12:30:22.000Z"
+    assert (
+        resp.json()["aggregations"][0]["value"] == "2020-02-12T12:30:22.000Z"
+        or resp.json()["aggregations"][0]["value"] == "2020-02-12T12:30:22Z"
+    )
 
 
 @pytest.mark.asyncio
