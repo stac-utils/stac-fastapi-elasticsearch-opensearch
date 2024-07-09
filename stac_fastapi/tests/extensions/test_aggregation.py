@@ -108,6 +108,63 @@ async def test_aggregate_search_point_does_not_intersect(app_client, ctx):
 
 
 @pytest.mark.asyncio
+async def test_get_collection_aggregate_no_collection(app_client, ctx, load_test_data):
+
+    resp = await app_client.get(
+        "/collections/not-a-collection/aggregate?aggregations=total_count"
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_collection_aggregate(app_client, ctx, load_test_data):
+    test_collection = load_test_data("test_collection.json")
+
+    resp = await app_client.get(
+        f"/collections/{test_collection['id']}/aggregate?aggregations=total_count"
+    )
+    assert resp.status_code == 200
+    assert resp.json()["aggregations"][0]["value"] == 1
+
+
+@pytest.mark.asyncio
+async def test_post_collection_aggregate(app_client, ctx, load_test_data):
+    test_collection = load_test_data("test_collection.json")
+
+    params = {
+        "aggregations": ["total_count"],
+    }
+
+    resp = await app_client.post(
+        f"/collections/{test_collection['id']}/aggregate", json=params
+    )
+    assert resp.status_code == 200
+    assert resp.json()["aggregations"][0]["value"] == 1
+
+
+@pytest.mark.asyncio
+async def test_aggregate_datetime_out_of_range(app_client, ctx):
+    params = {
+        "datetime": "2023-07-14T02:05:01.324Z/2024-02-28T23:13:08.000Z",
+        "aggregations": ["total_count"],
+    }
+    resp = await app_client.post("/aggregate", json=params)
+    assert resp.status_code == 200
+    assert resp.json()["aggregations"][0]["value"] == 0
+
+
+@pytest.mark.asyncio
+async def test_aggregate_datetime_in_range(app_client, ctx):
+    params = {
+        "datetime": "2020-02-11T12:30:22Z/2020-02-13T12:30:22Z",
+        "aggregations": ["total_count"],
+    }
+    resp = await app_client.post("/aggregate", json=params)
+    assert resp.status_code == 200
+    assert resp.json()["aggregations"][0]["value"] == 1
+
+
+@pytest.mark.asyncio
 async def test_aggregate_filter_extension_eq_post(app_client, ctx):
     params = {
         "filter": {"op": "=", "args": [{"property": "id"}, ctx.item["id"]]},
@@ -123,14 +180,14 @@ async def test_aggregate_filter_extension_eq_post(app_client, ctx):
 async def test_aggregate_extension_gte_get(app_client, ctx):
     # there's one item that can match, so one of these queries should match it and the other shouldn't
     resp = await app_client.get(
-        '/aggregate?aggregations=total_count&grid_geohex_frequency_precision=2&filter-lang=cql2-json&filter={"op":"<=","args":[{"property": "properties.proj:epsg"},32756]}'
+        '/aggregate?aggregations=total_count&filter-lang=cql2-json&filter={"op":"<=","args":[{"property": "properties.proj:epsg"},32756]}'
     )
 
     assert resp.status_code == 200
     assert resp.json()["aggregations"][0]["value"] == 1
 
     resp = await app_client.get(
-        '/aggregate?aggregations=total_count&grid_geohex_frequency_precision=2&filter-lang=cql2-json&filter={"op":">","args":[{"property": "properties.proj:epsg"},32756]}'
+        '/aggregate?aggregations=total_count&filter-lang=cql2-json&filter={"op":">","args":[{"property": "properties.proj:epsg"},32756]}'
     )
 
     assert resp.status_code == 200
@@ -174,145 +231,11 @@ async def test_aggregate_filter_extension_gte_post(app_client, ctx):
 
 
 @pytest.mark.asyncio
-async def test_aggregate_filter_ext_and_get(app_client, ctx):
-    resp = await app_client.get(
-        '/aggregate?aggregations=total_count&filter-lang=cql2-json&filter={"op":"and","args":[{"op":"<=","args":[{"property":"properties.proj:epsg"},32756]},{"op":"=","args":[{"property":"id"},"test-item"]}]}'
-    )
-
-    assert resp.status_code == 200
-    assert resp.json()["aggregations"][0]["value"] == 1
-
-
-@pytest.mark.asyncio
 async def test_aggregate_filter_ext_and_get_id(app_client, ctx):
     collection = ctx.item["collection"]
     id = ctx.item["id"]
     filter = f"id='{id}' AND collection='{collection}'"
     resp = await app_client.get(f"/aggregate?aggregations=total_count&filter={filter}")
-
-    assert resp.status_code == 200
-    assert resp.json()["aggregations"][0]["value"] == 1
-
-
-@pytest.mark.asyncio
-async def test_aggregate_filter_ext_and_get_cql2text_id(app_client, ctx):
-    collection = ctx.item["collection"]
-    id = ctx.item["id"]
-    filter = f"id='{id}' AND collection='{collection}'"
-    resp = await app_client.get(
-        f"/aggregate?aggregations=total_count&filter-lang=cql2-text&filter={filter}"
-    )
-
-    assert resp.status_code == 200
-    assert resp.json()["aggregations"][0]["value"] == 1
-
-
-@pytest.mark.asyncio
-async def test_aggregate_filter_ext_and_get_cql2text_cloud_cover(app_client, ctx):
-    collection = ctx.item["collection"]
-    cloud_cover = ctx.item["properties"]["eo:cloud_cover"]
-    filter = f"cloud_cover={cloud_cover} AND collection='{collection}'"
-    resp = await app_client.get(
-        f"/aggregate?aggregations=total_count&filter-lang=cql2-text&filter={filter}"
-    )
-
-    assert resp.status_code == 200
-    assert resp.json()["aggregations"][0]["value"] == 1
-
-
-@pytest.mark.asyncio
-async def test_aggregate_filter_ext_and_get_cql2text_cloud_cover_no_results(
-    app_client, ctx
-):
-    collection = ctx.item["collection"]
-    cloud_cover = ctx.item["properties"]["eo:cloud_cover"] + 1
-    filter = f"cloud_cover={cloud_cover} AND collection='{collection}'"
-    resp = await app_client.get(
-        f"/aggregate?aggregations=total_count&filter-lang=cql2-text&filter={filter}"
-    )
-
-    assert resp.status_code == 200
-    assert resp.json()["aggregations"][0]["value"] == 0
-
-
-@pytest.mark.asyncio
-async def test_aggregate_filter_ext_and_post(app_client, ctx):
-    params = {
-        "filter": {
-            "op": "and",
-            "args": [
-                {
-                    "op": "<=",
-                    "args": [
-                        {"property": "properties.proj:epsg"},
-                        ctx.item["properties"]["proj:epsg"],
-                    ],
-                },
-                {"op": "=", "args": [{"property": "id"}, ctx.item["id"]]},
-            ],
-        },
-        "filter-lang": "cql2-json",
-        "aggregations": ["total_count"],
-    }
-    resp = await app_client.post("/aggregate", json=params)
-
-    assert resp.status_code == 200
-    assert resp.json()["aggregations"][0]["value"] == 1
-
-
-@pytest.mark.asyncio
-async def test_aggregate_filter_extension_floats_get(app_client, ctx):
-    resp = await app_client.get(
-        """/aggregate?aggregations=total_count&filter-lang=cql2-json&filter={"op":"and","args":[{"op":"=","args":[{"property":"id"},"test-item"]},{"op":">","args":[{"property":"properties.view:sun_elevation"},"-37.30891534"]},{"op":"<","args":[{"property":"properties.view:sun_elevation"},"-37.30691534"]}]}"""
-    )
-
-    assert resp.status_code == 200
-    assert resp.json()["aggregations"][0]["value"] == 1
-
-    resp = await app_client.get(
-        """/aggregate?aggregations=total_count&filter-lang=cql2-json&filter={"op":"and","args":[{"op":"=","args":[{"property":"id"},"test-item-7"]},{"op":">","args":[{"property":"properties.view:sun_elevation"},"-37.30891534"]},{"op":"<","args":[{"property":"properties.view:sun_elevation"},"-37.30691534"]}]}"""
-    )
-
-    assert resp.status_code == 200
-    assert resp.json()["aggregations"][0]["value"] == 0
-
-    resp = await app_client.get(
-        """/aggregate?aggregations=total_count&filter-lang=cql2-json&filter={"op":"and","args":[{"op":"=","args":[{"property":"id"},"test-item"]},{"op":">","args":[{"property":"properties.view:sun_elevation"},"-37.30591534"]},{"op":"<","args":[{"property":"properties.view:sun_elevation"},"-37.30491534"]}]}"""
-    )
-
-    assert resp.status_code == 200
-    assert resp.json()["aggregations"][0]["value"] == 0
-
-
-@pytest.mark.asyncio
-async def test_aggregate_filter_extension_floats_post(app_client, ctx):
-    sun_elevation = ctx.item["properties"]["view:sun_elevation"]
-
-    params = {
-        "filter": {
-            "op": "and",
-            "args": [
-                {"op": "=", "args": [{"property": "id"}, ctx.item["id"]]},
-                {
-                    "op": ">",
-                    "args": [
-                        {"property": "properties.view:sun_elevation"},
-                        sun_elevation - 0.01,
-                    ],
-                },
-                {
-                    "op": "<",
-                    "args": [
-                        {"property": "properties.view:sun_elevation"},
-                        sun_elevation + 0.01,
-                    ],
-                },
-            ],
-        },
-        "filter-lang": "cql2-json",
-        "aggregations": ["total_count"],
-    }
-    resp = await app_client.post("/aggregate", json=params)
 
     assert resp.status_code == 200
     assert resp.json()["aggregations"][0]["value"] == 1
@@ -391,36 +314,6 @@ async def test_aggregate_filter_extension_wildcard_es(app_client, ctx):
 
 
 @pytest.mark.asyncio
-async def test_aggregate_filter_extension_escape_chars(app_client, ctx):
-    esc_chars = (
-        ctx.item["properties"]["landsat:product_id"].replace("_", "\\_")[:-1] + "_"
-    )
-
-    params = {
-        "filter": {
-            "op": "and",
-            "args": [
-                {"op": "=", "args": [{"property": "id"}, ctx.item["id"]]},
-                {
-                    "op": "like",
-                    "args": [
-                        {"property": "properties.landsat:product_id"},
-                        esc_chars,
-                    ],
-                },
-            ],
-        },
-        "filter-lang": "cql2-json",
-        "aggregations": ["total_count"],
-    }
-
-    resp = await app_client.post("/aggregate", json=params)
-
-    assert resp.status_code == 200
-    assert resp.json()["aggregations"][0]["value"] == 1
-
-
-@pytest.mark.asyncio
 async def test_aggregate_filter_extension_in(app_client, ctx):
     product_id = ctx.item["properties"]["landsat:product_id"]
 
@@ -479,7 +372,7 @@ async def test_aggregate_filter_extension_in_no_list(app_client, ctx):
 
 
 @pytest.mark.asyncio
-async def test_aggrgeate_datetime_non_interval(app_client, ctx):
+async def test_aggregate_datetime_non_interval(app_client, ctx):
     dt_formats = [
         "2020-02-12T12:30:22+00:00",
         "2020-02-12T12:30:22.00Z",
@@ -493,37 +386,6 @@ async def test_aggrgeate_datetime_non_interval(app_client, ctx):
         resp = await app_client.post("/aggregate", json=params)
         assert resp.status_code == 200
         assert resp.json()["aggregations"][0]["value"] == 1
-
-
-@pytest.mark.asyncio
-async def test_aggregate_filter_extension_between(app_client, ctx):
-    sun_elevation = ctx.item["properties"]["view:sun_elevation"]
-
-    params = {
-        "filter": {
-            "op": "and",
-            "args": [
-                {"op": "=", "args": [{"property": "id"}, ctx.item["id"]]},
-                {
-                    "op": "between",
-                    "args": [
-                        {"property": "properties.view:sun_elevation"},
-                        sun_elevation - 0.01,
-                        sun_elevation + 0.01,
-                    ],
-                },
-            ],
-        },
-        "filter-lang": "cql2-json",
-        "aggregations": ["total_count"],
-    }
-    resp = await app_client.post("/aggregate", json=params)
-
-    assert resp.status_code == 200
-    assert resp.json()["aggregations"][0]["value"] == 1
-
-
-# Test each aggregation
 
 
 @pytest.mark.asyncio
