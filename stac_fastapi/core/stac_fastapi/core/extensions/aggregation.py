@@ -1,6 +1,7 @@
 """Request model for the Aggregation extension."""
 
 import re
+from datetime import datetime
 from datetime import datetime as datetime_type
 from typing import Dict, List, Literal, Optional, Union
 from urllib.parse import unquote_plus, urljoin
@@ -14,6 +15,7 @@ from stac_pydantic.shared import BBox
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
+from stac_fastapi.core.datetime_utils import datetime_to_str
 from stac_fastapi.core.session import Session
 from stac_fastapi.extensions.core.aggregation.client import AsyncBaseAggregationClient
 from stac_fastapi.extensions.core.aggregation.request import (
@@ -255,11 +257,18 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
 
     def metric_agg(self, es_aggs, name, data_type):
         """Format an aggregation for a metric aggregation."""
+        if name == "datetime_min" or name == "datetime_max":
+            value = datetime_to_str(
+                datetime.fromtimestamp(es_aggs.get(name, {}).get("value") / 1e3)
+            )
+        else:
+            value = es_aggs.get(name, {}).get("value_as_string") or es_aggs.get(
+                name, {}
+            ).get("value")
         return Aggregation(
             name=name,
             data_type=data_type,
-            value=es_aggs.get(name, {}).get("value_as_string")
-            or es_aggs.get(name, {}).get("value"),
+            value=value,
         )
 
     def get_filter(self, filter, filter_lang):
@@ -297,6 +306,7 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
 
     async def aggregate(
         self,
+        # collection_id: Optional[str] = None,
         aggregate_request: Optional[EsAggregationExtensionPostRequest] = None,
         collections: Optional[List[str]] = [],
         datetime: Optional[DateTimeType] = None,
