@@ -644,7 +644,6 @@ class DatabaseLogic:
         centroid_geohex_grid_precision: int,
         centroid_geotile_grid_precision: int,
         geometry_geohash_grid_precision: int,
-        # geometry_geohex_grid_precision: int,
         geometry_geotile_grid_precision: int,
         ignore_unavailable: Optional[bool] = True,
     ):
@@ -705,7 +704,6 @@ class DatabaseLogic:
             k: v for k, v in agg_2_es.items() if k in aggregations
         }
 
-        # centroid
         if "centroid_geohash_grid_frequency" in aggregations:
             search_body["aggregations"]["centroid_geohash_grid_frequency"] = {
                 "geohash_grid": {
@@ -730,7 +728,6 @@ class DatabaseLogic:
                 }
             }
 
-        # geometry
         if "geometry_geohash_grid_frequency" in aggregations:
             search_body["aggregations"]["geometry_geohash_grid_frequency"] = {
                 "geohash_grid": {
@@ -738,14 +735,6 @@ class DatabaseLogic:
                     "precision": geometry_geohash_grid_precision,
                 }
             }
-
-        # if "geometry_geohex_grid_frequency" in aggregations:
-        #     search_body["aggregations"]["geometry_geohex_grid_frequency"] = {
-        #         "geohex_grid": {
-        #             "field": "geometry",
-        #             "precision": geometry_geohex_grid_precision,
-        #         }
-        #     }
 
         if "geometry_geotile_grid_frequency" in aggregations:
             search_body["aggregations"]["geometry_geotile_grid_frequency"] = {

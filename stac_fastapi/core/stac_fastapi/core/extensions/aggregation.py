@@ -92,11 +92,6 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
             "data_type": "frequency_distribution",
             "frequency_distribution_data_type": "string",
         },
-        # {
-        #     "name": "geometry_geohex_grid_frequency",
-        #     "data_type": "frequency_distribution",
-        #     "frequency_distribution_data_type": "string",
-        # },
         {
             "name": "geometry_geotile_grid_frequency",
             "data_type": "frequency_distribution",
@@ -485,12 +480,6 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
             self.MAX_GEOHASH_PRECISION,
         )
 
-        # geometry_geohex_grid_frequency_precision = self.extract_precision(
-        # aggregate_request.geometry_geohex_grid_frequency_precision,
-        # 0,
-        # self.MAX_GEOHEX_PRECISION
-        # )
-
         geometry_geotile_grid_precision = self.extract_precision(
             aggregate_request.geometry_geotile_grid_frequency_precision,
             0,
@@ -506,7 +495,6 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
                 centroid_geohex_grid_precision,
                 centroid_geotile_grid_precision,
                 geometry_geohash_grid_precision,
-                # geometry_geohex_grid_precision,
                 geometry_geotile_grid_precision,
             )
         except Exception as error:
