@@ -19,6 +19,11 @@ from stac_fastapi.core.core import (
     TransactionsClient,
 )
 from stac_fastapi.core.extensions import QueryExtension
+from stac_fastapi.core.extensions.aggregation import (
+    EsAggregationExtensionGetRequest,
+    EsAggregationExtensionPostRequest,
+    EsAsyncAggregationClient,
+)
 from stac_fastapi.core.route_dependencies import get_route_dependencies
 
 if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
@@ -41,6 +46,7 @@ else:
     )
 
 from stac_fastapi.extensions.core import (
+    AggregationExtension,
     FieldsExtension,
     FilterExtension,
     SortExtension,
@@ -188,7 +194,16 @@ def bulk_txn_client():
 @pytest_asyncio.fixture(scope="session")
 async def app():
     settings = AsyncSettings()
-    extensions = [
+
+    aggregation_extension = AggregationExtension(
+        client=EsAsyncAggregationClient(
+            database=database, session=None, settings=settings
+        )
+    )
+    aggregation_extension.POST = EsAggregationExtensionPostRequest
+    aggregation_extension.GET = EsAggregationExtensionGetRequest
+
+    search_extensions = [
         TransactionExtension(
             client=TransactionsClient(
                 database=database, session=None, settings=settings
@@ -202,7 +217,9 @@ async def app():
         FilterExtension(),
     ]
 
-    post_request_model = create_post_request_model(extensions)
+    extensions = [aggregation_extension] + search_extensions
+
+    post_request_model = create_post_request_model(search_extensions)
 
     return StacApi(
         settings=settings,
@@ -213,7 +230,7 @@ async def app():
             post_request_model=post_request_model,
         ),
         extensions=extensions,
-        search_get_request_model=create_get_request_model(extensions),
+        search_get_request_model=create_get_request_model(search_extensions),
         search_post_request_model=post_request_model,
     ).app
 
@@ -263,7 +280,16 @@ async def app_basic_auth():
     ]"""
 
     settings = AsyncSettings()
-    extensions = [
+
+    aggregation_extension = AggregationExtension(
+        client=EsAsyncAggregationClient(
+            database=database, session=None, settings=settings
+        )
+    )
+    aggregation_extension.POST = EsAggregationExtensionPostRequest
+    aggregation_extension.GET = EsAggregationExtensionGetRequest
+
+    search_extensions = [
         TransactionExtension(
             client=TransactionsClient(
                 database=database, session=None, settings=settings
@@ -277,7 +303,9 @@ async def app_basic_auth():
         FilterExtension(),
     ]
 
-    post_request_model = create_post_request_model(extensions)
+    extensions = [aggregation_extension] + search_extensions
+
+    post_request_model = create_post_request_model(search_extensions)
 
     stac_api = StacApi(
         settings=settings,
@@ -288,7 +316,7 @@ async def app_basic_auth():
             post_request_model=post_request_model,
         ),
         extensions=extensions,
-        search_get_request_model=create_get_request_model(extensions),
+        search_get_request_model=create_get_request_model(search_extensions),
         search_post_request_model=post_request_model,
         route_dependencies=get_route_dependencies(stac_fastapi_route_dependencies),
     )
