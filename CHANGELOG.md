@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [v3.0.0a3] - 2024-07-17
+
 ### Added
  - Added an implementation of the Aggregation Extension. Enables spatial, frequency distribution, and datetime distribution aggregations. [#276](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/276)
  - Added support for route depndencies configuration through the STAC_FASTAPI_ROUTE_DEPENDENCIES environment variable, directly or via json file. Allows for fastapi's inbuilt OAuth2 flows to be used as dependencies. Custom dependencies can also be written, see Basic Auth for an example. [#251](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/251)
@@ -233,7 +235,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Added db_to_stac serializer to item_collection method in core.py.
 
 
-[Unreleased]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.0.0a2...main>
+[Unreleased]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.0.0a3...main>
+[v3.0.0a3]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.0.0a2...v3.0.0a3>
 [v3.0.0a2]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.0.0a1...v3.0.0a2>
 [v3.0.0a1]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.0.0a0...v3.0.0a1>
 [v3.0.0a0]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.4.1...v3.0.0a0>
