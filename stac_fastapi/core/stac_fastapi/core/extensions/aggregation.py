@@ -271,7 +271,7 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
     def get_filter(self, filter, filter_lang):
         """Format the filter parameter in cql2-json or cql2-text."""
         if filter_lang == "cql2-text":
-            return orjson.loads(unquote_plus(to_cql2(parse_cql2_text(filter))))
+            return orjson.loads(to_cql2(parse_cql2_text(filter)))
         elif filter_lang == "cql2-json":
             if isinstance(filter, str):
                 return orjson.loads(unquote_plus(filter))
