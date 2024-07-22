@@ -447,6 +447,8 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
                         status_code=400,
                         detail=f"Aggregation {agg_name} not supported at catalog level",
                     )
+
+        if aggregate_request.filter:
             try:
                 search = self.database.apply_cql2_filter(
                     search, aggregate_request.filter

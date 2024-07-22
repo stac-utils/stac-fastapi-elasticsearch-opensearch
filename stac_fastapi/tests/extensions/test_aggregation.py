@@ -177,6 +177,19 @@ async def test_aggregate_filter_extension_eq_post(app_client, ctx):
 
 
 @pytest.mark.asyncio
+async def test_aggregate_filter_extension_neq_post(app_client, ctx):
+    params = {
+        "filter": {"op": "<>", "args": [{"property": "id"}, ctx.item["id"]]},
+        "filter-lang": "cql2-json",
+        "aggregations": ["total_count"],
+        "collections": [ctx.item["collection"]],
+    }
+    resp = await app_client.post("/aggregate", json=params)
+    assert resp.status_code == 200
+    assert resp.json()["aggregations"][0]["value"] == 0
+
+
+@pytest.mark.asyncio
 async def test_aggregate_extension_gte_get(app_client, ctx):
     # there's one item that can match, so one of these queries should match it and the other shouldn't
     resp = await app_client.get(
