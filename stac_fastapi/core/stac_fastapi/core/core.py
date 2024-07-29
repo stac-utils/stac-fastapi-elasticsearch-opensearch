@@ -20,6 +20,8 @@ from stac_pydantic.links import Relations
 from stac_pydantic.shared import MimeTypes
 from stac_pydantic.version import STAC_VERSION
 
+
+from stac_fastapi.core.access_control import create_bitstring, hash_to_index, set_bit, add_user, remove_user
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.models.links import PagingLinks
@@ -61,6 +63,8 @@ from stac_fastapi.types.stac import (
     Item,
     ItemCollection,
 )
+from stac_fastapi.types.errors import InvalidQueryParameter
+
 
 logger = logging.getLogger(__name__)
 
@@ -161,10 +165,14 @@ class CoreClient(AsyncBaseCoreClient):
         )
         return landing_page
 
-    async def landing_page(self, **kwargs) -> stac_types.LandingPage:
+    async def landing_page(self, username_header: dict, **kwargs) -> stac_types.LandingPage:
         """Landing page.
 
         Called with `GET /`.
+
+        Args:
+            username_header (dict): X-Username header from the request.
+            **kwargs: Keyword arguments from the request.
 
         Returns:
             API landing page, serving as an entry point to the API.
@@ -176,10 +184,25 @@ class CoreClient(AsyncBaseCoreClient):
             conformance_classes=self.conformance_classes(),
             extension_schemas=[],
         )
-        catalogs = await self.database.get_catalog_subcatalogs(
+        catalogs, next_token = await self.database.get_catalog_subcatalogs(
             token=None, limit=NUMBER_OF_CATALOG_COLLECTIONS, base_url=base_url
         )
-        for catalog in catalogs[0]:
+
+        # Check if current user has access to each Catalog
+        # Extract X-Username header from username_header
+        username = username_header.get("X-Username", "")
+
+        # Get user index
+        user_index = hash_to_index(username)
+        for catalog in catalogs[:]:
+            # Get access control array for each catalog
+            access_control = catalog["access_control"]
+            # Remove catalog from list if user does not have access
+            # Convert to int to ensure 0 is falsy and 1 is truthy
+            if not int(access_control[-1]) and not int(access_control[user_index]):
+                catalogs.remove(catalog)
+
+        for catalog in catalogs:
             landing_page["links"].append(
                 {
                     "rel": Relations.child.value,
@@ -215,10 +238,11 @@ class CoreClient(AsyncBaseCoreClient):
 
         return landing_page
 
-    async def all_collections(self, **kwargs) -> Collections:
+    async def all_collections(self, username_header: dict, **kwargs) -> Collections:
         """Read all collections from the database.
 
         Args:
+            username_header (dict): X-Username header from the request.
             **kwargs: Keyword arguments from the request.
 
         Returns:
@@ -232,6 +256,21 @@ class CoreClient(AsyncBaseCoreClient):
         collections, next_token = await self.database.get_all_collections(
             token=token, limit=limit, base_url=base_url
         )
+
+        # Check if current user has access to each Catalog
+        # Extract X-Username header from username_header
+        username = username_header.get("X-Username", "")
+
+        # Get user index
+        user_index = hash_to_index(username)
+        for collection in collections[:]:
+            # Get access control array for each collection
+            access_control = collection["access_control"]
+            collection.pop("access_control")
+            # Remove collection from list if user does not have access
+            if not int(access_control[-1]) and not int(access_control[user_index]):
+                collections.remove(collection)
+
 
         links = [
             {"rel": Relations.root.value, "type": MimeTypes.json, "href": base_url},
@@ -250,11 +289,12 @@ class CoreClient(AsyncBaseCoreClient):
         return Collections(collections=collections, links=links)
 
     async def all_catalogs(
-        self, catalog_path: Optional[str] = None, **kwargs
+        self, username_header: dict, catalog_path: Optional[str] = None, **kwargs
     ) -> Catalogs:
         """Read all catalogs from the database.
 
         Args:
+            username_header (dict): X-Username header from the request.
             **kwargs: Keyword arguments from the request.
 
         Returns:
@@ -273,6 +313,20 @@ class CoreClient(AsyncBaseCoreClient):
             conformance_classes=self.conformance_classes(),
         )
 
+        # Check if current user has access to each Catalog
+        # Extract X-Username header from username_header
+        username = username_header.get("X-Username", "")
+
+        # Get user index
+        user_index = hash_to_index(username)
+        for catalog in catalogs[:]:
+            # Get access control array for each catalog
+            access_control = catalog["access_control"]
+            catalog.pop("access_control")
+            # Remove catalog from list if user does not have access
+            if not int(access_control[-1]) and not int(access_control[user_index]):
+                catalogs.remove(catalog)
+
         links = [
             {"rel": Relations.root.value, "type": MimeTypes.json, "href": base_url},
             {"rel": Relations.parent.value, "type": MimeTypes.json, "href": base_url},
@@ -290,11 +344,13 @@ class CoreClient(AsyncBaseCoreClient):
         return Catalogs(catalogs=catalogs, links=links)
 
     async def get_collection(
-        self, catalog_path: str, collection_id: str, **kwargs
+        self, username_header: dict, catalog_path: str, collection_id: str, **kwargs
     ) -> Collection:
         """Get a collection from the database by its id.
 
         Args:
+            username_header (dict): X-Username header from the request.
+            catalog_path (str): The path to the catalog the collection belongs to.
             collection_id (str): The id of the collection to retrieve.
             kwargs: Additional keyword arguments passed to the API call.
 
@@ -309,15 +365,32 @@ class CoreClient(AsyncBaseCoreClient):
         collection = await self.database.find_collection(
             catalog_path=catalog_path, collection_id=collection_id
         )
+
+        # Check if current user has access to this Collection
+        # Extract X-Username header from username_header
+        username = username_header.get("X-Username", "")
+
+        # Get user index
+        user_index = hash_to_index(username)
+        # Get access control array for each collection
+        access_control = collection["access_control"]
+        collection.pop("access_control")
+        # Return error if user does not have access
+        if not int(access_control[-1]) and not int(access_control[user_index]):
+            raise HTTPException(status_code=403, detail="User does not have access to this Collection")
+
+            
+        
         return self.collection_serializer.db_to_stac(
             catalog_path=catalog_path, collection=collection, base_url=base_url
         )
 
-    async def get_catalog(self, catalog_path: str, **kwargs) -> Collection:
+    async def get_catalog(self, username_header: dict, catalog_path: str, **kwargs) -> Collection:
         """Get a catalog from the database by its id.
 
         Args:
-            catalog_id (str): The id of the catalog to retrieve.
+            username_header (dict): X-Username header from the request.
+            catalog_path (str): The path to the catalog to retrieve.
             kwargs: Additional keyword arguments passed to the API call.
 
         Returns:
@@ -336,6 +409,21 @@ class CoreClient(AsyncBaseCoreClient):
 
         base_url = str(kwargs["request"].base_url)
         catalog = await self.database.find_catalog(catalog_path=catalog_path)
+
+        # Check if current user has access to this Catalog
+        # Extract X-Username header from username_header
+        username = username_header.get("X-Username", "")
+
+        # Get user index
+        user_index = hash_to_index(username)
+        # Get access control array for each catalog
+        access_control = catalog["access_control"]
+        catalog.pop("access_control")
+        # Return error if user does not have access
+        if not int(access_control[-1]) and not int(access_control[user_index]):
+            raise HTTPException(status_code=403, detail="User does not have access to this Catalog")
+
+            
         # Assume at most 100 collections in a catalog for the time being, may need to increase
         collections, _ = await self.database.get_catalog_collections(
             catalog_path=catalog_path,
@@ -343,12 +431,32 @@ class CoreClient(AsyncBaseCoreClient):
             limit=NUMBER_OF_CATALOG_COLLECTIONS,
             token=None,
         )
+
+        # Check if current user has access to each collection
+        for collection in collections[:]:
+            # Get access control array for each collection
+            access_control = collection["access_control"]
+            collection.pop("access_control")
+            # Remove collection from list if user does not have access
+            if not int(access_control[-1]) and not int(access_control[user_index]):
+                collections.remove(collection)
+
         sub_catalogs, _ = await self.database.get_catalog_subcatalogs(
             catalog_path=catalog_path,
             base_url=base_url,
             limit=NUMBER_OF_CATALOG_COLLECTIONS,
             token=None,
         )
+
+        # Check if current user has access to each collection
+        for sub_catalog in sub_catalogs[:]:
+            # Get access control array for each catalog
+            access_control = sub_catalog["access_control"]
+            sub_catalog.pop("access_control")
+            # Remove catalog from list if user does not have access
+            if not int(access_control[-1]) and not int(access_control[user_index]):
+                sub_catalogs.remove(sub_catalog)
+
         return self.catalog_serializer.db_to_stac(
             catalog_path=parent_catalog_path,
             catalog=catalog,
@@ -360,13 +468,15 @@ class CoreClient(AsyncBaseCoreClient):
 
     async def get_catalog_collections(
         self,
+        username_header: dict,
         catalog_path: str,
         **kwargs,
     ) -> Collections:
         """Read collections from a specific catalog in the database.
 
         Args:
-            catalog_id (str): The identifier of the catalog to read collections from.
+            username_header (dict): X-Username header from the request.
+            catalog_path (str): The path to thw catalog to read the collections from.
             limit (int): The maximum number of items to return. The default value is 10.
             token (str): A token used for pagination.
             request (Request): The incoming request.
@@ -382,8 +492,24 @@ class CoreClient(AsyncBaseCoreClient):
         token = request.query_params.get("token")
         limit = int(request.query_params.get("limit", 10))
         base_url = str(request.base_url)
+        
+        # Get Catalog to confirm user access
+        catalog = await self.database.find_catalog(catalog_path=catalog_path)
 
-        catalog = await self.get_catalog(catalog_path=catalog_path, request=request)
+        # Check if current user has access to this Catalog
+        # Extract X-Username header from username_header
+        username = username_header.get("X-Username", "")
+
+        # Get user index
+        user_index = hash_to_index(username)
+        # Get access control array for each catalog
+        access_control = catalog["access_control"]
+        catalog.pop("access_control")
+        # Return error if user does not have access
+        if not int(access_control[-1]) and not int(access_control[user_index]):
+            raise HTTPException(status_code=403, detail="User does not have access to this Catalog")
+
+        
         catalog_id = catalog.get("id")
         if catalog_id is None:
             raise HTTPException(
@@ -396,6 +522,15 @@ class CoreClient(AsyncBaseCoreClient):
             limit=limit,
             base_url=base_url,
         )
+
+        # Check if current user has access to each collection
+        for collection in collections[:]:
+            # Get access control array for each collection
+            access_control = collection["access_control"]
+            collection.pop("access_control")
+            # Remove collection from list if user does not have access
+            if not int(access_control[-1]) and not int(access_control[user_index]):
+                collections.remove(collection)
 
         links = [
             {"rel": Relations.root.value, "type": MimeTypes.json, "href": base_url},
@@ -415,6 +550,7 @@ class CoreClient(AsyncBaseCoreClient):
 
     async def item_collection(
         self,
+        username_header: dict,
         catalog_path: str,
         collection_id: str,
         bbox: Optional[List[NumType]] = None,
@@ -426,7 +562,8 @@ class CoreClient(AsyncBaseCoreClient):
         """Read items from a specific collection in the database.
 
         Args:
-            catalog_path (str): The identifier of the catalog path to read the collection from.
+            username_header (dict): X-Username header from the request.
+            catalog_path (str): The path to the catalog to read items from.
             collection_id (str): The identifier of the collection to read items from.
             bbox (Optional[List[NumType]]): The bounding box to filter items by.
             datetime (Union[str, datetime_type, None]): The datetime range to filter items by.
@@ -443,14 +580,28 @@ class CoreClient(AsyncBaseCoreClient):
             Exception: If any error occurs while reading the items from the database.
         """
         request: Request = kwargs["request"]
-        base_url = str(request.base_url)
-        collection = await self.get_collection(
-            catalog_path=catalog_path, collection_id=collection_id, request=request
+
+
+        # Get Collection to confirm user access
+        collection = await self.database.find_collection(
+            catalog_path=catalog_path, collection_id=collection_id
         )
 
-        collection_id = collection.get("id")
-        if collection_id is None:
-            raise HTTPException(status_code=404, detail="Collection not found")
+        # Check if current user has access to this Collection
+        # Extract X-Username header from username_header
+        username = username_header.get("X-Username", "")
+
+        # Get user index
+        user_index = hash_to_index(username)
+
+        # Get access control array for the collection
+        access_control = collection["access_control"]
+        # Return error if user does not have access
+        if not int(access_control[-1]) and not int(access_control[user_index]):
+            raise HTTPException(status_code=403, detail="User does not have access to this Collection")
+
+
+        base_url = str(request.base_url)
 
         search = self.database.make_search()
         search = self.database.apply_collections_filter(
@@ -509,13 +660,16 @@ class CoreClient(AsyncBaseCoreClient):
         )
 
     async def get_item(
-        self, item_id: str, collection_id: str, catalog_path: str, **kwargs
+        self, username_header: dict, item_id: str, collection_id: str, catalog_path: str, **kwargs
     ) -> Item:
         """Get an item from the database based on its id and collection id.
 
         Args:
-            collection_id (str): The ID of the collection the item belongs to.
+            username_header (dict): X-Username header from the request.
             item_id (str): The ID of the item to be retrieved.
+            collection_id (str): The ID of the collection the item belongs to.
+            catalog_path (str): The path to the catalog the collection and item belongs to.
+            kwargs: Additional keyword arguments passed to the API call.
 
         Returns:
             Item: An `Item` object representing the requested item.
@@ -525,11 +679,30 @@ class CoreClient(AsyncBaseCoreClient):
             NotFoundError: If the item does not exist in the specified collection.
         """
         base_url = str(kwargs["request"].base_url)
+
+        # Load parent collection to check user access
+        collection = await self.database.find_collection(
+            catalog_path=catalog_path, collection_id=collection_id
+        )
+
+        # Check if current user has access to this item
+        # Extract X-Username header from username_header
+        username = username_header.get("X-Username", "")
+
+        # Get user index
+        user_index = hash_to_index(username)
+        # Get access control array for each collection
+        access_control = collection["access_control"]
+        # Return error if user does not have access
+        if not int(access_control[-1]) and not int(access_control[user_index]):
+            raise HTTPException(status_code=403, detail="User does not have access to this item")
+
         item = await self.database.get_one_item(
             item_id=item_id,
             collection_id=collection_id,
             catalog_path=catalog_path,
         )
+
         return self.item_serializer.db_to_stac(
             catalog_path=catalog_path, item=item, base_url=base_url
         )
@@ -574,6 +747,7 @@ class CoreClient(AsyncBaseCoreClient):
     async def get_global_search(
         self,
         request: Request,
+        username_header: dict,
         collections: Optional[List[str]] = None,
         catalog_paths: Optional[List[str]] = None,
         ids: Optional[List[str]] = None,
@@ -592,7 +766,10 @@ class CoreClient(AsyncBaseCoreClient):
         """Get search results from the database.
 
         Args:
+            request (Request): The incoming request.
+            username_header (dict): X-Username header from the request.
             collections (Optional[List[str]]): List of collection IDs to search in.
+            catalog_paths (Optional[List[str]]): List of catalog paths to search in.
             ids (Optional[List[str]]): List of item IDs to search for.
             bbox (Optional[List[NumType]]): Bounding box to search in.
             datetime (Optional[Union[str, datetime_type]]): Filter items based on the datetime field.
@@ -602,7 +779,9 @@ class CoreClient(AsyncBaseCoreClient):
             fields (Optional[List[str]]): Fields to include or exclude from the results.
             sortby (Optional[str]): Sorting options for the results.
             intersects (Optional[str]): GeoJSON geometry to search in.
-            kwargs: Additional parameters to be passed to the API.
+            filter (Optional[str]): Filter to apply to the search results.
+            filter_lang (Optional[str]): Language of the filter to apply.
+            **kwargs: Additional parameters to be passed to the API.
 
         Returns:
             ItemCollection: Collection of `Item` objects representing the search results.
@@ -671,20 +850,21 @@ class CoreClient(AsyncBaseCoreClient):
         except ValidationError:
             raise HTTPException(status_code=400, detail="Invalid parameters provided")
         resp = await self.post_global_search(
-            search_request=search_request, request=request
+            search_request=search_request, request=request, username_header=username_header
         )
 
         return resp
 
     async def post_global_search(
-        self, search_request: BaseSearchPostRequest, request: Request
+        self, search_request: BaseSearchPostRequest, request: Request, username_header: dict
     ) -> ItemCollection:
         """
         Perform a POST search on the catalog.
 
         Args:
             search_request (BaseSearchPostRequest): Request object that includes the parameters for the search.
-            kwargs: Keyword arguments passed to the function.
+            request (Request): The incoming request.
+            username_header (dict): X-Username header from the request.
 
         Returns:
             ItemCollection: A collection of items matching the search criteria.
@@ -695,6 +875,23 @@ class CoreClient(AsyncBaseCoreClient):
         base_url = str(request.base_url)
 
         search = self.database.make_search()
+
+        # Can only provide collections if you also provide the containing catalogs
+        if search_request.collections and not search_request.catalog_paths:
+            raise InvalidQueryParameter(
+                "To search specific collection(s), you must provide the containing catalog."
+            )
+        # Can only provide collections if you also provide the single containing catalog
+        elif search_request.collections and len(search_request.catalog_paths) > 1:
+            raise InvalidQueryParameter(
+                "To search specific collections, you must provide only one containing catalog."
+            )
+
+        if not search_request.catalog_paths:
+            search_request.catalog_paths = []
+
+        if not search_request.collections:
+            search_request.collections = []
 
         if search_request.ids:
             search = self.database.apply_ids_filter(
@@ -750,6 +947,34 @@ class CoreClient(AsyncBaseCoreClient):
         if search_request.limit:
             limit = search_request.limit
 
+        # Extract X-Username header from username_header
+        username = username_header.get("X-Username", "")
+
+        # Get user index
+        user_index = hash_to_index(username)
+
+        # Filter the search catalogs to those that are accessible to the user
+        for catalog_path in search_request.catalog_paths[:]:
+            catalog = await self.database.find_catalog(catalog_path=catalog_path)
+            # Get access control array for each catalog
+            access_control = catalog["access_control"]
+            # Remove catalog from list if user does not have access
+            if not int(access_control[-1]) and not int(access_control[user_index]):
+                search_request.catalog_paths.remove(catalog_path)
+
+
+        # Filter the search collections to those that are accessible to the user
+        for collection_id in search_request.collections[:]:
+            collection = await self.database.find_collection(
+                catalog_path=search_request.catalog_paths[0], collection_id=collection_id
+            )
+            # Get access control array for each collection
+            access_control = collection["access_control"]
+            # Remove catalog from list if user does not have access
+            if not int(access_control[-1]) and not int(access_control[user_index]):
+                search_request.collections.remove(collection_id)
+
+
         items, maybe_count, next_token = await self.database.execute_search(
             search=search,
             limit=limit,
@@ -758,6 +983,34 @@ class CoreClient(AsyncBaseCoreClient):
             collection_ids=search_request.collections,
             catalog_paths=search_request.catalog_paths,
         )
+
+        # Filter results to those that are accessible to the user
+        for item in items[:]:
+            # Get item index for path extraction
+            item_catalog_path = item[1]
+            # Get parent collection if collection is present
+            if "collection" in item[0]:
+                parent_collection = item[0]["collection"]
+                # Retrive collection data
+                collection = await self.database.find_collection(
+                    catalog_path=item_catalog_path,
+                    collection_id=parent_collection,
+                )
+                # Get access control array for this collection
+                access_control = collection["access_control"]
+                # Remove catalog from list if user does not have access
+                if not int(access_control[-1]) and not int(access_control[user_index]):
+                    items.remove(item)
+            # Get parent catalog if collection is not present
+            else:
+                # Get access control array for this catalog
+                catalog = await self.database.find_catalog(catalog_path=item_catalog_path)
+                access_control = catalog["access_control"]
+                # Remove catalog from list if user does not have access
+                if not int(access_control[-1]) and not int(access_control[user_index]):
+                    items.remove(item)
+
+        # If items now less than limit, will need to run search again, giving next_token
 
         # To handle catalog_id in links execute_search also returns the catalog_id
         # from search results in a tuple
@@ -813,6 +1066,7 @@ class CoreClient(AsyncBaseCoreClient):
     async def get_search(
         self,
         request: Request,
+        username_header: dict,
         catalog_path: Optional[str],
         collections: Optional[List[str]] = None,
         ids: Optional[List[str]] = None,
@@ -828,9 +1082,11 @@ class CoreClient(AsyncBaseCoreClient):
         filter_lang: Optional[str] = None,
         **kwargs,
     ) -> ItemCollection:
-        """Get search results from the database.
+        """Get search results from the database in a specific catalog.
 
         Args:
+            request (Request): The incoming request.
+            username_header (dict): X-Username header from the request.
             catalog_path (Optional[[str]): Path to catalog to search in.
             collections (Optional[List[str]]): List of collection IDs to search in.
             ids (Optional[List[str]]): List of item IDs to search for.
@@ -910,7 +1166,7 @@ class CoreClient(AsyncBaseCoreClient):
         except ValidationError:
             raise HTTPException(status_code=400, detail="Invalid parameters provided")
         resp = await self.post_search(
-            catalog_path=catalog_path, search_request=search_request, request=request
+            catalog_path=catalog_path, search_request=search_request, request=request, username_header=username_header
         )
 
         return resp
@@ -920,14 +1176,18 @@ class CoreClient(AsyncBaseCoreClient):
         catalog_path: Optional[str],
         search_request: BaseCatalogSearchPostRequest,
         request: Request,
+        username_header: dict,
         **kwargs,
     ) -> ItemCollection:
         """
-        Perform a POST search on the catalog.
+        Perform a POST search on a specific sub-catalog.
 
         Args:
+            catalog_path (Optional[str]): Path to catalog to search in.
             search_request (BaseCatalogSearchPostRequest): Request object that includes the parameters for the search.
-            kwargs: Keyword arguments passed to the function.
+            request (Request): The incoming request.
+            username_header (dict): X-Username header from the request.
+            **kwargs: Keyword arguments passed to the function.
 
         Returns:
             ItemCollection: A collection of items matching the search criteria.
@@ -936,6 +1196,31 @@ class CoreClient(AsyncBaseCoreClient):
             HTTPException: If there is an error with the cql2_json filter.
         """
         base_url = str(request.base_url)
+
+        # Check catalog is accessible to the user
+        # Extract X-Username header from username_header
+        username = username_header.get("X-Username", "")
+
+        # Get user index
+        user_index = hash_to_index(username)
+
+        # Filter the search catalogs to those that are accessible to the user
+        catalog = await self.database.find_catalog(catalog_path=catalog_path)
+        # Get access control array for each catalog
+        access_control = catalog["access_control"]
+        # Return error if user does not have access
+        if not int(access_control[-1]) and not int(access_control[user_index]):
+            raise HTTPException(status_code=403, detail="User does not have access to this Catalog")
+
+        # Filter the search collections to those thata are accessible to the user
+        for collection_id in search_request.collections[:]:
+            # Filter the search catalogs to those that are accessible to the user
+            collection = await self.database.find_collection(catalog_path=catalog_path, collection_id=collection_id)
+            # Get access control array for each collection
+            access_control = collection["access_control"]
+            # Remove catalog from list if user does not have access
+            if not int(access_control[-1]) and not int(access_control[user_index]):
+                search_request.collections.remove(collection_id)
 
         search = self.database.make_search()
 
@@ -1002,6 +1287,34 @@ class CoreClient(AsyncBaseCoreClient):
             catalog_paths=[catalog_path],
         )
 
+        # Filter results to those that are accessible to the user
+        for item in items[:]:
+            # Get item index for path extraction
+            item_catalog_path = item[1]
+            # Get parent collection if collection is present
+            if "collection" in item[0]:
+                parent_collection = item[0]["collection"]
+                # Retrive collection data
+                collection = await self.database.find_collection(
+                    catalog_path=item_catalog_path,
+                    collection_id=parent_collection,
+                )
+                # Get access control array for this collection
+                access_control = collection["access_control"]
+                # Remove catalog from list if user does not have access
+                if not int(access_control[-1]) and not int(access_control[user_index]):
+                    items.remove(item)
+            # Get parent catalog if collection is not present
+            else:
+                # Get access control array for this catalog
+                catalog = await self.database.find_catalog(catalog_path=item_catalog_path)
+                access_control = catalog["access_control"]
+                # Remove catalog from list if user does not have access
+                if not int(access_control[-1]) and not int(access_control[user_index]):
+                    items.remove(item)
+
+        # If items now less than limit, will need to run search again, giving next_token
+
         # To handle catalog_id in links execute_search also returns the catalog_id
         # from search results in a tuple
         items = [
@@ -1064,14 +1377,19 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def create_item(
-        self, catalog_path: str, collection_id: str, item: stac_types.Item, **kwargs
+        self, catalog_path: str, collection_id: str, item: stac_types.Item, workspace: str, **kwargs
     ) -> Optional[stac_types.Item]:
         """Create an item in the collection.
+        Note, access for items is determined by parent collection or catalog
 
         Args:
+            catalog_path (str): The path to the catalog containing the parent collection.
             collection_id (str): The id of the collection to add the item to.
             item (stac_types.Item): The item to be added to the collection.
-            kwargs: Additional keyword arguments.
+            username_header (dict): X-Username header from the request.
+            workspace (str): The workspace being used to create the item.
+            is_public (bool): Whether the item is public or not.
+            **kwargs: Additional keyword arguments.
 
         Returns:
             stac_types.Item: The created item.
@@ -1081,8 +1399,24 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             ConflictError: If the item in the specified collection already exists.
 
         """
+
+        if not item:
+            raise HTTPException(status_code=400, detail="No item provided")
+        
         base_url = str(kwargs["request"].base_url)
 
+        # Confirm that the workspace provides correct access to the part of the catalogue to be altered
+        # check kubernetes manifest for given workspace to confirm access
+        # TODO: use Kubernetes API to confirm sub-catalog path access required for transaction
+        # For now, if this is a user workspace, confirm the changes are being made to the user's own workspace sub-catalog
+        # e.g. user-datasets/user-workspace/collection
+        if workspace != "default_workspace":
+            catalog_path_with_slash = f"{catalog_path}/" if catalog_path else ""
+            # This workspace can only write to the user-datasets/user-workspace sub-catalog
+            if not catalog_path or not catalog_path_with_slash.startswith(f"user-datasets/{workspace}/"):
+                raise HTTPException(status_code=403, detail=f"Workspace {workspace} does not have access to {catalog_path if catalog_path else 'top-level'} catalog")
+
+            
         if collection_id != item["collection"]:
             raise Exception(
                 f"The provided collection id and that found in the item do not match: {collection_id}, {item['collection']}"
@@ -1123,6 +1457,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         collection_id: str,
         item_id: str,
         item: stac_types.Item,
+        workspace: str,
         **kwargs,
     ) -> stac_types.Item:
         """Update an item in the collection.
@@ -1144,6 +1479,17 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         now = datetime_type.now(timezone.utc).isoformat().replace("+00:00", "Z")
         item["properties"]["updated"] = now
 
+        # Confirm that the workspace provides correct access to the part of the catalogue to be altered
+        # check kubernetes manifest for given workspace to confirm access
+        # TODO: use Kubernetes API to confirm sub-catalog path access required for transaction
+        # For now, if this is a user workspace, confirm the changes are being made to the user's own workspace sub-catalog
+        # e.g. user-datasets/user-workspace/collection
+        if workspace != "default_workspace":
+            catalog_path_with_slash = f"{catalog_path}/" if catalog_path else ""
+            # This workspace can only write to the user-datasets/user-workspace sub-catalog
+            if not catalog_path or not catalog_path_with_slash.startswith(f"user-datasets/{workspace}/"):
+                raise HTTPException(status_code=403, detail=f"Workspace {workspace} does not have access to {catalog_path if catalog_path else 'top-level'} catalog")
+
         # Note, if the provided item is not valid stac, this may delete the item and them fail to create the new one
 
         await self.database.check_collection_exists(
@@ -1162,7 +1508,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def delete_item(
-        self, item_id: str, collection_id: str, catalog_path: str, **kwargs
+        self, item_id: str, collection_id: str, catalog_path: str, workspace: str, **kwargs
     ) -> Optional[stac_types.Item]:
         """Delete an item from a collection.
 
@@ -1173,6 +1519,18 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         Returns:
             Optional[stac_types.Item]: The deleted item, or `None` if the item was successfully deleted.
         """
+
+        # Confirm that the workspace provides correct access to the part of the catalogue to be altered
+        # check kubernetes manifest for given workspace to confirm access
+        # TODO: use Kubernetes API to confirm sub-catalog path access required for transaction
+        # For now, if this is a user workspace, confirm the changes are being made to the user's own workspace sub-catalog
+        # e.g. user-datasets/user-workspace/collection
+        if workspace != "default_workspace":
+            catalog_path_with_slash = f"{catalog_path}/" if catalog_path else ""
+            # This workspace can only write to the user-datasets/user-workspace sub-catalog
+            if not catalog_path or not catalog_path_with_slash.startswith(f"user-datasets/{workspace}/"):
+                raise HTTPException(status_code=403, detail=f"Workspace {workspace} does not have access to {catalog_path if catalog_path else 'top-level'} catalog")
+            
         await self.database.delete_item(
             item_id=item_id, collection_id=collection_id, catalog_path=catalog_path
         )
@@ -1180,13 +1538,17 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def create_collection(
-        self, catalog_path: str, collection: stac_types.Collection, **kwargs
+        self, catalog_path: str, collection: stac_types.Collection, workspace: str, is_public: bool = False, **kwargs
     ) -> stac_types.Collection:
         """Create a new collection in the database.
 
         Args:
+            catalog_path (str): The path to the catalog containing the collection.
             collection (stac_types.Collection): The collection to be created.
-            kwargs: Additional keyword arguments.
+            username_header (dict): X-Username header from the request.
+            workspace (str): The workspace being used to create the collection.
+            is_public (bool): Whether the collection is public or not.
+            **kwargs: Additional keyword arguments.
 
         Returns:
             stac_types.Collection: The created collection object.
@@ -1195,7 +1557,40 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             ConflictError: If the collection already exists.
         """
 
+        # Handle case where no catalog is provided
+        if not collection:
+            raise HTTPException(status_code=400, detail="No collection provided")
+
         base_url = str(kwargs["request"].base_url)
+
+        # Confirm that the workspace provides correct access to the part of the catalogue to be altered
+        # check kubernetes manifest for given workspace to confirm access
+        # TODO: use Kubernetes API to confirm sub-catalog path access required for transaction
+        # For now, if this is a user workspace, confirm the changes are being made to the user's own workspace sub-catalog
+        # e.g. user-datasets/user-workspace/collection
+        if workspace != "default_workspace":
+            catalog_path_with_slash = f"{catalog_path}/" if catalog_path else ""
+            # This workspace can only write to the user-datasets/user-workspace sub-catalog
+            if not catalog_path or not catalog_path_with_slash.startswith(f"user-datasets/{workspace}/"):
+                raise HTTPException(status_code=403, detail=f"Workspace {workspace} does not have access to {catalog_path if catalog_path else 'top-level'} catalog")
+        
+
+        # Handle case where entry is not public, use catalog id instead
+        if workspace == "default_workspace" and not is_public:
+            # Should only be used to create top-level workspace catalogs e.g. user-datasets/<workspace-name>
+            catalog_path_list = catalog_path.split("/")
+            if catalog_path_list[0] == "user-datasets":
+                username = catalog_path_list[1]
+            else:
+                raise HTTPException(status_code=400, detail="Username not provided for private entry")
+        elif not is_public:
+            username = workspace
+        else:
+            username = ""
+
+        # Generate bitstring for entry
+        bitstring = ''.join(create_bitstring(uid=username, is_public=is_public))
+
         collection = self.database.collection_serializer.stac_to_db(
             collection, base_url
         )
@@ -1203,7 +1598,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             catalog_path=catalog_path, collection=collection, base_url=base_url
         )
         await self.database.create_collection(
-            catalog_path=catalog_path, collection=collection
+            catalog_path=catalog_path, collection=collection, access_control=bitstring
         )
         return CollectionSerializer.db_to_stac(
             catalog_path=catalog_path, collection=collection, base_url=base_url
@@ -1215,6 +1610,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         catalog_path: str,
         collection_id: str,
         collection: stac_types.Collection,
+        workspace: str,
         **kwargs,
     ) -> stac_types.Collection:
         """
@@ -1237,9 +1633,17 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         """
         base_url = str(kwargs["request"].base_url)
 
-        # collection_id = kwargs["request"].query_params.get(
-        #     "collection_id", collection["id"]
-        # )
+        # Confirm that the workspace provides correct access to the part of the catalogue to be altered
+        # check kubernetes manifest for given workspace to confirm access
+        # TODO: use Kubernetes API to confirm sub-catalog path access required for transaction
+        # For now, if this is a user workspace, confirm the changes are being made to the user's own workspace sub-catalog
+        # e.g. user-datasets/user-workspace/collection
+        if workspace != "default_workspace":
+            catalog_path_with_slash = f"{catalog_path}/" if catalog_path else ""
+            # This workspace can only write to the user-datasets/user-workspace sub-catalog
+            if not catalog_path or not catalog_path_with_slash.startswith(f"user-datasets/{workspace}/"):
+                raise HTTPException(status_code=403, detail=f"Workspace {workspace} does not have access to {catalog_path if catalog_path else 'top-level'} catalog")
+
 
         collection = self.database.collection_serializer.stac_to_db(
             collection, base_url
@@ -1256,7 +1660,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def delete_collection(
-        self, catalog_path: str, collection_id: str, **kwargs
+        self, catalog_path: str, collection_id: str, workspace: str, **kwargs
     ) -> Optional[stac_types.Collection]:
         """
         Delete a collection.
@@ -1264,8 +1668,10 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         This method deletes an existing collection in the database.
 
         Args:
+            catalog_path (str): The path to the catalog containing the collection.
             collection_id (str): The identifier of the collection that contains the item.
-            kwargs: Additional keyword arguments.
+            workspace (str): The workspace of the user making the request.
+            **kwargs: Additional keyword arguments.
 
         Returns:
             None.
@@ -1273,6 +1679,18 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         Raises:
             NotFoundError: If the collection doesn't exist.
         """
+
+        # Confirm that the workspace provides correct access to the part of the catalogue to be altered
+        # check kubernetes manifest for given workspace to confirm access
+        # TODO: use Kubernetes API to confirm sub-catalog path access required for transaction
+        # For now, if this is a user workspace, confirm the changes are being made to the user's own workspace sub-catalog
+        # e.g. user-datasets/user-workspace/collection
+        if workspace != "default_workspace":
+            catalog_path_with_slash = f"{catalog_path}/" if catalog_path else ""
+            # This workspace can only write to the user-datasets/user-workspace sub-catalog
+            if not catalog_path or not catalog_path_with_slash.startswith(f"user-datasets/{workspace}/"):
+                raise HTTPException(status_code=403, detail=f"Workspace {workspace} does not have access to {catalog_path if catalog_path else 'top-level'} catalog")
+            
         await self.database.delete_collection(
             collection_id=collection_id, catalog_path=catalog_path
         )
@@ -1280,13 +1698,17 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def create_catalog(
-        self, catalog: stac_types.Catalog, catalog_path: Optional[str] = None, **kwargs
+        self, catalog: stac_types.Catalog, workspace: str, catalog_path: Optional[str] = None, is_public: bool = False, **kwargs
     ) -> stac_types.Catalog:
         """Create a new catalog in the database.
 
         Args:
             catalog (stac_types.Catalog): The catalog to be created.
-            kwargs: Additional keyword arguments.
+            username_header (dict): X-Username header from the request.
+            workspace (str): The workspace being used to create the catalog.
+            catalog_path (Optional[str]): The path to the catalog to be created.
+            is_public (bool): Whether the catalog is public or not.
+            **kwargs: Additional keyword arguments.
 
         Returns:
             stac_types.Catalog: The created catalog object.
@@ -1295,15 +1717,50 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             ConflictError: If the catalog already exists.
         """
 
+        # Handle case where no catalog is provided
+        if not catalog:
+            raise HTTPException(status_code=400, detail="No catalog provided")
+
         base_url = str(kwargs["request"].base_url)
+
+        # Confirm that the workspace provides correct access to the part of the catalogue to be altered
+        # check kubernetes manifest for given workspace to confirm access
+        # TODO: use Kubernetes API to confirm sub-catalog path access required for transaction
+        # For now, if this is a user workspace, confirm the changes are being made to the user's own workspace sub-catalog
+        # e.g. user-datasets/user-workspace/collection
+        if workspace != "default_workspace":
+            catalog_path_with_slash = f"{catalog_path}/" if catalog_path else ""
+            # This workspace can only write to the user-datasets/user-workspace sub-catalog
+            if not catalog_path or not catalog_path_with_slash.startswith(f"user-datasets/{workspace}/"):
+                raise HTTPException(status_code=403, detail=f"Workspace {workspace} does not have access to {catalog_path if catalog_path else 'top-level'} catalog")
+
+        # Handle case where entry is not public but no username is provided, use catalog id instead
+        if workspace == "default_workspace" and not is_public:
+            # Should only be used to create top-level workspace catalogs e.g. user-datasets/<workspace-name>
+            # Should only be used to create top-level workspace catalogs e.g. user-datasets/<workspace-name>
+            catalog_path_list = catalog_path.split("/")
+            if len(catalog_path_list) > 1 and catalog_path_list[0] == "user-datasets":
+                username = catalog_path_list[1]
+            else:
+                # Assume username from catalog id itself
+                username = catalog["id"]
+        elif not is_public:
+            # Used for adding files to workspaces sub-catalogs
+            username = workspace
+        else:
+            # Used to add public data to catalogs
+            username = ""
+
+        # Generate bitstring for entry
+        bitstring = ''.join(create_bitstring(uid=username, is_public=is_public))
+
         catalog = self.database.catalog_serializer.stac_to_db(
             catalog=catalog, base_url=base_url
         )
         catalog = await self.database.prep_create_catalog(
             catalog_path=catalog_path, catalog=catalog, base_url=base_url
         )
-
-        await self.database.create_catalog(catalog_path=catalog_path, catalog=catalog)
+        await self.database.create_catalog(catalog_path=catalog_path, catalog=catalog, access_control=bitstring)
 
         # This catalog does not yet have any collections or sub-catalogs
         return CatalogSerializer.db_to_stac(
@@ -1314,7 +1771,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def update_catalog(
-        self, catalog_path: str, catalog: stac_types.Catalog, **kwargs
+        self, catalog_path: str, catalog: stac_types.Catalog, workspace: str, **kwargs
     ) -> stac_types.Catalog:
         """
         Update a collection.
@@ -1336,6 +1793,17 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         """
         base_url = str(kwargs["request"].base_url)
 
+        # Confirm that the workspace provides correct access to the part of the catalogue to be altered
+        # check kubernetes manifest for given workspace to confirm access
+        # TODO: use Kubernetes API to confirm sub-catalog path access required for transaction
+        # For now, if this is a user workspace, confirm the changes are being made to the user's own workspace sub-catalog
+        # e.g. user-datasets/user-workspace/collection
+        if workspace != "default_workspace":
+            catalog_path_with_slash = f"{catalog_path}/" if catalog_path else ""
+            # This workspace can only write to the user-datasets/user-workspace sub-catalog
+            if not catalog_path or not catalog_path_with_slash.startswith(f"user-datasets/{workspace}/"):
+                raise HTTPException(status_code=403, detail=f"Workspace {workspace} does not have access to {catalog_path if catalog_path else 'top-level'} catalog")
+
         catalog = self.database.catalog_serializer.stac_to_db(
             catalog=catalog, base_url=base_url
         )
@@ -1348,7 +1816,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def delete_catalog(
-        self, catalog_path: str, **kwargs
+        self, catalog_path: str, workspace: str, **kwargs
     ) -> Optional[stac_types.Catalog]:
         """
         Delete a collection.
@@ -1365,6 +1833,18 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         Raises:
             NotFoundError: If the collection doesn't exist.
         """
+
+        # Confirm that the workspace provides correct access to the part of the catalogue to be altered
+        # check kubernetes manifest for given workspace to confirm access
+        # TODO: use Kubernetes API to confirm sub-catalog path access required for transaction
+        # For now, if this is a user workspace, confirm the changes are being made to the user's own workspace sub-catalog
+        # e.g. user-datasets/user-workspace/collection
+        if workspace != "default_workspace":
+            catalog_path_with_slash = f"{catalog_path}/" if catalog_path else ""
+            # This workspace can only write to the user-datasets/user-workspace sub-catalog
+            if not catalog_path or not catalog_path_with_slash.startswith(f"user-datasets/{workspace}/"):
+                raise HTTPException(status_code=403, detail=f"Workspace {workspace} does not have access to {catalog_path if catalog_path else 'top-level'} catalog")
+            
         await self.database.delete_catalog(catalog_path=catalog_path)
         return None
 
@@ -1539,6 +2019,7 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
         self,
         search_request: BaseCollectionSearchPostRequest,
         request: Request,
+        username_header: dict,
         **kwargs,
     ) -> Collections:
         """
@@ -1546,7 +2027,9 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
 
         Args:
             search_request (BaseCollectionSearchPostRequest): Request object that includes the parameters for the search.
-            kwargs: Keyword arguments passed to the function.
+            request (Request): The incoming request.
+            username_header (dict): X-Username header from the request.
+            **kwargs: Keyword arguments passed to the function.
 
         Returns:
             A tuple of (collections, next pagination token if any).
@@ -1557,6 +2040,12 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
         base_url = str(request.base_url)
         token = request.query_params.get("token")
         limit = int(request.query_params.get("limit", 10))
+
+        # Extract X-Username header from username_header for access control
+        username = username_header.get("X-Username", "")
+
+        # Get user index
+        user_index = hash_to_index(username)
 
         search = self.database.make_collection_search()
 
@@ -1596,6 +2085,15 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
             )
         )
 
+        # Filter results to those that are accessible to the user
+        for collection in collections[:]:
+            # Get access control array for this collection
+            access_control = collection["access_control"]
+            collection.pop("access_control")
+            # Remove collection from list if user does not have access
+            if not int(access_control[-1]) and not int(access_control[user_index]):
+                collections.remove(collection)
+
         links = []
         if next_token:
             links = await PagingLinks(request=request, next=next_token).get_links()
@@ -1606,6 +2104,7 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
     async def get_all_collections(
         self,
         request: Request,
+        username_header: dict,
         bbox: Optional[List[NumType]] = None,
         datetime: Optional[Union[str, datetime_type]] = None,
         limit: Optional[int] = 10,
@@ -1615,10 +2114,12 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
         """Get search results from the database for collections.
         Called with `GET /collection-search`.
         Args:
+            request (Request): The incoming request.
+            username_header (dict): X-Username header from the request.
             bbox (Optional[List[NumType]]): Bounding box to search in.
             datetime (Optional[Union[str, datetime_type]]): Filter items based on the datetime field.
             limit (Optional[int]): Maximum number of results to return.
-            token (Optional[str]): Access token to use when searching the catalog.
+            q (Optional[List[str]]): Query string to filter the results.
             kwargs: Additional parameters to be passed to the API.
 
         Returns:
@@ -1644,7 +2145,7 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
         except ValidationError:
             raise HTTPException(status_code=400, detail="Invalid parameters provided")
         resp = await self.post_all_collections(
-            search_request=search_request, request=request
+            search_request=search_request, request=request, username_header=username_header
         )
 
         return resp
@@ -1680,6 +2181,7 @@ class EsAsyncDiscoverySearchClient(AsyncDiscoverySearchClient):
         self,
         search_request: BaseDiscoverySearchPostRequest,
         request: Request,
+        username_header: dict,
         **kwargs,
     ) -> Collections:
         """
@@ -1687,7 +2189,9 @@ class EsAsyncDiscoverySearchClient(AsyncDiscoverySearchClient):
 
         Args:
             search_request (BaseCollectionSearchPostRequest): Request object that includes the parameters for the search.
-            kwargs: Keyword arguments passed to the function.
+            request (Request): The incoming request.
+            username_header (dict): X-Username header from the request.
+            **kwargs: Keyword arguments passed to the function.
 
         Returns:
             A tuple of (collections, next pagination token if any).
@@ -1698,6 +2202,12 @@ class EsAsyncDiscoverySearchClient(AsyncDiscoverySearchClient):
         base_url = str(request.base_url)
         token = request.query_params.get("token")
         limit = int(request.query_params.get("limit", 10))
+
+        # Extract X-Username header from username_header for access control
+        username = username_header.get("X-Username", "")
+
+        # Get user index
+        user_index = hash_to_index(username)
 
         search = self.database.make_discovery_search()
 
@@ -1721,6 +2231,15 @@ class EsAsyncDiscoverySearchClient(AsyncDiscoverySearchClient):
             )
         )
 
+        # Filter results to those that are accessible to the user
+        for data in catalogs_and_collections[:]:
+            # Get access control array for this collection
+            access_control = data["access_control"]
+            tet = data.pop("access_control")
+            # Remove collection from list if user does not have access
+            if not int(access_control[-1]) and not int(access_control[user_index]):
+                catalogs_and_collections.remove(data)
+
         links = []
         if next_token:
             links = await PagingLinks(request=request, next=next_token).get_links()
@@ -1733,6 +2252,7 @@ class EsAsyncDiscoverySearchClient(AsyncDiscoverySearchClient):
     async def get_discovery_search(
         self,
         request: Request,
+        username_header: dict,
         q: Optional[List[str]] = None,
         limit: Optional[int] = 10,
         **kwargs,
@@ -1740,10 +2260,10 @@ class EsAsyncDiscoverySearchClient(AsyncDiscoverySearchClient):
         """Get search results from the database for catalogues.
         Called with `GET /catalogues`.
         Args:
-            bbox (Optional[List[NumType]]): Bounding box to search in.
-            datetime (Optional[Union[str, datetime_type]]): Filter items based on the datetime field.
+            request (Request): The incoming request.
+            username_header (dict): X-Username header from the request.
+            q (Optional[List[str]]): Query string to filter the results.
             limit (Optional[int]): Maximum number of results to return.
-            token (Optional[str]): Access token to use when searching the catalog.
             kwargs: Additional parameters to be passed to the API.
 
         Returns:
@@ -1763,7 +2283,7 @@ class EsAsyncDiscoverySearchClient(AsyncDiscoverySearchClient):
         except ValidationError:
             raise HTTPException(status_code=400, detail="Invalid parameters provided")
         resp = await self.post_discovery_search(
-            search_request=search_request, request=request
+            search_request=search_request, request=request, username_header=username_header
         )
 
         return resp

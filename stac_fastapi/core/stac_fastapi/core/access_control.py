@@ -39,11 +39,13 @@ def create_bitstring(uid, gids=[], is_public=False):
     bitstring = ''.join(str(bit) for bit in bitstring)
     return bitstring
 
+# Not used
 def add_user(bitstring, new_user):
     index = hash_to_index(new_user, len(bitstring))
     set_bit(bitstring, index)
     return bitstring
 
+# Not used
 def remove_user(bitstring, user):
     index = hash_to_index(user, len(bitstring))
     set_bit(bitstring, index, allow=False)
