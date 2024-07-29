@@ -54,6 +54,7 @@ from stac_fastapi.types.search import (
     BaseCollectionSearchPostRequest,
     BaseDiscoverySearchPostRequest,
     BaseSearchPostRequest,
+    Limit,
 )
 from stac_fastapi.types.stac import (
     Catalogs,
@@ -68,7 +69,7 @@ logger = logging.getLogger(__name__)
 
 NumType = Union[float, int]
 
-NUMBER_OF_CATALOG_COLLECTIONS = os.getenv("NUMBER_OF_CATALOG_COLLECTIONS", 100)
+NUMBER_OF_CATALOG_COLLECTIONS = os.getenv("NUMBER_OF_CATALOG_COLLECTIONS", Limit.le)
 
 
 @attr.s
@@ -184,23 +185,29 @@ class CoreClient(AsyncBaseCoreClient):
             conformance_classes=self.conformance_classes(),
             extension_schemas=[],
         )
-        catalogs, next_token = await self.database.get_catalog_subcatalogs(
-            token=None, limit=NUMBER_OF_CATALOG_COLLECTIONS, base_url=base_url
-        )
 
-        # Check if current user has access to each Catalog
-        # Extract X-Username header from username_header
-        username = username_header.get("X-Username", "")
+        while True:
+            catalogs, next_token = await self.database.get_catalog_subcatalogs(
+                token=None, limit=NUMBER_OF_CATALOG_COLLECTIONS, base_url=base_url
+            )
 
-        # Get user index
-        user_index = hash_to_index(username)
-        for catalog in catalogs[:]:
-            # Get access control array for each catalog
-            access_control = catalog["access_control"]
-            # Remove catalog from list if user does not have access
-            # Convert to int to ensure 0 is falsy and 1 is truthy
-            if not int(access_control[-1]) and not int(access_control[user_index]):
-                catalogs.remove(catalog)
+            # Check if current user has access to each Catalog
+            # Extract X-Username header from username_header
+            username = username_header.get("X-Username", "")
+
+            # Get user index
+            user_index = hash_to_index(username)
+            for catalog in catalogs[:]:
+                # Get access control array for each catalog
+                access_control = catalog["access_control"]
+                # Remove catalog from list if user does not have access
+                # Convert to int to ensure 0 is falsy and 1 is truthy
+                if not int(access_control[-1]) and not int(access_control[user_index]):
+                    catalogs.remove(catalog)
+
+            # If catalogs now less than limit, will need to run search again, giving next_token
+            if len(catalogs) >= NUMBER_OF_CATALOG_COLLECTIONS or not next_token:
+                break
 
         for catalog in catalogs:
             landing_page["links"].append(
@@ -253,23 +260,29 @@ class CoreClient(AsyncBaseCoreClient):
         limit = int(request.query_params.get("limit", 10))
         token = request.query_params.get("token")
 
-        collections, next_token = await self.database.get_all_collections(
-            token=token, limit=limit, base_url=base_url
-        )
+        while True:
+            collections, next_token = await self.database.get_all_collections(
+                token=token, limit=limit, base_url=base_url
+            )
 
-        # Check if current user has access to each Catalog
-        # Extract X-Username header from username_header
-        username = username_header.get("X-Username", "")
+            # Check if current user has access to each Catalog
+            # Extract X-Username header from username_header
+            username = username_header.get("X-Username", "")
 
-        # Get user index
-        user_index = hash_to_index(username)
-        for collection in collections[:]:
-            # Get access control array for each collection
-            access_control = collection["access_control"]
-            collection.pop("access_control")
-            # Remove collection from list if user does not have access
-            if not int(access_control[-1]) and not int(access_control[user_index]):
-                collections.remove(collection)
+            # Get user index
+            user_index = hash_to_index(username)
+            for collection in collections[:]:
+                # Get access control array for each collection
+                access_control = collection["access_control"]
+                collection.pop("access_control")
+                # Remove collection from list if user does not have access
+                if not int(access_control[-1]) and not int(access_control[user_index]):
+                    collections.remove(collection)
+
+            token = next_token
+            # If collections now less than limit or no more results, will need to run search again, giving next_token
+            if len(collections) >= limit or not next_token:
+                break
 
         links = [
             {"rel": Relations.root.value, "type": MimeTypes.json, "href": base_url},
@@ -304,27 +317,35 @@ class CoreClient(AsyncBaseCoreClient):
         limit = int(request.query_params.get("limit", 10))
         token = request.query_params.get("token")
 
-        catalogs, next_token = await self.database.get_all_catalogs(
-            catalog_path=catalog_path,
-            token=token,
-            limit=limit,
-            base_url=base_url,
-            conformance_classes=self.conformance_classes(),
-        )
-
         # Check if current user has access to each Catalog
         # Extract X-Username header from username_header
         username = username_header.get("X-Username", "")
 
         # Get user index
         user_index = hash_to_index(username)
-        for catalog in catalogs[:]:
-            # Get access control array for each catalog
-            access_control = catalog["access_control"]
-            catalog.pop("access_control")
-            # Remove catalog from list if user does not have access
-            if not int(access_control[-1]) and not int(access_control[user_index]):
-                catalogs.remove(catalog)
+
+        while True:
+            catalogs, next_token = await self.database.get_all_catalogs(
+                catalog_path=catalog_path,
+                token=token,
+                limit=limit,
+                base_url=base_url,
+                user_index=user_index,
+                conformance_classes=self.conformance_classes(),
+            )
+
+            for catalog in catalogs[:]:
+                # Get access control array for each catalog
+                access_control = catalog["access_control"]
+                catalog.pop("access_control")
+                # Remove catalog from list if user does not have access
+                if not int(access_control[-1]) and not int(access_control[user_index]):
+                    catalogs.remove(catalog)
+
+            token = next_token
+            # If catalogs now less than limit or no more results, will need to run search again, giving next_token
+            if len(catalogs) >= limit or not next_token:
+                break
 
         links = [
             {"rel": Relations.root.value, "type": MimeTypes.json, "href": base_url},
@@ -519,21 +540,27 @@ class CoreClient(AsyncBaseCoreClient):
                 status_code=404, detail="Catalog not found in STAC Catalog"
             )
 
-        collections, next_token = await self.database.get_catalog_collections(
-            catalog_path=catalog_path,
-            token=token,  # type: ignore
-            limit=limit,
-            base_url=base_url,
-        )
+        while True:
+            collections, next_token = await self.database.get_catalog_collections(
+                catalog_path=catalog_path,
+                token=token,  # type: ignore
+                limit=limit,
+                base_url=base_url,
+            )
 
-        # Check if current user has access to each collection
-        for collection in collections[:]:
-            # Get access control array for each collection
-            access_control = collection["access_control"]
-            collection.pop("access_control")
-            # Remove collection from list if user does not have access
-            if not int(access_control[-1]) and not int(access_control[user_index]):
-                collections.remove(collection)
+            # Check if current user has access to each collection
+            for collection in collections[:]:
+                # Get access control array for each collection
+                access_control = collection["access_control"]
+                collection.pop("access_control")
+                # Remove collection from list if user does not have access
+                if not int(access_control[-1]) and not int(access_control[user_index]):
+                    collections.remove(collection)
+
+            token = next_token
+            # If collections now less than limit or no more results, will need to run search again, giving next_token
+            if len(collections) >= limit or not next_token:
+                break
 
         links = [
             {"rel": Relations.root.value, "type": MimeTypes.json, "href": base_url},
@@ -962,6 +989,10 @@ class CoreClient(AsyncBaseCoreClient):
         if search_request.limit:
             limit = search_request.limit
 
+        token = None
+        if search_request.token:
+            token = search_request.token
+
         # Extract X-Username header from username_header
         username = username_header.get("X-Username", "")
 
@@ -989,44 +1020,52 @@ class CoreClient(AsyncBaseCoreClient):
             if not int(access_control[-1]) and not int(access_control[user_index]):
                 search_request.collections.remove(collection_id)
 
-        items, maybe_count, next_token = await self.database.execute_search(
-            search=search,
-            limit=limit,
-            token=search_request.token,  # type: ignore
-            sort=sort,
-            collection_ids=search_request.collections,
-            catalog_paths=search_request.catalog_paths,
-        )
+        while True:
+            items, maybe_count, next_token = await self.database.execute_search(
+                search=search,
+                limit=limit,
+                token=token,  # type: ignore
+                sort=sort,
+                collection_ids=search_request.collections,
+                catalog_paths=search_request.catalog_paths,
+            )
 
-        # Filter results to those that are accessible to the user
-        for item in items[:]:
-            # Get item index for path extraction
-            item_catalog_path = item[1]
-            # Get parent collection if collection is present
-            if "collection" in item[0]:
-                parent_collection = item[0]["collection"]
-                # Retrive collection data
-                collection = await self.database.find_collection(
-                    catalog_path=item_catalog_path,
-                    collection_id=parent_collection,
-                )
-                # Get access control array for this collection
-                access_control = collection["access_control"]
-                # Remove catalog from list if user does not have access
-                if not int(access_control[-1]) and not int(access_control[user_index]):
-                    items.remove(item)
-            # Get parent catalog if collection is not present
-            else:
-                # Get access control array for this catalog
-                catalog = await self.database.find_catalog(
-                    catalog_path=item_catalog_path
-                )
-                access_control = catalog["access_control"]
-                # Remove catalog from list if user does not have access
-                if not int(access_control[-1]) and not int(access_control[user_index]):
-                    items.remove(item)
+            # Filter results to those that are accessible to the user
+            for item in items[:]:
+                # Get item index for path extraction
+                item_catalog_path = item[1]
+                # Get parent collection if collection is present
+                if "collection" in item[0]:
+                    parent_collection = item[0]["collection"]
+                    # Retrive collection data
+                    collection = await self.database.find_collection(
+                        catalog_path=item_catalog_path,
+                        collection_id=parent_collection,
+                    )
+                    # Get access control array for this collection
+                    access_control = collection["access_control"]
+                    # Remove catalog from list if user does not have access
+                    if not int(access_control[-1]) and not int(
+                        access_control[user_index]
+                    ):
+                        items.remove(item)
+                # Get parent catalog if collection is not present
+                else:
+                    # Get access control array for this catalog
+                    catalog = await self.database.find_catalog(
+                        catalog_path=item_catalog_path
+                    )
+                    access_control = catalog["access_control"]
+                    # Remove catalog from list if user does not have access
+                    if not int(access_control[-1]) and not int(
+                        access_control[user_index]
+                    ):
+                        items.remove(item)
 
-        # If items now less than limit, will need to run search again, giving next_token
+            token = next_token
+            # If items now less than limit, will need to run search again, giving next_token
+            if len(items) >= limit or not next_token:
+                break
 
         # To handle catalog_id in links execute_search also returns the catalog_id
         # from search results in a tuple
@@ -1198,6 +1237,7 @@ class CoreClient(AsyncBaseCoreClient):
         username_header: dict,
         **kwargs,
     ) -> ItemCollection:
+        print("post search")
         """
         Perform a POST search on a specific sub-catalog.
 
@@ -1233,7 +1273,7 @@ class CoreClient(AsyncBaseCoreClient):
                 status_code=403, detail="User does not have access to this Catalog"
             )
 
-        # Filter the search collections to those thata are accessible to the user
+        # Filter the search collections to those that are accessible to the user
         for collection_id in search_request.collections[:]:
             # Filter the search catalogs to those that are accessible to the user
             collection = await self.database.find_collection(
@@ -1301,44 +1341,57 @@ class CoreClient(AsyncBaseCoreClient):
         if search_request.limit:
             limit = search_request.limit
 
-        items, maybe_count, next_token = await self.database.execute_search(
-            search=search,
-            limit=limit,
-            token=None,  # search_request.token,  # type: ignore
-            sort=sort,
-            collection_ids=search_request.collections,
-            catalog_paths=[catalog_path],
-        )
+        token = None
+        if search_request.token:
+            token = search_request.token
 
-        # Filter results to those that are accessible to the user
-        for item in items[:]:
-            # Get item index for path extraction
-            item_catalog_path = item[1]
-            # Get parent collection if collection is present
-            if "collection" in item[0]:
-                parent_collection = item[0]["collection"]
-                # Retrive collection data
-                collection = await self.database.find_collection(
-                    catalog_path=item_catalog_path,
-                    collection_id=parent_collection,
-                )
-                # Get access control array for this collection
-                access_control = collection["access_control"]
-                # Remove catalog from list if user does not have access
-                if not int(access_control[-1]) and not int(access_control[user_index]):
-                    items.remove(item)
-            # Get parent catalog if collection is not present
-            else:
-                # Get access control array for this catalog
-                catalog = await self.database.find_catalog(
-                    catalog_path=item_catalog_path
-                )
-                access_control = catalog["access_control"]
-                # Remove catalog from list if user does not have access
-                if not int(access_control[-1]) and not int(access_control[user_index]):
-                    items.remove(item)
+        while True:
+            print("running loop")
+            items, maybe_count, next_token = await self.database.execute_search(
+                search=search,
+                limit=limit,
+                token=token,  # type: ignore
+                sort=sort,
+                collection_ids=search_request.collections,
+                catalog_paths=[catalog_path],
+            )
 
-        # If items now less than limit, will need to run search again, giving next_token
+            # Filter results to those that are accessible to the user
+            for item in items[:]:
+                # Get item index for path extraction
+                item_catalog_path = item[1]
+                # Get parent collection if collection is present
+                if "collection" in item[0]:
+                    parent_collection = item[0]["collection"]
+                    # Retrive collection data
+                    collection = await self.database.find_collection(
+                        catalog_path=item_catalog_path,
+                        collection_id=parent_collection,
+                    )
+                    # Get access control array for this collection
+                    access_control = collection["access_control"]
+                    # Remove catalog from list if user does not have access
+                    if not int(access_control[-1]) and not int(
+                        access_control[user_index]
+                    ):
+                        items.remove(item)
+                # Get parent catalog if collection is not present
+                else:
+                    # Get access control array for this catalog
+                    catalog = await self.database.find_catalog(
+                        catalog_path=item_catalog_path
+                    )
+                    access_control = catalog["access_control"]
+                    # Remove catalog from list if user does not have access
+                    if not int(access_control[-1]) and not int(
+                        access_control[user_index]
+                    ):
+                        items.remove(item)
+
+            token = next_token
+            # If items now less than limit, will need to run search again, giving next_token
+            if len(items) >= limit or not next_token:
+                break
 
         # To handle catalog_id in links execute_search also returns the catalog_id
         # from search results in a tuple
@@ -1816,8 +1869,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         # Handle case where entry is not public but no username is provided, use catalog id instead
         if workspace == "default_workspace" and not is_public:
             # Should only be used to create top-level workspace catalogs e.g. user-datasets/<workspace-name>
-            # Should only be used to create top-level workspace catalogs e.g. user-datasets/<workspace-name>
-            catalog_path_list = catalog_path.split("/")
+            catalog_path_list = catalog_path.split("/") if catalog_path else []
             if len(catalog_path_list) > 1 and catalog_path_list[0] == "user-datasets":
                 username = catalog_path_list[1]
             else:
@@ -2166,24 +2218,28 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
         if search_request.limit:
             limit = search_request.limit
 
-        collections, maybe_count, next_token = (
-            await self.database.execute_collection_search(
+        while True:
+            collections, _, next_token = await self.database.execute_collection_search(
                 search=search,
                 limit=limit,
                 token=token,
                 sort=sort,
                 base_url=base_url,
             )
-        )
 
-        # Filter results to those that are accessible to the user
-        for collection in collections[:]:
-            # Get access control array for this collection
-            access_control = collection["access_control"]
-            collection.pop("access_control")
-            # Remove collection from list if user does not have access
-            if not int(access_control[-1]) and not int(access_control[user_index]):
-                collections.remove(collection)
+            # Filter results to those that are accessible to the user
+            for collection in collections[:]:
+                # Get access control array for this collection
+                access_control = collection["access_control"]
+                collection.pop("access_control")
+                # Remove collection from list if user does not have access
+                if not int(access_control[-1]) and not int(access_control[user_index]):
+                    collections.remove(collection)
+
+            token = next_token
+            # If collections now less than limit or no more results, will need to run search again, giving next_token
+            if len(collections) >= limit or not next_token:
+                break
 
         links = []
         if next_token:
@@ -2313,25 +2369,31 @@ class EsAsyncDiscoverySearchClient(AsyncDiscoverySearchClient):
         #     {"_score": {"order": "desc"}},
         # ]
 
-        catalogs_and_collections, maybe_count, next_token = (
-            await self.database.execute_discovery_search(
-                search=search,
-                limit=limit,
-                token=token,
-                sort=None,  # use default sort for the minute
-                base_url=base_url,
-                conformance_classes=self.conformance_classes(),
+        while True:
+            catalogs_and_collections, maybe_count, next_token = (
+                await self.database.execute_discovery_search(
+                    search=search,
+                    limit=limit,
+                    token=token,
+                    sort=None,  # use default sort for the minute
+                    base_url=base_url,
+                    conformance_classes=self.conformance_classes(),
+                )
             )
-        )
 
-        # Filter results to those that are accessible to the user
-        for data in catalogs_and_collections[:]:
-            # Get access control array for this collection
-            access_control = data["access_control"]
-            data.pop("access_control")
-            # Remove collection from list if user does not have access
-            if not int(access_control[-1]) and not int(access_control[user_index]):
-                catalogs_and_collections.remove(data)
+            # Filter results to those that are accessible to the user
+            for data in catalogs_and_collections[:]:
+                # Get access control array for this collection
+                access_control = data["access_control"]
+                data.pop("access_control")
+                # Remove collection from list if user does not have access
+                if not int(access_control[-1]) and not int(access_control[user_index]):
+                    catalogs_and_collections.remove(data)
+
+            token = next_token
+            # If items now less than limit, will need to run search again, giving next_token
+            if len(catalogs_and_collections) >= limit or not next_token:
+                break
 
         links = []
         if next_token:

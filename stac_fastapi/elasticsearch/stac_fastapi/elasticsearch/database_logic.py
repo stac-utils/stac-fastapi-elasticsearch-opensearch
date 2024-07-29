@@ -9,6 +9,7 @@ from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple, Type, U
 import attr
 from elasticsearch_dsl import Q, Search
 
+import stac_fastapi.types.search
 from elasticsearch import exceptions, helpers  # type: ignore
 from stac_fastapi.core.extensions import filter
 from stac_fastapi.core.serializers import (
@@ -778,6 +779,7 @@ class DatabaseLogic:
         token: Optional[str],
         limit: Optional[int],
         base_url: str,
+        user_index: int,
         catalog_path: Optional[str] = None,
         conformance_classes: list = [],
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
@@ -895,11 +897,19 @@ class DatabaseLogic:
             # Extract sub-catalogs
             sub_catalogs = []
             for catalog in sub_data_catalogs_and_collections[0]:
-                sub_catalogs.append(catalog["_source"])
+                if catalog["_source"]:
+                    if int(catalog["_source"]["access_control"][-1]) or int(
+                        catalog["_source"]["access_control"][user_index]
+                    ):
+                        sub_catalogs.append(catalog["_source"])
             # Extract collections
             collections = []
             for collection in sub_data_catalogs_and_collections[1]:
-                collections.append(collection["_source"])
+                if collection["_source"]:
+                    if int(collection["_source"]["access_control"][-1]) or int(
+                        collection["_source"]["access_control"][user_index]
+                    ):
+                        collections.append(collection["_source"])
             catalogs.append(
                 self.catalog_serializer.db_to_stac(
                     catalog_path=catalog_path,
@@ -1449,6 +1459,10 @@ class DatabaseLogic:
 
         index_param = f"{ITEMS_INDEX_PREFIX}*"
 
+        max_result_window = stac_fastapi.types.search.Limit.le
+
+        size_limit = min(limit + 1, max_result_window)
+
         if collection_ids and catalog_paths:
             index_param = indices(
                 collection_ids=collection_ids, catalog_paths=catalog_paths_list
@@ -1463,7 +1477,7 @@ class DatabaseLogic:
                 query=query,
                 sort=sort or DEFAULT_SORT,
                 search_after=search_after,
-                size=limit,
+                size=size_limit,
             )
         )
 
@@ -1486,7 +1500,7 @@ class DatabaseLogic:
 
         # Need to identify catalog for each item
         items = []
-        for hit in hits:
+        for hit in hits[:limit]:
             item_catalog_path = hit["_index"].split(GROUP_SEPARATOR, 1)[1]
             item_catalog_path_list = item_catalog_path.split(CATALOG_SEPARATOR)
             item_catalog_path_list.reverse()
@@ -1494,21 +1508,26 @@ class DatabaseLogic:
             items.append((hit["_source"], item_catalog_path))
 
         next_token = None
-        if hits and (sort_array := hits[-1].get("sort")):
-            next_token = urlsafe_b64encode(
-                ",".join([str(x) for x in sort_array]).encode()
-            ).decode()
+        if len(hits) > limit and limit < max_result_window:
+            if hits and (sort_array := hits[limit - 1].get("sort")):
+                next_token = urlsafe_b64encode(
+                    ",".join([str(x) for x in sort_array]).encode()
+                ).decode()
 
         # (1) count should not block returning results, so don't wait for it to be done
         # (2) don't cancel the task so that it will populate the ES cache for subsequent counts
-        maybe_count = None
+        matched = (
+            es_response["hits"]["total"]["value"]
+            if es_response["hits"]["total"]["relation"] == "eq"
+            else None
+        )
         if count_task.done():
             try:
-                maybe_count = count_task.result().get("count")
+                matched = count_task.result().get("count")
             except Exception as e:
                 logger.error(f"Count task failed: {e}")
 
-        return items, maybe_count, next_token
+        return items, matched, next_token
 
     async def execute_collection_search(
         self,
@@ -1546,6 +1565,10 @@ class DatabaseLogic:
 
         query = search.query.to_dict() if search.query else None
 
+        max_result_window = stac_fastapi.types.search.Limit.le
+
+        size_limit = min(limit + 1, max_result_window)
+
         search_task = asyncio.create_task(
             self.client.search(
                 index=f"{COLLECTIONS_INDEX_PREFIX}*",
@@ -1553,7 +1576,7 @@ class DatabaseLogic:
                 query=query,
                 sort=sort or DEFAULT_COLLECTIONS_SORT,
                 search_after=search_after,
-                size=limit,
+                size=size_limit,
             )
         )
 
@@ -2993,6 +3016,10 @@ class DatabaseLogic:
 
         query = search.query.to_dict() if search.query else None
 
+        max_result_window = stac_fastapi.types.search.Limit.le
+
+        size_limit = min(limit + 1, max_result_window)
+
         search_task = asyncio.create_task(
             self.client.search(
                 index=[f"{CATALOGS_INDEX_PREFIX}*", f"{COLLECTIONS_INDEX_PREFIX}*"],
@@ -3000,7 +3027,7 @@ class DatabaseLogic:
                 query=query,
                 sort=DEFAULT_DISCOVERY_SORT,  # set to default for time being to support token pagination
                 search_after=search_after,
-                size=limit,
+                size=size_limit,
             )
         )
 
@@ -3146,18 +3173,23 @@ class DatabaseLogic:
                 )
 
         next_token = None
-        if hits and (sort_array := hits[-1].get("sort")):
-            next_token = urlsafe_b64encode(
-                ",".join([str(x) for x in sort_array]).encode()
-            ).decode()
+        if len(hits) > limit and limit < max_result_window:
+            if hits and (sort_array := hits[limit - 1].get("sort")):
+                next_token = urlsafe_b64encode(
+                    ",".join([str(x) for x in sort_array]).encode()
+                ).decode()
 
         # (1) count should not block returning results, so don't wait for it to be done
         # (2) don't cancel the task so that it will populate the ES cache for subsequent counts
-        maybe_count = None
+        matched = (
+            es_response["hits"]["total"]["value"]
+            if es_response["hits"]["total"]["relation"] == "eq"
+            else None
+        )
         if count_task.done():
             try:
                 maybe_count = count_task.result().get("count")
             except Exception as e:
                 logger.error(f"Count task failed: {e}")
 
-        return data, maybe_count, next_token
+        return data, matched, next_token
