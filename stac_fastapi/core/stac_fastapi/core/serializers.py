@@ -270,7 +270,7 @@ class CatalogSerializer(Serializer):
         for link in catalog_links:
             link_rels.append(link["rel"])
             if link["rel"] == "conformance":
-                link["href"] = urljoin(base_url, f"conformance")
+                link["href"] = urljoin(base_url, "conformance")
             elif link["rel"] == "root":
                 link["href"] = urljoin(base_url, f"{catalog_url}")
             elif link["rel"] == "self":
@@ -304,7 +304,7 @@ class CatalogSerializer(Serializer):
                 {
                     "rel": Relations.conformance.value,
                     "type": MimeTypes.json,
-                    "href": urljoin(base_url, f"conformance"),
+                    "href": urljoin(base_url, "conformance"),
                 }
             )
         if "root" not in link_rels:

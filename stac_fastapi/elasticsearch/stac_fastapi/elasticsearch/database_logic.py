@@ -22,11 +22,7 @@ from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
 from stac_fastapi.elasticsearch.config import (
     ElasticsearchSettings as SyncElasticsearchSettings,
 )
-from stac_fastapi.types.errors import (
-    ConflictError,
-    InvalidQueryParameter,
-    NotFoundError,
-)
+from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.stac import Catalog, Collection, Item
 
 logger = logging.getLogger(__name__)
@@ -2479,7 +2475,6 @@ class DatabaseLogic:
 
             # Construct new sub-catalog path
             new_sub_catalog_path = f"{new_catalog_path}/{sub_catalog_id}"
-            new_sub_catalog_path_list = new_sub_catalog_path.split("/")
 
             # Calculate sub-catalog path for found catalog
             sub_catalog_path = hit["_index"].split("_", 1)[1]
@@ -2487,8 +2482,6 @@ class DatabaseLogic:
             sub_catalog_path_list.reverse()
             sub_catalog_path_list.append(sub_catalog_id)
             sub_catalog_path = "/".join(sub_catalog_path_list)
-
-            # assert f"{catalog_path}/{sub_catalog_id}" == sub_catalog_path
 
             # This is the current index for this catalog
             source_index = index_catalogs_by_catalog_id(
@@ -2552,7 +2545,7 @@ class DatabaseLogic:
             )
             collection_ids = [hit["_id"] for hit in response["hits"]["hits"]]
 
-            results = await asyncio.gather(
+            await asyncio.gather(
                 *[
                     self.client.reindex(
                         body={
@@ -2654,7 +2647,7 @@ class DatabaseLogic:
                 )
                 dest_indices_list.append(dest_index)
 
-            results = await asyncio.gather(
+            await asyncio.gather(
                 *[
                     self.client.reindex(
                         body={
@@ -2688,7 +2681,7 @@ class DatabaseLogic:
                 refresh=refresh,
             )
 
-            results = await asyncio.gather(
+            await asyncio.gather(
                 *[
                     self.reindex_sub_catalogs(
                         catalog_path=old_sub_catalog_path,
@@ -2740,7 +2733,7 @@ class DatabaseLogic:
                 )
                 collection_ids = [hit["_id"] for hit in response["hits"]["hits"]]
 
-                results = await asyncio.gather(
+                await asyncio.gather(
                     *[
                         self.client.reindex(
                             body={
@@ -2824,7 +2817,7 @@ class DatabaseLogic:
                 body={"sort": [{"id": {"order": "asc"}}]},
             )
             # Delete each catalog recursively
-            results = await asyncio.gather(
+            await asyncio.gather(
                 *[
                     self.delete_catalog(catalog_path=f"{catalog_path}/{hit['_id']}")
                     for hit in response["hits"]["hits"]
@@ -2844,7 +2837,7 @@ class DatabaseLogic:
                 body={"sort": [{"id": {"order": "asc"}}]},
             )
             collection_ids = [hit["_id"] for hit in response["hits"]["hits"]]
-            results = await asyncio.gather(
+            await asyncio.gather(
                 *[
                     delete_item_index(
                         collection_id=collection_id, catalog_path_list=catalog_path_list
@@ -2897,8 +2890,6 @@ class DatabaseLogic:
         # Create list of nested catalog ids
         catalog_path_list = catalog_path.split("/")
 
-        catalog_id = catalog_path_list[-1]
-
         await helpers.async_bulk(
             self.client,
             mk_actions(
@@ -2935,8 +2926,6 @@ class DatabaseLogic:
 
         # Create list of nested catalog ids
         catalog_path_list = catalog_path.split("/")
-
-        catalog_id = catalog_path_list[-1]
 
         helpers.bulk(
             self.sync_client,

@@ -2,8 +2,6 @@
 
 import os
 
-from pydantic import BaseModel
-
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import (
     create_get_catalog_request_model,

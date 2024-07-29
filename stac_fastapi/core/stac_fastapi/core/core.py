@@ -20,13 +20,7 @@ from stac_pydantic.links import Relations
 from stac_pydantic.shared import MimeTypes
 from stac_pydantic.version import STAC_VERSION
 
-from stac_fastapi.core.access_control import (
-    add_user,
-    create_bitstring,
-    hash_to_index,
-    remove_user,
-    set_bit,
-)
+from stac_fastapi.core.access_control import create_bitstring, hash_to_index
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.models.links import PagingLinks
@@ -2334,7 +2328,7 @@ class EsAsyncDiscoverySearchClient(AsyncDiscoverySearchClient):
         for data in catalogs_and_collections[:]:
             # Get access control array for this collection
             access_control = data["access_control"]
-            tet = data.pop("access_control")
+            data.pop("access_control")
             # Remove collection from list if user does not have access
             if not int(access_control[-1]) and not int(access_control[user_index]):
                 catalogs_and_collections.remove(data)
