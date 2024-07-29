@@ -20,8 +20,13 @@ from stac_pydantic.links import Relations
 from stac_pydantic.shared import MimeTypes
 from stac_pydantic.version import STAC_VERSION
 
-
-from stac_fastapi.core.access_control import create_bitstring, hash_to_index, set_bit, add_user, remove_user
+from stac_fastapi.core.access_control import (
+    add_user,
+    create_bitstring,
+    hash_to_index,
+    remove_user,
+    set_bit,
+)
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.models.links import PagingLinks
@@ -47,6 +52,7 @@ from stac_fastapi.extensions.third_party.bulk_transactions import (
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.config import Settings
 from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
+from stac_fastapi.types.errors import InvalidQueryParameter
 from stac_fastapi.types.extension import ApiExtension
 from stac_fastapi.types.requests import get_base_url
 from stac_fastapi.types.search import (
@@ -63,8 +69,6 @@ from stac_fastapi.types.stac import (
     Item,
     ItemCollection,
 )
-from stac_fastapi.types.errors import InvalidQueryParameter
-
 
 logger = logging.getLogger(__name__)
 
@@ -165,7 +169,9 @@ class CoreClient(AsyncBaseCoreClient):
         )
         return landing_page
 
-    async def landing_page(self, username_header: dict, **kwargs) -> stac_types.LandingPage:
+    async def landing_page(
+        self, username_header: dict, **kwargs
+    ) -> stac_types.LandingPage:
         """Landing page.
 
         Called with `GET /`.
@@ -270,7 +276,6 @@ class CoreClient(AsyncBaseCoreClient):
             # Remove collection from list if user does not have access
             if not int(access_control[-1]) and not int(access_control[user_index]):
                 collections.remove(collection)
-
 
         links = [
             {"rel": Relations.root.value, "type": MimeTypes.json, "href": base_url},
@@ -377,15 +382,17 @@ class CoreClient(AsyncBaseCoreClient):
         collection.pop("access_control")
         # Return error if user does not have access
         if not int(access_control[-1]) and not int(access_control[user_index]):
-            raise HTTPException(status_code=403, detail="User does not have access to this Collection")
+            raise HTTPException(
+                status_code=403, detail="User does not have access to this Collection"
+            )
 
-            
-        
         return self.collection_serializer.db_to_stac(
             catalog_path=catalog_path, collection=collection, base_url=base_url
         )
 
-    async def get_catalog(self, username_header: dict, catalog_path: str, **kwargs) -> Collection:
+    async def get_catalog(
+        self, username_header: dict, catalog_path: str, **kwargs
+    ) -> Collection:
         """Get a catalog from the database by its id.
 
         Args:
@@ -421,9 +428,10 @@ class CoreClient(AsyncBaseCoreClient):
         catalog.pop("access_control")
         # Return error if user does not have access
         if not int(access_control[-1]) and not int(access_control[user_index]):
-            raise HTTPException(status_code=403, detail="User does not have access to this Catalog")
+            raise HTTPException(
+                status_code=403, detail="User does not have access to this Catalog"
+            )
 
-            
         # Assume at most 100 collections in a catalog for the time being, may need to increase
         collections, _ = await self.database.get_catalog_collections(
             catalog_path=catalog_path,
@@ -492,7 +500,7 @@ class CoreClient(AsyncBaseCoreClient):
         token = request.query_params.get("token")
         limit = int(request.query_params.get("limit", 10))
         base_url = str(request.base_url)
-        
+
         # Get Catalog to confirm user access
         catalog = await self.database.find_catalog(catalog_path=catalog_path)
 
@@ -507,9 +515,10 @@ class CoreClient(AsyncBaseCoreClient):
         catalog.pop("access_control")
         # Return error if user does not have access
         if not int(access_control[-1]) and not int(access_control[user_index]):
-            raise HTTPException(status_code=403, detail="User does not have access to this Catalog")
+            raise HTTPException(
+                status_code=403, detail="User does not have access to this Catalog"
+            )
 
-        
         catalog_id = catalog.get("id")
         if catalog_id is None:
             raise HTTPException(
@@ -581,7 +590,6 @@ class CoreClient(AsyncBaseCoreClient):
         """
         request: Request = kwargs["request"]
 
-
         # Get Collection to confirm user access
         collection = await self.database.find_collection(
             catalog_path=catalog_path, collection_id=collection_id
@@ -598,8 +606,9 @@ class CoreClient(AsyncBaseCoreClient):
         access_control = collection["access_control"]
         # Return error if user does not have access
         if not int(access_control[-1]) and not int(access_control[user_index]):
-            raise HTTPException(status_code=403, detail="User does not have access to this Collection")
-
+            raise HTTPException(
+                status_code=403, detail="User does not have access to this Collection"
+            )
 
         base_url = str(request.base_url)
 
@@ -660,7 +669,12 @@ class CoreClient(AsyncBaseCoreClient):
         )
 
     async def get_item(
-        self, username_header: dict, item_id: str, collection_id: str, catalog_path: str, **kwargs
+        self,
+        username_header: dict,
+        item_id: str,
+        collection_id: str,
+        catalog_path: str,
+        **kwargs,
     ) -> Item:
         """Get an item from the database based on its id and collection id.
 
@@ -695,7 +709,9 @@ class CoreClient(AsyncBaseCoreClient):
         access_control = collection["access_control"]
         # Return error if user does not have access
         if not int(access_control[-1]) and not int(access_control[user_index]):
-            raise HTTPException(status_code=403, detail="User does not have access to this item")
+            raise HTTPException(
+                status_code=403, detail="User does not have access to this item"
+            )
 
         item = await self.database.get_one_item(
             item_id=item_id,
@@ -850,13 +866,18 @@ class CoreClient(AsyncBaseCoreClient):
         except ValidationError:
             raise HTTPException(status_code=400, detail="Invalid parameters provided")
         resp = await self.post_global_search(
-            search_request=search_request, request=request, username_header=username_header
+            search_request=search_request,
+            request=request,
+            username_header=username_header,
         )
 
         return resp
 
     async def post_global_search(
-        self, search_request: BaseSearchPostRequest, request: Request, username_header: dict
+        self,
+        search_request: BaseSearchPostRequest,
+        request: Request,
+        username_header: dict,
     ) -> ItemCollection:
         """
         Perform a POST search on the catalog.
@@ -962,18 +983,17 @@ class CoreClient(AsyncBaseCoreClient):
             if not int(access_control[-1]) and not int(access_control[user_index]):
                 search_request.catalog_paths.remove(catalog_path)
 
-
         # Filter the search collections to those that are accessible to the user
         for collection_id in search_request.collections[:]:
             collection = await self.database.find_collection(
-                catalog_path=search_request.catalog_paths[0], collection_id=collection_id
+                catalog_path=search_request.catalog_paths[0],
+                collection_id=collection_id,
             )
             # Get access control array for each collection
             access_control = collection["access_control"]
             # Remove catalog from list if user does not have access
             if not int(access_control[-1]) and not int(access_control[user_index]):
                 search_request.collections.remove(collection_id)
-
 
         items, maybe_count, next_token = await self.database.execute_search(
             search=search,
@@ -1004,7 +1024,9 @@ class CoreClient(AsyncBaseCoreClient):
             # Get parent catalog if collection is not present
             else:
                 # Get access control array for this catalog
-                catalog = await self.database.find_catalog(catalog_path=item_catalog_path)
+                catalog = await self.database.find_catalog(
+                    catalog_path=item_catalog_path
+                )
                 access_control = catalog["access_control"]
                 # Remove catalog from list if user does not have access
                 if not int(access_control[-1]) and not int(access_control[user_index]):
@@ -1166,7 +1188,10 @@ class CoreClient(AsyncBaseCoreClient):
         except ValidationError:
             raise HTTPException(status_code=400, detail="Invalid parameters provided")
         resp = await self.post_search(
-            catalog_path=catalog_path, search_request=search_request, request=request, username_header=username_header
+            catalog_path=catalog_path,
+            search_request=search_request,
+            request=request,
+            username_header=username_header,
         )
 
         return resp
@@ -1210,12 +1235,16 @@ class CoreClient(AsyncBaseCoreClient):
         access_control = catalog["access_control"]
         # Return error if user does not have access
         if not int(access_control[-1]) and not int(access_control[user_index]):
-            raise HTTPException(status_code=403, detail="User does not have access to this Catalog")
+            raise HTTPException(
+                status_code=403, detail="User does not have access to this Catalog"
+            )
 
         # Filter the search collections to those thata are accessible to the user
         for collection_id in search_request.collections[:]:
             # Filter the search catalogs to those that are accessible to the user
-            collection = await self.database.find_collection(catalog_path=catalog_path, collection_id=collection_id)
+            collection = await self.database.find_collection(
+                catalog_path=catalog_path, collection_id=collection_id
+            )
             # Get access control array for each collection
             access_control = collection["access_control"]
             # Remove catalog from list if user does not have access
@@ -1307,7 +1336,9 @@ class CoreClient(AsyncBaseCoreClient):
             # Get parent catalog if collection is not present
             else:
                 # Get access control array for this catalog
-                catalog = await self.database.find_catalog(catalog_path=item_catalog_path)
+                catalog = await self.database.find_catalog(
+                    catalog_path=item_catalog_path
+                )
                 access_control = catalog["access_control"]
                 # Remove catalog from list if user does not have access
                 if not int(access_control[-1]) and not int(access_control[user_index]):
@@ -1377,7 +1408,12 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def create_item(
-        self, catalog_path: str, collection_id: str, item: stac_types.Item, workspace: str, **kwargs
+        self,
+        catalog_path: str,
+        collection_id: str,
+        item: stac_types.Item,
+        workspace: str,
+        **kwargs,
     ) -> Optional[stac_types.Item]:
         """Create an item in the collection.
         Note, access for items is determined by parent collection or catalog
@@ -1402,7 +1438,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         if not item:
             raise HTTPException(status_code=400, detail="No item provided")
-        
+
         base_url = str(kwargs["request"].base_url)
 
         # Confirm that the workspace provides correct access to the part of the catalogue to be altered
@@ -1413,10 +1449,14 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         if workspace != "default_workspace":
             catalog_path_with_slash = f"{catalog_path}/" if catalog_path else ""
             # This workspace can only write to the user-datasets/user-workspace sub-catalog
-            if not catalog_path or not catalog_path_with_slash.startswith(f"user-datasets/{workspace}/"):
-                raise HTTPException(status_code=403, detail=f"Workspace {workspace} does not have access to {catalog_path if catalog_path else 'top-level'} catalog")
+            if not catalog_path or not catalog_path_with_slash.startswith(
+                f"user-datasets/{workspace}/"
+            ):
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Workspace {workspace} does not have access to {catalog_path if catalog_path else 'top-level'} catalog",
+                )
 
-            
         if collection_id != item["collection"]:
             raise Exception(
                 f"The provided collection id and that found in the item do not match: {collection_id}, {item['collection']}"
@@ -1487,8 +1527,13 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         if workspace != "default_workspace":
             catalog_path_with_slash = f"{catalog_path}/" if catalog_path else ""
             # This workspace can only write to the user-datasets/user-workspace sub-catalog
-            if not catalog_path or not catalog_path_with_slash.startswith(f"user-datasets/{workspace}/"):
-                raise HTTPException(status_code=403, detail=f"Workspace {workspace} does not have access to {catalog_path if catalog_path else 'top-level'} catalog")
+            if not catalog_path or not catalog_path_with_slash.startswith(
+                f"user-datasets/{workspace}/"
+            ):
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Workspace {workspace} does not have access to {catalog_path if catalog_path else 'top-level'} catalog",
+                )
 
         # Note, if the provided item is not valid stac, this may delete the item and them fail to create the new one
 
@@ -1508,7 +1553,12 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def delete_item(
-        self, item_id: str, collection_id: str, catalog_path: str, workspace: str, **kwargs
+        self,
+        item_id: str,
+        collection_id: str,
+        catalog_path: str,
+        workspace: str,
+        **kwargs,
     ) -> Optional[stac_types.Item]:
         """Delete an item from a collection.
 
@@ -1528,9 +1578,14 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         if workspace != "default_workspace":
             catalog_path_with_slash = f"{catalog_path}/" if catalog_path else ""
             # This workspace can only write to the user-datasets/user-workspace sub-catalog
-            if not catalog_path or not catalog_path_with_slash.startswith(f"user-datasets/{workspace}/"):
-                raise HTTPException(status_code=403, detail=f"Workspace {workspace} does not have access to {catalog_path if catalog_path else 'top-level'} catalog")
-            
+            if not catalog_path or not catalog_path_with_slash.startswith(
+                f"user-datasets/{workspace}/"
+            ):
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Workspace {workspace} does not have access to {catalog_path if catalog_path else 'top-level'} catalog",
+                )
+
         await self.database.delete_item(
             item_id=item_id, collection_id=collection_id, catalog_path=catalog_path
         )
@@ -1538,7 +1593,12 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def create_collection(
-        self, catalog_path: str, collection: stac_types.Collection, workspace: str, is_public: bool = False, **kwargs
+        self,
+        catalog_path: str,
+        collection: stac_types.Collection,
+        workspace: str,
+        is_public: bool = False,
+        **kwargs,
     ) -> stac_types.Collection:
         """Create a new collection in the database.
 
@@ -1571,9 +1631,13 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         if workspace != "default_workspace":
             catalog_path_with_slash = f"{catalog_path}/" if catalog_path else ""
             # This workspace can only write to the user-datasets/user-workspace sub-catalog
-            if not catalog_path or not catalog_path_with_slash.startswith(f"user-datasets/{workspace}/"):
-                raise HTTPException(status_code=403, detail=f"Workspace {workspace} does not have access to {catalog_path if catalog_path else 'top-level'} catalog")
-        
+            if not catalog_path or not catalog_path_with_slash.startswith(
+                f"user-datasets/{workspace}/"
+            ):
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Workspace {workspace} does not have access to {catalog_path if catalog_path else 'top-level'} catalog",
+                )
 
         # Handle case where entry is not public, use catalog id instead
         if workspace == "default_workspace" and not is_public:
@@ -1582,14 +1646,16 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             if catalog_path_list[0] == "user-datasets":
                 username = catalog_path_list[1]
             else:
-                raise HTTPException(status_code=400, detail="Username not provided for private entry")
+                raise HTTPException(
+                    status_code=400, detail="Username not provided for private entry"
+                )
         elif not is_public:
             username = workspace
         else:
             username = ""
 
         # Generate bitstring for entry
-        bitstring = ''.join(create_bitstring(uid=username, is_public=is_public))
+        bitstring = "".join(create_bitstring(uid=username, is_public=is_public))
 
         collection = self.database.collection_serializer.stac_to_db(
             collection, base_url
@@ -1641,9 +1707,13 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         if workspace != "default_workspace":
             catalog_path_with_slash = f"{catalog_path}/" if catalog_path else ""
             # This workspace can only write to the user-datasets/user-workspace sub-catalog
-            if not catalog_path or not catalog_path_with_slash.startswith(f"user-datasets/{workspace}/"):
-                raise HTTPException(status_code=403, detail=f"Workspace {workspace} does not have access to {catalog_path if catalog_path else 'top-level'} catalog")
-
+            if not catalog_path or not catalog_path_with_slash.startswith(
+                f"user-datasets/{workspace}/"
+            ):
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Workspace {workspace} does not have access to {catalog_path if catalog_path else 'top-level'} catalog",
+                )
 
         collection = self.database.collection_serializer.stac_to_db(
             collection, base_url
@@ -1688,9 +1758,14 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         if workspace != "default_workspace":
             catalog_path_with_slash = f"{catalog_path}/" if catalog_path else ""
             # This workspace can only write to the user-datasets/user-workspace sub-catalog
-            if not catalog_path or not catalog_path_with_slash.startswith(f"user-datasets/{workspace}/"):
-                raise HTTPException(status_code=403, detail=f"Workspace {workspace} does not have access to {catalog_path if catalog_path else 'top-level'} catalog")
-            
+            if not catalog_path or not catalog_path_with_slash.startswith(
+                f"user-datasets/{workspace}/"
+            ):
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Workspace {workspace} does not have access to {catalog_path if catalog_path else 'top-level'} catalog",
+                )
+
         await self.database.delete_collection(
             collection_id=collection_id, catalog_path=catalog_path
         )
@@ -1698,7 +1773,12 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def create_catalog(
-        self, catalog: stac_types.Catalog, workspace: str, catalog_path: Optional[str] = None, is_public: bool = False, **kwargs
+        self,
+        catalog: stac_types.Catalog,
+        workspace: str,
+        catalog_path: Optional[str] = None,
+        is_public: bool = False,
+        **kwargs,
     ) -> stac_types.Catalog:
         """Create a new catalog in the database.
 
@@ -1731,8 +1811,13 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         if workspace != "default_workspace":
             catalog_path_with_slash = f"{catalog_path}/" if catalog_path else ""
             # This workspace can only write to the user-datasets/user-workspace sub-catalog
-            if not catalog_path or not catalog_path_with_slash.startswith(f"user-datasets/{workspace}/"):
-                raise HTTPException(status_code=403, detail=f"Workspace {workspace} does not have access to {catalog_path if catalog_path else 'top-level'} catalog")
+            if not catalog_path or not catalog_path_with_slash.startswith(
+                f"user-datasets/{workspace}/"
+            ):
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Workspace {workspace} does not have access to {catalog_path if catalog_path else 'top-level'} catalog",
+                )
 
         # Handle case where entry is not public but no username is provided, use catalog id instead
         if workspace == "default_workspace" and not is_public:
@@ -1752,7 +1837,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             username = ""
 
         # Generate bitstring for entry
-        bitstring = ''.join(create_bitstring(uid=username, is_public=is_public))
+        bitstring = "".join(create_bitstring(uid=username, is_public=is_public))
 
         catalog = self.database.catalog_serializer.stac_to_db(
             catalog=catalog, base_url=base_url
@@ -1760,7 +1845,9 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         catalog = await self.database.prep_create_catalog(
             catalog_path=catalog_path, catalog=catalog, base_url=base_url
         )
-        await self.database.create_catalog(catalog_path=catalog_path, catalog=catalog, access_control=bitstring)
+        await self.database.create_catalog(
+            catalog_path=catalog_path, catalog=catalog, access_control=bitstring
+        )
 
         # This catalog does not yet have any collections or sub-catalogs
         return CatalogSerializer.db_to_stac(
@@ -1801,8 +1888,13 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         if workspace != "default_workspace":
             catalog_path_with_slash = f"{catalog_path}/" if catalog_path else ""
             # This workspace can only write to the user-datasets/user-workspace sub-catalog
-            if not catalog_path or not catalog_path_with_slash.startswith(f"user-datasets/{workspace}/"):
-                raise HTTPException(status_code=403, detail=f"Workspace {workspace} does not have access to {catalog_path if catalog_path else 'top-level'} catalog")
+            if not catalog_path or not catalog_path_with_slash.startswith(
+                f"user-datasets/{workspace}/"
+            ):
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Workspace {workspace} does not have access to {catalog_path if catalog_path else 'top-level'} catalog",
+                )
 
         catalog = self.database.catalog_serializer.stac_to_db(
             catalog=catalog, base_url=base_url
@@ -1842,9 +1934,14 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         if workspace != "default_workspace":
             catalog_path_with_slash = f"{catalog_path}/" if catalog_path else ""
             # This workspace can only write to the user-datasets/user-workspace sub-catalog
-            if not catalog_path or not catalog_path_with_slash.startswith(f"user-datasets/{workspace}/"):
-                raise HTTPException(status_code=403, detail=f"Workspace {workspace} does not have access to {catalog_path if catalog_path else 'top-level'} catalog")
-            
+            if not catalog_path or not catalog_path_with_slash.startswith(
+                f"user-datasets/{workspace}/"
+            ):
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Workspace {workspace} does not have access to {catalog_path if catalog_path else 'top-level'} catalog",
+                )
+
         await self.database.delete_catalog(catalog_path=catalog_path)
         return None
 
@@ -2145,7 +2242,9 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
         except ValidationError:
             raise HTTPException(status_code=400, detail="Invalid parameters provided")
         resp = await self.post_all_collections(
-            search_request=search_request, request=request, username_header=username_header
+            search_request=search_request,
+            request=request,
+            username_header=username_header,
         )
 
         return resp
@@ -2283,7 +2382,9 @@ class EsAsyncDiscoverySearchClient(AsyncDiscoverySearchClient):
         except ValidationError:
             raise HTTPException(status_code=400, detail="Invalid parameters provided")
         resp = await self.post_discovery_search(
-            search_request=search_request, request=request, username_header=username_header
+            search_request=search_request,
+            request=request,
+            username_header=username_header,
         )
 
         return resp

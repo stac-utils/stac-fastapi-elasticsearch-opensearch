@@ -39,7 +39,9 @@ CATALOG_SEPARATOR = os.getenv(
     "CATALOG_SEPARATOR", "____"
 )  # 4 underscores, as this should not appear in any catalog or collection id
 
-GROUP_SEPARATOR = os.getenv("GROUP_SEPARATOR", "_xx_")  # unique identifier used to separete catalog and collection identifies in index names
+GROUP_SEPARATOR = os.getenv(
+    "GROUP_SEPARATOR", "_xx_"
+)  # unique identifier used to separete catalog and collection identifies in index names
 
 ROOT_CATALOGS_INDEX = os.getenv("STAC_ROOT_CATALOGS_INDEX", "catalogs_root")
 ROOT_CATALOGS_INDEX_PREFIX = os.getenv("STAC_ROOT_CATALOGS_INDEX", "root_")
@@ -1903,7 +1905,12 @@ class DatabaseLogic:
 
         return self.collection_serializer.stac_to_db(collection, base_url)
 
-    async def update_parent_access_control(self, catalog_path_list: List[str], new_bitstring: str, collection_id: Optional[str]=None):
+    async def update_parent_access_control(
+        self,
+        catalog_path_list: List[str],
+        new_bitstring: str,
+        collection_id: Optional[str] = None,
+    ):
         """Update the access control bitstring for the parent catalog."""
         # Check if updating for collection or catalog
         # Currently nesting collections is not supported
@@ -1911,28 +1918,32 @@ class DatabaseLogic:
         if collection_id:
             # Get current bitstring
             collection = await self.client.get(
-                            index=index_collections_by_catalog_id(
-                                catalog_path_list=catalog_path_list
-                            ),
-                            id=collection_id,
-                        )
+                index=index_collections_by_catalog_id(
+                    catalog_path_list=catalog_path_list
+                ),
+                id=collection_id,
+            )
             return
             # TODO: Get all other child collections for this collection and compute OR bitwise operation
             # e.g. using self.get_collection_collections
-            
+
         elif len(catalog_path_list) > 1:
             # Update the access control bitstring for the parent catalog
             parent_catalog_path_list = catalog_path_list[:-1]
             catalog_id = catalog_path_list[-1]
             catalog = await self.client.get(
-                            index=index_catalogs_by_catalog_id(
-                                catalog_path_list=parent_catalog_path_list
-                            ),
-                            id=catalog_id,
-                        )
+                index=index_catalogs_by_catalog_id(
+                    catalog_path_list=parent_catalog_path_list
+                ),
+                id=catalog_id,
+            )
             old_bitstring = catalog["_source"]["access_control"]
-            old_bitstring_int = int(old_bitstring, 2)  # Convert binary string to integer
-            new_bitstring_int = int(new_bitstring, 2)  # Convert binary string to integer
+            old_bitstring_int = int(
+                old_bitstring, 2
+            )  # Convert binary string to integer
+            new_bitstring_int = int(
+                new_bitstring, 2
+            )  # Convert binary string to integer
             new_bitstring_int = old_bitstring_int | new_bitstring_int
 
             # Define the fixed length for the bitstrings
@@ -1950,19 +1961,25 @@ class DatabaseLogic:
                 refresh=True,
             )
 
-            await self.update_parent_access_control(catalog_path_list=catalog_path_list[:-1], new_bitstring=new_bitstring)
+            await self.update_parent_access_control(
+                catalog_path_list=catalog_path_list[:-1], new_bitstring=new_bitstring
+            )
 
         elif len(catalog_path_list) == 1:
             # Catalog path consists of a single catalog
             catalog_id = catalog_path_list[-1]
             catalog = await self.client.get(
-                            index=ROOT_CATALOGS_INDEX,
-                            id=catalog_id,
-                        )
-            
+                index=ROOT_CATALOGS_INDEX,
+                id=catalog_id,
+            )
+
             old_bitstring = catalog["_source"]["access_control"]
-            old_bitstring_int = int(old_bitstring, 2)  # Convert binary string to integer
-            new_bitstring_int = int(new_bitstring, 2)  # Convert binary string to integer
+            old_bitstring_int = int(
+                old_bitstring, 2
+            )  # Convert binary string to integer
+            new_bitstring_int = int(
+                new_bitstring, 2
+            )  # Convert binary string to integer
             new_bitstring_int = old_bitstring_int | new_bitstring_int
 
             # Define the fixed length for the bitstrings
@@ -1978,9 +1995,12 @@ class DatabaseLogic:
                 refresh=True,
             )
 
-
     async def create_collection(
-        self, catalog_path: str, collection: Collection, access_control: str, refresh: bool = False
+        self,
+        catalog_path: str,
+        collection: Collection,
+        access_control: str,
+        refresh: bool = False,
     ):
         """Database logic for creating one item.
 
@@ -2020,22 +2040,19 @@ class DatabaseLogic:
         )
 
         collection = await self.client.get(
-                            index=index_collections_by_catalog_id(
-                                catalog_path_list=catalog_path_list
-                            ),
-                            id=collection_id,
-                        )
+            index=index_collections_by_catalog_id(catalog_path_list=catalog_path_list),
+            id=collection_id,
+        )
 
         # Update the access control bitstring for the parent catalog
-        await self.update_parent_access_control(catalog_path_list=catalog_path_list, new_bitstring=access_control)
+        await self.update_parent_access_control(
+            catalog_path_list=catalog_path_list, new_bitstring=access_control
+        )
 
         collection = await self.client.get(
-                            index=index_collections_by_catalog_id(
-                                catalog_path_list=catalog_path_list
-                            ),
-                            id=collection_id,
-                        )
-
+            index=index_collections_by_catalog_id(catalog_path_list=catalog_path_list),
+            id=collection_id,
+        )
 
         if (meta := es_resp.get("meta")) and meta.get("status") == 409:
             raise ConflictError(
@@ -2120,7 +2137,10 @@ class DatabaseLogic:
 
         if collection_id != collection["id"]:
             await self.create_collection(
-                catalog_path=catalog_path, collection=collection, refresh=refresh, access_control=access_control
+                catalog_path=catalog_path,
+                collection=collection,
+                refresh=refresh,
+                access_control=access_control,
             )
             dest_index = index_by_collection_id(
                 collection_id=collection["id"], catalog_path_list=catalog_path_list
@@ -2164,7 +2184,9 @@ class DatabaseLogic:
             # Record access control bitstring for this document
             annotation = {"access_control": access_control}
             await self.client.update(
-                index=index_collections_by_catalog_id(catalog_path_list=catalog_path_list),
+                index=index_collections_by_catalog_id(
+                    catalog_path_list=catalog_path_list
+                ),
                 id=collection_id,
                 body={"doc": annotation},
                 refresh=refresh,
@@ -2363,19 +2385,21 @@ class DatabaseLogic:
         )
 
         catalog = await self.client.get(
-                            index=index,
-                            id=catalog_id,
-                        )
-        
+            index=index,
+            id=catalog_id,
+        )
+
         # Update the access control bitstring for the parent catalog
         if catalog_path:
-            await self.update_parent_access_control(catalog_path_list=catalog_path_list, new_bitstring=access_control)
+            await self.update_parent_access_control(
+                catalog_path_list=catalog_path_list, new_bitstring=access_control
+            )
 
         catalog = await self.client.get(
-                            index=index,
-                            id=catalog_id,
-                        )
-        
+            index=index,
+            id=catalog_id,
+        )
+
     async def find_catalog(self, catalog_path: str) -> Catalog:
         """Find and return a collection from the database.
 
