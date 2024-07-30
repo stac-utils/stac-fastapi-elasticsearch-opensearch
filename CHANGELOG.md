@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## EODHP
 The following changes have been made for the EODHP project
+### V0.3.8 - 2024-07-30
+Access-Control Logic in Catalog
+- Adding access control to catalogs and collections added to the catalogue
+- Access limited based on incoming `authorization` header username
+- Workspace parameter used when creating/editing entries to ensure workspace has required access to make the requested changes
+- Access determined by hashing the provided username or workspace name, storing in elasticsearch and filtering results
 ### v0.3.7 - 2024-07-02
 Catalog creation logic improvement
 - Ensure parent catalog exists before creating child
