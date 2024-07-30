@@ -186,6 +186,13 @@ class CoreClient(AsyncBaseCoreClient):
             extension_schemas=[],
         )
 
+        # Check if current user has access to each Catalog
+        # Extract X-Username header from username_header
+        username = username_header.get("X-Username", "")
+
+        # Get user index
+        user_index = hash_to_index(username)
+
         catalogs = []
 
         while True:
@@ -193,16 +200,10 @@ class CoreClient(AsyncBaseCoreClient):
                 token=None, limit=NUMBER_OF_CATALOG_COLLECTIONS, base_url=base_url
             )
 
-            # Check if current user has access to each Catalog
-            # Extract X-Username header from username_header
-            username = username_header.get("X-Username", "")
-
-            # Get user index
-            user_index = hash_to_index(username)
             for catalog in temp_catalogs:
                 # Get access control array for each catalog
                 access_control = catalog["access_control"]
-                # Remove catalog from list if user does not have access
+                # Append catalog to list if user has access
                 # Convert to int to ensure 0 is falsy and 1 is truthy
                 if int(access_control[-1]) or int(access_control[user_index]):
                     catalogs.append(catalog)
@@ -262,6 +263,13 @@ class CoreClient(AsyncBaseCoreClient):
         limit = int(request.query_params.get("limit", 10))
         token = request.query_params.get("token")
 
+        # Check if current user has access to each Catalog
+        # Extract X-Username header from username_header
+        username = username_header.get("X-Username", "")
+
+        # Get user index
+        user_index = hash_to_index(username)
+
         collections = []
 
         while True:
@@ -269,24 +277,22 @@ class CoreClient(AsyncBaseCoreClient):
                 token=token, limit=limit, base_url=base_url
             )
 
-            # Check if current user has access to each Catalog
-            # Extract X-Username header from username_header
-            username = username_header.get("X-Username", "")
-
-            # Get user index
-            user_index = hash_to_index(username)
             for collection in temp_collections:
                 # Get access control array for each collection
                 access_control = collection["access_control"]
                 collection.pop("access_control")
-                # Remove collection from list if user does not have access
+                # Append collection to list if user has access
                 if int(access_control[-1]) or int(access_control[user_index]):
                     collections.append(collection)
+                    if len(collections) >= limit:
+                        break
 
-            token = next_token
-            # If collections now less than limit or no more results, will need to run search again, giving next_token
+            # If collections now less than limit and more results, will need to run search again, giving next_token
             if len(collections) >= limit or not next_token:
+                # TODO: implement smarter token logic to return token of last returned ES entry
+                next_token = token
                 break
+            token = next_token
 
         links = [
             {"rel": Relations.root.value, "type": MimeTypes.json, "href": base_url},
@@ -341,24 +347,21 @@ class CoreClient(AsyncBaseCoreClient):
                 conformance_classes=self.conformance_classes(),
             )
 
-            for i, catalog in enumerate(temp_catalogs):
+            for catalog in temp_catalogs:
                 # Get access control array for each catalog
                 access_control = catalog["access_control"]
                 catalog.pop("access_control")
                 # Add catalog to list if user has access
                 if int(access_control[-1]) or int(access_control[user_index]):
                     catalogs.append(catalog)
-                if len(catalogs) >= limit:
-                    if i < len(temp_catalogs) - 1:
-                        # If limit is reached and there are more results, break and return previous token
-                        next_token = token
+                    if len(catalogs) >= limit:
                         break
-            else:
-                if not next_token:
-                    break
-                if len(catalogs) >= limit:
-                    # If token is provided, but limit is reached, break and return token
-                    break
+
+            # If catalogs now less than limit and more results, will need to run search again, giving next_token
+            if len(catalogs) >= limit or not next_token:
+                # TODO: implement smarter token logic to return token of last returned ES entry
+                next_token = token
+                break
             token = next_token
 
         links = [
@@ -572,11 +575,15 @@ class CoreClient(AsyncBaseCoreClient):
                 # Remove collection from list if user does not have access
                 if int(access_control[-1]) or int(access_control[user_index]):
                     collections.append(collection)
+                    if len(collections) >= limit:
+                        break
 
-            token = next_token
-            # If collections now less than limit or no more results, will need to run search again, giving next_token
+            # If collections now less than limit and more results, will need to run search again, giving next_token
             if len(collections) >= limit or not next_token:
+                # TODO: implement smarter token logic to return token of last returned ES entry
+                next_token = token
                 break
+            token = next_token
 
         links = [
             {"rel": Relations.root.value, "type": MimeTypes.json, "href": base_url},
@@ -1062,9 +1069,11 @@ class CoreClient(AsyncBaseCoreClient):
                     )
                     # Get access control array for this collection
                     access_control = collection["access_control"]
-                    # Remove catalog from list if user does not have access
+                    # Append item to list if user has access
                     if int(access_control[-1]) or int(access_control[user_index]):
                         items.append(item)
+                        if len(items) >= limit:
+                            break
                 # Get parent catalog if collection is not present
                 else:
                     # Get access control array for this catalog
@@ -1072,16 +1081,18 @@ class CoreClient(AsyncBaseCoreClient):
                         catalog_path=item_catalog_path
                     )
                     access_control = catalog["access_control"]
-                    # Remove catalog from list if user does not have access
-                    if not int(access_control[-1]) and not int(
-                        access_control[user_index]
-                    ):
-                        items.remove(item)
+                    # Append item to list if user has access
+                    if int(access_control[-1]) or int(access_control[user_index]):
+                        items.append(item)
+                        if len(items) >= limit:
+                            break
 
-            token = next_token
-            # If items now less than limit, will need to run search again, giving next_token
+            # If items now less than limit and more results, will need to run search again, giving next_token
             if len(items) >= limit or not next_token:
+                # TODO: implement smarter token logic to return token of last returned ES entry
+                next_token = token
                 break
+            token = next_token
 
         # To handle catalog_id in links execute_search also returns the catalog_id
         # from search results in a tuple
@@ -1387,7 +1398,7 @@ class CoreClient(AsyncBaseCoreClient):
                     )
                     # Get access control array for this collection
                     access_control = collection["access_control"]
-                    # Remove catalog from list if user does not have access
+                    # Append item to list if user has access
                     if int(access_control[-1]) or int(access_control[user_index]):
                         items.append(item)
                 # Get parent catalog if collection is not present
@@ -1397,16 +1408,16 @@ class CoreClient(AsyncBaseCoreClient):
                         catalog_path=item_catalog_path
                     )
                     access_control = catalog["access_control"]
-                    # Remove catalog from list if user does not have access
-                    if not int(access_control[-1]) and not int(
-                        access_control[user_index]
-                    ):
-                        items.remove(item)
+                    # Append item to list if user has access
+                    if int(access_control[-1]) or int(access_control[user_index]):
+                        items.append(item)
 
-            token = next_token
-            # If items now less than limit, will need to run search again, giving next_token
+            # If items now less than limit and more results, will need to run search again, giving next_token
             if len(items) >= limit or not next_token:
+                # TODO: implement smarter token logic to return token of last returned ES entry
+                next_token = token
                 break
+            token = next_token
 
         # To handle catalog_id in links execute_search also returns the catalog_id
         # from search results in a tuple
@@ -2251,14 +2262,16 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
                 # Get access control array for this collection
                 access_control = collection["access_control"]
                 collection.pop("access_control")
-                # Remove collection from list if user does not have access
+                # Append collection to list if user has access
                 if int(access_control[-1]) or int(access_control[user_index]):
                     collections.append(collection)
 
-            token = next_token
-            # If collections now less than limit or no more results, will need to run search again, giving next_token
+            # If collections now less than limit and more results, will need to run search again, giving next_token
             if len(collections) >= limit or not next_token:
+                # TODO: implement smarter token logic to return token of last returned ES entry
+                next_token = token
                 break
+            token = next_token
 
         links = []
         if next_token:
@@ -2407,14 +2420,16 @@ class EsAsyncDiscoverySearchClient(AsyncDiscoverySearchClient):
                 # Get access control array for this collection
                 access_control = data["access_control"]
                 data.pop("access_control")
-                # Remove collection from list if user does not have access
+                # Append collection to list if user has access
                 if int(access_control[-1]) or int(access_control[user_index]):
                     catalogs_and_collections.append(data)
 
-            token = next_token
-            # If items now less than limit, will need to run search again, giving next_token
+            # If catalogs_and_collections now less than limit and more results, will need to run search again, giving next_token
             if len(catalogs_and_collections) >= limit or not next_token:
+                # TODO: implement smarter token logic to return token of last returned ES entry
+                next_token = token
                 break
+            token = next_token
 
         links = []
         if next_token:
