@@ -1883,8 +1883,15 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         # e.g. user-datasets/user-workspace/collection
         if workspace != "default_workspace":
             catalog_path_with_slash = f"{catalog_path}/" if catalog_path else ""
-            # This workspace can only write to the user-datasets/user-workspace sub-catalog
-            if not catalog_path or not catalog_path_with_slash.startswith(
+            # This workspace can create its own subcatalog with the same id as the workspace name
+            if (
+                catalog_path
+                and catalog_path.startswith("user-datasets")
+                and catalog["id"] == workspace
+            ):
+                username = workspace
+            # This workspace can then only write to the user-datasets/user-workspace sub-catalog
+            elif not catalog_path or not catalog_path_with_slash.startswith(
                 f"user-datasets/{workspace}/"
             ):
                 raise HTTPException(
