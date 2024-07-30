@@ -1606,21 +1606,26 @@ class DatabaseLogic:
             )
 
         next_token = None
-        if hits and (sort_array := hits[-1].get("sort")):
-            next_token = urlsafe_b64encode(
-                ",".join([str(x) for x in sort_array]).encode()
-            ).decode()
+        if len(hits) > limit and limit < max_result_window:
+            if hits and (sort_array := hits[limit - 1].get("sort")):
+                next_token = urlsafe_b64encode(
+                    ",".join([str(x) for x in sort_array]).encode()
+                ).decode()
 
         # (1) count should not block returning results, so don't wait for it to be done
         # (2) don't cancel the task so that it will populate the ES cache for subsequent counts
-        maybe_count = None
+        matched = (
+            es_response["hits"]["total"]["value"]
+            if es_response["hits"]["total"]["relation"] == "eq"
+            else None
+        )
         if count_task.done():
             try:
-                maybe_count = count_task.result().get("count")
+                matched = count_task.result().get("count")
             except Exception as e:
                 logger.error(f"Count task failed: {e}")
 
-        return collections, maybe_count, next_token
+        return collections, matched, next_token
 
     """ TRANSACTION LOGIC """
 
