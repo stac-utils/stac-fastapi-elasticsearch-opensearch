@@ -577,7 +577,6 @@ async def test_pagination_base_links(app_client, ctx):
 
 
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="Not working in stac-fastapi v3.0.0?")
 async def test_pagination_links_behavior(app_client, ctx, txn_client):
     """Test the links in pagination specifically look for last page behavior."""
 
@@ -620,7 +619,6 @@ async def test_pagination_links_behavior(app_client, ctx, txn_client):
 
 
 @pytest.mark.asyncio
-@pytest.mark.skip(reason="Not working in stac-fastapi v3.0.0?")
 async def test_pagination_item_collection(app_client, ctx, txn_client):
     """Test item collection pagination links (paging extension)"""
     ids = [ctx.item["id"]]
