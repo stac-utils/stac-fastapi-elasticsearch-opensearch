@@ -279,7 +279,7 @@ class CoreClient(AsyncBaseCoreClient):
         collection_id: str,
         bbox: Optional[BBox] = None,
         datetime: Optional[DateTimeType] = None,
-        limit: int = 10,
+        limit: Optional[int] = 10,
         token: Optional[str] = None,
         **kwargs,
     ) -> stac_types.ItemCollection:
