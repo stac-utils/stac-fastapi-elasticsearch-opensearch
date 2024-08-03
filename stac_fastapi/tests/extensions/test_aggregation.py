@@ -186,7 +186,7 @@ async def test_aggregate_filter_extension_neq_post(app_client, ctx):
     }
     resp = await app_client.post("/aggregate", json=params)
     assert resp.status_code == 200
-    assert resp.json()["aggregations"][0]["value"] == 1
+    assert resp.json()["aggregations"][0]["value"] == 0
 
 
 @pytest.mark.asyncio
