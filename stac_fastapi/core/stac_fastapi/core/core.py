@@ -302,8 +302,8 @@ class CoreClient(AsyncBaseCoreClient):
             Exception: If any error occurs while reading the items from the database.
         """
         request: Request = kwargs["request"]
-        token = request.query_params.get('token')
-        
+        token = request.query_params.get("token")
+
         base_url = str(request.base_url)
 
         collection = await self.get_collection(
