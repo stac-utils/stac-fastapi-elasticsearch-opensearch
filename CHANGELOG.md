@@ -5,10 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [v3.0.0] - 2024-08-14
 
 ### Changed
 - Aggregation bug fixes [#281](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/281)
+- Updated stac-fastapi libraries to v3.0.0 [#282](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/282)
 
 ## [v3.0.0a3] - 2024-07-17
 
@@ -238,11 +239,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Added db_to_stac serializer to item_collection method in core.py.
 
 
-[Unreleased]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.0.0a3...main>
-[v3.0.0a3]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.0.0a2...v3.0.0a3>
-[v3.0.0a2]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.0.0a1...v3.0.0a2>
-[v3.0.0a1]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.0.0a0...v3.0.0a1>
-[v3.0.0a0]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.4.1...v3.0.0a0>
+[Unreleased]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.0.0...main>
+[v3.0.0]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.4.1...v3.0.0>
 [v2.4.1]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.4.0...v2.4.1>
 [v2.4.0]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.3.0...v2.4.0>
 [v2.3.0]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.2.0...v2.3.0>
