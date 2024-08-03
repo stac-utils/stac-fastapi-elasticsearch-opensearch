@@ -280,7 +280,7 @@ class CoreClient(AsyncBaseCoreClient):
         bbox: Optional[BBox] = None,
         datetime: Optional[DateTimeType] = None,
         limit: int = 10,
-        token: str = None,
+        token: Optional[str] = None,
         **kwargs,
     ) -> stac_types.ItemCollection:
         """Read items from a specific collection in the database.
@@ -302,6 +302,8 @@ class CoreClient(AsyncBaseCoreClient):
             Exception: If any error occurs while reading the items from the database.
         """
         request: Request = kwargs["request"]
+        token = request.query_params.get('token')
+        
         base_url = str(request.base_url)
 
         collection = await self.get_collection(
