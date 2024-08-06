@@ -996,7 +996,7 @@ class CoreClient(AsyncBaseCoreClient):
         items, maybe_count, next_token = await self.database.execute_search(
             search=search,
             limit=limit,
-            token=None,  # search_request.token,  # type: ignore
+            token=search_request.token,  # type: ignore
             sort=sort,
             collection_ids=search_request.collections,
             catalog_paths=[catalog_path],
