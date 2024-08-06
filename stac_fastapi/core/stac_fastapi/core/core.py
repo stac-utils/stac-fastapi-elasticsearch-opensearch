@@ -1,6 +1,5 @@
 """Core client."""
 import logging
-import re
 from datetime import datetime as datetime_type
 from datetime import timezone
 from enum import Enum
@@ -279,8 +278,8 @@ class CoreClient(AsyncBaseCoreClient):
         collection_id: str,
         bbox: Optional[BBox] = None,
         datetime: Optional[DateTimeType] = None,
-        limit: int = 10,
-        token: str = None,
+        limit: Optional[int] = 10,
+        token: Optional[str] = None,
         **kwargs,
     ) -> stac_types.ItemCollection:
         """Read items from a specific collection in the database.
@@ -302,6 +301,8 @@ class CoreClient(AsyncBaseCoreClient):
             Exception: If any error occurs while reading the items from the database.
         """
         request: Request = kwargs["request"]
+        token = request.query_params.get("token")
+
         base_url = str(request.base_url)
 
         collection = await self.get_collection(
@@ -489,14 +490,6 @@ class CoreClient(AsyncBaseCoreClient):
             "token": token,
             "query": orjson.loads(query) if query else query,
         }
-
-        # this is borrowed from stac-fastapi-pgstac
-        # Kludgy fix because using factory does not allow alias for filter-lan
-        query_params = str(request.query_params)
-        if filter_lang is None:
-            match = re.search(r"filter-lang=([a-z0-9-]+)", query_params, re.IGNORECASE)
-            if match:
-                filter_lang = match.group(1)
 
         if datetime:
             base_args["datetime"] = self._format_datetime_range(datetime)
