@@ -492,14 +492,6 @@ class CoreClient(AsyncBaseCoreClient):
             "query": orjson.loads(query) if query else query,
         }
 
-        # this is borrowed from stac-fastapi-pgstac
-        # Kludgy fix because using factory does not allow alias for filter-lan
-        query_params = str(request.query_params)
-        if filter_lang is None:
-            match = re.search(r"filter-lang=([a-z0-9-]+)", query_params, re.IGNORECASE)
-            if match:
-                filter_lang = match.group(1)
-
         if datetime:
             base_args["datetime"] = self._format_datetime_range(datetime)
 

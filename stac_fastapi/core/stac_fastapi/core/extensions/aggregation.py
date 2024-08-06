@@ -351,18 +351,6 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
             if datetime:
                 base_args["datetime"] = self._format_datetime_range(datetime)
 
-            # this is borrowed from stac-fastapi-pgstac
-            # Kludgy fix because using factory does not allow alias for filter-lang
-            # If the value is the default, check if the request is different.
-            query_params = str(request.query_params)
-            if filter_lang is None:
-                match = re.search(
-                    r"filter-lang=([a-z0-9-]+)", query_params, re.IGNORECASE
-                )
-                if match:
-                    filter_lang = match.group(1)
-                else:
-                    filter_lang = "cql2-text"
             if filter:
                 base_args["filter"] = self.get_filter(filter, filter_lang)
             aggregate_request = EsAggregationExtensionPostRequest(**base_args)
