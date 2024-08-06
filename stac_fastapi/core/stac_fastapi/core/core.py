@@ -1,6 +1,5 @@
 """Core client."""
 import logging
-import re
 from datetime import datetime as datetime_type
 from datetime import timezone
 from enum import Enum

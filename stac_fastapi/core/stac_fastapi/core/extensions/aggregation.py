@@ -1,6 +1,5 @@
 """Request model for the Aggregation extension."""
 
-import re
 from datetime import datetime
 from datetime import datetime as datetime_type
 from typing import Dict, List, Literal, Optional, Union
