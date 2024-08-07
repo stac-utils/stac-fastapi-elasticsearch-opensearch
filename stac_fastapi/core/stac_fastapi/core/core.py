@@ -357,13 +357,8 @@ class CoreClient(AsyncBaseCoreClient):
                 # Add catalog to list if user has access
                 if int(access_control[-1]) or int(access_control[user_index]):
                     catalogs.append(catalog)
-                    print("catalogs length is ", len(catalogs))
-                    print("limit is ", limit)
                     if len(catalogs) >= limit:
-                        print("here")
-                        print(i)
                         if i < len(temp_catalogs) - 1:
-                            print("AND FINALLY HERE")
                             # Extract token from last result
                             next_token = hit_token
                             break
@@ -1283,7 +1278,6 @@ class CoreClient(AsyncBaseCoreClient):
         username_header: dict,
         **kwargs,
     ) -> ItemCollection:
-        print("post search")
         """
         Perform a POST search on a specific sub-catalog.
 
