@@ -35,6 +35,7 @@ class AsyncBaseTransactionsClient(abc.ABC):
         catalog_path: str,
         collection_id: str,
         item: Union[stac_types.Item, stac_types.ItemCollection],
+        workspace: str,
         **kwargs,
     ) -> Optional[Union[stac_types.Item, Response, None]]:
         """Create a new item.
@@ -57,6 +58,7 @@ class AsyncBaseTransactionsClient(abc.ABC):
         collection_id: str,
         item_id: str,
         item: stac_types.Item,
+        workspace: str,
         **kwargs,
     ) -> Optional[Union[stac_types.Item, Response]]:
         """Perform a complete update on an existing item.
@@ -76,7 +78,12 @@ class AsyncBaseTransactionsClient(abc.ABC):
 
     @abc.abstractmethod
     async def delete_item(
-        self, item_id: str, collection_id: str, catalog_path: str, **kwargs
+        self,
+        item_id: str,
+        collection_id: str,
+        catalog_path: str,
+        workspace: str,
+        **kwargs,
     ) -> Optional[Union[stac_types.Item, Response]]:
         """Delete an item from a collection.
 
@@ -93,7 +100,12 @@ class AsyncBaseTransactionsClient(abc.ABC):
 
     @abc.abstractmethod
     async def create_collection(
-        self, catalog_path: str, collection: stac_types.Collection, **kwargs
+        self,
+        catalog_path: str,
+        collection: stac_types.Collection,
+        workspace: str,
+        is_public: bool = False,
+        **kwargs,
     ) -> Optional[Union[stac_types.Collection, Response]]:
         """Create a new collection.
 
@@ -113,6 +125,7 @@ class AsyncBaseTransactionsClient(abc.ABC):
         catalog_path: str,
         collection_id: str,
         collection: stac_types.Collection,
+        workspace: str,
         **kwargs,
     ) -> Optional[Union[stac_types.Collection, Response]]:
         """Perform a complete update on an existing collection.
@@ -132,7 +145,7 @@ class AsyncBaseTransactionsClient(abc.ABC):
 
     @abc.abstractmethod
     async def delete_collection(
-        self, catalog_path: str, collection_id: str, **kwargs
+        self, catalog_path: str, collection_id: str, workspace: str, **kwargs
     ) -> Optional[Union[stac_types.Collection, Response]]:
         """Delete a collection.
 
@@ -148,7 +161,12 @@ class AsyncBaseTransactionsClient(abc.ABC):
 
     @abc.abstractmethod
     async def create_catalog(
-        self, catalog: stac_types.Catalog, catalog_path: Optional[str], **kwargs
+        self,
+        catalog: stac_types.Catalog,
+        workspace: str,
+        catalog_path: Optional[str],
+        is_public: bool = False,
+        **kwargs,
     ) -> Optional[stac_types.Catalog | Response]:
         """Create a new catalog.
 
@@ -164,7 +182,7 @@ class AsyncBaseTransactionsClient(abc.ABC):
 
     @abc.abstractmethod
     async def update_catalog(
-        self, catalog_path: str, catalog: stac_types.Catalog, **kwargs
+        self, catalog_path: str, catalog: stac_types.Catalog, workspace: str, **kwargs
     ) -> Optional[stac_types.Catalog | Response]:
         """Perform a complete update on an existing collection.
 
@@ -183,7 +201,7 @@ class AsyncBaseTransactionsClient(abc.ABC):
 
     @abc.abstractmethod
     async def delete_catalog(
-        self, catalog_path: str, **kwargs
+        self, catalog_path: str, workspace: str, **kwargs
     ) -> Optional[stac_types.Catalog | Response]:
         """Delete a collection.
 

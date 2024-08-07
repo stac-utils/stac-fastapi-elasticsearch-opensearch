@@ -1,7 +1,7 @@
 """Base database logic."""
 
 import abc
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 
 class BaseDatabaseLogic(abc.ABC):
@@ -47,7 +47,13 @@ class BaseDatabaseLogic(abc.ABC):
 
     @abc.abstractmethod
     async def create_collection(
-        self, catalog_path: str, collection: Dict, refresh: bool = False
+        self,
+        catalog_path: str,
+        collection: Dict,
+        username_header: dict,
+        workspace: str,
+        is_public: bool,
+        refresh: bool = False,
     ) -> None:
         """Create a collection in the database."""
         pass
@@ -66,7 +72,11 @@ class BaseDatabaseLogic(abc.ABC):
 
     @abc.abstractmethod
     async def create_catalog(
-        self, catalog: Dict, catalog_path: Optional[str], refresh: bool = False
+        self,
+        catalog: Dict,
+        access_control: List[int],
+        catalog_path: Optional[str],
+        refresh: bool = False,
     ) -> None:
         """Create a catalog in the database."""
         pass
