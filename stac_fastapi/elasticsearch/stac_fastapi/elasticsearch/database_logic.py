@@ -682,8 +682,8 @@ class DatabaseLogic:
         if token:
             search_after = [token]
 
+        # Logic to ensure next token only returned when further results are available
         max_result_window = stac_fastapi.types.search.Limit.le
-
         size_limit = min(limit + 1, max_result_window)
 
         response = await self.client.search(
@@ -696,6 +696,7 @@ class DatabaseLogic:
         )
 
         collections = []
+        hit_tokens = []
         hits = response["hits"]["hits"]
         for hit in hits:
             catalog_path = hit["_index"].split("_", 1)[1]
@@ -709,13 +710,18 @@ class DatabaseLogic:
                     catalog_path=catalog_path,
                 )
             )
+            if hit.get("sort"):
+                    hit_token = hit["sort"][0]
+                    hit_tokens.append(hit_token)
+            else:
+                hit_tokens.append(None)
 
         next_token = None
         if len(hits) > limit and limit < max_result_window:
-            if hits and (sort_array := hits[limit - 1].get("sort")):
+            if hits and (hits[-1].get("sort")):
                 next_token = hits[-1]["sort"][0]
 
-        return collections, next_token
+        return collections, next_token, hit_tokens
 
     async def get_catalog_collections(
         self, catalog_path: str, token: Optional[str], limit: int, base_url: str
@@ -757,12 +763,15 @@ class DatabaseLogic:
                 },
             )
         except exceptions.NotFoundError:
+            # No collections underneath this catalog
             response = None
             collections = []
-            hits = None
+            hits = []
+            hit_tokens = []
 
         if response:
             collections = []
+            hit_tokens = []
             hits = response["hits"]["hits"]
             for hit in hits:
                 catalog_path = hit["_index"].split("_", 1)[1]
@@ -776,13 +785,18 @@ class DatabaseLogic:
                         catalog_path=catalog_path,
                     )
                 )
+                if hit.get("sort"):
+                    hit_token = hit["sort"][0]
+                    hit_tokens.append(hit_token)
+                else:
+                    hit_tokens.append(None)
 
         next_token = None
         if len(hits) > limit and limit < max_result_window:
-            if hits and (sort_array := hits[limit - 1].get("sort")):
+            if hits and (hits[-1].get("sort")):
                 next_token = hits[-1]["sort"][0]
 
-        return collections, next_token
+        return collections, next_token, hit_tokens
 
     async def get_all_catalogs(
         self,
@@ -902,6 +916,7 @@ class DatabaseLogic:
         child_data = list(zip(sub_catalogs_responses, collection_responses))
 
         catalogs = []
+        hit_tokens = []
         for i, hit in enumerate(hits):
             catalog_path = hit["_index"].split("_", 1)[1]
             catalog_path_list = catalog_path.split(CATALOG_SEPARATOR)
@@ -934,13 +949,18 @@ class DatabaseLogic:
                     conformance_classes=conformance_classes,
                 )
             )
+            if hit.get("sort"):
+                    hit_token = hit["sort"][0]
+                    hit_tokens.append(hit_token)
+            else:
+                hit_tokens.append(None)
 
         next_token = None
         if len(hits) > limit and limit < max_result_window:
-            if hits and (sort_array := hits[limit - 1].get("sort")):
+            if hits and (hits[-1].get("sort")):
                 next_token = hits[-1]["sort"][0]
 
-        return catalogs, next_token
+        return catalogs, next_token, hit_tokens
 
     async def get_catalog_subcatalogs(
         self,
@@ -997,7 +1017,7 @@ class DatabaseLogic:
         except exceptions.NotFoundError:
             response = None
             catalogs = []
-            hits = None
+            hits = []
 
         if response:
             hits = response["hits"]["hits"]
@@ -1012,7 +1032,7 @@ class DatabaseLogic:
 
         next_token = None
         if len(hits) > limit and limit < max_result_window:
-            if hits and (sort_array := hits[limit - 1].get("sort")):
+            if hits and (hits[-1].get("sort")):
                 next_token = hits[-1]["sort"][0]
 
         return catalogs, next_token
@@ -1479,8 +1499,8 @@ class DatabaseLogic:
 
         index_param = f"{ITEMS_INDEX_PREFIX}*"
 
+        # Logic to ensure next token only returned when further results are available
         max_result_window = stac_fastapi.types.search.Limit.le
-
         size_limit = min(limit + 1, max_result_window)
 
         if collection_ids and catalog_paths:
@@ -1520,12 +1540,20 @@ class DatabaseLogic:
 
         # Need to identify catalog for each item
         items = []
+        hit_tokens = []
         for hit in hits[:limit]:
             item_catalog_path = hit["_index"].split(GROUP_SEPARATOR, 1)[1]
             item_catalog_path_list = item_catalog_path.split(CATALOG_SEPARATOR)
             item_catalog_path_list.reverse()
             item_catalog_path = "/".join(item_catalog_path_list)
             items.append((hit["_source"], item_catalog_path))
+            if sort_array := hit.get("sort"):
+                hit_token = urlsafe_b64encode(
+                    ",".join([str(x) for x in sort_array]).encode()
+                ).decode()
+                hit_tokens.append(hit_token)
+            else:
+                hit_tokens.append(None)
 
         next_token = None
         if len(hits) > limit and limit < max_result_window:
@@ -1547,7 +1575,7 @@ class DatabaseLogic:
             except Exception as e:
                 logger.error(f"Count task failed: {e}")
 
-        return items, matched, next_token
+        return items, matched, next_token, hit_tokens
 
     async def execute_collection_search(
         self,
@@ -1585,8 +1613,8 @@ class DatabaseLogic:
 
         query = search.query.to_dict() if search.query else None
 
+        # Logic to ensure next token only returned when further results are available
         max_result_window = stac_fastapi.types.search.Limit.le
-
         size_limit = min(limit + 1, max_result_window)
 
         search_task = asyncio.create_task(
@@ -1611,6 +1639,7 @@ class DatabaseLogic:
         es_response = await search_task
 
         collections = []
+        hit_tokens = []
         hits = es_response["hits"]["hits"]
         for hit in hits:
             catalog_path = hit["_index"].split("_", 1)[1]
@@ -1624,6 +1653,13 @@ class DatabaseLogic:
                     catalog_path=catalog_path,
                 )
             )
+            if sort_array := hit.get("sort"):
+                hit_token = urlsafe_b64encode(
+                    ",".join([str(x) for x in sort_array]).encode()
+                ).decode()
+                hit_tokens.append(hit_token)
+            else:
+                hit_tokens.append(None)
 
         next_token = None
         if len(hits) > limit and limit < max_result_window:
@@ -1645,7 +1681,7 @@ class DatabaseLogic:
             except Exception as e:
                 logger.error(f"Count task failed: {e}")
 
-        return collections, matched, next_token
+        return collections, matched, next_token, hit_tokens
 
     """ TRANSACTION LOGIC """
 
@@ -3041,8 +3077,8 @@ class DatabaseLogic:
 
         query = search.query.to_dict() if search.query else None
 
+        # Logic to ensure next token only returned when further results are available
         max_result_window = stac_fastapi.types.search.Limit.le
-
         size_limit = min(limit + 1, max_result_window)
 
         search_task = asyncio.create_task(
@@ -3147,35 +3183,42 @@ class DatabaseLogic:
 
         child_data = list(zip(sub_catalogs_responses, collection_responses))
 
+        hit_tokens = []
         for i, hit in enumerate(catalog_hits):
-            if hit["_source"]["type"] == "Catalog":
-                catalog_index_list = (
-                    hit["_index"].split("_", 1)[1].split(CATALOG_SEPARATOR)
-                )
-                catalog_index_list.reverse()
-                catalog_index = "/".join(catalog_index_list)
-                sub_data_catalogs_and_collections = child_data[i]
+            catalog_index_list = (
+                hit["_index"].split("_", 1)[1].split(CATALOG_SEPARATOR)
+            )
+            catalog_index_list.reverse()
+            catalog_index = "/".join(catalog_index_list)
+            sub_data_catalogs_and_collections = child_data[i]
 
-                # Extract sub-catalogs
-                sub_catalogs = []
-                for catalog in sub_data_catalogs_and_collections[0]:
-                    sub_catalogs.append(catalog["_source"])
-                # Extract collections
-                collections = []
-                for collection in sub_data_catalogs_and_collections[1]:
-                    collections.append(collection["_source"])
-                data.append(
-                    self.catalog_collection_serializer.db_to_stac(
-                        collection_serializer=self.collection_serializer,
-                        catalog_serializer=self.catalog_serializer,
-                        data=hit["_source"],
-                        base_url=base_url,
-                        catalog_path=catalog_index,
-                        sub_catalogs=sub_catalogs,
-                        collections=collections,
-                        conformance_classes=conformance_classes,
-                    )
+            # Extract sub-catalogs
+            sub_catalogs = []
+            for catalog in sub_data_catalogs_and_collections[0]:
+                sub_catalogs.append(catalog["_source"])
+            # Extract collections
+            collections = []
+            for collection in sub_data_catalogs_and_collections[1]:
+                collections.append(collection["_source"])
+            data.append(
+                self.catalog_collection_serializer.db_to_stac(
+                    collection_serializer=self.collection_serializer,
+                    catalog_serializer=self.catalog_serializer,
+                    data=hit["_source"],
+                    base_url=base_url,
+                    catalog_path=catalog_index,
+                    sub_catalogs=sub_catalogs,
+                    collections=collections,
+                    conformance_classes=conformance_classes,
                 )
+            )
+            if sort_array := hit.get("sort"):
+                hit_token = urlsafe_b64encode(
+                    ",".join([str(x) for x in sort_array]).encode()
+                ).decode()
+                hit_tokens.append(hit_token)
+            else:
+                hit_tokens.append(None)
         for i, hit in enumerate(collection_hits):
             if hit["_source"]["type"] == "Collection":
                 catalog_index = hit["_index"].split("_", 1)[1]
@@ -3196,6 +3239,13 @@ class DatabaseLogic:
                         conformance_classes=conformance_classes,
                     )
                 )
+                if sort_array := hit.get("sort"):
+                    hit_token = urlsafe_b64encode(
+                        ",".join([str(x) for x in sort_array]).encode()
+                    ).decode()
+                    hit_tokens.append(hit_token)
+                else:
+                    hit_tokens.append(None)
 
         next_token = None
         if len(hits) > limit and limit < max_result_window:
@@ -3217,4 +3267,4 @@ class DatabaseLogic:
             except Exception as e:
                 logger.error(f"Count task failed: {e}")
 
-        return data, matched, next_token
+        return data, matched, next_token, hit_tokens

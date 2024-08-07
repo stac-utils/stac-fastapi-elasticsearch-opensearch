@@ -273,11 +273,11 @@ class CoreClient(AsyncBaseCoreClient):
         collections = []
 
         while True:
-            temp_collections, next_token = await self.database.get_all_collections(
+            temp_collections, next_token, hit_tokens = await self.database.get_all_collections(
                 token=token, limit=limit, base_url=base_url
             )
 
-            for collection in temp_collections:
+            for i, (collection, hit_token) in enumerate(zip(temp_collections, hit_tokens)):
                 # Get access control array for each collection
                 access_control = collection["access_control"]
                 collection.pop("access_control")
@@ -285,7 +285,10 @@ class CoreClient(AsyncBaseCoreClient):
                 if int(access_control[-1]) or int(access_control[user_index]):
                     collections.append(collection)
                     if len(collections) >= limit:
-                        break
+                        # Extract token from last result
+                        if i < len(temp_collections) - 1:
+                            next_token = hit_token
+                            break
 
             # If collections now less than limit and more results, will need to run search again, giving next_token
             if len(collections) >= limit or not next_token:
@@ -338,7 +341,7 @@ class CoreClient(AsyncBaseCoreClient):
 
         while True:
             # Search is run continually until limit is reached or no more results
-            temp_catalogs, next_token = await self.database.get_all_catalogs(
+            temp_catalogs, next_token, hit_tokens = await self.database.get_all_catalogs(
                 catalog_path=catalog_path,
                 token=token,
                 limit=limit,
@@ -347,20 +350,27 @@ class CoreClient(AsyncBaseCoreClient):
                 conformance_classes=self.conformance_classes(),
             )
 
-            for catalog in temp_catalogs:
+            for i, (catalog, hit_token) in enumerate(zip(temp_catalogs, hit_tokens)):
                 # Get access control array for each catalog
                 access_control = catalog["access_control"]
                 catalog.pop("access_control")
                 # Add catalog to list if user has access
                 if int(access_control[-1]) or int(access_control[user_index]):
                     catalogs.append(catalog)
+                    print("catalogs length is ", len(catalogs))
+                    print("limit is ", limit)
                     if len(catalogs) >= limit:
-                        break
+                        print("here")
+                        print(i)
+                        if i < len(temp_catalogs) - 1:
+                            print("AND FINALLY HERE")
+                            # Extract token from last result
+                            next_token = hit_token
+                            break
 
             # If catalogs now less than limit and more results, will need to run search again, giving next_token
             if len(catalogs) >= limit or not next_token:
                 # TODO: implement smarter token logic to return token of last returned ES entry
-                next_token = token
                 break
             token = next_token
 
@@ -465,7 +475,7 @@ class CoreClient(AsyncBaseCoreClient):
             )
 
         # Assume at most 100 collections in a catalog for the time being, may need to increase
-        collections, _ = await self.database.get_catalog_collections(
+        collections, _, _= await self.database.get_catalog_collections(
             catalog_path=catalog_path,
             base_url=base_url,
             limit=NUMBER_OF_CATALOG_COLLECTIONS,
@@ -560,7 +570,7 @@ class CoreClient(AsyncBaseCoreClient):
         collections = []
 
         while True:
-            temp_collections, next_token = await self.database.get_catalog_collections(
+            temp_collections, next_token, hit_tokens = await self.database.get_catalog_collections(
                 catalog_path=catalog_path,
                 token=token,  # type: ignore
                 limit=limit,
@@ -568,7 +578,7 @@ class CoreClient(AsyncBaseCoreClient):
             )
 
             # Check if current user has access to each collection
-            for collection in temp_collections:
+            for i, (collection, hit_token) in enumerate(zip(temp_collections, hit_tokens)):
                 # Get access control array for each collection
                 access_control = collection["access_control"]
                 collection.pop("access_control")
@@ -576,12 +586,14 @@ class CoreClient(AsyncBaseCoreClient):
                 if int(access_control[-1]) or int(access_control[user_index]):
                     collections.append(collection)
                     if len(collections) >= limit:
-                        break
+                        if i < len(temp_collections) - 1:
+                            # Extract token from last result
+                            next_token = hit_token
+                            break
 
             # If collections now less than limit and more results, will need to run search again, giving next_token
             if len(collections) >= limit or not next_token:
                 # TODO: implement smarter token logic to return token of last returned ES entry
-                next_token = token
                 break
             token = next_token
 
@@ -674,7 +686,8 @@ class CoreClient(AsyncBaseCoreClient):
 
             search = self.database.apply_bbox_filter(search=search, bbox=bbox)
 
-        items, maybe_count, next_token = await self.database.execute_search(
+        # No further access control needed as already checked above for collection
+        items, maybe_count, next_token, _ = await self.database.execute_search(
             search=search,
             catalog_paths=[catalog_path],
             limit=limit,
@@ -1046,7 +1059,7 @@ class CoreClient(AsyncBaseCoreClient):
         items = []
 
         while True:
-            temp_items, maybe_count, next_token = await self.database.execute_search(
+            temp_items, maybe_count, next_token, hit_tokens = await self.database.execute_search(
                 search=search,
                 limit=limit,
                 token=token,  # type: ignore
@@ -1056,7 +1069,7 @@ class CoreClient(AsyncBaseCoreClient):
             )
 
             # Filter results to those that are accessible to the user
-            for item in temp_items:
+            for i, (item, hit_token) in enumerate(zip(temp_items, hit_tokens)):
                 # Get item index for path extraction
                 item_catalog_path = item[1]
                 # Get parent collection if collection is present
@@ -1073,7 +1086,10 @@ class CoreClient(AsyncBaseCoreClient):
                     if int(access_control[-1]) or int(access_control[user_index]):
                         items.append(item)
                         if len(items) >= limit:
-                            break
+                            if i < len(temp_items) - 1:
+                                # Extract token from last result
+                                next_token = hit_token
+                                break
                 # Get parent catalog if collection is not present
                 else:
                     # Get access control array for this catalog
@@ -1085,14 +1101,17 @@ class CoreClient(AsyncBaseCoreClient):
                     if int(access_control[-1]) or int(access_control[user_index]):
                         items.append(item)
                         if len(items) >= limit:
-                            break
+                            # Extract token from last result
+                            if i < len(temp_items) - 1:
+                                next_token = hit_token
+                                break
 
             # If items now less than limit and more results, will need to run search again, giving next_token
             if len(items) >= limit or not next_token:
                 # TODO: implement smarter token logic to return token of last returned ES entry
-                next_token = token
                 break
             token = next_token
+
 
         # To handle catalog_id in links execute_search also returns the catalog_id
         # from search results in a tuple
@@ -1299,9 +1318,12 @@ class CoreClient(AsyncBaseCoreClient):
             raise HTTPException(
                 status_code=403, detail="User does not have access to this Catalog"
             )
+        collections = []
+        if search_request.collections:
+            collections = search_request.collections
 
         # Filter the search collections to those that are accessible to the user
-        for collection_id in search_request.collections[:]:
+        for collection_id in collections[:]:
             # Filter the search catalogs to those that are accessible to the user
             collection = await self.database.find_collection(
                 catalog_path=catalog_path, collection_id=collection_id
@@ -1310,7 +1332,7 @@ class CoreClient(AsyncBaseCoreClient):
             access_control = collection["access_control"]
             # Remove catalog from list if user does not have access
             if not int(access_control[-1]) and not int(access_control[user_index]):
-                search_request.collections.remove(collection_id)
+                collections.remove(collection_id)
 
         search = self.database.make_search()
 
@@ -1319,9 +1341,9 @@ class CoreClient(AsyncBaseCoreClient):
                 search=search, item_ids=search_request.ids
             )
 
-        if search_request.collections:
+        if collections:
             search = self.database.apply_collections_filter(
-                search=search, collection_ids=search_request.collections
+                search=search, collection_ids=collections
             )
 
         if search_request.datetime:
@@ -1375,17 +1397,17 @@ class CoreClient(AsyncBaseCoreClient):
         items = []
 
         while True:
-            temp_items, maybe_count, next_token = await self.database.execute_search(
+            temp_items, maybe_count, next_token, hit_tokens = await self.database.execute_search(
                 search=search,
                 limit=limit,
                 token=token,  # type: ignore
                 sort=sort,
-                collection_ids=search_request.collections,
+                collection_ids=collections,
                 catalog_paths=[catalog_path],
             )
 
             # Filter results to those that are accessible to the user
-            for item in temp_items:
+            for i, (item, hit_token) in enumerate(zip(temp_items, hit_tokens)):
                 # Get item index for path extraction
                 item_catalog_path = item[1]
                 # Get parent collection if collection is present
@@ -1401,6 +1423,11 @@ class CoreClient(AsyncBaseCoreClient):
                     # Append item to list if user has access
                     if int(access_control[-1]) or int(access_control[user_index]):
                         items.append(item)
+                        if len(items) >= limit:
+                            if i < len(temp_items) - 1:
+                                # Extract token from last result
+                                next_token = hit_token
+                                break
                 # Get parent catalog if collection is not present
                 else:
                     # Get access control array for this catalog
@@ -1411,11 +1438,15 @@ class CoreClient(AsyncBaseCoreClient):
                     # Append item to list if user has access
                     if int(access_control[-1]) or int(access_control[user_index]):
                         items.append(item)
+                        if len(items) >= limit:
+                            if i < len(temp_items) - 1:
+                                # Extract token from last result
+                                next_token = hit_token
+                                break
 
             # If items now less than limit and more results, will need to run search again, giving next_token
             if len(items) >= limit or not next_token:
                 # TODO: implement smarter token logic to return token of last returned ES entry
-                next_token = token
                 break
             token = next_token
 
@@ -2254,7 +2285,7 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
         collections = []
 
         while True:
-            temp_collections, _, next_token = (
+            temp_collections, _, next_token, hit_tokens = (
                 await self.database.execute_collection_search(
                     search=search,
                     limit=limit,
@@ -2265,18 +2296,22 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
             )
 
             # Filter results to those that are accessible to the user
-            for collection in temp_collections:
+            for i, (collection, hit_token) in enumerate(zip(temp_collections, hit_tokens)):
                 # Get access control array for this collection
                 access_control = collection["access_control"]
                 collection.pop("access_control")
                 # Append collection to list if user has access
                 if int(access_control[-1]) or int(access_control[user_index]):
                     collections.append(collection)
+                    if len(collections) >= limit:
+                        if i < len(temp_collections) - 1:
+                            # Extract token from last result
+                            next_token = hit_token
+                            break
 
             # If collections now less than limit and more results, will need to run search again, giving next_token
             if len(collections) >= limit or not next_token:
                 # TODO: implement smarter token logic to return token of last returned ES entry
-                next_token = token
                 break
             token = next_token
 
@@ -2411,7 +2446,7 @@ class EsAsyncDiscoverySearchClient(AsyncDiscoverySearchClient):
         catalogs_and_collections = []
 
         while True:
-            temp_catalogs_and_collections, maybe_count, next_token = (
+            temp_catalogs_and_collections, _, next_token, hit_tokens = (
                 await self.database.execute_discovery_search(
                     search=search,
                     limit=limit,
@@ -2423,18 +2458,22 @@ class EsAsyncDiscoverySearchClient(AsyncDiscoverySearchClient):
             )
 
             # Filter results to those that are accessible to the user
-            for data in temp_catalogs_and_collections:
+            for i, (data, hit_token) in enumerate(zip(temp_catalogs_and_collections, hit_tokens)):
                 # Get access control array for this collection
                 access_control = data["access_control"]
                 data.pop("access_control")
                 # Append collection to list if user has access
                 if int(access_control[-1]) or int(access_control[user_index]):
                     catalogs_and_collections.append(data)
+                    if len(catalogs_and_collections) >= limit:
+                        if i < len(temp_catalogs_and_collections) - 1:
+                            # Extract token from last result
+                            next_token = hit_token
+                            break
 
             # If catalogs_and_collections now less than limit and more results, will need to run search again, giving next_token
             if len(catalogs_and_collections) >= limit or not next_token:
                 # TODO: implement smarter token logic to return token of last returned ES entry
-                next_token = token
                 break
             token = next_token
 
