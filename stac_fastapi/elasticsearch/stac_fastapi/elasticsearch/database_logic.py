@@ -711,8 +711,8 @@ class DatabaseLogic:
                 )
             )
             if hit.get("sort"):
-                    hit_token = hit["sort"][0]
-                    hit_tokens.append(hit_token)
+                hit_token = hit["sort"][0]
+                hit_tokens.append(hit_token)
             else:
                 hit_tokens.append(None)
 
@@ -950,8 +950,8 @@ class DatabaseLogic:
                 )
             )
             if hit.get("sort"):
-                    hit_token = hit["sort"][0]
-                    hit_tokens.append(hit_token)
+                hit_token = hit["sort"][0]
+                hit_tokens.append(hit_token)
             else:
                 hit_tokens.append(None)
 
@@ -3185,9 +3185,7 @@ class DatabaseLogic:
 
         hit_tokens = []
         for i, hit in enumerate(catalog_hits):
-            catalog_index_list = (
-                hit["_index"].split("_", 1)[1].split(CATALOG_SEPARATOR)
-            )
+            catalog_index_list = hit["_index"].split("_", 1)[1].split(CATALOG_SEPARATOR)
             catalog_index_list.reverse()
             catalog_index = "/".join(catalog_index_list)
             sub_data_catalogs_and_collections = child_data[i]

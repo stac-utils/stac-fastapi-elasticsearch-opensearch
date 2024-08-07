@@ -273,11 +273,15 @@ class CoreClient(AsyncBaseCoreClient):
         collections = []
 
         while True:
-            temp_collections, next_token, hit_tokens = await self.database.get_all_collections(
-                token=token, limit=limit, base_url=base_url
+            temp_collections, next_token, hit_tokens = (
+                await self.database.get_all_collections(
+                    token=token, limit=limit, base_url=base_url
+                )
             )
 
-            for i, (collection, hit_token) in enumerate(zip(temp_collections, hit_tokens)):
+            for i, (collection, hit_token) in enumerate(
+                zip(temp_collections, hit_tokens)
+            ):
                 # Get access control array for each collection
                 access_control = collection["access_control"]
                 collection.pop("access_control")
@@ -341,13 +345,15 @@ class CoreClient(AsyncBaseCoreClient):
 
         while True:
             # Search is run continually until limit is reached or no more results
-            temp_catalogs, next_token, hit_tokens = await self.database.get_all_catalogs(
-                catalog_path=catalog_path,
-                token=token,
-                limit=limit,
-                base_url=base_url,
-                user_index=user_index,
-                conformance_classes=self.conformance_classes(),
+            temp_catalogs, next_token, hit_tokens = (
+                await self.database.get_all_catalogs(
+                    catalog_path=catalog_path,
+                    token=token,
+                    limit=limit,
+                    base_url=base_url,
+                    user_index=user_index,
+                    conformance_classes=self.conformance_classes(),
+                )
             )
 
             for i, (catalog, hit_token) in enumerate(zip(temp_catalogs, hit_tokens)):
@@ -470,7 +476,7 @@ class CoreClient(AsyncBaseCoreClient):
             )
 
         # Assume at most 100 collections in a catalog for the time being, may need to increase
-        collections, _, _= await self.database.get_catalog_collections(
+        collections, _, _ = await self.database.get_catalog_collections(
             catalog_path=catalog_path,
             base_url=base_url,
             limit=NUMBER_OF_CATALOG_COLLECTIONS,
@@ -565,15 +571,19 @@ class CoreClient(AsyncBaseCoreClient):
         collections = []
 
         while True:
-            temp_collections, next_token, hit_tokens = await self.database.get_catalog_collections(
-                catalog_path=catalog_path,
-                token=token,  # type: ignore
-                limit=limit,
-                base_url=base_url,
+            temp_collections, next_token, hit_tokens = (
+                await self.database.get_catalog_collections(
+                    catalog_path=catalog_path,
+                    token=token,  # type: ignore
+                    limit=limit,
+                    base_url=base_url,
+                )
             )
 
             # Check if current user has access to each collection
-            for i, (collection, hit_token) in enumerate(zip(temp_collections, hit_tokens)):
+            for i, (collection, hit_token) in enumerate(
+                zip(temp_collections, hit_tokens)
+            ):
                 # Get access control array for each collection
                 access_control = collection["access_control"]
                 collection.pop("access_control")
@@ -1054,13 +1064,15 @@ class CoreClient(AsyncBaseCoreClient):
         items = []
 
         while True:
-            temp_items, maybe_count, next_token, hit_tokens = await self.database.execute_search(
-                search=search,
-                limit=limit,
-                token=token,  # type: ignore
-                sort=sort,
-                collection_ids=search_request.collections,
-                catalog_paths=search_request.catalog_paths,
+            temp_items, maybe_count, next_token, hit_tokens = (
+                await self.database.execute_search(
+                    search=search,
+                    limit=limit,
+                    token=token,  # type: ignore
+                    sort=sort,
+                    collection_ids=search_request.collections,
+                    catalog_paths=search_request.catalog_paths,
+                )
             )
 
             # Filter results to those that are accessible to the user
@@ -1106,7 +1118,6 @@ class CoreClient(AsyncBaseCoreClient):
                 # TODO: implement smarter token logic to return token of last returned ES entry
                 break
             token = next_token
-
 
         # To handle catalog_id in links execute_search also returns the catalog_id
         # from search results in a tuple
@@ -1391,13 +1402,15 @@ class CoreClient(AsyncBaseCoreClient):
         items = []
 
         while True:
-            temp_items, maybe_count, next_token, hit_tokens = await self.database.execute_search(
-                search=search,
-                limit=limit,
-                token=token,  # type: ignore
-                sort=sort,
-                collection_ids=collections,
-                catalog_paths=[catalog_path],
+            temp_items, maybe_count, next_token, hit_tokens = (
+                await self.database.execute_search(
+                    search=search,
+                    limit=limit,
+                    token=token,  # type: ignore
+                    sort=sort,
+                    collection_ids=collections,
+                    catalog_paths=[catalog_path],
+                )
             )
 
             # Filter results to those that are accessible to the user
@@ -2290,7 +2303,9 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
             )
 
             # Filter results to those that are accessible to the user
-            for i, (collection, hit_token) in enumerate(zip(temp_collections, hit_tokens)):
+            for i, (collection, hit_token) in enumerate(
+                zip(temp_collections, hit_tokens)
+            ):
                 # Get access control array for this collection
                 access_control = collection["access_control"]
                 collection.pop("access_control")
@@ -2452,7 +2467,9 @@ class EsAsyncDiscoverySearchClient(AsyncDiscoverySearchClient):
             )
 
             # Filter results to those that are accessible to the user
-            for i, (data, hit_token) in enumerate(zip(temp_catalogs_and_collections, hit_tokens)):
+            for i, (data, hit_token) in enumerate(
+                zip(temp_catalogs_and_collections, hit_tokens)
+            ):
                 # Get access control array for this collection
                 access_control = data["access_control"]
                 data.pop("access_control")
