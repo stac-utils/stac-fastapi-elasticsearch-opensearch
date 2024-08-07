@@ -718,8 +718,8 @@ class DatabaseLogic:
 
         next_token = None
         if len(hits) > limit and limit < max_result_window:
-            if hits and (hits[-1].get("sort")):
-                next_token = hits[-1]["sort"][0]
+            if hits and (hits[limit - 1].get("sort")):
+                next_token = hits[limit - 1]["sort"][0]
 
         return collections, next_token, hit_tokens
 
@@ -793,8 +793,8 @@ class DatabaseLogic:
 
         next_token = None
         if len(hits) > limit and limit < max_result_window:
-            if hits and (hits[-1].get("sort")):
-                next_token = hits[-1]["sort"][0]
+            if hits and (hits[limit - 1].get("sort")):
+                next_token = hits[limit - 1]["sort"][0]
 
         return collections, next_token, hit_tokens
 
@@ -957,8 +957,8 @@ class DatabaseLogic:
 
         next_token = None
         if len(hits) > limit and limit < max_result_window:
-            if hits and (hits[-1].get("sort")):
-                next_token = hits[-1]["sort"][0]
+            if hits and (hits[limit - 1].get("sort")):
+                next_token = hits[limit - 1]["sort"][0]
 
         return catalogs, next_token, hit_tokens
 
@@ -1032,8 +1032,8 @@ class DatabaseLogic:
 
         next_token = None
         if len(hits) > limit and limit < max_result_window:
-            if hits and (hits[-1].get("sort")):
-                next_token = hits[-1]["sort"][0]
+            if hits and (hits[limit - 1].get("sort")):
+                next_token = hits[limit - 1]["sort"][0]
 
         return catalogs, next_token
 
