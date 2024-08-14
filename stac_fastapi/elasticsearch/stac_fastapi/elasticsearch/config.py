@@ -1,6 +1,7 @@
 """API configuration."""
 import os
 import ssl
+import requests
 from typing import Any, Dict, Set
 
 import certifi
@@ -27,11 +28,30 @@ def _es_config() -> Dict[str, Any]:
     hosts = [f"{scheme}://{os.getenv('ES_HOST')}:{os.getenv('ES_PORT')}"]
 
     # Initialize the configuration dictionary
+    # config = {
+    #     "hosts": hosts,
+    #     "headers": {"accept": "application/vnd.elasticsearch+json; compatible-with=7"},
+    # }
+
     config = {
         "hosts": hosts,
-        "headers": {"accept": "application/vnd.elasticsearch+json; compatible-with=7"},
+        "headers": {"accept": "application/vnd.elasticsearch+json; compatible-with=8"},
     }
 
+<<<<<<< HEAD
+=======
+
+    # Handle API key
+    if api_key := os.getenv("ES_API_KEY"):
+        if isinstance(config["headers"], dict):
+            headers = {**config["headers"], "x-api-key": api_key}
+
+        else:
+            config["headers"] = {"x-api-key": api_key}
+
+        config["headers"] = headers
+
+>>>>>>> bbdcd6c (serverless behavior differentiation)
     # Explicitly exclude SSL settings when not using SSL
     if not use_ssl:
         return config
@@ -60,6 +80,27 @@ def _es_config() -> Dict[str, Any]:
         config["headers"] = headers
 
     return config
+
+
+def check_serverless_elasticsearch():
+    use_ssl = os.getenv("ES_USE_SSL", "true").lower() == "true"
+    scheme = "https" if use_ssl else "http"
+
+    # Configure the hosts parameter with the correct scheme
+    host= f"{scheme}://{os.getenv('ES_HOST')}:{os.getenv('ES_PORT')}"
+
+
+    headers = {"Authorization": f"ApiKey {os.getenv('ES_API_KEY')}"}
+    response = requests.get(host, headers=headers)
+    if response.ok:
+        data = response.json()
+        # Look for specific serverless indicators in the response
+        if 'version' in data and 'serverless' == data['version'].get('build_flavor', ''):
+            return True, 'Serverless Elasticsearch found'
+        else:
+            return False, 'No serverless indicator found'
+    else:
+        return False, 'Error accessing Elasticsearch endpoint'
 
 
 _forbidden_fields: Set[str] = {"type"}

@@ -6,13 +6,19 @@ with open("README.md") as f:
     desc = f.read()
 
 install_requires = [
-    "stac-fastapi.core==3.0.0a1",
-    # "elasticsearch[async]==8.11.0",
-    "elasticsearch_serverless[async]",
-    # "elasticsearch-dsl==8.11.0",
-    "elasticsearch-dsl",
+    "stac-fastapi.core==3.0.0",
     "uvicorn",
     "starlette",
+]
+
+install_requires_es = [
+    "elasticsearch[async]==8.11.0",
+    "elasticsearch-dsl==8.11.0",
+]
+
+install_requires_serverless_es = [
+    "elasticsearch_serverless[async]",
+    "elasticsearch-dsl",
 ]
 
 extra_reqs = {
@@ -28,6 +34,8 @@ extra_reqs = {
     ],
     "docs": ["mkdocs", "mkdocs-material", "pdocs"],
     "server": ["uvicorn[standard]==0.19.0"],
+    "es": install_requires_es,
+    "serverless_es": install_requires_serverless_es
 }
 
 setup(

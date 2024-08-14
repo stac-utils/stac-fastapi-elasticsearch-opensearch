@@ -36,7 +36,14 @@
 ### To install from PyPI:
 
 ```shell
-pip install stac_fastapi.elasticsearch
+pip install stac_fastapi.elasticsearch[server, es]
+
+```
+if you are using serverless by elasticsearch
+
+```shell
+pip install stac_fastapi.elasticsearch[server, serverless_es]
+
 ```
 or   
 ```
@@ -44,8 +51,8 @@ pip install stac_fastapi.opensearch
 ```
 from sources:
 ```
-cd stac_fastapi/elasticsearch
-pip install -e .
+RUN pip install --no-cache-dir -e ./stac_fastapi/elasticsearch[dev,server,serverless_es]
+
 ``` 
 ## Build Elasticsearch API backend
 
