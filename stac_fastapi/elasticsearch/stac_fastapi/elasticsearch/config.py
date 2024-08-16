@@ -1,4 +1,5 @@
 """API configuration."""
+
 import os
 import ssl
 from typing import Any, Dict, Set
@@ -60,6 +61,16 @@ def _es_config() -> Dict[str, Any]:
         "hosts": hosts,
         "headers": {"accept": accept},
     }
+
+    # Handle API key
+    if api_key := os.getenv("ES_API_KEY"):
+        if isinstance(config["headers"], dict):
+            headers = {**config["headers"], "x-api-key": api_key}
+
+        else:
+            config["headers"] = {"x-api-key": api_key}
+
+        config["headers"] = headers
 
     # Explicitly exclude SSL settings when not using SSL
     if not use_ssl:

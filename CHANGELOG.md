@@ -5,7 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [v3.0.0] - 2024-08-14
+
+### Changed
+- Aggregation bug fixes [#281](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/281)
+- Updated stac-fastapi libraries to v3.0.0 [#282](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/282)
+
+## [v3.0.0a3] - 2024-07-17
+
+### Added
+ - Added an implementation of the Aggregation Extension. Enables spatial, frequency distribution, and datetime distribution aggregations. [#276](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/276)
+ - Added support for route depndencies configuration through the STAC_FASTAPI_ROUTE_DEPENDENCIES environment variable, directly or via json file. Allows for fastapi's inbuilt OAuth2 flows to be used as dependencies. Custom dependencies can also be written, see Basic Auth for an example. [#251](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/251)
+ - Added docker-compose.route_dependencies_file.yml that gives an example of OAuth2 workflow using keycloak as the identity provider. [#251](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/251)
+ - Added docker-compose.route_dependencies_env.yml that gives an example using the STAC_FASTAPI_ROUTE_DEPENDENCIES environment variable. [#251](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/251)
+
+### Changed
+- Updated to stac-fastapi 3.0.0a4. [#275](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/275)
+- Converted Basic auth to a route dependency and merged with new route depndencies method. [#251](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/251)
+- Updated docker-compose.basic_auth_protected.yml to use STAC_FASTAPI_ROUTE_DEPENDENCIES environment variable. [#251](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/251)
+
+## [v3.0.0a2]
 
 ### Added
  - Queryables landing page and collection links when the Filter Extension is enabled [#267](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/267)
@@ -13,11 +32,15 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Changed
 
 - Updated stac-fastapi libraries to v3.0.0a1 [#265](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/265)
+- Updated stac-fastapi libraries to v3.0.0a3 [#269](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/269)
+- Converted Basic auth to a route dependency and merged with new route depndencies method. [#251](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/251)
+- Updated docker-compose.basic_auth_protected.yml to use STAC_FASTAPI_ROUTE_DEPENDENCIES environment variable. [#251](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/251)
 
 ### Fixed
 
 - API sort extension tests [#264](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/264)
 - Basic auth permission fix for checking route path instead of absolute path [#266](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/266)
+- Remove deprecated filter_fields property, return all properties as default [#269](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/269)
 
 ## [v3.0.0a1]
 
@@ -216,9 +239,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Added db_to_stac serializer to item_collection method in core.py.
 
 
-[Unreleased]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.0.0a1...main>
-[v3.0.0a1]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.0.0a0...v3.0.0a1>
-[v3.0.0a0]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.4.1...v3.0.0a0>
+[Unreleased]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.0.0...main>
+[v3.0.0]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.4.1...v3.0.0>
 [v2.4.1]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.4.0...v2.4.1>
 [v2.4.0]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.3.0...v2.4.0>
 [v2.3.0]: <https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.2.0...v2.3.0>

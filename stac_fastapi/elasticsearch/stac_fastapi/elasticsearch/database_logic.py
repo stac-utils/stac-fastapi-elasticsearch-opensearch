@@ -699,6 +699,133 @@ class DatabaseLogic:
 
         return items, matched, next_token
 
+    """ AGGREGATE LOGIC """
+
+    async def aggregate(
+        self,
+        collection_ids: Optional[List[str]],
+        aggregations: List[str],
+        search: Search,
+        centroid_geohash_grid_precision: int,
+        centroid_geohex_grid_precision: int,
+        centroid_geotile_grid_precision: int,
+        geometry_geohash_grid_precision: int,
+        geometry_geotile_grid_precision: int,
+        ignore_unavailable: Optional[bool] = True,
+    ):
+        """Return aggregations of STAC Items."""
+        agg_2_es = {
+            "total_count": {"value_count": {"field": "id"}},
+            "collection_frequency": {"terms": {"field": "collection", "size": 100}},
+            "platform_frequency": {
+                "terms": {"field": "properties.platform", "size": 100}
+            },
+            "cloud_cover_frequency": {
+                "range": {
+                    "field": "properties.eo:cloud_cover",
+                    "ranges": [
+                        {"to": 5},
+                        {"from": 5, "to": 15},
+                        {"from": 15, "to": 40},
+                        {"from": 40},
+                    ],
+                }
+            },
+            "datetime_frequency": {
+                "date_histogram": {
+                    "field": "properties.datetime",
+                    "calendar_interval": "month",
+                }
+            },
+            "datetime_min": {"min": {"field": "properties.datetime"}},
+            "datetime_max": {"max": {"field": "properties.datetime"}},
+            "grid_code_frequency": {
+                "terms": {
+                    "field": "properties.grid:code",
+                    "missing": "none",
+                    "size": 10000,
+                }
+            },
+            "sun_elevation_frequency": {
+                "histogram": {"field": "properties.view:sun_elevation", "interval": 5}
+            },
+            "sun_azimuth_frequency": {
+                "histogram": {"field": "properties.view:sun_azimuth", "interval": 5}
+            },
+            "off_nadir_frequency": {
+                "histogram": {"field": "properties.view:off_nadir", "interval": 5}
+            },
+        }
+
+        search_body: Dict[str, Any] = {}
+        query = search.query.to_dict() if search.query else None
+        if query:
+            search_body["query"] = query
+
+        logger.debug("Aggregations: %s", aggregations)
+
+        # include all aggregations specified
+        # this will ignore aggregations with the wrong names
+        search_body["aggregations"] = {
+            k: v for k, v in agg_2_es.items() if k in aggregations
+        }
+
+        if "centroid_geohash_grid_frequency" in aggregations:
+            search_body["aggregations"]["centroid_geohash_grid_frequency"] = {
+                "geohash_grid": {
+                    "field": "properties.proj:centroid",
+                    "precision": centroid_geohash_grid_precision,
+                }
+            }
+
+        if "centroid_geohex_grid_frequency" in aggregations:
+            search_body["aggregations"]["centroid_geohex_grid_frequency"] = {
+                "geohex_grid": {
+                    "field": "properties.proj:centroid",
+                    "precision": centroid_geohex_grid_precision,
+                }
+            }
+
+        if "centroid_geotile_grid_frequency" in aggregations:
+            search_body["aggregations"]["centroid_geotile_grid_frequency"] = {
+                "geotile_grid": {
+                    "field": "properties.proj:centroid",
+                    "precision": centroid_geotile_grid_precision,
+                }
+            }
+
+        if "geometry_geohash_grid_frequency" in aggregations:
+            search_body["aggregations"]["geometry_geohash_grid_frequency"] = {
+                "geohash_grid": {
+                    "field": "geometry",
+                    "precision": geometry_geohash_grid_precision,
+                }
+            }
+
+        if "geometry_geotile_grid_frequency" in aggregations:
+            search_body["aggregations"]["geometry_geotile_grid_frequency"] = {
+                "geotile_grid": {
+                    "field": "geometry",
+                    "precision": geometry_geotile_grid_precision,
+                }
+            }
+
+        index_param = indices(collection_ids)
+        search_task = asyncio.create_task(
+            self.client.search(
+                index=index_param,
+                ignore_unavailable=ignore_unavailable,
+                body=search_body,
+            )
+        )
+
+        try:
+            db_response = await search_task
+        except exceptions.NotFoundError:
+            raise NotFoundError(f"Collections '{collection_ids}' do not exist")
+
+        return db_response
+
     """ TRANSACTION LOGIC """
 
     async def check_collection_exists(self, collection_id: str):

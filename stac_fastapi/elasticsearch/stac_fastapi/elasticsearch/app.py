@@ -4,7 +4,6 @@ import os
 
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import create_get_request_model, create_post_request_model
-from stac_fastapi.core.basic_auth import apply_basic_auth
 from stac_fastapi.core.core import (
     BulkTransactionsClient,
     CoreClient,
@@ -12,6 +11,13 @@ from stac_fastapi.core.core import (
     TransactionsClient,
 )
 from stac_fastapi.core.extensions import QueryExtension
+from stac_fastapi.core.extensions.aggregation import (
+    EsAggregationExtensionGetRequest,
+    EsAggregationExtensionPostRequest,
+    EsAsyncAggregationClient,
+)
+from stac_fastapi.core.extensions.fields import FieldsExtension
+from stac_fastapi.core.route_dependencies import get_route_dependencies
 from stac_fastapi.core.session import Session
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
 from stac_fastapi.elasticsearch.database_logic import (
@@ -20,7 +26,7 @@ from stac_fastapi.elasticsearch.database_logic import (
     create_index_templates,
 )
 from stac_fastapi.extensions.core import (
-    FieldsExtension,
+    AggregationExtension,
     FilterExtension,
     SortExtension,
     TokenPaginationExtension,
@@ -38,7 +44,15 @@ filter_extension.conformance_classes.append(
 
 database_logic = DatabaseLogic()
 
-extensions = [
+aggregation_extension = AggregationExtension(
+    client=EsAsyncAggregationClient(
+        database=database_logic, session=session, settings=settings
+    )
+)
+aggregation_extension.POST = EsAggregationExtensionPostRequest
+aggregation_extension.GET = EsAggregationExtensionGetRequest
+
+search_extensions = [
     TransactionExtension(
         client=TransactionsClient(
             database=database_logic, session=session, settings=settings
@@ -59,9 +73,11 @@ extensions = [
     filter_extension,
 ]
 
+extensions = [aggregation_extension] + search_extensions
+
 database_logic.extensions = [type(ext).__name__ for ext in extensions]
 
-post_request_model = create_post_request_model(extensions)
+post_request_model = create_post_request_model(search_extensions)
 
 api = StacApi(
     title=os.getenv("STAC_FASTAPI_TITLE", "stac-fastapi-elasticsearch"),
@@ -72,13 +88,12 @@ api = StacApi(
     client=CoreClient(
         database=database_logic, session=session, post_request_model=post_request_model
     ),
-    search_get_request_model=create_get_request_model(extensions),
+    search_get_request_model=create_get_request_model(search_extensions),
     search_post_request_model=post_request_model,
+    route_dependencies=get_route_dependencies(),
 )
 app = api.app
 app.root_path = os.getenv("STAC_FASTAPI_ROOT_PATH", "")
-
-apply_basic_auth(api)
 
 
 @app.on_event("startup")
