@@ -19,6 +19,7 @@ install_requires_es = [
 install_requires_serverless_es = [
     "elasticsearch_serverless[async]",
     "elasticsearch-dsl",
+    "requests",
 ]
 
 extra_reqs = {
@@ -35,7 +36,7 @@ extra_reqs = {
     "docs": ["mkdocs", "mkdocs-material", "pdocs"],
     "server": ["uvicorn[standard]==0.19.0"],
     "es": install_requires_es,
-    "serverless_es": install_requires_serverless_es
+    "serverless_es": install_requires_serverless_es,
 }
 
 setup(

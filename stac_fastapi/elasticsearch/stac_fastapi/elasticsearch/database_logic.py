@@ -13,11 +13,11 @@ from elasticsearch import exceptions, helpers  # type: ignore
 from stac_fastapi.core.extensions import filter
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon
+from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
 from stac_fastapi.elasticsearch.config import (
-    AsyncElasticsearchSettings,
     ElasticsearchSettings as SyncElasticsearchSettings,
-    check_serverless_elasticsearch
 )
+from stac_fastapi.elasticsearch.config import check_serverless_elasticsearch
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.stac import Collection, Item
 
@@ -195,7 +195,7 @@ async def create_index_templates() -> None:
                 "index_patterns": [f"{COLLECTIONS_INDEX}*"],
                 "template": {
                     "mappings": ES_COLLECTIONS_MAPPINGS,
-                }
+                },
             },
         )
         client.indices.put_index_template(
@@ -205,7 +205,7 @@ async def create_index_templates() -> None:
                 "template": {
                     "settings": ES_ITEMS_SETTINGS,
                     "mappings": ES_ITEMS_MAPPINGS,
-                }
+                },
             },
         )
         client.close()
@@ -227,6 +227,7 @@ async def create_index_templates() -> None:
             },
         )
         await client.close()
+
 
 async def create_collection_index() -> None:
     """
@@ -253,6 +254,7 @@ async def create_collection_index() -> None:
             aliases={COLLECTIONS_INDEX: {}},
         )
         await client.close()
+
 
 async def create_item_index(collection_id: str):
     """
@@ -285,6 +287,7 @@ async def create_item_index(collection_id: str):
         )
         await client.close()
 
+
 async def delete_item_index(collection_id: str):
     """Delete the index for items in a collection.
 
@@ -310,11 +313,14 @@ async def delete_item_index(collection_id: str):
         resolved = await client.indices.resolve_index(name=name)
         if "aliases" in resolved and resolved["aliases"]:
             [alias] = resolved["aliases"]
-            await client.indices.delete_alias(index=alias["indices"], name=alias["name"])
+            await client.indices.delete_alias(
+                index=alias["indices"], name=alias["name"]
+            )
             await client.indices.delete(index=alias["indices"])
         else:
             await client.indices.delete(index=name)
         await client.close()
+
 
 def mk_item_id(item_id: str, collection_id: str):
     """Create the document id for an Item in Elasticsearch.
@@ -389,18 +395,16 @@ class DatabaseLogic:
         Returns:
             A tuple of (collections, next pagination token if any).
         """
-        body={
+        body = {
             "sort": [{"id": {"order": "asc"}}],
             "size": limit,
         }
         search_after = None
         if token:
             search_after = [token]
-            body["search_after"]= search_after
+            body["search_after"] = search_after
 
-        response = await self.client.search(
-            index=COLLECTIONS_INDEX, body=body
-        )
+        response = await self.client.search(index=COLLECTIONS_INDEX, body=body)
         if serverless:
             hits = response.body["hits"]["hits"]
         else:
