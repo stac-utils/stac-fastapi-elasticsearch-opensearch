@@ -804,7 +804,7 @@ async def test_field_extension_exclude_default_includes(app_client, ctx):
 async def test_search_intersects_and_bbox(app_client):
     """Test POST search intersects and bbox are mutually exclusive (core)"""
     bbox = [-118, 34, -117, 35]
-    geoj = Polygon.from_bounds(*bbox).dict(exclude_none=True)
+    geoj = Polygon.from_bounds(*bbox).model_dump(exclude_none=True)
     params = {"bbox": bbox, "intersects": geoj}
     resp = await app_client.post("/search", json=params)
     assert resp.status_code == 400
