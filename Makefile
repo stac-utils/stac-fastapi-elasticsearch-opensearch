@@ -1,6 +1,6 @@
 #!make
 APP_HOST ?= 0.0.0.0
-EXTERNAL_APP_PORT ?= ${APP_PORT}
+EXTERNAL_APP_PORT ?= 8080
 
 ES_APP_PORT ?= 8080
 ES_HOST ?= docker.for.mac.localhost

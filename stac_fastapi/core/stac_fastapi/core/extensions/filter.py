@@ -17,31 +17,41 @@ import re
 from enum import Enum
 from typing import Any, Dict
 
+_cql2_like_patterns = re.compile(r"\\.|[%_]|\\$")
+_valid_like_substitutions = {
+    "\\\\": "\\",
+    "\\%": "%",
+    "\\_": "_",
+    "%": "*",
+    "_": "?",
+}
+
+
+def _replace_like_patterns(match: re.Match) -> str:
+    pattern = match.group()
+    try:
+        return _valid_like_substitutions[pattern]
+    except KeyError:
+        raise ValueError(f"'{pattern}' is not a valid escape sequence")
+
 
 def cql2_like_to_es(string: str) -> str:
     """
-    Convert CQL2 wildcard characters to Elasticsearch wildcard characters. Specifically, it converts '_' to '?' and '%' to '*', handling escape characters properly.
+    Convert CQL2 "LIKE" characters to Elasticsearch "wildcard" characters.
 
     Args:
         string (str): The string containing CQL2 wildcard characters.
 
     Returns:
         str: The converted string with Elasticsearch compatible wildcards.
+
+    Raises:
+        ValueError: If an invalid escape sequence is encountered.
     """
-    # Translate '%' and '_' only if they are not preceded by a backslash '\'
-    percent_pattern = r"(?<!\\)%"
-    underscore_pattern = r"(?<!\\)_"
-    # Remove the escape character before '%' or '_'
-    escape_pattern = r"\\(?=[_%])"
-
-    # Replace '%' with '*' for broad wildcard matching
-    string = re.sub(percent_pattern, "*", string)
-    # Replace '_' with '?' for single character wildcard matching
-    string = re.sub(underscore_pattern, "?", string)
-    # Remove the escape character used in the CQL2 format
-    string = re.sub(escape_pattern, "", string)
-
-    return string
+    return _cql2_like_patterns.sub(
+        repl=_replace_like_patterns,
+        string=string,
+    )
 
 
 class LogicalOp(str, Enum):
