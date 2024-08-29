@@ -24,6 +24,7 @@ from stac_fastapi.elasticsearch.config import (
     ElasticsearchSettings as SyncElasticsearchSettings,
 )
 from stac_fastapi.types.errors import ConflictError, NotFoundError
+from stac_fastapi.types.links import resolve_links
 from stac_fastapi.types.stac import (
     Collection,
     Item,
@@ -764,11 +765,8 @@ class DatabaseLogic:
             base_url: (str): The base URL used for constructing URLs for the item.
             refresh (bool, optional): Refresh the index after performing the operation. Defaults to True.
 
-        Raises:
-            ConflictError: If the item already exists in the database.
-
         Returns:
-            None
+            patched item.
         """
         operations = merge_to_operations(item)
 
@@ -797,11 +795,8 @@ class DatabaseLogic:
             base_url (str): The base URL used for constructing URLs for the item.
             refresh (bool, optional): Refresh the index after performing the operation. Defaults to True.
 
-        Raises:
-            ConflictError: If the item already exists in the database.
-
         Returns:
-            None
+            patched item.
         """
         new_item_id = None
         new_collection_id = None
@@ -1000,21 +995,18 @@ class DatabaseLogic:
         collection: PartialCollection,
         base_url: str,
         refresh: bool = True,
-    ) -> Item:
+    ) -> Collection:
         """Database logic for merge patching a collection following RF7396.
 
         Args:
-            collection_id(str): Collection that item belongs to.
-            item_id(str): Id of item to be patched.
-            item (PartialItem): The partial item to be updated.
-            base_url: (str): The base URL used for constructing URLs for the item.
+            collection_id(str): Id of collection to be patched.
+            collection (PartialCollection): The partial collection to be updated.
+            base_url: (str): The base URL used for constructing links.
             refresh (bool, optional): Refresh the index after performing the operation. Defaults to True.
 
-        Raises:
-            ConflictError: If the item already exists in the database.
 
         Returns:
-            None
+            patched collection.
         """
         operations = merge_to_operations(collection)
 
@@ -1031,21 +1023,17 @@ class DatabaseLogic:
         operations: List[PatchOperation],
         base_url: str,
         refresh: bool = True,
-    ) -> Item:
-        """Database logic for json patching an item following RF6902.
+    ) -> Collection:
+        """Database logic for json patching a collection following RF6902.
 
         Args:
-            collection_id(str): Collection that item belongs to.
-            item_id(str): Id of item to be patched.
+            collection_id(str): Id of collection to be patched.
             operations (list): List of operations to run.
-            base_url (str): The base URL used for constructing URLs for the item.
+            base_url (str): The base URL used for constructing links.
             refresh (bool, optional): Refresh the index after performing the operation. Defaults to True.
 
-        Raises:
-            ConflictError: If the item already exists in the database.
-
         Returns:
-            None
+            patched collection.
         """
         new_collection_id = None
         script_operations = []
@@ -1075,6 +1063,7 @@ class DatabaseLogic:
 
         if new_collection_id:
             collection["id"] = new_collection_id
+            collection["links"] = resolve_links([], base_url)
             await self.update_collection(
                 collection_id=collection_id, collection=collection, refresh=False
             )
