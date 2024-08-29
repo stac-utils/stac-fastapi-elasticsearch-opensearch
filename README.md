@@ -1,66 +1,62 @@
 # stac-fastapi-elasticsearch-opensearch (sfeos)
 
-## Elasticsearch and Opensearch backends for the stac-fastapi project  
+<!-- markdownlint-disable MD033 MD041 -->
+
+<p align="left">
+  <img src="https://github.com/radiantearth/stac-site/raw/master/images/logo/stac-030-long.png" width=600>
+  <p align="left"><b>Elasticsearch and Opensearch backends for the stac-fastapi project.</b></p>
+  <p align="left"><b>Featuring stac-fastapi.core for simplifying the creation and maintenance of custom STAC api backends.</b></p>
+</p>
+
   
-  [![PyPI version](https://badge.fury.io/py/stac-fastapi.elasticsearch.svg)](https://badge.fury.io/py/stac-fastapi.elasticsearch)  
+  [![PyPI version](https://badge.fury.io/py/stac-fastapi.elasticsearch.svg)](https://badge.fury.io/py/stac-fastapi.elasticsearch)
+  [![Join the chat at https://gitter.im/stac-fastapi-elasticsearch/community](https://badges.gitter.im/stac-fastapi-elasticsearch/community.svg)](https://gitter.im/stac-fastapi-elasticsearch/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+
+
+---
+
+**Online Documentation**: [https://stac-utils.github.io/stac-fastapi-elasticsearch-opensearch](https://stac-utils.github.io/stac-fastapi-elasticsearch-opensearch/)
+
+**Source Code**: [https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch)
+
+
+---
+
+### Notes:
   
-- Our Api core library can be used to create custom backends. See [stac-fastapi-mongo](https://github.com/Healy-Hyperspatial/stac-fastapi-mongo) for a working example.  
+- Our Api core library can be used to create custom backends. See [stac-fastapi-mongo](https://github.com/Healy-Hyperspatial/stac-fastapi-mongo) for a working example.
 - Reach out on our [Gitter](https://app.gitter.im/#/room/#stac-fastapi-elasticsearch_community:gitter.im) channel or feel free to add to our [Discussions](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/discussions) page here on github.
 - There is [Postman](https://documenter.getpostman.com/view/12888943/2s8ZDSdRHA) documentation here for examples on how to run some of the API routes locally - after starting the elasticsearch backend via the docker-compose.yml file.
-- The `/examples` folder shows an example of running stac-fastapi-elasticsearch from PyPI in docker without needing any code from the repository. There is also a Postman collection here that you can load into Postman for testing the API routes. 
+- The `/examples` folder shows an example of running stac-fastapi-elasticsearch from PyPI in docker without needing any code from the repository. There is also a Postman collection here that you can load into Postman for testing the API routes.
+
+- For changes, see the [Changelog](CHANGELOG.md)
+- We are always welcoming contributions. For the development notes: [Contributing](CONTRIBUTING.md)
+
 
 ### To install from PyPI:
 
 ```shell
 pip install stac_fastapi.elasticsearch
 ```
-or   
+or
 ```
 pip install stac_fastapi.opensearch
 ```
 
-#### For changes, see the [Changelog](CHANGELOG.md)
-
-
-## Development Environment Setup
-
-To install the classes in your local Python env, run:
-
-```shell
-pip install -e 'stac_fastapi/elasticsearch[dev]'
-```
-
-or
-
-```shell
-pip install -e 'stac_fastapi/opensearch[dev]'
-```
-
-
-### Pre-commit
-
-Install [pre-commit](https://pre-commit.com/#install).
-
-Prior to commit, run:
-
-```shell
-pre-commit run --all-files
-```
-
-## Build Elasticsearh API backend
+## Build Elasticsearch API backend
 
 ```shell
 docker-compose up elasticsearch
 docker-compose build app-elasticsearch
 ```
-  
-## Running Elasticsearh API on localhost:8080
+
+## Running Elasticsearch API on localhost:8080
 
 ```shell
 docker-compose up app-elasticsearch
 ```
 
-By default, docker-compose uses Elasticsearch 8.x and OpenSearch 2.11.1. 
+By default, docker-compose uses Elasticsearch 8.x and OpenSearch 2.11.1.
 If you wish to use a different version, put the following in a 
 file named `.env` in the same directory you run docker-compose from:
 
@@ -80,7 +76,7 @@ curl -X "POST" "http://localhost:8080/collections" \
 }'
 ```
 
-Note: this "Collections Transaction" behavior is not part of the STAC API, but may be soon.  
+Note: this "Collections Transaction" behavior is not part of the STAC API, but may be soon.
 
 ## Configure the API
 
@@ -95,12 +91,12 @@ The application root path is left as the base url by default. If deploying to AW
 The collections route handles optional `limit` and `token` parameters. The `links` field that is
 returned from the `/collections` route contains a `next` link with the token that can be used to 
 get the next page of results.
-   
+
 ```shell
 curl -X "GET" "http://localhost:8080/collections?limit=1&token=example_token"
 ```
 
-## Ingesting Sample Data CLI Tool   
+## Ingesting Sample Data CLI Tool
 
 ```shell
 Usage: data_loader.py [OPTIONS]
@@ -118,28 +114,12 @@ Options:
 
 ```shell
 python3 data_loader.py --base-url http://localhost:8080
-```  
-
-## Testing
-
-```shell
-make test
-```
-Test against OpenSearch only
-
-```shell
-make test-opensearch
 ```
 
-Test against Elasticsearch only
-
-```shell
-make test-elasticsearch
-```  
 
 ## Elasticsearch Mappings
 
-Mappings apply to search index, not source. The mappings are stored in index templates on application startup. 
+Mappings apply to search index, not source. The mappings are stored in index templates on application startup.
 These templates will be used implicitly when creating new Collection and Item indices.
     
 
@@ -293,3 +273,114 @@ curl -X "POST" "http://localhost:9200/_aliases" \
 ```
 
 The modified Items with lowercase identifiers will now be visible to users accessing `my-collection` in the STAC API.
+
+
+## Auth
+
+Authentication is an optional feature that can be enabled through `Route Dependencies` examples can be found and a more detailed explanation in [examples/auth](examples/auth).
+
+
+## Aggregation
+
+Sfeos supports the STAC API [Aggregation Extension](https://github.com/stac-api-extensions/aggregation). This enables geospatial aggregation of points and geometries, as well as frequency distribution aggregation of any other property including dates. Aggregations can be defined at the root Catalog level (`/aggregations`) and at the Collection level (`/<collection_id>/aggregations`). The `/aggregate` route also fully supports base search and the STAC API [Filter Extension](https://github.com/stac-api-extensions/filter). Any query made with `/search` may also be executed with `/aggregate`, provided that the relevant aggregation fields are available,
+
+
+A field named `aggregations` should be added to the Collection object for the collection for which the aggregations are available, for example:
+
+```json
+"aggregations": [
+    {
+      "name": "total_count",
+      "data_type": "integer"
+    },
+    {
+      "name": "datetime_max",
+      "data_type": "datetime"
+    },
+    {
+      "name": "datetime_min",
+      "data_type": "datetime"
+    },
+    {
+      "name": "datetime_frequency",
+      "data_type": "frequency_distribution",
+      "frequency_distribution_data_type": "datetime"
+    },
+    {
+      "name": "sun_elevation_frequency",
+      "data_type": "frequency_distribution",
+      "frequency_distribution_data_type": "numeric"
+    },
+    {
+      "name": "platform_frequency", 
+      "data_type": "frequency_distribution",
+      "frequency_distribution_data_type": "string"
+    },
+    {
+      "name": "sun_azimuth_frequency",
+      "data_type": "frequency_distribution",
+      "frequency_distribution_data_type": "numeric"
+    },
+    {
+      "name": "off_nadir_frequency",
+      "data_type": "frequency_distribution",
+      "frequency_distribution_data_type": "numeric"
+    },
+    {
+      "name": "cloud_cover_frequency",
+      "data_type": "frequency_distribution",
+      "frequency_distribution_data_type": "numeric"
+    },
+    {
+      "name": "grid_code_frequency",
+      "data_type": "frequency_distribution",
+      "frequency_distribution_data_type": "string"
+    },
+    {
+      "name": "centroid_geohash_grid_frequency",
+      "data_type": "frequency_distribution",
+      "frequency_distribution_data_type": "string"
+    },
+    {
+        "name": "centroid_geohex_grid_frequency",
+        "data_type": "frequency_distribution",
+        "frequency_distribution_data_type": "string"
+    },
+    {
+        "name": "centroid_geotile_grid_frequency",
+        "data_type": "frequency_distribution",
+        "frequency_distribution_data_type": "string"
+    },
+    {
+      "name": "geometry_geohash_grid_frequency",
+      "data_type": "frequency_distribution",
+      "frequency_distribution_data_type": "numeric"
+    },
+    {
+      "name": "geometry_geotile_grid_frequency",
+      "data_type": "frequency_distribution",
+      "frequency_distribution_data_type": "string"
+    }
+]
+  ```
+
+Available aggregations are:
+
+- total_count (count of total items)
+- collection_frequency (Item `collection` field)
+- platform_frequency (Item.Properties.platform)
+- cloud_cover_frequency (Item.Properties.eo:cloud_cover)
+- datetime_frequency (Item.Properties.datetime, monthly interval)
+- datetime_min (earliest Item.Properties.datetime)
+- datetime_max (latest Item.Properties.datetime)
+- sun_elevation_frequency (Item.Properties.view:sun_elevation)
+- sun_azimuth_frequency (Item.Properties.view:sun_azimuth)
+- off_nadir_frequency (Item.Properties.view:off_nadir)
+- grid_code_frequency (Item.Properties.grid:code)
+- centroid_geohash_grid_frequency ([geohash grid](https://opensearch.org/docs/latest/aggregations/bucket/geohash-grid/)  on Item.Properties.proj:centroid)
+- centroid_geohex_grid_frequency ([geohex grid](https://opensearch.org/docs/latest/aggregations/bucket/geohex-grid/) on Item.Properties.proj:centroid)
+- centroid_geotile_grid_frequency (geotile on Item.Properties.proj:centroid)
+- geometry_geohash_grid_frequency ([geohash grid](https://opensearch.org/docs/latest/aggregations/bucket/geohash-grid/) on Item.geometry)
+- geometry_geotile_grid_frequency ([geotile grid](https://opensearch.org/docs/latest/aggregations/bucket/geotile-grid/) on Item.geometry)
+
+Support for additional fields and new aggregations can be added in the associated `database_logic.py` file.

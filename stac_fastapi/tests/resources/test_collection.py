@@ -1,8 +1,8 @@
 import copy
 import uuid
 
-import pystac
 import pytest
+from stac_pydantic import api
 
 from ..conftest import create_collection, delete_collections_and_items, refresh_indices
 
@@ -30,7 +30,7 @@ async def test_create_and_delete_collection(app_client, load_test_data):
     test_collection["id"] = "test"
 
     resp = await app_client.post("/collections", json=test_collection)
-    assert resp.status_code == 200
+    assert resp.status_code == 201
 
     resp = await app_client.delete(f"/collections/{test_collection['id']}")
     assert resp.status_code == 204
@@ -52,13 +52,14 @@ async def test_delete_missing_collection(app_client):
 
 
 @pytest.mark.asyncio
-async def test_update_collection_already_exists(ctx, app_client):
+async def test_update_collection_already_exists(ctx, app_client, load_test_data):
     """Test updating a collection which already exists"""
-    ctx.collection["keywords"].append("test")
-    resp = await app_client.put("/collections", json=ctx.collection)
+    collection = load_test_data("test_collection.json")
+    collection["keywords"].append("test")
+    resp = await app_client.put(f"/collections/{ctx.collection['id']}", json=collection)
     assert resp.status_code == 200
 
-    resp = await app_client.get(f"/collections/{ctx.collection['id']}")
+    resp = await app_client.get(f"/collections/{collection['id']}")
     assert resp.status_code == 200
     resp_json = resp.json()
     assert "test" in resp_json["keywords"]
@@ -70,7 +71,9 @@ async def test_update_new_collection(app_client, load_test_data):
     test_collection = load_test_data("test_collection.json")
     test_collection["id"] = "new-test-collection"
 
-    resp = await app_client.put("/collections", json=test_collection)
+    resp = await app_client.put(
+        f"/collections/{test_collection['id']}", json=test_collection
+    )
     assert resp.status_code == 404
 
 
@@ -84,37 +87,51 @@ async def test_collection_not_found(app_client):
 @pytest.mark.asyncio
 async def test_returns_valid_collection(ctx, app_client):
     """Test validates fetched collection with jsonschema"""
-    resp = await app_client.put("/collections", json=ctx.collection)
+    resp = await app_client.put(
+        f"/collections/{ctx.collection['id']}", json=ctx.collection
+    )
     assert resp.status_code == 200
 
     resp = await app_client.get(f"/collections/{ctx.collection['id']}")
     assert resp.status_code == 200
     resp_json = resp.json()
 
-    # Mock root to allow validation
-    mock_root = pystac.Catalog(
-        id="test", description="test desc", href="https://example.com"
-    )
-    collection = pystac.Collection.from_dict(
-        resp_json, root=mock_root, preserve_dict=False
-    )
-    collection.validate()
+    assert resp_json == api.Collection(**resp_json).model_dump(mode="json")
 
 
 @pytest.mark.asyncio
-async def test_collection_extensions(ctx, app_client):
+async def test_collection_extensions_post(ctx, app_client):
+    """Test that extensions can be used to define additional top-level properties"""
+    collection = ctx.collection
+    collection.get("stac_extensions", []).append(
+        "https://stac-extensions.github.io/item-assets/v1.0.0/schema.json"
+    )
+    test_asset = {"title": "test", "description": "test", "type": "test"}
+    ctx.collection["item_assets"] = {"test": test_asset}
+    ctx.collection["id"] = "test-item-assets"
+    resp = await app_client.post("/collections", json=ctx.collection)
+
+    assert resp.status_code == 201
+    assert resp.json().get("item_assets", {}).get("test") == test_asset
+
+
+@pytest.mark.asyncio
+async def test_collection_extensions_put(ctx, app_client):
     """Test that extensions can be used to define additional top-level properties"""
     ctx.collection.get("stac_extensions", []).append(
         "https://stac-extensions.github.io/item-assets/v1.0.0/schema.json"
     )
     test_asset = {"title": "test", "description": "test", "type": "test"}
     ctx.collection["item_assets"] = {"test": test_asset}
-    resp = await app_client.put("/collections", json=ctx.collection)
+    resp = await app_client.put(
+        f"/collections/{ctx.collection['id']}", json=ctx.collection
+    )
 
     assert resp.status_code == 200
     assert resp.json().get("item_assets", {}).get("test") == test_asset
 
 
+@pytest.mark.skip(reason="stac pydantic in stac fastapi 3 doesn't allow this.")
 @pytest.mark.asyncio
 async def test_collection_defaults(app_client):
     """Test that properties omitted by client are populated w/ default values"""

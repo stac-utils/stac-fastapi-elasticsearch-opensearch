@@ -11,10 +11,11 @@ from opensearchpy import exceptions, helpers
 from opensearchpy.exceptions import TransportError
 from opensearchpy.helpers.query import Q
 from opensearchpy.helpers.search import Search
+from starlette.requests import Request
 
 from stac_fastapi.core import serializers
 from stac_fastapi.core.extensions import filter
-from stac_fastapi.core.utilities import bbox2polygon
+from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon
 from stac_fastapi.opensearch.config import (
     AsyncOpensearchSettings as AsyncSearchSettings,
 )
@@ -168,7 +169,7 @@ def indices(collection_ids: Optional[List[str]]) -> str:
     Returns:
         A string of comma-separated index names. If `collection_ids` is None, returns the default indices.
     """
-    if collection_ids is None:
+    if collection_ids is None or collection_ids == []:
         return ITEM_INDICES
     else:
         return ",".join([index_by_collection_id(c) for c in collection_ids])
@@ -334,10 +335,12 @@ class DatabaseLogic:
         default=serializers.CollectionSerializer
     )
 
+    extensions: List[str] = attr.ib(default=attr.Factory(list))
+
     """CORE LOGIC"""
 
     async def get_all_collections(
-        self, token: Optional[str], limit: int, base_url: str
+        self, token: Optional[str], limit: int, request: Request
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
         """
         Retrieve a list of all collections from Opensearch, supporting pagination.
@@ -367,7 +370,7 @@ class DatabaseLogic:
         hits = response["hits"]["hits"]
         collections = [
             self.collection_serializer.db_to_stac(
-                collection=hit["_source"], base_url=base_url
+                collection=hit["_source"], request=request, extensions=self.extensions
             )
             for hit in hits
         ]
@@ -550,9 +553,28 @@ class DatabaseLogic:
 
     @staticmethod
     def apply_cql2_filter(search: Search, _filter: Optional[Dict[str, Any]]):
-        """Database logic to perform query for search endpoint."""
+        """
+        Apply a CQL2 filter to an Opensearch Search object.
+
+        This method transforms a dictionary representing a CQL2 filter into an Opensearch query
+        and applies it to the provided Search object. If the filter is None, the original Search
+        object is returned unmodified.
+
+        Args:
+            search (Search): The Opensearch Search object to which the filter will be applied.
+            _filter (Optional[Dict[str, Any]]): The filter in dictionary form that needs to be applied
+                                                to the search. The dictionary should follow the structure
+                                                required by the `to_es` function which converts it
+                                                to an Opensearch query.
+
+        Returns:
+            Search: The modified Search object with the filter applied if a filter is provided,
+                    otherwise the original Search object.
+        """
         if _filter is not None:
-            search = search.filter(filter.Clause.parse_obj(_filter).to_es())
+            es_query = filter.to_es(_filter)
+            search = search.filter(es_query)
+
         return search
 
     @staticmethod
@@ -597,19 +619,28 @@ class DatabaseLogic:
         query = search.query.to_dict() if search.query else None
         if query:
             search_body["query"] = query
+
+        search_after = None
+
         if token:
             search_after = urlsafe_b64decode(token.encode()).decode().split(",")
+        if search_after:
             search_body["search_after"] = search_after
+
         search_body["sort"] = sort if sort else DEFAULT_SORT
 
         index_param = indices(collection_ids)
+
+        max_result_window = MAX_LIMIT
+
+        size_limit = min(limit + 1, max_result_window)
 
         search_task = asyncio.create_task(
             self.client.search(
                 index=index_param,
                 ignore_unavailable=ignore_unavailable,
                 body=search_body,
-                size=limit,
+                size=size_limit,
             )
         )
 
@@ -627,24 +658,154 @@ class DatabaseLogic:
             raise NotFoundError(f"Collections '{collection_ids}' do not exist")
 
         hits = es_response["hits"]["hits"]
-        items = (hit["_source"] for hit in hits)
+        items = (hit["_source"] for hit in hits[:limit])
 
         next_token = None
-        if hits and (sort_array := hits[-1].get("sort")):
-            next_token = urlsafe_b64encode(
-                ",".join([str(x) for x in sort_array]).encode()
-            ).decode()
+        if len(hits) > limit and limit < max_result_window:
+            if hits and (sort_array := hits[limit - 1].get("sort")):
+                next_token = urlsafe_b64encode(
+                    ",".join([str(x) for x in sort_array]).encode()
+                ).decode()
 
-        # (1) count should not block returning results, so don't wait for it to be done
-        # (2) don't cancel the task so that it will populate the ES cache for subsequent counts
-        maybe_count = None
+        matched = (
+            es_response["hits"]["total"]["value"]
+            if es_response["hits"]["total"]["relation"] == "eq"
+            else None
+        )
         if count_task.done():
             try:
-                maybe_count = count_task.result().get("count")
+                matched = count_task.result().get("count")
             except Exception as e:
                 logger.error(f"Count task failed: {e}")
 
-        return items, maybe_count, next_token
+        return items, matched, next_token
+
+    """ AGGREGATE LOGIC """
+
+    async def aggregate(
+        self,
+        collection_ids: Optional[List[str]],
+        aggregations: List[str],
+        search: Search,
+        centroid_geohash_grid_precision: int,
+        centroid_geohex_grid_precision: int,
+        centroid_geotile_grid_precision: int,
+        geometry_geohash_grid_precision: int,
+        geometry_geotile_grid_precision: int,
+        ignore_unavailable: Optional[bool] = True,
+    ):
+        """Return aggregations of STAC Items."""
+        agg_2_es = {
+            "total_count": {"value_count": {"field": "id"}},
+            "collection_frequency": {"terms": {"field": "collection", "size": 100}},
+            "platform_frequency": {
+                "terms": {"field": "properties.platform", "size": 100}
+            },
+            "cloud_cover_frequency": {
+                "range": {
+                    "field": "properties.eo:cloud_cover",
+                    "ranges": [
+                        {"to": 5},
+                        {"from": 5, "to": 15},
+                        {"from": 15, "to": 40},
+                        {"from": 40},
+                    ],
+                }
+            },
+            "datetime_frequency": {
+                "date_histogram": {
+                    "field": "properties.datetime",
+                    "calendar_interval": "month",
+                }
+            },
+            "datetime_min": {"min": {"field": "properties.datetime"}},
+            "datetime_max": {"max": {"field": "properties.datetime"}},
+            "grid_code_frequency": {
+                "terms": {
+                    "field": "properties.grid:code",
+                    "missing": "none",
+                    "size": 10000,
+                }
+            },
+            "sun_elevation_frequency": {
+                "histogram": {"field": "properties.view:sun_elevation", "interval": 5}
+            },
+            "sun_azimuth_frequency": {
+                "histogram": {"field": "properties.view:sun_azimuth", "interval": 5}
+            },
+            "off_nadir_frequency": {
+                "histogram": {"field": "properties.view:off_nadir", "interval": 5}
+            },
+        }
+
+        search_body: Dict[str, Any] = {}
+        query = search.query.to_dict() if search.query else None
+        if query:
+            search_body["query"] = query
+
+        # include all aggregations specified
+        # this will ignore aggregations with the wrong names
+        search_body["aggregations"] = {
+            k: v for k, v in agg_2_es.items() if k in aggregations
+        }
+
+        # centroid
+        if "centroid_geohash_grid_frequency" in aggregations:
+            search_body["aggregations"]["centroid_geohash_grid_frequency"] = {
+                "geohash_grid": {
+                    "field": "properties.proj:centroid",
+                    "precision": centroid_geohash_grid_precision,
+                }
+            }
+
+        if "centroid_geohex_grid_frequency" in aggregations:
+            search_body["aggregations"]["centroid_geohex_grid_frequency"] = {
+                "geohex_grid": {
+                    "field": "properties.proj:centroid",
+                    "precision": centroid_geohex_grid_precision,
+                }
+            }
+
+        if "centroid_geotile_grid_frequency" in aggregations:
+            search_body["aggregations"]["centroid_geotile_grid_frequency"] = {
+                "geotile_grid": {
+                    "field": "properties.proj:centroid",
+                    "precision": centroid_geotile_grid_precision,
+                }
+            }
+
+        # geometry
+        if "geometry_geohash_grid_frequency" in aggregations:
+            search_body["aggregations"]["geometry_geohash_grid_frequency"] = {
+                "geohash_grid": {
+                    "field": "geometry",
+                    "precision": geometry_geohash_grid_precision,
+                }
+            }
+
+        if "geometry_geotile_grid_frequency" in aggregations:
+            search_body["aggregations"]["geometry_geotile_grid_frequency"] = {
+                "geotile_grid": {
+                    "field": "geometry",
+                    "precision": geometry_geotile_grid_precision,
+                }
+            }
+
+        index_param = indices(collection_ids)
+        search_task = asyncio.create_task(
+            self.client.search(
+                index=index_param,
+                ignore_unavailable=ignore_unavailable,
+                body=search_body,
+            )
+        )
+
+        try:
+            db_response = await search_task
+        except exceptions.NotFoundError:
+            raise NotFoundError(f"Collections '{collection_ids}' do not exist")
+
+        return db_response
 
     """ TRANSACTION LOGIC """
 

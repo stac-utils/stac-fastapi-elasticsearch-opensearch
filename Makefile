@@ -1,6 +1,6 @@
 #!make
 APP_HOST ?= 0.0.0.0
-EXTERNAL_APP_PORT ?= ${APP_PORT}
+EXTERNAL_APP_PORT ?= 8080
 
 ES_APP_PORT ?= 8080
 ES_HOST ?= docker.for.mac.localhost
@@ -104,3 +104,13 @@ install-es: pybase-install
 .PHONY: install-os
 install-os: pybase-install
 	pip install -e ./stac_fastapi/opensearch[dev,server]
+
+.PHONY: docs-image
+docs-image:
+	docker-compose -f docker-compose.docs.yml \
+		build
+
+.PHONY: docs
+docs: docs-image
+	docker-compose -f docker-compose.docs.yml \
+		run docs

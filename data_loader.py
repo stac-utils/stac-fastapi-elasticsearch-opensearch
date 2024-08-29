@@ -22,12 +22,17 @@ def load_collection(base_url, collection_id, data_dir):
     collection["id"] = collection_id
     try:
         resp = requests.post(f"{base_url}/collections", json=collection)
-        if resp.status_code == 200:
+        if resp.status_code == 200 or resp.status_code == 201:
             click.echo(f"Status code: {resp.status_code}")
             click.echo(f"Added collection: {collection['id']}")
         elif resp.status_code == 409:
             click.echo(f"Status code: {resp.status_code}")
             click.echo(f"Collection: {collection['id']} already exists")
+        else:
+            click.echo(f"Status code: {resp.status_code}")
+            click.echo(
+                f"Error writing {collection['id']} collection. Message: {resp.text}"
+            )
     except requests.ConnectionError:
         click.secho("Failed to connect", fg="red", err=True)
 
