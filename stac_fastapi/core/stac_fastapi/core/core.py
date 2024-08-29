@@ -600,15 +600,16 @@ class CoreClient(AsyncBaseCoreClient):
                     status_code=400, detail=f"Error with cql2_json filter: {e}"
                 )
 
-        if self.extension_is_enabled("FreeTextExtension") and hasattr(
-            search_request, "q"
-        ):
-            query_str = getattr(search_request, "q", None)
+        if self.extension_is_enabled("FreeTextExtension"):
+            q_param = getattr(search_request, "q", None)
+            free_text_queries = (
+                q_param.split(",") if isinstance(q_param, str) else q_param
+            )
             try:
-                search = self.database.apply_free_text_filter(search, query_str)
+                search = self.database.apply_free_text_filter(search, free_text_queries)
             except Exception as e:
                 raise HTTPException(
-                    status_code=400, detail=f"Error with cql2_json filter: {e}"
+                    status_code=400, detail=f"Error with free text query: {e}"
                 )
 
         sort = None

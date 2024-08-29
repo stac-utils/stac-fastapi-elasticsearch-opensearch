@@ -552,32 +552,8 @@ async def test_item_search_free_text_extension(app_client, txn_client, ctx):
 
 
 @pytest.mark.asyncio
-async def test_item_search_free_text_extension_and_query(app_client, txn_client, ctx):
-    """Test POST search indexed field with q parameter with AND operator (free-text)"""
-    first_item = ctx.item
-
-    second_item = dict(first_item)
-    second_item["id"] = "second-item"
-    second_item["properties"]["ft_field1"] = "hello"
-    second_item["properties"]["ft_field2"] = "world"
-
-    await create_item(txn_client, second_item)
-
-    third_item = dict(first_item)
-    third_item["id"] = "third-item"
-    third_item["properties"]["ft_field1"] = "world"
-    await create_item(txn_client, third_item)
-
-    params = {"q": "hello AND world"}
-    resp = await app_client.post("/search", json=params)
-    assert resp.status_code == 200
-    resp_json = resp.json()
-    assert len(resp_json["features"]) == 1
-
-
-@pytest.mark.asyncio
 async def test_item_search_free_text_extension_or_query(app_client, txn_client, ctx):
-    """Test POST search indexed field with q parameter with OR operator (free-text)"""
+    """Test POST search indexed field with q parameter with multiple terms (free-text)"""
     first_item = ctx.item
 
     second_item = dict(first_item)
@@ -592,57 +568,11 @@ async def test_item_search_free_text_extension_or_query(app_client, txn_client, 
     third_item["properties"]["ft_field1"] = "world"
     await create_item(txn_client, third_item)
 
-    params = {"q": "hello OR world"}
-    resp = await app_client.post("/search", json=params)
-    assert resp.status_code == 200
-    resp_json = resp.json()
-    assert len(resp_json["features"]) == 2
-
-
-@pytest.mark.asyncio
-async def test_item_search_free_text_extension_exact_query(app_client, txn_client, ctx):
-    """Test POST search indexed field with q parameter with an exact match (free-text)"""
-    first_item = ctx.item
-
-    second_item = dict(first_item)
-    second_item["id"] = "second-item"
-    second_item["properties"]["ft_field1"] = "hello"
-
-    await create_item(txn_client, second_item)
-
-    params = {"q": '"hello"'}
+    params = {"q": ["hello", "world"]}
     resp = await app_client.post("/search", json=params)
     assert resp.status_code == 200
     resp_json = resp.json()
     assert len(resp_json["features"]) == 1
-
-
-@pytest.mark.asyncio
-async def test_item_search_free_text_extension_parentheses_query(
-    app_client, txn_client, ctx
-):
-    """Test POST search indexed field with q parameter with parentheses (free-text)"""
-    first_item = ctx.item
-
-    second_item = dict(first_item)
-    second_item["id"] = "second-item"
-    second_item["properties"]["ft_field1"] = "hello"
-    second_item["properties"]["ft_field2"] = "foo"
-
-    await create_item(txn_client, second_item)
-
-    third_item = dict(first_item)
-    third_item["id"] = "third-item"
-    third_item["properties"]["ft_field1"] = "world"
-    third_item["properties"]["ft_field2"] = "foo"
-
-    await create_item(txn_client, third_item)
-
-    params = {"q": "(hello OR world) AND foo"}
-    resp = await app_client.post("/search", json=params)
-    assert resp.status_code == 200
-    resp_json = resp.json()
-    assert len(resp_json["features"]) == 2
 
 
 @pytest.mark.asyncio

@@ -428,17 +428,16 @@ class DatabaseLogic:
         return search.filter("terms", collection=collection_ids)
 
     @staticmethod
-    def apply_free_text_filter(search: Search, query_str: Optional[str]):
+    def apply_free_text_filter(search: Search, free_text_queries: Optional[List[str]]):
         """Database logic to perform query for search endpoint."""
-        if query_str is not None:
+        if free_text_queries is not None:
             # the colon is a reserved character
-            query_str = query_str.replace(":", "\:").replace("=", ":")
-            search = search.query(
-                "query_string",
-                query=query_str,
-                fields=["collection", "properties.*"],
-                lenient=True,
-            )
+            for free_text_query in free_text_queries:
+                search = search.query(
+                    "multi_match",
+                    query=free_text_query,
+                    fields=["collection", "properties.*"],
+                )
         return search
 
     @staticmethod
