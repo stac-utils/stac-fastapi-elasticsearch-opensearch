@@ -572,7 +572,7 @@ async def test_item_search_free_text_extension_or_query(app_client, txn_client, 
     resp = await app_client.post("/search", json=params)
     assert resp.status_code == 200
     resp_json = resp.json()
-    assert len(resp_json["features"]) == 1
+    assert len(resp_json["features"]) == 2
 
 
 @pytest.mark.asyncio

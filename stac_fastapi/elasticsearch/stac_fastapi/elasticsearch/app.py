@@ -28,14 +28,12 @@ from stac_fastapi.elasticsearch.database_logic import (
 from stac_fastapi.extensions.core import (
     AggregationExtension,
     FilterExtension,
+    FreeTextExtension,
     SortExtension,
     TokenPaginationExtension,
     TransactionExtension,
 )
-from stac_fastapi.extensions.third_party import (
-    BulkTransactionExtension,
-    FreeTextExtension,
-)
+from stac_fastapi.extensions.third_party import BulkTransactionExtension
 
 settings = ElasticsearchSettings()
 session = Session.create_from_settings(settings)

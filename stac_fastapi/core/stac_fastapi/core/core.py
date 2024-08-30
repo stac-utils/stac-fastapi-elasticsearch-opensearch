@@ -600,7 +600,7 @@ class CoreClient(AsyncBaseCoreClient):
                     status_code=400, detail=f"Error with cql2_json filter: {e}"
                 )
 
-        if self.extension_is_enabled("FreeTextExtension"):
+        if hasattr(search_request, "q"):
             q_param = getattr(search_request, "q", None)
             free_text_queries = (
                 q_param.split(",") if isinstance(q_param, str) else q_param
