@@ -49,6 +49,7 @@ from stac_fastapi.extensions.core import (
     AggregationExtension,
     FieldsExtension,
     FilterExtension,
+    FreeTextExtension,
     SortExtension,
     TokenPaginationExtension,
     TransactionExtension,
@@ -215,6 +216,7 @@ async def app():
         QueryExtension(),
         TokenPaginationExtension(),
         FilterExtension(),
+        FreeTextExtension(),
     ]
 
     extensions = [aggregation_extension] + search_extensions
@@ -301,6 +303,7 @@ async def app_basic_auth():
         QueryExtension(),
         TokenPaginationExtension(),
         FilterExtension(),
+        FreeTextExtension(),
     ]
 
     extensions = [aggregation_extension] + search_extensions
@@ -380,6 +383,7 @@ async def route_dependencies_app():
         QueryExtension(),
         TokenPaginationExtension(),
         FilterExtension(),
+        FreeTextExtension(),
     ]
 
     post_request_model = create_post_request_model(extensions)

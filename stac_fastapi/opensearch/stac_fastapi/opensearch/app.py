@@ -22,6 +22,7 @@ from stac_fastapi.core.session import Session
 from stac_fastapi.extensions.core import (
     AggregationExtension,
     FilterExtension,
+    FreeTextExtension,
     SortExtension,
     TokenPaginationExtension,
     TransactionExtension,
@@ -71,6 +72,7 @@ search_extensions = [
     SortExtension(),
     TokenPaginationExtension(),
     filter_extension,
+    FreeTextExtension(),
 ]
 
 extensions = [aggregation_extension] + search_extensions

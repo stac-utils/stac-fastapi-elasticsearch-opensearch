@@ -544,7 +544,7 @@ async def test_item_search_free_text_extension(app_client, txn_client, ctx):
 
     await create_item(txn_client, second_item)
 
-    params = {"q": "hello"}
+    params = {"q": ["hello"]}
     resp = await app_client.post("/search", json=params)
     assert resp.status_code == 200
     resp_json = resp.json()
