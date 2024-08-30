@@ -1,7 +1,6 @@
 """Core client."""
 
 import logging
-import re
 from datetime import datetime as datetime_type
 from datetime import timezone
 from enum import Enum
@@ -163,6 +162,24 @@ class CoreClient(AsyncBaseCoreClient):
                 }
             )
 
+        if self.extension_is_enabled("AggregationExtension"):
+            landing_page["links"].extend(
+                [
+                    {
+                        "rel": "aggregate",
+                        "type": "application/json",
+                        "title": "Aggregate",
+                        "href": urljoin(base_url, "aggregate"),
+                    },
+                    {
+                        "rel": "aggregations",
+                        "type": "application/json",
+                        "title": "Aggregations",
+                        "href": urljoin(base_url, "aggregations"),
+                    },
+                ]
+            )
+
         collections = await self.all_collections(request=kwargs["request"])
         for collection in collections["collections"]:
             landing_page["links"].append(
@@ -262,8 +279,8 @@ class CoreClient(AsyncBaseCoreClient):
         collection_id: str,
         bbox: Optional[BBox] = None,
         datetime: Optional[DateTimeType] = None,
-        limit: int = 10,
-        token: str = None,
+        limit: Optional[int] = 10,
+        token: Optional[str] = None,
         **kwargs,
     ) -> stac_types.ItemCollection:
         """Read items from a specific collection in the database.
@@ -285,6 +302,8 @@ class CoreClient(AsyncBaseCoreClient):
             Exception: If any error occurs while reading the items from the database.
         """
         request: Request = kwargs["request"]
+        token = request.query_params.get("token")
+
         base_url = str(request.base_url)
 
         collection = await self.get_collection(
@@ -473,14 +492,6 @@ class CoreClient(AsyncBaseCoreClient):
             "query": orjson.loads(query) if query else query,
         }
 
-        # this is borrowed from stac-fastapi-pgstac
-        # Kludgy fix because using factory does not allow alias for filter-lan
-        query_params = str(request.query_params)
-        if filter_lang is None:
-            match = re.search(r"filter-lang=([a-z0-9-]+)", query_params, re.IGNORECASE)
-            if match:
-                filter_lang = match.group(1)
-
         if datetime:
             base_args["datetime"] = self._format_datetime_range(datetime)
 
@@ -513,8 +524,10 @@ class CoreClient(AsyncBaseCoreClient):
         # Do the request
         try:
             search_request = self.post_request_model(**base_args)
-        except ValidationError:
-            raise HTTPException(status_code=400, detail="Invalid parameters provided")
+        except ValidationError as e:
+            raise HTTPException(
+                status_code=400, detail=f"Invalid parameters provided: {e}"
+            )
         resp = await self.post_search(search_request=search_request, request=request)
 
         return resp

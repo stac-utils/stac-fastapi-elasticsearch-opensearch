@@ -139,6 +139,32 @@ class CollectionLinks(BaseLinks):
         else:
             return None
 
+    def link_aggregate(self) -> Dict[str, Any]:
+        """Create the `aggregate` link."""
+        if "AggregationExtension" in self.extensions:
+            return dict(
+                rel="aggregate",
+                type=MimeTypes.json.value,
+                href=urljoin(
+                    self.base_url, f"collections/{self.collection_id}/aggregate"
+                ),
+            )
+        else:
+            return None
+
+    def link_aggregations(self) -> Dict[str, Any]:
+        """Create the `aggregations` link."""
+        if "AggregationExtension" in self.extensions:
+            return dict(
+                rel="aggregations",
+                type=MimeTypes.json.value,
+                href=urljoin(
+                    self.base_url, f"collections/{self.collection_id}/aggregations"
+                ),
+            )
+        else:
+            return None
+
 
 @attr.s
 class PagingLinks(BaseLinks):
