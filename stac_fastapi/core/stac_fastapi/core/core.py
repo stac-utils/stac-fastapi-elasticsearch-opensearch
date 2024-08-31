@@ -1,4 +1,5 @@
 """Core client."""
+
 import logging
 from datetime import datetime as datetime_type
 from datetime import timezone
@@ -456,6 +457,7 @@ class CoreClient(AsyncBaseCoreClient):
         token: Optional[str] = None,
         fields: Optional[List[str]] = None,
         sortby: Optional[str] = None,
+        q: Optional[List[str]] = None,
         intersects: Optional[str] = None,
         filter: Optional[str] = None,
         filter_lang: Optional[str] = None,
@@ -473,6 +475,7 @@ class CoreClient(AsyncBaseCoreClient):
             token (Optional[str]): Access token to use when searching the catalog.
             fields (Optional[List[str]]): Fields to include or exclude from the results.
             sortby (Optional[str]): Sorting options for the results.
+            q (Optional[List[str]]): Free text query to filter the results.
             intersects (Optional[str]): GeoJSON geometry to search in.
             kwargs: Additional parameters to be passed to the API.
 
@@ -489,6 +492,7 @@ class CoreClient(AsyncBaseCoreClient):
             "limit": limit,
             "token": token,
             "query": orjson.loads(query) if query else query,
+            "q": q,
         }
 
         if datetime:
@@ -597,6 +601,15 @@ class CoreClient(AsyncBaseCoreClient):
             except Exception as e:
                 raise HTTPException(
                     status_code=400, detail=f"Error with cql2_json filter: {e}"
+                )
+
+        if hasattr(search_request, "q"):
+            free_text_queries = getattr(search_request, "q", None)
+            try:
+                search = self.database.apply_free_text_filter(search, free_text_queries)
+            except Exception as e:
+                raise HTTPException(
+                    status_code=400, detail=f"Error with free text query: {e}"
                 )
 
         sort = None

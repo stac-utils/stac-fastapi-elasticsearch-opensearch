@@ -1,4 +1,5 @@
 """Database logic."""
+
 import asyncio
 import logging
 import os
@@ -506,6 +507,17 @@ class DatabaseLogic:
             search = search.filter(Q("range", **key_filter))
         else:
             search = search.filter("term", **{field: value})
+
+        return search
+
+    @staticmethod
+    def apply_free_text_filter(search: Search, free_text_queries: Optional[List[str]]):
+        """Database logic to perform query for search endpoint."""
+        if free_text_queries is not None:
+            free_text_query_string = '" OR properties.\\*:"'.join(free_text_queries)
+            search = search.query(
+                "query_string", query=f'properties.\\*:"{free_text_query_string}"'
+            )
 
         return search
 
