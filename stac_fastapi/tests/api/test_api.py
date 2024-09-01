@@ -1,5 +1,5 @@
 import uuid
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -29,6 +29,14 @@ ROUTES = {
     "POST /collections/{collection_id}/items",
     "PUT /collections/{collection_id}",
     "PUT /collections/{collection_id}/items/{item_id}",
+    "GET /aggregations",
+    "GET /aggregate",
+    "POST /aggregations",
+    "POST /aggregate",
+    "GET /collections/{collection_id}/aggregations",
+    "GET /collections/{collection_id}/aggregate",
+    "POST /collections/{collection_id}/aggregations",
+    "POST /collections/{collection_id}/aggregate",
 }
 
 
@@ -118,7 +126,10 @@ async def test_app_context_results(app_client, txn_client, ctx, load_test_data):
 
 @pytest.mark.asyncio
 async def test_app_fields_extension(app_client, ctx, txn_client):
-    resp = await app_client.get("/search", params={"collections": ["test-collection"]})
+    resp = await app_client.get(
+        "/search",
+        params={"collections": ["test-collection"], "fields": "+properties.datetime"},
+    )
     assert resp.status_code == 200
     resp_json = resp.json()
     assert list(resp_json["features"][0]["properties"]) == ["datetime"]
@@ -132,11 +143,12 @@ async def test_app_fields_extension_query(app_client, ctx, txn_client):
         json={
             "query": {"proj:epsg": {"gte": item["properties"]["proj:epsg"]}},
             "collections": ["test-collection"],
+            "fields": {"include": ["properties.datetime", "properties.proj:epsg"]},
         },
     )
     assert resp.status_code == 200
     resp_json = resp.json()
-    assert list(resp_json["features"][0]["properties"]) == ["datetime", "proj:epsg"]
+    assert set(resp_json["features"][0]["properties"]) == set(["datetime", "proj:epsg"])
 
 
 @pytest.mark.asyncio
@@ -245,7 +257,9 @@ async def test_app_sort_extension_get_asc(app_client, txn_client, ctx):
 
     second_item = dict(first_item)
     second_item["id"] = "another-item"
-    another_item_date = first_item["properties"]["datetime"] - timedelta(days=1)
+    another_item_date = datetime.strptime(
+        first_item["properties"]["datetime"], "%Y-%m-%dT%H:%M:%SZ"
+    ).replace(tzinfo=timezone.utc) - timedelta(days=1)
     second_item["properties"]["datetime"] = another_item_date.isoformat().replace(
         "+00:00", "Z"
     )
@@ -265,7 +279,9 @@ async def test_app_sort_extension_get_desc(app_client, txn_client, ctx):
 
     second_item = dict(first_item)
     second_item["id"] = "another-item"
-    another_item_date = first_item["properties"]["datetime"] - timedelta(days=1)
+    another_item_date = datetime.strptime(
+        first_item["properties"]["datetime"], "%Y-%m-%dT%H:%M:%SZ"
+    ).replace(tzinfo=timezone.utc) - timedelta(days=1)
     second_item["properties"]["datetime"] = another_item_date.isoformat().replace(
         "+00:00", "Z"
     )
@@ -284,7 +300,9 @@ async def test_app_sort_extension_post_asc(app_client, txn_client, ctx):
 
     second_item = dict(first_item)
     second_item["id"] = "another-item"
-    another_item_date = first_item["properties"]["datetime"] - timedelta(days=1)
+    another_item_date = datetime.strptime(
+        first_item["properties"]["datetime"], "%Y-%m-%dT%H:%M:%SZ"
+    ).replace(tzinfo=timezone.utc) - timedelta(days=1)
     second_item["properties"]["datetime"] = another_item_date.isoformat().replace(
         "+00:00", "Z"
     )
@@ -307,7 +325,9 @@ async def test_app_sort_extension_post_desc(app_client, txn_client, ctx):
 
     second_item = dict(first_item)
     second_item["id"] = "another-item"
-    another_item_date = first_item["properties"]["datetime"] - timedelta(days=1)
+    another_item_date = datetime.strptime(
+        first_item["properties"]["datetime"], "%Y-%m-%dT%H:%M:%SZ"
+    ).replace(tzinfo=timezone.utc) - timedelta(days=1)
     second_item["properties"]["datetime"] = another_item_date.isoformat().replace(
         "+00:00", "Z"
     )

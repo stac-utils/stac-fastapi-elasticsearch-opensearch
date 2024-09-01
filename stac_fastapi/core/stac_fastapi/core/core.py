@@ -1,6 +1,6 @@
 """Core client."""
+
 import logging
-import re
 from datetime import datetime as datetime_type
 from datetime import timezone
 from enum import Enum
@@ -9,7 +9,6 @@ from urllib.parse import unquote_plus, urljoin
 
 import attr
 import orjson
-import stac_pydantic
 from fastapi import HTTPException, Request
 from overrides import overrides
 from pydantic import ValidationError
@@ -25,19 +24,16 @@ from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.models.links import PagingLinks
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.session import Session
-from stac_fastapi.core.types.core import (
-    AsyncBaseCoreClient,
-    AsyncBaseTransactionsClient,
-)
+from stac_fastapi.core.utilities import filter_fields
+from stac_fastapi.extensions.core.filter.client import AsyncBaseFiltersClient
 from stac_fastapi.extensions.third_party.bulk_transactions import (
     BaseBulkTransactionsClient,
     BulkTransactionMethod,
     Items,
 )
 from stac_fastapi.types import stac as stac_types
-from stac_fastapi.types.config import Settings
 from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
-from stac_fastapi.types.core import AsyncBaseFiltersClient
+from stac_fastapi.types.core import AsyncBaseCoreClient, AsyncBaseTransactionsClient
 from stac_fastapi.types.extension import ApiExtension
 from stac_fastapi.types.requests import get_base_url
 from stac_fastapi.types.rfc3339 import DateTimeType
@@ -153,6 +149,37 @@ class CoreClient(AsyncBaseCoreClient):
             conformance_classes=self.conformance_classes(),
             extension_schemas=[],
         )
+
+        if self.extension_is_enabled("FilterExtension"):
+            landing_page["links"].append(
+                {
+                    # TODO: replace this with Relations.queryables.value,
+                    "rel": "queryables",
+                    # TODO: replace this with MimeTypes.jsonschema,
+                    "type": "application/schema+json",
+                    "title": "Queryables",
+                    "href": urljoin(base_url, "queryables"),
+                }
+            )
+
+        if self.extension_is_enabled("AggregationExtension"):
+            landing_page["links"].extend(
+                [
+                    {
+                        "rel": "aggregate",
+                        "type": "application/json",
+                        "title": "Aggregate",
+                        "href": urljoin(base_url, "aggregate"),
+                    },
+                    {
+                        "rel": "aggregations",
+                        "type": "application/json",
+                        "title": "Aggregations",
+                        "href": urljoin(base_url, "aggregations"),
+                    },
+                ]
+            )
+
         collections = await self.all_collections(request=kwargs["request"])
         for collection in collections["collections"]:
             landing_page["links"].append(
@@ -205,7 +232,7 @@ class CoreClient(AsyncBaseCoreClient):
         token = request.query_params.get("token")
 
         collections, next_token = await self.database.get_all_collections(
-            token=token, limit=limit, base_url=base_url
+            token=token, limit=limit, request=request
         )
 
         links = [
@@ -239,10 +266,12 @@ class CoreClient(AsyncBaseCoreClient):
         Raises:
             NotFoundError: If the collection with the given id cannot be found in the database.
         """
-        base_url = str(kwargs["request"].base_url)
+        request = kwargs["request"]
         collection = await self.database.find_collection(collection_id=collection_id)
         return self.collection_serializer.db_to_stac(
-            collection=collection, base_url=base_url
+            collection=collection,
+            request=request,
+            extensions=[type(ext).__name__ for ext in self.extensions],
         )
 
     async def item_collection(
@@ -250,8 +279,8 @@ class CoreClient(AsyncBaseCoreClient):
         collection_id: str,
         bbox: Optional[BBox] = None,
         datetime: Optional[DateTimeType] = None,
-        limit: int = 10,
-        token: str = None,
+        limit: Optional[int] = 10,
+        token: Optional[str] = None,
         **kwargs,
     ) -> stac_types.ItemCollection:
         """Read items from a specific collection in the database.
@@ -273,6 +302,8 @@ class CoreClient(AsyncBaseCoreClient):
             Exception: If any error occurs while reading the items from the database.
         """
         request: Request = kwargs["request"]
+        token = request.query_params.get("token")
+
         base_url = str(request.base_url)
 
         collection = await self.get_collection(
@@ -426,6 +457,7 @@ class CoreClient(AsyncBaseCoreClient):
         token: Optional[str] = None,
         fields: Optional[List[str]] = None,
         sortby: Optional[str] = None,
+        q: Optional[List[str]] = None,
         intersects: Optional[str] = None,
         filter: Optional[str] = None,
         filter_lang: Optional[str] = None,
@@ -443,6 +475,7 @@ class CoreClient(AsyncBaseCoreClient):
             token (Optional[str]): Access token to use when searching the catalog.
             fields (Optional[List[str]]): Fields to include or exclude from the results.
             sortby (Optional[str]): Sorting options for the results.
+            q (Optional[List[str]]): Free text query to filter the results.
             intersects (Optional[str]): GeoJSON geometry to search in.
             kwargs: Additional parameters to be passed to the API.
 
@@ -459,15 +492,8 @@ class CoreClient(AsyncBaseCoreClient):
             "limit": limit,
             "token": token,
             "query": orjson.loads(query) if query else query,
+            "q": q,
         }
-
-        # this is borrowed from stac-fastapi-pgstac
-        # Kludgy fix because using factory does not allow alias for filter-lan
-        query_params = str(request.query_params)
-        if filter_lang is None:
-            match = re.search(r"filter-lang=([a-z0-9-]+)", query_params, re.IGNORECASE)
-            if match:
-                filter_lang = match.group(1)
 
         if datetime:
             base_args["datetime"] = self._format_datetime_range(datetime)
@@ -476,41 +502,35 @@ class CoreClient(AsyncBaseCoreClient):
             base_args["intersects"] = orjson.loads(unquote_plus(intersects))
 
         if sortby:
-            sort_param = []
-            for sort in sortby:
-                sort_param.append(
-                    {
-                        "field": sort[1:],
-                        "direction": "desc" if sort[0] == "-" else "asc",
-                    }
-                )
-            base_args["sortby"] = sort_param
+            base_args["sortby"] = [
+                {"field": sort[1:], "direction": "desc" if sort[0] == "-" else "asc"}
+                for sort in sortby
+            ]
 
         if filter:
-            if filter_lang == "cql2-json":
-                base_args["filter-lang"] = "cql2-json"
-                base_args["filter"] = orjson.loads(unquote_plus(filter))
-            else:
-                base_args["filter-lang"] = "cql2-json"
-                base_args["filter"] = orjson.loads(to_cql2(parse_cql2_text(filter)))
+            base_args["filter-lang"] = "cql2-json"
+            base_args["filter"] = orjson.loads(
+                unquote_plus(filter)
+                if filter_lang == "cql2-json"
+                else to_cql2(parse_cql2_text(filter))
+            )
 
         if fields:
-            includes = set()
-            excludes = set()
+            includes, excludes = set(), set()
             for field in fields:
                 if field[0] == "-":
                     excludes.add(field[1:])
-                elif field[0] == "+":
-                    includes.add(field[1:])
                 else:
-                    includes.add(field)
+                    includes.add(field[1:] if field[0] in "+ " else field)
             base_args["fields"] = {"include": includes, "exclude": excludes}
 
         # Do the request
         try:
             search_request = self.post_request_model(**base_args)
-        except ValidationError:
-            raise HTTPException(status_code=400, detail="Invalid parameters provided")
+        except ValidationError as e:
+            raise HTTPException(
+                status_code=400, detail=f"Invalid parameters provided: {e}"
+            )
         resp = await self.post_search(search_request=search_request, request=request)
 
         return resp
@@ -583,6 +603,15 @@ class CoreClient(AsyncBaseCoreClient):
                     status_code=400, detail=f"Error with cql2_json filter: {e}"
                 )
 
+        if hasattr(search_request, "q"):
+            free_text_queries = getattr(search_request, "q", None)
+            try:
+                search = self.database.apply_free_text_filter(search, free_text_queries)
+            except Exception as e:
+                raise HTTPException(
+                    status_code=400, detail=f"Error with free text query: {e}"
+                )
+
         sort = None
         if search_request.sortby:
             sort = self.database.populate_sort(search_request.sortby)
@@ -599,32 +628,22 @@ class CoreClient(AsyncBaseCoreClient):
             collection_ids=search_request.collections,
         )
 
+        fields = (
+            getattr(search_request, "fields", None)
+            if self.extension_is_enabled("FieldsExtension")
+            else None
+        )
+        include: Set[str] = fields.include if fields and fields.include else set()
+        exclude: Set[str] = fields.exclude if fields and fields.exclude else set()
+
         items = [
-            self.item_serializer.db_to_stac(item, base_url=base_url) for item in items
+            filter_fields(
+                self.item_serializer.db_to_stac(item, base_url=base_url),
+                include,
+                exclude,
+            )
+            for item in items
         ]
-
-        if self.extension_is_enabled("FieldsExtension"):
-            if search_request.query is not None:
-                query_include: Set[str] = set(
-                    [
-                        k if k in Settings.get().indexed_fields else f"properties.{k}"
-                        for k in search_request.query.keys()
-                    ]
-                )
-                if not search_request.fields.include:
-                    search_request.fields.include = query_include
-                else:
-                    search_request.fields.include.union(query_include)
-
-            filter_kwargs = search_request.fields.filter_fields
-
-            items = [
-                orjson.loads(
-                    stac_pydantic.Item(**feat).json(**filter_kwargs, exclude_unset=True)
-                )
-                for feat in items
-            ]
-
         links = await PagingLinks(request=request, next=next_token).get_links()
 
         return stac_types.ItemCollection(
@@ -748,16 +767,18 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             ConflictError: If the collection already exists.
         """
         collection = collection.model_dump(mode="json")
-        base_url = str(kwargs["request"].base_url)
-        collection = self.database.collection_serializer.stac_to_db(
-            collection, base_url
-        )
+        request = kwargs["request"]
+        collection = self.database.collection_serializer.stac_to_db(collection, request)
         await self.database.create_collection(collection=collection)
-        return CollectionSerializer.db_to_stac(collection, base_url)
+        return CollectionSerializer.db_to_stac(
+            collection,
+            request,
+            extensions=[type(ext).__name__ for ext in self.database.extensions],
+        )
 
     @overrides
     async def update_collection(
-        self, collection: Collection, **kwargs
+        self, collection_id: str, collection: Collection, **kwargs
     ) -> stac_types.Collection:
         """
         Update a collection.
@@ -770,6 +791,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         The updated collection is then returned.
 
         Args:
+            collection_id: id of the existing collection to be updated
             collection: A STAC collection that needs to be updated.
             kwargs: Additional keyword arguments.
 
@@ -779,20 +801,18 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         """
         collection = collection.model_dump(mode="json")
 
-        base_url = str(kwargs["request"].base_url)
+        request = kwargs["request"]
 
-        collection_id = kwargs["request"].query_params.get(
-            "collection_id", collection["id"]
-        )
-
-        collection = self.database.collection_serializer.stac_to_db(
-            collection, base_url
-        )
+        collection = self.database.collection_serializer.stac_to_db(collection, request)
         await self.database.update_collection(
             collection_id=collection_id, collection=collection
         )
 
-        return CollectionSerializer.db_to_stac(collection, base_url)
+        return CollectionSerializer.db_to_stac(
+            collection,
+            request,
+            extensions=[type(ext).__name__ for ext in self.database.extensions],
+        )
 
     @overrides
     async def delete_collection(

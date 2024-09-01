@@ -1,4 +1,5 @@
 """Database logic."""
+
 import asyncio
 import logging
 import os
@@ -10,6 +11,7 @@ from opensearchpy import exceptions, helpers
 from opensearchpy.exceptions import TransportError
 from opensearchpy.helpers.query import Q
 from opensearchpy.helpers.search import Search
+from starlette.requests import Request
 
 from stac_fastapi.core import serializers
 from stac_fastapi.core.extensions import filter
@@ -167,7 +169,7 @@ def indices(collection_ids: Optional[List[str]]) -> str:
     Returns:
         A string of comma-separated index names. If `collection_ids` is None, returns the default indices.
     """
-    if collection_ids is None:
+    if collection_ids is None or collection_ids == []:
         return ITEM_INDICES
     else:
         return ",".join([index_by_collection_id(c) for c in collection_ids])
@@ -333,10 +335,12 @@ class DatabaseLogic:
         default=serializers.CollectionSerializer
     )
 
+    extensions: List[str] = attr.ib(default=attr.Factory(list))
+
     """CORE LOGIC"""
 
     async def get_all_collections(
-        self, token: Optional[str], limit: int, base_url: str
+        self, token: Optional[str], limit: int, request: Request
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
         """
         Retrieve a list of all collections from Opensearch, supporting pagination.
@@ -366,7 +370,7 @@ class DatabaseLogic:
         hits = response["hits"]["hits"]
         collections = [
             self.collection_serializer.db_to_stac(
-                collection=hit["_source"], base_url=base_url
+                collection=hit["_source"], request=request, extensions=self.extensions
             )
             for hit in hits
         ]
@@ -422,6 +426,17 @@ class DatabaseLogic:
     def apply_collections_filter(search: Search, collection_ids: List[str]):
         """Database logic to search a list of STAC collection ids."""
         return search.filter("terms", collection=collection_ids)
+
+    @staticmethod
+    def apply_free_text_filter(search: Search, free_text_queries: Optional[List[str]]):
+        """Database logic to perform query for search endpoint."""
+        if free_text_queries is not None:
+            free_text_query_string = '" OR properties.\\*:"'.join(free_text_queries)
+            search = search.query(
+                "query_string", query=f'properties.\\*:"{free_text_query_string}"'
+            )
+
+        return search
 
     @staticmethod
     def apply_datetime_filter(search: Search, datetime_search):
@@ -661,6 +676,133 @@ class DatabaseLogic:
                 logger.error(f"Count task failed: {e}")
 
         return items, matched, next_token
+
+    """ AGGREGATE LOGIC """
+
+    async def aggregate(
+        self,
+        collection_ids: Optional[List[str]],
+        aggregations: List[str],
+        search: Search,
+        centroid_geohash_grid_precision: int,
+        centroid_geohex_grid_precision: int,
+        centroid_geotile_grid_precision: int,
+        geometry_geohash_grid_precision: int,
+        geometry_geotile_grid_precision: int,
+        ignore_unavailable: Optional[bool] = True,
+    ):
+        """Return aggregations of STAC Items."""
+        agg_2_es = {
+            "total_count": {"value_count": {"field": "id"}},
+            "collection_frequency": {"terms": {"field": "collection", "size": 100}},
+            "platform_frequency": {
+                "terms": {"field": "properties.platform", "size": 100}
+            },
+            "cloud_cover_frequency": {
+                "range": {
+                    "field": "properties.eo:cloud_cover",
+                    "ranges": [
+                        {"to": 5},
+                        {"from": 5, "to": 15},
+                        {"from": 15, "to": 40},
+                        {"from": 40},
+                    ],
+                }
+            },
+            "datetime_frequency": {
+                "date_histogram": {
+                    "field": "properties.datetime",
+                    "calendar_interval": "month",
+                }
+            },
+            "datetime_min": {"min": {"field": "properties.datetime"}},
+            "datetime_max": {"max": {"field": "properties.datetime"}},
+            "grid_code_frequency": {
+                "terms": {
+                    "field": "properties.grid:code",
+                    "missing": "none",
+                    "size": 10000,
+                }
+            },
+            "sun_elevation_frequency": {
+                "histogram": {"field": "properties.view:sun_elevation", "interval": 5}
+            },
+            "sun_azimuth_frequency": {
+                "histogram": {"field": "properties.view:sun_azimuth", "interval": 5}
+            },
+            "off_nadir_frequency": {
+                "histogram": {"field": "properties.view:off_nadir", "interval": 5}
+            },
+        }
+
+        search_body: Dict[str, Any] = {}
+        query = search.query.to_dict() if search.query else None
+        if query:
+            search_body["query"] = query
+
+        # include all aggregations specified
+        # this will ignore aggregations with the wrong names
+        search_body["aggregations"] = {
+            k: v for k, v in agg_2_es.items() if k in aggregations
+        }
+
+        # centroid
+        if "centroid_geohash_grid_frequency" in aggregations:
+            search_body["aggregations"]["centroid_geohash_grid_frequency"] = {
+                "geohash_grid": {
+                    "field": "properties.proj:centroid",
+                    "precision": centroid_geohash_grid_precision,
+                }
+            }
+
+        if "centroid_geohex_grid_frequency" in aggregations:
+            search_body["aggregations"]["centroid_geohex_grid_frequency"] = {
+                "geohex_grid": {
+                    "field": "properties.proj:centroid",
+                    "precision": centroid_geohex_grid_precision,
+                }
+            }
+
+        if "centroid_geotile_grid_frequency" in aggregations:
+            search_body["aggregations"]["centroid_geotile_grid_frequency"] = {
+                "geotile_grid": {
+                    "field": "properties.proj:centroid",
+                    "precision": centroid_geotile_grid_precision,
+                }
+            }
+
+        # geometry
+        if "geometry_geohash_grid_frequency" in aggregations:
+            search_body["aggregations"]["geometry_geohash_grid_frequency"] = {
+                "geohash_grid": {
+                    "field": "geometry",
+                    "precision": geometry_geohash_grid_precision,
+                }
+            }
+
+        if "geometry_geotile_grid_frequency" in aggregations:
+            search_body["aggregations"]["geometry_geotile_grid_frequency"] = {
+                "geotile_grid": {
+                    "field": "geometry",
+                    "precision": geometry_geotile_grid_precision,
+                }
+            }
+
+        index_param = indices(collection_ids)
+        search_task = asyncio.create_task(
+            self.client.search(
+                index=index_param,
+                ignore_unavailable=ignore_unavailable,
+                body=search_body,
+            )
+        )
+
+        try:
+            db_response = await search_task
+        except exceptions.NotFoundError:
+            raise NotFoundError(f"Collections '{collection_ids}' do not exist")
+
+        return db_response
 
     """ TRANSACTION LOGIC """
 
