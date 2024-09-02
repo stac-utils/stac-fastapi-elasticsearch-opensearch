@@ -4,6 +4,7 @@ import asyncio
 import logging
 import os
 from base64 import urlsafe_b64decode, urlsafe_b64encode
+from copy import deepcopy
 from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple, Type, Union
 
 import attr
@@ -315,6 +316,77 @@ class DatabaseLogic:
     )
 
     extensions: List[str] = attr.ib(default=attr.Factory(list))
+
+    aggregation_mapping: Dict[str, Dict[str, Any]] = {
+        "total_count": {"value_count": {"field": "id"}},
+        "collection_frequency": {"terms": {"field": "collection", "size": 100}},
+        "platform_frequency": {"terms": {"field": "properties.platform", "size": 100}},
+        "cloud_cover_frequency": {
+            "range": {
+                "field": "properties.eo:cloud_cover",
+                "ranges": [
+                    {"to": 5},
+                    {"from": 5, "to": 15},
+                    {"from": 15, "to": 40},
+                    {"from": 40},
+                ],
+            }
+        },
+        "datetime_frequency": {
+            "date_histogram": {
+                "field": "properties.datetime",
+                "calendar_interval": "month",
+            }
+        },
+        "datetime_min": {"min": {"field": "properties.datetime"}},
+        "datetime_max": {"max": {"field": "properties.datetime"}},
+        "grid_code_frequency": {
+            "terms": {
+                "field": "properties.grid:code",
+                "missing": "none",
+                "size": 10000,
+            }
+        },
+        "sun_elevation_frequency": {
+            "histogram": {"field": "properties.view:sun_elevation", "interval": 5}
+        },
+        "sun_azimuth_frequency": {
+            "histogram": {"field": "properties.view:sun_azimuth", "interval": 5}
+        },
+        "off_nadir_frequency": {
+            "histogram": {"field": "properties.view:off_nadir", "interval": 5}
+        },
+        "centroid_geohash_grid_frequency": {
+            "geohash_grid": {
+                "field": "properties.proj:centroid",
+                "precision": 1,
+            }
+        },
+        "centroid_geohex_grid_frequency": {
+            "geohex_grid": {
+                "field": "properties.proj:centroid",
+                "precision": 0,
+            }
+        },
+        "centroid_geotile_grid_frequency": {
+            "geotile_grid": {
+                "field": "properties.proj:centroid",
+                "precision": 0,
+            }
+        },
+        "geometry_geohash_grid_frequency": {
+            "geohash_grid": {
+                "field": "geometry",
+                "precision": 1,
+            }
+        },
+        "geometry_geotile_grid_frequency": {
+            "geotile_grid": {
+                "field": "geometry",
+                "precision": 0,
+            }
+        },
+    }
 
     """CORE LOGIC"""
 
@@ -657,52 +729,10 @@ class DatabaseLogic:
         centroid_geotile_grid_precision: int,
         geometry_geohash_grid_precision: int,
         geometry_geotile_grid_precision: int,
+        datetime_frequency_interval: str,
         ignore_unavailable: Optional[bool] = True,
     ):
         """Return aggregations of STAC Items."""
-        agg_2_es = {
-            "total_count": {"value_count": {"field": "id"}},
-            "collection_frequency": {"terms": {"field": "collection", "size": 100}},
-            "platform_frequency": {
-                "terms": {"field": "properties.platform", "size": 100}
-            },
-            "cloud_cover_frequency": {
-                "range": {
-                    "field": "properties.eo:cloud_cover",
-                    "ranges": [
-                        {"to": 5},
-                        {"from": 5, "to": 15},
-                        {"from": 15, "to": 40},
-                        {"from": 40},
-                    ],
-                }
-            },
-            "datetime_frequency": {
-                "date_histogram": {
-                    "field": "properties.datetime",
-                    "calendar_interval": "month",
-                }
-            },
-            "datetime_min": {"min": {"field": "properties.datetime"}},
-            "datetime_max": {"max": {"field": "properties.datetime"}},
-            "grid_code_frequency": {
-                "terms": {
-                    "field": "properties.grid:code",
-                    "missing": "none",
-                    "size": 10000,
-                }
-            },
-            "sun_elevation_frequency": {
-                "histogram": {"field": "properties.view:sun_elevation", "interval": 5}
-            },
-            "sun_azimuth_frequency": {
-                "histogram": {"field": "properties.view:sun_azimuth", "interval": 5}
-            },
-            "off_nadir_frequency": {
-                "histogram": {"field": "properties.view:off_nadir", "interval": 5}
-            },
-        }
-
         search_body: Dict[str, Any] = {}
         query = search.query.to_dict() if search.query else None
         if query:
@@ -710,51 +740,30 @@ class DatabaseLogic:
 
         logger.debug("Aggregations: %s", aggregations)
 
+        def _fill_aggregation_parameters(name: str, agg: dict) -> dict:
+            [key] = agg.keys()
+            agg_precision = {
+                "centroid_geohash_grid_frequency": centroid_geohash_grid_precision,
+                "centroid_geohex_grid_frequency": centroid_geohex_grid_precision,
+                "centroid_geotile_grid_frequency": centroid_geotile_grid_precision,
+                "geometry_geohash_grid_frequency": geometry_geohash_grid_precision,
+                "geometry_geotile_grid_frequency": geometry_geotile_grid_precision,
+            }
+            if name in agg_precision:
+                agg[key]["precision"] = agg_precision[name]
+
+            if key == "date_histogram":
+                agg[key]["calendar_interval"] = datetime_frequency_interval
+
+            return agg
+
         # include all aggregations specified
         # this will ignore aggregations with the wrong names
         search_body["aggregations"] = {
-            k: v for k, v in agg_2_es.items() if k in aggregations
+            k: _fill_aggregation_parameters(k, deepcopy(v))
+            for k, v in self.aggregation_mapping.items()
+            if k in aggregations
         }
-
-        if "centroid_geohash_grid_frequency" in aggregations:
-            search_body["aggregations"]["centroid_geohash_grid_frequency"] = {
-                "geohash_grid": {
-                    "field": "properties.proj:centroid",
-                    "precision": centroid_geohash_grid_precision,
-                }
-            }
-
-        if "centroid_geohex_grid_frequency" in aggregations:
-            search_body["aggregations"]["centroid_geohex_grid_frequency"] = {
-                "geohex_grid": {
-                    "field": "properties.proj:centroid",
-                    "precision": centroid_geohex_grid_precision,
-                }
-            }
-
-        if "centroid_geotile_grid_frequency" in aggregations:
-            search_body["aggregations"]["centroid_geotile_grid_frequency"] = {
-                "geotile_grid": {
-                    "field": "properties.proj:centroid",
-                    "precision": centroid_geotile_grid_precision,
-                }
-            }
-
-        if "geometry_geohash_grid_frequency" in aggregations:
-            search_body["aggregations"]["geometry_geohash_grid_frequency"] = {
-                "geohash_grid": {
-                    "field": "geometry",
-                    "precision": geometry_geohash_grid_precision,
-                }
-            }
-
-        if "geometry_geotile_grid_frequency" in aggregations:
-            search_body["aggregations"]["geometry_geotile_grid_frequency"] = {
-                "geotile_grid": {
-                    "field": "geometry",
-                    "precision": geometry_geotile_grid_precision,
-                }
-            }
 
         index_param = indices(collection_ids)
         search_task = asyncio.create_task(
