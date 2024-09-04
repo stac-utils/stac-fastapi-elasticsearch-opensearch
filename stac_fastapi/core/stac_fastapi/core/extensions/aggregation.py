@@ -143,7 +143,7 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
                     {
                         "rel": "self",
                         "type": "application/json",
-                        "href": urljoin(collection_endpoint, "aggregations"),
+                        "href": urljoin(collection_endpoint + "/", "aggregations"),
                     },
                 ]
             )

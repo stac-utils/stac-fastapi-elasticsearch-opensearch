@@ -1,4 +1,5 @@
 import os
+from urllib.parse import urlparse
 
 import pytest
 
@@ -68,6 +69,11 @@ async def test_get_collection_aggregations(app_client, ctx, load_test_data):
     resp = await app_client.get(f"/collections/{test_collection['id']}/aggregations")
     assert resp.status_code == 200
     assert len(resp.json()["aggregations"]) == 15
+    rj = resp.json()
+    href_self = urlparse(
+        next(link["href"] for link in rj["links"] if link["rel"] == "self")
+    )
+    assert href_self.path == f"/collections/{test_collection['id']}/aggregations"
 
     resp = await app_client.delete(f"/collections/{test_collection['id']}")
     assert resp.status_code == 204
@@ -86,6 +92,11 @@ async def test_post_collection_aggregations(app_client, ctx, load_test_data):
     resp = await app_client.post(f"/collections/{test_collection['id']}/aggregations")
     assert resp.status_code == 200
     assert len(resp.json()["aggregations"]) == 15
+    rj = resp.json()
+    href_self = urlparse(
+        next(link["href"] for link in rj["links"] if link["rel"] == "self")
+    )
+    assert href_self.path == f"/collections/{test_collection['id']}/aggregations"
 
     resp = await app_client.delete(f"/collections/{test_collection['id']}")
     assert resp.status_code == 204
