@@ -19,6 +19,7 @@ from stac_fastapi.types.config import ApiSettings
 
 
 def check_serverless_elasticsearch():
+    """Check serverless availability."""
     use_ssl = os.getenv("ES_USE_SSL", "true").lower() == "true"
     scheme = "https" if use_ssl else "http"
 
@@ -57,9 +58,19 @@ def _es_config() -> Dict[str, Any]:
         accept = "application/vnd.elasticsearch+json; compatible-with=8"
     else:
         accept = "application/vnd.elasticsearch+json; compatible-with=7"
+
+    headers = {"accept": accept}
+
+    # Handle API key
+    api_key = os.getenv("ES_API_KEY")
+    if serverless:
+        headers.update({"Authorization": f"ApiKey {api_key}"})
+    else:
+        headers.update({"x-api-key": api_key})
+
     config = {
         "hosts": hosts,
-        "headers": {"accept": accept},
+        "headers": headers,
     }
 
     # Handle API key
@@ -87,22 +98,6 @@ def _es_config() -> Dict[str, Any]:
     # Handle authentication
     if (u := os.getenv("ES_USER")) and (p := os.getenv("ES_PASS")):
         config["http_auth"] = (u, p)
-
-    # Handle API key
-    if api_key := os.getenv("ES_API_KEY"):
-        if isinstance(config["headers"], dict):
-            if serverless:
-                headers = {**config["headers"], "Authorization": f"ApiKey {api_key}"}
-            else:
-                headers = {**config["headers"], "x-api-key": api_key}
-
-        else:
-            if serverless:
-                config["headers"] = {"Authorization": f"ApiKey {api_key}"}
-            else:
-                config["headers"] = {"x-api-key": api_key}
-
-        config["headers"] = headers
 
     return config
 
