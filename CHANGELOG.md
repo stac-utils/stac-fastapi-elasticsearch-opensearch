@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 
+- Updated CollectionLinks to generate correct self link for collections endpoint. [#297](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/297)
+
 ## [v3.1.0] - 2024-09-02
 
 ### Added
