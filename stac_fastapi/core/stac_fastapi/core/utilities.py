@@ -7,7 +7,7 @@ such as converting bounding boxes to polygon representations.
 import json
 from typing import Any, Dict, List, Optional, Set, Union
 
-from stac_fastapi.types.stac import Item
+from stac_fastapi.types.stac import Item, PatchAddReplaceTest, PatchRemove
 
 MAX_LIMIT = 10000
 
@@ -151,18 +151,17 @@ def merge_to_operations(data: Dict) -> List:
     for key, value in data.copy().items():
 
         if value is None:
-            operations.append({"op": "remove", "path": key})
-            continue
+            operations.append(PatchRemove(op="remove", path=key))
 
         elif isinstance(value, dict):
             nested_operations = merge_to_operations(value)
 
             for nested_operation in nested_operations:
-                nested_operation["path"] = f"{key}.{nested_operation['path']}"
+                nested_operation.path = f"{key}.{nested_operation.path}"
                 operations.append(nested_operation)
 
         else:
-            operations.append({"op": "add", "path": key, "value": value})
+            operations.append(PatchAddReplaceTest(op="add", path=key, value=value))
 
     return operations
 
@@ -178,19 +177,15 @@ def operations_to_script(operations: List) -> Dict:
     """
     source = ""
     for operation in operations:
-        if operation["op"] in ["copy", "move"]:
-            source += (
-                f"ctx._source.{operation['path']} = ctx._source.{operation['from']};"
-            )
+        if operation.op in ["copy", "move"]:
+            source += f"ctx._source.{operation.path} = ctx._source.{getattr(operation, 'from')};"
 
-        if operation["op"] in ["remove", "move"]:
-            nest, partition, key = operation["path"].rpartition(".")
+        if operation.op in ["remove", "move"]:
+            nest, partition, key = operation.path.rpartition(".")
             source += f"ctx._source.{nest + partition}remove('{key}');"
 
-        if operation["op"] in ["add", "replace"]:
-            source += (
-                f"ctx._source.{operation['path']} = {json.dumps(operation['value'])};"
-            )
+        if operation.op in ["add", "replace"]:
+            source += f"ctx._source.{operation.path} = {json.dumps(operation.value)};"
 
     return {
         "source": source,
