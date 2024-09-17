@@ -947,12 +947,15 @@ class DatabaseLogic:
         script = operations_to_script(script_operations)
 
         if not new_collection_id and not new_item_id:
-            await self.client.update(
-                index=index_by_collection_id(collection_id),
-                id=mk_item_id(item_id, collection_id),
-                script=script,
-                refresh=refresh,
-            )
+            try:
+                await self.client.update(
+                    index=index_by_collection_id(collection_id),
+                    id=mk_item_id(item_id, collection_id),
+                    script=script,
+                    refresh=refresh,
+                )
+            except exceptions.BadRequestError as e:
+                raise KeyError(f"{e.info['error']['caused_by']['to_string']}")
 
         if new_collection_id:
             await self.client.reindex(

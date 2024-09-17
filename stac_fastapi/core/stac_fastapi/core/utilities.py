@@ -177,11 +177,17 @@ def operations_to_script(operations: List) -> Dict:
     """
     source = ""
     for operation in operations:
+        nest, partition, key = operation.path.rpartition(".")
+        if nest:
+            source += f"if (!ctx._source.containsKey('{nest}')){{Debug.explain('{nest} does not exist');}}"
+
+        if operation.op != "add":
+            source += f"if (!ctx._source.{nest + partition}containsKey('{key}')){{Debug.explain('{operation.path} does not exist');}}"
+
         if operation.op in ["copy", "move"]:
             source += f"ctx._source.{operation.path} = ctx._source.{getattr(operation, 'from')};"
 
         if operation.op in ["remove", "move"]:
-            nest, partition, key = operation.path.rpartition(".")
             source += f"ctx._source.{nest + partition}remove('{key}');"
 
         if operation.op in ["add", "replace"]:
