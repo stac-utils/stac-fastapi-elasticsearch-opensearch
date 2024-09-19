@@ -1069,9 +1069,6 @@ class CoreClient(AsyncBaseCoreClient):
 
         items = []
 
-        print("catalogs", search_request.catalog_paths)
-        print("collections", search_request.collections)
-
         if specified_catalog_paths and not search_request.catalog_paths:
             return ItemCollection(
                 type="FeatureCollection",
