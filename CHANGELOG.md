@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## EODHP
 The following changes have been made for the EODHP project
+
+### v0.3.9 - 2024-07-30
+Bugfixes:
+- Next Links in POST Requests
+- Handle case in global search where user has no access to specified catalog or collections
+
 ### V0.3.8 - 2024-07-30
 Access-Control Logic in Catalog
 - Adding access control to catalogs and collections added to the catalogue

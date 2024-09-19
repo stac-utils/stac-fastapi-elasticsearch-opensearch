@@ -969,12 +969,17 @@ class CoreClient(AsyncBaseCoreClient):
             raise InvalidQueryParameter(
                 "To search specific collections, you must provide only one containing catalog."
             )
+        
+        specified_catalog_paths = True
+        specified_collections = True
 
         if not search_request.catalog_paths:
             search_request.catalog_paths = []
+            specified_catalog_paths = False
 
         if not search_request.collections:
             search_request.collections = []
+            specified_collections = False
 
         if search_request.ids:
             search = self.database.apply_ids_filter(
@@ -1049,19 +1054,36 @@ class CoreClient(AsyncBaseCoreClient):
             if not int(access_control[-1]) and not int(access_control[user_index]):
                 search_request.catalog_paths.remove(catalog_path)
 
-        # Filter the search collections to those that are accessible to the user
-        for collection_id in search_request.collections[:]:
-            collection = await self.database.find_collection(
-                catalog_path=search_request.catalog_paths[0],
-                collection_id=collection_id,
-            )
-            # Get access control array for each collection
-            access_control = collection["access_control"]
-            # Remove catalog from list if user does not have access
-            if not int(access_control[-1]) and not int(access_control[user_index]):
-                search_request.collections.remove(collection_id)
+        if search_request.catalog_paths:
+            # Filter the search collections to those that are accessible to the user
+            for collection_id in search_request.collections[:]:
+                collection = await self.database.find_collection(
+                    catalog_path=search_request.catalog_paths[0],
+                    collection_id=collection_id,
+                )
+                # Get access control array for each collection
+                access_control = collection["access_control"]
+                # Remove catalog from list if user does not have access
+                if not int(access_control[-1]) and not int(access_control[user_index]):
+                    search_request.collections.remove(collection_id)
 
         items = []
+
+        if specified_catalog_paths and not search_request.catalog_paths:
+            return ItemCollection(
+                type="FeatureCollection",
+                features=items,
+                links=[],
+                context={"returned": 0, "limit": limit},
+            )
+        
+        if specified_collections and not search_request.collections:
+            return ItemCollection(
+                type="FeatureCollection",
+                features=items,
+                links=[],
+                context={"returned": 0, "limit": limit},
+            )
 
         while True:
             temp_items, maybe_count, next_token, hit_tokens = (

@@ -134,11 +134,15 @@ class PagingLinks(BaseLinks):
                 )
                 return link
             if method == "POST":
+                parsed_url = urlparse(self.url)
+                netloc = parsed_url.netloc + "/"
+                query_url = self.url.split(netloc)[1]
+                new_url = self.resolve(query_url)
                 return {
                     "rel": Relations.next,
                     "type": MimeTypes.json,
                     "method": method,
-                    "href": f"{self.request.url}",
+                    "href": f"{new_url}",
                     "body": {**self.request.postbody, "token": self.next},
                 }
 

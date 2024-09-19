@@ -2517,7 +2517,7 @@ class DatabaseLogic:
             catalog = await self.client.get(index=index, id=catalog_id)
         except exceptions.NotFoundError:
             raise NotFoundError(
-                f"Catalog {catalog_id} at path {catalog_path} not found"
+                f"Catalog {catalog_id} at {'path ' + '/'.join(catalog_path_list[:-1]) if len(catalog_path_list) > 1 else 'top-level'} not found"
             )
 
         return catalog["_source"]
