@@ -431,3 +431,32 @@ async def test_search_filter_extension_between(app_client, ctx):
 
     assert resp.status_code == 200
     assert len(resp.json()["features"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_filter_extension_isnull_post(app_client, ctx):
+    # Test for a property that is not null
+    params = {
+        "filter-lang": "cql2-json",
+        "filter": {
+            "op": "isNull",
+            "args": [{"property": "properties.view:sun_elevation"}],
+        },
+    }
+    resp = await app_client.post("/search", json=params)
+
+    assert resp.status_code == 200
+    assert len(resp.json()["features"]) == 0
+
+    # Test for the property that is null
+    params = {
+        "filter-lang": "cql2-json",
+        "filter": {
+            "op": "isNull",
+            "args": [{"property": "properties.thispropertyisnull"}],
+        },
+    }
+    resp = await app_client.post("/search", json=params)
+
+    assert resp.status_code == 200
+    assert len(resp.json()["features"]) == 1
