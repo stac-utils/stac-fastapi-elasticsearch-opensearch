@@ -574,7 +574,7 @@ class CoreClient(AsyncBaseCoreClient):
                 )
             elif not int(access_control[user_index]):
                 raise HTTPException(
-                    status_code=403, detail="User does not have access to this Catalog"
+                    status_code=403, detail="User does not have access to this collection"
                 )
 
         catalog_id = catalog.get("id")
