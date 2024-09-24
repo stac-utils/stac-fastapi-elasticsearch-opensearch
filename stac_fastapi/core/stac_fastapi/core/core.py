@@ -423,11 +423,16 @@ class CoreClient(AsyncBaseCoreClient):
         # Get access control array for each collection
         access_control = collection["access_control"]
         collection.pop("access_control")
-        # Return error if user does not have access
-        if not int(access_control[-1]) and not int(access_control[user_index]):
-            raise HTTPException(
-                status_code=403, detail="User does not have access to this Collection"
-            )
+        # Check access control
+        if not int(access_control[-1]):  # Collection is private
+            if username == "":  # User is not logged in
+                raise HTTPException(
+                    status_code=401, detail="User is not authenticated"
+                )
+            elif not int(access_control[user_index]):  # User is logged in but not authorized
+                raise HTTPException(
+                    status_code=403, detail="User does not have access to this Collection"
+                )
 
         return self.collection_serializer.db_to_stac(
             catalog_path=catalog_path, collection=collection, base_url=base_url
@@ -469,11 +474,16 @@ class CoreClient(AsyncBaseCoreClient):
         # Get access control array for each catalog
         access_control = catalog["access_control"]
         catalog.pop("access_control")
-        # Return error if user does not have access
-        if not int(access_control[-1]) and not int(access_control[user_index]):
-            raise HTTPException(
-                status_code=403, detail="User does not have access to this Catalog"
-            )
+        # Check access control
+        if not int(access_control[-1]):  # Catalog is private
+            if username == "":  # User is not logged in
+                raise HTTPException(
+                    status_code=401, detail="User is not authenticated"
+                )
+            elif not int(access_control[user_index]):  # User is logged in but not authorized
+                raise HTTPException(
+                    status_code=403, detail="User does not have access to this Catalog"
+                )
 
         # Assume at most 100 collections in a catalog for the time being, may need to increase
         collections, _, _ = await self.database.get_catalog_collections(
@@ -556,11 +566,16 @@ class CoreClient(AsyncBaseCoreClient):
         # Get access control array for each catalog
         access_control = catalog["access_control"]
         catalog.pop("access_control")
-        # Return error if user does not have access
-        if not int(access_control[-1]) and not int(access_control[user_index]):
-            raise HTTPException(
-                status_code=403, detail="User does not have access to this Catalog"
-            )
+        # Check access control
+        if not int(access_control[-1]):  # Catalog is private
+            if username == "":
+                raise HTTPException(
+                    status_code=401, detail="User is not authenticated"
+                )
+            elif not int(access_control[user_index]):
+                raise HTTPException(
+                    status_code=403, detail="User does not have access to this Catalog"
+                )
 
         catalog_id = catalog.get("id")
         if catalog_id is None:
@@ -665,11 +680,16 @@ class CoreClient(AsyncBaseCoreClient):
 
         # Get access control array for the collection
         access_control = collection["access_control"]
-        # Return error if user does not have access
-        if not int(access_control[-1]) and not int(access_control[user_index]):
-            raise HTTPException(
-                status_code=403, detail="User does not have access to this Collection"
-            )
+        # Check access control
+        if not int(access_control[-1]):  # Collection is private
+            if username == "":  # User is not logged in
+                raise HTTPException(
+                    status_code=401, detail="User is not authenticated"
+                )
+            elif not int(access_control[user_index]):  # User is logged in but not authorized
+                raise HTTPException(
+                    status_code=403, detail="User does not have access to this Collection"
+                )
 
         base_url = str(request.base_url)
 
@@ -769,11 +789,16 @@ class CoreClient(AsyncBaseCoreClient):
         user_index = hash_to_index(username)
         # Get access control array for each collection
         access_control = collection["access_control"]
-        # Return error if user does not have access
-        if not int(access_control[-1]) and not int(access_control[user_index]):
-            raise HTTPException(
-                status_code=403, detail="User does not have access to this item"
-            )
+        # Check access control
+        if not int(access_control[-1]):  # Collection is private
+            if username == "":  # User is not logged in
+                raise HTTPException(
+                    status_code=401, detail="User is not authenticated"
+                )
+            elif not int(access_control[user_index]):  # User is logged in but not authorized
+                raise HTTPException(
+                    status_code=403, detail="User does not have access to this Collection"
+                )
 
         item = await self.database.get_one_item(
             item_id=item_id,
