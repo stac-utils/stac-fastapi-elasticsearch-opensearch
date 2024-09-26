@@ -1,16 +1,21 @@
+"""Rate limiting middleware."""
+
+import logging
 import os
+
 from fastapi import FastAPI, Request
 from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
-import logging
+from slowapi.util import get_remote_address
 
 logger = logging.getLogger(__name__)
 
 limiter = Limiter(key_func=get_remote_address)
 
+
 def setup_rate_limit(app: FastAPI):
+    """Set up rate limiting middleware."""
     RATE_LIMIT = os.getenv("STAC_FASTAPI_RATE_LIMIT")
     logger.info(f"Setting up rate limit with RATE_LIMIT={RATE_LIMIT}")
     if RATE_LIMIT:

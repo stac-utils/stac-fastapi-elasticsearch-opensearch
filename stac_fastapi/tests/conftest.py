@@ -24,8 +24,8 @@ from stac_fastapi.core.extensions.aggregation import (
     EsAggregationExtensionPostRequest,
     EsAsyncAggregationClient,
 )
-from stac_fastapi.core.route_dependencies import get_route_dependencies
 from stac_fastapi.core.rate_limit import setup_rate_limit
+from stac_fastapi.core.route_dependencies import get_route_dependencies
 
 if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
     from stac_fastapi.opensearch.config import AsyncOpensearchSettings as AsyncSettings
@@ -243,9 +243,9 @@ async def app():
 @pytest_asyncio.fixture(scope="function")
 async def app_rate_limit(monkeypatch):
     monkeypatch.setenv("STAC_FASTAPI_RATE_LIMIT", "2/minute")
-    
+
     settings = AsyncSettings()
-    
+
     aggregation_extension = AggregationExtension(
         client=EsAsyncAggregationClient(
             database=database, session=None, settings=settings
@@ -290,7 +290,6 @@ async def app_rate_limit(monkeypatch):
     setup_rate_limit(app)
 
     return app
-
 
 
 @pytest_asyncio.fixture(scope="session")

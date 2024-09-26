@@ -1,7 +1,6 @@
 """FastAPI application."""
 
 import os
-from stac_fastapi.core.rate_limit import setup_rate_limit
 
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import create_get_request_model, create_post_request_model
@@ -18,6 +17,7 @@ from stac_fastapi.core.extensions.aggregation import (
     EsAsyncAggregationClient,
 )
 from stac_fastapi.core.extensions.fields import FieldsExtension
+from stac_fastapi.core.rate_limit import setup_rate_limit
 from stac_fastapi.core.route_dependencies import get_route_dependencies
 from stac_fastapi.core.session import Session
 from stac_fastapi.extensions.core import (
@@ -100,6 +100,7 @@ app.root_path = os.getenv("STAC_FASTAPI_ROOT_PATH", "")
 
 # Add rate limit
 setup_rate_limit(app)
+
 
 @app.on_event("startup")
 async def _startup_event() -> None:
