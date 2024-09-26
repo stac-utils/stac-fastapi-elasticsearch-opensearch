@@ -1,6 +1,7 @@
 """FastAPI application."""
 
 import os
+from stac_fastapi.core.rate_limit import setup_rate_limit
 
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import create_get_request_model, create_post_request_model
@@ -97,6 +98,8 @@ api = StacApi(
 app = api.app
 app.root_path = os.getenv("STAC_FASTAPI_ROOT_PATH", "")
 
+# Add rate limit
+setup_rate_limit(app)
 
 @app.on_event("startup")
 async def _startup_event() -> None:

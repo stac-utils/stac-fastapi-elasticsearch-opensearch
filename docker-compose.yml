@@ -22,6 +22,7 @@ services:
       - ES_USE_SSL=false
       - ES_VERIFY_CERTS=false
       - BACKEND=elasticsearch
+      - STAC_FASTAPI_RATE_LIMIT=2/5second
     ports:
       - "8080:8080"
     volumes:
@@ -54,6 +55,7 @@ services:
       - ES_USE_SSL=false
       - ES_VERIFY_CERTS=false
       - BACKEND=opensearch
+      - STAC_FASTAPI_RATE_LIMIT=200/minute
     ports:
       - "8082:8082"
     volumes:
