@@ -335,11 +335,26 @@ class CoreClient(AsyncBaseCoreClient):
         token = request.query_params.get("token")
 
         # Check if current user has access to each Catalog
+        catalog = await self.database.find_catalog(catalog_path=catalog_path)
+                # Check if current user has access to this Catalog
         # Extract X-Username header from username_header
         username = username_header.get("X-Username", "")
 
         # Get user index
         user_index = hash_to_index(username)
+        # Get access control array for each catalog
+        access_control = catalog["access_control"]
+        catalog.pop("access_control")
+        # Check access control
+        if not int(access_control[-1]):  # Catalog is private
+            if username == "":  # User is not logged in
+                raise HTTPException(
+                    status_code=401, detail="User is not authenticated"
+                )
+            elif not int(access_control[user_index]):  # User is logged in but not authorized
+                raise HTTPException(
+                    status_code=403, detail="User does not have access to this Catalog"
+                )
 
         catalogs = []
 
@@ -440,7 +455,7 @@ class CoreClient(AsyncBaseCoreClient):
 
     async def get_catalog(
         self, username_header: dict, catalog_path: str, **kwargs
-    ) -> Collection:
+    ) -> Catalogs:
         """Get a catalog from the database by its id.
 
         Args:
@@ -574,7 +589,7 @@ class CoreClient(AsyncBaseCoreClient):
                 )
             elif not int(access_control[user_index]):
                 raise HTTPException(
-                    status_code=403, detail="User does not have access to this collection"
+                    status_code=403, detail="User does not have access to this catalog"
                 )
 
         catalog_id = catalog.get("id")
@@ -1365,11 +1380,16 @@ class CoreClient(AsyncBaseCoreClient):
         catalog = await self.database.find_catalog(catalog_path=catalog_path)
         # Get access control array for each catalog
         access_control = catalog["access_control"]
-        # Return error if user does not have access
-        if not int(access_control[-1]) and not int(access_control[user_index]):
-            raise HTTPException(
-                status_code=403, detail="User does not have access to this Catalog"
-            )
+        # Check access control
+        if not int(access_control[-1]):  # Collection is private
+            if username == "":  # User is not logged in
+                raise HTTPException(
+                    status_code=401, detail="User is not authenticated"
+                )
+            elif not int(access_control[user_index]):  # User is logged in but not authorized
+                raise HTTPException(
+                    status_code=403, detail="User does not have access to this Catalog"
+                )
         collections = []
         if search_request.collections:
             collections = search_request.collections
