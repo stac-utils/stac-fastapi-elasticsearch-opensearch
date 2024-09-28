@@ -384,3 +384,7 @@ Available aggregations are:
 - geometry_geotile_grid_frequency ([geotile grid](https://opensearch.org/docs/latest/aggregations/bucket/geotile-grid/) on Item.geometry)
 
 Support for additional fields and new aggregations can be added in the associated `database_logic.py` file.
+
+## Rate Limiting
+
+Rate limiting is an optional feature that can be enabled through the `STAC_FASTAPI_RATE_LIMIT` environment variable (example value: `500/minute`). Examples can be found and a more detailed explanation is provided in [examples/rate_limit](examples/rate_limit).

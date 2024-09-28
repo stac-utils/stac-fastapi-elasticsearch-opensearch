@@ -12,23 +12,24 @@ from slowapi.util import get_remote_address
 
 logger = logging.getLogger(__name__)
 
+
 def get_limiter(key_func=get_remote_address):
+    """Create and return a Limiter instance for rate limiting."""
     return Limiter(key_func=key_func)
 
+
 def setup_rate_limit(
-    app: FastAPI, 
-    rate_limit: Optional[str] = None, 
-    key_func=get_remote_address
+    app: FastAPI, rate_limit: Optional[str] = None, key_func=get_remote_address
 ):
     """Set up rate limiting middleware."""
     RATE_LIMIT = rate_limit or os.getenv("STAC_FASTAPI_RATE_LIMIT")
-    
+
     if not RATE_LIMIT:
         logger.info("Rate limiting is disabled")
         return
 
     logger.info(f"Setting up rate limit with RATE_LIMIT={RATE_LIMIT}")
-    
+
     limiter = get_limiter(key_func)
     app.state.limiter = limiter
     app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
