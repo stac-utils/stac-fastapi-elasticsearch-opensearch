@@ -387,4 +387,4 @@ Support for additional fields and new aggregations can be added in the associate
 
 ## Rate Limiting
 
-Rate limiting is an optional feature that can be enabled through the `STAC_FASTAPI_RATE_LIMIT` environment variable (example value: `500/minute`). Examples can be found in [examples/rate_limit](examples/rate_limit).
+Rate limiting is an optional security feature that controls API request frequency on a remote address basis. It's enabled by setting the `STAC_FASTAPI_RATE_LIMIT` environment variable, e.g., `500/minute`. This limits each client to 500 requests per minute, helping prevent abuse and maintain API stability. Implementation examples are available in the [examples/rate_limit](examples/rate_limit) directory.
