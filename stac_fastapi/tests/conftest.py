@@ -224,7 +224,7 @@ async def app():
 
     post_request_model = create_post_request_model(search_extensions)
 
-    app = StacApi(
+    return StacApi(
         settings=settings,
         client=CoreClient(
             database=database,
@@ -236,8 +236,6 @@ async def app():
         search_get_request_model=create_get_request_model(search_extensions),
         search_post_request_model=post_request_model,
     ).app
-
-    return app
 
 
 @pytest_asyncio.fixture(scope="function")
