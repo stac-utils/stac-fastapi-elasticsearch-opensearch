@@ -292,9 +292,7 @@ async def app_rate_limit():
     ).app
 
     # Set up rate limit
-    os.environ["STAC_FASTAPI_RATE_LIMIT"] = "2/minute"
-    setup_rate_limit(app)
-    del os.environ["STAC_FASTAPI_RATE_LIMIT"]
+    setup_rate_limit(app, rate_limit="2/minute")
 
     return app
 

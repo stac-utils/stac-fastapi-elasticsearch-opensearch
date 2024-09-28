@@ -99,7 +99,7 @@ app = api.app
 app.root_path = os.getenv("STAC_FASTAPI_ROOT_PATH", "")
 
 # Add rate limit
-setup_rate_limit(app)
+setup_rate_limit(app, rate_limit=os.getenv("STAC_FASTAPI_RATE_LIMIT"))
 
 
 @app.on_event("startup")
