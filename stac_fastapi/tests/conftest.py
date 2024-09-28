@@ -238,10 +238,17 @@ async def app():
     ).app
 
 
-@pytest_asyncio.fixture(scope="function")
-async def app_rate_limit(monkeypatch):
-    monkeypatch.setenv("STAC_FASTAPI_RATE_LIMIT", "2/minute")
+@pytest_asyncio.fixture(scope="session")
+async def app_client(app):
+    await create_index_templates()
+    await create_collection_index()
 
+    async with AsyncClient(app=app, base_url="http://test-server") as c:
+        yield c
+
+
+@pytest_asyncio.fixture(scope="session")
+async def app_rate_limit():
     settings = AsyncSettings()
 
     aggregation_extension = AggregationExtension(
@@ -285,21 +292,14 @@ async def app_rate_limit(monkeypatch):
     ).app
 
     # Set up rate limit
+    os.environ["STAC_FASTAPI_RATE_LIMIT"] = "2/minute"
     setup_rate_limit(app)
+    del os.environ["STAC_FASTAPI_RATE_LIMIT"]
 
     return app
 
 
 @pytest_asyncio.fixture(scope="session")
-async def app_client(app):
-    await create_index_templates()
-    await create_collection_index()
-
-    async with AsyncClient(app=app, base_url="http://test-server") as c:
-        yield c
-
-
-@pytest_asyncio.fixture(scope="function")
 async def app_client_rate_limit(app_rate_limit):
     await create_index_templates()
     await create_collection_index()
