@@ -11,7 +11,7 @@ The following changes have been made for the EODHP project
 ### v0.3.10 - 2024-09-30
 
 Bugfix:
-- Add missing parameter to `delete_collections` call - `workspace`
+- Add missing parameter to `create_item` and `delete_item` calls - `workspace`
 
 ### v0.3.9 - 2024-07-30
 Bugfixes:
