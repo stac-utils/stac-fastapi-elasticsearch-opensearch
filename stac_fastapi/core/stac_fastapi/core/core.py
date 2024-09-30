@@ -1720,7 +1720,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 )
 
         await self.database.delete_item(
-            item_id=item_id, collection_id=collection_id, catalog_path=catalog_path, workspace=workspace
+            item_id=item_id, collection_id=collection_id, catalog_path=catalog_path
         )
         return None
 
