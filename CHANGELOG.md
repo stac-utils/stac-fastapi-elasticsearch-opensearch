@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## EODHP
 The following changes have been made for the EODHP project
 
+### v0.3.10 - 2024-09-30
+
+Bugfix:
+- Add missing parameter to `delete_collections` call - `workspace`
+
 ### v0.3.9 - 2024-07-30
 Bugfixes:
 - Next Links in POST Requests
