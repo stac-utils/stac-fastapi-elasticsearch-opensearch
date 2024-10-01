@@ -1719,10 +1719,10 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             collection_id=collection_id, catalog_path=catalog_path
         )
         await self.delete_item(
-            item_id=item_id, collection_id=collection_id, catalog_path=catalog_path
+            item_id=item_id, collection_id=collection_id, catalog_path=catalog_path, workspace=workspace
         )
         await self.create_item(
-            catalog_path=catalog_path, collection_id=collection_id, item=item, **kwargs
+            catalog_path=catalog_path, collection_id=collection_id, item=item, workspace=workspace, **kwargs
         )
 
         return ItemSerializer.db_to_stac(

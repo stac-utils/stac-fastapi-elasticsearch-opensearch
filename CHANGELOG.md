@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 The following changes have been made for the EODHP project
 
 ### v0.3.10 - 2024-09-30
+
 Updated Error Codes for Collection, Catalog, and Items Access:
 - The applied changes ensure the correct error codes (401 and 403) are returned in the following scenarios:
 - Unauthenticated Access: Users who are not logged in cannot access any private workspaces, 
@@ -16,6 +17,9 @@ Updated Error Codes for Collection, Catalog, and Items Access:
   Authenticated Access: Logged-in users can only access their own private workspaces.
   Public Access: Access to public workspaces remains unaffected, regardless of the user’s login status.
 - Updated all_catalogs and post_search method to return the right error codes(401,403)
+
+Bugfix:
+- Add missing parameter to `create_item` and `delete_item` calls - `workspace`
 
 ### v0.3.9 - 2024-07-30
 Bugfixes:
