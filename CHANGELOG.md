@@ -20,7 +20,6 @@ Updated Error Codes for Collection, Catalog, and Items Access:
 Updates to better support STAC Browser:
 - Updated collections search to offer catalog specific endpoints for "/collections"
 - Include catalog specific endpoint for landing page
-- Update `create_collection` endpoint URL to be "/collection" and avoid conflict with collections search POST request
 
 Bugfix:
 - Add missing parameter to `create_item` and `delete_item` calls - `workspace`
