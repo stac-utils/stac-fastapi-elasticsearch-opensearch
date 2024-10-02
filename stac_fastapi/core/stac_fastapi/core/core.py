@@ -2340,6 +2340,12 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
         token = request.query_params.get("token")
         limit = int(request.query_params.get("limit", 10))
 
+        # Extract X-Username header from username_header for access control
+        username = username_header.get("X-Username", "")
+
+        # Get user index
+        user_index = hash_to_index(username)
+
         if catalog_path:
             # Get Catalog to confirm user access
             catalog = await self.database.find_catalog(catalog_path=catalog_path)
