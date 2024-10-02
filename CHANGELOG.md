@@ -17,6 +17,11 @@ Updated Error Codes for Collection, Catalog, and Items Access:
   Authenticated Access: Logged-in users can only access their own private workspaces.
   Public Access: Access to public workspaces remains unaffected, regardless of the user’s login status.
 - Updated all_catalogs and post_search method to return the right error codes(401,403)
+Updates to better support STAC Browser:
+- Updated collections search to offer catalog specific endpoints for "/collections"
+- Include catalog specific endpoint for landing page
+- Clean up error outputs when items, collections or catalogs are not found
+- General code clean up, including comments and logging
 
 Bugfix:
 - Add missing parameter to `create_item` and `delete_item` calls - `workspace`

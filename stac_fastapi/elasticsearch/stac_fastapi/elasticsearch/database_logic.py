@@ -298,7 +298,6 @@ def index_collections_by_catalog_id(catalog_path_list: List[str]) -> str:
     Translate a catalog id into an Elasticsearch index name.
 
     Args:
-        super_catalog_id (str): The super_catalog id to translate into an index name.
         catalog_id (str): The catalog id to translate into an index name.
 
     Returns:
@@ -1584,6 +1583,7 @@ class DatabaseLogic:
         base_url: str,
         token: Optional[str],
         sort: Optional[Dict[str, Dict[str, str]]],
+        catalog_path: str = None,
         ignore_unavailable: bool = True,
     ) -> Tuple[Iterable[Dict[str, Any]], Optional[int], Optional[str]]:
         """Execute a search query with limit and other optional parameters.
@@ -1591,6 +1591,8 @@ class DatabaseLogic:
         Args:
             search (Search): The search query to be executed.
             limit (int): The maximum number of results to be returned.
+            base_url (str): The base URL used to create the results' self URLs.
+            catalog_path (str) : The path to the catalog to search for collections.
             token (Optional[str]): The token used to return the next set of results.
             sort (Optional[Dict[str, Dict[str, str]]]): Specifies how the results should be sorted.
             collection_ids (Optional[List[str]]): The collection ids to search.
@@ -1613,13 +1615,21 @@ class DatabaseLogic:
 
         query = search.query.to_dict() if search.query else None
 
+        # Generate index based on provided catalog_path
+        if catalog_path:
+            catalog_path_list = catalog_path.split("/")
+            catalog_index = index_collections_by_catalog_id(catalog_path_list)
+            catalog_index = catalog_index.replace("collections_", "collections_*")
+        else:
+            catalog_index = f"{COLLECTIONS_INDEX_PREFIX}*"
+
         # Logic to ensure next token only returned when further results are available
         max_result_window = stac_fastapi.types.search.Limit.le
         size_limit = min(limit + 1, max_result_window)
 
         search_task = asyncio.create_task(
             self.client.search(
-                index=f"{COLLECTIONS_INDEX_PREFIX}*",
+                index=catalog_index,
                 ignore_unavailable=ignore_unavailable,
                 query=query,
                 sort=sort or DEFAULT_COLLECTIONS_SORT,
@@ -1696,7 +1706,7 @@ class DatabaseLogic:
         index = index_collections_by_catalog_id(catalog_path_list=catalog_path_list)
         if not await self.client.exists(index=index, id=collection_id):
             raise NotFoundError(
-                f"Collection {collection_id} in catalog {catalog_id} at path {catalog_path} does not exist"
+                f"Collection {collection_id} in Catalog {catalog_id} at {'path ' + '/'.join(catalog_path_list[:-1]) if len(catalog_path_list) > 1 else 'top-level'} does not exist"
             )
 
     async def check_catalog_exists(self, catalog_path_list: List[str] = None):
@@ -1757,7 +1767,7 @@ class DatabaseLogic:
             ),
         ):
             raise ConflictError(
-                f"Item {item['id']} in collection {item['collection']} in catalog {catalog_id} at path {catalog_path} already exists"
+                f"Item {item['id']} in collection {item['collection']} in Catalog {catalog_id} at {'path ' + '/'.join(catalog_path_list[:-1]) if len(catalog_path_list) > 1 else 'top-level'} already exists"
             )
 
         return self.item_serializer.stac_to_db(item, base_url)
@@ -1796,7 +1806,7 @@ class DatabaseLogic:
         index = (index_collections_by_catalog_id(catalog_path_list=catalog_path_list),)
         if not self.sync_client.exists(index=index, id=collection_id):
             raise NotFoundError(
-                f"Collection {collection_id} does not exist in catalog {catalog_id} at path {catalog_path}"
+                f"Collection {collection_id} does not exist in Catalog {catalog_id} at {'path ' + '/'.join(catalog_path_list[:-1]) if len(catalog_path_list) > 1 else 'top-level'}"
             )
 
         if not exist_ok and self.sync_client.exists(
@@ -1810,7 +1820,7 @@ class DatabaseLogic:
             ),
         ):
             raise ConflictError(
-                f"Item {item_id} in collection {collection_id} in catalog {catalog_id} at path {catalog_path} already exists"
+                f"Item {item_id} in collection {collection_id} in Catalog {catalog_id} at {'path ' + '/'.join(catalog_path_list[:-1]) if len(catalog_path_list) > 1 else 'top-level'} already exists"
             )
 
         return self.item_serializer.stac_to_db(item, base_url)
@@ -1853,7 +1863,7 @@ class DatabaseLogic:
 
         if (meta := es_resp.get("meta")) and meta.get("status") == 409:
             raise ConflictError(
-                f"Item {item_id} in collection {collection_id} in catalog {catalog_id} at path {catalog_path} already exists"
+                f"Item {item_id} in collection {collection_id} in Catalog {catalog_id} at {'path ' + '/'.join(catalog_path_list[:-1]) if len(catalog_path_list) > 1 else 'top-level'} already exists"
             )
 
     async def delete_item(
@@ -1890,7 +1900,7 @@ class DatabaseLogic:
             )
         except exceptions.NotFoundError:
             raise NotFoundError(
-                f"Item {item_id} in collection {collection_id} in catalog {catalog_id} at path {catalog_path} not found"
+                f"Item {item_id} in collection {collection_id} in Catalog {catalog_id} at {'path ' + '/'.join(catalog_path_list[:-1]) if len(catalog_path_list) > 1 else 'top-level'} not found"
             )
 
     async def prep_create_collection(
@@ -1928,7 +1938,7 @@ class DatabaseLogic:
             id=collection["id"],
         ):
             raise ConflictError(
-                f"Collection {collection['id']} in catalog {catalog_id} at {'/'.join(catalog_path_list[:-1])} already exists"
+                f"Collection {collection['id']} in Catalog {catalog_id} at {'path ' + '/'.join(catalog_path_list[:-1]) if len(catalog_path_list) > 1 else 'top-level'} already exists"
             )
 
         return self.collection_serializer.stac_to_db(collection, base_url)
@@ -1970,7 +1980,7 @@ class DatabaseLogic:
         index = index_catalogs_by_catalog_id(catalog_path_list=catalog_path_list)
         if not self.sync_client.exists(index=index, id=catalog_id):
             raise NotFoundError(
-                f"Catalog {catalog_id} at path {'/'.join(catalog_path_list[:-1])} does not exist"
+                f"Catalog {catalog_id} at {'path ' + '/'.join(catalog_path_list[:-1]) if len(catalog_path_list) > 1 else 'top-level'} does not exist"
             )
 
         if not exist_ok and self.sync_client.exists(
@@ -1980,7 +1990,7 @@ class DatabaseLogic:
             id=collection_id,
         ):
             raise ConflictError(
-                f"Collection {collection_id} in catalog {catalog_id} at path {'/'.join(catalog_path_list[:-1])} already exists"
+                f"Collection {collection_id} in Catalog {catalog_id} at {'path ' + '/'.join(catalog_path_list[:-1]) if len(catalog_path_list) > 1 else 'top-level'} already exists"
             )
 
         return self.collection_serializer.stac_to_db(collection, base_url)
@@ -2136,7 +2146,7 @@ class DatabaseLogic:
 
         if (meta := es_resp.get("meta")) and meta.get("status") == 409:
             raise ConflictError(
-                f"Collection {collection_id} in catalog {catalog_id} at path {'/'.join(catalog_path_list[:-1])} already exists"
+                f"Collection {collection_id} in Catalog {catalog_id} at {'path ' + '/'.join(catalog_path_list[:-1]) if len(catalog_path_list) > 1 else 'top-level'} already exists"
             )
 
     async def find_collection(
@@ -2175,7 +2185,7 @@ class DatabaseLogic:
             )
         except exceptions.NotFoundError:
             raise NotFoundError(
-                f"Collection {collection_id} in catalog {catalog_id} at path {'/'.join(catalog_path_list[:-1])} not found"
+                f"Collection {collection_id} in Catalog {catalog_id} at {'path ' + '/'.join(catalog_path_list[:-1]) if len(catalog_path_list) > 1 else 'top-level'} not found"
             )
 
         return collection["_source"]
@@ -2311,7 +2321,7 @@ class DatabaseLogic:
             )
         except exceptions.NotFoundError:
             logger.info(
-                f"Collection {collection_id} in catalog {catalog_id} at path {catalog_path} has no items, so index does not exist and cannot be deleted, continuing as normal."
+                f"Collection {collection_id} in Catalog {catalog_id} at {'path ' + '/'.join(catalog_path_list[:-1]) if len(catalog_path_list) > 1 else 'top-level'} has no items, so index does not exist and cannot be deleted, continuing as normal."
             )
 
     async def prep_create_catalog(
@@ -2396,7 +2406,7 @@ class DatabaseLogic:
             # Check if parent catalog exists
             if not self.sync_client.exists(index=index, id=catalog_id):
                 raise NotFoundError(
-                    f"Catalog {catalog_id} at path {'/'.join(catalog_path_list)} does not exist"
+                    f"Catalog {catalog_id} at {'path ' + '/'.join(catalog_path_list[:-1]) if len(catalog_path_list) > 1 else 'top-level'} does not exist"
                 )
         else:
             # Creating a new BASE catalog so index using top-level index
@@ -2407,7 +2417,7 @@ class DatabaseLogic:
             id=catalog_id,
         ):
             raise ConflictError(
-                f"Catalog {catalog_id} in catalog {'/'.join(catalog_path_list) if catalog_path else 'top-level'} already exists"
+                f"Catalog {catalog_id} at {'path ' + '/'.join(catalog_path_list[:-1]) if len(catalog_path_list) > 1 else 'top-level'} already exists"
             )
 
         return self.catalog_serializer.stac_to_db(catalog, base_url)
@@ -2481,7 +2491,7 @@ class DatabaseLogic:
         )
 
     async def find_catalog(self, catalog_path: str) -> Catalog:
-        """Find and return a collection from the database.
+        """Find and return a catalog from the database.
 
         Args:
             self: The instance of the object calling this function.
@@ -2804,7 +2814,7 @@ class DatabaseLogic:
                 )
             except exceptions.NotFoundError:
                 logger.info(
-                    f"Catalog {catalog_id} at path {catalog_path} has no collections, so index does not exist and cannot be updated, continuing as normal."
+                    f"Catalog {catalog_id} at {'path ' + '/'.join(catalog_path_list[:-1]) if len(catalog_path_list) > 1 else 'top-level'} has no collections, so index does not exist and cannot be updated, continuing as normal."
                 )
 
             # Reindex items within each collection in this catalog
@@ -2843,7 +2853,7 @@ class DatabaseLogic:
                 )
             except exceptions.NotFoundError:
                 logger.info(
-                    f"Catalog {catalog_id} at path {catalog_path} has no collections, or items, so index does not exist and cannot be updated, continuing as normal."
+                    f"Catalog {catalog_id} at {'path ' + '/'.join(catalog_path_list[:-1]) if len(catalog_path_list) > 1 else 'top-level'} has no collections, or items, so index does not exist and cannot be updated, continuing as normal."
                 )
 
             await self.delete_catalog(catalog_path=catalog_path)
@@ -2910,7 +2920,7 @@ class DatabaseLogic:
             )
         except exceptions.NotFoundError:
             logger.info(
-                f"Catalog {catalog_id} at path {catalog_path} has no catalogs, so index does not exist and cannot be deleted, continuing as normal."
+                f"Catalog {catalog_id} at {'path ' + '/'.join(catalog_path_list[:-1]) if len(catalog_path_list) > 1 else 'top-level'} has no catalogs, so index does not exist and cannot be deleted, continuing as normal."
             )
 
         # Need to delete all collections contained in this catalog
@@ -2939,13 +2949,13 @@ class DatabaseLogic:
             await delete_collection_index(catalog_path_list=catalog_path_list)
         except exceptions.NotFoundError:
             logger.info(
-                f"Catalog {catalog_id} at path {catalog_path} has no collections, so index does not exist and cannot be deleted, continuing as normal."
+                f"Catalog {catalog_id} at {'path ' + '/'.join(catalog_path_list[:-1]) if len(catalog_path_list) > 1 else 'top-level'} has no collections, so index does not exist and cannot be deleted, continuing as normal."
             )
         try:
             await delete_catalog_index(catalog_path_list=catalog_path_list)
         except exceptions.NotFoundError:
             logger.info(
-                f"Catalog {catalog_id} at path {catalog_path} has no catalogs, so index does not exist and cannot be deleted, continuing as normal."
+                f"Catalog {catalog_id} at {'path ' + '/'.join(catalog_path_list[:-1]) if len(catalog_path_list) > 1 else 'top-level'} has no catalogs, so index does not exist and cannot be deleted, continuing as normal."
             )
 
     async def bulk_async(

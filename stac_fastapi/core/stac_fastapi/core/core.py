@@ -58,6 +58,7 @@ from stac_fastapi.types.search import (
 )
 from stac_fastapi.types.stac import (
     Catalogs,
+    Catalog,
     CatalogsAndCollections,
     Collection,
     Collections,
@@ -65,7 +66,20 @@ from stac_fastapi.types.stac import (
     ItemCollection,
 )
 
+# Get the logger for this module
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)  # Set the logging level to INFO for this module
+
+# Create a console handler and set the level to INFO
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+
+# Create a formatter and set it for the handler
+formatter = logging.Formatter("%(asctime)s - %(levelname)s - %(message)s")
+console_handler.setFormatter(formatter)
+
+# Add the handler to the logger
+logger.addHandler(console_handler)
 
 NumType = Union[float, int]
 
@@ -116,6 +130,7 @@ class CoreClient(AsyncBaseCoreClient):
         conformance_classes: List[str],
         extension_schemas: List[str],
     ) -> stac_types.LandingPage:
+        logger.debug("Creating landing page")
         landing_page = stac_types.LandingPage(
             type="Catalog",
             id=self.landing_page_id,
@@ -137,7 +152,7 @@ class CoreClient(AsyncBaseCoreClient):
                 {
                     "rel": "data",
                     "type": MimeTypes.json,
-                    "href": urljoin(base_url, "catalogs"),
+                    "href": urljoin(base_url, "collections"),
                 },
                 {
                     "rel": Relations.conformance.value,
@@ -164,8 +179,8 @@ class CoreClient(AsyncBaseCoreClient):
         )
         return landing_page
 
-    async def landing_page(
-        self, username_header: dict, **kwargs
+    async def root_landing_page(
+        self, username_header: dict, catalog_path: Optional[str] = None, **kwargs
     ) -> stac_types.LandingPage:
         """Landing page.
 
@@ -173,11 +188,13 @@ class CoreClient(AsyncBaseCoreClient):
 
         Args:
             username_header (dict): X-Username header from the request.
+            catalog_path (str):
             **kwargs: Keyword arguments from the request.
 
         Returns:
             API landing page, serving as an entry point to the API.
         """
+        logger.info("Getting landing page")
         request: Request = kwargs["request"]
         base_url = get_base_url(request)
         landing_page = self._landing_page(
@@ -248,6 +265,76 @@ class CoreClient(AsyncBaseCoreClient):
 
         return landing_page
 
+    async def landing_page(
+        self, username_header: dict, catalog_path: Optional[str] = None, **kwargs
+    ) -> stac_types.LandingPage:
+        """Landing page.
+
+        Called with `GET /`.
+
+        Args:
+            username_header (dict): X-Username header from the request.
+            catalog_path (str): The path to the catalog for this landing page.
+            **kwargs: Keyword arguments from the request.
+
+        Returns:
+            API landing page, serving as an entry point to the API.
+        """
+        logger.info("Getting landing page")
+        request: Request = kwargs["request"]
+        base_url = get_base_url(request)
+        landing_page = self._landing_page(
+            base_url=f"{base_url}catalogs/{catalog_path}/",
+            conformance_classes=self.conformance_classes(),
+            extension_schemas=[],
+        )
+
+        catalog = await self.get_catalog(username_header, catalog_path, request=request)
+        landing_page.update(
+            {
+                "id": catalog["id"],
+                "title": catalog["title"],
+                "description": catalog["description"],
+                "stac_version": catalog["stac_version"],
+            }
+        )
+        for link in landing_page["links"]:
+            # Replace conformance link to be root link
+            if link["rel"] == Relations.conformance.value:
+                link["href"] = urljoin(str(request.base_url), "conformance")
+                break
+
+        if "links" in catalog:
+            for link in catalog["links"]:
+                if link["rel"] == "child":
+                    landing_page["links"].append(link)
+
+        # Add OpenAPI URL
+        landing_page["links"].append(
+            {
+                "rel": "service-desc",
+                "type": "application/vnd.oai.openapi+json;version=3.0",
+                "title": "OpenAPI service description",
+                "href": urljoin(
+                    str(request.base_url), request.app.openapi_url.lstrip("/")
+                ),
+            }
+        )
+
+        # Add human readable service-doc
+        landing_page["links"].append(
+            {
+                "rel": "service-doc",
+                "type": "text/html",
+                "title": "OpenAPI service documentation",
+                "href": urljoin(
+                    str(request.base_url), request.app.docs_url.lstrip("/")
+                ),
+            }
+        )
+
+        return landing_page
+
     async def all_collections(self, username_header: dict, **kwargs) -> Collections:
         """Read all collections from the database.
 
@@ -258,6 +345,7 @@ class CoreClient(AsyncBaseCoreClient):
         Returns:
             A Collections object containing all the collections in the database and links to various resources.
         """
+        logger.info("Getting all collections")
         request = kwargs["request"]
         base_url = str(request.base_url)
         limit = int(request.query_params.get("limit", 10))
@@ -329,32 +417,38 @@ class CoreClient(AsyncBaseCoreClient):
         Returns:
             A Catalogs object containing all the catalogs in the database and links to various resources.
         """
+        logger.info("Getting all catalogs")
         request = kwargs["request"]
         base_url = str(request.base_url)
         limit = int(request.query_params.get("limit", 10))
         token = request.query_params.get("token")
 
-        # Check if current user has access to each Catalog
-        catalog = await self.database.find_catalog(catalog_path=catalog_path)
-                # Check if current user has access to this Catalog
         # Extract X-Username header from username_header
         username = username_header.get("X-Username", "")
 
         # Get user index
         user_index = hash_to_index(username)
-        # Get access control array for each catalog
-        access_control = catalog["access_control"]
-        catalog.pop("access_control")
-        # Check access control
-        if not int(access_control[-1]):  # Catalog is private
-            if username == "":  # User is not logged in
-                raise HTTPException(
-                    status_code=401, detail="User is not authenticated"
-                )
-            elif not int(access_control[user_index]):  # User is logged in but not authorized
-                raise HTTPException(
-                    status_code=403, detail="User does not have access to this Catalog"
-                )
+
+        if catalog_path:
+            # Check if current user has access to each Catalog
+            catalog = await self.database.find_catalog(catalog_path=catalog_path)
+
+            # Get access control array for each catalog
+            access_control = catalog["access_control"]
+            catalog.pop("access_control")
+            # Check access control
+            if not int(access_control[-1]):  # Catalog is private
+                if username == "":  # User is not logged in
+                    raise HTTPException(
+                        status_code=401, detail="User is not authenticated"
+                    )
+                elif not int(
+                    access_control[user_index]
+                ):  # User is logged in but not authorized
+                    raise HTTPException(
+                        status_code=403,
+                        detail="User does not have access to this Catalog",
+                    )
 
         catalogs = []
 
@@ -423,6 +517,7 @@ class CoreClient(AsyncBaseCoreClient):
         Raises:
             NotFoundError: If the collection with the given id cannot be found in the database.
         """
+        logger.info("Getting collection")
         base_url = str(kwargs["request"].base_url)
 
         collection = await self.database.find_collection(
@@ -441,12 +536,13 @@ class CoreClient(AsyncBaseCoreClient):
         # Check access control
         if not int(access_control[-1]):  # Collection is private
             if username == "":  # User is not logged in
+                raise HTTPException(status_code=401, detail="User is not authenticated")
+            elif not int(
+                access_control[user_index]
+            ):  # User is logged in but not authorized
                 raise HTTPException(
-                    status_code=401, detail="User is not authenticated"
-                )
-            elif not int(access_control[user_index]):  # User is logged in but not authorized
-                raise HTTPException(
-                    status_code=403, detail="User does not have access to this Collection"
+                    status_code=403,
+                    detail="User does not have access to this Collection",
                 )
 
         return self.collection_serializer.db_to_stac(
@@ -455,7 +551,7 @@ class CoreClient(AsyncBaseCoreClient):
 
     async def get_catalog(
         self, username_header: dict, catalog_path: str, **kwargs
-    ) -> Catalogs:
+    ) -> Catalog:
         """Get a catalog from the database by its id.
 
         Args:
@@ -469,7 +565,7 @@ class CoreClient(AsyncBaseCoreClient):
         Raises:
             NotFoundError: If the catalog with the given id cannot be found in the database.
         """
-
+        logger.info("Getting catalog")
         # Identify parent catalog path, where available
         catalog_path_list = catalog_path.split("/")
         if len(catalog_path_list) > 1:
@@ -492,10 +588,10 @@ class CoreClient(AsyncBaseCoreClient):
         # Check access control
         if not int(access_control[-1]):  # Catalog is private
             if username == "":  # User is not logged in
-                raise HTTPException(
-                    status_code=401, detail="User is not authenticated"
-                )
-            elif not int(access_control[user_index]):  # User is logged in but not authorized
+                raise HTTPException(status_code=401, detail="User is not authenticated")
+            elif not int(
+                access_control[user_index]
+            ):  # User is logged in but not authorized
                 raise HTTPException(
                     status_code=403, detail="User does not have access to this Catalog"
                 )
@@ -542,112 +638,6 @@ class CoreClient(AsyncBaseCoreClient):
             conformance_classes=self.conformance_classes(),
         )
 
-    async def get_catalog_collections(
-        self,
-        username_header: dict,
-        catalog_path: str,
-        **kwargs,
-    ) -> Collections:
-        """Read collections from a specific catalog in the database.
-
-        Args:
-            username_header (dict): X-Username header from the request.
-            catalog_path (str): The path to thw catalog to read the collections from.
-            limit (int): The maximum number of items to return. The default value is 10.
-            token (str): A token used for pagination.
-            request (Request): The incoming request.
-
-        Returns:
-            A Collections object containing all the collections in the specific catalog and links to various resources.
-
-        Raises:
-            HTTPException: If the specified catalog is not found.
-            Exception: If any error occurs while reading the collections from the database.
-        """
-        request: Request = kwargs["request"]
-        token = request.query_params.get("token")
-        limit = int(request.query_params.get("limit", 10))
-        base_url = str(request.base_url)
-
-        # Get Catalog to confirm user access
-        catalog = await self.database.find_catalog(catalog_path=catalog_path)
-
-        # Check if current user has access to this Catalog
-        # Extract X-Username header from username_header
-        username = username_header.get("X-Username", "")
-
-        # Get user index
-        user_index = hash_to_index(username)
-        # Get access control array for each catalog
-        access_control = catalog["access_control"]
-        catalog.pop("access_control")
-        # Check access control
-        if not int(access_control[-1]):  # Catalog is private
-            if username == "":
-                raise HTTPException(
-                    status_code=401, detail="User is not authenticated"
-                )
-            elif not int(access_control[user_index]):
-                raise HTTPException(
-                    status_code=403, detail="User does not have access to this catalog"
-                )
-
-        catalog_id = catalog.get("id")
-        if catalog_id is None:
-            raise HTTPException(
-                status_code=404, detail="Catalog not found in STAC Catalog"
-            )
-
-        collections = []
-
-        while True:
-            temp_collections, next_token, hit_tokens = (
-                await self.database.get_catalog_collections(
-                    catalog_path=catalog_path,
-                    token=token,  # type: ignore
-                    limit=limit,
-                    base_url=base_url,
-                )
-            )
-
-            # Check if current user has access to each collection
-            for i, (collection, hit_token) in enumerate(
-                zip(temp_collections, hit_tokens)
-            ):
-                # Get access control array for each collection
-                access_control = collection["access_control"]
-                collection.pop("access_control")
-                # Remove collection from list if user does not have access
-                if int(access_control[-1]) or int(access_control[user_index]):
-                    collections.append(collection)
-                    if len(collections) >= limit:
-                        if i < len(temp_collections) - 1:
-                            # Extract token from last result
-                            next_token = hit_token
-                            break
-
-            # If collections now less than limit and more results, will need to run search again, giving next_token
-            if len(collections) >= limit or not next_token:
-                # TODO: implement smarter token logic to return token of last returned ES entry
-                break
-            token = next_token
-
-        links = [
-            {"rel": Relations.root.value, "type": MimeTypes.json, "href": base_url},
-            {"rel": Relations.parent.value, "type": MimeTypes.json, "href": base_url},
-            {
-                "rel": Relations.self.value,
-                "type": MimeTypes.json,
-                "href": urljoin(base_url, f"catalogs/{catalog_path}/collections"),
-            },
-        ]
-
-        if next_token:
-            next_link = PagingLinks(next=next_token, request=request).link_next()
-            links.append(next_link)
-
-        return Collections(collections=collections, links=links)
-
     async def item_collection(
         self,
         username_header: dict,
@@ -679,6 +669,7 @@ class CoreClient(AsyncBaseCoreClient):
             HTTPException: If the specified collection is not found.
             Exception: If any error occurs while reading the items from the database.
         """
+        logger.info("Getting item collection")
         request: Request = kwargs["request"]
 
         # Get Collection to confirm user access
@@ -698,12 +689,13 @@ class CoreClient(AsyncBaseCoreClient):
         # Check access control
         if not int(access_control[-1]):  # Collection is private
             if username == "":  # User is not logged in
+                raise HTTPException(status_code=401, detail="User is not authenticated")
+            elif not int(
+                access_control[user_index]
+            ):  # User is logged in but not authorized
                 raise HTTPException(
-                    status_code=401, detail="User is not authenticated"
-                )
-            elif not int(access_control[user_index]):  # User is logged in but not authorized
-                raise HTTPException(
-                    status_code=403, detail="User does not have access to this Collection"
+                    status_code=403,
+                    detail="User does not have access to this Collection",
                 )
 
         base_url = str(request.base_url)
@@ -789,6 +781,7 @@ class CoreClient(AsyncBaseCoreClient):
             Exception: If any error occurs while getting the item from the database.
             NotFoundError: If the item does not exist in the specified collection.
         """
+        logger.info("Getting item")
         base_url = str(kwargs["request"].base_url)
 
         # Load parent collection to check user access
@@ -807,12 +800,13 @@ class CoreClient(AsyncBaseCoreClient):
         # Check access control
         if not int(access_control[-1]):  # Collection is private
             if username == "":  # User is not logged in
+                raise HTTPException(status_code=401, detail="User is not authenticated")
+            elif not int(
+                access_control[user_index]
+            ):  # User is logged in but not authorized
                 raise HTTPException(
-                    status_code=401, detail="User is not authenticated"
-                )
-            elif not int(access_control[user_index]):  # User is logged in but not authorized
-                raise HTTPException(
-                    status_code=403, detail="User does not have access to this Collection"
+                    status_code=403,
+                    detail="User does not have access to this Collection",
                 )
 
         item = await self.database.get_one_item(
@@ -907,6 +901,7 @@ class CoreClient(AsyncBaseCoreClient):
         Raises:
             HTTPException: If any error occurs while searching the catalog.
         """
+        logger.info("Performing global GET search")
         base_args = {
             "collections": collections,
             "catalog_paths": catalog_paths,
@@ -995,6 +990,7 @@ class CoreClient(AsyncBaseCoreClient):
         Raises:
             HTTPException: If there is an error with the cql2_json filter.
         """
+        logger.info("Performing global POST search")
         base_url = str(request.base_url)
 
         search = self.database.make_search()
@@ -1009,7 +1005,7 @@ class CoreClient(AsyncBaseCoreClient):
             raise InvalidQueryParameter(
                 "To search specific collections, you must provide only one containing catalog."
             )
-        
+
         specified_catalog_paths = True
         specified_collections = True
 
@@ -1116,7 +1112,7 @@ class CoreClient(AsyncBaseCoreClient):
                 links=[],
                 context={"returned": 0, "limit": limit},
             )
-        
+
         if specified_collections and not search_request.collections:
             return ItemCollection(
                 type="FeatureCollection",
@@ -1275,6 +1271,7 @@ class CoreClient(AsyncBaseCoreClient):
         Raises:
             HTTPException: If any error occurs while searching the catalog.
         """
+        logger.info("Performing GET search")
         base_args = {
             "collections": collections,
             "ids": ids,
@@ -1367,6 +1364,7 @@ class CoreClient(AsyncBaseCoreClient):
         Raises:
             HTTPException: If there is an error with the cql2_json filter.
         """
+        logger.info("Performing POST search")
         base_url = str(request.base_url)
 
         # Check catalog is accessible to the user
@@ -1383,10 +1381,10 @@ class CoreClient(AsyncBaseCoreClient):
         # Check access control
         if not int(access_control[-1]):  # Collection is private
             if username == "":  # User is not logged in
-                raise HTTPException(
-                    status_code=401, detail="User is not authenticated"
-                )
-            elif not int(access_control[user_index]):  # User is logged in but not authorized
+                raise HTTPException(status_code=401, detail="User is not authenticated")
+            elif not int(
+                access_control[user_index]
+            ):  # User is logged in but not authorized
                 raise HTTPException(
                     status_code=403, detail="User does not have access to this Catalog"
                 )
@@ -1613,7 +1611,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             ConflictError: If the item in the specified collection already exists.
 
         """
-
+        logger.info("Creating item")
         if not item:
             raise HTTPException(status_code=400, detail="No item provided")
 
@@ -1693,6 +1691,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             NotFound: If the specified collection is not found in the database.
 
         """
+        logger.info("Updating item")
         base_url = str(kwargs["request"].base_url)
         now = datetime_type.now(timezone.utc).isoformat().replace("+00:00", "Z")
         item["properties"]["updated"] = now
@@ -1719,10 +1718,17 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             collection_id=collection_id, catalog_path=catalog_path
         )
         await self.delete_item(
-            item_id=item_id, collection_id=collection_id, catalog_path=catalog_path, workspace=workspace
+            item_id=item_id,
+            collection_id=collection_id,
+            catalog_path=catalog_path,
+            workspace=workspace,
         )
         await self.create_item(
-            catalog_path=catalog_path, collection_id=collection_id, item=item, workspace=workspace, **kwargs
+            catalog_path=catalog_path,
+            collection_id=collection_id,
+            item=item,
+            workspace=workspace,
+            **kwargs,
         )
 
         return ItemSerializer.db_to_stac(
@@ -1747,6 +1753,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         Returns:
             Optional[stac_types.Item]: The deleted item, or `None` if the item was successfully deleted.
         """
+        logger.info("Deleting item")
 
         # Confirm that the workspace provides correct access to the part of the catalogue to be altered
         # check kubernetes manifest for given workspace to confirm access
@@ -1794,6 +1801,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         Raises:
             ConflictError: If the collection already exists.
         """
+        logger.info("Creating collection")
 
         # Handle case where no catalog is provided
         if not collection:
@@ -1875,6 +1883,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             A STAC collection that has been updated in the database.
 
         """
+        logger.info("Updating collection")
         base_url = str(kwargs["request"].base_url)
 
         # Confirm that the workspace provides correct access to the part of the catalogue to be altered
@@ -1927,6 +1936,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         Raises:
             NotFoundError: If the collection doesn't exist.
         """
+        logger.info("Deleting collection")
 
         # Confirm that the workspace provides correct access to the part of the catalogue to be altered
         # check kubernetes manifest for given workspace to confirm access
@@ -1974,6 +1984,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         Raises:
             ConflictError: If the catalog already exists.
         """
+        logger.info("Creating catalog")
 
         # Handle case where no catalog is provided
         if not catalog:
@@ -2062,6 +2073,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             A STAC collection that has been updated in the database.
 
         """
+        logger.info("Updating catalog")
         base_url = str(kwargs["request"].base_url)
 
         # Confirm that the workspace provides correct access to the part of the catalogue to be altered
@@ -2109,6 +2121,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         Raises:
             NotFoundError: If the collection doesn't exist.
         """
+        logger.info("Deleting catalog")
 
         # Confirm that the workspace provides correct access to the part of the catalogue to be altered
         # check kubernetes manifest for given workspace to confirm access
@@ -2183,6 +2196,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         Returns:
             A string indicating the number of items successfully added.
         """
+        logger.info("Bulk inserting items")
         request = kwargs.get("request")
         if request:
             base_url = str(request.base_url)
@@ -2232,6 +2246,7 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
         Returns:
             Dict[str, Any]: A dictionary containing the queryables for the given collection.
         """
+        logger.info("Getting queryables")
         return {
             "$schema": "https://json-schema.org/draft/2019-09/schema",
             "$id": "https://stac-api.example.com/queryables",
@@ -2301,6 +2316,7 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
         search_request: BaseCollectionSearchPostRequest,
         request: Request,
         username_header: dict,
+        catalog_path: str = None,
         **kwargs,
     ) -> Collections:
         """
@@ -2310,6 +2326,7 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
             search_request (BaseCollectionSearchPostRequest): Request object that includes the parameters for the search.
             request (Request): The incoming request.
             username_header (dict): X-Username header from the request.
+            catalog_path (Str): The path to the catalog in which to search the collections.
             **kwargs: Keyword arguments passed to the function.
 
         Returns:
@@ -2318,6 +2335,7 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
         Raises:
             HTTPException: If there is an error with the cql2_json filter.
         """
+        logger.info("Posting for all collections")
         base_url = str(request.base_url)
         token = request.query_params.get("token")
         limit = int(request.query_params.get("limit", 10))
@@ -2327,6 +2345,31 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
 
         # Get user index
         user_index = hash_to_index(username)
+
+        if catalog_path:
+            # Get Catalog to confirm user access
+            catalog = await self.database.find_catalog(catalog_path=catalog_path)
+
+            # Extract X-Username header from username_header for access control
+            username = username_header.get("X-Username", "")
+
+            # Get user index
+            user_index = hash_to_index(username)
+
+            # Get access control array for each catalog
+            access_control = catalog["access_control"]
+            catalog.pop("access_control")
+            # Check access control
+            if not int(access_control[-1]):  # Catalog is private
+                if username == "":
+                    raise HTTPException(
+                        status_code=401, detail="User is not authenticated"
+                    )
+                elif not int(access_control[user_index]):
+                    raise HTTPException(
+                        status_code=403,
+                        detail="User does not have access to this catalog",
+                    )
 
         search = self.database.make_collection_search()
 
@@ -2363,9 +2406,10 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
                 await self.database.execute_collection_search(
                     search=search,
                     limit=limit,
+                    base_url=base_url,
                     token=token,
                     sort=sort,
-                    base_url=base_url,
+                    catalog_path=catalog_path,
                 )
             )
 
@@ -2402,6 +2446,7 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
         self,
         request: Request,
         username_header: dict,
+        catalog_path: str = None,
         bbox: Optional[List[NumType]] = None,
         datetime: Optional[Union[str, datetime_type]] = None,
         limit: Optional[int] = 10,
@@ -2425,6 +2470,7 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
         Raises:
             HTTPException: If any error occurs while searching the catalog.
         """
+        logger.info("Getting all collections")
 
         token = request.query_params.get("token")
 
@@ -2445,6 +2491,7 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
             search_request=search_request,
             request=request,
             username_header=username_header,
+            catalog_path=catalog_path,
         )
 
         return resp
@@ -2498,6 +2545,7 @@ class EsAsyncDiscoverySearchClient(AsyncDiscoverySearchClient):
         Raises:
             HTTPException: If there is an error with the cql2_json filter.
         """
+        logger.info("Posting a discovery search")
         base_url = str(request.base_url)
         token = request.query_params.get("token")
         limit = int(request.query_params.get("limit", 10))
@@ -2587,6 +2635,7 @@ class EsAsyncDiscoverySearchClient(AsyncDiscoverySearchClient):
         Raises:
             HTTPException: If any error occurs while searching the catalog.
         """
+        logger.info("Getting discovery search")
 
         base_args = {
             "q": q,
