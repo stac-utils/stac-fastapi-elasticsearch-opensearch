@@ -24,6 +24,7 @@ from stac_fastapi.core.extensions.aggregation import (
     EsAggregationExtensionPostRequest,
     EsAsyncAggregationClient,
 )
+from stac_fastapi.core.rate_limit import setup_rate_limit
 from stac_fastapi.core.route_dependencies import get_route_dependencies
 
 if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
@@ -243,6 +244,65 @@ async def app_client(app):
     await create_collection_index()
 
     async with AsyncClient(app=app, base_url="http://test-server") as c:
+        yield c
+
+
+@pytest_asyncio.fixture(scope="session")
+async def app_rate_limit():
+    settings = AsyncSettings()
+
+    aggregation_extension = AggregationExtension(
+        client=EsAsyncAggregationClient(
+            database=database, session=None, settings=settings
+        )
+    )
+    aggregation_extension.POST = EsAggregationExtensionPostRequest
+    aggregation_extension.GET = EsAggregationExtensionGetRequest
+
+    search_extensions = [
+        TransactionExtension(
+            client=TransactionsClient(
+                database=database, session=None, settings=settings
+            ),
+            settings=settings,
+        ),
+        SortExtension(),
+        FieldsExtension(),
+        QueryExtension(),
+        TokenPaginationExtension(),
+        FilterExtension(),
+        FreeTextExtension(),
+    ]
+
+    extensions = [aggregation_extension] + search_extensions
+
+    post_request_model = create_post_request_model(search_extensions)
+
+    app = StacApi(
+        settings=settings,
+        client=CoreClient(
+            database=database,
+            session=None,
+            extensions=extensions,
+            post_request_model=post_request_model,
+        ),
+        extensions=extensions,
+        search_get_request_model=create_get_request_model(search_extensions),
+        search_post_request_model=post_request_model,
+    ).app
+
+    # Set up rate limit
+    setup_rate_limit(app, rate_limit="2/minute")
+
+    return app
+
+
+@pytest_asyncio.fixture(scope="session")
+async def app_client_rate_limit(app_rate_limit):
+    await create_index_templates()
+    await create_collection_index()
+
+    async with AsyncClient(app=app_rate_limit, base_url="http://test-server") as c:
         yield c
 
 

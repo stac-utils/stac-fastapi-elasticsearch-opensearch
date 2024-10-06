@@ -18,7 +18,7 @@ async def test_get_search_not_authenticated(app_client_basic_auth, ctx):
 
 @pytest.mark.asyncio
 async def test_post_search_authenticated(app_client_basic_auth, ctx):
-    """Test protected endpoint [POST /search] with reader auhtentication"""
+    """Test protected endpoint [POST /search] with reader authentication"""
     if not os.getenv("BASIC_AUTH"):
         pytest.skip()
     params = {"id": ctx.item["id"]}
@@ -34,7 +34,7 @@ async def test_post_search_authenticated(app_client_basic_auth, ctx):
 async def test_delete_resource_anonymous(
     app_client_basic_auth,
 ):
-    """Test protected endpoint [DELETE /collections/{collection_id}] without auhtentication"""
+    """Test protected endpoint [DELETE /collections/{collection_id}] without authentication"""
     if not os.getenv("BASIC_AUTH"):
         pytest.skip()
 
