@@ -200,9 +200,11 @@ async def test_create_item(ctx, core_client, txn_client):
     resp = await core_client.get_item(
         ctx.item["id"], ctx.item["collection"], request=MockRequest
     )
-    assert Item(**ctx.item).dict(
+    assert Item(**ctx.item).model_dump(
         exclude={"links": ..., "properties": {"created", "updated"}}
-    ) == Item(**resp).dict(exclude={"links": ..., "properties": {"created", "updated"}})
+    ) == Item(**resp).model_dump(
+        exclude={"links": ..., "properties": {"created", "updated"}}
+    )
 
 
 @pytest.mark.asyncio

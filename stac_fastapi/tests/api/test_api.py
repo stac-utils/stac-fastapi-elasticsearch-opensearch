@@ -30,6 +30,14 @@ ROUTES = {
     "POST /collections/{collection_id}/items",
     "PUT /collections/{collection_id}",
     "PUT /collections/{collection_id}/items/{item_id}",
+    "GET /aggregations",
+    "GET /aggregate",
+    "POST /aggregations",
+    "POST /aggregate",
+    "GET /collections/{collection_id}/aggregations",
+    "GET /collections/{collection_id}/aggregate",
+    "POST /collections/{collection_id}/aggregations",
+    "POST /collections/{collection_id}/aggregate",
 }
 
 

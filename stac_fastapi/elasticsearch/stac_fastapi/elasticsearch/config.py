@@ -1,4 +1,5 @@
 """API configuration."""
+
 import os
 import ssl
 from typing import Any, Dict, Set
@@ -23,6 +24,16 @@ def _es_config() -> Dict[str, Any]:
         "headers": {"accept": "application/vnd.elasticsearch+json; compatible-with=7"},
     }
 
+    # Handle API key
+    if api_key := os.getenv("ES_API_KEY"):
+        if isinstance(config["headers"], dict):
+            headers = {**config["headers"], "x-api-key": api_key}
+
+        else:
+            config["headers"] = {"x-api-key": api_key}
+
+        config["headers"] = headers
+
     # Explicitly exclude SSL settings when not using SSL
     if not use_ssl:
         return config
@@ -38,15 +49,6 @@ def _es_config() -> Dict[str, Any]:
     # Handle authentication
     if (u := os.getenv("ES_USER")) and (p := os.getenv("ES_PASS")):
         config["http_auth"] = (u, p)
-
-    if api_key := os.getenv("ES_API_KEY"):
-        if isinstance(config["headers"], dict):
-            headers = {**config["headers"], "x-api-key": api_key}
-
-        else:
-            config["headers"] = {"x-api-key": api_key}
-
-        config["headers"] = headers
 
     return config
 

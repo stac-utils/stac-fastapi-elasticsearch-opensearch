@@ -10,14 +10,16 @@ install_requires = [
     "attrs>=23.2.0",
     "pydantic[dotenv]",
     "stac_pydantic>=3",
-    "stac-fastapi.types==3.0.0a3",
-    "stac-fastapi.api==3.0.0a3",
-    "stac-fastapi.extensions==3.0.0a3",
+    "stac-fastapi.types==3.0.0",
+    "stac-fastapi.api==3.0.0",
+    "stac-fastapi.extensions==3.0.0",
     "orjson",
     "overrides",
     "geojson-pydantic",
     "pygeofilter==0.2.1",
     "typing_extensions==4.8.0",
+    "jsonschema",
+    "slowapi==0.1.9",
 ]
 
 setup(
