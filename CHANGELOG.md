@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## EODHP
 The following changes have been made for the EODHP project
 
+### v0.3.11 - 2024-10-07
+Bugfix - handle entries with missing access control, sometimes seen during debugging
+
 ### v0.3.10 - 2024-09-30
 
 Updated Error Codes for Collection, Catalog, and Items Access:
