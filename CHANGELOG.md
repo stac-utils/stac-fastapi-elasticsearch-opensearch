@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [v3.2.0] - 2024-10-09
+
 ### Added
 
 - Added `datetime_frequency_interval` parameter for `datetime_frequency` aggregation. [#294](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/294)
@@ -263,7 +265,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.1.0...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.2.0...main
+[v3.2.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.1.0...v3.2.0
 [v3.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.0.0...v3.1.0
 [v3.0.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.4.1...v3.0.0
 [v2.4.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.4.0...v2.4.1
