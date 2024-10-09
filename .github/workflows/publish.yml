@@ -26,8 +26,8 @@ jobs:
       - name: Build and publish stac-fastapi-core
         working-directory: stac_fastapi/core
         env:
-          TWINE_USERNAME: "__token__" # Hardcoded username for API token authentication
-          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }} # Your PyPI API token from GitHub Secrets
+          TWINE_USERNAME: "__token__"
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
         run: |
           # Build package
           python setup.py sdist bdist_wheel
