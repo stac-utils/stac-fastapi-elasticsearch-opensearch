@@ -57,8 +57,8 @@ from stac_fastapi.types.search import (
     Limit,
 )
 from stac_fastapi.types.stac import (
-    Catalogs,
     Catalog,
+    Catalogs,
     CatalogsAndCollections,
     Collection,
     Collections,
@@ -219,11 +219,14 @@ class CoreClient(AsyncBaseCoreClient):
 
             for catalog in temp_catalogs:
                 # Get access control array for each catalog
-                access_control = catalog["access_control"]
-                # Append catalog to list if user has access
-                # Convert to int to ensure 0 is falsy and 1 is truthy
-                if int(access_control[-1]) or int(access_control[user_index]):
-                    catalogs.append(catalog)
+                try:
+                    access_control = catalog["access_control"]
+                    # Append catalog to list if user has access
+                    # Convert to int to ensure 0 is falsy and 1 is truthy
+                    if int(access_control[-1]) or int(access_control[user_index]):
+                        catalogs.append(catalog)
+                except KeyError:
+                    logger.error(f"No access control found for catalog {catalog['id']}")
 
             # If catalogs now less than limit, will need to run search again, giving next_token
             if len(catalogs) >= NUMBER_OF_CATALOG_COLLECTIONS or not next_token:
@@ -371,16 +374,21 @@ class CoreClient(AsyncBaseCoreClient):
                 zip(temp_collections, hit_tokens)
             ):
                 # Get access control array for each collection
-                access_control = collection["access_control"]
-                collection.pop("access_control")
-                # Append collection to list if user has access
-                if int(access_control[-1]) or int(access_control[user_index]):
-                    collections.append(collection)
-                    if len(collections) >= limit:
-                        # Extract token from last result
-                        if i < len(temp_collections) - 1:
-                            next_token = hit_token
-                            break
+                try:
+                    access_control = collection["access_control"]
+                    collection.pop("access_control")
+                    # Append collection to list if user has access
+                    if int(access_control[-1]) or int(access_control[user_index]):
+                        collections.append(collection)
+                        if len(collections) >= limit:
+                            # Extract token from last result
+                            if i < len(temp_collections) - 1:
+                                next_token = hit_token
+                                break
+                except KeyError:
+                    logger.error(
+                        f"No access control found for collection {collection['id']}"
+                    )
 
             # If collections now less than limit and more results, will need to run search again, giving next_token
             if len(collections) >= limit or not next_token:
@@ -434,17 +442,29 @@ class CoreClient(AsyncBaseCoreClient):
             catalog = await self.database.find_catalog(catalog_path=catalog_path)
 
             # Get access control array for each catalog
-            access_control = catalog["access_control"]
-            catalog.pop("access_control")
-            # Check access control
-            if not int(access_control[-1]):  # Catalog is private
+            try:
+                access_control = catalog["access_control"]
+                catalog.pop("access_control")
+                # Check access control
+                if not int(access_control[-1]):  # Catalog is private
+                    if username == "":  # User is not logged in
+                        raise HTTPException(
+                            status_code=401, detail="User is not authenticated"
+                        )
+                    elif not int(
+                        access_control[user_index]
+                    ):  # User is logged in but not authorized
+                        raise HTTPException(
+                            status_code=403,
+                            detail="User does not have access to this Catalog",
+                        )
+            except KeyError:
+                logger.error(f"No access control found for catalog {catalog['id']}")
                 if username == "":  # User is not logged in
                     raise HTTPException(
                         status_code=401, detail="User is not authenticated"
                     )
-                elif not int(
-                    access_control[user_index]
-                ):  # User is logged in but not authorized
+                else:  # User is logged in but still can't determine access
                     raise HTTPException(
                         status_code=403,
                         detail="User does not have access to this Catalog",
@@ -467,16 +487,19 @@ class CoreClient(AsyncBaseCoreClient):
 
             for i, (catalog, hit_token) in enumerate(zip(temp_catalogs, hit_tokens)):
                 # Get access control array for each catalog
-                access_control = catalog["access_control"]
-                catalog.pop("access_control")
-                # Add catalog to list if user has access
-                if int(access_control[-1]) or int(access_control[user_index]):
-                    catalogs.append(catalog)
-                    if len(catalogs) >= limit:
-                        if i < len(temp_catalogs) - 1:
-                            # Extract token from last result
-                            next_token = hit_token
-                            break
+                try:
+                    access_control = catalog["access_control"]
+                    catalog.pop("access_control")
+                    # Add catalog to list if user has access
+                    if int(access_control[-1]) or int(access_control[user_index]):
+                        catalogs.append(catalog)
+                        if len(catalogs) >= limit:
+                            if i < len(temp_catalogs) - 1:
+                                # Extract token from last result
+                                next_token = hit_token
+                                break
+                except KeyError:
+                    logger.error(f"No access control found for catalog {catalog['id']}")
 
             # If catalogs now less than limit and more results, will need to run search again, giving next_token
             if len(catalogs) >= limit or not next_token:
@@ -531,15 +554,27 @@ class CoreClient(AsyncBaseCoreClient):
         # Get user index
         user_index = hash_to_index(username)
         # Get access control array for each collection
-        access_control = collection["access_control"]
-        collection.pop("access_control")
-        # Check access control
-        if not int(access_control[-1]):  # Collection is private
+        try:
+            access_control = collection["access_control"]
+            collection.pop("access_control")
+            # Check access control
+            if not int(access_control[-1]):  # Collection is private
+                if username == "":  # User is not logged in
+                    raise HTTPException(
+                        status_code=401, detail="User is not authenticated"
+                    )
+                elif not int(
+                    access_control[user_index]
+                ):  # User is logged in but not authorized
+                    raise HTTPException(
+                        status_code=403,
+                        detail="User does not have access to this Collection",
+                    )
+        except KeyError:
+            logger.error(f"No access control found for collection {collection['id']}")
             if username == "":  # User is not logged in
                 raise HTTPException(status_code=401, detail="User is not authenticated")
-            elif not int(
-                access_control[user_index]
-            ):  # User is logged in but not authorized
+            else:  # User is logged in but still can't determine access
                 raise HTTPException(
                     status_code=403,
                     detail="User does not have access to this Collection",
@@ -583,15 +618,27 @@ class CoreClient(AsyncBaseCoreClient):
         # Get user index
         user_index = hash_to_index(username)
         # Get access control array for each catalog
-        access_control = catalog["access_control"]
-        catalog.pop("access_control")
-        # Check access control
-        if not int(access_control[-1]):  # Catalog is private
+        try:
+            access_control = catalog["access_control"]
+            catalog.pop("access_control")
+            # Check access control
+            if not int(access_control[-1]):  # Catalog is private
+                if username == "":  # User is not logged in
+                    raise HTTPException(
+                        status_code=401, detail="User is not authenticated"
+                    )
+                elif not int(
+                    access_control[user_index]
+                ):  # User is logged in but not authorized
+                    raise HTTPException(
+                        status_code=403,
+                        detail="User does not have access to this Catalog",
+                    )
+        except KeyError:
+            logger.error(f"No access control found for catalog {catalog['id']}")
             if username == "":  # User is not logged in
                 raise HTTPException(status_code=401, detail="User is not authenticated")
-            elif not int(
-                access_control[user_index]
-            ):  # User is logged in but not authorized
+            else:  # User is logged in but still can't determine access
                 raise HTTPException(
                     status_code=403, detail="User does not have access to this Catalog"
                 )
@@ -607,10 +654,16 @@ class CoreClient(AsyncBaseCoreClient):
         # Check if current user has access to each collection
         for collection in collections[:]:
             # Get access control array for each collection
-            access_control = collection["access_control"]
-            collection.pop("access_control")
-            # Remove collection from list if user does not have access
-            if not int(access_control[-1]) and not int(access_control[user_index]):
+            try:
+                access_control = collection["access_control"]
+                collection.pop("access_control")
+                # Remove collection from list if user does not have access
+                if not int(access_control[-1]) and not int(access_control[user_index]):
+                    collections.remove(collection)
+            except KeyError:
+                logger.error(
+                    f"No access control found for collection {collection['id']}"
+                )
                 collections.remove(collection)
 
         sub_catalogs, _ = await self.database.get_catalog_subcatalogs(
@@ -623,10 +676,16 @@ class CoreClient(AsyncBaseCoreClient):
         # Check if current user has access to each collection
         for sub_catalog in sub_catalogs[:]:
             # Get access control array for each catalog
-            access_control = sub_catalog["access_control"]
-            sub_catalog.pop("access_control")
-            # Remove catalog from list if user does not have access
-            if not int(access_control[-1]) and not int(access_control[user_index]):
+            try:
+                access_control = sub_catalog["access_control"]
+                sub_catalog.pop("access_control")
+                # Remove catalog from list if user does not have access
+                if not int(access_control[-1]) and not int(access_control[user_index]):
+                    sub_catalogs.remove(sub_catalog)
+            except KeyError:
+                logger.error(
+                    f"No access control found for sub-catalog {sub_catalog['id']}"
+                )
                 sub_catalogs.remove(sub_catalog)
 
         return self.catalog_serializer.db_to_stac(
@@ -685,14 +744,26 @@ class CoreClient(AsyncBaseCoreClient):
         user_index = hash_to_index(username)
 
         # Get access control array for the collection
-        access_control = collection["access_control"]
-        # Check access control
-        if not int(access_control[-1]):  # Collection is private
+        try:
+            access_control = collection["access_control"]
+            # Check access control
+            if not int(access_control[-1]):  # Collection is private
+                if username == "":  # User is not logged in
+                    raise HTTPException(
+                        status_code=401, detail="User is not authenticated"
+                    )
+                elif not int(
+                    access_control[user_index]
+                ):  # User is logged in but not authorized
+                    raise HTTPException(
+                        status_code=403,
+                        detail="User does not have access to this Collection",
+                    )
+        except KeyError:
+            logger.error(f"No access control found for collection {collection['id']}")
             if username == "":  # User is not logged in
                 raise HTTPException(status_code=401, detail="User is not authenticated")
-            elif not int(
-                access_control[user_index]
-            ):  # User is logged in but not authorized
+            else:  # User is logged in but still can't determine access
                 raise HTTPException(
                     status_code=403,
                     detail="User does not have access to this Collection",
@@ -796,14 +867,26 @@ class CoreClient(AsyncBaseCoreClient):
         # Get user index
         user_index = hash_to_index(username)
         # Get access control array for each collection
-        access_control = collection["access_control"]
-        # Check access control
-        if not int(access_control[-1]):  # Collection is private
+        try:
+            access_control = collection["access_control"]
+            # Check access control
+            if not int(access_control[-1]):  # Collection is private
+                if username == "":  # User is not logged in
+                    raise HTTPException(
+                        status_code=401, detail="User is not authenticated"
+                    )
+                elif not int(
+                    access_control[user_index]
+                ):  # User is logged in but not authorized
+                    raise HTTPException(
+                        status_code=403,
+                        detail="User does not have access to this Collection",
+                    )
+        except KeyError:
+            logger.error(f"No access control found for collection {collection['id']}")
             if username == "":  # User is not logged in
                 raise HTTPException(status_code=401, detail="User is not authenticated")
-            elif not int(
-                access_control[user_index]
-            ):  # User is logged in but not authorized
+            else:  # User is logged in but still can't determine access
                 raise HTTPException(
                     status_code=403,
                     detail="User does not have access to this Collection",
@@ -1085,9 +1168,13 @@ class CoreClient(AsyncBaseCoreClient):
         for catalog_path in search_request.catalog_paths[:]:
             catalog = await self.database.find_catalog(catalog_path=catalog_path)
             # Get access control array for each catalog
-            access_control = catalog["access_control"]
-            # Remove catalog from list if user does not have access
-            if not int(access_control[-1]) and not int(access_control[user_index]):
+            try:
+                access_control = catalog["access_control"]
+                # Remove catalog from list if user does not have access
+                if not int(access_control[-1]) and not int(access_control[user_index]):
+                    search_request.catalog_paths.remove(catalog_path)
+            except KeyError:
+                logger.error(f"No access control found for catalog {catalog['id']}")
                 search_request.catalog_paths.remove(catalog_path)
 
         if search_request.catalog_paths:
@@ -1098,9 +1185,17 @@ class CoreClient(AsyncBaseCoreClient):
                     collection_id=collection_id,
                 )
                 # Get access control array for each collection
-                access_control = collection["access_control"]
-                # Remove catalog from list if user does not have access
-                if not int(access_control[-1]) and not int(access_control[user_index]):
+                try:
+                    access_control = collection["access_control"]
+                    # Remove catalog from list if user does not have access
+                    if not int(access_control[-1]) and not int(
+                        access_control[user_index]
+                    ):
+                        search_request.collections.remove(collection_id)
+                except KeyError:
+                    logger.error(
+                        f"No access control found for collection {collection['id']}"
+                    )
                     search_request.collections.remove(collection_id)
 
         items = []
@@ -1146,30 +1241,41 @@ class CoreClient(AsyncBaseCoreClient):
                         collection_id=parent_collection,
                     )
                     # Get access control array for this collection
-                    access_control = collection["access_control"]
-                    # Append item to list if user has access
-                    if int(access_control[-1]) or int(access_control[user_index]):
-                        items.append(item)
-                        if len(items) >= limit:
-                            if i < len(temp_items) - 1:
-                                # Extract token from last result
-                                next_token = hit_token
-                                break
+                    try:
+                        access_control = collection["access_control"]
+                        # Append item to list if user has access
+                        if int(access_control[-1]) or int(access_control[user_index]):
+                            items.append(item)
+                            if len(items) >= limit:
+                                if i < len(temp_items) - 1:
+                                    # Extract token from last result
+                                    next_token = hit_token
+                                    break
+                    except KeyError:
+                        logger.error(
+                            f"No access control found for collection {collection['id']}"
+                        )
+
                 # Get parent catalog if collection is not present
                 else:
                     # Get access control array for this catalog
                     catalog = await self.database.find_catalog(
                         catalog_path=item_catalog_path
                     )
-                    access_control = catalog["access_control"]
-                    # Append item to list if user has access
-                    if int(access_control[-1]) or int(access_control[user_index]):
-                        items.append(item)
-                        if len(items) >= limit:
-                            # Extract token from last result
-                            if i < len(temp_items) - 1:
-                                next_token = hit_token
-                                break
+                    try:
+                        access_control = catalog["access_control"]
+                        # Append item to list if user has access
+                        if int(access_control[-1]) or int(access_control[user_index]):
+                            items.append(item)
+                            if len(items) >= limit:
+                                # Extract token from last result
+                                if i < len(temp_items) - 1:
+                                    next_token = hit_token
+                                    break
+                    except KeyError:
+                        logger.error(
+                            f"No access control found for catalog {catalog['id']}"
+                        )
 
             # If items now less than limit and more results, will need to run search again, giving next_token
             if len(items) >= limit or not next_token:
@@ -1377,17 +1483,30 @@ class CoreClient(AsyncBaseCoreClient):
         # Filter the search catalogs to those that are accessible to the user
         catalog = await self.database.find_catalog(catalog_path=catalog_path)
         # Get access control array for each catalog
-        access_control = catalog["access_control"]
-        # Check access control
-        if not int(access_control[-1]):  # Collection is private
+        try:
+            access_control = catalog["access_control"]
+            # Check access control
+            if not int(access_control[-1]):  # Collection is private
+                if username == "":  # User is not logged in
+                    raise HTTPException(
+                        status_code=401, detail="User is not authenticated"
+                    )
+                elif not int(
+                    access_control[user_index]
+                ):  # User is logged in but not authorized
+                    raise HTTPException(
+                        status_code=403,
+                        detail="User does not have access to this Catalog",
+                    )
+        except KeyError:
+            logger.error(f"No access control found for catalog {catalog['id']}")
             if username == "":  # User is not logged in
                 raise HTTPException(status_code=401, detail="User is not authenticated")
-            elif not int(
-                access_control[user_index]
-            ):  # User is logged in but not authorized
+            else:  # User is logged in but still can't determine access
                 raise HTTPException(
                     status_code=403, detail="User does not have access to this Catalog"
                 )
+
         collections = []
         if search_request.collections:
             collections = search_request.collections
@@ -1399,9 +1518,15 @@ class CoreClient(AsyncBaseCoreClient):
                 catalog_path=catalog_path, collection_id=collection_id
             )
             # Get access control array for each collection
-            access_control = collection["access_control"]
-            # Remove catalog from list if user does not have access
-            if not int(access_control[-1]) and not int(access_control[user_index]):
+            try:
+                access_control = collection["access_control"]
+                # Remove catalog from list if user does not have access
+                if not int(access_control[-1]) and not int(access_control[user_index]):
+                    collections.remove(collection_id)
+            except KeyError:
+                logger.error(
+                    f"No access control found for collection {collection['id']}"
+                )
                 collections.remove(collection_id)
 
         search = self.database.make_search()
@@ -1491,30 +1616,40 @@ class CoreClient(AsyncBaseCoreClient):
                         collection_id=parent_collection,
                     )
                     # Get access control array for this collection
-                    access_control = collection["access_control"]
-                    # Append item to list if user has access
-                    if int(access_control[-1]) or int(access_control[user_index]):
-                        items.append(item)
-                        if len(items) >= limit:
-                            if i < len(temp_items) - 1:
-                                # Extract token from last result
-                                next_token = hit_token
-                                break
+                    try:
+                        access_control = collection["access_control"]
+                        # Append item to list if user has access
+                        if int(access_control[-1]) or int(access_control[user_index]):
+                            items.append(item)
+                            if len(items) >= limit:
+                                if i < len(temp_items) - 1:
+                                    # Extract token from last result
+                                    next_token = hit_token
+                                    break
+                    except KeyError:
+                        logger.error(
+                            f"Access control not found for collection {collection['id']}"
+                        )
                 # Get parent catalog if collection is not present
                 else:
                     # Get access control array for this catalog
                     catalog = await self.database.find_catalog(
                         catalog_path=item_catalog_path
                     )
-                    access_control = catalog["access_control"]
-                    # Append item to list if user has access
-                    if int(access_control[-1]) or int(access_control[user_index]):
-                        items.append(item)
-                        if len(items) >= limit:
-                            if i < len(temp_items) - 1:
-                                # Extract token from last result
-                                next_token = hit_token
-                                break
+                    try:
+                        access_control = catalog["access_control"]
+                        # Append item to list if user has access
+                        if int(access_control[-1]) or int(access_control[user_index]):
+                            items.append(item)
+                            if len(items) >= limit:
+                                if i < len(temp_items) - 1:
+                                    # Extract token from last result
+                                    next_token = hit_token
+                                    break
+                    except KeyError:
+                        logger.error(
+                            f"Catalog access control not found for catalog {catalog['id']}"
+                        )
 
             # If items now less than limit and more results, will need to run search again, giving next_token
             if len(items) >= limit or not next_token:
@@ -2357,15 +2492,27 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
             user_index = hash_to_index(username)
 
             # Get access control array for each catalog
-            access_control = catalog["access_control"]
-            catalog.pop("access_control")
-            # Check access control
-            if not int(access_control[-1]):  # Catalog is private
+            try:
+                access_control = catalog["access_control"]
+                catalog.pop("access_control")
+                # Check access control
+                if not int(access_control[-1]):  # Catalog is private
+                    if username == "":
+                        raise HTTPException(
+                            status_code=401, detail="User is not authenticated"
+                        )
+                    elif not int(access_control[user_index]):
+                        raise HTTPException(
+                            status_code=403,
+                            detail="User does not have access to this catalog",
+                        )
+            except KeyError:
+                logger.error(f"Access control not found for catalog {catalog['id']}")
                 if username == "":
                     raise HTTPException(
                         status_code=401, detail="User is not authenticated"
                     )
-                elif not int(access_control[user_index]):
+                else:
                     raise HTTPException(
                         status_code=403,
                         detail="User does not have access to this catalog",
@@ -2418,16 +2565,21 @@ class EsAsyncCollectionSearchClient(AsyncCollectionSearchClient):
                 zip(temp_collections, hit_tokens)
             ):
                 # Get access control array for this collection
-                access_control = collection["access_control"]
-                collection.pop("access_control")
-                # Append collection to list if user has access
-                if int(access_control[-1]) or int(access_control[user_index]):
-                    collections.append(collection)
-                    if len(collections) >= limit:
-                        if i < len(temp_collections) - 1:
-                            # Extract token from last result
-                            next_token = hit_token
-                            break
+                try:
+                    access_control = collection["access_control"]
+                    collection.pop("access_control")
+                    # Append collection to list if user has access
+                    if int(access_control[-1]) or int(access_control[user_index]):
+                        collections.append(collection)
+                        if len(collections) >= limit:
+                            if i < len(temp_collections) - 1:
+                                # Extract token from last result
+                                next_token = hit_token
+                                break
+                except KeyError:
+                    logger.error(
+                        f"Access control not found for collection {collection['id']}"
+                    )
 
             # If collections now less than limit and more results, will need to run search again, giving next_token
             if len(collections) >= limit or not next_token:
@@ -2586,16 +2738,21 @@ class EsAsyncDiscoverySearchClient(AsyncDiscoverySearchClient):
                 zip(temp_catalogs_and_collections, hit_tokens)
             ):
                 # Get access control array for this collection
-                access_control = data["access_control"]
-                data.pop("access_control")
-                # Append collection to list if user has access
-                if int(access_control[-1]) or int(access_control[user_index]):
-                    catalogs_and_collections.append(data)
-                    if len(catalogs_and_collections) >= limit:
-                        if i < len(temp_catalogs_and_collections) - 1:
-                            # Extract token from last result
-                            next_token = hit_token
-                            break
+                try:
+                    access_control = data["access_control"]
+                    data.pop("access_control")
+                    # Append collection to list if user has access
+                    if int(access_control[-1]) or int(access_control[user_index]):
+                        catalogs_and_collections.append(data)
+                        if len(catalogs_and_collections) >= limit:
+                            if i < len(temp_catalogs_and_collections) - 1:
+                                # Extract token from last result
+                                next_token = hit_token
+                                break
+                except KeyError:
+                    logger.error(
+                        f"No access control found for catalog or collection {data['id']}"
+                    )
 
             # If catalogs_and_collections now less than limit and more results, will need to run search again, giving next_token
             if len(catalogs_and_collections) >= limit or not next_token:
