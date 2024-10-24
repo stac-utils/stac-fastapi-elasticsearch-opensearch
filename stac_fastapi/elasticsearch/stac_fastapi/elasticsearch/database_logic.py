@@ -1619,7 +1619,7 @@ class DatabaseLogic:
         if catalog_path:
             catalog_path_list = catalog_path.split("/")
             catalog_index = index_collections_by_catalog_id(catalog_path_list)
-            catalog_index = catalog_index.replace("collections_", "collections_*")
+            catalog_index = catalog_index.replace("collections_", "collections*_")
         else:
             catalog_index = f"{COLLECTIONS_INDEX_PREFIX}*"
 
