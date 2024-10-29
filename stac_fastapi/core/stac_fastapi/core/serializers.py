@@ -1,6 +1,7 @@
 """Serializers."""
 
 import abc
+import os
 from copy import deepcopy
 from typing import Any
 from urllib.parse import urljoin
@@ -265,6 +266,11 @@ class CatalogSerializer(Serializer):
         # Construct catalog url path prefix
         catalog_url = f"catalogs/{full_catalog_path}"
 
+        if catalog_id == "planet" and catalog_path == "supported-datasets":
+            href = urljoin(base_url, f'{os.environ["PLANET_API_URL"]}/search')
+        else:
+            href = urljoin(base_url, f"{catalog_url}/search")
+
         # The following links should be rewritten for this catalog
         link_rels = []
         for link in catalog_links:
@@ -280,7 +286,9 @@ class CatalogSerializer(Serializer):
                     link_rels.append("search_post")
                 elif link["method"] == "GET":
                     link_rels.append("search_get")
-                link["href"] = urljoin(base_url, f"{catalog_url}/search")
+
+                link["href"] = href
+
             elif link["rel"] == "parent":
                 link["href"] = urljoin(base_url, f"{parent_url}")
 
@@ -328,7 +336,7 @@ class CatalogSerializer(Serializer):
                 {
                     "rel": Relations.search.value,
                     "type": MimeTypes.json,
-                    "href": urljoin(base_url, f"{catalog_url}/search"),
+                    "href": href,
                     "method": "POST",
                 }
             )
@@ -337,7 +345,7 @@ class CatalogSerializer(Serializer):
                 {
                     "rel": Relations.search.value,
                     "type": MimeTypes.geojson,
-                    "href": urljoin(base_url, f"{catalog_url}/search"),
+                    "href": href,
                     "method": "GET",
                 }
             )
