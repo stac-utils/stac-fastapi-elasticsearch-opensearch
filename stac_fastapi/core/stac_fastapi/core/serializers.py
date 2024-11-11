@@ -267,9 +267,11 @@ class CatalogSerializer(Serializer):
         catalog_url = f"catalogs/{full_catalog_path}"
 
         if catalog_id == "planet" and catalog_path == "supported-datasets":
-            href = urljoin(base_url, f'{os.environ["PLANET_API_URL"]}/search')
+            search_href = urljoin(base_url, f'{os.environ["PLANET_API_URL"]}/search')
+            collections_href = urljoin(base_url, f'{os.environ["PLANET_API_URL"]}/collections')
         else:
-            href = urljoin(base_url, f"{catalog_url}/search")
+            search_href = urljoin(base_url, f"{catalog_url}/search")
+            collections_href = urljoin(base_url, f"{catalog_url}/collections"),
 
         # The following links should be rewritten for this catalog
         link_rels = []
@@ -287,7 +289,7 @@ class CatalogSerializer(Serializer):
                 elif link["method"] == "GET":
                     link_rels.append("search_get")
 
-                link["href"] = href
+                link["href"] = search_href
 
             elif link["rel"] == "parent":
                 link["href"] = urljoin(base_url, f"{parent_url}")
@@ -297,7 +299,7 @@ class CatalogSerializer(Serializer):
             {
                 "rel": "data",
                 "type": MimeTypes.json,
-                "href": urljoin(base_url, f"{catalog_url}/collections"),
+                "href": collections_href,
             }
         )
         catalog_links.append(
@@ -336,7 +338,7 @@ class CatalogSerializer(Serializer):
                 {
                     "rel": Relations.search.value,
                     "type": MimeTypes.json,
-                    "href": href,
+                    "href": search_href,
                     "method": "POST",
                 }
             )
@@ -345,7 +347,7 @@ class CatalogSerializer(Serializer):
                 {
                     "rel": Relations.search.value,
                     "type": MimeTypes.geojson,
-                    "href": href,
+                    "href": search_href,
                     "method": "GET",
                 }
             )
@@ -366,7 +368,7 @@ class CatalogSerializer(Serializer):
             child_link = {
                 "rel": Relations.child.value,
                 "type": MimeTypes.json,
-                "href": urljoin(base_url, f"{catalog_url}/collections/{collection_id}"),
+                "href": urljoin(collections_href, collection_id),
             }
             catalog_links.append(child_link)
 
