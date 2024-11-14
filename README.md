@@ -33,38 +33,98 @@
 - We are always welcoming contributions. For the development notes: [Contributing](CONTRIBUTING.md)
 
 
-### To install from PyPI:
+### Installing STAC-FastAPI from PyPI
 
-```shell
+To install STAC-FastAPI with Elasticsearch or OpenSearch backend support, run the following command:
+
+For Elasticsearch:
+```bash
 pip install stac_fastapi.elasticsearch
 ```
-or
-```
+
+For OpenSearch:
+```bash
 pip install stac_fastapi.opensearch
 ```
 
-## Build Elasticsearch API backend
+## Running STAC-FastAPI Elasticsearch or OpenSearch API on `localhost:8080`
 
-```shell
-docker-compose up elasticsearch
-docker-compose build app-elasticsearch
+Before starting, [Docker](https://docs.docker.com/get-started/) or [Podman](https://podman.io/docs) has to be installed and running on your machine.
+
+### Step 1: Configure the `.env` File
+
+You need to provide a `.env` file to configure the environment variables. Here's a list of variables you can configure:
+
+- `STAC_FASTAPI_TITLE`: Title of the API shown in the documentation (default: `stac-fastapi-elasticsearch` or `stac-fastapi-opensearch`)
+- `STAC_FASTAPI_DESCRIPTION`: Description of the API in the documentation
+- `STAC_FASTAPI_VERSION`: API version (default: `2.1`)
+- `APP_HOST`: Host to bind the server (default: `0.0.0.0`)
+- `APP_PORT`: Port to bind the server (default: `8080`)
+- `RELOAD`: Enable auto-reload for development (default: `true`)
+- `ENVIRONMENT`: Runtime environment (default: `local`)
+- `WEB_CONCURRENCY`: Number of worker processes (default: `10`)
+- `ES_HOST`: Elasticsearch or OpenSearch host (default: `localhost`)
+- `ES_PORT`: Elasticsearch port (default: `9200` for Elasticsearch, `9202` for OpenSearch)
+- `ES_USE_SSL`: Enable SSL for Elasticsearch (default: `false`)
+- `ES_VERIFY_CERTS`: Verify SSL certificates (default: `false`)
+- `BACKEND`: Backend type (`elasticsearch` or `opensearch`)
+- `STAC_FASTAPI_RATE_LIMIT`: API rate limit per client (default: `200/minute`)
+
+> [!NOTE]
+> The variables `ES_HOST`, `ES_PORT`, `ES_USE_SSL`, and `ES_VERIFY_CERTS` apply to both Elasticsearch and   OpenSearch, so there is no need to rename the key names to `OS_` even if you're using OpenSearch.
+
+### Step 2: Running the Backend with Elasticsearch
+
+To run the backend with Elasticsearch, use the following command:
+
+```bash
+docker run -d \
+  --env-file .env \
+  -p 9200:9200 \
+  -p 8080:8080 \
+  ghcr.io/stac-utils/stac-fastapi-es:latest
+```
+or
+```bash
+podman run -d \
+  --env-file .env \
+  -p 9200:9200 \
+  -p 8080:8080 \
+  ghcr.io/stac-utils/stac-fastapi-es:latest
 ```
 
-## Running Elasticsearch API on localhost:8080
+### Step 3: Running the Backend with OpenSearch
 
-```shell
-docker-compose up app-elasticsearch
+To run the backend with OpenSearch, use the following command:
+
+```bash
+docker run -d \
+  --env-file .env \
+  -p 9202:9202 \
+  -p 8080:8080 \
+  ghcr.io/stac-utils/stac-fastapi-os:latest
+```
+or 
+```bash
+podman run -d \
+  --env-file .env \
+  -p 9202:9202 \
+  -p 8080:8080 \
+  ghcr.io/stac-utils/stac-fastapi-os:latest
+```
+### Step 4: Verifying the Backend is Running
+
+To check if the container is running, use the following command depending on whether you're using Docker or Podman:
+
+```bash
+docker ps
+```
+or
+```bash
+podman ps
 ```
 
-By default, docker-compose uses Elasticsearch 8.x and OpenSearch 2.11.1.
-If you wish to use a different version, put the following in a 
-file named `.env` in the same directory you run docker-compose from:
-
-```shell
-ELASTICSEARCH_VERSION=7.17.1
-OPENSEARCH_VERSION=2.11.0
-```
-The most recent Elasticsearch 7.x versions should also work. See the [opensearch-py docs](https://github.com/opensearch-project/opensearch-py/blob/main/COMPATIBILITY.md) for compatibility information.
+## Interacting with the API
 
 To create a new Collection:
 

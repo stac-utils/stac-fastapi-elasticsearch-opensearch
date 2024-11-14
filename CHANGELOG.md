@@ -10,8 +10,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [v3.2.1] - 2024-11-14
 
 ### Added
+- Added `dockerfiles/Dockerfile.ci.os` and `dockerfiles/Dockerfile.ci.es`, along with their respective entrypoints [#311](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/311)
 
-- Added Docker image publishing to GitHub Container Registry in publish.yml [#311](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/311)
+### Changed
+- Updated the `publish.yml` workflow to include Docker image publishing to GitHub Container Registry [#311](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/311)
+- Improved the README with detailed descriptions of the new Docker images, providing guidance for images. [#311](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/311)  
 
 ## [v3.2.0] - 2024-10-09
 
