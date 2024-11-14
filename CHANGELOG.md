@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+## [v3.2.1] - 2024-11-14
+
+### Added
+
+- Added Docker image publishing to GitHub Container Registry in publish.yml [#311](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/311)
+
 ## [v3.2.0] - 2024-10-09
 
 ### Added
