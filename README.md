@@ -51,35 +51,33 @@ pip install stac_fastapi.opensearch
 
 Before starting, [Docker](https://docs.docker.com/get-started/) or [Podman](https://podman.io/docs) has to be installed and running on your machine.
 
-### Step 1: Configure the `.env` File
+### Step 1: Configure the `.env` File (Optional)
 
-You need to provide a `.env` file to configure the environment variables. Here's a list of variables you can configure:
+If you need to modify the default configuration, provide a `.env` file with your environment variables. Here's a list of configurable variables. If you're comfortable with the defaults, you can run the Docker container without any environment configuration.
 
 - `STAC_FASTAPI_TITLE`: Title of the API shown in the documentation (default: `stac-fastapi-elasticsearch` or `stac-fastapi-opensearch`)
 - `STAC_FASTAPI_DESCRIPTION`: Description of the API in the documentation
 - `STAC_FASTAPI_VERSION`: API version (default: `2.1`)
 - `APP_HOST`: Host to bind the server (default: `0.0.0.0`)
 - `APP_PORT`: Port to bind the server (default: `8080`)
-- `RELOAD`: Enable auto-reload for development (default: `true`)
 - `ENVIRONMENT`: Runtime environment (default: `local`)
-- `WEB_CONCURRENCY`: Number of worker processes (default: `10`)
+- `WEB_CONCURRENCY`: Number of worker processes if more workers are needed (default: `10`)
+- `RELOAD`: Enable auto-reload for development (default: `true`)
 - `ES_HOST`: Elasticsearch or OpenSearch host (default: `localhost`)
 - `ES_PORT`: Elasticsearch port (default: `9200` for Elasticsearch, `9202` for OpenSearch)
 - `ES_USE_SSL`: Enable SSL for Elasticsearch (default: `false`)
 - `ES_VERIFY_CERTS`: Verify SSL certificates (default: `false`)
-- `BACKEND`: Backend type (`elasticsearch` or `opensearch`)
 - `STAC_FASTAPI_RATE_LIMIT`: API rate limit per client (default: `200/minute`)
 
 > [!NOTE]
-> The variables `ES_HOST`, `ES_PORT`, `ES_USE_SSL`, and `ES_VERIFY_CERTS` apply to both Elasticsearch and   OpenSearch, so there is no need to rename the key names to `OS_` even if you're using OpenSearch.
+> The variables `ES_HOST`, `ES_PORT`, `ES_USE_SSL`, and `ES_VERIFY_CERTS` apply to both Elasticsearch and OpenSearch, so there is no need to rename the key names to `OS_` even if you're using OpenSearch.
 
-### Step 2: Running the Backend with Elasticsearch
+### Step 2.1: Running the Backend with Elasticsearch
 
 To run the backend with Elasticsearch, use the following command:
 
 ```bash
 docker run -d \
-  --env-file .env \
   -p 9200:9200 \
   -p 8080:8080 \
   ghcr.io/stac-utils/stac-fastapi-es:latest
@@ -87,19 +85,17 @@ docker run -d \
 or
 ```bash
 podman run -d \
-  --env-file .env \
   -p 9200:9200 \
   -p 8080:8080 \
   ghcr.io/stac-utils/stac-fastapi-es:latest
 ```
 
-### Step 3: Running the Backend with OpenSearch
+### Step 2.2: Running the Backend with OpenSearch
 
 To run the backend with OpenSearch, use the following command:
 
 ```bash
 docker run -d \
-  --env-file .env \
   -p 9202:9202 \
   -p 8080:8080 \
   ghcr.io/stac-utils/stac-fastapi-os:latest
@@ -107,12 +103,15 @@ docker run -d \
 or 
 ```bash
 podman run -d \
-  --env-file .env \
   -p 9202:9202 \
   -p 8080:8080 \
   ghcr.io/stac-utils/stac-fastapi-os:latest
 ```
-### Step 4: Verifying the Backend is Running
+
+> [!TIP]
+> If you need to mount a volume, use the [`-v`](https://docs.docker.com/engine/storage/volumes/#choose-the--v-or---mount-flag) flag. To specify an environment file, use the [`--env-file`](https://docs.docker.com/reference/cli/docker/container/run/#env) flag.
+
+### Step 3: Verifying the Backend is Running
 
 To check if the container is running, use the following command depending on whether you're using Docker or Podman:
 

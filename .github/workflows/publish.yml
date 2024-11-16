@@ -107,10 +107,6 @@ jobs:
       - name: Test Elasticsearch image
         run: |
           docker run -d --name stac-es \
-            -e APP_HOST=0.0.0.0 \
-            -e APP_PORT=8080 \
-            -e ES_HOST=localhost \
-            -e ES_PORT=9200 \
             stac-fastapi-es:test
           
           timeout=120
@@ -169,10 +165,6 @@ jobs:
       - name: Test OpenSearch image
         run: |
           docker run -d --name stac-os \
-            -e APP_HOST=0.0.0.0 \
-            -e APP_PORT=8080 \
-            -e OS_HOST=localhost \
-            -e OS_PORT=9200 \
             stac-fastapi-os:test
           
           timeout=120
