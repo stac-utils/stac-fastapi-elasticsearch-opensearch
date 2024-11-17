@@ -1,5 +1,4 @@
 #!/bin/bash
-export WEB_CONCURRENCY="${WEB_CONCURRENCY:-10}"
 function validate_elasticsearch {
   health=$(curl -s -o /dev/null -w '%{http_code}' "http://${ES_HOST}:${ES_PORT}/_cluster/health")
   if [ "$health" -eq 200 ]; then
@@ -9,15 +8,21 @@ function validate_elasticsearch {
   fi
 }
 
-echo "start es"
-/usr/share/elasticsearch/bin/elasticsearch &
+if [ "${RUN_LOCAL_ES}" = "1" ]; then
+  echo "starting elasticsearch"
+  /usr/share/elasticsearch/bin/elasticsearch &
 
-echo "wait for es to be ready"
-until validate_elasticsearch; do
-  echo -n "."
-  sleep 5
-done
-echo "Elasticsearch is up"
+  echo "wait for es to be ready"
+  until validate_elasticsearch; do
+    echo -n "."
+    sleep 5
+  done
+  echo "Elasticsearch is up"
+fi
 
 echo "start stac-fastapi-es"
-exec uvicorn stac_fastapi.elasticsearch.app:app --host "${APP_HOST}" --port "${APP_PORT}" --reload
+exec uvicorn stac_fastapi.elasticsearch.app:app \
+  --host "${APP_HOST}" \
+  --port "${APP_PORT}" \
+  --workers "${WEB_CONCURRENCY}" \
+  --reload

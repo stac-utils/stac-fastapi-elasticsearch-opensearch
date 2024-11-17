@@ -1,5 +1,4 @@
 #!/bin/bash
-export WEB_CONCURRENCY="${WEB_CONCURRENCY:-10}"
 function validate_opensearch {
   health=$(curl -s -o /dev/null -w '%{http_code}' "http://${ES_HOST}:${ES_PORT}/_cluster/health")
   if [ "$health" -eq 200 ]; then
@@ -12,12 +11,21 @@ function validate_opensearch {
 echo "start opensearch"
 /usr/share/opensearch/bin/opensearch &
 
-echo "wait for opensearch to be ready"
-until validate_opensearch; do
-  echo -n "."
-  sleep 5
-done
-echo "opensearch is up."
+if [ "${RUN_LOCAL_OS}" = "1" ]; then
+  echo "starting opensearch"
+  /usr/share/opensearch/bin/opensearch &
+
+  echo "wait for os to be ready"
+  until validate_opensearch; do
+    echo -n "."
+    sleep 5
+  done
+  echo "opensearch is up"
+fi
 
 echo "start stac-fastapi-os"
-exec uvicorn stac_fastapi.opensearch.app:app --host "${APP_HOST}" --port "${APP_PORT}" --reload
+exec uvicorn stac_fastapi.opensearch.app:app \
+  --host "${APP_HOST}" \
+  --port "${APP_PORT}" \
+  --workers "${WEB_CONCURRENCY}" \
+  --reload

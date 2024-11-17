@@ -5,6 +5,7 @@ ENV WEB_CONCURRENCY=10
 ENV ES_USE_SSL=false
 ENV ES_VERIFY_CERTS=false
 ENV STAC_FASTAPI_RATE_LIMIT="200/minute"
+ENV RUN_LOCAL_ES=0
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
@@ -44,10 +45,9 @@ ENV ES_JAVA_OPTS="-Xms512m -Xmx1g" \
 
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 CMD \
-    curl --silent --fail http://${ES_HOST}:${ES_PORT}/_cluster/health || exit 1 && \
     curl --silent --fail http://${APP_HOST}:${APP_PORT}/api.html || exit 1
 
-EXPOSE $APP_PORT $ES_PORT
+EXPOSE $APP_PORT
 
 USER elasticsearch
 ENTRYPOINT ["/entrypoint.sh"]
