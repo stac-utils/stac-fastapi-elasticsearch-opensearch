@@ -1,6 +1,8 @@
 FROM debian:bookworm-slim AS base
 
 ENV ENVIRONMENT="local"
+ENV APP_HOST="0.0.0.0"
+ENV APP_PORT="8080"
 ENV WEB_CONCURRENCY=10
 ENV ES_USE_SSL=false
 ENV ES_VERIFY_CERTS=false

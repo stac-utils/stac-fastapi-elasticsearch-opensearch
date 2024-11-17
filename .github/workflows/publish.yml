@@ -107,6 +107,7 @@ jobs:
       - name: Test Elasticsearch image
         run: |
           docker run -d --name stac-es \
+            -e RUN_LOCAL_ES=1 \
             stac-fastapi-es:test
           
           timeout=120
@@ -165,6 +166,7 @@ jobs:
       - name: Test OpenSearch image
         run: |
           docker run -d --name stac-os \
+            -e RUN_LOCAL_OS=1 \
             stac-fastapi-os:test
           
           timeout=120

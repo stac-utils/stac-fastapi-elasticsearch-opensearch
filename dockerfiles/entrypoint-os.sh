@@ -1,5 +1,7 @@
 #!/bin/bash
 function validate_opensearch {
+  export ES_HOST=${ES_HOST:-localhost}
+  export ES_PORT=${ES_PORT:-9202}
   health=$(curl -s -o /dev/null -w '%{http_code}' "http://${ES_HOST}:${ES_PORT}/_cluster/health")
   if [ "$health" -eq 200 ]; then
     return 0
