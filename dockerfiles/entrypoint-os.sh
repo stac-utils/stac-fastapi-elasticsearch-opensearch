@@ -1,5 +1,5 @@
 #!/bin/bash
-
+export WEB_CONCURRENCY="${WEB_CONCURRENCY:-10}"
 function validate_opensearch {
   health=$(curl -s -o /dev/null -w '%{http_code}' "http://${ES_HOST}:${ES_PORT}/_cluster/health")
   if [ "$health" -eq 200 ]; then
