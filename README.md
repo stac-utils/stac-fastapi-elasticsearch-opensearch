@@ -32,129 +32,144 @@
 - For changes, see the [Changelog](CHANGELOG.md)
 - We are always welcoming contributions. For the development notes: [Contributing](CONTRIBUTING.md)
 
+## Installation and Running: 
 
-### Installing STAC-FastAPI from PyPI
+### **Method 1: Install via PyPI and Run with Docker Compose or Podman Compose**
 
-To install STAC-FastAPI with Elasticsearch or OpenSearch backend support, run the following command:
+#### **Prerequisites**
 
-For Elasticsearch:
+- [**Docker Compose**](https://docs.docker.com/compose/install/) or [**Podman Compose**](https://podman-desktop.io/docs/compose) installed and running on your machine. In all the follwoing steps instead of `docker-compose` you can use `podman-compose` as well.
+
+#### **Step 1: Install STAC-FastAPI**
+
+To install STAC-FastAPI with Elasticsearch or OpenSearch backend support, execute the following commands:
+
+- **For Elasticsearch backend:**
+
+  ```bash
+  pip install stac_fastapi.elasticsearch
+  ```
+
+- **For OpenSearch backend:**
+
+  ```bash
+  pip install stac_fastapi.opensearch
+  ```
+
+#### **Step 2: Build the Elasticsearch API Backend**
+
+Start the Elasticsearch service and build the STAC-FastAPI application image:
+
 ```bash
-pip install stac_fastapi.elasticsearch
+docker-compose up -d elasticsearch
+docker-compose build app-elasticsearch
 ```
 
-For OpenSearch:
+#### **Step 3: Run the Elasticsearch API on `localhost:8080`**
+
+Launch the STAC-FastAPI application connected to Elasticsearch:
+
 ```bash
-pip install stac_fastapi.opensearch
+docker-compose up -d app-elasticsearch
 ```
 
-## Running STAC-FastAPI Elasticsearch or OpenSearch API
+By default, Docker Compose uses Elasticsearch 8.x and OpenSearch 2.11.1. If you prefer to use different versions, create a file named `.env` in the same directory where you run Docker Compose and include the following lines:
 
-### Prerequisites
+```env
+ELASTICSEARCH_VERSION=7.17.1
+OPENSEARCH_VERSION=2.11.0
+```
 
-- [**Docker**](https://docs.docker.com/get-started/) or [**Podman**](https://podman.io/docs) installed and running on your machine.
+Most recent Elasticsearch 7.x versions should also be compatible. For detailed compatibility information, please refer to the [opensearch-py documentation](https://github.com/opensearch-project/opensearch-py/blob/main/COMPATIBILITY.md).
 
-### Step 1: Set Up the Environment Variables
-Create a `.env` file to configure your setup. Depending on your preference, you can either connect to an external Elasticsearch/OpenSearch instance or run one locally within the same container.
+### **Method 2: Install and run only with Docker or podman**
 
-#### Option A: Connect to an External Elasticsearch/OpenSearch Instance
+#### Prerequisites
 
-1. Open your `.env` file.
-2. Set the following variables to point to your external Elasticsearch or OpenSearch server:
+- [**Docker**](https://docs.docker.com/get-started/) or [**Podman**](https://podman.io/docs) installed and running on your machine. In all the follwoing steps instead of `docker` you can use `podman` as well.
 
-   ```env
-   ES_HOST=your_external_host
-   ES_PORT=your_external_port
-   ES_USE_SSL=false  # Set to 'true' if your server uses SSL
-   ES_VERIFY_CERTS=false  # Set to 'true' to verify SSL certificates
-   ```
+#### **Step 1: Create a `.env` File**
 
-#### Option B: Run Elasticsearch/OpenSearch Locally
+Configure your environment variables in a `.env` file. You can choose to connect to an external Elasticsearch/OpenSearch instance or run one locally within the container.
 
-1. Open your `.env` file.
-2. Enable one of the following to run the service locally within the container:
+- **Option A: Connect to an External Instance**
 
-   ```env
-   # For Elasticsearch
-   RUN_LOCAL_ES=1
+  ```env
+  ES_HOST=your_external_host
+  ES_PORT=your_external_port
+  ES_USE_SSL=false  # Set to 'true' if SSL is used
+  ES_VERIFY_CERTS=false  # Set to 'true' to verify SSL certificates
+  ```
 
-   # For OpenSearch
-   RUN_LOCAL_OS=1
-   ```
+- **Option B: Running Locally Within the Container**
+
+  - **For Elasticsearch:**
+
+    ```env
+    RUN_LOCAL_ES=1
+    ```
+
+  - **For OpenSearch:**
+
+    ```env
+    RUN_LOCAL_OS=1
+    ```
 
 > [!IMPORTANT]
 >  The variables `RUN_LOCAL_ES` and `RUN_LOCAL_OS` correspond to **different Docker images**:
 > - Use `RUN_LOCAL_ES` with the `ghcr.io/stac-utils/stac-fastapi-es` image.
 > - Use `RUN_LOCAL_OS` with the `ghcr.io/stac-utils/stac-fastapi-os` image.
 
-### Step 2: Run the STAC-FastAPI Container
+#### **Step 2: Run the Docker Container**
 
-#### Option A: Using an External Instance
+- **For Elasticsearch Backend:**
 
-- **For Elasticsearch:**
+  - **Connecting to External Instance:**
 
-  ```bash
-  docker run -d \
-    -p 8080:8080 \
-    --env-file .env \
-    ghcr.io/stac-utils/stac-fastapi-es:latest
-  ```
+    ```shell
+    docker run -d -p 8080:8080 --env-file .env ghcr.io/stac-utils/stac-fastapi-es:latest
+    ```
 
-- **For OpenSearch:**
+  - **Running Locally:**
 
-  ```bash
-  docker run -d \
-    -p 8080:8080 \
-    --env-file .env \
-    ghcr.io/stac-utils/stac-fastapi-os:latest
-  ```
+    ```shell
+    docker run -d -p 8080:8080 -p 9200:9200 --env-file .env ghcr.io/stac-utils/stac-fastapi-es:latest
+    ```
 
-#### Option B: Running Locally in the Same Container as APP
+- **For OpenSearch Backend:**
 
-- **For Elasticsearch:**
+  - **Connecting to External Instance:**
 
-  ```bash
-  docker run -d \
-    -p 8080:8080 \
-    -p 9200:9200 \
-    --env-file .env \
-    ghcr.io/stac-utils/stac-fastapi-es:latest
-  ```
+    ```shell
+    docker run -d -p 8080:8080 --env-file .env ghcr.io/stac-utils/stac-fastapi-os:latest
+    ```
 
-- **For OpenSearch:**
+  - **Running Locally:**
 
-  ```bash
-  docker run -d \
-    -p 8080:8080 \
-    -p 9202:9202 \
-    --env-file .env \
-    ghcr.io/stac-utils/stac-fastapi-os:latest
-  ```
+    ```shell
+    docker run -d -p 8080:8080 -p 9202:9202 --env-file .env ghcr.io/stac-utils/stac-fastapi-os:latest
+    ```
 
 > [!TIP]
 > If you need to mount a volume, use the [`-v`](https://docs.docker.com/engine/storage/volumes/#choose-the--v-or---mount-flag) flag. To specify an environment file, use the [`--env-file`](https://docs.docker.com/reference/cli/docker/container/run/#env) flag.
 
-### Step 3: Verify the Service is Running
 
-Run the following command to check if your container is up and running:
+#### **Step 3: Verify and Access**
 
-```bash
-docker ps # "podman ps" if you are running via podman
-```
+- **Check if the container is running:**
 
-You should see the STAC-FastAPI container listed.
+  ```shell
+  docker ps # "podman ps" if you are running via podman
+  ```
 
-## Accessing the API
+- **Access the API:**
 
-Once the container is up and running, access the API at:
+  Visit `http://localhost:8080` in your browser or use it as the base URL for API requests.
 
-```
-http://localhost:8080
-```
-
-## Additional Configuration (Optional)
+##### **Configuration reference keys:**
 
 You can customize additional settings in your `.env` file:
-### Key variables to configure:
+###### Key variables to configure:
 
 | Variable                     | Description                                                                          | Default                  | Required                                                                                     |
 |------------------------------|--------------------------------------------------------------------------------------|--------------------------|---------------------------------------------------------------------------------------------|
