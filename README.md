@@ -34,7 +34,7 @@
 
 ## Installation and Running: 
 
-### **Method 1: Install via PyPI and Run with Docker Compose or Podman Compose**
+### **Method 1: Install via PyPI and Use Docker/Podman Compose for Backend**
 
 #### **Prerequisites**
 
@@ -42,7 +42,7 @@
 
 This approach is for users who want to install the Python package separately before running the app.
 
-##### **Step 1: Install STAC-FastAPI**
+#### **Step 1: Install STAC-FastAPI**
 
 - **For Elasticsearch backend:**
   
@@ -56,7 +56,7 @@ This approach is for users who want to install the Python package separately bef
   pip install stac_fastapi.opensearch
   ```
 
-##### **Step 2: Start Elasticsearch/OpenSearch Backend**
+#### **Step 2: Start Elasticsearch/OpenSearch Backend**
 
 Launch Elasticsearch using Docker Compose:
 
@@ -67,7 +67,7 @@ docker-compose up -d elasticsearch
 docker-compose up -d opensearch
 ```
 
-##### **Step 3: Run the Application**
+#### **Step 3: Run the Application**
 
 With Elasticsearch running, you can now run the application:
 
@@ -104,52 +104,25 @@ Most recent Elasticsearch 7.x versions should also be compatible. For detailed c
 
 - [**Docker**](https://docs.docker.com/get-started/) or [**Podman**](https://podman.io/docs) installed and running on your machine. In all the follwoing steps instead of `docker` you can use `podman` as well.
 
-#### **Step 1: Create a `.env` File**
+> [!IMPORTANT]  
+> The variables `RUN_LOCAL_ES` and `RUN_LOCAL_OS` correspond to **different Docker backend images**. By default, both are set to `0`, indicating that the backend systems are expected to run externally. In this case, you must configure the appropriate `ES_HOST` and `ES_PORT` environment variables to connect to the external Elasticsearch or OpenSearch instance. Alternatively, if you do not have an external backend and wish to run Elasticsearch or OpenSearch alongside the STAC-FastAPI within the container, set the respective variable to `1`: 
+> - Use `RUN_LOCAL_ES` with the `ghcr.io/stac-utils/stac-fastapi-es` image.  
+> - Use `RUN_LOCAL_OS` with the `ghcr.io/stac-utils/stac-fastapi-os` image.  
 
-Configure your environment variables in a `.env` file. You can choose to connect to an external Elasticsearch/OpenSearch instance or run one locally within the container.
-
-- **Option A: Connect to an External Instance**
-
-  ```env
-  ES_HOST=your_external_host
-  ES_PORT=your_external_port
-  ES_USE_SSL=false  # Set to 'true' if SSL is used
-  ES_VERIFY_CERTS=false  # Set to 'true' to verify SSL certificates
-  ```
-
-- **Option B: Running Locally Within the Container**
-
-  - **For Elasticsearch:**
-
-    ```env
-    RUN_LOCAL_ES=1
-    ```
-
-  - **For OpenSearch:**
-
-    ```env
-    RUN_LOCAL_OS=1
-    ```
-
-> [!IMPORTANT]
->  The variables `RUN_LOCAL_ES` and `RUN_LOCAL_OS` correspond to **different Docker images**:
-> - Use `RUN_LOCAL_ES` with the `ghcr.io/stac-utils/stac-fastapi-es` image.
-> - Use `RUN_LOCAL_OS` with the `ghcr.io/stac-utils/stac-fastapi-os` image.
-
-#### **Step 2: Run the Docker Container**
-
+#### **Step 1: Run the Docker Container**
+ 
 - **For Elasticsearch Backend:**
 
   - **Connecting to External Instance:**
 
     ```shell
-    docker run -d -p 8080:8080 --env-file .env ghcr.io/stac-utils/stac-fastapi-es:latest
+    docker run -d -p 8080:8080 -e ES_HOST=external_host -e ES_PORT=external_port ghcr.io/stac-utils/stac-fastapi-es:latest
     ```
 
   - **Running Locally:**
 
     ```shell
-    docker run -d -p 8080:8080 -p 9200:9200 --env-file .env ghcr.io/stac-utils/stac-fastapi-es:latest
+    docker run -d -p 8080:8080 -p 9200:9200 -e RUN_LOCAL_ES=1 ghcr.io/stac-utils/stac-fastapi-es:latest
     ```
 
 - **For OpenSearch Backend:**
@@ -157,32 +130,37 @@ Configure your environment variables in a `.env` file. You can choose to connect
   - **Connecting to External Instance:**
 
     ```shell
-    docker run -d -p 8080:8080 --env-file .env ghcr.io/stac-utils/stac-fastapi-os:latest
+    docker run -d -p 8080:8080 -e ES_HOST=external_host -e ES_PORT=external_port ghcr.io/stac-utils/stac-fastapi-os:latest
     ```
 
   - **Running Locally:**
 
     ```shell
-    docker run -d -p 8080:8080 -p 9202:9202 --env-file .env ghcr.io/stac-utils/stac-fastapi-os:latest
+    docker run -d -p 8080:8080 -p 9202:9202 -e RUN_LOCAL_OS=1 ghcr.io/stac-utils/stac-fastapi-os:latest
     ```
+> [!Note]  
+> For external instances of both **Elasticsearch** and **OpenSearch**, configure the following 
+> environment variables as needed:  
+> - `-e ES_USE_SSL=false` — Set to `true` if SSL is enabled.  
+> - `-e ES_VERIFY_CERTS=false` — Set to `true` to enable SSL certificate verification. 
 
 > [!TIP]
 > If you need to mount a volume, use the [`-v`](https://docs.docker.com/engine/storage/volumes/#choose-the--v-or---mount-flag) flag. To specify an environment file, use the [`--env-file`](https://docs.docker.com/reference/cli/docker/container/run/#env) flag.
 
 
-#### **Step 3: Verify and Access**
+#### **Step 2: Verify and Access**
 
 - **Check if the container is running:**
 
   ```shell
-  docker ps # "podman ps" if you are running via podman
+  docker ps
   ```
 
 - **Access the API:**
 
   Visit `http://localhost:8080` in your browser or use it as the base URL for API requests.
 
-##### **Configuration reference keys:**
+#### **Configuration reference keys:**
 
 You can customize additional settings in your `.env` file:
 ###### Key variables to configure:
