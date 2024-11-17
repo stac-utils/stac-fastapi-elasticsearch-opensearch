@@ -2,16 +2,16 @@
 function validate_opensearch {
   export ES_HOST=${ES_HOST:-localhost}
   export ES_PORT=${ES_PORT:-9202}
-  health=$(curl -s -o /dev/null -w '%{http_code}' "http://${ES_HOST}:${ES_PORT}/_cluster/health")
-  if [ "$health" -eq 200 ]; then
+  response=$(curl -s "http://${ES_HOST}:${ES_PORT}/_cluster/health")
+  http_code=$(curl -s -o /dev/null -w '%{http_code}' "http://${ES_HOST}:${ES_PORT}/_cluster/health")
+  echo "HTTP Status Code: $http_code"
+  echo "Cluster Health Response: $response"
+  if [ "$http_code" -eq 200 ]; then
     return 0
   else
     return 1
   fi
 }
-
-echo "start opensearch"
-/usr/share/opensearch/bin/opensearch &
 
 if [ "${RUN_LOCAL_OS}" = "1" ]; then
   echo "starting opensearch"
