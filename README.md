@@ -40,37 +40,53 @@
 
 - [**Docker Compose**](https://docs.docker.com/compose/install/) or [**Podman Compose**](https://podman-desktop.io/docs/compose) installed and running on your machine. In all the follwoing steps instead of `docker-compose` you can use `podman-compose` as well.
 
-#### **Step 1: Install STAC-FastAPI**
+This approach is for users who want to install the Python package separately before running the app.
 
-To install STAC-FastAPI with Elasticsearch or OpenSearch backend support, execute the following commands:
+##### **Step 1: Install STAC-FastAPI**
 
 - **For Elasticsearch backend:**
-
+  
   ```bash
   pip install stac_fastapi.elasticsearch
   ```
 
 - **For OpenSearch backend:**
-
+  
   ```bash
   pip install stac_fastapi.opensearch
   ```
 
-#### **Step 2: Build the Elasticsearch API Backend**
+##### **Step 2: Start Elasticsearch/OpenSearch Backend**
 
-Start the Elasticsearch service and build the STAC-FastAPI application image:
+Launch Elasticsearch using Docker Compose:
 
 ```bash
+# For ElasticSearch
 docker-compose up -d elasticsearch
-docker-compose build app-elasticsearch
+# For OpenSearch
+docker-compose up -d opensearch
 ```
 
-#### **Step 3: Run the Elasticsearch API on `localhost:8080`**
+##### **Step 3: Run the Application**
 
-Launch the STAC-FastAPI application connected to Elasticsearch:
+With Elasticsearch running, you can now run the application:
 
 ```bash
-docker-compose up -d app-elasticsearch
+uvicorn stac_fastapi.elasticsearch.app:app \
+    --host localhost \
+    --port 8080 \
+    --workers 10 \
+    --reload
+```
+
+and with OpenSearch running:
+
+```bash
+uvicorn stac_fastapi.opensearch.app:app \
+    --host localhost \
+    --port 8080 \
+    --workers 10 \
+    --reload
 ```
 
 By default, Docker Compose uses Elasticsearch 8.x and OpenSearch 2.11.1. If you prefer to use different versions, create a file named `.env` in the same directory where you run Docker Compose and include the following lines:
