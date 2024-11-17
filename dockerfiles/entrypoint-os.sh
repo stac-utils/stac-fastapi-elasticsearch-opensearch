@@ -31,21 +31,35 @@ function validate_opensearch() {
     while [ $retry_count -lt $max_retries ]; do
         print_info "Checking OpenSearch connection (Attempt $((retry_count + 1))/$max_retries)..."
         
-        health=$(curl -k -s -o /dev/null -w '%{http_code}' "http://${ES_HOST}:${ES_PORT}/_cluster/health" 2>/dev/null)
+        local response_body=$(curl -k -s "http://${ES_HOST}:${ES_PORT}/" 2>/dev/null)
+        local health=$(curl -k -s -o /dev/null -w '%{http_code}' "http://${ES_HOST}:${ES_PORT}/_cluster/health" 2>/dev/null)
         
         if [ "$health" -eq 200 ]; then
-            print_success "Successfully connected to OpenSearch via HTTP"
-            export ES_USE_SSL=false
-            return 0
+            if echo "$response_body" | grep -q '"distribution" *: *"opensearch"'; then
+                print_success "Successfully connected to OpenSearch via HTTP"
+                export ES_USE_SSL=false
+                return 0
+            else
+                print_error "Connected to a service that is not OpenSearch"
+                print_error "Found service response: $response_body"
+                return 1
+            fi
         fi
         
         print_info "HTTP connection failed, trying HTTPS..."
+        response_body=$(curl -k -s "https://${ES_HOST}:${ES_PORT}/" 2>/dev/null)
         health=$(curl -s -o /dev/null -w '%{http_code}' "https://${ES_HOST}:${ES_PORT}/_cluster/health" 2>/dev/null)
         
         if [ "$health" -eq 200 ]; then
-            print_success "Successfully connected to OpenSearch via HTTPS"
-            export ES_USE_SSL=true
-            return 0
+            if echo "$response_body" | grep -q '"distribution" *: *"opensearch"'; then
+                print_success "Successfully connected to OpenSearch via HTTPS"
+                export ES_USE_SSL=true
+                return 0
+            else
+                print_error "Connected to a service that is not OpenSearch"
+                print_error "Found service response: $response_body"
+                return 1
+            fi
         fi
         
         retry_count=$((retry_count + 1))
@@ -64,6 +78,7 @@ function validate_opensearch() {
     print_error "  - ES_HOST and ES_PORT are correctly set"
     print_error "  - Network connectivity is available"
     print_error "  - SSL/TLS settings are correct if using HTTPS"
+    print_error "  - You are not connecting to Elasticsearch or another service"
     return 1
 }
 

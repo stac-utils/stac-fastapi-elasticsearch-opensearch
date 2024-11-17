@@ -30,24 +30,38 @@ function validate_elasticsearch() {
 
     while [ $retry_count -lt $max_retries ]; do
         print_info "Checking Elasticsearch connection (Attempt $((retry_count + 1))/$max_retries)..."
-        
-        health=$(curl -k -s -o /dev/null -w '%{http_code}' "http://${ES_HOST}:${ES_PORT}/_cluster/health" 2>/dev/null)
+
+        local response_body=$(curl -k -s "http://${ES_HOST}:${ES_PORT}/" 2>/dev/null)
+        local health=$(curl -k -s -o /dev/null -w '%{http_code}' "http://${ES_HOST}:${ES_PORT}/_cluster/health" 2>/dev/null)
         
         if [ "$health" -eq 200 ]; then
-            print_success "Successfully connected to Elasticsearch via HTTP"
-            export ES_USE_SSL=false
-            return 0
+            if echo "$response_body" | grep -q '"tagline" *: *"You Know, for Search"'; then
+                print_success "Successfully connected to Elasticsearch via HTTP"
+                export ES_USE_SSL=false
+                return 0
+            else
+                print_error "Connected to a service that is not Elasticsearch"
+                print_error "Found service response: $response_body"
+                return 1
+            fi
         fi
         
         print_info "HTTP connection failed, trying HTTPS..."
+        response_body=$(curl -k -s "https://${ES_HOST}:${ES_PORT}/" 2>/dev/null)
         health=$(curl -s -o /dev/null -w '%{http_code}' "https://${ES_HOST}:${ES_PORT}/_cluster/health" 2>/dev/null)
         
         if [ "$health" -eq 200 ]; then
-            print_success "Successfully connected to Elasticsearch via HTTPS"
-            export ES_USE_SSL=true
-            return 0
+            if echo "$response_body" | grep -q '"tagline" *: *"You Know, for Search"'; then
+                print_success "Successfully connected to Elasticsearch via HTTPS"
+                export ES_USE_SSL=true
+                return 0
+            else
+                print_error "Connected to a service that is not Elasticsearch"
+                print_error "Found service response: $response_body"
+                return 1
+            fi
         fi
-        
+
         retry_count=$((retry_count + 1))
         if [ $retry_count -lt $max_retries ]; then
             print_warning "Connection attempt $retry_count failed. Waiting ${wait_time} seconds before retry..."
@@ -59,7 +73,7 @@ function validate_elasticsearch() {
     print_error "Failed to connect to Elasticsearch after $max_retries attempts:"
     print_error "  - http://${ES_HOST}:${ES_PORT}"
     print_error "  - https://${ES_HOST}:${ES_PORT}"
-    print_error "Please ensure:"
+    print_error " Please ensure:"
     print_error "  - Elasticsearch is running"
     print_error "  - ES_HOST and ES_PORT are correctly set"
     print_error "  - Network connectivity is available"
