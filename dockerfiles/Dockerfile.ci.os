@@ -1,12 +1,5 @@
 FROM debian:bookworm-slim AS base
 
-ENV ENVIRONMENT="local"
-ENV APP_HOST="0.0.0.0"
-ENV APP_PORT="8080"
-ENV WEB_CONCURRENCY=10
-ENV ES_USE_SSL=false
-ENV ES_VERIFY_CERTS=false
-ENV STAC_FASTAPI_RATE_LIMIT="200/minute"
 ENV RUN_LOCAL_OS=0
 
 RUN apt-get update && \
@@ -46,8 +39,6 @@ ENV OPENSEARCH_JAVA_OPTS="-Xms512m -Xmx1g" \
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 CMD \
     curl --silent --fail http://${APP_HOST}:${APP_PORT}/api.html || exit 1
-
-EXPOSE $APP_PORT
 
 USER opensearch
 ENTRYPOINT ["/entrypoint.sh"]

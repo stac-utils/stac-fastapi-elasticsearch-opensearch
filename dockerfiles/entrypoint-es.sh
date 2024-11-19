@@ -7,6 +7,13 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m'
 
+APP_HOST="${APP_HOST:-0.0.0.0}"
+APP_PORT="${APP_PORT:-8080}"
+WEB_CONCURRENCY="${WEB_CONCURRENCY:-10}"
+ES_USE_SSL="${ES_USE_SSL:-false}"
+ES_VERIFY_CERTS="${ES_VERIFY_CERTS:-false}"
+STAC_FASTAPI_RATE_LIMIT="${STAC_FASTAPI_RATE_LIMIT:-'200/minute'}"
+
 function print_error() {
     echo -e "${RED}ERROR: $1${NC}" >&2
 }
