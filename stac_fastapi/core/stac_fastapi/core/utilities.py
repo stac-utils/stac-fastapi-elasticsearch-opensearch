@@ -166,6 +166,47 @@ def merge_to_operations(data: Dict) -> List:
     return operations
 
 
+def split_json_path(path: str) -> OperationPath:
+    """Split a JSON path into it's components.
+
+    Args:
+        path: JSON path.
+
+    Returns:
+        Tuple: nest, partition, key.
+    """
+    path = (
+        path[1:].replace("/", ".") if path.startswith("/") else path.replace("/", ".")
+    )
+    nest, partition, key = path.rpartition(".")
+
+    try:
+        index = int(key)
+        path = f"{nest}[{index}]"
+        nest, partition, key = nest.rpartition(".")
+
+    except ValueError:
+        index = None
+
+    return {
+        "path": path,
+        "nest": nest,
+        "partition": partition,
+        "key": key,
+        "index": index,
+    }
+
+
+def script_checks(source, op, path) -> Dict:
+    if path["nest"]:
+        source += f"if (!ctx._source.containsKey('{path['nest']}')){{Debug.explain('{path['nest']} does not exist');}}"
+
+    if path["index"] or op != "add":
+        source += f"if (!ctx._source.{path['nest'] + path['partition']}containsKey('{path['key']}')){{Debug.explain('{path['path']} does not exist');}}"
+
+    return source
+
+
 def operations_to_script(operations: List) -> Dict:
     """Convert list of operation to painless script.
 
@@ -177,21 +218,55 @@ def operations_to_script(operations: List) -> Dict:
     """
     source = ""
     for operation in operations:
-        nest, partition, key = operation.path.rpartition(".")
-        if nest:
-            source += f"if (!ctx._source.containsKey('{nest}')){{Debug.explain('{nest} does not exist');}}"
+        op_path = split_json_path(operation.path)
 
-        if operation.op != "add":
-            source += f"if (!ctx._source.{nest + partition}containsKey('{key}')){{Debug.explain('{operation.path} does not exist');}}"
+        if hasattr(operation, "from"):
+            from_path = split_json_path(getattr(operation, "from"))
+            source = script_checks(source, operation.op, op_path)
+            if from_path["index"]:
+                from_key = from_path["nest"] + from_path["partition"] + from_path["key"]
+                source += (
+                    f"if ((ctx._source.{from_key} instanceof ArrayList && ctx._source.{from_key}.size() < {from_path['index']})"
+                    f"|| (!ctx._source.{from_key + from_path['partition']}containsKey('{from_path['index']}'))"
+                    f"{{Debug.explain('{from_path['path']} does not exist');}}"
+                )
+
+        source = script_checks(source, operation.op, op_path)
 
         if operation.op in ["copy", "move"]:
-            source += f"ctx._source.{operation.path} = ctx._source.{getattr(operation, 'from')};"
+            if op_path["index"]:
+                source += (
+                    f"if (ctx._source.{op_path['nest'] + op_path['partition'] + op_path['key']} instanceof ArrayList)"
+                    f"{{ctx._source.{op_path['nest'] + op_path['partition'] + op_path['key'] + op_path['partition']}add({op_path['index']}, {from_path['path']})}}"
+                    f"else{{ctx._source.{op_path['path']} = {from_path['path']}}}"
+                )
+
+            else:
+                source += (
+                    f"ctx._source.{op_path['path']} = ctx._source.{from_path['path']};"
+                )
 
         if operation.op in ["remove", "move"]:
-            source += f"ctx._source.{nest + partition}remove('{key}');"
+            remove_path = from_path if operation.op == "move" else op_path
+
+            if remove_path["index"]:
+                source += f"ctx._source.{remove_path['nest'] + remove_path['partition'] + remove_path['key'] + remove_path['partition']}remove('{remove_path['index']}');"
+
+            else:
+                source += f"ctx._source.{remove_path['nest'] + remove_path['partition']}remove('{remove_path['key']}');"
 
         if operation.op in ["add", "replace"]:
-            source += f"ctx._source.{operation.path} = {json.dumps(operation.value)};"
+            if op_path["index"]:
+                source += (
+                    f"if (ctx._source.{op_path['nest'] + op_path['partition'] + op_path['key']} instanceof ArrayList)"
+                    f"{{ctx._source.{op_path['nest'] + op_path['partition'] + op_path['key'] + op_path['partition']}add({op_path['index']}, {json.dumps(operation.value)})}}"
+                    f"else{{ctx._source.{op_path['path']} = {json.dumps(operation.value)}}}"
+                )
+
+            else:
+                source += (
+                    f"ctx._source.{op_path['path']} = {json.dumps(operation.value)};"
+                )
 
     return {
         "source": source,

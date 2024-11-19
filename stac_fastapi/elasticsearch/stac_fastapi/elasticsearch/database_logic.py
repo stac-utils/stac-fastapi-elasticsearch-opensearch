@@ -955,7 +955,7 @@ class DatabaseLogic:
                     refresh=refresh,
                 )
             except exceptions.BadRequestError as e:
-                raise KeyError(f"{e.info['error']['caused_by']['to_string']}")
+                raise KeyError(e.info["error"]["caused_by"]["to_string"])
 
         if new_collection_id:
             await self.client.reindex(
