@@ -173,7 +173,7 @@ async def test_aggregate_filter_extension_neq_post(app_client, ctx):
 
 
 @pytest.mark.asyncio
-async def test_aggregate_extension_gte_get(app_client):
+async def test_aggregate_extension_gte_get(app_client, ctx):
     # there's one item that can match, so one of these queries should match it and the other shouldn't
     resp = await app_client.get(
         '/aggregate?aggregations=total_count&filter-lang=cql2-json&filter={"op":"<=","args":[{"property": "properties.proj:epsg"},32756]}'
@@ -387,9 +387,7 @@ async def test_aggregate_datetime_non_interval(app_client):
 @pytest.mark.asyncio
 async def test_post_aggregate_total_count(app_client):
 
-    params = {
-        "aggregations": ["total_count"],
-    }
+    params = {"aggregations": ["total_count"]}
 
     resp = await app_client.post("/aggregate", json=params)
 

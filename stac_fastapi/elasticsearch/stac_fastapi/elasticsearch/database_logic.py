@@ -168,7 +168,7 @@ def indices(collection_ids: Optional[List[str]]) -> str:
     Returns:
         A string of comma-separated index names. If `collection_ids` is None, returns the default indices.
     """
-    if collection_ids is None:
+    if collection_ids is None or collection_ids == []:
         return ITEM_INDICES
     else:
         return ",".join([index_by_collection_id(c) for c in collection_ids])
@@ -764,7 +764,6 @@ class DatabaseLogic:
             for k, v in self.aggregation_mapping.items()
             if k in aggregations
         }
-
         index_param = indices(collection_ids)
         search_task = asyncio.create_task(
             self.client.search(
