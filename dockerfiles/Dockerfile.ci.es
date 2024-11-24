@@ -1,47 +1,34 @@
-FROM debian:bookworm-slim AS base
+FROM python:3.12-slim
 
-ENV RUN_LOCAL_ES=0
+ENV APP_HOST="0.0.0.0"
+ENV APP_PORT="8080"
+ENV WEB_CONCURRENCY="10"
+ENV RELOAD="true"
+ENV ES_HOST="localhost"
+ENV ES_PORT="9200"
+ENV ES_USE_SSL="false"
+ENV ES_VERIFY_CERTS="false"
+ENV STAC_FASTAPI_TITLE="stac-fastapi-elasticsearch"
+ENV STAC_FASTAPI_DESCRIPTION="A STAC FastAPI with an Elasticsearch backend"
+ENV STAC_FASTAPI_VERSION="2.1"
+ENV ENVIRONMENT="local"
+ENV BACKEND="elasticsearch"
+ENV STAC_FASTAPI_RATE_LIMIT="200/minute"
+
+WORKDIR /app
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     gcc \
     curl \
-    python3 \
-    python3-pip \
-    python3-venv \
     && apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# set non-root user
-RUN groupadd -g 1000 elasticsearch && \
-    useradd -u 1000 -g elasticsearch -s /bin/bash -m elasticsearch
+COPY . /app/
 
-# elasticsearch binaries and libraries
-COPY --from=docker.elastic.co/elasticsearch/elasticsearch:8.11.0 /usr/share/elasticsearch /usr/share/elasticsearch
+RUN pip3 install --no-cache-dir -e ./stac_fastapi/core && \
+    pip3 install --no-cache-dir ./stac_fastapi/elasticsearch[server]
 
-# ser ownership
-RUN chown -R elasticsearch:elasticsearch /usr/share/elasticsearch
+USER root
 
-WORKDIR /app
-COPY . /app
-
-# stac-fastapi-es installation
-RUN pip3 install --no-cache-dir  --break-system-packages -e ./stac_fastapi/core && \
-    pip3 install --no-cache-dir  --break-system-packages ./stac_fastapi/elasticsearch[server]
-
-COPY elasticsearch/config/elasticsearch.yml /usr/share/elasticsearch/config/elasticsearch.yml
-
-COPY dockerfiles/entrypoint-es.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-
-
-ENV ES_JAVA_OPTS="-Xms512m -Xmx1g" \
-    PATH="/usr/share/elasticsearch/bin:${PATH}"
-
-
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 CMD \
-    curl --silent --fail http://${APP_HOST}:${APP_PORT}/api.html || exit 1
-
-
-USER elasticsearch
-ENTRYPOINT ["/entrypoint.sh"]
+CMD ["python", "-m", "stac_fastapi.elasticsearch.app"]
