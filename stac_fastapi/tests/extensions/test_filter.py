@@ -20,21 +20,13 @@ async def test_filter_extension_landing_page_link(app_client, ctx):
 
 
 @pytest.mark.asyncio
-async def test_filter_extension_collection_link(app_client, load_test_data):
+async def test_filter_extension_collection_link(app_client, ctx):
     """Test creation and deletion of a collection"""
-    test_collection = load_test_data("test_collection.json")
-    test_collection["id"] = "test"
 
-    resp = await app_client.post("/collections", json=test_collection)
-    assert resp.status_code == 201
-
-    resp = await app_client.get(f"/collections/{test_collection['id']}")
+    resp = await app_client.get(f"/collections/{ctx.collection['id']}")
     resp_json = resp.json()
     keys = [link["rel"] for link in resp_json["links"]]
     assert "queryables" in keys
-
-    resp = await app_client.delete(f"/collections/{test_collection['id']}")
-    assert resp.status_code == 204
 
 
 @pytest.mark.asyncio
