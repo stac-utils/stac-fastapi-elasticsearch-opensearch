@@ -445,7 +445,7 @@ async def test_get_aggregate_datetime_min(app_client):
 
 
 @pytest.mark.asyncio
-async def test_post_aggregate_datetime_min(app_client):
+async def test_post_aggregate_datetime_min(app_client, ctx):
 
     params = {
         "aggregations": ["datetime_min"],
