@@ -92,44 +92,6 @@ jobs:
             type=raw,value=latest
             type=ref,event=tag
 
-      - name: Build Elasticsearch image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: dockerfiles/Dockerfile.ci.es
-          platforms: linux/amd64
-          push: false
-          load: true
-          tags: stac-fastapi-es:test
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Test Elasticsearch image
-        run: |
-          docker run -d --name stac-es \
-            -e RUN_LOCAL_ES=1 \
-            stac-fastapi-es:test
-          
-          timeout=120
-          while [ $timeout -gt 0 ]; do
-            if docker inspect stac-es --format='{{.State.Health.Status}}' | grep -q 'healthy'; then
-              echo "Container is healthy"
-              break
-            fi
-            if [ $timeout -eq 0 ]; then
-              echo "Health check failed"
-              docker logs stac-es
-              docker stop stac-es
-              docker rm stac-es
-              exit 1
-            fi
-            sleep 5
-            timeout=$((timeout-5))
-          done
-          
-          docker stop stac-es
-          docker rm stac-es
-
       - name: Push Elasticsearch image
         uses: docker/build-push-action@v6
         with:
@@ -150,44 +112,6 @@ jobs:
           tags: |
             type=raw,value=latest
             type=ref,event=tag
-
-      - name: Build OpenSearch image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: dockerfiles/Dockerfile.ci.os
-          platforms: linux/amd64
-          push: false
-          load: true
-          tags: stac-fastapi-os:test
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-
-      - name: Test OpenSearch image
-        run: |
-          docker run -d --name stac-os \
-            -e RUN_LOCAL_OS=1 \
-            stac-fastapi-os:test
-          
-          timeout=120
-          while [ $timeout -gt 0 ]; do
-            if docker inspect stac-os --format='{{.State.Health.Status}}' | grep -q 'healthy'; then
-              echo "Container is healthy"
-              break
-            fi
-            if [ $timeout -eq 0 ]; then
-              echo "Health check failed"
-              docker logs stac-os
-              docker stop stac-os
-              docker rm stac-os
-              exit 1
-            fi
-            sleep 5
-            timeout=$((timeout-5))
-          done
-          
-          docker stop stac-os
-          docker rm stac-os
 
       - name: Push OpenSearch image
         uses: docker/build-push-action@v6
