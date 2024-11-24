@@ -461,7 +461,7 @@ async def test_post_aggregate_datetime_min(app_client):
 
 
 @pytest.mark.asyncio
-async def test_get_aggregate_datetime_frequency(app_client):
+async def test_get_aggregate_datetime_frequency(app_client, ctx):
 
     resp = await app_client.get("/aggregate?aggregations=datetime_frequency")
 
@@ -474,7 +474,7 @@ async def test_get_aggregate_datetime_frequency(app_client):
 
 
 @pytest.mark.asyncio
-async def test_post_aggregate_datetime_frequency(app_client):
+async def test_post_aggregate_datetime_frequency(app_client, ctx):
 
     params = {
         "aggregations": ["datetime_frequency"],
@@ -491,7 +491,7 @@ async def test_post_aggregate_datetime_frequency(app_client):
 
 
 @pytest.mark.asyncio
-async def test_get_aggregate_collection_frequency(app_client):
+async def test_get_aggregate_collection_frequency(app_client, ctx):
 
     resp = await app_client.get("/aggregate?aggregations=collection_frequency")
 
@@ -501,7 +501,7 @@ async def test_get_aggregate_collection_frequency(app_client):
 
 
 @pytest.mark.asyncio
-async def test_post_aggregate_collection_frequency(app_client):
+async def test_post_aggregate_collection_frequency(app_client, ctx):
 
     params = {
         "aggregations": ["collection_frequency"],
