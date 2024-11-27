@@ -5,6 +5,9 @@ services:
     container_name: stac-fastapi-es
     image: stac-utils/stac-fastapi-es
     restart: always
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.dev.es
     environment:
       - STAC_FASTAPI_TITLE=stac-fastapi-elasticsearch
       - STAC_FASTAPI_DESCRIPTION=A STAC FastAPI with an Elasticsearch backend
@@ -34,6 +37,9 @@ services:
     container_name: stac-fastapi-os
     image: stac-utils/stac-fastapi-os
     restart: always
+    build:
+      context: .
+      dockerfile: dockerfiles/Dockerfile.dev.os
     environment:
       - STAC_FASTAPI_TITLE=stac-fastapi-opensearch
       - STAC_FASTAPI_DESCRIPTION=A STAC FastAPI with an Opensearch backend
