@@ -3,7 +3,7 @@ version: '3.9'
 services:
   app-elasticsearch:
     container_name: stac-fastapi-es
-    image: ghcr.io/stac-utils/stac-fastapi-es:latest
+    image: stac-utils/stac-fastapi-es
     restart: always
     environment:
       - STAC_FASTAPI_TITLE=stac-fastapi-elasticsearch
@@ -32,7 +32,7 @@ services:
 
   app-opensearch:
     container_name: stac-fastapi-os
-    image: ghcr.io/stac-utils/stac-fastapi-os:latest
+    image: stac-utils/stac-fastapi-os
     restart: always
     environment:
       - STAC_FASTAPI_TITLE=stac-fastapi-opensearch
