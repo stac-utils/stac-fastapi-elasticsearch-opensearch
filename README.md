@@ -43,6 +43,18 @@ or
 pip install stac_fastapi.opensearch
 ```
 
+### To install and run via pre-built Docker Images
+
+We provide ready-to-use Docker images through GitHub Container Registry ([ElasticSearch](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pkgs/container/stac-fastapi-es) and [OpenSearch](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pkgs/container/stac-fastapi-os) backends). You can easily pull and run these images:
+
+```shell
+# For Elasticsearch backend
+docker pull ghcr.io/stac-utils/stac-fastapi-es:latest
+
+# For OpenSearch backend
+docker pull ghcr.io/stac-utils/stac-fastapi-os:latest
+```
+
 ## Run Elasticsearch API backend on localhost:8080
 
 You need to ensure [**Docker Compose**](https://docs.docker.com/compose/install/) or [**Podman Compose**](https://podman-desktop.io/docs/compose) installed and running on your machine. In the follwoing command instead of `docker-compose` you can use `podman-compose` as well.
