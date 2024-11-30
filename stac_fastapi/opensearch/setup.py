@@ -21,7 +21,7 @@ extra_reqs = {
         "pre-commit",
         "requests",
         "ciso8601",
-        "httpx",
+        "httpx<=0.27.2",
     ],
     "docs": ["mkdocs", "mkdocs-material", "pdocs"],
     "server": ["uvicorn[standard]==0.19.0"],
