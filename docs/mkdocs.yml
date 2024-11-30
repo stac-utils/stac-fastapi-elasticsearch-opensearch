@@ -52,6 +52,7 @@ nav:
           - session: api/stac_fastapi/core/session.md
           - utilities: api/stac_fastapi/core/utilities.md
           - version: api/stac_fastapi/core/version.md
+  - Aggregation: "aggregation.md"
   - Development - Contributing: "contributing.md"
   - Release Notes: "release-notes.md"
 
