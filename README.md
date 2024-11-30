@@ -43,17 +43,24 @@ or
 pip install stac_fastapi.opensearch
 ```
 
-## Build Elasticsearch API backend
+### To install and run via pre-built Docker Images
+
+We provide ready-to-use Docker images through GitHub Container Registry ([ElasticSearch](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pkgs/container/stac-fastapi-es) and [OpenSearch](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pkgs/container/stac-fastapi-os) backends). You can easily pull and run these images:
 
 ```shell
-docker-compose up elasticsearch
-docker-compose build app-elasticsearch
+# For Elasticsearch backend
+docker pull ghcr.io/stac-utils/stac-fastapi-es:latest
+
+# For OpenSearch backend
+docker pull ghcr.io/stac-utils/stac-fastapi-os:latest
 ```
 
-## Running Elasticsearch API on localhost:8080
+## Run Elasticsearch API backend on localhost:8080
+
+You need to ensure [**Docker Compose**](https://docs.docker.com/compose/install/) or [**Podman Compose**](https://podman-desktop.io/docs/compose) installed and running on your machine. In the follwoing command instead of `docker-compose` you can use `podman-compose` as well.
 
 ```shell
-docker-compose up app-elasticsearch
+docker-compose up elasticsearch app-elasticsearch
 ```
 
 By default, docker-compose uses Elasticsearch 8.x and OpenSearch 2.11.1.
@@ -65,6 +72,35 @@ ELASTICSEARCH_VERSION=7.17.1
 OPENSEARCH_VERSION=2.11.0
 ```
 The most recent Elasticsearch 7.x versions should also work. See the [opensearch-py docs](https://github.com/opensearch-project/opensearch-py/blob/main/COMPATIBILITY.md) for compatibility information.
+
+#### **Configuration reference keys:**
+
+You can customize additional settings in your `.env` file:
+###### Key variables to configure:
+
+| Variable                     | Description                                                                          | Default                  | Required                                                                                     |
+|------------------------------|--------------------------------------------------------------------------------------|--------------------------|---------------------------------------------------------------------------------------------|
+| `ES_HOST`                    | Hostname for external Elasticsearch/OpenSearch.                                      | `localhost`              | Optional                                                                                    |
+| `ES_PORT`                    | Port for Elasticsearch/OpenSearch.                                                   | `9200` (ES) / `9202` (OS)| Optional                                                                                    |
+| `ES_USE_SSL`                 | Use SSL for connecting to Elasticsearch/OpenSearch.                                  | `false`                  | Optional                                                                                    |
+| `ES_VERIFY_CERTS`            | Verify SSL certificates when connecting.                                             | `false`                  | Optional                                                                                    |
+| `STAC_FASTAPI_TITLE`         | Title of the API in the documentation.                                               | `stac-fastapi-elasticsearch` or `stac-fastapi-opensearch` | Optional                                                                                    |
+| `STAC_FASTAPI_DESCRIPTION`   | Description of the API in the documentation.                                         | N/A                      | Optional                                                                                    |
+| `STAC_FASTAPI_VERSION`       | API version.                                                                         | `2.1`                    | Optional                                                                                    |
+| `APP_HOST`                   | Server bind address.                                                                 | `0.0.0.0`                | Optional                                                                                    |
+| `APP_PORT`                   | Server port.                                                                         | `8080`                   | Optional                                                                                    |
+| `ENVIRONMENT`                | Runtime environment.                                                                 | `local`                  | Optional                                                                                    |
+| `WEB_CONCURRENCY`            | Number of worker processes.                                                          | `10`                     | Optional                                                                                    |
+| `RELOAD`                     | Enable auto-reload for development.                                                  | `true`                   | Optional                                                                                    |
+| `STAC_FASTAPI_RATE_LIMIT`    | API rate limit per client.                                                           | `200/minute`             | Optional                                                                                    |
+| `BACKEND`                    | Tests-related variable                                                               | `elasticsearch` or `opensearch` based on the backend | Optional                                                                                    |
+| `ELASTICSEARCH_VERSION`      | ElasticSearch version                                                                | `7.17.1`                 | Optional                                                                                    |
+| `OPENSEARCH_VERSION`         | OpenSearch version                                                                   | `2.11.0`                 | Optional                                                                                    |
+
+> [!NOTE]
+> The variables `ES_HOST`, `ES_PORT`, `ES_USE_SSL`, and `ES_VERIFY_CERTS` apply to both Elasticsearch and OpenSearch backends, so there is no need to rename the key names to `OS_` even if you're using OpenSearch.
+
+## Interacting with the API
 
 To create a new Collection:
 
