@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+### Changed
+- Use base64 encoded JSON string of sort keys as pagination token instead of comma-separated string [#323](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/323)
 
 ## [v3.2.1] - 2024-11-14
 
