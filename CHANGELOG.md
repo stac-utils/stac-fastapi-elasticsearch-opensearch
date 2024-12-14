@@ -6,17 +6,23 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [v3.2.2] - 2024-12-15
+
 ### Changed
+
 - Use base64 encoded JSON string of sort keys as pagination token instead of comma-separated string [#323](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/323)
 
 ## [v3.2.1] - 2024-11-14
 
 ### Added
+
 - Added `dockerfiles/Dockerfile.ci.os` and `dockerfiles/Dockerfile.ci.es`, along with their respective entrypoints [#311](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/311)
 
 ### Changed
+
 - Updated the `publish.yml` workflow to include Docker image publishing to GitHub Container Registry [#311](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/311)
-- Improved the README with detailed descriptions of the new Docker images, providing guidance for images. [#311](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/311)  
+- Improved the README with detailed descriptions of the new Docker images, providing guidance for images. [#311](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/311)
 - Aggregation ElasticSearch `total_count` bugfix, moved aggregation text to docs. [#314](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/314)
 
 ## [v3.2.0] - 2024-10-09
@@ -277,7 +283,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.2.0...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.2.2...main
+[v3.2.2]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.2.1...v3.2.2
+[v3.2.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.2.0...v3.2.1
 [v3.2.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.1.0...v3.2.0
 [v3.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.0.0...v3.1.0
 [v3.0.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.4.1...v3.0.0
