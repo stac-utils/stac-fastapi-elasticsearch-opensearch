@@ -470,7 +470,6 @@ async def test_search_line_string_intersects(app_client, ctx):
         (32767, 1),  # Short Limit,
         (2147483647, 1),  # Int Limit
         (2147483647 + 5000, 1),  # Above int Limit
-        # All below fail, return three values
         (21474836470, 1),  # Above int Limit
         # This value still fails to return 1
         # Commenting out
