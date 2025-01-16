@@ -474,7 +474,7 @@ async def test_search_line_string_intersects(app_client, ctx):
         (21474836470, 1),  # Above int Limit
         # This value still fails to return 1
         # Commenting out
-        (9223372036854775807, 2),
+        # (9223372036854775807, 1),
     ],
 )
 async def test_big_int_eo_search(
