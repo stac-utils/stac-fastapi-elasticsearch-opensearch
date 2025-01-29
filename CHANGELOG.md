@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
-- Update item index naming and aliasing to allow capitalisation of collection ids [#](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/)
+- Update item index naming and aliasing to allow capitalisation of collection ids [#329](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/329)
 
 ## [v3.2.2] - 2024-12-15
 
