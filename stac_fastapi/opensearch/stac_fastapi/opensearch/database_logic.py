@@ -705,9 +705,6 @@ class DatabaseLogic:
 
         size_limit = min(limit + 1, max_result_window)
 
-        print("SEARCH BODY")
-        print(search_body)
-
         search_task = asyncio.create_task(
             self.client.search(
                 index=index_param,

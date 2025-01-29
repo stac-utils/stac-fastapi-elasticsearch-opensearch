@@ -2,7 +2,7 @@ import json
 import os
 from os import listdir
 from os.path import isfile, join
-
+import logging
 import pytest
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -48,6 +48,10 @@ async def test_search_filters_post(app_client, ctx):
 
     for _filter in filters:
         resp = await app_client.post("/search", json={"filter": _filter})
+        if resp.status_code != 200:
+            logging.error(f"Failed with status {resp.status_code}")
+            logging.error(f"Response body: {resp.json()}")
+            logging.error({"filter": _filter})
         assert resp.status_code == 200
 
 
