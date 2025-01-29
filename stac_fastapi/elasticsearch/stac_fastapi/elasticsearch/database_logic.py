@@ -1,6 +1,7 @@
 """Database logic."""
 
 import asyncio
+import json
 import logging
 import os
 from base64 import urlsafe_b64decode, urlsafe_b64encode
@@ -168,7 +169,7 @@ def indices(collection_ids: Optional[List[str]]) -> str:
     Returns:
         A string of comma-separated index names. If `collection_ids` is None, returns the default indices.
     """
-    if collection_ids is None:
+    if collection_ids is None or collection_ids == []:
         return ITEM_INDICES
     else:
         return ",".join([index_by_collection_id(c) for c in collection_ids])
@@ -660,7 +661,7 @@ class DatabaseLogic:
         search_after = None
 
         if token:
-            search_after = urlsafe_b64decode(token.encode()).decode().split(",")
+            search_after = json.loads(urlsafe_b64decode(token).decode())
 
         query = search.query.to_dict() if search.query else None
 
@@ -700,9 +701,7 @@ class DatabaseLogic:
         next_token = None
         if len(hits) > limit and limit < max_result_window:
             if hits and (sort_array := hits[limit - 1].get("sort")):
-                next_token = urlsafe_b64encode(
-                    ",".join([str(x) for x in sort_array]).encode()
-                ).decode()
+                next_token = urlsafe_b64encode(json.dumps(sort_array).encode()).decode()
 
         matched = (
             es_response["hits"]["total"]["value"]

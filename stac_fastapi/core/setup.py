@@ -19,10 +19,11 @@ install_requires = [
     "pygeofilter==0.2.1",
     "typing_extensions==4.8.0",
     "jsonschema",
+    "slowapi==0.1.9",
 ]
 
 setup(
-    name="stac-fastapi.core",
+    name="stac_fastapi.core",
     description="Core library for the Elasticsearch and Opensearch stac-fastapi backends.",
     long_description=desc,
     long_description_content_type="text/markdown",
