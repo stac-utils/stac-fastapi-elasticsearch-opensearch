@@ -460,3 +460,19 @@ async def test_search_filter_extension_isnull_post(app_client, ctx):
 
     assert resp.status_code == 200
     assert len(resp.json()["features"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_filter_extension_isnull_get(app_client, ctx):
+    # Test for a property that is not null
+
+    resp = await app_client.get("/search?filter=properties.view:sun_elevation IS NULL")
+
+    assert resp.status_code == 200
+    assert len(resp.json()["features"]) == 0
+
+    # Test for the property that is null
+    resp = await app_client.get("/search?filter=properties.thispropertyisnull IS NULL")
+
+    assert resp.status_code == 200
+    assert len(resp.json()["features"]) == 1
