@@ -1,8 +1,9 @@
 import json
+import logging
 import os
 from os import listdir
 from os.path import isfile, join
-import logging
+
 import pytest
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
