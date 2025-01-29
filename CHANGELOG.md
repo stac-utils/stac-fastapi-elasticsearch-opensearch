@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Changed
+
+- Bugfixes for the `IsNull` operator and datetime filtering [#330](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/330)
+
 ## [v3.2.2] - 2024-12-15
 
 ### Changed
