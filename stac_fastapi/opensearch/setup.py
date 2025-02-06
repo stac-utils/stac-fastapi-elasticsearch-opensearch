@@ -6,7 +6,7 @@ with open("README.md") as f:
     desc = f.read()
 
 install_requires = [
-    "stac-fastapi.core==3.1.0",
+    "stac-fastapi.core==3.2.2",
     "opensearch-py==2.4.2",
     "opensearch-py[async]==2.4.2",
     "uvicorn",
@@ -21,14 +21,14 @@ extra_reqs = {
         "pre-commit",
         "requests",
         "ciso8601",
-        "httpx",
+        "httpx<=0.27.2",
     ],
     "docs": ["mkdocs", "mkdocs-material", "pdocs"],
     "server": ["uvicorn[standard]==0.19.0"],
 }
 
 setup(
-    name="stac-fastapi.opensearch",
+    name="stac_fastapi.opensearch",
     description="Opensearch stac-fastapi backend.",
     long_description=desc,
     long_description_content_type="text/markdown",
