@@ -9,11 +9,15 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 
-## untitled - 2025-03-14
+## [v3.2.4] - 2025-03-14
 
-- Support python 3.13 in STAC FastiAPI Core, Opensearch and ElasticSearch
+### Added
+
+- Support python 3.13 in SFEOS Core, Opensearch and ElasticSearch. [#330](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/330)
 
 ## [v3.2.3] - 2025-02-11
+
+### Changed
 
 - Added note on the use of the default `*` use in route authentication dependecies. [#325](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/325)
 - Update item index naming and aliasing to allow capitalisation of collection ids [#329](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/329)
@@ -295,7 +299,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.2.3...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.2.4...main
+[v3.2.4]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.2.3...v3.2.4
 [v3.2.3]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.2.2...v3.2.3
 [v3.2.2]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.2.1...v3.2.2
 [v3.2.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.2.0...v3.2.1
