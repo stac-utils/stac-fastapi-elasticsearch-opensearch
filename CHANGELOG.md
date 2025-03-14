@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 
+## untitled - 2025-03-14
+
+- Support python 3.13 in STAC FastiAPI Core, Opensearch and ElasticSearch
+
 ## [v3.2.3] - 2025-02-11
 
 - Added note on the use of the default `*` use in route authentication dependecies. [#325](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/325)
