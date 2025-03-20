@@ -471,15 +471,14 @@ class DatabaseLogic:
         Returns:
             dict: A dictionary containing the Queryables.
         """
-
         if collection_id != "*":
             response = await self.client.get(
                 index=f"{ITEMS_INDEX_PREFIX}{collection_id}",
                 id=collection_id,
             )
         else:
-            queryables = {}
-            search_after = []
+            queryables: Dict[str, Any] = {}
+            search_after: List[str] = []
 
             while True:
 
@@ -1003,7 +1002,7 @@ class DatabaseLogic:
                 stac_extension_response = requests.get(new_extension, timeout=5)
 
                 # Get field definitions
-                stac_extension_fields = stac_extension_response["definitions"][
+                stac_extension_fields = stac_extension_response.json()["definitions"][
                     "fields"
                 ]["properties"]
 
@@ -1065,7 +1064,7 @@ class DatabaseLogic:
                 stac_extension_response = requests.get(removed_extension, timeout=5)
 
                 # Get field definitions
-                stac_extension_fields = stac_extension_response["definitions"][
+                stac_extension_fields = stac_extension_response.json()["definitions"][
                     "fields"
                 ]["properties"]
 
@@ -1119,7 +1118,7 @@ class DatabaseLogic:
             None
         """
         # todo: check if collection exists, but cache
-        stac_extensions = self.get_extensions(item["collection"])
+        stac_extensions = await self.get_extensions(item["collection"])
 
         item_id = item["id"]
         collection_id = item["collection"]
@@ -1135,7 +1134,7 @@ class DatabaseLogic:
                 f"Item {item_id} in collection {collection_id} already exists"
             )
 
-        self.add_queryables(
+        await self.add_queryables(
             item=item,
             stac_extensions=stac_extensions,
         )
@@ -1165,7 +1164,7 @@ class DatabaseLogic:
                 refresh=refresh,
             )
 
-            self.remove_queryables(item=item)
+            await self.remove_queryables(item=item)
         except exceptions.NotFoundError:
             raise NotFoundError(
                 f"Item {item_id} in collection {collection_id} not found"
@@ -1198,7 +1197,7 @@ class DatabaseLogic:
 
         await create_item_index(collection_id)
 
-        self.create_queryables(collection_id)
+        await self.create_queryables(collection_id)
 
     async def find_collection(self, collection_id: str) -> Collection:
         """Find and return a collection from the database.

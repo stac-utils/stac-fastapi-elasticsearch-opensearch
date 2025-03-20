@@ -934,5 +934,4 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
         Returns:
             Dict[str, Any]: A dictionary containing the queryables for the given collection.
         """
-
         return self.database.get_queryables(collection_id=collection_id)

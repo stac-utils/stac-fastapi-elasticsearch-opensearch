@@ -197,7 +197,7 @@ def to_es(queryables_mapping: Dict[str, Any], query: Dict[str, Any]) -> Dict[str
 
     elif query["op"] == AdvancedComparisonOp.LIKE:
         field = to_es_field(queryables_mapping, query["args"][0]["property"])
-        pattern = cql2_like_to_es(queryables_mapping, query["args"][1])
+        pattern = cql2_like_to_es(query["args"][1])
         return {"wildcard": {field: {"value": pattern, "case_insensitive": True}}}
 
     elif query["op"] == SpatialIntersectsOp.S_INTERSECTS:
