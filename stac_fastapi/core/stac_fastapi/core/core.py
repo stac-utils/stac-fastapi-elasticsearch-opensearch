@@ -377,7 +377,7 @@ class CoreClient(AsyncBaseCoreClient):
 
     @staticmethod
     def _return_date(
-        interval: Optional[Union[DateTimeType, str]]
+        interval: Optional[Union[DateTimeType, str]],
     ) -> Dict[str, Optional[str]]:
         """
         Convert a date interval.
@@ -911,6 +911,8 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
 class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
     """Defines a pattern for implementing the STAC filter extension."""
 
+    database: BaseDatabaseLogic = attr.ib()
+
     # todo: use the ES _mapping endpoint to dynamically find what fields exist
     async def get_queryables(
         self, collection_id: Optional[str] = None, **kwargs
@@ -932,55 +934,5 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
         Returns:
             Dict[str, Any]: A dictionary containing the queryables for the given collection.
         """
-        return {
-            "$schema": "https://json-schema.org/draft/2019-09/schema",
-            "$id": "https://stac-api.example.com/queryables",
-            "type": "object",
-            "title": "Queryables for Example STAC API",
-            "description": "Queryable names for the example STAC API Item Search filter.",
-            "properties": {
-                "id": {
-                    "description": "ID",
-                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/definitions/core/allOf/2/properties/id",
-                },
-                "collection": {
-                    "description": "Collection",
-                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/definitions/core/allOf/2/then/properties/collection",
-                },
-                "geometry": {
-                    "description": "Geometry",
-                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/definitions/core/allOf/1/oneOf/0/properties/geometry",
-                },
-                "datetime": {
-                    "description": "Acquisition Timestamp",
-                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/datetime.json#/properties/datetime",
-                },
-                "created": {
-                    "description": "Creation Timestamp",
-                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/datetime.json#/properties/created",
-                },
-                "updated": {
-                    "description": "Creation Timestamp",
-                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/datetime.json#/properties/updated",
-                },
-                "cloud_cover": {
-                    "description": "Cloud Cover",
-                    "$ref": "https://stac-extensions.github.io/eo/v1.0.0/schema.json#/definitions/fields/properties/eo:cloud_cover",
-                },
-                "cloud_shadow_percentage": {
-                    "description": "Cloud Shadow Percentage",
-                    "title": "Cloud Shadow Percentage",
-                    "type": "number",
-                    "minimum": 0,
-                    "maximum": 100,
-                },
-                "nodata_pixel_percentage": {
-                    "description": "No Data Pixel Percentage",
-                    "title": "No Data Pixel Percentage",
-                    "type": "number",
-                    "minimum": 0,
-                    "maximum": 100,
-                },
-            },
-            "additionalProperties": True,
-        }
+
+        return self.database.get_queryables(collection_id=collection_id)

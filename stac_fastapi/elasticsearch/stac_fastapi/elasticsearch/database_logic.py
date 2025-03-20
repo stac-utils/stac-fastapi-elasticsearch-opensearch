@@ -9,6 +9,7 @@ from copy import deepcopy
 from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple, Type, Union
 
 import attr
+import requests
 from elasticsearch_dsl import Q, Search
 from starlette.requests import Request
 
@@ -29,6 +30,7 @@ NumType = Union[float, int]
 
 COLLECTIONS_INDEX = os.getenv("STAC_COLLECTIONS_INDEX", "collections")
 ITEMS_INDEX_PREFIX = os.getenv("STAC_ITEMS_INDEX_PREFIX", "items_")
+QUERYABLES_INDEX = os.getenv("STAC_QUERYABLES_INDEX", "queryables")
 ES_INDEX_NAME_UNSUPPORTED_CHARS = {
     "\\",
     "/",
@@ -240,6 +242,23 @@ async def create_item_index(collection_id: str):
     await client.close()
 
 
+async def create_queryables_index() -> None:
+    """
+    Create the index for Qyeryables.
+
+    Returns:
+        None
+
+    """
+    client = AsyncElasticsearchSettings().create_client
+
+    await client.options(ignore_status=400).indices.create(
+        index=f"{QUERYABLES_INDEX}-000001",
+        aliases={QUERYABLES_INDEX: {}},
+    )
+    await client.close()
+
+
 async def delete_item_index(collection_id: str):
     """Delete the index for items in a collection.
 
@@ -390,6 +409,96 @@ class DatabaseLogic:
     }
 
     """CORE LOGIC"""
+
+    async def get_queryables_mapping(self, collection_id: str = "*") -> dict:
+        """Retrieve mapping of Queryables for search.
+
+        Args:
+            collection_id (str, optional): The id of the Collection the Queryables
+            belongs to. Defaults to "*".
+
+        Returns:
+            dict: A dictionary containing the Queryables mappings.
+        """
+        queryables_mapping = {}
+
+        mappings = await self.client.indices.get_mapping(
+            index=f"{ITEMS_INDEX_PREFIX}{collection_id}",
+        )
+
+        for mapping in mappings.values():
+            fields = mapping["mappings"]["properties"]
+            properties = fields.pop("properties")
+
+            for field_key in fields:
+                queryables_mapping[field_key] = field_key
+
+            for property_key in properties["properties"]:
+                queryables_mapping[property_key] = f"properties.{property_key}"
+
+        return queryables_mapping
+
+    async def get_extensions(self, collection_id: str = "*") -> set:
+        """Get list of STAC Extensions for a collection.
+
+        Args:
+            collection_id (str, optional): The id of the Collection the STAC
+            Extensions belongs to. Defaults to "*".
+
+        Returns:
+            set: set of STAC Extensions
+        """
+        response = await self.client.search(
+            index=f"{ITEMS_INDEX_PREFIX}{collection_id}",
+            aggs={
+                "stac_extensions": {"terms": {"field": "stac_extensions"}},
+                "size": 10000,
+            },
+        )
+
+        return {
+            stac_extension["key"]
+            for stac_extension in response["aggregations"]["stac_extensions"]["buckets"]
+        }
+
+    async def get_queryables(self, collection_id: str = "*") -> dict:
+        """Retrieve Queryables from elasticsearch mappings.
+
+        Args:
+            collection_id (str, optional): The id of the Collection the Queryables
+            belongs to. Defaults to "*".
+
+        Returns:
+            dict: A dictionary containing the Queryables.
+        """
+
+        if collection_id != "*":
+            response = await self.client.get(
+                index=f"{ITEMS_INDEX_PREFIX}{collection_id}",
+                id=collection_id,
+            )
+        else:
+            queryables = {}
+            search_after = []
+
+            while True:
+
+                response = self.client.search(
+                    index=f"{ITEMS_INDEX_PREFIX}{collection_id}",
+                    size=10000,
+                    search_after=search_after,
+                )
+
+                if hits := response["hits"]["hits"]:
+                    for hit in hits:
+                        queryables |= hit
+
+                    search_after = hit["sort"]
+
+                if not search_after:
+                    break
+
+        return queryables
 
     async def get_all_collections(
         self, token: Optional[str], limit: int, request: Request
@@ -594,8 +703,7 @@ class DatabaseLogic:
 
         return search
 
-    @staticmethod
-    def apply_cql2_filter(search: Search, _filter: Optional[Dict[str, Any]]):
+    def apply_cql2_filter(self, search: Search, _filter: Optional[Dict[str, Any]]):
         """
         Apply a CQL2 filter to an Elasticsearch Search object.
 
@@ -615,7 +723,7 @@ class DatabaseLogic:
                     otherwise the original Search object.
         """
         if _filter is not None:
-            es_query = filter.to_es(_filter)
+            es_query = filter.to_es(self.get_queryables_mapping(), _filter)
             search = search.query(es_query)
 
         return search
@@ -854,6 +962,149 @@ class DatabaseLogic:
 
         return self.item_serializer.stac_to_db(item, base_url)
 
+    async def create_queryables(self, collection_id: str):
+        """Database logic for creating an initial queryables record.
+
+        Args:
+            collection_id (str): The id of the Collection that the Queryables belongs to.
+        """
+        base_queryables = {
+            "$schema": "https://json-schema.org/draft/2019-09/schema",
+            "$id": "https://stac-api.example.com/queryables",
+            "type": "object",
+            "title": f"Queryables for {collection_id} STAC API",
+            "description": f"Queryable names for the {collection_id} in STAC API Item Search filter.",
+            "properties": {},
+            "additionalProperties": True,
+        }
+
+        await self.client.update(
+            index=QUERYABLES_INDEX,
+            id=collection_id,
+            document=base_queryables,
+        )
+
+    async def add_queryables(self, item: Item, stac_extensions: set) -> None:
+        """Database logic for adding queryables.
+
+        Args:
+            collection_id (str): The id of the Collection that the Queryables belongs to.
+            stac_extensions (list): List of the previous stac extensions for the collection.
+        """
+        queryables = await self.get_queryables(collection_id=item["collection"])
+
+        # Add fields of any new extensions.
+        if (
+            new_extensions := await self.get_extensions(item["collection"])
+            - stac_extensions
+        ):
+
+            for new_extension in new_extensions:
+                stac_extension_response = requests.get(new_extension, timeout=5)
+
+                # Get field definitions
+                stac_extension_fields = stac_extension_response["definitions"][
+                    "fields"
+                ]["properties"]
+
+                for (
+                    stac_extension_field_key,
+                    stac_extension_field_value,
+                ) in stac_extension_fields.values():
+
+                    queryables["properties"][
+                        stac_extension_field_key
+                    ] = stac_extension_field_value
+
+        # if there are any new properties that are not in extensions add them through mappings.
+        # remove non queryable fields
+        del item["assets"]
+        del item["bbox"]
+        del item["links"]
+        del item["stac_extensions"]
+        del item["stac_version"]
+        del item["type"]
+        item_properties = item.pop("properties").keys()
+        item_fields = item.keys() + item_properties
+
+        if new_fields := set(item_fields) - set(queryables["properties"].keys()):
+
+            mappings = await self.client.indices.get_mapping(
+                index=f"{ITEMS_INDEX_PREFIX}{item['collection']}",
+            )
+
+            fields = mappings[0]["mappings"]["properties"]
+            fields |= fields.pop("properties")
+
+            for new_field in new_fields:
+                queryables["properties"][new_field] = {
+                    "type": fields[new_field]["type"]
+                }
+
+        await self.client.update(
+            index=QUERYABLES_INDEX,
+            id=item["collection"],
+            doc=queryables,
+        )
+
+    async def remove_queryables(self, item: Item) -> None:
+        """Database logic for adding queryables.
+
+        Args:
+            collection_id (str): The id of the Collection that the Queryables belongs to.
+            stac_extensions (list): List of the previous stac extensions for the collection.
+        """
+        queryables = await self.get_queryables(collection_id=item["collection"])
+
+        # Remove any fields of any unused extensions.
+        if removed_extensions := set(
+            item["stac_extensions"]
+        ) - await self.get_extensions(item["collection"]):
+
+            for removed_extension in removed_extensions:
+                stac_extension_response = requests.get(removed_extension, timeout=5)
+
+                # Get field definitions
+                stac_extension_fields = stac_extension_response["definitions"][
+                    "fields"
+                ]["properties"]
+
+                for stac_extension_field_key in stac_extension_fields:
+                    del queryables["properties"][stac_extension_field_key]
+
+        # if there are any properties no longer in any items remove them from queryables.
+        # remove non queryable fields
+        del item["assets"]
+        del item["bbox"]
+        del item["links"]
+        del item["stac_extensions"]
+        del item["stac_version"]
+        del item["type"]
+        item_properties = item.pop("properties").keys()
+
+        aggs = {}
+        for item_field in item_properties:
+            aggs[item_field] = {"terms": {"field": f"properties.{item_field}"}}
+
+        for item_field in item.keys():
+            aggs[item_field] = {"terms": {"field": item_field}}
+
+        es_resp = await self.client.search(
+            index=QUERYABLES_INDEX,
+            aggs=aggs,
+            id=item["collection"],
+        )
+
+        for aggregation in es_resp["aggregations"]:
+            if not aggregation["buckets"]:
+                del queryables["properties"][aggregation["key"]]
+
+        await self.client.update(
+            index=QUERYABLES_INDEX,
+            id=item["collection"],
+            doc=queryables,
+        )
+
     async def create_item(self, item: Item, refresh: bool = False):
         """Database logic for creating one item.
 
@@ -868,6 +1119,8 @@ class DatabaseLogic:
             None
         """
         # todo: check if collection exists, but cache
+        stac_extensions = self.get_extensions(item["collection"])
+
         item_id = item["id"]
         collection_id = item["collection"]
         es_resp = await self.client.index(
@@ -881,6 +1134,11 @@ class DatabaseLogic:
             raise ConflictError(
                 f"Item {item_id} in collection {collection_id} already exists"
             )
+
+        self.add_queryables(
+            item=item,
+            stac_extensions=stac_extensions,
+        )
 
     async def delete_item(
         self, item_id: str, collection_id: str, refresh: bool = False
@@ -896,11 +1154,18 @@ class DatabaseLogic:
             NotFoundError: If the Item does not exist in the database.
         """
         try:
+            item = await self.client.get(
+                index=index_by_collection_id(collection_id),
+                id=mk_item_id(item_id, collection_id),
+            )
+
             await self.client.delete(
                 index=index_by_collection_id(collection_id),
                 id=mk_item_id(item_id, collection_id),
                 refresh=refresh,
             )
+
+            self.remove_queryables(item=item)
         except exceptions.NotFoundError:
             raise NotFoundError(
                 f"Item {item_id} in collection {collection_id} not found"
@@ -932,6 +1197,8 @@ class DatabaseLogic:
         )
 
         await create_item_index(collection_id)
+
+        self.create_queryables(collection_id)
 
     async def find_collection(self, collection_id: str) -> Collection:
         """Find and return a collection from the database.
