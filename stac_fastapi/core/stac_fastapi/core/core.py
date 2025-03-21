@@ -377,7 +377,7 @@ class CoreClient(AsyncBaseCoreClient):
 
     @staticmethod
     def _return_date(
-        interval: Optional[Union[DateTimeType, str]]
+        interval: Optional[Union[DateTimeType, str]],
     ) -> Dict[str, Optional[str]]:
         """
         Convert a date interval.
@@ -724,15 +724,14 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         """
         item = item.model_dump(mode="json")
-        base_url = str(kwargs["request"].base_url)
         now = datetime_type.now(timezone.utc).isoformat().replace("+00:00", "Z")
         item["properties"]["updated"] = now
 
         await self.database.check_collection_exists(collection_id)
         await self.delete_item(item_id=item_id, collection_id=collection_id)
-        await self.create_item(collection_id=collection_id, item=Item(**item), **kwargs)
-
-        return ItemSerializer.db_to_stac(item, base_url)
+        return await self.create_item(
+            collection_id=collection_id, item=Item(**item), **kwargs
+        )
 
     @overrides
     async def delete_item(
