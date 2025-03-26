@@ -377,7 +377,7 @@ class CoreClient(AsyncBaseCoreClient):
 
     @staticmethod
     def _return_date(
-        interval: Optional[Union[DateTimeType, str]]
+        interval: Optional[Union[DateTimeType, str]],
     ) -> Dict[str, Optional[str]]:
         """
         Convert a date interval.
@@ -738,13 +738,15 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             stac_types.Item: The patched item object.
 
         """
+        base_url = str(kwargs["request"].base_url)
+
         item = await self.database.merge_patch_item(
             collection_id=collection_id,
             item_id=item_id,
             item=item,
-            base_url=str(kwargs["request"].base_url),
+            base_url=base_url,
         )
-        return ItemSerializer.db_to_stac(item, base_url=str(kwargs["request"].base_url))
+        return ItemSerializer.db_to_stac(item, base_url=base_url)
 
     @overrides
     async def json_patch_item(
@@ -766,13 +768,15 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             stac_types.Item: The patched item object.
 
         """
+        base_url = str(kwargs["request"].base_url)
+
         item = await self.database.json_patch_item(
             collection_id=collection_id,
             item_id=item_id,
-            base_url=str(kwargs["request"].base_url),
+            base_url=base_url,
             operations=operations,
         )
-        return ItemSerializer.db_to_stac(item, base_url=str(kwargs["request"].base_url))
+        return ItemSerializer.db_to_stac(item, base_url=base_url)
 
     @overrides
     async def delete_item(

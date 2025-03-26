@@ -4,9 +4,9 @@ This module contains functions for transforming geospatial coordinates,
 such as converting bounding boxes to polygon representations.
 """
 
-import json
 from typing import Any, Dict, List, Optional, Set, Union
 
+from stac_fastapi.core.models.patch import ElasticPath
 from stac_fastapi.types.stac import Item, PatchAddReplaceTest, PatchRemove
 
 MAX_LIMIT = 10000
@@ -45,9 +45,7 @@ def filter_fields(  # noqa: C901
         return item
 
     # Build a shallow copy of included fields on an item, or a sub-tree of an item
-    def include_fields(
-        source: Dict[str, Any], fields: Optional[Set[str]]
-    ) -> Dict[str, Any]:
+    def include_fields(source: Dict[str, Any], fields: Optional[Set[str]]) -> Dict[str, Any]:
         if not fields:
             return source
 
@@ -60,9 +58,7 @@ def filter_fields(  # noqa: C901
                     # The root of this key path on the item is a dict, and the
                     # key path indicates a sub-key to be included. Walk the dict
                     # from the root key and get the full nested value to include.
-                    value = include_fields(
-                        source[key_root], fields={".".join(key_path_parts[1:])}
-                    )
+                    value = include_fields(source[key_root], fields={".".join(key_path_parts[1:])})
 
                     if isinstance(clean_item.get(key_root), dict):
                         # A previously specified key and sub-keys may have been included
@@ -93,9 +89,7 @@ def filter_fields(  # noqa: C901
             if key_root in source:
                 if isinstance(source[key_root], dict) and len(key_path_part) > 1:
                     # Walk the nested path of this key to remove the leaf-key
-                    exclude_fields(
-                        source[key_root], fields={".".join(key_path_part[1:])}
-                    )
+                    exclude_fields(source[key_root], fields={".".join(key_path_part[1:])})
                     # If, after removing the leaf-key, the root is now an empty
                     # dict, remove it entirely
                     if not source[key_root]:
@@ -127,11 +121,7 @@ def dict_deep_update(merge_to: Dict[str, Any], merge_from: Dict[str, Any]) -> No
     merge_from values take precedence over existing values in merge_to.
     """
     for k, v in merge_from.items():
-        if (
-            k in merge_to
-            and isinstance(merge_to[k], dict)
-            and isinstance(merge_from[k], dict)
-        ):
+        if k in merge_to and isinstance(merge_to[k], dict) and isinstance(merge_from[k], dict):
             dict_deep_update(merge_to[k], merge_from[k])
         else:
             merge_to[k] = v
@@ -166,43 +156,25 @@ def merge_to_operations(data: Dict) -> List:
     return operations
 
 
-def split_json_path(path: str) -> OperationPath:
-    """Split a JSON path into it's components.
+def add_script_checks(source: str, op: str, path: ElasticPath) -> str:
+    """Add Elasticsearch checks to operation.
 
     Args:
-        path: JSON path.
+        source (str): current source of Elasticsearch script
+        op (str): the operation of script
+        path (Dict): path of variable to run operation on
 
     Returns:
-        Tuple: nest, partition, key.
+        Dict: update source of Elasticsearch script
     """
-    path = (
-        path[1:].replace("/", ".") if path.startswith("/") else path.replace("/", ".")
-    )
-    nest, partition, key = path.rpartition(".")
+    if path.nest:
+        source += f"if (!ctx._source.containsKey('{path.nest}'))" f"{{Debug.explain('{path.nest} does not exist');}}"
 
-    try:
-        index = int(key)
-        path = f"{nest}[{index}]"
-        nest, partition, key = nest.rpartition(".")
-
-    except ValueError:
-        index = None
-
-    return {
-        "path": path,
-        "nest": nest,
-        "partition": partition,
-        "key": key,
-        "index": index,
-    }
-
-
-def script_checks(source, op, path) -> Dict:
-    if path["nest"]:
-        source += f"if (!ctx._source.containsKey('{path['nest']}')){{Debug.explain('{path['nest']} does not exist');}}"
-
-    if path["index"] or op != "add":
-        source += f"if (!ctx._source.{path['nest'] + path['partition']}containsKey('{path['key']}')){{Debug.explain('{path['path']} does not exist');}}"
+    if path.index or op != "add":
+        source += (
+            f"if (!ctx._source.{path.nest}.containsKey('{path.key}'))"
+            f"{{Debug.explain('{path.path} does not exist');}}"
+        )
 
     return source
 
@@ -218,55 +190,51 @@ def operations_to_script(operations: List) -> Dict:
     """
     source = ""
     for operation in operations:
-        op_path = split_json_path(operation.path)
+        op_path = ElasticPath(path=operation.path)
 
         if hasattr(operation, "from"):
-            from_path = split_json_path(getattr(operation, "from"))
-            source = script_checks(source, operation.op, op_path)
-            if from_path["index"]:
-                from_key = from_path["nest"] + from_path["partition"] + from_path["key"]
+            from_path = ElasticPath(path=(getattr(operation, "from")))
+            source = add_script_checks(source, operation.op, from_path)
+            if from_path.index:
                 source += (
-                    f"if ((ctx._source.{from_key} instanceof ArrayList && ctx._source.{from_key}.size() < {from_path['index']})"
-                    f"|| (!ctx._source.{from_key + from_path['partition']}containsKey('{from_path['index']}'))"
-                    f"{{Debug.explain('{from_path['path']} does not exist');}}"
+                    f"if ((ctx._source.{from_path.location} instanceof ArrayList"
+                    f" && ctx._source.{from_path.location}.size() < {from_path.index})"
+                    f" || (!ctx._source.{from_path.location}.containsKey('{from_path.index}'))"
+                    f"{{Debug.explain('{from_path.path} does not exist');}}"
                 )
 
-        source = script_checks(source, operation.op, op_path)
+        source = add_script_checks(source, operation.op, op_path)
 
         if operation.op in ["copy", "move"]:
-            if op_path["index"]:
+            if op_path.index:
                 source += (
-                    f"if (ctx._source.{op_path['nest'] + op_path['partition'] + op_path['key']} instanceof ArrayList)"
-                    f"{{ctx._source.{op_path['nest'] + op_path['partition'] + op_path['key'] + op_path['partition']}add({op_path['index']}, {from_path['path']})}}"
-                    f"else{{ctx._source.{op_path['path']} = {from_path['path']}}}"
+                    f"if (ctx._source.{op_path.location} instanceof ArrayList)"
+                    f"{{ctx._source.{op_path.location}.add({op_path.index}, {from_path.path})}}"
+                    f"else{{ctx._source.{op_path.path} = {from_path.path}}}"
                 )
 
             else:
-                source += (
-                    f"ctx._source.{op_path['path']} = ctx._source.{from_path['path']};"
-                )
+                source += f"ctx._source.{op_path.path} = ctx._source.{from_path.path};"
 
         if operation.op in ["remove", "move"]:
             remove_path = from_path if operation.op == "move" else op_path
 
-            if remove_path["index"]:
-                source += f"ctx._source.{remove_path['nest'] + remove_path['partition'] + remove_path['key'] + remove_path['partition']}remove('{remove_path['index']}');"
+            if remove_path.index:
+                source += f"ctx._source.{remove_path.location}.remove('{remove_path.index}');"
 
             else:
-                source += f"ctx._source.{remove_path['nest'] + remove_path['partition']}remove('{remove_path['key']}');"
+                source += f"ctx._source.remove('{remove_path.location}');"
 
         if operation.op in ["add", "replace"]:
             if op_path["index"]:
                 source += (
-                    f"if (ctx._source.{op_path['nest'] + op_path['partition'] + op_path['key']} instanceof ArrayList)"
-                    f"{{ctx._source.{op_path['nest'] + op_path['partition'] + op_path['key'] + op_path['partition']}add({op_path['index']}, {json.dumps(operation.value)})}}"
-                    f"else{{ctx._source.{op_path['path']} = {json.dumps(operation.value)}}}"
+                    f"if (ctx._source.{op_path.location} instanceof ArrayList)"
+                    f"{{ctx._source.{op_path.location}.add({op_path.index}, {operation.json_value})}}"
+                    f"else{{ctx._source.{op_path.path} = {operation.json_value}}}"
                 )
 
             else:
-                source += (
-                    f"ctx._source.{op_path['path']} = {json.dumps(operation.value)};"
-                )
+                source += f"ctx._source.{op_path.path} = {operation.json_value};"
 
     return {
         "source": source,

@@ -166,7 +166,9 @@ def index_by_collection_id(collection_id: str) -> str:
     Returns:
         str: The index name derived from the collection id.
     """
-    return f"{ITEMS_INDEX_PREFIX}{''.join(c for c in collection_id.lower() if c not in ES_INDEX_NAME_UNSUPPORTED_CHARS)}"
+    return (
+        f"{ITEMS_INDEX_PREFIX}{''.join(c for c in collection_id.lower() if c not in ES_INDEX_NAME_UNSUPPORTED_CHARS)}"
+    )
 
 
 def indices(collection_ids: Optional[List[str]]) -> str:
@@ -322,9 +324,7 @@ class DatabaseLogic:
     sync_client = SyncElasticsearchSettings().create_client
 
     item_serializer: Type[ItemSerializer] = attr.ib(default=ItemSerializer)
-    collection_serializer: Type[CollectionSerializer] = attr.ib(
-        default=CollectionSerializer
-    )
+    collection_serializer: Type[CollectionSerializer] = attr.ib(default=CollectionSerializer)
 
     extensions: List[str] = attr.ib(default=attr.Factory(list))
 
@@ -392,9 +392,7 @@ class DatabaseLogic:
                 id=mk_item_id(item_id, collection_id),
             )
         except exceptions.NotFoundError:
-            raise NotFoundError(
-                f"Item {item_id} does not exist in Collection {collection_id}"
-            )
+            raise NotFoundError(f"Item {item_id} does not exist in Collection {collection_id}")
         return item["_source"]
 
     @staticmethod
@@ -424,16 +422,10 @@ class DatabaseLogic:
             Search: The filtered search object.
         """
         if "eq" in datetime_search:
-            search = search.filter(
-                "term", **{"properties__datetime": datetime_search["eq"]}
-            )
+            search = search.filter("term", **{"properties__datetime": datetime_search["eq"]})
         else:
-            search = search.filter(
-                "range", properties__datetime={"lte": datetime_search["lte"]}
-            )
-            search = search.filter(
-                "range", properties__datetime={"gte": datetime_search["gte"]}
-            )
+            search = search.filter("range", properties__datetime={"lte": datetime_search["lte"]})
+            search = search.filter("range", properties__datetime={"gte": datetime_search["gte"]})
         return search
 
     @staticmethod
@@ -629,15 +621,9 @@ class DatabaseLogic:
         next_token = None
         if len(hits) > limit and limit < max_result_window:
             if hits and (sort_array := hits[limit - 1].get("sort")):
-                next_token = urlsafe_b64encode(
-                    ",".join([str(x) for x in sort_array]).encode()
-                ).decode()
+                next_token = urlsafe_b64encode(",".join([str(x) for x in sort_array]).encode()).decode()
 
-        matched = (
-            es_response["hits"]["total"]["value"]
-            if es_response["hits"]["total"]["relation"] == "eq"
-            else None
-        )
+        matched = es_response["hits"]["total"]["value"] if es_response["hits"]["total"]["relation"] == "eq" else None
         if count_task.done():
             try:
                 matched = count_task.result().get("count")
@@ -664,9 +650,7 @@ class DatabaseLogic:
         agg_2_es = {
             "total_count": {"value_count": {"field": "id"}},
             "collection_frequency": {"terms": {"field": "collection", "size": 100}},
-            "platform_frequency": {
-                "terms": {"field": "properties.platform", "size": 100}
-            },
+            "platform_frequency": {"terms": {"field": "properties.platform", "size": 100}},
             "cloud_cover_frequency": {
                 "range": {
                     "field": "properties.eo:cloud_cover",
@@ -693,15 +677,9 @@ class DatabaseLogic:
                     "size": 10000,
                 }
             },
-            "sun_elevation_frequency": {
-                "histogram": {"field": "properties.view:sun_elevation", "interval": 5}
-            },
-            "sun_azimuth_frequency": {
-                "histogram": {"field": "properties.view:sun_azimuth", "interval": 5}
-            },
-            "off_nadir_frequency": {
-                "histogram": {"field": "properties.view:off_nadir", "interval": 5}
-            },
+            "sun_elevation_frequency": {"histogram": {"field": "properties.view:sun_elevation", "interval": 5}},
+            "sun_azimuth_frequency": {"histogram": {"field": "properties.view:sun_azimuth", "interval": 5}},
+            "off_nadir_frequency": {"histogram": {"field": "properties.view:off_nadir", "interval": 5}},
         }
 
         search_body: Dict[str, Any] = {}
@@ -713,9 +691,7 @@ class DatabaseLogic:
 
         # include all aggregations specified
         # this will ignore aggregations with the wrong names
-        search_body["aggregations"] = {
-            k: v for k, v in agg_2_es.items() if k in aggregations
-        }
+        search_body["aggregations"] = {k: v for k, v in agg_2_es.items() if k in aggregations}
 
         if "centroid_geohash_grid_frequency" in aggregations:
             search_body["aggregations"]["centroid_geohash_grid_frequency"] = {
@@ -780,9 +756,7 @@ class DatabaseLogic:
         if not await self.client.exists(index=COLLECTIONS_INDEX, id=collection_id):
             raise NotFoundError(f"Collection {collection_id} does not exist")
 
-    async def prep_create_item(
-        self, item: Item, base_url: str, exist_ok: bool = False
-    ) -> Item:
+    async def prep_create_item(self, item: Item, base_url: str, exist_ok: bool = False) -> Item:
         """
         Preps an item for insertion into the database.
 
@@ -804,15 +778,11 @@ class DatabaseLogic:
             index=index_by_collection_id(item["collection"]),
             id=mk_item_id(item["id"], item["collection"]),
         ):
-            raise ConflictError(
-                f"Item {item['id']} in collection {item['collection']} already exists"
-            )
+            raise ConflictError(f"Item {item['id']} in collection {item['collection']} already exists")
 
         return self.item_serializer.stac_to_db(item, base_url)
 
-    def sync_prep_create_item(
-        self, item: Item, base_url: str, exist_ok: bool = False
-    ) -> Item:
+    def sync_prep_create_item(self, item: Item, base_url: str, exist_ok: bool = False) -> Item:
         """
         Prepare an item for insertion into the database.
 
@@ -841,9 +811,7 @@ class DatabaseLogic:
             index=index_by_collection_id(collection_id),
             id=mk_item_id(item_id, collection_id),
         ):
-            raise ConflictError(
-                f"Item {item_id} in collection {collection_id} already exists"
-            )
+            raise ConflictError(f"Item {item_id} in collection {collection_id} already exists")
 
         return self.item_serializer.stac_to_db(item, base_url)
 
@@ -871,9 +839,7 @@ class DatabaseLogic:
         )
 
         if (meta := es_resp.get("meta")) and meta.get("status") == 409:
-            raise ConflictError(
-                f"Item {item_id} in collection {collection_id} already exists"
-            )
+            raise ConflictError(f"Item {item_id} in collection {collection_id} already exists")
 
     async def merge_patch_item(
         self,
@@ -946,21 +912,23 @@ class DatabaseLogic:
 
         script = operations_to_script(script_operations)
 
-        if not new_collection_id and not new_item_id:
-            try:
-                await self.client.update(
-                    index=index_by_collection_id(collection_id),
-                    id=mk_item_id(item_id, collection_id),
-                    script=script,
-                    refresh=refresh,
-                )
-            except exceptions.BadRequestError as e:
-                raise KeyError(e.info["error"]["caused_by"]["to_string"])
+        try:
+            await self.client.update(
+                index=index_by_collection_id(collection_id),
+                id=mk_item_id(item_id, collection_id),
+                script=script,
+                refresh=True,
+            )
+
+        except exceptions.BadRequestError as exc:
+            raise KeyError(exc.info["error"]["caused_by"]["to_string"]) from exc
+
+        item = await self.get_one_item(collection_id, item_id)
 
         if new_collection_id:
             await self.client.reindex(
                 body={
-                    "dest": {"index": f"{ITEMS_INDEX_PREFIX}{operation['value']}"},
+                    "dest": {"index": f"{ITEMS_INDEX_PREFIX}{new_collection_id}"},
                     "source": {
                         "index": f"{ITEMS_INDEX_PREFIX}{collection_id}",
                         "query": {"term": {"id": {"value": item_id}}},
@@ -968,24 +936,22 @@ class DatabaseLogic:
                     "script": {
                         "lang": "painless",
                         "source": (
-                            f"""ctx._id = ctx._id.replace('{collection_id}', '{operation["value"]}');"""
-                            f"""ctx._source.collection = '{operation["value"]}';"""
-                            + script
+                            f"""ctx._id = ctx._id.replace('{collection_id}', '{new_collection_id}');"""
+                            f"""ctx._source.collection = '{new_collection_id}';"""
                         ),
                     },
                 },
                 wait_for_completion=True,
-                refresh=False,
+                refresh=True,
             )
-
-        item = await self.get_one_item(collection_id, item_id)
+            item["collection"] = new_collection_id
 
         if new_item_id:
             item["id"] = new_item_id
             item = await self.prep_create_item(item=item, base_url=base_url)
             await self.create_item(item=item, refresh=False)
 
-        if new_item_id or new_collection_id:
+        if new_collection_id or new_item_id:
 
             await self.delete_item(
                 item_id=item_id,
@@ -995,9 +961,7 @@ class DatabaseLogic:
 
         return item
 
-    async def delete_item(
-        self, item_id: str, collection_id: str, refresh: bool = False
-    ):
+    async def delete_item(self, item_id: str, collection_id: str, refresh: bool = False):
         """Delete a single item from the database.
 
         Args:
@@ -1015,9 +979,7 @@ class DatabaseLogic:
                 refresh=refresh,
             )
         except exceptions.NotFoundError:
-            raise NotFoundError(
-                f"Item {item_id} in collection {collection_id} not found"
-            )
+            raise NotFoundError(f"Item {item_id} in collection {collection_id} not found")
 
     async def create_collection(self, collection: Collection, refresh: bool = False):
         """Create a single collection in the database.
@@ -1064,17 +1026,13 @@ class DatabaseLogic:
             collection as a `Collection` object. If the collection is not found, a `NotFoundError` is raised.
         """
         try:
-            collection = await self.client.get(
-                index=COLLECTIONS_INDEX, id=collection_id
-            )
+            collection = await self.client.get(index=COLLECTIONS_INDEX, id=collection_id)
         except exceptions.NotFoundError:
             raise NotFoundError(f"Collection {collection_id} not found")
 
         return collection["_source"]
 
-    async def update_collection(
-        self, collection_id: str, collection: Collection, refresh: bool = False
-    ):
+    async def update_collection(self, collection_id: str, collection: Collection, refresh: bool = False):
         """Update a collection from the database.
 
         Args:
@@ -1170,32 +1128,34 @@ class DatabaseLogic:
 
         for operation in operations:
             if (
-                operation.get("op") in ["add", "replace"]
-                and operation.get("path") == "collection"
-                and collection_id != operation["value"]
+                operation.op in ["add", "replace"]
+                and operation.path == "collection"
+                and collection_id != operation.value
             ):
-                new_collection_id = operation["value"]
+                new_collection_id = operation.value
 
             else:
                 script_operations.append(operation)
 
         script = operations_to_script(script_operations)
 
-        if not new_collection_id:
-            await self.client.update(
-                index=COLLECTIONS_INDEX,
-                id=collection_id,
-                script=script,
-                refresh=refresh,
-            )
+        await self.client.update(
+            index=COLLECTIONS_INDEX,
+            id=collection_id,
+            script=script,
+            refresh=True,
+        )
 
         collection = await self.find_collection(collection_id)
 
         if new_collection_id:
             collection["id"] = new_collection_id
             collection["links"] = resolve_links([], base_url)
+
             await self.update_collection(
-                collection_id=collection_id, collection=collection, refresh=False
+                collection_id=collection_id,
+                collection=collection,
+                refresh=False,
             )
 
         return collection
@@ -1217,14 +1177,10 @@ class DatabaseLogic:
             function also calls `delete_item_index` to delete the index for the items in the collection.
         """
         await self.find_collection(collection_id=collection_id)
-        await self.client.delete(
-            index=COLLECTIONS_INDEX, id=collection_id, refresh=refresh
-        )
+        await self.client.delete(index=COLLECTIONS_INDEX, id=collection_id, refresh=refresh)
         await delete_item_index(collection_id)
 
-    async def bulk_async(
-        self, collection_id: str, processed_items: List[Item], refresh: bool = False
-    ) -> None:
+    async def bulk_async(self, collection_id: str, processed_items: List[Item], refresh: bool = False) -> None:
         """Perform a bulk insert of items into the database asynchronously.
 
         Args:
@@ -1246,9 +1202,7 @@ class DatabaseLogic:
             raise_on_error=False,
         )
 
-    def bulk_sync(
-        self, collection_id: str, processed_items: List[Item], refresh: bool = False
-    ) -> None:
+    def bulk_sync(self, collection_id: str, processed_items: List[Item], refresh: bool = False) -> None:
         """Perform a bulk insert of items into the database synchronously.
 
         Args:
