@@ -43,9 +43,7 @@ async def test_update_collection(
     collection_data = load_test_data("test_collection.json")
     item_data = load_test_data("test_item.json")
 
-    await txn_client.create_collection(
-        api.Collection(**collection_data), request=MockRequest
-    )
+    await txn_client.create_collection(api.Collection(**collection_data), request=MockRequest)
     await txn_client.create_item(
         collection_id=collection_data["id"],
         item=api.Item(**item_data),
@@ -54,9 +52,7 @@ async def test_update_collection(
     )
 
     collection_data["keywords"].append("new keyword")
-    await txn_client.update_collection(
-        collection_data["id"], api.Collection(**collection_data), request=MockRequest
-    )
+    await txn_client.update_collection(collection_data["id"], api.Collection(**collection_data), request=MockRequest)
 
     coll = await core_client.get_collection(collection_data["id"], request=MockRequest)
     assert "new keyword" in coll["keywords"]
@@ -83,9 +79,7 @@ async def test_update_collection_id(
     item_data = load_test_data("test_item.json")
     new_collection_id = "new-test-collection"
 
-    await txn_client.create_collection(
-        api.Collection(**collection_data), request=MockRequest
-    )
+    await txn_client.create_collection(api.Collection(**collection_data), request=MockRequest)
     await txn_client.create_item(
         collection_id=collection_data["id"],
         item=api.Item(**item_data),
@@ -197,14 +191,10 @@ async def test_get_collection_items(app_client, ctx, core_client, txn_client):
 
 @pytest.mark.asyncio
 async def test_create_item(ctx, core_client, txn_client):
-    resp = await core_client.get_item(
-        ctx.item["id"], ctx.item["collection"], request=MockRequest
-    )
-    assert Item(**ctx.item).model_dump(
-        exclude={"links": ..., "properties": {"created", "updated"}}
-    ) == Item(**resp).model_dump(
-        exclude={"links": ..., "properties": {"created", "updated"}}
-    )
+    resp = await core_client.get_item(ctx.item["id"], ctx.item["collection"], request=MockRequest)
+    assert Item(**ctx.item).model_dump(exclude={"links": ..., "properties": {"created", "updated"}}) == Item(
+        **resp
+    ).model_dump(exclude={"links": ..., "properties": {"created", "updated"}})
 
 
 @pytest.mark.asyncio
@@ -231,10 +221,157 @@ async def test_update_item(ctx, core_client, txn_client):
         request=MockRequest,
     )
 
-    updated_item = await core_client.get_item(
-        item_id, collection_id, request=MockRequest
-    )
+    updated_item = await core_client.get_item(item_id, collection_id, request=MockRequest)
     assert updated_item["properties"]["foo"] == "bar"
+
+
+@pytest.mark.asyncio
+async def test_merge_patch_item(ctx, core_client, txn_client):
+    item = ctx.item
+    collection_id = item["collection"]
+    item_id = item["id"]
+    await txn_client.merge_patch_item(
+        collection_id=collection_id,
+        item_id=item_id,
+        item={"properties": {"foo": "bar", "gsd": None}},
+        request=MockRequest,
+    )
+
+    updated_item = await core_client.get_item(item_id, collection_id, request=MockRequest)
+    assert updated_item["properties"]["foo"] == "bar"
+    assert "gsd" not in updated_item["properties"]
+
+
+@pytest.mark.asyncio
+async def test_json_patch_item(ctx, core_client, txn_client):
+    item = ctx.item
+    collection_id = item["collection"]
+    item_id = item["id"]
+    operations = [
+        {"op": "add", "path": "properties.bar", "value": "foo"},
+        {"op": "remove", "path": "properties.instrument"},
+        {"op": "replace", "path": "properties.width", "value": 100},
+        {"op": "test", "path": "properties.platform", "value": "landsat-8"},
+        {"op": "move", "path": "properties.hello", "from": "properties.height"},
+        {"op": "copy", "path": "properties.world", "from": "properties.proj:epsg"},
+    ]
+
+    await txn_client.json_patch_item(
+        collection_id=collection_id,
+        item_id=item_id,
+        operations=operations,
+        request=MockRequest,
+    )
+
+    updated_item = await core_client.get_item(item_id, collection_id, request=MockRequest)
+
+    # add foo
+    assert updated_item["properties"]["bar"] == "foo"
+    # remove gsd
+    assert "instrument" not in updated_item["properties"]
+    # replace width
+    assert updated_item["properties"]["width"] == 100
+    # move height
+    assert updated_item["properties"]["hello"] == item["properties"]["height"]
+    assert "height" not in updated_item["properties"]
+    # copy proj:epsg
+    assert updated_item["properties"]["world"] == item["properties"]["proj:epsg"]
+    assert updated_item["properties"]["proj:epsg"] == item["properties"]["proj:epsg"]
+
+
+@pytest.mark.asyncio
+async def test_json_patch_item_test_wrong_value(ctx, core_client, txn_client):
+    item = ctx.item
+    collection_id = item["collection"]
+    item_id = item["id"]
+    operations = [
+        {"op": "test", "path": "properties.platform", "value": "landsat-9"},
+    ]
+
+    with pytest.raises(ConflictError):
+
+        await txn_client.json_patch_item(
+            collection_id=collection_id,
+            item_id=item_id,
+            operations=operations,
+            request=MockRequest,
+        )
+
+
+@pytest.mark.asyncio
+async def test_json_patch_item_replace_property_does_not_exists(ctx, core_client, txn_client):
+    item = ctx.item
+    collection_id = item["collection"]
+    item_id = item["id"]
+    operations = [
+        {"op": "replace", "path": "properties.platforms", "value": "landsat-9"},
+    ]
+
+    with pytest.raises(ConflictError):
+
+        await txn_client.json_patch_item(
+            collection_id=collection_id,
+            item_id=item_id,
+            operations=operations,
+            request=MockRequest,
+        )
+
+
+@pytest.mark.asyncio
+async def test_json_patch_item_remove_property_does_not_exists(ctx, core_client, txn_client):
+    item = ctx.item
+    collection_id = item["collection"]
+    item_id = item["id"]
+    operations = [
+        {"op": "remove", "path": "properties.platforms"},
+    ]
+
+    with pytest.raises(ConflictError):
+
+        await txn_client.json_patch_item(
+            collection_id=collection_id,
+            item_id=item_id,
+            operations=operations,
+            request=MockRequest,
+        )
+
+
+@pytest.mark.asyncio
+async def test_json_patch_item_move_property_does_not_exists(ctx, core_client, txn_client):
+    item = ctx.item
+    collection_id = item["collection"]
+    item_id = item["id"]
+    operations = [
+        {"op": "move", "path": "properties.platformed", "from": "properties.platforms"},
+    ]
+
+    with pytest.raises(ConflictError):
+
+        await txn_client.json_patch_item(
+            collection_id=collection_id,
+            item_id=item_id,
+            operations=operations,
+            request=MockRequest,
+        )
+
+
+@pytest.mark.asyncio
+async def test_json_patch_item_copy_property_does_not_exists(ctx, core_client, txn_client):
+    item = ctx.item
+    collection_id = item["collection"]
+    item_id = item["id"]
+    operations = [
+        {"op": "copy", "path": "properties.platformed", "from": "properties.platforms"},
+    ]
+
+    with pytest.raises(ConflictError):
+
+        await txn_client.json_patch_item(
+            collection_id=collection_id,
+            item_id=item_id,
+            operations=operations,
+            request=MockRequest,
+        )
 
 
 @pytest.mark.asyncio
@@ -259,9 +396,7 @@ async def test_update_geometry(ctx, core_client, txn_client):
         request=MockRequest,
     )
 
-    updated_item = await core_client.get_item(
-        item_id, collection_id, request=MockRequest
-    )
+    updated_item = await core_client.get_item(item_id, collection_id, request=MockRequest)
     assert updated_item["geometry"]["coordinates"] == new_coordinates
 
 
@@ -270,9 +405,7 @@ async def test_delete_item(ctx, core_client, txn_client):
     await txn_client.delete_item(ctx.item["id"], ctx.item["collection"])
 
     with pytest.raises(NotFoundError):
-        await core_client.get_item(
-            ctx.item["id"], ctx.item["collection"], request=MockRequest
-        )
+        await core_client.get_item(ctx.item["id"], ctx.item["collection"], request=MockRequest)
 
 
 @pytest.mark.asyncio
@@ -321,9 +454,7 @@ async def test_feature_collection_insert(
 async def test_landing_page_no_collection_title(ctx, core_client, txn_client, app):
     ctx.collection["id"] = "new_id"
     del ctx.collection["title"]
-    await txn_client.create_collection(
-        api.Collection(**ctx.collection), request=MockRequest
-    )
+    await txn_client.create_collection(api.Collection(**ctx.collection), request=MockRequest)
 
     landing_page = await core_client.landing_page(request=MockRequest(app=app))
     for link in landing_page["links"]:

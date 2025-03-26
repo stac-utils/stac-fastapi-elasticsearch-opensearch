@@ -896,10 +896,8 @@ class DatabaseLogic:
         script_operations = []
 
         for operation in operations:
-            if operation.path in [
-                "collection",
-                "id",
-            ] and operation.op in ["add", "replace"]:
+            if operation.path in ["collection", "id"] and operation.op in ["add", "replace"]:
+
                 if operation.path == "collection" and collection_id != operation.value:
                     await self.check_collection_exists(collection_id=operation.value)
                     new_collection_id = operation.value

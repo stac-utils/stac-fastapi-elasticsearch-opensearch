@@ -191,6 +191,7 @@ def operations_to_script(operations: List) -> Dict:
     source = ""
     for operation in operations:
         op_path = ElasticPath(path=operation.path)
+        source = add_script_checks(source, operation.op, op_path)
 
         if hasattr(operation, "from"):
             from_path = ElasticPath(path=(getattr(operation, "from")))
@@ -202,8 +203,6 @@ def operations_to_script(operations: List) -> Dict:
                     f" || (!ctx._source.{from_path.location}.containsKey('{from_path.index}'))"
                     f"{{Debug.explain('{from_path.path} does not exist');}}"
                 )
-
-        source = add_script_checks(source, operation.op, op_path)
 
         if operation.op in ["copy", "move"]:
             if op_path.index:
@@ -235,6 +234,12 @@ def operations_to_script(operations: List) -> Dict:
 
             else:
                 source += f"ctx._source.{op_path.path} = {operation.json_value};"
+
+        if operation.op == "test":
+            source += (
+                f"if (ctx._source.{op_path.location} != {operation.json_value})"
+                f"{{Debug.explain('Test failed for: {op_path.path} | {operation.json_value} != ctx._source.{op_path.location}');}}"
+            )
 
     return {
         "source": source,
