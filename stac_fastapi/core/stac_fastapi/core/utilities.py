@@ -45,7 +45,9 @@ def filter_fields(  # noqa: C901
         return item
 
     # Build a shallow copy of included fields on an item, or a sub-tree of an item
-    def include_fields(source: Dict[str, Any], fields: Optional[Set[str]]) -> Dict[str, Any]:
+    def include_fields(
+        source: Dict[str, Any], fields: Optional[Set[str]]
+    ) -> Dict[str, Any]:
         if not fields:
             return source
 
@@ -58,7 +60,9 @@ def filter_fields(  # noqa: C901
                     # The root of this key path on the item is a dict, and the
                     # key path indicates a sub-key to be included. Walk the dict
                     # from the root key and get the full nested value to include.
-                    value = include_fields(source[key_root], fields={".".join(key_path_parts[1:])})
+                    value = include_fields(
+                        source[key_root], fields={".".join(key_path_parts[1:])}
+                    )
 
                     if isinstance(clean_item.get(key_root), dict):
                         # A previously specified key and sub-keys may have been included
@@ -89,7 +93,9 @@ def filter_fields(  # noqa: C901
             if key_root in source:
                 if isinstance(source[key_root], dict) and len(key_path_part) > 1:
                     # Walk the nested path of this key to remove the leaf-key
-                    exclude_fields(source[key_root], fields={".".join(key_path_part[1:])})
+                    exclude_fields(
+                        source[key_root], fields={".".join(key_path_part[1:])}
+                    )
                     # If, after removing the leaf-key, the root is now an empty
                     # dict, remove it entirely
                     if not source[key_root]:
@@ -121,7 +127,11 @@ def dict_deep_update(merge_to: Dict[str, Any], merge_from: Dict[str, Any]) -> No
     merge_from values take precedence over existing values in merge_to.
     """
     for k, v in merge_from.items():
-        if k in merge_to and isinstance(merge_to[k], dict) and isinstance(merge_from[k], dict):
+        if (
+            k in merge_to
+            and isinstance(merge_to[k], dict)
+            and isinstance(merge_from[k], dict)
+        ):
             dict_deep_update(merge_to[k], merge_from[k])
         else:
             merge_to[k] = v
@@ -168,7 +178,10 @@ def add_script_checks(source: str, op: str, path: ElasticPath) -> str:
         Dict: update source of Elasticsearch script
     """
     if path.nest:
-        source += f"if (!ctx._source.containsKey('{path.nest}'))" f"{{Debug.explain('{path.nest} does not exist');}}"
+        source += (
+            f"if (!ctx._source.containsKey('{path.nest}'))"
+            f"{{Debug.explain('{path.nest} does not exist');}}"
+        )
 
     if path.index or op != "add":
         source += (
@@ -219,7 +232,9 @@ def operations_to_script(operations: List) -> Dict:
             remove_path = from_path if operation.op == "move" else op_path
 
             if remove_path.index:
-                source += f"ctx._source.{remove_path.location}.remove('{remove_path.index}');"
+                source += (
+                    f"ctx._source.{remove_path.location}.remove('{remove_path.index}');"
+                )
 
             else:
                 source += f"ctx._source.remove('{remove_path.location}');"

@@ -20,6 +20,11 @@ class ElasticPath(BaseModel):
     index: Optional[int] = None
 
     def __init__(self, *, path: str):
+        """Convert JSON path to Elasticsearch script path.
+
+        Args:
+            path (str): initial JSON path
+        """
         self.path = path.lstrip("/").replace("/", ".")
 
         self.nest, self.partition, self.key = path.rpartition(".")
@@ -29,7 +34,12 @@ class ElasticPath(BaseModel):
             self.path = f"{self.nest}[{self.index}]"
             self.nest, self.partition, self.key = self.nest.rpartition(".")
 
-    @computed_field
+    @computed_field  # type: ignore[misc]
     @property
     def location(self) -> str:
+        """Compute location of path.
+
+        Returns:
+            str: path location
+        """
         return self.nest + self.partition + self.key
