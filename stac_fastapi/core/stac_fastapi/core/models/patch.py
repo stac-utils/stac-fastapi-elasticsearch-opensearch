@@ -1,8 +1,8 @@
 """patch helpers."""
 
-from typing import Optional
+from typing import Any, Optional
 
-from pydantic import BaseModel, computed_field
+from pydantic import BaseModel, computed_field, model_validator
 
 
 class ElasticPath(BaseModel):
@@ -19,20 +19,22 @@ class ElasticPath(BaseModel):
     key: Optional[str] = None
     index: Optional[int] = None
 
-    def __init__(self, *, path: str):
-        """Convert JSON path to Elasticsearch script path.
+    @model_validator(mode="before")
+    @classmethod
+    def validate_model(cls, data: Any):
+        """Set optional fields from JSON path.
 
         Args:
-            path (str): initial JSON path
+            data (Any): input data
         """
-        self.path = path.lstrip("/").replace("/", ".")
+        data["path"] = data["path"].lstrip("/").replace("/", ".")
 
-        self.nest, self.partition, self.key = path.rpartition(".")
+        data["nest"], data["partition"], data["key"] = data["path"].rpartition(".")
 
-        if self.key.isdigit():
-            self.index = int(self.key)
-            self.path = f"{self.nest}[{self.index}]"
-            self.nest, self.partition, self.key = self.nest.rpartition(".")
+        if data["key"].isdigit():
+            data["index"] = int(data["key"])
+            data["path"] = f"{data['nest']}[{data['index']}]"
+            data["nest"], data["partition"], data["key"] = data["nest"].rpartition(".")
 
     @computed_field  # type: ignore[misc]
     @property
