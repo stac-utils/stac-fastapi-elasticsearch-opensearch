@@ -43,17 +43,24 @@ or
 pip install stac_fastapi.opensearch
 ```
 
-## Build Elasticsearch API backend
+### To install and run via pre-built Docker Images
+
+We provide ready-to-use Docker images through GitHub Container Registry ([ElasticSearch](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pkgs/container/stac-fastapi-es) and [OpenSearch](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pkgs/container/stac-fastapi-os) backends). You can easily pull and run these images:
 
 ```shell
-docker-compose up elasticsearch
-docker-compose build app-elasticsearch
+# For Elasticsearch backend
+docker pull ghcr.io/stac-utils/stac-fastapi-es:latest
+
+# For OpenSearch backend
+docker pull ghcr.io/stac-utils/stac-fastapi-os:latest
 ```
 
-## Running Elasticsearch API on localhost:8080
+## Run Elasticsearch API backend on localhost:8080
+
+You need to ensure [**Docker Compose**](https://docs.docker.com/compose/install/) or [**Podman Compose**](https://podman-desktop.io/docs/compose) installed and running on your machine. In the follwoing command instead of `docker-compose` you can use `podman-compose` as well.
 
 ```shell
-docker-compose up app-elasticsearch
+docker-compose up elasticsearch app-elasticsearch
 ```
 
 By default, docker-compose uses Elasticsearch 8.x and OpenSearch 2.11.1.
@@ -65,6 +72,35 @@ ELASTICSEARCH_VERSION=7.17.1
 OPENSEARCH_VERSION=2.11.0
 ```
 The most recent Elasticsearch 7.x versions should also work. See the [opensearch-py docs](https://github.com/opensearch-project/opensearch-py/blob/main/COMPATIBILITY.md) for compatibility information.
+
+#### **Configuration reference keys:**
+
+You can customize additional settings in your `.env` file:
+###### Key variables to configure:
+
+| Variable                     | Description                                                                          | Default                  | Required                                                                                     |
+|------------------------------|--------------------------------------------------------------------------------------|--------------------------|---------------------------------------------------------------------------------------------|
+| `ES_HOST`                    | Hostname for external Elasticsearch/OpenSearch.                                      | `localhost`              | Optional                                                                                    |
+| `ES_PORT`                    | Port for Elasticsearch/OpenSearch.                                                   | `9200` (ES) / `9202` (OS)| Optional                                                                                    |
+| `ES_USE_SSL`                 | Use SSL for connecting to Elasticsearch/OpenSearch.                                  | `false`                  | Optional                                                                                    |
+| `ES_VERIFY_CERTS`            | Verify SSL certificates when connecting.                                             | `false`                  | Optional                                                                                    |
+| `STAC_FASTAPI_TITLE`         | Title of the API in the documentation.                                               | `stac-fastapi-elasticsearch` or `stac-fastapi-opensearch` | Optional                                                                                    |
+| `STAC_FASTAPI_DESCRIPTION`   | Description of the API in the documentation.                                         | N/A                      | Optional                                                                                    |
+| `STAC_FASTAPI_VERSION`       | API version.                                                                         | `2.1`                    | Optional                                                                                    |
+| `APP_HOST`                   | Server bind address.                                                                 | `0.0.0.0`                | Optional                                                                                    |
+| `APP_PORT`                   | Server port.                                                                         | `8080`                   | Optional                                                                                    |
+| `ENVIRONMENT`                | Runtime environment.                                                                 | `local`                  | Optional                                                                                    |
+| `WEB_CONCURRENCY`            | Number of worker processes.                                                          | `10`                     | Optional                                                                                    |
+| `RELOAD`                     | Enable auto-reload for development.                                                  | `true`                   | Optional                                                                                    |
+| `STAC_FASTAPI_RATE_LIMIT`    | API rate limit per client.                                                           | `200/minute`             | Optional                                                                                    |
+| `BACKEND`                    | Tests-related variable                                                               | `elasticsearch` or `opensearch` based on the backend | Optional                                                                                    |
+| `ELASTICSEARCH_VERSION`      | ElasticSearch version                                                                | `7.17.1`                 | Optional                                                                                    |
+| `OPENSEARCH_VERSION`         | OpenSearch version                                                                   | `2.11.0`                 | Optional                                                                                    |
+
+> [!NOTE]
+> The variables `ES_HOST`, `ES_PORT`, `ES_USE_SSL`, and `ES_VERIFY_CERTS` apply to both Elasticsearch and OpenSearch backends, so there is no need to rename the key names to `OS_` even if you're using OpenSearch.
+
+## Interacting with the API
 
 To create a new Collection:
 
@@ -231,17 +267,17 @@ A reindex operation might be useful to apply changes to documents or to correct 
 
 The index templates will make sure that manually created indices will also have the correct mappings and settings.
 
-In this example, we will make a copy of an existing Item index `items_my-collection-000001` but change the Item identifier to be lowercase.
+In this example, we will make a copy of an existing Item index `items_my-collection-lower_my-collection-hex-000001` but change the Item identifier to be lowercase.
 
 ```shell
 curl -X "POST" "http://localhost:9200/_reindex" \
   -H 'Content-Type: application/json' \
   -d $'{
     "source": {
-      "index": "items_my-collection-000001"
+      "index": "items_my-collection-lower_my-collection-hex-000001"
     }, 
     "dest": {
-      "index": "items_my-collection-000002"
+      "index": "items_my-collection-lower_my-collection-hex-000002"
     },
     "script": {
       "source": "ctx._source.id = ctx._source.id.toLowerCase()",
@@ -250,7 +286,7 @@ curl -X "POST" "http://localhost:9200/_reindex" \
   }'
 ```
 
-If we are happy with the data in the newly created index, we can move the alias `items_my-collection` to the new index `items_my-collection-000002`.
+If we are happy with the data in the newly created index, we can move the alias `items_my-collection` to the new index `items_my-collection-lower_my-collection-hex-000002`.
 ```shell
 curl -X "POST" "http://localhost:9200/_aliases" \
   -h 'Content-Type: application/json' \
@@ -264,7 +300,7 @@ curl -X "POST" "http://localhost:9200/_aliases" \
       },
       {
         "add": {
-          "index": "items_my-collection-000002",
+          "index": "items_my-collection-lower_my-collection-hex-000002",
           "alias": "items_my-collection"
         }
       }
@@ -279,108 +315,10 @@ The modified Items with lowercase identifiers will now be visible to users acces
 
 Authentication is an optional feature that can be enabled through `Route Dependencies` examples can be found and a more detailed explanation in [examples/auth](examples/auth).
 
-
 ## Aggregation
 
-Sfeos supports the STAC API [Aggregation Extension](https://github.com/stac-api-extensions/aggregation). This enables geospatial aggregation of points and geometries, as well as frequency distribution aggregation of any other property including dates. Aggregations can be defined at the root Catalog level (`/aggregations`) and at the Collection level (`/<collection_id>/aggregations`). The `/aggregate` route also fully supports base search and the STAC API [Filter Extension](https://github.com/stac-api-extensions/filter). Any query made with `/search` may also be executed with `/aggregate`, provided that the relevant aggregation fields are available,
+Aggregation of points and geometries, as well as frequency distribution aggregation of any other property including dates is supported in stac-fatsapi-elasticsearch-opensearch. Aggregations can be defined at the root Catalog level (`/aggregations`) and at the Collection level (`/<collection_id>/aggregations`). Details for supported aggregations can be found in [the aggregation docs](./docs/src/aggregation.md)
 
+## Rate Limiting
 
-A field named `aggregations` should be added to the Collection object for the collection for which the aggregations are available, for example:
-
-```json
-"aggregations": [
-    {
-      "name": "total_count",
-      "data_type": "integer"
-    },
-    {
-      "name": "datetime_max",
-      "data_type": "datetime"
-    },
-    {
-      "name": "datetime_min",
-      "data_type": "datetime"
-    },
-    {
-      "name": "datetime_frequency",
-      "data_type": "frequency_distribution",
-      "frequency_distribution_data_type": "datetime"
-    },
-    {
-      "name": "sun_elevation_frequency",
-      "data_type": "frequency_distribution",
-      "frequency_distribution_data_type": "numeric"
-    },
-    {
-      "name": "platform_frequency", 
-      "data_type": "frequency_distribution",
-      "frequency_distribution_data_type": "string"
-    },
-    {
-      "name": "sun_azimuth_frequency",
-      "data_type": "frequency_distribution",
-      "frequency_distribution_data_type": "numeric"
-    },
-    {
-      "name": "off_nadir_frequency",
-      "data_type": "frequency_distribution",
-      "frequency_distribution_data_type": "numeric"
-    },
-    {
-      "name": "cloud_cover_frequency",
-      "data_type": "frequency_distribution",
-      "frequency_distribution_data_type": "numeric"
-    },
-    {
-      "name": "grid_code_frequency",
-      "data_type": "frequency_distribution",
-      "frequency_distribution_data_type": "string"
-    },
-    {
-      "name": "centroid_geohash_grid_frequency",
-      "data_type": "frequency_distribution",
-      "frequency_distribution_data_type": "string"
-    },
-    {
-        "name": "centroid_geohex_grid_frequency",
-        "data_type": "frequency_distribution",
-        "frequency_distribution_data_type": "string"
-    },
-    {
-        "name": "centroid_geotile_grid_frequency",
-        "data_type": "frequency_distribution",
-        "frequency_distribution_data_type": "string"
-    },
-    {
-      "name": "geometry_geohash_grid_frequency",
-      "data_type": "frequency_distribution",
-      "frequency_distribution_data_type": "numeric"
-    },
-    {
-      "name": "geometry_geotile_grid_frequency",
-      "data_type": "frequency_distribution",
-      "frequency_distribution_data_type": "string"
-    }
-]
-  ```
-
-Available aggregations are:
-
-- total_count (count of total items)
-- collection_frequency (Item `collection` field)
-- platform_frequency (Item.Properties.platform)
-- cloud_cover_frequency (Item.Properties.eo:cloud_cover)
-- datetime_frequency (Item.Properties.datetime, monthly interval)
-- datetime_min (earliest Item.Properties.datetime)
-- datetime_max (latest Item.Properties.datetime)
-- sun_elevation_frequency (Item.Properties.view:sun_elevation)
-- sun_azimuth_frequency (Item.Properties.view:sun_azimuth)
-- off_nadir_frequency (Item.Properties.view:off_nadir)
-- grid_code_frequency (Item.Properties.grid:code)
-- centroid_geohash_grid_frequency ([geohash grid](https://opensearch.org/docs/latest/aggregations/bucket/geohash-grid/)  on Item.Properties.proj:centroid)
-- centroid_geohex_grid_frequency ([geohex grid](https://opensearch.org/docs/latest/aggregations/bucket/geohex-grid/) on Item.Properties.proj:centroid)
-- centroid_geotile_grid_frequency (geotile on Item.Properties.proj:centroid)
-- geometry_geohash_grid_frequency ([geohash grid](https://opensearch.org/docs/latest/aggregations/bucket/geohash-grid/) on Item.geometry)
-- geometry_geotile_grid_frequency ([geotile grid](https://opensearch.org/docs/latest/aggregations/bucket/geotile-grid/) on Item.geometry)
-
-Support for additional fields and new aggregations can be added in the associated `database_logic.py` file.
+Rate limiting is an optional security feature that controls API request frequency on a remote address basis. It's enabled by setting the `STAC_FASTAPI_RATE_LIMIT` environment variable, e.g., `500/minute`. This limits each client to 500 requests per minute, helping prevent abuse and maintain API stability. Implementation examples are available in the [examples/rate_limit](examples/rate_limit) directory.

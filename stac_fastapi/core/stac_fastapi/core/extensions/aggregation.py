@@ -50,6 +50,7 @@ class EsAggregationExtensionGetRequest(
     centroid_geotile_grid_frequency_precision: Optional[int] = attr.ib(default=None)
     geometry_geohash_grid_frequency_precision: Optional[int] = attr.ib(default=None)
     geometry_geotile_grid_frequency_precision: Optional[int] = attr.ib(default=None)
+    datetime_frequency_interval: Optional[str] = attr.ib(default=None)
 
 
 class EsAggregationExtensionPostRequest(
@@ -62,6 +63,7 @@ class EsAggregationExtensionPostRequest(
     centroid_geotile_grid_frequency_precision: Optional[int] = None
     geometry_geohash_grid_frequency_precision: Optional[int] = None
     geometry_geotile_grid_frequency_precision: Optional[int] = None
+    datetime_frequency_interval: Optional[str] = None
 
 
 @attr.s
@@ -124,6 +126,8 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
     MAX_GEOHASH_PRECISION = 12
     MAX_GEOHEX_PRECISION = 15
     MAX_GEOTILE_PRECISION = 29
+    SUPPORTED_DATETIME_INTERVAL = {"day", "month", "year"}
+    DEFAULT_DATETIME_INTERVAL = "month"
 
     async def get_aggregations(self, collection_id: Optional[str] = None, **kwargs):
         """Get the available aggregations for a catalog or collection defined in the STAC JSON. If no aggregations, default aggregations are used."""
@@ -143,7 +147,7 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
                     {
                         "rel": "self",
                         "type": "application/json",
-                        "href": urljoin(collection_endpoint, "aggregations"),
+                        "href": urljoin(collection_endpoint + "/", "aggregations"),
                     },
                 ]
             )
@@ -181,6 +185,30 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
             return precision
         else:
             return min_value
+
+    def extract_date_histogram_interval(self, value: Optional[str]) -> str:
+        """
+        Ensure that the interval for the date histogram is valid. If no value is provided, the default will be returned.
+
+        Args:
+            value: value entered by the user
+
+        Returns:
+            string containing the date histogram interval to use.
+
+        Raises:
+            HTTPException: if the supplied value is not in the supported intervals
+        """
+        if value is not None:
+            if value not in self.SUPPORTED_DATETIME_INTERVAL:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid datetime interval. Must be one of {self.SUPPORTED_DATETIME_INTERVAL}",
+                )
+            else:
+                return value
+        else:
+            return self.DEFAULT_DATETIME_INTERVAL
 
     @staticmethod
     def _return_date(
@@ -319,6 +347,7 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
         centroid_geotile_grid_frequency_precision: Optional[int] = None,
         geometry_geohash_grid_frequency_precision: Optional[int] = None,
         geometry_geotile_grid_frequency_precision: Optional[int] = None,
+        datetime_frequency_interval: Optional[str] = None,
         **kwargs,
     ) -> Union[Dict, Exception]:
         """Get aggregations from the database."""
@@ -339,6 +368,7 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
                 "centroid_geotile_grid_frequency_precision": centroid_geotile_grid_frequency_precision,
                 "geometry_geohash_grid_frequency_precision": geometry_geohash_grid_frequency_precision,
                 "geometry_geotile_grid_frequency_precision": geometry_geotile_grid_frequency_precision,
+                "datetime_frequency_interval": datetime_frequency_interval,
             }
 
             if collection_id:
@@ -475,6 +505,10 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
             self.MAX_GEOTILE_PRECISION,
         )
 
+        datetime_frequency_interval = self.extract_date_histogram_interval(
+            aggregate_request.datetime_frequency_interval,
+        )
+
         try:
             db_response = await self.database.aggregate(
                 collections,
@@ -485,6 +519,7 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
                 centroid_geotile_grid_precision,
                 geometry_geohash_grid_precision,
                 geometry_geotile_grid_precision,
+                datetime_frequency_interval,
             )
         except Exception as error:
             if not isinstance(error, IndexError):

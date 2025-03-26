@@ -9,6 +9,11 @@ Authentication is an optional feature that can be enabled through [Route Depende
 Route dependencies for endpoints can enable through the `STAC_FASTAPI_ROUTE_DEPENDENCIES` 
 environment variable as a path to a JSON file or a JSON string.
 
+***NOTE: default dependencies***
+`*` can be used to match all paths. However, if used this must be the only Authentication dependency (multiple can be used through a 
+single merged dependency). Similarly, `*` can be used to match all methods with a route but must also be the only Authentication 
+dependency for that route.
+
 #### Route Dependency
 
 A Route Dependency must include `routes`, a list of at least one [Route](#routes), and `dependencies` a

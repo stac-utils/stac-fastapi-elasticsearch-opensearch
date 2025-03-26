@@ -114,6 +114,14 @@ class CollectionLinks(BaseLinks):
     collection_id: str = attr.ib()
     extensions: List[str] = attr.ib(default=attr.Factory(list))
 
+    def link_self(self) -> Dict:
+        """Return the self link."""
+        return dict(
+            rel=Relations.self.value,
+            type=MimeTypes.json.value,
+            href=urljoin(self.base_url, f"collections/{self.collection_id}"),
+        )
+
     def link_parent(self) -> Dict[str, Any]:
         """Create the `parent` link."""
         return dict(rel=Relations.parent, type=MimeTypes.json.value, href=self.base_url)

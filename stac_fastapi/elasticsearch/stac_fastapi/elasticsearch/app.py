@@ -17,6 +17,7 @@ from stac_fastapi.core.extensions.aggregation import (
     EsAsyncAggregationClient,
 )
 from stac_fastapi.core.extensions.fields import FieldsExtension
+from stac_fastapi.core.rate_limit import setup_rate_limit
 from stac_fastapi.core.route_dependencies import get_route_dependencies
 from stac_fastapi.core.session import Session
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
@@ -28,6 +29,7 @@ from stac_fastapi.elasticsearch.database_logic import (
 from stac_fastapi.extensions.core import (
     AggregationExtension,
     FilterExtension,
+    FreeTextExtension,
     SortExtension,
     TokenPaginationExtension,
     TransactionExtension,
@@ -71,6 +73,7 @@ search_extensions = [
     SortExtension(),
     TokenPaginationExtension(),
     filter_extension,
+    FreeTextExtension(),
 ]
 
 extensions = [aggregation_extension] + search_extensions
@@ -94,6 +97,9 @@ api = StacApi(
 )
 app = api.app
 app.root_path = os.getenv("STAC_FASTAPI_ROOT_PATH", "")
+
+# Add rate limit
+setup_rate_limit(app, rate_limit=os.getenv("STAC_FASTAPI_RATE_LIMIT"))
 
 
 @app.on_event("startup")

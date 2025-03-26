@@ -1,9 +1,11 @@
 """Database logic."""
 
 import asyncio
+import json
 import logging
 import os
 from base64 import urlsafe_b64decode, urlsafe_b64encode
+from copy import deepcopy
 from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple, Type, Union
 
 import attr
@@ -166,9 +168,20 @@ def index_by_collection_id(collection_id: str) -> str:
     Returns:
         str: The index name derived from the collection id.
     """
-    return (
-        f"{ITEMS_INDEX_PREFIX}{''.join(c for c in collection_id.lower() if c not in ES_INDEX_NAME_UNSUPPORTED_CHARS)}"
-    )
+    return f"{ITEMS_INDEX_PREFIX}{''.join(c for c in collection_id.lower() if c not in ES_INDEX_NAME_UNSUPPORTED_CHARS)}_{collection_id.encode('utf-8').hex()}"
+
+
+def index_alias_by_collection_id(collection_id: str) -> str:
+    """
+    Translate a collection id into an Elasticsearch index alias.
+
+    Args:
+        collection_id (str): The collection id to translate into an index alias.
+
+    Returns:
+        str: The index alias derived from the collection id.
+    """
+    return f"{ITEMS_INDEX_PREFIX}{''.join(c for c in collection_id if c not in ES_INDEX_NAME_UNSUPPORTED_CHARS)}"
 
 
 def indices(collection_ids: Optional[List[str]]) -> str:
@@ -181,10 +194,10 @@ def indices(collection_ids: Optional[List[str]]) -> str:
     Returns:
         A string of comma-separated index names. If `collection_ids` is None, returns the default indices.
     """
-    if collection_ids is None:
+    if collection_ids is None or collection_ids == []:
         return ITEM_INDICES
     else:
-        return ",".join([index_by_collection_id(c) for c in collection_ids])
+        return ",".join([index_alias_by_collection_id(c) for c in collection_ids])
 
 
 async def create_index_templates() -> None:
@@ -243,11 +256,10 @@ async def create_item_index(collection_id: str):
 
     """
     client = AsyncElasticsearchSettings().create_client
-    index_name = index_by_collection_id(collection_id)
 
     await client.options(ignore_status=400).indices.create(
         index=f"{index_by_collection_id(collection_id)}-000001",
-        aliases={index_name: {}},
+        aliases={index_alias_by_collection_id(collection_id): {}},
     )
     await client.close()
 
@@ -260,7 +272,7 @@ async def delete_item_index(collection_id: str):
     """
     client = AsyncElasticsearchSettings().create_client
 
-    name = index_by_collection_id(collection_id)
+    name = index_alias_by_collection_id(collection_id)
     resolved = await client.indices.resolve_index(name=name)
     if "aliases" in resolved and resolved["aliases"]:
         [alias] = resolved["aliases"]
@@ -300,7 +312,7 @@ def mk_actions(collection_id: str, processed_items: List[Item]):
     """
     return [
         {
-            "_index": index_by_collection_id(collection_id),
+            "_index": index_alias_by_collection_id(collection_id),
             "_id": mk_item_id(item["id"], item["collection"]),
             "_source": item,
         }
@@ -327,6 +339,71 @@ class DatabaseLogic:
     collection_serializer: Type[CollectionSerializer] = attr.ib(default=CollectionSerializer)
 
     extensions: List[str] = attr.ib(default=attr.Factory(list))
+
+    aggregation_mapping: Dict[str, Dict[str, Any]] = {
+        "total_count": {"value_count": {"field": "id"}},
+        "collection_frequency": {"terms": {"field": "collection", "size": 100}},
+        "platform_frequency": {"terms": {"field": "properties.platform", "size": 100}},
+        "cloud_cover_frequency": {
+            "range": {
+                "field": "properties.eo:cloud_cover",
+                "ranges": [
+                    {"to": 5},
+                    {"from": 5, "to": 15},
+                    {"from": 15, "to": 40},
+                    {"from": 40},
+                ],
+            }
+        },
+        "datetime_frequency": {
+            "date_histogram": {
+                "field": "properties.datetime",
+                "calendar_interval": "month",
+            }
+        },
+        "datetime_min": {"min": {"field": "properties.datetime"}},
+        "datetime_max": {"max": {"field": "properties.datetime"}},
+        "grid_code_frequency": {
+            "terms": {
+                "field": "properties.grid:code",
+                "missing": "none",
+                "size": 10000,
+            }
+        },
+        "sun_elevation_frequency": {"histogram": {"field": "properties.view:sun_elevation", "interval": 5}},
+        "sun_azimuth_frequency": {"histogram": {"field": "properties.view:sun_azimuth", "interval": 5}},
+        "off_nadir_frequency": {"histogram": {"field": "properties.view:off_nadir", "interval": 5}},
+        "centroid_geohash_grid_frequency": {
+            "geohash_grid": {
+                "field": "properties.proj:centroid",
+                "precision": 1,
+            }
+        },
+        "centroid_geohex_grid_frequency": {
+            "geohex_grid": {
+                "field": "properties.proj:centroid",
+                "precision": 0,
+            }
+        },
+        "centroid_geotile_grid_frequency": {
+            "geotile_grid": {
+                "field": "properties.proj:centroid",
+                "precision": 0,
+            }
+        },
+        "geometry_geohash_grid_frequency": {
+            "geohash_grid": {
+                "field": "geometry",
+                "precision": 1,
+            }
+        },
+        "geometry_geotile_grid_frequency": {
+            "geotile_grid": {
+                "field": "geometry",
+                "precision": 0,
+            }
+        },
+    }
 
     """CORE LOGIC"""
 
@@ -388,7 +465,7 @@ class DatabaseLogic:
         """
         try:
             item = await self.client.get(
-                index=index_by_collection_id(collection_id),
+                index=index_alias_by_collection_id(collection_id),
                 id=mk_item_id(item_id, collection_id),
             )
         except exceptions.NotFoundError:
@@ -515,6 +592,15 @@ class DatabaseLogic:
         return search
 
     @staticmethod
+    def apply_free_text_filter(search: Search, free_text_queries: Optional[List[str]]):
+        """Database logic to perform query for search endpoint."""
+        if free_text_queries is not None:
+            free_text_query_string = '" OR properties.\\*:"'.join(free_text_queries)
+            search = search.query("query_string", query=f'properties.\\*:"{free_text_query_string}"')
+
+        return search
+
+    @staticmethod
     def apply_cql2_filter(search: Search, _filter: Optional[Dict[str, Any]]):
         """
         Apply a CQL2 filter to an Elasticsearch Search object.
@@ -581,7 +667,7 @@ class DatabaseLogic:
         search_after = None
 
         if token:
-            search_after = urlsafe_b64decode(token.encode()).decode().split(",")
+            search_after = json.loads(urlsafe_b64decode(token).decode())
 
         query = search.query.to_dict() if search.query else None
 
@@ -621,7 +707,7 @@ class DatabaseLogic:
         next_token = None
         if len(hits) > limit and limit < max_result_window:
             if hits and (sort_array := hits[limit - 1].get("sort")):
-                next_token = urlsafe_b64encode(",".join([str(x) for x in sort_array]).encode()).decode()
+                next_token = urlsafe_b64encode(json.dumps(sort_array).encode()).decode()
 
         matched = es_response["hits"]["total"]["value"] if es_response["hits"]["total"]["relation"] == "eq" else None
         if count_task.done():
@@ -644,44 +730,10 @@ class DatabaseLogic:
         centroid_geotile_grid_precision: int,
         geometry_geohash_grid_precision: int,
         geometry_geotile_grid_precision: int,
+        datetime_frequency_interval: str,
         ignore_unavailable: Optional[bool] = True,
     ):
         """Return aggregations of STAC Items."""
-        agg_2_es = {
-            "total_count": {"value_count": {"field": "id"}},
-            "collection_frequency": {"terms": {"field": "collection", "size": 100}},
-            "platform_frequency": {"terms": {"field": "properties.platform", "size": 100}},
-            "cloud_cover_frequency": {
-                "range": {
-                    "field": "properties.eo:cloud_cover",
-                    "ranges": [
-                        {"to": 5},
-                        {"from": 5, "to": 15},
-                        {"from": 15, "to": 40},
-                        {"from": 40},
-                    ],
-                }
-            },
-            "datetime_frequency": {
-                "date_histogram": {
-                    "field": "properties.datetime",
-                    "calendar_interval": "month",
-                }
-            },
-            "datetime_min": {"min": {"field": "properties.datetime"}},
-            "datetime_max": {"max": {"field": "properties.datetime"}},
-            "grid_code_frequency": {
-                "terms": {
-                    "field": "properties.grid:code",
-                    "missing": "none",
-                    "size": 10000,
-                }
-            },
-            "sun_elevation_frequency": {"histogram": {"field": "properties.view:sun_elevation", "interval": 5}},
-            "sun_azimuth_frequency": {"histogram": {"field": "properties.view:sun_azimuth", "interval": 5}},
-            "off_nadir_frequency": {"histogram": {"field": "properties.view:off_nadir", "interval": 5}},
-        }
-
         search_body: Dict[str, Any] = {}
         query = search.query.to_dict() if search.query else None
         if query:
@@ -689,49 +741,30 @@ class DatabaseLogic:
 
         logger.debug("Aggregations: %s", aggregations)
 
+        def _fill_aggregation_parameters(name: str, agg: dict) -> dict:
+            [key] = agg.keys()
+            agg_precision = {
+                "centroid_geohash_grid_frequency": centroid_geohash_grid_precision,
+                "centroid_geohex_grid_frequency": centroid_geohex_grid_precision,
+                "centroid_geotile_grid_frequency": centroid_geotile_grid_precision,
+                "geometry_geohash_grid_frequency": geometry_geohash_grid_precision,
+                "geometry_geotile_grid_frequency": geometry_geotile_grid_precision,
+            }
+            if name in agg_precision:
+                agg[key]["precision"] = agg_precision[name]
+
+            if key == "date_histogram":
+                agg[key]["calendar_interval"] = datetime_frequency_interval
+
+            return agg
+
         # include all aggregations specified
         # this will ignore aggregations with the wrong names
-        search_body["aggregations"] = {k: v for k, v in agg_2_es.items() if k in aggregations}
-
-        if "centroid_geohash_grid_frequency" in aggregations:
-            search_body["aggregations"]["centroid_geohash_grid_frequency"] = {
-                "geohash_grid": {
-                    "field": "properties.proj:centroid",
-                    "precision": centroid_geohash_grid_precision,
-                }
-            }
-
-        if "centroid_geohex_grid_frequency" in aggregations:
-            search_body["aggregations"]["centroid_geohex_grid_frequency"] = {
-                "geohex_grid": {
-                    "field": "properties.proj:centroid",
-                    "precision": centroid_geohex_grid_precision,
-                }
-            }
-
-        if "centroid_geotile_grid_frequency" in aggregations:
-            search_body["aggregations"]["centroid_geotile_grid_frequency"] = {
-                "geotile_grid": {
-                    "field": "properties.proj:centroid",
-                    "precision": centroid_geotile_grid_precision,
-                }
-            }
-
-        if "geometry_geohash_grid_frequency" in aggregations:
-            search_body["aggregations"]["geometry_geohash_grid_frequency"] = {
-                "geohash_grid": {
-                    "field": "geometry",
-                    "precision": geometry_geohash_grid_precision,
-                }
-            }
-
-        if "geometry_geotile_grid_frequency" in aggregations:
-            search_body["aggregations"]["geometry_geotile_grid_frequency"] = {
-                "geotile_grid": {
-                    "field": "geometry",
-                    "precision": geometry_geotile_grid_precision,
-                }
-            }
+        search_body["aggregations"] = {
+            k: _fill_aggregation_parameters(k, deepcopy(v))
+            for k, v in self.aggregation_mapping.items()
+            if k in aggregations
+        }
 
         index_param = indices(collection_ids)
         search_task = asyncio.create_task(
@@ -775,7 +808,7 @@ class DatabaseLogic:
         await self.check_collection_exists(collection_id=item["collection"])
 
         if not exist_ok and await self.client.exists(
-            index=index_by_collection_id(item["collection"]),
+            index=index_alias_by_collection_id(item["collection"]),
             id=mk_item_id(item["id"], item["collection"]),
         ):
             raise ConflictError(f"Item {item['id']} in collection {item['collection']} already exists")
@@ -808,7 +841,7 @@ class DatabaseLogic:
             raise NotFoundError(f"Collection {collection_id} does not exist")
 
         if not exist_ok and self.sync_client.exists(
-            index=index_by_collection_id(collection_id),
+            index=index_alias_by_collection_id(collection_id),
             id=mk_item_id(item_id, collection_id),
         ):
             raise ConflictError(f"Item {item_id} in collection {collection_id} already exists")
@@ -832,7 +865,7 @@ class DatabaseLogic:
         item_id = item["id"]
         collection_id = item["collection"]
         es_resp = await self.client.index(
-            index=index_by_collection_id(collection_id),
+            index=index_alias_by_collection_id(collection_id),
             id=mk_item_id(item_id, collection_id),
             document=item,
             refresh=refresh,
@@ -972,7 +1005,7 @@ class DatabaseLogic:
         """
         try:
             await self.client.delete(
-                index=index_by_collection_id(collection_id),
+                index=index_alias_by_collection_id(collection_id),
                 id=mk_item_id(item_id, collection_id),
                 refresh=refresh,
             )
