@@ -31,5 +31,5 @@ class ElasticPath(BaseModel):
 
     @computed_field
     @property
-    def location(self):
+    def location(self) -> str:
         return self.nest + self.partition + self.key
