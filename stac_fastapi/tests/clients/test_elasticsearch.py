@@ -392,7 +392,7 @@ async def test_json_patch_item_copy(ctx, core_client, txn_client):
 
 
 @pytest.mark.asyncio
-async def test_json_patch_item_copy(ctx, core_client, txn_client):
+async def test_json_patch_item_remove(ctx, core_client, txn_client):
     item = ctx.item
     collection_id = item["collection"]
     item_id = item["id"]
