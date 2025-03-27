@@ -980,7 +980,7 @@ class DatabaseLogic:
 
         try:
             await self.client.update(
-                index=index_by_collection_id(collection_id),
+                index=index_alias_by_collection_id(collection_id),
                 id=mk_item_id(item_id, collection_id),
                 script=script,
                 refresh=True,

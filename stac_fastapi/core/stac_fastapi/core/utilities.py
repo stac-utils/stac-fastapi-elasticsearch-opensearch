@@ -4,10 +4,16 @@ This module contains functions for transforming geospatial coordinates,
 such as converting bounding boxes to polygon representations.
 """
 
+import re
 from typing import Any, Dict, List, Optional, Set, Union
 
 from stac_fastapi.core.models.patch import ElasticPath
-from stac_fastapi.types.stac import Item, PatchAddReplaceTest, PatchRemove
+from stac_fastapi.types.stac import (
+    Item,
+    PatchAddReplaceTest,
+    PatchOperation,
+    PatchRemove,
+)
 
 MAX_LIMIT = 10000
 
@@ -166,28 +172,148 @@ def merge_to_operations(data: Dict) -> List:
     return operations
 
 
-def add_script_checks(source: str, op: str, path: ElasticPath) -> str:
+def check_commands(
+    commands: List[str],
+    op: str,
+    path: ElasticPath,
+    from_path: bool = False,
+) -> None:
     """Add Elasticsearch checks to operation.
 
     Args:
-        source (str): current source of Elasticsearch script
+        commands (List[str]): current commands
         op (str): the operation of script
         path (Dict): path of variable to run operation on
+        from_path (bool): True if path is a from path
 
-    Returns:
-        Dict: update source of Elasticsearch script
     """
     if path.nest:
-        source += (
+        commands.append(
             f"if (!ctx._source.containsKey('{path.nest}'))"
             f"{{Debug.explain('{path.nest} does not exist');}}"
         )
 
-    if path.index or op != "add":
-        source += (
+    if path.index or op in ["remove", "replace", "test"] or from_path:
+        commands.append(
             f"if (!ctx._source.{path.nest}.containsKey('{path.key}'))"
-            f"{{Debug.explain('{path.path} does not exist');}}"
+            f"{{Debug.explain('{path.key}  does not exist in {path.nest}');}}"
         )
+
+
+def copy_commands(
+    commands: List[str],
+    operation: PatchOperation,
+    path: ElasticPath,
+    from_path: ElasticPath,
+) -> None:
+    """Copy value from path to from path.
+
+    Args:
+        commands (List[str]): current commands
+        operation (PatchOperation): Operation to be converted
+        op_path (ElasticPath): Path to copy to
+        from_path (ElasticPath): Path to copy from
+
+    """
+    check_commands(operation.op, from_path, True)
+
+    if from_path.index:
+        commands.append(
+            f"if ((ctx._source.{from_path.location} instanceof ArrayList"
+            f" && ctx._source.{from_path.location}.size() < {from_path.index})"
+            f" || (!ctx._source.{from_path.location}.containsKey('{from_path.index}'))"
+            f"{{Debug.explain('{from_path.path} does not exist');}}"
+        )
+
+    if path.index:
+        commands.append(
+            f"if (ctx._source.{path.location} instanceof ArrayList)"
+            f"{{ctx._source.{path.location}.add({path.index}, {from_path.path})}}"
+            f"else{{ctx._source.{path.path} = {from_path.path}}}"
+        )
+
+    else:
+        commands.append(f"ctx._source.{path.path} = ctx._source.{from_path.path};")
+
+
+def remove_commands(commands: List[str], path: ElasticPath) -> None:
+    """Remove value at path.
+
+    Args:
+        commands (List[str]): current commands
+        path (ElasticPath): Path to value to be removed
+
+    """
+    if path.index:
+        commands.append(f"ctx._source.{path.location}.remove('{path.index}');")
+
+    else:
+        commands.append(f"ctx._source.{path.nest}.remove('{path.key}');")
+
+
+def add_commands(
+    commands: List[str], operation: PatchOperation, path: ElasticPath
+) -> None:
+    """Add value at path.
+
+    Args:
+        commands (List[str]): current commands
+        operation (PatchOperation): operation to run
+        path (ElasticPath): path for value to be added
+
+    """
+    if path.index:
+        commands.append(
+            f"if (ctx._source.{path.location} instanceof ArrayList)"
+            f"{{ctx._source.{path.location}.add({path.index}, {operation.json_value})}}"
+            f"else{{ctx._source.{path.path} = {operation.json_value}}}"
+        )
+
+    else:
+        commands.append(f"ctx._source.{path.path} = {operation.json_value};")
+
+
+def test_commands(
+    commands: List[str], operation: PatchOperation, path: ElasticPath
+) -> None:
+    """Test value at path.
+
+    Args:
+        commands (List[str]): current commands
+        operation (PatchOperation): operation to run
+        path (ElasticPath): path for value to be tested
+    """
+    commands.append(
+        f"if (ctx._source.{path.location} != {operation.json_value})"
+        f"{{Debug.explain('Test failed for: {path.path} | "
+        f"{operation.json_value} != ' + ctx._source.{path.location});}}"
+    )
+
+
+def commands_to_source(commands: List[str]) -> str:
+    """Convert list of commands to Elasticsearch script source.
+
+    Args:
+        commands (List[str]): List of Elasticearch commands
+
+    Returns:
+        str: Elasticsearch script source
+    """
+    seen: Set[str] = set()
+    seen_add = seen.add
+    regex = re.compile(r"([^.' ]*:[^.' ]*)[. ]")
+    source = ""
+
+    # filter duplicate lines
+    for command in commands:
+        if command not in seen:
+            seen_add(command)
+            # extension terms with using `:` must be swapped out
+            if matches := regex.findall(command):
+                for match in matches:
+                    command = command.replace(f".{match}", f"['{match}']")
+
+            source += command
 
     return source
 
@@ -201,60 +327,29 @@ def operations_to_script(operations: List) -> Dict:
     Returns:
         Dict: elasticsearch update script.
     """
-    source = ""
+    commands: List = []
     for operation in operations:
-        op_path = ElasticPath(path=operation.path)
-        source = add_script_checks(source, operation.op, op_path)
+        path = ElasticPath(path=operation.path)
+        from_path = (
+            ElasticPath(path=operation.from_) if hasattr(operation, "from_") else None
+        )
 
-        if hasattr(operation, "from"):
-            from_path = ElasticPath(path=(getattr(operation, "from")))
-            source = add_script_checks(source, operation.op, from_path)
-            if from_path.index:
-                source += (
-                    f"if ((ctx._source.{from_path.location} instanceof ArrayList"
-                    f" && ctx._source.{from_path.location}.size() < {from_path.index})"
-                    f" || (!ctx._source.{from_path.location}.containsKey('{from_path.index}'))"
-                    f"{{Debug.explain('{from_path.path} does not exist');}}"
-                )
+        check_commands(commands, operation.op, path)
 
         if operation.op in ["copy", "move"]:
-            if op_path.index:
-                source += (
-                    f"if (ctx._source.{op_path.location} instanceof ArrayList)"
-                    f"{{ctx._source.{op_path.location}.add({op_path.index}, {from_path.path})}}"
-                    f"else{{ctx._source.{op_path.path} = {from_path.path}}}"
-                )
-
-            else:
-                source += f"ctx._source.{op_path.path} = ctx._source.{from_path.path};"
+            copy_commands(commands, operation, path, from_path)
 
         if operation.op in ["remove", "move"]:
-            remove_path = from_path if operation.op == "move" else op_path
-
-            if remove_path.index:
-                source += (
-                    f"ctx._source.{remove_path.location}.remove('{remove_path.index}');"
-                )
-
-            else:
-                source += f"ctx._source.remove('{remove_path.location}');"
+            remove_path = from_path if from_path else path
+            remove_commands(commands, remove_path)
 
         if operation.op in ["add", "replace"]:
-            if op_path["index"]:
-                source += (
-                    f"if (ctx._source.{op_path.location} instanceof ArrayList)"
-                    f"{{ctx._source.{op_path.location}.add({op_path.index}, {operation.json_value})}}"
-                    f"else{{ctx._source.{op_path.path} = {operation.json_value}}}"
-                )
-
-            else:
-                source += f"ctx._source.{op_path.path} = {operation.json_value};"
+            add_commands(commands, operation, path)
 
         if operation.op == "test":
-            source += (
-                f"if (ctx._source.{op_path.location} != {operation.json_value})"
-                f"{{Debug.explain('Test failed for: {op_path.path} | {operation.json_value} != ctx._source.{op_path.location}');}}"
-            )
+            test_commands(commands, operation, path)
+
+        source = commands_to_source(commands)
 
     return {
         "source": source,

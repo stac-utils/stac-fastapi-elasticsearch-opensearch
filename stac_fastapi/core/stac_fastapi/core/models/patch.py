@@ -36,6 +36,8 @@ class ElasticPath(BaseModel):
             data["path"] = f"{data['nest']}[{data['index']}]"
             data["nest"], data["partition"], data["key"] = data["nest"].rpartition(".")
 
+        return data
+
     @computed_field  # type: ignore[misc]
     @property
     def location(self) -> str:
