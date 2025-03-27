@@ -36,10 +36,14 @@ FilterLang = Literal["cql-json", "cql2-json", "cql2-text"]
 
 
 @attr.s
-class EsAggregationExtensionGetRequest(AggregationExtensionGetRequest, FilterExtensionGetRequest):
+class EsAggregationExtensionGetRequest(
+    AggregationExtensionGetRequest, FilterExtensionGetRequest
+):
     """Implementation specific query parameters for aggregation precision."""
 
-    collection_id: Optional[Annotated[str, Path(description="Collection ID")]] = attr.ib(default=None)
+    collection_id: Optional[
+        Annotated[str, Path(description="Collection ID")]
+    ] = attr.ib(default=None)
 
     centroid_geohash_grid_frequency_precision: Optional[int] = attr.ib(default=None)
     centroid_geohex_grid_frequency_precision: Optional[int] = attr.ib(default=None)
@@ -49,7 +53,9 @@ class EsAggregationExtensionGetRequest(AggregationExtensionGetRequest, FilterExt
     datetime_frequency_interval: Optional[str] = attr.ib(default=None)
 
 
-class EsAggregationExtensionPostRequest(AggregationExtensionPostRequest, FilterExtensionPostRequest):
+class EsAggregationExtensionPostRequest(
+    AggregationExtensionPostRequest, FilterExtensionPostRequest
+):
     """Implementation specific query parameters for aggregation precision."""
 
     centroid_geohash_grid_frequency_precision: Optional[int] = None
@@ -147,7 +153,9 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
             )
             if await self.database.check_collection_exists(collection_id) is None:
                 collection = await self.database.find_collection(collection_id)
-                aggregations = collection.get("aggregations", self.DEFAULT_AGGREGATIONS.copy())
+                aggregations = collection.get(
+                    "aggregations", self.DEFAULT_AGGREGATIONS.copy()
+                )
             else:
                 raise IndexError(f"Collection {collection_id} does not exist")
         else:
@@ -160,9 +168,13 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
             )
 
             aggregations = self.DEFAULT_AGGREGATIONS
-        return AggregationCollection(type="AggregationCollection", aggregations=aggregations, links=links)
+        return AggregationCollection(
+            type="AggregationCollection", aggregations=aggregations, links=links
+        )
 
-    def extract_precision(self, precision: Union[int, None], min_value: int, max_value: int) -> Optional[int]:
+    def extract_precision(
+        self, precision: Union[int, None], min_value: int, max_value: int
+    ) -> Optional[int]:
         """Ensure that the aggregation precision value is withing the a valid range, otherwise return the minumium value."""
         if precision is not None:
             if precision < min_value or precision > max_value:
@@ -199,7 +211,9 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
             return self.DEFAULT_DATETIME_INTERVAL
 
     @staticmethod
-    def _return_date(interval: Optional[Union[DateTimeType, str]]) -> Dict[str, Optional[str]]:
+    def _return_date(
+        interval: Optional[Union[DateTimeType, str]]
+    ) -> Dict[str, Optional[str]]:
         """
         Convert a date interval.
 
@@ -227,7 +241,9 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
             if "/" in interval:
                 parts = interval.split("/")
                 result["gte"] = parts[0] if parts[0] != ".." else None
-                result["lte"] = parts[1] if len(parts) > 1 and parts[1] != ".." else None
+                result["lte"] = (
+                    parts[1] if len(parts) > 1 and parts[1] != ".." else None
+                )
             else:
                 converted_time = interval if interval != ".." else None
                 result["gte"] = result["lte"] = converted_time
@@ -267,7 +283,9 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
 
     def metric_agg(self, es_aggs, name, data_type):
         """Format an aggregation for a metric aggregation."""
-        value = es_aggs.get(name, {}).get("value_as_string") or es_aggs.get(name, {}).get("value")
+        value = es_aggs.get(name, {}).get("value_as_string") or es_aggs.get(
+            name, {}
+        ).get("value")
         # ES 7.x does not return datetimes with a 'value_as_string' field
         if "datetime" in name and isinstance(value, float):
             value = datetime_to_str(datetime.fromtimestamp(value / 1e3))
@@ -313,7 +331,9 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
     async def aggregate(
         self,
         aggregate_request: Optional[EsAggregationExtensionPostRequest] = None,
-        collection_id: Optional[Annotated[str, Path(description="Collection ID")]] = None,
+        collection_id: Optional[
+            Annotated[str, Path(description="Collection ID")]
+        ] = None,
         collections: Optional[List[str]] = [],
         datetime: Optional[DateTimeType] = None,
         intersects: Optional[str] = None,
@@ -370,7 +390,9 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
 
             filter_lang = "cql2-json"
             if aggregate_request.filter_expr:
-                aggregate_request.filter_expr = self.get_filter(aggregate_request.filter_expr, filter_lang)
+                aggregate_request.filter_expr = self.get_filter(
+                    aggregate_request.filter_expr, filter_lang
+                )
 
         if collection_id:
             if aggregate_request.collections:
@@ -381,18 +403,25 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
             else:
                 aggregate_request.collections = [collection_id]
 
-        if aggregate_request.aggregations is None or aggregate_request.aggregations == []:
+        if (
+            aggregate_request.aggregations is None
+            or aggregate_request.aggregations == []
+        ):
             raise HTTPException(
                 status_code=400,
                 detail="No 'aggregations' found. Use '/aggregations' to return available aggregations",
             )
 
         if aggregate_request.ids:
-            search = self.database.apply_ids_filter(search=search, item_ids=aggregate_request.ids)
+            search = self.database.apply_ids_filter(
+                search=search, item_ids=aggregate_request.ids
+            )
 
         if aggregate_request.datetime:
             datetime_search = self._return_date(aggregate_request.datetime)
-            search = self.database.apply_datetime_filter(search=search, datetime_search=datetime_search)
+            search = self.database.apply_datetime_filter(
+                search=search, datetime_search=datetime_search
+            )
 
         if aggregate_request.bbox:
             bbox = aggregate_request.bbox
@@ -402,14 +431,22 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
             search = self.database.apply_bbox_filter(search=search, bbox=bbox)
 
         if aggregate_request.intersects:
-            search = self.database.apply_intersects_filter(search=search, intersects=aggregate_request.intersects)
+            search = self.database.apply_intersects_filter(
+                search=search, intersects=aggregate_request.intersects
+            )
 
         if aggregate_request.collections:
-            search = self.database.apply_collections_filter(search=search, collection_ids=aggregate_request.collections)
+            search = self.database.apply_collections_filter(
+                search=search, collection_ids=aggregate_request.collections
+            )
             # validate that aggregations are supported for all collections
             for collection_id in aggregate_request.collections:
-                aggs = await self.get_aggregations(collection_id=collection_id, request=request)
-                supported_aggregations = aggs["aggregations"] + self.DEFAULT_AGGREGATIONS
+                aggs = await self.get_aggregations(
+                    collection_id=collection_id, request=request
+                )
+                supported_aggregations = (
+                    aggs["aggregations"] + self.DEFAULT_AGGREGATIONS
+                )
 
                 for agg_name in aggregate_request.aggregations:
                     if agg_name not in set([x["name"] for x in supported_aggregations]):
@@ -430,9 +467,13 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
 
         if aggregate_request.filter:
             try:
-                search = self.database.apply_cql2_filter(search, aggregate_request.filter)
+                search = self.database.apply_cql2_filter(
+                    search, aggregate_request.filter
+                )
             except Exception as e:
-                raise HTTPException(status_code=400, detail=f"Error with cql2 filter: {e}")
+                raise HTTPException(
+                    status_code=400, detail=f"Error with cql2 filter: {e}"
+                )
 
         centroid_geohash_grid_precision = self.extract_precision(
             aggregate_request.centroid_geohash_grid_frequency_precision,
@@ -487,13 +528,20 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
         if db_response:
             result_aggs = db_response.get("aggregations", {})
             for agg in {
-                frozenset(item.items()): item for item in supported_aggregations + self.GEO_POINT_AGGREGATIONS
+                frozenset(item.items()): item
+                for item in supported_aggregations + self.GEO_POINT_AGGREGATIONS
             }.values():
                 if agg["name"] in aggregate_request.aggregations:
                     if agg["name"].endswith("_frequency"):
-                        aggs.append(self.frequency_agg(result_aggs, agg["name"], agg["data_type"]))
+                        aggs.append(
+                            self.frequency_agg(
+                                result_aggs, agg["name"], agg["data_type"]
+                            )
+                        )
                     else:
-                        aggs.append(self.metric_agg(result_aggs, agg["name"], agg["data_type"]))
+                        aggs.append(
+                            self.metric_agg(result_aggs, agg["name"], agg["data_type"])
+                        )
         links = [
             {"rel": "root", "type": "application/json", "href": base_url},
         ]
@@ -522,6 +570,8 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
                     "href": urljoin(base_url, "aggregate"),
                 }
             )
-        results = AggregationCollection(type="AggregationCollection", aggregations=aggs, links=links)
+        results = AggregationCollection(
+            type="AggregationCollection", aggregations=aggs, links=links
+        )
 
         return results
