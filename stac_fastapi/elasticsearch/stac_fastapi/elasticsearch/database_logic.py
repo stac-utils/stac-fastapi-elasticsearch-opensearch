@@ -987,7 +987,9 @@ class DatabaseLogic:
             )
 
         except exceptions.BadRequestError as exc:
-            raise KeyError(exc.info["error"]["caused_by"]["to_string"]) from exc
+            raise exceptions.BadRequestError(
+                exc.info["error"]["caused_by"]["to_string"]
+            ) from exc
 
         item = await self.get_one_item(collection_id, item_id)
 

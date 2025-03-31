@@ -8,7 +8,12 @@ import re
 from typing import Any, Dict, List, Optional, Set, Union
 
 from stac_fastapi.core.models.patch import ElasticPath
-from stac_fastapi.types.stac import Item, PatchOperation
+from stac_fastapi.types.stac import (
+    Item,
+    PatchAddReplaceTest,
+    PatchOperation,
+    PatchRemove,
+)
 
 MAX_LIMIT = 10000
 
@@ -152,7 +157,7 @@ def merge_to_operations(data: Dict) -> List:
     for key, value in data.copy().items():
 
         if value is None:
-            operations.append(PatchOperation(op="remove", path=key))
+            operations.append(PatchRemove(op="remove", path=key))
 
         elif isinstance(value, dict):
             nested_operations = merge_to_operations(value)
@@ -162,7 +167,7 @@ def merge_to_operations(data: Dict) -> List:
                 operations.append(nested_operation)
 
         else:
-            operations.append(PatchOperation(op="add", path=key, value=value))
+            operations.append(PatchAddReplaceTest(op="add", path=key, value=value))
 
     return operations
 
@@ -210,7 +215,7 @@ def copy_commands(
         from_path (ElasticPath): Path to copy from
 
     """
-    check_commands(operation.op, from_path, True)
+    check_commands(commands=commands, op=operation.op, path=from_path, from_path=True)
 
     if from_path.index:
         commands.append(
@@ -329,22 +334,24 @@ def operations_to_script(operations: List) -> Dict:
             ElasticPath(path=operation.from_) if hasattr(operation, "from_") else None
         )
 
-        check_commands(commands, operation.op, path)
+        check_commands(commands=commands, op=operation.op, path=path)
 
         if operation.op in ["copy", "move"]:
-            copy_commands(commands, operation, path, from_path)
+            copy_commands(
+                commands=commands, operation=operation, path=path, from_path=from_path
+            )
 
         if operation.op in ["remove", "move"]:
             remove_path = from_path if from_path else path
-            remove_commands(commands, remove_path)
+            remove_commands(commands=commands, path=remove_path)
 
         if operation.op in ["add", "replace"]:
-            add_commands(commands, operation, path)
+            add_commands(commands=commands, operation=operation, path=path)
 
         if operation.op == "test":
-            test_commands(commands, operation, path)
+            test_commands(commands=commands, operation=operation, path=path)
 
-        source = commands_to_source(commands)
+        source = commands_to_source(commands=commands)
 
     return {
         "source": source,
