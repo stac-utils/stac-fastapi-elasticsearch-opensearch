@@ -369,6 +369,7 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
                 "geometry_geohash_grid_frequency_precision": geometry_geohash_grid_frequency_precision,
                 "geometry_geotile_grid_frequency_precision": geometry_geotile_grid_frequency_precision,
                 "datetime_frequency_interval": datetime_frequency_interval,
+                "datetime": datetime,
             }
 
             if collection_id:
@@ -376,9 +377,6 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
 
             if intersects:
                 base_args["intersects"] = orjson.loads(unquote_plus(intersects))
-
-            if datetime:
-                base_args["datetime"] = self._format_datetime_range(datetime)
 
             if filter_expr:
                 base_args["filter"] = self.get_filter(filter_expr, filter_lang)

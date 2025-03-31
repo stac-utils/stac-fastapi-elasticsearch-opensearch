@@ -7,7 +7,7 @@ from stac_pydantic import Item, api
 
 from stac_fastapi.extensions.third_party.bulk_transactions import Items
 from stac_fastapi.types.errors import ConflictError, NotFoundError
-from stac_fastapi.types.stac import PatchOperation
+from stac_fastapi.types.stac import PatchAddReplaceTest, PatchMoveCopy, PatchRemove
 
 from ..conftest import MockRequest, create_item
 
@@ -282,7 +282,9 @@ async def test_json_patch_item_add(ctx, core_client, txn_client):
     collection_id = item["collection"]
     item_id = item["id"]
     operations = [
-        PatchOperation(**{"op": "add", "path": "properties.foo", "value": "bar"}),
+        PatchAddReplaceTest.model_validate(
+            {"op": "add", "path": "properties.foo", "value": "bar"}
+        ),
     ]
 
     await txn_client.json_patch_item(
@@ -305,7 +307,9 @@ async def test_json_patch_item_replace(ctx, core_client, txn_client):
     collection_id = item["collection"]
     item_id = item["id"]
     operations = [
-        PatchOperation(**{"op": "replace", "path": "properties.foo", "value": 100}),
+        PatchAddReplaceTest.model_validate(
+            {"op": "replace", "path": "properties.foo", "value": 100}
+        ),
     ]
 
     await txn_client.json_patch_item(
@@ -328,7 +332,9 @@ async def test_json_patch_item_test(ctx, core_client, txn_client):
     collection_id = item["collection"]
     item_id = item["id"]
     operations = [
-        PatchOperation(**{"op": "test", "path": "properties.foo", "value": 100}),
+        PatchAddReplaceTest.model_validate(
+            {"op": "test", "path": "properties.foo", "value": 100}
+        ),
     ]
 
     await txn_client.json_patch_item(
@@ -351,8 +357,8 @@ async def test_json_patch_item_move(ctx, core_client, txn_client):
     collection_id = item["collection"]
     item_id = item["id"]
     operations = [
-        PatchOperation(
-            **{"op": "move", "path": "properties.bar", "from": "properties.foo"}
+        PatchMoveCopy.model_validate(
+            {"op": "move", "path": "properties.bar", "from": "properties.foo"}
         ),
     ]
 
@@ -377,8 +383,8 @@ async def test_json_patch_item_copy(ctx, core_client, txn_client):
     collection_id = item["collection"]
     item_id = item["id"]
     operations = [
-        PatchOperation(
-            **{"op": "copy", "path": "properties.foo", "from": "properties.bar"}
+        PatchMoveCopy.model_validate(
+            {"op": "copy", "path": "properties.foo", "from": "properties.bar"}
         ),
     ]
 
@@ -402,8 +408,8 @@ async def test_json_patch_item_remove(ctx, core_client, txn_client):
     collection_id = item["collection"]
     item_id = item["id"]
     operations = [
-        PatchOperation(**{"op": "remove", "path": "properties.foo"}),
-        PatchOperation(**{"op": "remove", "path": "properties.bar"}),
+        PatchRemove.model_validate({"op": "remove", "path": "properties.foo"}),
+        PatchRemove.model_validate({"op": "remove", "path": "properties.bar"}),
     ]
 
     await txn_client.json_patch_item(
@@ -427,8 +433,8 @@ async def test_json_patch_item_test_wrong_value(ctx, core_client, txn_client):
     collection_id = item["collection"]
     item_id = item["id"]
     operations = [
-        PatchOperation(
-            **{"op": "test", "path": "properties.platform", "value": "landsat-9"}
+        PatchAddReplaceTest.model_validate(
+            {"op": "test", "path": "properties.platform", "value": "landsat-9"}
         ),
     ]
 
@@ -450,8 +456,8 @@ async def test_json_patch_item_replace_property_does_not_exists(
     collection_id = item["collection"]
     item_id = item["id"]
     operations = [
-        PatchOperation(
-            **{"op": "replace", "path": "properties.foo", "value": "landsat-9"}
+        PatchAddReplaceTest.model_validate(
+            {"op": "replace", "path": "properties.foo", "value": "landsat-9"}
         ),
     ]
 
@@ -473,7 +479,7 @@ async def test_json_patch_item_remove_property_does_not_exists(
     collection_id = item["collection"]
     item_id = item["id"]
     operations = [
-        PatchOperation(**{"op": "remove", "path": "properties.foo"}),
+        PatchRemove.model_validate({"op": "remove", "path": "properties.foo"}),
     ]
 
     with pytest.raises(ConflictError):
@@ -494,8 +500,8 @@ async def test_json_patch_item_move_property_does_not_exists(
     collection_id = item["collection"]
     item_id = item["id"]
     operations = [
-        PatchOperation(
-            **{"op": "move", "path": "properties.bar", "from": "properties.foo"}
+        PatchMoveCopy.model_validate(
+            {"op": "move", "path": "properties.bar", "from": "properties.foo"}
         ),
     ]
 
@@ -517,8 +523,8 @@ async def test_json_patch_item_copy_property_does_not_exists(
     collection_id = item["collection"]
     item_id = item["id"]
     operations = [
-        PatchOperation(
-            **{"op": "copy", "path": "properties.bar", "from": "properties.foo"}
+        PatchMoveCopy.model_validate(
+            {"op": "copy", "path": "properties.bar", "from": "properties.foo"}
         ),
     ]
 

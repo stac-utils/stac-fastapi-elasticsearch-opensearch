@@ -493,10 +493,8 @@ class CoreClient(AsyncBaseCoreClient):
             "token": token,
             "query": orjson.loads(query) if query else query,
             "q": q,
+            "datetime": datetime,
         }
-
-        if datetime:
-            base_args["datetime"] = self._format_datetime_range(datetime)
 
         if intersects:
             base_args["intersects"] = orjson.loads(unquote_plus(intersects))
@@ -508,7 +506,6 @@ class CoreClient(AsyncBaseCoreClient):
             ]
 
         if filter_expr:
-            print("GET FE", filter_expr)
             base_args["filter-lang"] = "cql2-json"
             base_args["filter"] = orjson.loads(
                 unquote_plus(filter_expr)
