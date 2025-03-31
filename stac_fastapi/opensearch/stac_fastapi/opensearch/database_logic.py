@@ -9,6 +9,7 @@ from copy import deepcopy
 from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple, Type, Union
 
 import attr
+from fastapi import HTTPException
 from opensearchpy import exceptions, helpers
 from opensearchpy.exceptions import TransportError
 from opensearchpy.helpers.query import Q
@@ -1019,8 +1020,8 @@ class DatabaseLogic:
             )
 
         except exceptions.BadRequestError as exc:
-            raise exceptions.BadRequestError(
-                exc.info["error"]["caused_by"]["to_string"]
+            raise HTTPException(
+                status_code=400, detail=exc.info["error"]["caused_by"]["to_string"]
             ) from exc
 
         item = await self.get_one_item(collection_id, item_id)

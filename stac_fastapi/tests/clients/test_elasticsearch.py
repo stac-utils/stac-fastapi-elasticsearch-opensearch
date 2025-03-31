@@ -1,15 +1,10 @@
-import os
 import uuid
 from copy import deepcopy
 from typing import Callable
 
 import pytest
+from fastapi import HTTPException
 from stac_pydantic import Item, api
-
-if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
-    from elasticsearch import exceptions
-else:
-    from opensearchpy import exceptions
 
 from stac_fastapi.extensions.third_party.bulk_transactions import Items
 from stac_fastapi.types.errors import ConflictError, NotFoundError
@@ -441,7 +436,7 @@ async def test_json_patch_item_test_wrong_value(ctx, core_client, txn_client):
         ),
     ]
 
-    with pytest.raises(exceptions.BadRequestError):
+    with pytest.raises(HTTPException):
 
         await txn_client.json_patch_item(
             collection_id=collection_id,
@@ -464,7 +459,7 @@ async def test_json_patch_item_replace_property_does_not_exists(
         ),
     ]
 
-    with pytest.raises(exceptions.BadRequestError):
+    with pytest.raises(HTTPException):
 
         await txn_client.json_patch_item(
             collection_id=collection_id,
@@ -485,7 +480,7 @@ async def test_json_patch_item_remove_property_does_not_exists(
         PatchRemove.model_validate({"op": "remove", "path": "properties.foo"}),
     ]
 
-    with pytest.raises(exceptions.BadRequestError):
+    with pytest.raises(HTTPException):
 
         await txn_client.json_patch_item(
             collection_id=collection_id,
@@ -508,7 +503,7 @@ async def test_json_patch_item_move_property_does_not_exists(
         ),
     ]
 
-    with pytest.raises(exceptions.BadRequestError):
+    with pytest.raises(HTTPException):
 
         await txn_client.json_patch_item(
             collection_id=collection_id,
@@ -531,7 +526,7 @@ async def test_json_patch_item_copy_property_does_not_exists(
         ),
     ]
 
-    with pytest.raises(exceptions.BadRequestError):
+    with pytest.raises(HTTPException):
 
         await txn_client.json_patch_item(
             collection_id=collection_id,
