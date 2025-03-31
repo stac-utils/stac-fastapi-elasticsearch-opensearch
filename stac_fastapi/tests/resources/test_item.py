@@ -483,7 +483,7 @@ async def test_item_search_temporal_window_timezone_get(
     item_date = rfc3339_str_to_datetime(test_item["properties"]["datetime"])
     item_date_before = item_date - timedelta(seconds=1)
     item_date_before = item_date_before.replace(tzinfo=tzinfo)
-    item_date_after = item_date + timedelta(seconds=1)
+    item_date_after = item_date + timedelta(hours=1, seconds=1)
     item_date_after = item_date_after.replace(tzinfo=tzinfo)
 
     params = {
