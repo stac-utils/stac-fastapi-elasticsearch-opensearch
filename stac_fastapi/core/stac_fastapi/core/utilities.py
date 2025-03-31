@@ -8,12 +8,7 @@ import re
 from typing import Any, Dict, List, Optional, Set, Union
 
 from stac_fastapi.core.models.patch import ElasticPath
-from stac_fastapi.types.stac import (
-    Item,
-    PatchAddReplaceTest,
-    PatchOperation,
-    PatchRemove,
-)
+from stac_fastapi.types.stac import Item, PatchOperation
 
 MAX_LIMIT = 10000
 
@@ -157,7 +152,7 @@ def merge_to_operations(data: Dict) -> List:
     for key, value in data.copy().items():
 
         if value is None:
-            operations.append(PatchRemove(op="remove", path=key))
+            operations.append(PatchOperation(op="remove", path=key))
 
         elif isinstance(value, dict):
             nested_operations = merge_to_operations(value)
@@ -167,7 +162,7 @@ def merge_to_operations(data: Dict) -> List:
                 operations.append(nested_operation)
 
         else:
-            operations.append(PatchAddReplaceTest(op="add", path=key, value=value))
+            operations.append(PatchOperation(op="add", path=key, value=value))
 
     return operations
 

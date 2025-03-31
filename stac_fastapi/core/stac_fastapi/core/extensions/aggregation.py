@@ -338,7 +338,7 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
         datetime: Optional[DateTimeType] = None,
         intersects: Optional[str] = None,
         filter_lang: Optional[str] = None,
-        filter: Optional[str] = None,
+        filter_expr: Optional[str] = None,
         aggregations: Optional[str] = None,
         ids: Optional[List[str]] = None,
         bbox: Optional[BBox] = None,
@@ -380,8 +380,8 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
             if datetime:
                 base_args["datetime"] = self._format_datetime_range(datetime)
 
-            if filter:
-                base_args["filter"] = self.get_filter(filter, filter_lang)
+            if filter_expr:
+                base_args["filter"] = self.get_filter(filter_expr, filter_lang)
             aggregate_request = EsAggregationExtensionPostRequest(**base_args)
         else:
             # Workaround for optional path param in POST requests

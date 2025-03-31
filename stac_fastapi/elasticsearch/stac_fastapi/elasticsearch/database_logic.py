@@ -619,7 +619,7 @@ class DatabaseLogic:
         return search
 
     @staticmethod
-    def apply_cql2_filter(search: Search, _filter: Optional[Dict[str, Any]]):
+    def apply_cql2_filter(search: Search, filter_expr: Optional[Dict[str, Any]]):
         """
         Apply a CQL2 filter to an Elasticsearch Search object.
 
@@ -638,8 +638,8 @@ class DatabaseLogic:
             Search: The modified Search object with the filter applied if a filter is provided,
                     otherwise the original Search object.
         """
-        if _filter is not None:
-            es_query = filter.to_es(_filter)
+        if filter_expr is not None:
+            es_query = filter.to_es(filter_expr)
             search = search.query(es_query)
 
         return search

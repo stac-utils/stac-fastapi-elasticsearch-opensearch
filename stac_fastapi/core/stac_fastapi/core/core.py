@@ -459,7 +459,7 @@ class CoreClient(AsyncBaseCoreClient):
         sortby: Optional[str] = None,
         q: Optional[List[str]] = None,
         intersects: Optional[str] = None,
-        filter: Optional[str] = None,
+        filter_expr: Optional[str] = None,
         filter_lang: Optional[str] = None,
         **kwargs,
     ) -> stac_types.ItemCollection:
@@ -507,12 +507,13 @@ class CoreClient(AsyncBaseCoreClient):
                 for sort in sortby
             ]
 
-        if filter:
+        if filter_expr:
+            print("GET FE", filter_expr)
             base_args["filter-lang"] = "cql2-json"
             base_args["filter"] = orjson.loads(
-                unquote_plus(filter)
+                unquote_plus(filter_expr)
                 if filter_lang == "cql2-json"
-                else to_cql2(parse_cql2_text(filter))
+                else to_cql2(parse_cql2_text(filter_expr))
             )
 
         if fields:
@@ -594,10 +595,11 @@ class CoreClient(AsyncBaseCoreClient):
                     )
 
         # only cql2_json is supported here
-        if hasattr(search_request, "filter"):
-            cql2_filter = getattr(search_request, "filter", None)
+        if search_request.filter_expr:
             try:
-                search = self.database.apply_cql2_filter(search, cql2_filter)
+                search = self.database.apply_cql2_filter(
+                    search, search_request.filter_expr
+                )
             except Exception as e:
                 raise HTTPException(
                     status_code=400, detail=f"Error with cql2_json filter: {e}"
