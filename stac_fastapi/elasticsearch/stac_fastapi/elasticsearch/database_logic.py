@@ -1216,12 +1216,18 @@ class DatabaseLogic:
 
         script = operations_to_script(script_operations)
 
-        await self.client.update(
-            index=COLLECTIONS_INDEX,
-            id=collection_id,
-            script=script,
-            refresh=True,
-        )
+        try:
+            await self.client.update(
+                index=COLLECTIONS_INDEX,
+                id=collection_id,
+                script=script,
+                refresh=True,
+            )
+
+        except exceptions.BadRequestError as exc:
+            raise HTTPException(
+                status_code=400, detail=exc.info["error"]["caused_by"]["to_string"]
+            ) from exc
 
         collection = await self.find_collection(collection_id)
 

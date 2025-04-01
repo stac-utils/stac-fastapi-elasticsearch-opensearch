@@ -916,6 +916,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             operations=operations,
             base_url=str(kwargs["request"].base_url),
         )
+
         return CollectionSerializer.db_to_stac(
             collection,
             kwargs["request"],

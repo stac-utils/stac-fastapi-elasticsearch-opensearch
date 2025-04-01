@@ -1013,7 +1013,7 @@ class DatabaseLogic:
 
         try:
             await self.client.update(
-                index=index_by_collection_id(collection_id),
+                index=index_alias_by_collection_id(collection_id),
                 id=mk_item_id(item_id, collection_id),
                 body={"script": script},
                 refresh=True,
@@ -1248,13 +1248,18 @@ class DatabaseLogic:
 
         script = operations_to_script(script_operations)
 
-        if not new_collection_id:
+        try:
             await self.client.update(
                 index=COLLECTIONS_INDEX,
                 id=collection_id,
-                body={"script": script},
-                refresh=refresh,
+                script=script,
+                refresh=True,
             )
+
+        except exceptions.BadRequestError as exc:
+            raise HTTPException(
+                status_code=400, detail=exc.info["error"]["caused_by"]["to_string"]
+            ) from exc
 
         collection = await self.find_collection(collection_id)
 
