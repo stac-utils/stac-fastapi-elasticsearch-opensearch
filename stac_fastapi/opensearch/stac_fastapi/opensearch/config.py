@@ -15,13 +15,20 @@ def _es_config() -> Dict[str, Any]:
     scheme = "https" if use_ssl else "http"
 
     # Configure the hosts parameter with the correct scheme
-    hosts = [f"{scheme}://{os.getenv('ES_HOST')}:{os.getenv('ES_PORT')}"]
+    hosts = [
+        f"{scheme}://{host.strip()}:{os.getenv('ES_PORT')}"
+        for host in os.getenv("ES_HOST").split(",")
+    ]
 
     # Initialize the configuration dictionary
-    config = {
+    config: Dict[str, Any] = {
         "hosts": hosts,
         "headers": {"accept": "application/json", "Content-Type": "application/json"},
     }
+
+    http_compress = os.getenv("ES_HTTP_COMPRESS", "true").lower() == "true"
+    if http_compress:
+        config["http_compress"] = True
 
     # Explicitly exclude SSL settings when not using SSL
     if not use_ssl:
