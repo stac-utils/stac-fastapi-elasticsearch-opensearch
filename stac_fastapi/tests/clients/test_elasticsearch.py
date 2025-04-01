@@ -717,8 +717,10 @@ async def test_json_patch_collection_add(ctx, core_client, txn_client):
     collection_id = collection["id"]
     operations = [
         PatchAddReplaceTest.model_validate(
-            {"op": "add", "path": "summaries.foo", "value": "bar"},
-            {"op": "add", "path": "summaries.gsd.1", "value": 100},
+            {"op": "add", "path": "/summaries/foo", "value": "bar"},
+        ),
+        PatchAddReplaceTest.model_validate(
+            {"op": "add", "path": "/summaries/gsd/1", "value": 100},
         ),
     ]
 
@@ -742,7 +744,7 @@ async def test_json_patch_collection_replace(ctx, core_client, txn_client):
     collection_id = collection["id"]
     operations = [
         PatchAddReplaceTest.model_validate(
-            {"op": "replace", "path": "summaries.gsd", "value": [100]}
+            {"op": "replace", "path": "/summaries/gsd", "value": [100]}
         ),
     ]
 
@@ -756,7 +758,7 @@ async def test_json_patch_collection_replace(ctx, core_client, txn_client):
         collection_id, request=MockRequest
     )
 
-    assert updated_collection["summaries"]["gsd"] == 100
+    assert updated_collection["summaries"]["gsd"] == [100]
 
 
 @pytest.mark.asyncio
@@ -765,7 +767,7 @@ async def test_json_patch_collection_test(ctx, core_client, txn_client):
     collection_id = collection["id"]
     operations = [
         PatchAddReplaceTest.model_validate(
-            {"op": "test", "path": "summaries.gsd", "value": 15}
+            {"op": "test", "path": "/summaries/gsd", "value": [30]}
         ),
     ]
 
@@ -779,7 +781,7 @@ async def test_json_patch_collection_test(ctx, core_client, txn_client):
         collection_id, request=MockRequest
     )
 
-    assert updated_collection["summaries"]["gsd"] == 15
+    assert updated_collection["summaries"]["gsd"] == [30]
 
 
 @pytest.mark.asyncio
@@ -788,7 +790,7 @@ async def test_json_patch_collection_move(ctx, core_client, txn_client):
     collection_id = collection["id"]
     operations = [
         PatchMoveCopy.model_validate(
-            {"op": "move", "path": "summaries.bar", "from": "summaries.gsd"}
+            {"op": "move", "path": "/summaries/bar", "from": "/summaries/gsd"}
         ),
     ]
 
@@ -802,7 +804,7 @@ async def test_json_patch_collection_move(ctx, core_client, txn_client):
         collection_id, request=MockRequest
     )
 
-    assert updated_collection["summaries"]["bar"] == [15]
+    assert updated_collection["summaries"]["bar"] == [30]
     assert "gsd" not in updated_collection["summaries"]
 
 
@@ -812,7 +814,7 @@ async def test_json_patch_collection_copy(ctx, core_client, txn_client):
     collection_id = collection["id"]
     operations = [
         PatchMoveCopy.model_validate(
-            {"op": "copy", "path": "summaries.foo", "from": "summaries.gsd"}
+            {"op": "copy", "path": "/summaries/foo", "from": "/summaries/gsd"}
         ),
     ]
 
@@ -836,7 +838,7 @@ async def test_json_patch_collection_remove(ctx, core_client, txn_client):
     collection = ctx.collection
     collection_id = collection["id"]
     operations = [
-        PatchRemove.model_validate({"op": "remove", "path": "summaries.gsd"}),
+        PatchRemove.model_validate({"op": "remove", "path": "/summaries/gsd"}),
     ]
 
     await txn_client.json_patch_collection(
@@ -858,7 +860,7 @@ async def test_json_patch_collection_test_wrong_value(ctx, core_client, txn_clie
     collection_id = collection["id"]
     operations = [
         PatchAddReplaceTest.model_validate(
-            {"op": "test", "path": "summaries.platform", "value": "landsat-9"}
+            {"op": "test", "path": "/summaries/platform", "value": "landsat-9"}
         ),
     ]
 
@@ -879,7 +881,7 @@ async def test_json_patch_collection_replace_property_does_not_exists(
     collection_id = collection["id"]
     operations = [
         PatchAddReplaceTest.model_validate(
-            {"op": "replace", "path": "summaries.foo", "value": "landsat-9"}
+            {"op": "replace", "path": "/summaries/foo", "value": "landsat-9"}
         ),
     ]
 
@@ -899,7 +901,7 @@ async def test_json_patch_collection_remove_property_does_not_exists(
     collection = ctx.collection
     collection_id = collection["id"]
     operations = [
-        PatchRemove.model_validate({"op": "remove", "path": "summaries.foo"}),
+        PatchRemove.model_validate({"op": "remove", "path": "/summaries/foo"}),
     ]
 
     with pytest.raises(HTTPException):
@@ -919,7 +921,7 @@ async def test_json_patch_collection_move_property_does_not_exists(
     collection_id = collection["id"]
     operations = [
         PatchMoveCopy.model_validate(
-            {"op": "move", "path": "summaries.bar", "from": "summaries.foo"}
+            {"op": "move", "path": "/summaries/bar", "from": "/summaries/foo"}
         ),
     ]
 
@@ -940,7 +942,7 @@ async def test_json_patch_collection_copy_property_does_not_exists(
     collection_id = collection["id"]
     operations = [
         PatchMoveCopy.model_validate(
-            {"op": "copy", "path": "summaries.bar", "from": "summaries.foo"}
+            {"op": "copy", "path": "/summaries/bar", "from": "/summaries/foo"}
         ),
     ]
 

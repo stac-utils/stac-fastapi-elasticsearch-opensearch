@@ -17,7 +17,7 @@ class ElasticPath(BaseModel):
     nest: Optional[str] = None
     partition: Optional[str] = None
     key: Optional[str] = None
-    _index: Optional[int] = None
+    index_: Optional[int] = None
 
     @model_validator(mode="before")
     @classmethod
@@ -28,16 +28,16 @@ class ElasticPath(BaseModel):
             data (Any): input data
         """
         data["path"] = data["path"].lstrip("/").replace("/", ".")
-
         data["nest"], data["partition"], data["key"] = data["path"].rpartition(".")
 
-        if data["key"].isdigit() or data["key"] == "-":
-            data["_index"] = -1 if data["key"] == "-" else int(data["key"])
+        if data["key"].lstrip("-").isdigit() or data["key"] == "-":
+            data["index_"] = -1 if data["key"] == "-" else int(data["key"])
+            data["path"] = f"{data['nest']}[{data['index_']}]"
             data["nest"], data["partition"], data["key"] = data["nest"].rpartition(".")
-            data["path"] = f"{data['nest']}[{data['_index']}]"
 
         return data
 
+    @computed_field  # type: ignore[misc]
     @property
     def index(self) -> Union[int, str, None]:
         """Compute location of path.
@@ -45,11 +45,11 @@ class ElasticPath(BaseModel):
         Returns:
             str: path location
         """
-        if self._index and self._index < 0:
+        if self.index_ and self.index_ < 0:
 
-            return f"ctx._source.{self.location}.size() - {-self._index}"
+            return f"ctx._source.{self.location}.size() - {-self.index_}"
 
-        return self._index
+        return self.index_
 
     @computed_field  # type: ignore[misc]
     @property

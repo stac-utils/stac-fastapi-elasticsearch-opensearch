@@ -245,7 +245,7 @@ def remove_commands(commands: List[str], path: ElasticPath) -> None:
 
     """
     if path.index:
-        commands.append(f"ctx._source.{path.location}.remove('{path.index}');")
+        commands.append(f"ctx._source.{path.location}.remove({path.index});")
 
     else:
         commands.append(f"ctx._source.{path.nest}.remove('{path.key}');")
