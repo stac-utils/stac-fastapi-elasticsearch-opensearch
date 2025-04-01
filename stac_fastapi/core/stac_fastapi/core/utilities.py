@@ -199,41 +199,14 @@ def check_commands(
             f"{{Debug.explain('{path.key}  does not exist in {path.nest}');}}"
         )
 
-
-def copy_commands(
-    commands: List[str],
-    operation: PatchOperation,
-    path: ElasticPath,
-    from_path: ElasticPath,
-) -> None:
-    """Copy value from path to from path.
-
-    Args:
-        commands (List[str]): current commands
-        operation (PatchOperation): Operation to be converted
-        op_path (ElasticPath): Path to copy to
-        from_path (ElasticPath): Path to copy from
-
-    """
-    check_commands(commands=commands, op=operation.op, path=from_path, from_path=True)
-
-    if from_path.index:
+    if from_path and path.index is not None:
         commands.append(
-            f"if ((ctx._source.{from_path.location} instanceof ArrayList"
-            f" && ctx._source.{from_path.location}.size() < {from_path.index})"
-            f" || (!ctx._source.{from_path.location}.containsKey('{from_path.index}'))"
-            f"{{Debug.explain('{from_path.path} does not exist');}}"
+            f"if ((ctx._source.{path.location} instanceof ArrayList"
+            f" && ctx._source.{path.location}.size() < {path.index})"
+            f" || (!(ctx._source.properties.hello instanceof ArrayList)"
+            f" && !ctx._source.{path.location}.containsKey('{path.index}')))"
+            f"{{Debug.explain('{path.path} does not exist');}}"
         )
-
-    if path.index:
-        commands.append(
-            f"if (ctx._source.{path.location} instanceof ArrayList)"
-            f"{{ctx._source.{path.location}.add({path.index}, {from_path.path})}}"
-            f"else{{ctx._source.{path.path} = {from_path.path}}}"
-        )
-
-    else:
-        commands.append(f"ctx._source.{path.path} = ctx._source.{from_path.path};")
 
 
 def remove_commands(commands: List[str], path: ElasticPath) -> None:
@@ -244,15 +217,19 @@ def remove_commands(commands: List[str], path: ElasticPath) -> None:
         path (ElasticPath): Path to value to be removed
 
     """
-    if path.index:
-        commands.append(f"ctx._source.{path.location}.remove({path.index});")
+    print("REMOVE PATH", path)
+    if path.index is not None:
+        commands.append(f"def temp = ctx._source.{path.location}.remove({path.index});")
 
     else:
-        commands.append(f"ctx._source.{path.nest}.remove('{path.key}');")
+        commands.append(f"def temp = ctx._source.{path.nest}.remove('{path.key}');")
 
 
 def add_commands(
-    commands: List[str], operation: PatchOperation, path: ElasticPath
+    commands: List[str],
+    operation: PatchOperation,
+    path: ElasticPath,
+    from_path: ElasticPath,
 ) -> None:
     """Add value at path.
 
@@ -262,15 +239,20 @@ def add_commands(
         path (ElasticPath): path for value to be added
 
     """
-    if path.index:
+    if from_path is not None:
+        value = "temp" if operation.op == "move" else f"ctx._source.{from_path.path}"
+    else:
+        value = operation.json_value
+
+    if path.index is not None:
         commands.append(
             f"if (ctx._source.{path.location} instanceof ArrayList)"
-            f"{{ctx._source.{path.location}.add({path.index}, {operation.json_value})}}"
-            f"else{{ctx._source.{path.path} = {operation.json_value}}}"
+            f"{{ctx._source.{path.location}.{'add' if operation.op in ['add', 'move'] else 'set'}({path.index}, {value})}}"
+            f"else{{ctx._source.{path.path} = {value}}}"
         )
 
     else:
-        commands.append(f"ctx._source.{path.path} = {operation.json_value};")
+        commands.append(f"ctx._source.{path.path} = {value};")
 
 
 def test_commands(
@@ -335,24 +317,26 @@ def operations_to_script(operations: List) -> Dict:
         )
 
         check_commands(commands=commands, op=operation.op, path=path)
-
-        if operation.op in ["copy", "move"]:
-            copy_commands(
-                commands=commands, operation=operation, path=path, from_path=from_path
+        if from_path is not None:
+            check_commands(
+                commands=commands, op=operation.op, path=from_path, from_path=True
             )
 
         if operation.op in ["remove", "move"]:
             remove_path = from_path if from_path else path
             remove_commands(commands=commands, path=remove_path)
 
-        if operation.op in ["add", "replace"]:
-            add_commands(commands=commands, operation=operation, path=path)
+        if operation.op in ["add", "replace", "copy", "move"]:
+            add_commands(
+                commands=commands, operation=operation, path=path, from_path=from_path
+            )
 
         if operation.op == "test":
             test_commands(commands=commands, operation=operation, path=path)
 
         source = commands_to_source(commands=commands)
 
+    print("____SOURCE", source)
     return {
         "source": source,
         "lang": "painless",

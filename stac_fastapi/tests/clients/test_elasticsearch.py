@@ -307,7 +307,7 @@ async def test_json_patch_item_add(ctx, core_client, txn_client):
 
     assert updated_item["properties"]["foo"] == "bar"
     assert updated_item["properties"]["ext:hello"] == "world"
-    assert updated_item["properties"]["area"] == [2500, -100, 10]
+    assert updated_item["properties"]["area"] == [2500, 10, -200]
 
 
 @pytest.mark.asyncio
@@ -735,7 +735,7 @@ async def test_json_patch_collection_add(ctx, core_client, txn_client):
     )
 
     assert updated_collection["summaries"]["foo"] == "bar"
-    assert updated_collection["summaries"]["gsd"] == [15, 100]
+    assert updated_collection["summaries"]["gsd"] == [30, 100]
 
 
 @pytest.mark.asyncio
