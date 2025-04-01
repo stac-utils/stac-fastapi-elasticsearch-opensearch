@@ -993,7 +993,6 @@ class DatabaseLogic:
                 if "to_string" in exc.info["error"]["caused_by"]
                 else exc.info["error"]["caused_by"]
             )
-            print("____________EXC INFO", exc.info)
             raise HTTPException(status_code=400, detail=detail) from exc
 
         item = await self.get_one_item(collection_id, item_id)
@@ -1229,10 +1228,12 @@ class DatabaseLogic:
             )
 
         except exceptions.BadRequestError as exc:
-            print("EXC", exc.info)
-            raise HTTPException(
-                status_code=400, detail=exc.info["error"]["caused_by"]["to_string"]
-            ) from exc
+            detail = (
+                exc.info["error"]["caused_by"]["to_string"]
+                if "to_string" in exc.info["error"]["caused_by"]
+                else exc.info["error"]["caused_by"]
+            )
+            raise HTTPException(status_code=400, detail=detail) from exc
 
         collection = await self.find_collection(collection_id)
 

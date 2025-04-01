@@ -217,7 +217,6 @@ def remove_commands(commands: List[str], path: ElasticPath) -> None:
         path (ElasticPath): Path to value to be removed
 
     """
-    print("REMOVE PATH", path)
     if path.index is not None:
         commands.append(f"def temp = ctx._source.{path.location}.remove({path.index});")
 
@@ -336,7 +335,6 @@ def operations_to_script(operations: List) -> Dict:
 
         source = commands_to_source(commands=commands)
 
-    print("____SOURCE", source)
     return {
         "source": source,
         "lang": "painless",
