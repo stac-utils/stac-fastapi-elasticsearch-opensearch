@@ -4,10 +4,9 @@ This module contains functions for transforming geospatial coordinates,
 such as converting bounding boxes to polygon representations.
 """
 
-import re
 from typing import Any, Dict, List, Optional, Set, Union
 
-from stac_fastapi.core.models.patch import ElasticPath
+from stac_fastapi.core.models.patch import ElasticPath, ESCommandSet
 from stac_fastapi.types.stac import (
     Item,
     PatchAddReplaceTest,
@@ -173,7 +172,7 @@ def merge_to_operations(data: Dict) -> List:
 
 
 def check_commands(
-    commands: List[str],
+    commands: ESCommandSet,
     op: str,
     path: ElasticPath,
     from_path: bool = False,
@@ -188,28 +187,28 @@ def check_commands(
 
     """
     if path.nest:
-        commands.append(
+        commands.add(
             f"if (!ctx._source.containsKey('{path.nest}'))"
             f"{{Debug.explain('{path.nest} does not exist');}}"
         )
 
     if path.index or op in ["remove", "replace", "test"] or from_path:
-        commands.append(
-            f"if (!ctx._source.{path.nest}.containsKey('{path.key}'))"
+        commands.add(
+            f"if (!ctx._source.{path.es_nest}.containsKey('{path.key}'))"
             f"{{Debug.explain('{path.key}  does not exist in {path.nest}');}}"
         )
 
     if from_path and path.index is not None:
-        commands.append(
-            f"if ((ctx._source.{path.location} instanceof ArrayList"
-            f" && ctx._source.{path.location}.size() < {path.index})"
+        commands.add(
+            f"if ((ctx._source.{path.es_location} instanceof ArrayList"
+            f" && ctx._source.{path.es_location}.size() < {path.index})"
             f" || (!(ctx._source.properties.hello instanceof ArrayList)"
-            f" && !ctx._source.{path.location}.containsKey('{path.index}')))"
+            f" && !ctx._source.{path.es_location}.containsKey('{path.index}')))"
             f"{{Debug.explain('{path.path} does not exist');}}"
         )
 
 
-def remove_commands(commands: List[str], path: ElasticPath) -> None:
+def remove_commands(commands: ESCommandSet, path: ElasticPath) -> None:
     """Remove value at path.
 
     Args:
@@ -218,14 +217,18 @@ def remove_commands(commands: List[str], path: ElasticPath) -> None:
 
     """
     if path.index is not None:
-        commands.append(f"def temp = ctx._source.{path.location}.remove({path.index});")
+        commands.add(
+            f"def {path.variable_name} = ctx._source.{path.es_location}.remove({path.index});"
+        )
 
     else:
-        commands.append(f"def temp = ctx._source.{path.nest}.remove('{path.key}');")
+        commands.add(
+            f"def {path.variable_name} = ctx._source.{path.es_nest}.remove('{path.key}');"
+        )
 
 
 def add_commands(
-    commands: List[str],
+    commands: ESCommandSet,
     operation: PatchOperation,
     path: ElasticPath,
     from_path: ElasticPath,
@@ -239,23 +242,27 @@ def add_commands(
 
     """
     if from_path is not None:
-        value = "temp" if operation.op == "move" else f"ctx._source.{from_path.path}"
+        value = (
+            from_path.variable_name
+            if operation.op == "move"
+            else f"ctx._source.{from_path.es_path}"
+        )
     else:
         value = operation.json_value
 
     if path.index is not None:
-        commands.append(
-            f"if (ctx._source.{path.location} instanceof ArrayList)"
-            f"{{ctx._source.{path.location}.{'add' if operation.op in ['add', 'move'] else 'set'}({path.index}, {value})}}"
-            f"else{{ctx._source.{path.path} = {value}}}"
+        commands.add(
+            f"if (ctx._source.{path.es_location} instanceof ArrayList)"
+            f"{{ctx._source.{path.es_location}.{'add' if operation.op in ['add', 'move'] else 'set'}({path.index}, {value})}}"
+            f"else{{ctx._source.{path.es_path} = {value}}}"
         )
 
     else:
-        commands.append(f"ctx._source.{path.path} = {value};")
+        commands.add(f"ctx._source.{path.es_path} = {value};")
 
 
 def test_commands(
-    commands: List[str], operation: PatchOperation, path: ElasticPath
+    commands: ESCommandSet, operation: PatchOperation, path: ElasticPath
 ) -> None:
     """Test value at path.
 
@@ -264,10 +271,10 @@ def test_commands(
         operation (PatchOperation): operation to run
         path (ElasticPath): path for value to be tested
     """
-    commands.append(
-        f"if (ctx._source.{path.location} != {operation.json_value})"
-        f"{{Debug.explain('Test failed for: {path.path} | "
-        f"{operation.json_value} != ' + ctx._source.{path.location});}}"
+    commands.add(
+        f"if (ctx._source.{path.es_path} != {operation.json_value})"
+        f"{{Debug.explain('Test failed `{path.path}` | "
+        f"{operation.json_value} != ' + ctx._source.{path.es_path});}}"
     )
 
 
@@ -282,18 +289,13 @@ def commands_to_source(commands: List[str]) -> str:
     """
     seen: Set[str] = set()
     seen_add = seen.add
-    regex = re.compile(r"([^.' ]*:[^.' ]*)[. ]")
+    # regex = re.compile(r"([^.' ]*:[^.' ]*)[. ;]")
     source = ""
 
     # filter duplicate lines
     for command in commands:
         if command not in seen:
             seen_add(command)
-            # extension terms with using `:` must be swapped out
-            if matches := regex.findall(command):
-                for match in matches:
-                    command = command.replace(f".{match}", f"['{match}']")
-
             source += command
 
     return source
@@ -308,7 +310,7 @@ def operations_to_script(operations: List) -> Dict:
     Returns:
         Dict: elasticsearch update script.
     """
-    commands: List = []
+    commands: ESCommandSet = ESCommandSet()
     for operation in operations:
         path = ElasticPath(path=operation.path)
         from_path = (
@@ -333,7 +335,7 @@ def operations_to_script(operations: List) -> Dict:
         if operation.op == "test":
             test_commands(commands=commands, operation=operation, path=path)
 
-        source = commands_to_source(commands=commands)
+        source = "".join(commands)
 
     return {
         "source": source,

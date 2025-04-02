@@ -323,7 +323,7 @@ async def test_json_patch_item_replace(ctx, core_client, txn_client):
             {"op": "replace", "path": "/properties/proj:epsg", "value": "world"}
         ),
         PatchAddReplaceTest.model_validate(
-            {"op": "replace", "path": "/properties/area/1", "value": "50"}
+            {"op": "replace", "path": "/properties/area/1", "value": 50}
         ),
     ]
 
@@ -339,7 +339,7 @@ async def test_json_patch_item_replace(ctx, core_client, txn_client):
     )
 
     assert updated_item["properties"]["gsd"] == 100
-    assert updated_item["properties"]["proj:epsg"] == 100
+    assert updated_item["properties"]["proj:epsg"] == "world"
     assert updated_item["properties"]["area"] == [2500, 50]
 
 
@@ -356,7 +356,7 @@ async def test_json_patch_item_test(ctx, core_client, txn_client):
             {"op": "test", "path": "/properties/proj:epsg", "value": 32756}
         ),
         PatchAddReplaceTest.model_validate(
-            {"op": "test", "path": "/properties/area/1", "value": -100}
+            {"op": "test", "path": "/properties/area/1", "value": -200}
         ),
     ]
 
@@ -373,7 +373,7 @@ async def test_json_patch_item_test(ctx, core_client, txn_client):
 
     assert updated_item["properties"]["gsd"] == 15
     assert updated_item["properties"]["proj:epsg"] == 32756
-    assert updated_item["properties"]["area"][1] == -100
+    assert updated_item["properties"]["area"][1] == -200
 
 
 @pytest.mark.asyncio
@@ -389,7 +389,7 @@ async def test_json_patch_item_move(ctx, core_client, txn_client):
             {"op": "move", "path": "/properties/bar", "from": "/properties/proj:epsg"}
         ),
         PatchMoveCopy.model_validate(
-            {"op": "move", "path": "/properties/hello", "from": "/properties/area/1"}
+            {"op": "move", "path": "/properties/area/0", "from": "/properties/area/1"}
         ),
     ]
 
@@ -408,8 +408,7 @@ async def test_json_patch_item_move(ctx, core_client, txn_client):
     assert "gsd" not in updated_item["properties"]
     assert updated_item["properties"]["bar"] == 32756
     assert "proj:epsg" not in updated_item["properties"]
-    assert updated_item["properties"]["hello"] == [-100]
-    assert updated_item["properties"]["area"] == [2500]
+    assert updated_item["properties"]["area"] == [-200, 2500]
 
 
 @pytest.mark.asyncio
@@ -425,7 +424,7 @@ async def test_json_patch_item_copy(ctx, core_client, txn_client):
             {"op": "copy", "path": "/properties/bar", "from": "/properties/proj:epsg"}
         ),
         PatchMoveCopy.model_validate(
-            {"op": "copy", "path": "/properties/hello", "from": "/properties/area/1"}
+            {"op": "copy", "path": "/properties/area/0", "from": "/properties/area/1"}
         ),
     ]
 
@@ -442,7 +441,9 @@ async def test_json_patch_item_copy(ctx, core_client, txn_client):
 
     assert updated_item["properties"]["foo"] == updated_item["properties"]["gsd"]
     assert updated_item["properties"]["bar"] == updated_item["properties"]["proj:epsg"]
-    assert updated_item["properties"]["hello"] == updated_item["properties"]["area"][1]
+    assert (
+        updated_item["properties"]["area"][0] == updated_item["properties"]["area"][1]
+    )
 
 
 @pytest.mark.asyncio
