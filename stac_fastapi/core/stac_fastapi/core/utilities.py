@@ -278,29 +278,6 @@ def test_commands(
     )
 
 
-def commands_to_source(commands: List[str]) -> str:
-    """Convert list of commands to Elasticsearch script source.
-
-    Args:
-        commands (List[str]): List of Elasticearch commands
-
-    Returns:
-        str: Elasticsearch script source
-    """
-    seen: Set[str] = set()
-    seen_add = seen.add
-    # regex = re.compile(r"([^.' ]*:[^.' ]*)[. ;]")
-    source = ""
-
-    # filter duplicate lines
-    for command in commands:
-        if command not in seen:
-            seen_add(command)
-            source += command
-
-    return source
-
-
 def operations_to_script(operations: List) -> Dict:
     """Convert list of operation to painless script.
 

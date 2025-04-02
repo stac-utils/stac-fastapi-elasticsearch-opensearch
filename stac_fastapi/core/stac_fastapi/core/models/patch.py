@@ -17,6 +17,10 @@ class ESCommandSet:
 
     dict_: Dict[str, None] = {}
 
+    def __init__(self):
+        """Initialise ESCommandSet instance."""
+        self.dict_ = {}
+
     def add(self, value: str):
         """Add command.
 

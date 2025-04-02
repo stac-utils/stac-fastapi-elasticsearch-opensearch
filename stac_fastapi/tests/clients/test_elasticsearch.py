@@ -320,7 +320,7 @@ async def test_json_patch_item_replace(ctx, core_client, txn_client):
             {"op": "replace", "path": "/properties/gsd", "value": 100}
         ),
         PatchAddReplaceTest.model_validate(
-            {"op": "replace", "path": "/properties/proj:epsg", "value": "world"}
+            {"op": "replace", "path": "/properties/proj:epsg", "value": 12345}
         ),
         PatchAddReplaceTest.model_validate(
             {"op": "replace", "path": "/properties/area/1", "value": 50}
@@ -339,7 +339,7 @@ async def test_json_patch_item_replace(ctx, core_client, txn_client):
     )
 
     assert updated_item["properties"]["gsd"] == 100
-    assert updated_item["properties"]["proj:epsg"] == "world"
+    assert updated_item["properties"]["proj:epsg"] == 12345
     assert updated_item["properties"]["area"] == [2500, 50]
 
 
