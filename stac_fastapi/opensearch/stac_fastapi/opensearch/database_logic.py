@@ -1021,7 +1021,7 @@ class DatabaseLogic:
 
         except exceptions.RequestError as exc:
             raise HTTPException(
-                status_code=400, detail=exc.info["error"]["caused_by"]["to_string"]
+                status_code=400, detail=exc.info["error"]["caused_by"]
             ) from exc
 
         item = await self.get_one_item(collection_id, item_id)
@@ -1237,8 +1237,8 @@ class DatabaseLogic:
 
         for operation in operations:
             if (
-                operation["op"] in ["add", "replace"]
-                and operation["path"] == "collection"
+                operation.op in ["add", "replace"]
+                and operation.path == "collection"
                 and collection_id != operation["value"]
             ):
                 new_collection_id = operation["value"]
@@ -1252,13 +1252,14 @@ class DatabaseLogic:
             await self.client.update(
                 index=COLLECTIONS_INDEX,
                 id=collection_id,
-                script=script,
+                body={"script": script},
                 refresh=True,
             )
 
         except exceptions.BadRequestError as exc:
+
             raise HTTPException(
-                status_code=400, detail=exc.info["error"]["caused_by"]["to_string"]
+                status_code=400, detail=exc.info["error"]["caused_by"]
             ) from exc
 
         collection = await self.find_collection(collection_id)
