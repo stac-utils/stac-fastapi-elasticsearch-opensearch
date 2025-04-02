@@ -1256,7 +1256,7 @@ class DatabaseLogic:
                 refresh=True,
             )
 
-        except exceptions.BadRequestError as exc:
+        except exceptions.RequestError as exc:
 
             raise HTTPException(
                 status_code=400, detail=exc.info["error"]["caused_by"]
