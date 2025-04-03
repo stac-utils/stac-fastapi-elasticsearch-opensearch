@@ -1,4 +1,5 @@
 import os
+from functools import lru_cache
 from typing import Any, Dict, List, Optional, Protocol
 
 from stac_fastapi.types.stac import Item
@@ -14,6 +15,7 @@ class Geometry(Protocol):  # noqa
 
 COLLECTIONS_INDEX = os.getenv("STAC_COLLECTIONS_INDEX", "collections")
 ITEMS_INDEX_PREFIX = os.getenv("STAC_ITEMS_INDEX_PREFIX", "items_")
+
 ES_INDEX_NAME_UNSUPPORTED_CHARS = {
     "\\",
     "/",
@@ -28,6 +30,10 @@ ES_INDEX_NAME_UNSUPPORTED_CHARS = {
     "#",
     ":",
 }
+
+_ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE = str.maketrans(
+    "", "", "".join(ES_INDEX_NAME_UNSUPPORTED_CHARS)
+)
 
 ITEM_INDICES = f"{ITEMS_INDEX_PREFIX}*,-*kibana*,-{COLLECTIONS_INDEX}*"
 
@@ -131,6 +137,7 @@ ES_COLLECTIONS_MAPPINGS = {
 }
 
 
+@lru_cache(256)
 def index_by_collection_id(collection_id: str) -> str:
     """
     Translate a collection id into an Elasticsearch index name.
@@ -141,9 +148,13 @@ def index_by_collection_id(collection_id: str) -> str:
     Returns:
         str: The index name derived from the collection id.
     """
-    return f"{ITEMS_INDEX_PREFIX}{''.join(c for c in collection_id.lower() if c not in ES_INDEX_NAME_UNSUPPORTED_CHARS)}_{collection_id.encode('utf-8').hex()}"
+    cleaned = collection_id.translate(_ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE)
+    return (
+        f"{ITEMS_INDEX_PREFIX}{cleaned.lower()}_{collection_id.encode('utf-8').hex()}"
+    )
 
 
+@lru_cache(256)
 def index_alias_by_collection_id(collection_id: str) -> str:
     """
     Translate a collection id into an Elasticsearch index alias.
@@ -154,7 +165,8 @@ def index_alias_by_collection_id(collection_id: str) -> str:
     Returns:
         str: The index alias derived from the collection id.
     """
-    return f"{ITEMS_INDEX_PREFIX}{''.join(c for c in collection_id if c not in ES_INDEX_NAME_UNSUPPORTED_CHARS)}"
+    cleaned = collection_id.translate(_ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE)
+    return f"{ITEMS_INDEX_PREFIX}{cleaned}"
 
 
 def indices(collection_ids: Optional[List[str]]) -> str:
@@ -165,12 +177,13 @@ def indices(collection_ids: Optional[List[str]]) -> str:
         collection_ids: A list of collection ids.
 
     Returns:
-        A string of comma-separated index names. If `collection_ids` is None, returns the default indices.
+        A string of comma-separated index names. If `collection_ids` is empty, returns the default indices.
     """
-    if not collection_ids:
-        return ITEM_INDICES
-    else:
-        return ",".join([index_alias_by_collection_id(c) for c in collection_ids])
+    return (
+        ",".join(map(index_alias_by_collection_id, collection_ids))
+        if collection_ids
+        else ITEM_INDICES
+    )
 
 
 def mk_item_id(item_id: str, collection_id: str) -> str:
