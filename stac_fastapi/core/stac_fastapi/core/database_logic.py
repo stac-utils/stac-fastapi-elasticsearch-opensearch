@@ -167,7 +167,7 @@ def indices(collection_ids: Optional[List[str]]) -> str:
     Returns:
         A string of comma-separated index names. If `collection_ids` is None, returns the default indices.
     """
-    if collection_ids is None or collection_ids == []:
+    if not collection_ids:
         return ITEM_INDICES
     else:
         return ",".join([index_alias_by_collection_id(c) for c in collection_ids])
