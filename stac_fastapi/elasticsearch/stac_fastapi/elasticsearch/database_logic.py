@@ -725,6 +725,24 @@ class DatabaseLogic:
                 f"Item {item_id} in collection {collection_id} not found"
             )
 
+    async def get_items_mapping(self, collection_id: str) -> Dict[str, Any]:
+        """Get the mapping for the specified collection's items index.
+
+        Args:
+            collection_id (str): The ID of the collection to get items mapping for.
+
+        Returns:
+            Dict[str, Any]: The mapping information.
+        """
+        index_name = index_alias_by_collection_id(collection_id)
+        try:
+            mapping = await self.client.indices.get_mapping(
+                index=index_name, allow_no_indices=False
+            )
+            return mapping.body
+        except exceptions.NotFoundError:
+            raise NotFoundError(f"Mapping for index {index_name} not found")
+
     async def create_collection(self, collection: Collection, refresh: bool = False):
         """Create a single collection in the database.
 
