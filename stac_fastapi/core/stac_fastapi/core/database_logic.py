@@ -200,9 +200,10 @@ def mk_actions(collection_id: str, processed_items: List[Item]):
         - `_id`: the document's identifier.
         - `_source`: the source of the document.
     """
+    index_alias = index_alias_by_collection_id(collection_id)
     return [
         {
-            "_index": index_alias_by_collection_id(collection_id),
+            "_index": index_alias,
             "_id": mk_item_id(item["id"], item["collection"]),
             "_source": item,
         }
