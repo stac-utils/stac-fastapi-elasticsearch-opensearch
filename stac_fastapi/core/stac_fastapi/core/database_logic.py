@@ -1,5 +1,5 @@
 import os
-from typing import Any, List, Optional, Protocol
+from typing import Any, Dict, List, Optional, Protocol
 
 from stac_fastapi.types.stac import Item
 
@@ -173,7 +173,7 @@ def indices(collection_ids: Optional[List[str]]) -> str:
         return ",".join([index_alias_by_collection_id(c) for c in collection_ids])
 
 
-def mk_item_id(item_id: str, collection_id: str):
+def mk_item_id(item_id: str, collection_id: str) -> str:
     """Create the document id for an Item in Elasticsearch.
 
     Args:
@@ -186,7 +186,7 @@ def mk_item_id(item_id: str, collection_id: str):
     return f"{item_id}|{collection_id}"
 
 
-def mk_actions(collection_id: str, processed_items: List[Item]):
+def mk_actions(collection_id: str, processed_items: List[Item]) -> List[Dict[str, Any]]:
     """Create Elasticsearch bulk actions for a list of processed items.
 
     Args:
