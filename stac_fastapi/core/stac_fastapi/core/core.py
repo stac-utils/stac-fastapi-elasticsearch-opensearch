@@ -41,8 +41,6 @@ from stac_fastapi.types.search import BaseSearchPostRequest
 
 logger = logging.getLogger(__name__)
 
-NumType = Union[float, int]
-
 
 @attr.s
 class CoreClient(AsyncBaseCoreClient):

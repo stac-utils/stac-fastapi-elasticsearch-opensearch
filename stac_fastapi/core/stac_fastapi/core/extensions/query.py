@@ -17,8 +17,6 @@ from stac_fastapi.extensions.core.query import QueryExtension as QueryExtensionB
 
 logger = logging.getLogger("uvicorn")
 logger.setLevel(logging.INFO)
-# Be careful: https://github.com/samuelcolvin/pydantic/issues/1423#issuecomment-642797287
-NumType = Union[float, int]
 
 
 class Operator(str, AutoValueEnum):
