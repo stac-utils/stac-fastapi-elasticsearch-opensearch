@@ -16,9 +16,16 @@ def _es_config() -> Dict[str, Any]:
     scheme = "https" if use_ssl else "http"
 
     # Configure the hosts parameter with the correct scheme
+    es_hosts = os.getenv("ES_HOST", "localhost").strip()  # Default to localhost if ES_HOST is not set
+    es_port = os.getenv("ES_PORT", "9200")  # Default to 9200 if ES_PORT is not set
+
+    # Validate ES_HOST
+    if not es_hosts:
+        raise ValueError("ES_HOST environment variable is empty or invalid.")
+
     hosts = [
-        f"{scheme}://{host.strip()}:{os.getenv('ES_PORT')}"
-        for host in os.getenv("ES_HOST").split(",")
+        f"{scheme}://{host.strip()}:{es_port}"
+        for host in es_hosts.split(",")
     ]
 
     # Initialize the configuration dictionary
