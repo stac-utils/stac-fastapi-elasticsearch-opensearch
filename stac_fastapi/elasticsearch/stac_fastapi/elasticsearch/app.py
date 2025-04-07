@@ -39,12 +39,14 @@ from stac_fastapi.extensions.third_party import BulkTransactionExtension
 settings = ElasticsearchSettings()
 session = Session.create_from_settings(settings)
 
-filter_extension = FilterExtension(client=EsAsyncBaseFiltersClient())
+database_logic = DatabaseLogic()
+
+filter_extension = FilterExtension(
+    client=EsAsyncBaseFiltersClient(database=database_logic)
+)
 filter_extension.conformance_classes.append(
     "http://www.opengis.net/spec/cql2/1.0/conf/advanced-comparison-operators"
 )
-
-database_logic = DatabaseLogic()
 
 aggregation_extension = AggregationExtension(
     client=EsAsyncAggregationClient(
