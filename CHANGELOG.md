@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+- Option to configure multiple Elasticsearch/OpenSearch hosts and enable `http_compress`. [#349](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/349)
+
 ### Changed
 
 ## [v3.2.4] - 2025-03-14
