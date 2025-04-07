@@ -769,7 +769,7 @@ class DatabaseLogic:
         index_name = index_alias_by_collection_id(collection_id)
         try:
             mapping = await self.client.indices.get_mapping(
-                index=index_name, params={"allow_no_indices": False}
+                index=index_name, params={"allow_no_indices": "false"}
             )
             return mapping
         except exceptions.NotFoundError:

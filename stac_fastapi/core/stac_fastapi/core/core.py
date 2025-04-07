@@ -1052,7 +1052,6 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
 
             field_name_human = field_name.replace("_", " ").title()
             field_result.setdefault("title", field_name_human)
-            field_result.setdefault("description", field_name_human)
 
             field_type_json = _ES_MAPPING_TYPE_TO_JSON.get(field_type, field_type)
             field_result.setdefault("type", field_type_json)
