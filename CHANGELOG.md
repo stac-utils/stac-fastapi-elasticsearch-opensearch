@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
 ### Changed
+
+## [v3.2.5] - 2025-04-07
+
+### Added
+
+- Option to configure multiple Elasticsearch/OpenSearch hosts and enable `http_compress`. [#349](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/349)
 
 ## [v3.2.4] - 2025-03-14
 
@@ -299,7 +307,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.2.4...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.2.5...main
+[v3.2.5]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.2.4...v3.2.5
 [v3.2.4]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.2.3...v3.2.4
 [v3.2.3]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.2.2...v3.2.3
 [v3.2.2]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.2.1...v3.2.2

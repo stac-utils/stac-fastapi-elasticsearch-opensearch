@@ -16,10 +16,19 @@ def _es_config() -> Dict[str, Any]:
     scheme = "https" if use_ssl else "http"
 
     # Configure the hosts parameter with the correct scheme
-    hosts = [f"{scheme}://{os.getenv('ES_HOST')}:{os.getenv('ES_PORT')}"]
+    es_hosts = os.getenv(
+        "ES_HOST", "localhost"
+    ).strip()  # Default to localhost if ES_HOST is not set
+    es_port = os.getenv("ES_PORT", "9200")  # Default to 9200 if ES_PORT is not set
+
+    # Validate ES_HOST
+    if not es_hosts:
+        raise ValueError("ES_HOST environment variable is empty or invalid.")
+
+    hosts = [f"{scheme}://{host.strip()}:{es_port}" for host in es_hosts.split(",")]
 
     # Initialize the configuration dictionary
-    config = {
+    config: Dict[str, Any] = {
         "hosts": hosts,
         "headers": {"accept": "application/vnd.elasticsearch+json; compatible-with=7"},
     }
@@ -33,6 +42,10 @@ def _es_config() -> Dict[str, Any]:
             config["headers"] = {"x-api-key": api_key}
 
         config["headers"] = headers
+
+    http_compress = os.getenv("ES_HTTP_COMPRESS", "true").lower() == "true"
+    if http_compress:
+        config["http_compress"] = True
 
     # Explicitly exclude SSL settings when not using SSL
     if not use_ssl:
