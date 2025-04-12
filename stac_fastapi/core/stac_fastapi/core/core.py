@@ -1,10 +1,11 @@
 """Core client."""
 
 import logging
+from collections import deque
 from datetime import datetime as datetime_type
 from datetime import timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set, Type, Union
+from typing import Any, Dict, List, Literal, Optional, Set, Type, Union
 from urllib.parse import unquote_plus, urljoin
 
 import attr
@@ -40,8 +41,6 @@ from stac_fastapi.types.rfc3339 import DateTimeType
 from stac_fastapi.types.search import BaseSearchPostRequest
 
 logger = logging.getLogger(__name__)
-
-NumType = Union[float, int]
 
 
 @attr.s
@@ -907,11 +906,81 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         return f"Successfully added {len(processed_items)} Items."
 
 
+_DEFAULT_QUERYABLES: Dict[str, Dict[str, Any]] = {
+    "id": {
+        "description": "ID",
+        "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/definitions/core/allOf/2/properties/id",
+    },
+    "collection": {
+        "description": "Collection",
+        "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/definitions/core/allOf/2/then/properties/collection",
+    },
+    "geometry": {
+        "description": "Geometry",
+        "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/definitions/core/allOf/1/oneOf/0/properties/geometry",
+    },
+    "datetime": {
+        "description": "Acquisition Timestamp",
+        "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/datetime.json#/properties/datetime",
+    },
+    "created": {
+        "description": "Creation Timestamp",
+        "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/datetime.json#/properties/created",
+    },
+    "updated": {
+        "description": "Creation Timestamp",
+        "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/datetime.json#/properties/updated",
+    },
+    "cloud_cover": {
+        "description": "Cloud Cover",
+        "$ref": "https://stac-extensions.github.io/eo/v1.0.0/schema.json#/definitions/fields/properties/eo:cloud_cover",
+    },
+    "cloud_shadow_percentage": {
+        "title": "Cloud Shadow Percentage",
+        "description": "Cloud Shadow Percentage",
+        "type": "number",
+        "minimum": 0,
+        "maximum": 100,
+    },
+    "nodata_pixel_percentage": {
+        "title": "No Data Pixel Percentage",
+        "description": "No Data Pixel Percentage",
+        "type": "number",
+        "minimum": 0,
+        "maximum": 100,
+    },
+}
+
+_ES_MAPPING_TYPE_TO_JSON: Dict[
+    str, Literal["string", "number", "boolean", "object", "array", "null"]
+] = {
+    "date": "string",
+    "date_nanos": "string",
+    "keyword": "string",
+    "match_only_text": "string",
+    "text": "string",
+    "wildcard": "string",
+    "byte": "number",
+    "double": "number",
+    "float": "number",
+    "half_float": "number",
+    "long": "number",
+    "scaled_float": "number",
+    "short": "number",
+    "token_count": "number",
+    "unsigned_long": "number",
+    "geo_point": "object",
+    "geo_shape": "object",
+    "nested": "array",
+}
+
+
 @attr.s
 class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
     """Defines a pattern for implementing the STAC filter extension."""
 
-    # todo: use the ES _mapping endpoint to dynamically find what fields exist
+    database: BaseDatabaseLogic = attr.ib()
+
     async def get_queryables(
         self, collection_id: Optional[str] = None, **kwargs
     ) -> Dict[str, Any]:
@@ -932,55 +1001,62 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
         Returns:
             Dict[str, Any]: A dictionary containing the queryables for the given collection.
         """
-        return {
+        queryables: Dict[str, Any] = {
             "$schema": "https://json-schema.org/draft/2019-09/schema",
             "$id": "https://stac-api.example.com/queryables",
             "type": "object",
-            "title": "Queryables for Example STAC API",
-            "description": "Queryable names for the example STAC API Item Search filter.",
-            "properties": {
-                "id": {
-                    "description": "ID",
-                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/definitions/core/allOf/2/properties/id",
-                },
-                "collection": {
-                    "description": "Collection",
-                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/definitions/core/allOf/2/then/properties/collection",
-                },
-                "geometry": {
-                    "description": "Geometry",
-                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/definitions/core/allOf/1/oneOf/0/properties/geometry",
-                },
-                "datetime": {
-                    "description": "Acquisition Timestamp",
-                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/datetime.json#/properties/datetime",
-                },
-                "created": {
-                    "description": "Creation Timestamp",
-                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/datetime.json#/properties/created",
-                },
-                "updated": {
-                    "description": "Creation Timestamp",
-                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/datetime.json#/properties/updated",
-                },
-                "cloud_cover": {
-                    "description": "Cloud Cover",
-                    "$ref": "https://stac-extensions.github.io/eo/v1.0.0/schema.json#/definitions/fields/properties/eo:cloud_cover",
-                },
-                "cloud_shadow_percentage": {
-                    "description": "Cloud Shadow Percentage",
-                    "title": "Cloud Shadow Percentage",
-                    "type": "number",
-                    "minimum": 0,
-                    "maximum": 100,
-                },
-                "nodata_pixel_percentage": {
-                    "description": "No Data Pixel Percentage",
-                    "title": "No Data Pixel Percentage",
-                    "type": "number",
-                    "minimum": 0,
-                    "maximum": 100,
-                },
-            },
+            "title": "Queryables for STAC API",
+            "description": "Queryable names for the STAC API Item Search filter.",
+            "properties": _DEFAULT_QUERYABLES,
             "additionalProperties": True,
         }
+        if not collection_id:
+            return queryables
+
+        properties: Dict[str, Any] = queryables["properties"]
+        queryables.update(
+            {
+                "properties": properties,
+                "additionalProperties": False,
+            }
+        )
+
+        mapping_data = await self.database.get_items_mapping(collection_id)
+        mapping_properties = next(iter(mapping_data.values()))["mappings"]["properties"]
+        stack = deque(mapping_properties.items())
+
+        while stack:
+            field_name, field_def = stack.popleft()
+
+            # Iterate over nested fields
+            field_properties = field_def.get("properties")
+            if field_properties:
+                # Fields in Item Properties should be exposed with their un-prefixed names,
+                # and not require expressions to prefix them with properties,
+                # e.g., eo:cloud_cover instead of properties.eo:cloud_cover.
+                if field_name == "properties":
+                    stack.extend(field_properties.items())
+                else:
+                    stack.extend(
+                        (f"{field_name}.{k}", v) for k, v in field_properties.items()
+                    )
+
+            # Skip non-indexed or disabled fields
+            field_type = field_def.get("type")
+            if not field_type or not field_def.get("enabled", True):
+                continue
+
+            # Generate field properties
+            field_result = _DEFAULT_QUERYABLES.get(field_name, {})
+            properties[field_name] = field_result
+
+            field_name_human = field_name.replace("_", " ").title()
+            field_result.setdefault("title", field_name_human)
+
+            field_type_json = _ES_MAPPING_TYPE_TO_JSON.get(field_type, field_type)
+            field_result.setdefault("type", field_type_json)
+
+            if field_type in {"date", "date_nanos"}:
+                field_result.setdefault("format", "date-time")
+
+        return queryables
