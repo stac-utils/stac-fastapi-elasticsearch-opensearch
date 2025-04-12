@@ -10,7 +10,7 @@ OS_APP_PORT ?= 8082
 OS_HOST ?= docker.for.mac.localhost
 OS_PORT ?= 9202
 
-run_es = docker-compose \
+run_es = docker compose \
 	run \
 	-p ${EXTERNAL_APP_PORT}:${ES_APP_PORT} \
 	-e PY_IGNORE_IMPORTMISMATCH=1 \
@@ -18,7 +18,7 @@ run_es = docker-compose \
 	-e APP_PORT=${ES_APP_PORT} \
 	app-elasticsearch
 
-run_os = docker-compose \
+run_os = docker compose \
 	run \
 	-p ${EXTERNAL_APP_PORT}:${OS_APP_PORT} \
 	-e PY_IGNORE_IMPORTMISMATCH=1 \
@@ -45,7 +45,7 @@ run-deploy-locally:
 
 .PHONY: image-dev
 image-dev:
-	docker-compose build
+	docker compose build
 
 .PHONY: docker-run-es
 docker-run-es: image-dev
@@ -66,28 +66,28 @@ docker-shell-os:
 .PHONY: test-elasticsearch
 test-elasticsearch:
 	-$(run_es) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd stac_fastapi/tests/ && pytest'
-	docker-compose down
+	docker compose down
 
 .PHONY: test-opensearch
 test-opensearch:
 	-$(run_os) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh opensearch:9202 && cd stac_fastapi/tests/ && pytest'
-	docker-compose down
+	docker compose down
 
 .PHONY: test
 test:
 	-$(run_es) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd stac_fastapi/tests/ && pytest'
-	docker-compose down
+	docker compose down
 
 	-$(run_os) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh opensearch:9202 && cd stac_fastapi/tests/ && pytest'
-	docker-compose down
+	docker compose down
 
 .PHONY: run-database-es
 run-database-es:
-	docker-compose run --rm elasticsearch
+	docker compose run --rm elasticsearch
 
 .PHONY: run-database-os
 run-database-os:
-	docker-compose run --rm opensearch
+	docker compose run --rm opensearch
 
 .PHONY: pybase-install
 pybase-install:
@@ -107,10 +107,10 @@ install-os: pybase-install
 
 .PHONY: docs-image
 docs-image:
-	docker-compose -f docker-compose.docs.yml \
+	docker compose -f docker compose.docs.yml \
 		build
 
 .PHONY: docs
 docs: docs-image
-	docker-compose -f docker-compose.docs.yml \
+	docker compose -f docker compose.docs.yml \
 		run docs
