@@ -426,23 +426,20 @@ class CoreClient(AsyncBaseCoreClient):
 
         return result
 
-    def _format_datetime_range(self, date_tuple: DateTimeType) -> str:
+    def _format_datetime_range(self, date_tuple: str) -> str:
         """
-        Convert a tuple of datetime objects or None into a formatted string for API requests.
+        Convert a datetime range into a formatted string.
 
         Args:
-            date_tuple (tuple): A tuple containing two elements, each can be a datetime object or None.
+            date_tuple (str): A string containing two datetime values separated by a '/'.
 
         Returns:
             str: A string formatted as 'YYYY-MM-DDTHH:MM:SS.sssZ/YYYY-MM-DDTHH:MM:SS.sssZ', with '..' used if any element is None.
         """
-
-        def format_datetime(dt):
-            """Format a single datetime object to the ISO8601 extended format with 'Z'."""
-            return dt.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z" if dt else ".."
-
-        start, end = date_tuple
-        return f"{format_datetime(start)}/{format_datetime(end)}"
+        start, end = date_tuple.split("/")
+        start = start.replace("+01:00", "Z") if start else ".."
+        end = end.replace("+01:00", "Z") if end else ".."
+        return f"{start}/{end}"
 
     async def get_search(
         self,
