@@ -389,9 +389,9 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
                 collection_id = path.split("/")[2]
 
             filter_lang = "cql2-json"
-            if aggregate_request.filter:
-                aggregate_request.filter = self.get_filter(
-                    aggregate_request.filter, filter_lang
+            if aggregate_request.filter_expr:
+                aggregate_request.filter_expr = self.get_filter(
+                    aggregate_request.filter_expr, filter_lang
                 )
 
         if collection_id:
@@ -465,10 +465,10 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
                         detail=f"Aggregation {agg_name} not supported at catalog level",
                     )
 
-        if aggregate_request.filter:
+        if aggregate_request.filter_expr:
             try:
                 search = self.database.apply_cql2_filter(
-                    search, aggregate_request.filter
+                    search, aggregate_request.filter_expr
                 )
             except Exception as e:
                 raise HTTPException(

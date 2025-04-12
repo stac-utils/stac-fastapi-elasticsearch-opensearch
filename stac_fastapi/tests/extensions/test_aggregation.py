@@ -178,8 +178,8 @@ async def test_aggregate_datetime_in_range(app_client, ctx):
 @pytest.mark.asyncio
 async def test_aggregate_filter_extension_eq_post(app_client, ctx):
     params = {
-        "filter": {"op": "=", "args": [{"property": "id"}, ctx.item["id"]]},
-        "filter-lang": "cql2-json",
+        "filter_expr": {"op": "=", "args": [{"property": "id"}, ctx.item["id"]]},
+        "filter_lang": "cql2-json",
         "aggregations": ["total_count"],
     }
     resp = await app_client.post("/aggregate", json=params)
@@ -190,8 +190,8 @@ async def test_aggregate_filter_extension_eq_post(app_client, ctx):
 @pytest.mark.asyncio
 async def test_aggregate_filter_extension_neq_post(app_client, ctx):
     params = {
-        "filter": {"op": "<>", "args": [{"property": "id"}, ctx.item["id"]]},
-        "filter-lang": "cql2-json",
+        "filter_expr": {"op": "<>", "args": [{"property": "id"}, ctx.item["id"]]},
+        "filter_lang": "cql2-json",
         "aggregations": ["total_count"],
         "collections": [ctx.item["collection"]],
     }
@@ -222,14 +222,14 @@ async def test_aggregate_extension_gte_get(app_client, ctx):
 async def test_aggregate_filter_extension_gte_post(app_client, ctx):
     # there's one item that can match, so one of these queries should match it and the other shouldn't
     params = {
-        "filter": {
+        "filter_expr": {
             "op": "<=",
             "args": [
                 {"property": "properties.proj:epsg"},
                 ctx.item["properties"]["proj:epsg"],
             ],
         },
-        "filter-lang": "cql2-json",
+        "filter_lang": "cql2-json",
         "aggregations": ["total_count"],
     }
     resp = await app_client.post("/aggregate", json=params)
@@ -238,14 +238,14 @@ async def test_aggregate_filter_extension_gte_post(app_client, ctx):
     assert resp.json()["aggregations"][0]["value"] == 1
 
     params = {
-        "filter": {
+        "filter_expr": {
             "op": ">",
             "args": [
                 {"property": "properties.proj:epsg"},
                 ctx.item["properties"]["proj:epsg"],
             ],
         },
-        "filter-lang": "cql2-json",
+        "filter_lang": "cql2-json",
         "aggregations": ["total_count"],
     }
     resp = await app_client.post("/aggregate", json=params)
@@ -271,7 +271,7 @@ async def test_search_aggregate_extension_wildcard_cql2(app_client, ctx):
     multi_char = ctx.item["id"][:-3] + "%"
 
     params = {
-        "filter": {
+        "filter_expr": {
             "op": "and",
             "args": [
                 {"op": "=", "args": [{"property": "id"}, ctx.item["id"]]},
@@ -291,7 +291,7 @@ async def test_search_aggregate_extension_wildcard_cql2(app_client, ctx):
                 },
             ],
         },
-        "filter-lang": "cql2-json",
+        "filter_lang": "cql2-json",
         "aggregations": ["total_count"],
     }
 
@@ -307,7 +307,7 @@ async def test_aggregate_filter_extension_wildcard_es(app_client, ctx):
     multi_char = ctx.item["id"][:-3] + "*"
 
     params = {
-        "filter": {
+        "filter_expr": {
             "op": "and",
             "args": [
                 {"op": "=", "args": [{"property": "id"}, ctx.item["id"]]},
@@ -327,7 +327,7 @@ async def test_aggregate_filter_extension_wildcard_es(app_client, ctx):
                 },
             ],
         },
-        "filter-lang": "cql2-json",
+        "filter_lang": "cql2-json",
         "aggregations": ["total_count"],
     }
 
@@ -370,7 +370,7 @@ async def test_aggregate_filter_extension_in_no_list(app_client, ctx):
     product_id = ctx.item["properties"]["landsat:product_id"]
 
     params = {
-        "filter": {
+        "filter_expr": {
             "op": "and",
             "args": [
                 {"op": "=", "args": [{"property": "id"}, ctx.item["id"]]},
@@ -383,7 +383,7 @@ async def test_aggregate_filter_extension_in_no_list(app_client, ctx):
                 },
             ],
         },
-        "filter-lang": "cql2-json",
+        "filter_lang": "cql2-json",
         "aggregations": ["total_count"],
     }
 
