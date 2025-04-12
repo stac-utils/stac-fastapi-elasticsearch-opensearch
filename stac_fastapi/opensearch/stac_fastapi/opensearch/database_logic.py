@@ -302,7 +302,7 @@ class DatabaseLogic:
             )
         except exceptions.NotFoundError:
             raise NotFoundError(
-                f"Item {item_id} does not exist in Collection {collection_id}"
+                f"Item {item_id} does not exist inside Collection {collection_id}"
             )
         return item["_source"]
 
@@ -858,7 +858,7 @@ class DatabaseLogic:
                     "source": {"index": f"{ITEMS_INDEX_PREFIX}{collection_id}"},
                     "script": {
                         "lang": "painless",
-                        "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection["id"]}'); ctx._source.collection = '{collection["id"]}' ;""",
+                        "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection["id"]}'); ctx._source.collection = '{collection["id"]}' ;""",  # noqa: E702
                     },
                 },
                 wait_for_completion=True,

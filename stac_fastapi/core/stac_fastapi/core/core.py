@@ -906,7 +906,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         return f"Successfully added {len(processed_items)} Items."
 
 
-_DEFAULT_QUERYABLES = {
+_DEFAULT_QUERYABLES: Dict[str, Dict[str, Any]] = {
     "id": {
         "description": "ID",
         "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/definitions/core/allOf/2/properties/id",
@@ -1013,7 +1013,7 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
         if not collection_id:
             return queryables
 
-        properties = {}
+        properties: Dict[str, Any] = queryables["properties"]
         queryables.update(
             {
                 "properties": properties,
