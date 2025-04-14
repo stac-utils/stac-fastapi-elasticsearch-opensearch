@@ -277,7 +277,7 @@ class CoreClient(AsyncBaseCoreClient):
         self,
         collection_id: str,
         bbox: Optional[BBox] = None,
-        datetime: Optional[DateTimeType] = None,
+        datetime: Optional[str] = None,
         limit: Optional[int] = 10,
         token: Optional[str] = None,
         **kwargs,
@@ -287,7 +287,7 @@ class CoreClient(AsyncBaseCoreClient):
         Args:
             collection_id (str): The identifier of the collection to read items from.
             bbox (Optional[BBox]): The bounding box to filter items by.
-            datetime (Optional[DateTimeType]): The datetime range to filter items by.
+            datetime (Optional[str]): The datetime range to filter items by.
             limit (int): The maximum number of items to return. The default value is 10.
             token (str): A token used for pagination.
             request (Request): The incoming request.
@@ -426,7 +426,7 @@ class CoreClient(AsyncBaseCoreClient):
 
         return result
 
-    def _format_datetime_range(self, date_tuple: str) -> str:
+    def _format_datetime_range(self, date_str: str) -> str:
         """
         Convert a datetime range into a formatted string.
 
@@ -436,7 +436,7 @@ class CoreClient(AsyncBaseCoreClient):
         Returns:
             str: A string formatted as 'YYYY-MM-DDTHH:MM:SS.sssZ/YYYY-MM-DDTHH:MM:SS.sssZ', with '..' used if any element is None.
         """
-        start, end = date_tuple.split("/")
+        start, end = date_str.split("/")
         start = start.replace("+01:00", "Z") if start else ".."
         end = end.replace("+01:00", "Z") if end else ".."
         return f"{start}/{end}"
@@ -447,7 +447,7 @@ class CoreClient(AsyncBaseCoreClient):
         collections: Optional[List[str]] = None,
         ids: Optional[List[str]] = None,
         bbox: Optional[BBox] = None,
-        datetime: Optional[DateTimeType] = None,
+        datetime: Optional[str] = None,
         limit: Optional[int] = 10,
         query: Optional[str] = None,
         token: Optional[str] = None,
@@ -465,7 +465,7 @@ class CoreClient(AsyncBaseCoreClient):
             collections (Optional[List[str]]): List of collection IDs to search in.
             ids (Optional[List[str]]): List of item IDs to search for.
             bbox (Optional[BBox]): Bounding box to search in.
-            datetime (Optional[DateTimeType]): Filter items based on the datetime field.
+            datetime (Optional[str]): Filter items based on the datetime field.
             limit (Optional[int]): Maximum number of results to return.
             query (Optional[str]): Query string to filter the results.
             token (Optional[str]): Access token to use when searching the catalog.
@@ -492,7 +492,7 @@ class CoreClient(AsyncBaseCoreClient):
         }
 
         if datetime:
-            base_args["datetime"] = self._format_datetime_range(datetime)
+            base_args["datetime"] = self._format_datetime_range(date_str=datetime)
 
         if intersects:
             base_args["intersects"] = orjson.loads(unquote_plus(intersects))
