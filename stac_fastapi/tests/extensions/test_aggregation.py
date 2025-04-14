@@ -179,7 +179,7 @@ async def test_aggregate_datetime_in_range(app_client, ctx):
 async def test_aggregate_filter_extension_eq_post(app_client, ctx):
     params = {
         "filter": {"op": "=", "args": [{"property": "id"}, ctx.item["id"]]},
-        "filter_lang": "cql2-json",
+        "filter-lang": "cql2-json",
         "aggregations": ["total_count"],
     }
     resp = await app_client.post("/aggregate", json=params)
@@ -191,7 +191,7 @@ async def test_aggregate_filter_extension_eq_post(app_client, ctx):
 async def test_aggregate_filter_extension_neq_post(app_client, ctx):
     params = {
         "filter": {"op": "<>", "args": [{"property": "id"}, ctx.item["id"]]},
-        "filter_lang": "cql2-json",
+        "filter-lang": "cql2-json",
         "aggregations": ["total_count"],
         "collections": [ctx.item["collection"]],
     }
@@ -229,7 +229,7 @@ async def test_aggregate_filter_extension_gte_post(app_client, ctx):
                 ctx.item["properties"]["proj:epsg"],
             ],
         },
-        "filter_lang": "cql2-json",
+        "filter-lang": "cql2-json",
         "aggregations": ["total_count"],
     }
     resp = await app_client.post("/aggregate", json=params)
@@ -245,7 +245,7 @@ async def test_aggregate_filter_extension_gte_post(app_client, ctx):
                 ctx.item["properties"]["proj:epsg"],
             ],
         },
-        "filter_lang": "cql2-json",
+        "filter-lang": "cql2-json",
         "aggregations": ["total_count"],
     }
     resp = await app_client.post("/aggregate", json=params)
@@ -291,7 +291,7 @@ async def test_search_aggregate_extension_wildcard_cql2(app_client, ctx):
                 },
             ],
         },
-        "filter_lang": "cql2-json",
+        "filter-lang": "cql2-json",
         "aggregations": ["total_count"],
     }
 
@@ -327,7 +327,7 @@ async def test_aggregate_filter_extension_wildcard_es(app_client, ctx):
                 },
             ],
         },
-        "filter_lang": "cql2-json",
+        "filter-lang": "cql2-json",
         "aggregations": ["total_count"],
     }
 
@@ -383,7 +383,7 @@ async def test_aggregate_filter_extension_in_no_list(app_client, ctx):
                 },
             ],
         },
-        "filter_lang": "cql2-json",
+        "filter-lang": "cql2-json",
         "aggregations": ["total_count"],
     }
 
