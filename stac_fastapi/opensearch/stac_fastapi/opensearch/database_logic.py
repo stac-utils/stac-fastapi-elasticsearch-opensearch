@@ -15,6 +15,7 @@ from opensearchpy.helpers.search import Search
 from starlette.requests import Request
 
 from stac_fastapi.core import serializers
+from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.database_logic import (
     COLLECTIONS_INDEX,
     DEFAULT_SORT,
@@ -145,7 +146,7 @@ async def delete_item_index(collection_id: str):
 
 
 @attr.s
-class DatabaseLogic:
+class DatabaseLogic(BaseDatabaseLogic):
     """Database logic."""
 
     client = AsyncSearchSettings().create_client
@@ -274,7 +275,9 @@ class DatabaseLogic:
             # Ensure we have a valid sort value for next_token
             next_token_values = hits[-1].get("sort")
             if next_token_values:
-                next_token = next_token_values[0]
+                next_token = urlsafe_b64encode(
+                    json.dumps(next_token_values).encode()
+                ).decode()
 
         return collections, next_token
 
