@@ -94,7 +94,7 @@ jobs:
 
       - name: Install core library stac-fastapi
         run: |
-          pip install ./stac_fastapi/core
+          pip install --no-cache-dir --upgrade ./stac_fastapi/core
 
       - name: Install elasticsearch stac-fastapi
         run: |
