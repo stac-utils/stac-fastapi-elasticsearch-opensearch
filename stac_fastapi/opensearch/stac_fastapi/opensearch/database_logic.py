@@ -275,9 +275,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             # Ensure we have a valid sort value for next_token
             next_token_values = hits[-1].get("sort")
             if next_token_values:
-                next_token = urlsafe_b64encode(
-                    json.dumps(next_token_values).encode()
-                ).decode()
+                next_token = next_token_values[0]
 
         return collections, next_token
 
