@@ -7,6 +7,7 @@ from typing import Any, Dict, Set
 import certifi
 
 from elasticsearch import AsyncElasticsearch, Elasticsearch  # type: ignore
+from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.types.config import ApiSettings
 
 
@@ -69,7 +70,7 @@ def _es_config() -> Dict[str, Any]:
 _forbidden_fields: Set[str] = {"type"}
 
 
-class ElasticsearchSettings(ApiSettings):
+class ElasticsearchSettings(ApiSettings, ApiBaseSettings):
     """API settings."""
 
     # Fields which are defined by STAC but not included in the database model
@@ -82,7 +83,7 @@ class ElasticsearchSettings(ApiSettings):
         return Elasticsearch(**_es_config())
 
 
-class AsyncElasticsearchSettings(ApiSettings):
+class AsyncElasticsearchSettings(ApiSettings, ApiBaseSettings):
     """API settings."""
 
     # Fields which are defined by STAC but not included in the database model

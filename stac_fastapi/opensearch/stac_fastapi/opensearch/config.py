@@ -6,6 +6,7 @@ from typing import Any, Dict, Set
 import certifi
 from opensearchpy import AsyncOpenSearch, OpenSearch
 
+from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.types.config import ApiSettings
 
 
@@ -67,7 +68,7 @@ def _es_config() -> Dict[str, Any]:
 _forbidden_fields: Set[str] = {"type"}
 
 
-class OpensearchSettings(ApiSettings):
+class OpensearchSettings(ApiSettings, ApiBaseSettings):
     """API settings."""
 
     # Fields which are defined by STAC but not included in the database model
@@ -80,7 +81,7 @@ class OpensearchSettings(ApiSettings):
         return OpenSearch(**_es_config())
 
 
-class AsyncOpensearchSettings(ApiSettings):
+class AsyncOpensearchSettings(ApiSettings, ApiBaseSettings):
     """API settings."""
 
     # Fields which are defined by STAC but not included in the database model
