@@ -731,9 +731,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         return ItemSerializer.db_to_stac(item, base_url)
 
     @overrides
-    async def delete_item(
-        self, item_id: str, collection_id: str, **kwargs
-    ) -> Optional[stac_types.Item]:
+    async def delete_item(self, item_id: str, collection_id: str, **kwargs) -> None:
         """Delete an item from a collection.
 
         Args:
@@ -741,7 +739,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             collection_id (str): The identifier of the collection that contains the item.
 
         Returns:
-            Optional[stac_types.Item]: The deleted item, or `None` if the item was successfully deleted.
+            None: Returns 204 No Content on successful deletion
         """
         await self.database.delete_item(item_id=item_id, collection_id=collection_id)
         return None
@@ -811,23 +809,20 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         )
 
     @overrides
-    async def delete_collection(
-        self, collection_id: str, **kwargs
-    ) -> Optional[stac_types.Collection]:
+    async def delete_collection(self, collection_id: str, **kwargs) -> None:
         """
         Delete a collection.
 
         This method deletes an existing collection in the database.
 
         Args:
-            collection_id (str): The identifier of the collection that contains the item.
-            kwargs: Additional keyword arguments.
+            collection_id (str): The identifier of the collection to delete
 
         Returns:
-            None.
+            None: Returns 204 No Content on successful deletion
 
         Raises:
-            NotFoundError: If the collection doesn't exist.
+            NotFoundError: If the collection doesn't exist
         """
         await self.database.delete_collection(collection_id=collection_id)
         return None
