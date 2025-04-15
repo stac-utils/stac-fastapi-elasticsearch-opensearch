@@ -376,7 +376,7 @@ class CoreClient(AsyncBaseCoreClient):
 
     @staticmethod
     def _return_date(
-        interval: Optional[Union[DateTimeType, str]]
+        interval: Optional[Union[DateTimeType, str]],
     ) -> Dict[str, Optional[str]]:
         """
         Convert a date interval.
@@ -458,7 +458,7 @@ class CoreClient(AsyncBaseCoreClient):
         sortby: Optional[str] = None,
         q: Optional[List[str]] = None,
         intersects: Optional[str] = None,
-        filter: Optional[str] = None,
+        filter_expr: Optional[str] = None,
         filter_lang: Optional[str] = None,
         **kwargs,
     ) -> stac_types.ItemCollection:
@@ -492,10 +492,8 @@ class CoreClient(AsyncBaseCoreClient):
             "token": token,
             "query": orjson.loads(query) if query else query,
             "q": q,
+            "datetime": datetime,
         }
-
-        if datetime:
-            base_args["datetime"] = self._format_datetime_range(datetime)
 
         if intersects:
             base_args["intersects"] = orjson.loads(unquote_plus(intersects))
@@ -506,12 +504,12 @@ class CoreClient(AsyncBaseCoreClient):
                 for sort in sortby
             ]
 
-        if filter:
+        if filter_expr:
             base_args["filter-lang"] = "cql2-json"
             base_args["filter"] = orjson.loads(
-                unquote_plus(filter)
+                unquote_plus(filter_expr)
                 if filter_lang == "cql2-json"
-                else to_cql2(parse_cql2_text(filter))
+                else to_cql2(parse_cql2_text(filter_expr))
             )
 
         if fields:
@@ -593,10 +591,11 @@ class CoreClient(AsyncBaseCoreClient):
                     )
 
         # only cql2_json is supported here
-        if hasattr(search_request, "filter"):
-            cql2_filter = getattr(search_request, "filter", None)
+        if search_request.filter_expr:
             try:
-                search = self.database.apply_cql2_filter(search, cql2_filter)
+                search = self.database.apply_cql2_filter(
+                    search, search_request.filter_expr
+                )
             except Exception as e:
                 raise HTTPException(
                     status_code=400, detail=f"Error with cql2_json filter: {e}"
@@ -734,6 +733,62 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         return ItemSerializer.db_to_stac(item, base_url)
 
     @overrides
+    async def merge_patch_item(
+        self, collection_id: str, item_id: str, item: stac_types.PartialItem, **kwargs
+    ) -> Optional[stac_types.Item]:
+        """Patch an item in the collection following RF7396..
+
+        Args:
+            collection_id (str): The ID of the collection the item belongs to.
+            item_id (str): The ID of the item to be updated.
+            item (stac_types.PartialItem): The partial item data.
+            kwargs: Other optional arguments, including the request object.
+
+        Returns:
+            stac_types.Item: The patched item object.
+
+        """
+        base_url = str(kwargs["request"].base_url)
+
+        item = await self.database.merge_patch_item(
+            collection_id=collection_id,
+            item_id=item_id,
+            item=item,
+            base_url=base_url,
+        )
+        return ItemSerializer.db_to_stac(item, base_url=base_url)
+
+    @overrides
+    async def json_patch_item(
+        self,
+        collection_id: str,
+        item_id: str,
+        operations: List[stac_types.PatchOperation],
+        **kwargs,
+    ) -> Optional[stac_types.Item]:
+        """Patch an item in the collection following RF6902.
+
+        Args:
+            collection_id (str): The ID of the collection the item belongs to.
+            item_id (str): The ID of the item to be updated.
+            operations (List): List of operations to run on item.
+            kwargs: Other optional arguments, including the request object.
+
+        Returns:
+            stac_types.Item: The patched item object.
+
+        """
+        base_url = str(kwargs["request"].base_url)
+
+        item = await self.database.json_patch_item(
+            collection_id=collection_id,
+            item_id=item_id,
+            base_url=base_url,
+            operations=operations,
+        )
+        return ItemSerializer.db_to_stac(item, base_url=base_url)
+
+    @overrides
     async def delete_item(
         self, item_id: str, collection_id: str, **kwargs
     ) -> Optional[stac_types.Item]:
@@ -810,6 +865,60 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         return CollectionSerializer.db_to_stac(
             collection,
             request,
+            extensions=[type(ext).__name__ for ext in self.database.extensions],
+        )
+
+    @overrides
+    async def merge_patch_collection(
+        self, collection_id: str, collection: stac_types.PartialCollection, **kwargs
+    ) -> Optional[stac_types.Collection]:
+        """Patch a collection following RF7396..
+
+        Args:
+            collection_id (str): The ID of the collection  to patch.
+            collection (stac_types.Collection): The partial collection data.
+            kwargs: Other optional arguments, including the request object.
+
+        Returns:
+            stac_types.Collection: The patched collection object.
+
+        """
+        collection = await self.database.merge_patch_collection(
+            collection_id=collection_id,
+            base_url=str(kwargs["request"].base_url),
+            collection=collection,
+        )
+
+        return CollectionSerializer.db_to_stac(
+            collection,
+            kwargs["request"],
+            extensions=[type(ext).__name__ for ext in self.database.extensions],
+        )
+
+    @overrides
+    async def json_patch_collection(
+        self, collection_id: str, operations: List[stac_types.PatchOperation], **kwargs
+    ) -> Optional[stac_types.Collection]:
+        """Patch a collection following RF6902.
+
+        Args:
+            collection_id (str): The ID of the collection to patch.
+            operations (List): List of operations to run on collection.
+            kwargs: Other optional arguments, including the request object.
+
+        Returns:
+            stac_types.Collection: The patched collection object.
+
+        """
+        collection = await self.database.json_patch_collection(
+            collection_id=collection_id,
+            operations=operations,
+            base_url=str(kwargs["request"].base_url),
+        )
+
+        return CollectionSerializer.db_to_stac(
+            collection,
+            kwargs["request"],
             extensions=[type(ext).__name__ for ext in self.database.extensions],
         )
 

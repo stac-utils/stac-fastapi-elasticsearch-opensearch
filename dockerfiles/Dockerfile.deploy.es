@@ -3,8 +3,11 @@ FROM python:3.10-slim
 RUN apt-get update && \
     apt-get -y upgrade && \
     apt-get -y install gcc && \
+    apt-get -y install build-essential git && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
+
 
 ENV CURL_CA_BUNDLE=/etc/ssl/certs/ca-certificates.crt
 

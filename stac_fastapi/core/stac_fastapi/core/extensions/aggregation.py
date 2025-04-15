@@ -338,7 +338,7 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
         datetime: Optional[DateTimeType] = None,
         intersects: Optional[str] = None,
         filter_lang: Optional[str] = None,
-        filter: Optional[str] = None,
+        filter_expr: Optional[str] = None,
         aggregations: Optional[str] = None,
         ids: Optional[List[str]] = None,
         bbox: Optional[BBox] = None,
@@ -369,6 +369,7 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
                 "geometry_geohash_grid_frequency_precision": geometry_geohash_grid_frequency_precision,
                 "geometry_geotile_grid_frequency_precision": geometry_geotile_grid_frequency_precision,
                 "datetime_frequency_interval": datetime_frequency_interval,
+                "datetime": datetime,
             }
 
             if collection_id:
@@ -377,11 +378,8 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
             if intersects:
                 base_args["intersects"] = orjson.loads(unquote_plus(intersects))
 
-            if datetime:
-                base_args["datetime"] = self._format_datetime_range(datetime)
-
-            if filter:
-                base_args["filter"] = self.get_filter(filter, filter_lang)
+            if filter_expr:
+                base_args["filter"] = self.get_filter(filter_expr, filter_lang)
             aggregate_request = EsAggregationExtensionPostRequest(**base_args)
         else:
             # Workaround for optional path param in POST requests
@@ -389,9 +387,9 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
                 collection_id = path.split("/")[2]
 
             filter_lang = "cql2-json"
-            if aggregate_request.filter:
-                aggregate_request.filter = self.get_filter(
-                    aggregate_request.filter, filter_lang
+            if aggregate_request.filter_expr:
+                aggregate_request.filter_expr = self.get_filter(
+                    aggregate_request.filter_expr, filter_lang
                 )
 
         if collection_id:
@@ -465,10 +463,10 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
                         detail=f"Aggregation {agg_name} not supported at catalog level",
                     )
 
-        if aggregate_request.filter:
+        if aggregate_request.filter_expr:
             try:
                 search = self.database.apply_cql2_filter(
-                    search, aggregate_request.filter
+                    search, aggregate_request.filter_expr
                 )
             except Exception as e:
                 raise HTTPException(
