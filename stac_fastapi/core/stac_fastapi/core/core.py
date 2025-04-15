@@ -866,7 +866,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
     @overrides
     def bulk_item_insert(
         self, items: Items, chunk_size: Optional[int] = None, **kwargs
-    ) -> int:
+    ) -> str:
         """Perform bulk insertion of items.
 
         Args:
@@ -875,7 +875,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
             **kwargs: Additional keyword arguments
 
         Returns:
-            int: Number of items successfully added
+            str: Message indicating number of items successfully added
 
         Raises:
             BulkInsertError: If any items fail insertion
@@ -896,7 +896,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
             refresh=kwargs.get("refresh", False),
             raise_errors=True,
         )
-        return success_count
+        return "sucessfully added {} items".format(success_count)
 
 
 _DEFAULT_QUERYABLES: Dict[str, Dict[str, Any]] = {

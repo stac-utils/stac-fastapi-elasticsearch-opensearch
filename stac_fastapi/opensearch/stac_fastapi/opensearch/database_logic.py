@@ -31,7 +31,6 @@ from stac_fastapi.core.database_logic import (
     mk_actions,
     mk_item_id,
 )
-from stac_fastapi.core.exceptions import BulkInsertError
 from stac_fastapi.core.extensions import filter
 from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon
 from stac_fastapi.opensearch.config import (
@@ -987,16 +986,16 @@ class DatabaseLogic(BaseDatabaseLogic):
         """
         success_count, error_list = result
 
-        if raise_errors and error_list:
-            error_messages = [
-                f"Item {e['index']['_id']}: {e['index']['error']['reason']}"
-                for e in error_list
-            ]
-            raise BulkInsertError(
-                f"Bulk operation completed with {len(error_list)} errors",
-                success_count=success_count,
-                errors=error_messages,
-            )
+        # if raise_errors and error_list:
+        #     error_messages = [
+        #         f"Item {e['index']['_id']}: {e['index']['error']['reason']}"
+        #         for e in error_list
+        #     ]
+        # raise BulkInsertError(
+        #     f"Bulk operation completed with {len(error_list)} errors",
+        #     success_count=success_count,
+        #     errors=error_messages,
+        # )
 
         return success_count, error_list
 
