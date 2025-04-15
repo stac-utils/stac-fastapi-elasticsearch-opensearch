@@ -28,6 +28,7 @@ from stac_fastapi.core.database_logic import (
     mk_actions,
     mk_item_id,
 )
+from stac_fastapi.core.exceptions import BulkInsertError
 from stac_fastapi.core.extensions import filter
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon
@@ -867,56 +868,118 @@ class DatabaseLogic(BaseDatabaseLogic):
         await delete_item_index(collection_id)
 
     async def bulk_async(
-        self, collection_id: str, processed_items: List[Item], refresh: bool = False
-    ) -> None:
+        self,
+        collection_id: str,
+        processed_items: List[Item],
+        refresh: bool = False,
+        raise_errors: bool = True,
+    ) -> Tuple[int, List[Dict]]:
         """Perform a bulk insert of items into the database asynchronously.
 
         Args:
-            self: The instance of the object calling this function.
             collection_id (str): The ID of the collection to which the items belong.
-            processed_items (List[Item]): A list of `Item` objects to be inserted into the database.
-            refresh (bool): Whether to refresh the index after the bulk insert (default: False).
+            processed_items (List[Item]): List of `Item` objects to be inserted.
+            refresh (bool): Whether to refresh the index after the bulk insert.
+                Default: False
+            raise_errors (bool): Whether to raise exceptions on bulk errors.
+                Default: True
+
+        Returns:
+            Tuple[int, List[Dict]]: Number of successful inserts and list of errors
+
+        Raises:
+            BulkInsertError: If raise_errors=True and any operations failed
 
         Notes:
-            This function performs a bulk insert of `processed_items` into the database using the specified `collection_id`. The
-            insert is performed asynchronously, and the event loop is used to run the operation in a separate executor. The
-            `mk_actions` function is called to generate a list of actions for the bulk insert. If `refresh` is set to True, the
-            index is refreshed after the bulk insert. The function does not return any value.
+            Performs bulk insert using Elasticsearch's async helpers. When raise_errors=True,
+            any failed operations will raise a BulkInsertError containing success count
+            and detailed error messages.
         """
-        await helpers.async_bulk(
+        result = await helpers.async_bulk(
             self.client,
             mk_actions(collection_id, processed_items),
             refresh=refresh,
             raise_on_error=False,
+            stats_only=False,
         )
+        return self._handle_bulk_result(result, raise_errors)
 
     def bulk_sync(
-        self, collection_id: str, processed_items: List[Item], refresh: bool = False
-    ) -> None:
+        self,
+        collection_id: str,
+        processed_items: List[Item],
+        refresh: bool = False,
+        raise_errors: bool = True,
+    ) -> Tuple[int, List[Dict]]:
         """Perform a bulk insert of items into the database synchronously.
 
         Args:
-            self: The instance of the object calling this function.
-            collection_id (str): The ID of the collection to which the items belong.
-            processed_items (List[Item]): A list of `Item` objects to be inserted into the database.
-            refresh (bool): Whether to refresh the index after the bulk insert (default: False).
+            collection_id (str): The ID of the collection for the items.
+            processed_items (List[Item]): List of `Item` objects to insert.
+            refresh (bool): Refresh index after insert. Default: False
+            raise_errors (bool): Raise exceptions on errors. Default: True
+
+        Returns:
+            Tuple[int, List[Dict]]: Success count and error details
+
+        Raises:
+            BulkInsertError: If raise_errors=True and any operations failed
 
         Notes:
-            This function performs a bulk insert of `processed_items` into the database using the specified `collection_id`. The
-            insert is performed synchronously and blocking, meaning that the function does not return until the insert has
-            completed. The `mk_actions` function is called to generate a list of actions for the bulk insert. If `refresh` is set to
-            True, the index is refreshed after the bulk insert. The function does not return any value.
+            Synchronous version of bulk insert. Blocks until operation completes.
+            Follows same error handling rules as async version.
         """
-        helpers.bulk(
+        result = helpers.bulk(
             self.sync_client,
             mk_actions(collection_id, processed_items),
             refresh=refresh,
             raise_on_error=False,
+            stats_only=False,
         )
+        return self._handle_bulk_result(result, raise_errors)
+
+    def _handle_bulk_result(
+        self, result: Tuple[int, List[Dict]], raise_errors: bool
+    ) -> Tuple[int, List[Dict]]:
+        """Process bulk operation results and handle errors.
+
+        Args:
+            result (Tuple[int, List[Dict]]): Bulk operation result containing
+                success count and error details
+            raise_errors (bool): Whether to raise exceptions on errors
+
+        Returns:
+            Tuple[int, List[Dict]]: Processed success count and error list
+
+        Raises:
+            BulkInsertError: If raise_errors=True and errors are present
+        """
+        success_count, error_list = result
+
+        if raise_errors and error_list:
+            error_messages = [
+                f"Item {e['index']['_id']}: {e['index']['error']['reason']}"
+                for e in error_list
+            ]
+            raise BulkInsertError(
+                f"Bulk operation failed with {len(error_list)} errors",
+                success_count=success_count,
+                errors=error_messages,
+            )
+
+        return success_count, error_list
 
     # DANGER
     async def delete_items(self) -> None:
-        """Danger. this is only for tests."""
+        """Delete all items from the database (TESTING ONLY).
+
+        Raises:
+            RuntimeError: If used outside test environment
+
+        Notes:
+            This method is strictly for testing purposes and will
+            remove ALL items from ALL collections. Use with extreme caution.
+        """
         await self.client.delete_by_query(
             index=ITEM_INDICES,
             body={"query": {"match_all": {}}},
@@ -925,7 +988,15 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     # DANGER
     async def delete_collections(self) -> None:
-        """Danger. this is only for tests."""
+        """Delete all collections from the database (TESTING ONLY).
+
+        Raises:
+            RuntimeError: If used outside test environment
+
+        Notes:
+            This method is strictly for testing purposes and will
+            remove ALL collections. Use with extreme caution.
+        """
         await self.client.delete_by_query(
             index=COLLECTIONS_INDEX,
             body={"query": {"match_all": {}}},

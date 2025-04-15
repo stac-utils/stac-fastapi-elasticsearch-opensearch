@@ -866,36 +866,37 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
     @overrides
     def bulk_item_insert(
         self, items: Items, chunk_size: Optional[int] = None, **kwargs
-    ) -> str:
-        """Perform a bulk insertion of items into the database using Elasticsearch.
+    ) -> int:
+        """Perform bulk insertion of items.
 
         Args:
-            items: The items to insert.
-            chunk_size: The size of each chunk for bulk processing.
-            **kwargs: Additional keyword arguments, such as `request` and `refresh`.
+            items: The items to insert
+            chunk_size: Chunk size for bulk processing
+            **kwargs: Additional keyword arguments
 
         Returns:
-            A string indicating the number of items successfully added.
+            int: Number of items successfully added
+
+        Raises:
+            BulkInsertError: If any items fail insertion
         """
         request = kwargs.get("request")
-        if request:
-            base_url = str(request.base_url)
-        else:
-            base_url = ""
+        base_url = str(request.base_url) if request else ""
 
         processed_items = [
             self.preprocess_item(item, base_url, items.method)
             for item in items.items.values()
         ]
 
-        # not a great way to get the collection_id-- should be part of the method signature
-        collection_id = processed_items[0]["collection"]
+        collection_id = processed_items[0]["collection"] if processed_items else ""
 
-        self.database.bulk_sync(
-            collection_id, processed_items, refresh=kwargs.get("refresh", False)
+        success_count, errors = self.database.bulk_sync(
+            collection_id,
+            processed_items,
+            refresh=kwargs.get("refresh", False),
+            raise_errors=True,
         )
-
-        return f"Successfully added {len(processed_items)} Items."
+        return success_count
 
 
 _DEFAULT_QUERYABLES: Dict[str, Dict[str, Any]] = {
