@@ -37,7 +37,7 @@ from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
 from stac_fastapi.types.core import AsyncBaseCoreClient, AsyncBaseTransactionsClient
 from stac_fastapi.types.extension import ApiExtension
 from stac_fastapi.types.requests import get_base_url
-from stac_fastapi.types.rfc3339 import DateTimeType
+from stac_fastapi.types.rfc3339 import DateTimeType, rfc3339_str_to_datetime
 from stac_fastapi.types.search import BaseSearchPostRequest
 
 logger = logging.getLogger(__name__)
@@ -428,7 +428,7 @@ class CoreClient(AsyncBaseCoreClient):
 
     def _format_datetime_range(self, date_str: str) -> str:
         """
-        Convert a datetime range string into a normalized UTC string for API requests.
+        Convert a datetime range string into a normalized UTC string for API requests using rfc3339_str_to_datetime.
 
         Args:
             date_str (str): A string containing two datetime values separated by a '/'.
@@ -436,27 +436,23 @@ class CoreClient(AsyncBaseCoreClient):
         Returns:
             str: A string formatted as 'YYYY-MM-DDTHH:MM:SSZ/YYYY-MM-DDTHH:MM:SSZ', with '..' used if any element is None.
         """
-        if not isinstance(date_str, str) or "/" not in date_str:
-            return "../.."
-        try:
-            start, end = date_str.split("/", 1)
-        except Exception:
-            return "../.."
 
         def normalize(dt):
             dt = dt.strip()
             if not dt or dt == "..":
                 return ".."
-            # Replace any timezone offset with 'Z'
-            if dt.endswith("Z"):
-                return dt
-            if "+" in dt:
-                return dt[: dt.index("+")] + "Z"
-            if "-" in dt[10:]:  # skip date part, look for tz in time part
-                idx = dt.index("-", 10)
-                return dt[:idx] + "Z"
-            return dt  # fallback, return as-is
+            dt_obj = rfc3339_str_to_datetime(dt)
+            dt_utc = dt_obj.astimezone(timezone.utc)
+            return dt_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
 
+        if not isinstance(date_str, str):
+            return "../.."
+        if "/" not in date_str:
+            return f"{normalize(date_str)}/{normalize(date_str)}"
+        try:
+            start, end = date_str.split("/", 1)
+        except Exception:
+            return "../.."
         return f"{normalize(start)}/{normalize(end)}"
 
     async def get_search(
