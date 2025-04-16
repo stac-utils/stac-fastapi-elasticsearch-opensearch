@@ -436,6 +436,7 @@ class CoreClient(AsyncBaseCoreClient):
         Returns:
             str: A string formatted as 'YYYY-MM-DDTHH:MM:SSZ/YYYY-MM-DDTHH:MM:SSZ', with '..' used if any element is None.
         """
+
         def normalize(dt):
             dt = dt.strip()
             if not dt or dt == "..":
