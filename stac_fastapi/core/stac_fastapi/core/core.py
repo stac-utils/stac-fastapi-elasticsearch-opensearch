@@ -428,18 +428,36 @@ class CoreClient(AsyncBaseCoreClient):
 
     def _format_datetime_range(self, date_str: str) -> str:
         """
-        Convert a datetime range into a formatted string.
+        Convert a datetime range string into a normalized UTC string for API requests.
 
         Args:
-            date_tuple (str): A string containing two datetime values separated by a '/'.
+            date_str (str): A string containing two datetime values separated by a '/'.
 
         Returns:
-            str: A string formatted as 'YYYY-MM-DDTHH:MM:SS.sssZ/YYYY-MM-DDTHH:MM:SS.sssZ', with '..' used if any element is None.
+            str: A string formatted as 'YYYY-MM-DDTHH:MM:SSZ/YYYY-MM-DDTHH:MM:SSZ', with '..' used if any element is None.
         """
-        start, end = date_str.split("/")
-        start = start.replace("+01:00", "Z") if start else ".."
-        end = end.replace("+01:00", "Z") if end else ".."
-        return f"{start}/{end}"
+        if not isinstance(date_str, str) or "/" not in date_str:
+            return "../.."
+        try:
+            start, end = date_str.split("/", 1)
+        except Exception:
+            return "../.."
+
+        def normalize(dt):
+            dt = dt.strip()
+            if not dt or dt == "..":
+                return ".."
+            # Replace any timezone offset with 'Z'
+            if dt.endswith("Z"):
+                return dt
+            if "+" in dt:
+                return dt[: dt.index("+")] + "Z"
+            if "-" in dt[10:]:  # skip date part, look for tz in time part
+                idx = dt.index("-", 10)
+                return dt[:idx] + "Z"
+            return dt  # fallback, return as-is
+
+        return f"{normalize(start)}/{normalize(end)}"
 
     async def get_search(
         self,
