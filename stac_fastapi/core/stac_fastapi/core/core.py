@@ -37,7 +37,7 @@ from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
 from stac_fastapi.types.core import AsyncBaseCoreClient, AsyncBaseTransactionsClient
 from stac_fastapi.types.extension import ApiExtension
 from stac_fastapi.types.requests import get_base_url
-from stac_fastapi.types.rfc3339 import DateTimeType
+from stac_fastapi.types.rfc3339 import DateTimeType, rfc3339_str_to_datetime
 from stac_fastapi.types.search import BaseSearchPostRequest
 
 logger = logging.getLogger(__name__)
@@ -277,7 +277,7 @@ class CoreClient(AsyncBaseCoreClient):
         self,
         collection_id: str,
         bbox: Optional[BBox] = None,
-        datetime: Optional[DateTimeType] = None,
+        datetime: Optional[str] = None,
         limit: Optional[int] = 10,
         token: Optional[str] = None,
         **kwargs,
@@ -287,7 +287,7 @@ class CoreClient(AsyncBaseCoreClient):
         Args:
             collection_id (str): The identifier of the collection to read items from.
             bbox (Optional[BBox]): The bounding box to filter items by.
-            datetime (Optional[DateTimeType]): The datetime range to filter items by.
+            datetime (Optional[str]): The datetime range to filter items by.
             limit (int): The maximum number of items to return. The default value is 10.
             token (str): A token used for pagination.
             request (Request): The incoming request.
@@ -426,23 +426,34 @@ class CoreClient(AsyncBaseCoreClient):
 
         return result
 
-    def _format_datetime_range(self, date_tuple: DateTimeType) -> str:
+    def _format_datetime_range(self, date_str: str) -> str:
         """
-        Convert a tuple of datetime objects or None into a formatted string for API requests.
+        Convert a datetime range string into a normalized UTC string for API requests using rfc3339_str_to_datetime.
 
         Args:
-            date_tuple (tuple): A tuple containing two elements, each can be a datetime object or None.
+            date_str (str): A string containing two datetime values separated by a '/'.
 
         Returns:
-            str: A string formatted as 'YYYY-MM-DDTHH:MM:SS.sssZ/YYYY-MM-DDTHH:MM:SS.sssZ', with '..' used if any element is None.
+            str: A string formatted as 'YYYY-MM-DDTHH:MM:SSZ/YYYY-MM-DDTHH:MM:SSZ', with '..' used if any element is None.
         """
 
-        def format_datetime(dt):
-            """Format a single datetime object to the ISO8601 extended format with 'Z'."""
-            return dt.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z" if dt else ".."
+        def normalize(dt):
+            dt = dt.strip()
+            if not dt or dt == "..":
+                return ".."
+            dt_obj = rfc3339_str_to_datetime(dt)
+            dt_utc = dt_obj.astimezone(timezone.utc)
+            return dt_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-        start, end = date_tuple
-        return f"{format_datetime(start)}/{format_datetime(end)}"
+        if not isinstance(date_str, str):
+            return "../.."
+        if "/" not in date_str:
+            return f"{normalize(date_str)}/{normalize(date_str)}"
+        try:
+            start, end = date_str.split("/", 1)
+        except Exception:
+            return "../.."
+        return f"{normalize(start)}/{normalize(end)}"
 
     async def get_search(
         self,
@@ -450,7 +461,7 @@ class CoreClient(AsyncBaseCoreClient):
         collections: Optional[List[str]] = None,
         ids: Optional[List[str]] = None,
         bbox: Optional[BBox] = None,
-        datetime: Optional[DateTimeType] = None,
+        datetime: Optional[str] = None,
         limit: Optional[int] = 10,
         query: Optional[str] = None,
         token: Optional[str] = None,
@@ -458,7 +469,7 @@ class CoreClient(AsyncBaseCoreClient):
         sortby: Optional[str] = None,
         q: Optional[List[str]] = None,
         intersects: Optional[str] = None,
-        filter: Optional[str] = None,
+        filter_expr: Optional[str] = None,
         filter_lang: Optional[str] = None,
         **kwargs,
     ) -> stac_types.ItemCollection:
@@ -468,7 +479,7 @@ class CoreClient(AsyncBaseCoreClient):
             collections (Optional[List[str]]): List of collection IDs to search in.
             ids (Optional[List[str]]): List of item IDs to search for.
             bbox (Optional[BBox]): Bounding box to search in.
-            datetime (Optional[DateTimeType]): Filter items based on the datetime field.
+            datetime (Optional[str]): Filter items based on the datetime field.
             limit (Optional[int]): Maximum number of results to return.
             query (Optional[str]): Query string to filter the results.
             token (Optional[str]): Access token to use when searching the catalog.
@@ -495,7 +506,7 @@ class CoreClient(AsyncBaseCoreClient):
         }
 
         if datetime:
-            base_args["datetime"] = self._format_datetime_range(datetime)
+            base_args["datetime"] = self._format_datetime_range(date_str=datetime)
 
         if intersects:
             base_args["intersects"] = orjson.loads(unquote_plus(intersects))
@@ -506,12 +517,12 @@ class CoreClient(AsyncBaseCoreClient):
                 for sort in sortby
             ]
 
-        if filter:
-            base_args["filter-lang"] = "cql2-json"
+        if filter_expr:
+            base_args["filter_lang"] = "cql2-json"
             base_args["filter"] = orjson.loads(
-                unquote_plus(filter)
+                unquote_plus(filter_expr)
                 if filter_lang == "cql2-json"
-                else to_cql2(parse_cql2_text(filter))
+                else to_cql2(parse_cql2_text(filter_expr))
             )
 
         if fields:
@@ -593,8 +604,8 @@ class CoreClient(AsyncBaseCoreClient):
                     )
 
         # only cql2_json is supported here
-        if hasattr(search_request, "filter"):
-            cql2_filter = getattr(search_request, "filter", None)
+        if hasattr(search_request, "filter_expr"):
+            cql2_filter = getattr(search_request, "filter_expr", None)
             try:
                 search = self.database.apply_cql2_filter(search, cql2_filter)
             except Exception as e:
