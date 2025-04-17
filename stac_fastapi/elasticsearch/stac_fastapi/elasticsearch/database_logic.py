@@ -12,6 +12,7 @@ from elasticsearch_dsl import Q, Search
 from starlette.requests import Request
 
 from elasticsearch import exceptions, helpers  # type: ignore
+from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.database_logic import (
     COLLECTIONS_INDEX,
     DEFAULT_SORT,
@@ -124,7 +125,7 @@ async def delete_item_index(collection_id: str):
 
 
 @attr.s
-class DatabaseLogic:
+class DatabaseLogic(BaseDatabaseLogic):
     """Database logic."""
 
     client = AsyncElasticsearchSettings().create_client
