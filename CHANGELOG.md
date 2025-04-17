@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 
 ### Changed
+- Updated package names in setup.py files to use underscores instead of periods for PEP 625 compliance
+  - Changed `stac_fastapi.opensearch` to `stac_fastapi_opensearch`
+  - Changed `stac_fastapi.elasticsearch` to `stac_fastapi_elasticsearch`
+  - Changed `stac_fastapi.core` to `stac_fastapi_core`
+  - Updated all related dependencies to use the new naming convention
 
 ### Fixed
 
