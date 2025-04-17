@@ -26,7 +26,7 @@
   
 - Our Api core library can be used to create custom backends. See [stac-fastapi-mongo](https://github.com/Healy-Hyperspatial/stac-fastapi-mongo) for a working example.
 - Reach out on our [Gitter](https://app.gitter.im/#/room/#stac-fastapi-elasticsearch_community:gitter.im) channel or feel free to add to our [Discussions](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/discussions) page here on github.
-- There is [Postman](https://documenter.getpostman.com/view/12888943/2s8ZDSdRHA) documentation here for examples on how to run some of the API routes locally - after starting the elasticsearch backend via the docker-compose.yml file.
+- There is [Postman](https://documenter.getpostman.com/view/12888943/2s8ZDSdRHA) documentation here for examples on how to run some of the API routes locally - after starting the elasticsearch backend via the compose.yml file.
 - The `/examples` folder shows an example of running stac-fastapi-elasticsearch from PyPI in docker without needing any code from the repository. There is also a Postman collection here that you can load into Postman for testing the API routes.
 
 - For changes, see the [Changelog](CHANGELOG.md)
@@ -63,15 +63,15 @@ docker pull ghcr.io/stac-utils/stac-fastapi-os:latest
 
 ## Run Elasticsearch API backend on localhost:8080
 
-You need to ensure [**Docker Compose**](https://docs.docker.com/compose/install/) or [**Podman Compose**](https://podman-desktop.io/docs/compose) installed and running on your machine. In the follwoing command instead of `docker-compose` you can use `podman-compose` as well.
+You need to ensure [**Docker Compose**](https://docs.docker.com/compose/install/) or [**Podman Compose**](https://podman-desktop.io/docs/compose) installed and running on your machine. In the following command instead of `docker compose` you can use `podman-compose` as well.
 
 ```shell
-docker-compose up elasticsearch app-elasticsearch
+docker compose up elasticsearch app-elasticsearch
 ```
 
-By default, docker-compose uses Elasticsearch 8.x and OpenSearch 2.11.1.
+By default, Docker Compose uses Elasticsearch 8.x and OpenSearch 2.11.1.
 If you wish to use a different version, put the following in a 
-file named `.env` in the same directory you run docker-compose from:
+file named `.env` in the same directory you run Docker Compose from:
 
 ```shell
 ELASTICSEARCH_VERSION=7.17.1
@@ -171,7 +171,7 @@ These templates will be used implicitly when creating new Collection and Item in
 This section covers how to create a snapshot repository and then create and restore snapshots with this.
 
 Create a snapshot repository. This puts the files in the `elasticsearch/snapshots` in this git repo clone, as
-the elasticsearch.yml and docker-compose files create a mapping from that directory to 
+the elasticsearch.yml and compose files create a mapping from that directory to 
 `/usr/share/elasticsearch/snapshots` within the Elasticsearch container and grant permissions on using it.
 
 ```shell
