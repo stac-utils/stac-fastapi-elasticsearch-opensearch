@@ -51,6 +51,6 @@ setup(
     install_requires=install_requires,
     extras_require=extra_reqs,
     entry_points={
-        "console_scripts": ["stac-fastapi-opensearch=stac_fastapi.opensearch.app:run"]
+        "console_scripts": ["stac-fastapi-opensearch=stac_fastapi_opensearch.app:run"]
     },
 )
