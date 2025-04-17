@@ -10,15 +10,21 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 
 ### Changed
-- Updated package names in setup.py files to use underscores instead of periods for PEP 625 compliance
+
+### Fixed
+
+## [v4.0.0a1] - 2925-04-17
+
+### Changed
+- Updated package names in setup.py files to use underscores instead of periods for PEP 625 compliance [#358](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/358)
   - Changed `stac_fastapi.opensearch` to `stac_fastapi_opensearch`
   - Changed `stac_fastapi.elasticsearch` to `stac_fastapi_elasticsearch`
   - Changed `stac_fastapi.core` to `stac_fastapi_core`
   - Updated all related dependencies to use the new naming convention
+- Renamed `docker-compose.yml` to `compose.yml` to align with Docker Compose V2 conventions [#358](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/358)
+- Bumped version from 4.0.0a0 to 4.0.0a1 for the PEP 625 compliant release [#358](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/358)
 
-### Fixed
-
-## [v4.0.0a0] - 2025-04-17
+## [v4.0.0a0] - 2025-04-16
 
 ### Added
 - Added support for dynamically-generated queryables based on Elasticsearch/OpenSearch mappings, with extensible metadata augmentation [#351](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/351)
@@ -333,7 +339,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v4.0.0a0...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v4.0.0a1...main
+[v4.0.0a1]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v4.0.0a0...v4.0.0a1
 [v4.0.0a0]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.2.5...v4.0.0a0
 [v3.2.5]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.2.4...v3.2.5
 [v3.2.4]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.2.3...v3.2.4
