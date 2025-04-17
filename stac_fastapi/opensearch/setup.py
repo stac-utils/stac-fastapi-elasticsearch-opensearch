@@ -10,7 +10,7 @@ install_requires = [
     "opensearch-py~=2.8.0",
     "opensearch-py[async]~=2.8.0",
     "uvicorn~=0.23.0",
-    "starlette~=0.27.0",
+    "starlette>=0.35.0,<0.36.0",
 ]
 
 extra_reqs = {
@@ -19,7 +19,7 @@ extra_reqs = {
         "pytest-cov~=4.0.0",
         "pytest-asyncio~=0.21.0",
         "pre-commit~=3.0.0",
-        "requests~=2.28.0",
+        "requests>=2.32.0,<3.0.0",
         "ciso8601~=2.3.0",
         "httpx>=0.24.0,<0.28.0",
     ],

@@ -31,7 +31,7 @@ def _es_config() -> Dict[str, Any]:
     # Initialize the configuration dictionary
     config: Dict[str, Any] = {
         "hosts": hosts,
-        "headers": {"accept": "application/vnd.elasticsearch+json; compatible-with=7"},
+        "headers": {"accept": "application/vnd.elasticsearch+json; compatible-with=8"},
     }
 
     # Handle API key

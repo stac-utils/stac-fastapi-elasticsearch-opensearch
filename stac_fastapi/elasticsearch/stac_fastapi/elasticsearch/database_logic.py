@@ -232,7 +232,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             body={
                 "sort": [{"id": {"order": "asc"}}],
                 "size": limit,
-                "search_after": search_after,
+                **({"search_after": search_after} if search_after is not None else {}),
             },
         )
 
@@ -497,7 +497,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 ignore_unavailable=ignore_unavailable,
                 query=query,
                 sort=sort or DEFAULT_SORT,
-                search_after=search_after,
+                **({"search_after": search_after} if search_after is not None else {}),
                 size=size_limit,
             )
         )
