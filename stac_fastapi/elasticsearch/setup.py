@@ -6,7 +6,7 @@ with open("README.md") as f:
     desc = f.read()
 
 install_requires = [
-    "stac_fastapi_core==4.0.0a1",
+    "stac-fastapi-core==4.0.0a1",
     "elasticsearch[async]~=8.18.0",
     "uvicorn~=0.23.0",
     "starlette>=0.35.0,<0.36.0",
@@ -27,7 +27,7 @@ extra_reqs = {
 }
 
 setup(
-    name="stac_fastapi_elasticsearch",
+    name="stac-fastapi-elasticsearch",
     description="An implementation of STAC API based on the FastAPI framework with both Elasticsearch and Opensearch.",
     long_description=desc,
     long_description_content_type="text/markdown",

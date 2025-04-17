@@ -37,9 +37,9 @@
 
 ```bash
 # For versions 4.0.0a1 and newer (PEP 625 compliant naming):
-pip install stac_fastapi_elasticsearch  # Elasticsearch backend
-pip install stac_fastapi_opensearch    # Opensearch backend
-pip install stac_fastapi_core          # Core library
+pip install stac-fastapi-elasticsearch  # Elasticsearch backend
+pip install stac-fastapi-opensearch    # Opensearch backend
+pip install stac-fastapi-core          # Core library
 
 # For versions 4.0.0a0 and older:
 pip install stac-fastapi.elasticsearch  # Elasticsearch backend
@@ -47,7 +47,7 @@ pip install stac-fastapi.opensearch    # Opensearch backend
 pip install stac-fastapi.core          # Core library
 ```
 
-> **Important Note:** Starting with version 4.0.0a1, package names have changed from using periods (e.g., `stac-fastapi.core`) to using underscores (e.g., `stac_fastapi_core`) to comply with PEP 625. Please update your requirements files accordingly.
+> **Important Note:** Starting with version 4.0.0a1, package names have changed from using periods (e.g., `stac-fastapi.core`) to using hyphens (e.g., `stac-fastapi-core`) to comply with PEP 625. Please update your requirements files accordingly.
 
 ### To install and run via pre-built Docker Images
 
