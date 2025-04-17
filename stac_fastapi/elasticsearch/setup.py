@@ -53,7 +53,7 @@ setup(
     extras_require=extra_reqs,
     entry_points={
         "console_scripts": [
-            "stac-fastapi-elasticsearch=stac_fastapi_elasticsearch.app:run"
+            "stac-fastapi-elasticsearch=stac_fastapi.elasticsearch.app:run"
         ]
     },
 )
