@@ -8,7 +8,6 @@ with open("README.md") as f:
 install_requires = [
     "stac_fastapi_core==4.0.0a1",
     "elasticsearch[async]~=9.0.0",
-    "elasticsearch-dsl~=8.18.0",
     "uvicorn~=0.23.0",
     "starlette~=0.27.0",
 ]

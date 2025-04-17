@@ -8,7 +8,7 @@ from copy import deepcopy
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Type
 
 import attr
-from elasticsearch_dsl import Q, Search
+from elasticsearch.dsl import Q, Search
 from starlette.requests import Request
 
 from elasticsearch import exceptions, helpers  # type: ignore
