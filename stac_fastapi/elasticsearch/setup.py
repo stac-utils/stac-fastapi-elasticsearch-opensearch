@@ -27,7 +27,7 @@ extra_reqs = {
 }
 
 setup(
-    name="stac-fastapi-elasticsearch",
+    name="stac_fastapi_elasticsearch",
     description="An implementation of STAC API based on the FastAPI framework with both Elasticsearch and Opensearch.",
     long_description=desc,
     long_description_content_type="text/markdown",

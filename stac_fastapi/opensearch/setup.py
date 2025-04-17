@@ -28,7 +28,7 @@ extra_reqs = {
 }
 
 setup(
-    name="stac-fastapi-opensearch",
+    name="stac_fastapi_opensearch",
     description="Opensearch stac-fastapi backend.",
     long_description=desc,
     long_description_content_type="text/markdown",

@@ -22,7 +22,7 @@ install_requires = [
 ]
 
 setup(
-    name="stac-fastapi-core",
+    name="stac_fastapi_core",
     description="Core library for the Elasticsearch and Opensearch stac-fastapi backends.",
     long_description=desc,
     long_description_content_type="text/markdown",
