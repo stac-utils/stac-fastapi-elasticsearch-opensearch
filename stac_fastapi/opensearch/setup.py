@@ -7,24 +7,24 @@ with open("README.md") as f:
 
 install_requires = [
     "stac_fastapi_core==4.0.0a1",
-    "opensearch-py==2.4.2",
-    "opensearch-py[async]==2.4.2",
-    "uvicorn",
-    "starlette",
+    "opensearch-py~=2.8.0",
+    "opensearch-py[async]~=2.8.0",
+    "uvicorn~=0.23.0",
+    "starlette~=0.27.0",
 ]
 
 extra_reqs = {
     "dev": [
-        "pytest",
-        "pytest-cov",
-        "pytest-asyncio",
-        "pre-commit",
-        "requests",
-        "ciso8601",
-        "httpx<=0.27.2",
+        "pytest~=7.0.0",
+        "pytest-cov~=4.0.0",
+        "pytest-asyncio~=0.21.0",
+        "pre-commit~=3.0.0",
+        "requests~=2.28.0",
+        "ciso8601~=2.3.0",
+        "httpx>=0.24.0,<0.28.0",
     ],
-    "docs": ["mkdocs", "mkdocs-material", "pdocs"],
-    "server": ["uvicorn[standard]==0.19.0"],
+    "docs": ["mkdocs~=1.4.0", "mkdocs-material~=9.0.0", "pdocs~=1.2.0"],
+    "server": ["uvicorn[standard]~=0.19.0"],
 }
 
 setup(
