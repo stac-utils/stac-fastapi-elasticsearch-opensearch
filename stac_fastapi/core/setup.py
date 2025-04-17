@@ -15,7 +15,7 @@ install_requires = [
     "stac-fastapi.types==5.1.1",
     "orjson~=3.9.0",
     "overrides~=7.4.0",
-    "geojson-pydantic~=0.5.0",
+    "geojson-pydantic~=1.0.0",
     "pygeofilter~=0.3.1",
     "jsonschema~=4.0.0",
     "slowapi~=0.1.9",
