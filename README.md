@@ -9,7 +9,7 @@
 </p>
 
   
-  [![PyPI version](https://badge.fury.io/py/stac-fastapi.elasticsearch.svg)](https://badge.fury.io/py/stac-fastapi.elasticsearch)
+  [![PyPI version](https://badge.fury.io/py/stac-fastapi-elasticsearch.svg)](https://badge.fury.io/py/stac-fastapi-elasticsearch) [![PyPI version](https://badge.fury.io/py/stac-fastapi-opensearch.svg)](https://badge.fury.io/py/stac-fastapi-opensearch)
   [![Join the chat at https://gitter.im/stac-fastapi-elasticsearch/community](https://badges.gitter.im/stac-fastapi-elasticsearch/community.svg)](https://gitter.im/stac-fastapi-elasticsearch/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
 
@@ -35,13 +35,19 @@
 
 ### To install from PyPI:
 
-```shell
-pip install stac_fastapi.elasticsearch
+```bash
+# For versions 4.0.0a1 and newer (PEP 625 compliant naming):
+pip install stac_fastapi_elasticsearch  # Elasticsearch backend
+pip install stac_fastapi_opensearch    # Opensearch backend
+pip install stac_fastapi_core          # Core library
+
+# For versions 4.0.0a0 and older:
+pip install stac-fastapi.elasticsearch  # Elasticsearch backend
+pip install stac-fastapi.opensearch    # Opensearch backend
+pip install stac-fastapi.core          # Core library
 ```
-or
-```
-pip install stac_fastapi.opensearch
-```
+
+> **Important Note:** Starting with version 4.0.0a1, package names have changed from using periods (e.g., `stac-fastapi.core`) to using underscores (e.g., `stac_fastapi_core`) to comply with PEP 625. Please update your requirements files accordingly.
 
 ### To install and run via pre-built Docker Images
 
