@@ -8,7 +8,7 @@ with open("README.md") as f:
 install_requires = [
     "fastapi~=0.109.0",
     "attrs>=23.2.0",
-    "pydantic~=2.0.0",
+    "pydantic>=2.4.1,<3.0.0",
     "stac_pydantic~=3.1.0",
     "stac-fastapi.api==5.1.1",
     "stac-fastapi.extensions==5.1.1",
