@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   app-elasticsearch:
     container_name: stac-fastapi-es
