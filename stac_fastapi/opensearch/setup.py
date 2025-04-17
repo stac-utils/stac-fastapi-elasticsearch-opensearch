@@ -24,7 +24,7 @@ extra_reqs = {
         "httpx>=0.24.0,<0.28.0",
     ],
     "docs": ["mkdocs~=1.4.0", "mkdocs-material~=9.0.0", "pdocs~=1.2.0"],
-    "server": ["uvicorn[standard]~=0.19.0"],
+    "server": ["uvicorn[standard]~=0.23.0"],
 }
 
 setup(
