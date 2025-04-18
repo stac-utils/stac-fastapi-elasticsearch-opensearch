@@ -107,10 +107,10 @@ install-os: pybase-install
 
 .PHONY: docs-image
 docs-image:
-	docker compose -f docker compose.docs.yml \
+	docker compose -f compose.docs.yml \
 		build
 
 .PHONY: docs
 docs: docs-image
-	docker compose -f docker compose.docs.yml \
+	docker compose -f compose.docs.yml \
 		run docs
