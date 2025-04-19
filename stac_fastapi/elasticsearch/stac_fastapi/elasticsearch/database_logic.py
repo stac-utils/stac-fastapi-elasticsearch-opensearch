@@ -50,19 +50,18 @@ async def create_index_templates() -> None:
 
     """
     client = AsyncElasticsearchSettings().create_client
-    await client.indices.put_template(
+    await client.indices.put_index_template(
         name=f"template_{COLLECTIONS_INDEX}",
         body={
             "index_patterns": [f"{COLLECTIONS_INDEX}*"],
-            "mappings": ES_COLLECTIONS_MAPPINGS,
+            "template": {"mappings": ES_COLLECTIONS_MAPPINGS},
         },
     )
-    await client.indices.put_template(
+    await client.indices.put_index_template(
         name=f"template_{ITEMS_INDEX_PREFIX}",
         body={
             "index_patterns": [f"{ITEMS_INDEX_PREFIX}*"],
-            "settings": ES_ITEMS_SETTINGS,
-            "mappings": ES_ITEMS_MAPPINGS,
+            "template": {"settings": ES_ITEMS_SETTINGS, "mappings": ES_ITEMS_MAPPINGS},
         },
     )
     await client.close()
