@@ -16,10 +16,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [v4.0.0a2] - 2025-04-20
 
 ### Added
-- Added `enable_direct_response` option to API settings for more flexible response handling. [#359](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/359)
+- Enabled `enable_direct_response` to improve response performance by bypassing FastAPI's jsonable_encoder and Pydantic serialization when returning Response objects. This change significantly improves performance for large search responses, as profiled in [this issue](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/347) [#359](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/359)
 
 ### Changed
-- Enabled `enable_direct_response` to improve response performance by bypassing FastAPI's jsonable_encoder and Pydantic serialization when returning Response objects. This change significantly improves performance for large search responses, as profiled in [this issue](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/347). Note: This disables automatic Pydantic response validation for affected endpoints, but this is not used in our current implementation. [#359](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/359)
 - Updated test suite to use `httpx.ASGITransport(app=...)` for FastAPI app testing (removes deprecation warning). [#359](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/359)
 - Updated stac-fastapi parent libraries to 5.2.0. [#359](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/359)
 - Migrated Elasticsearch index template creation from legacy `put_template` to composable `put_index_template` API in `database_logic.py`. This resolves deprecation warnings and ensures compatibility with Elasticsearch 7.x and 8.x. [#359](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/359)
