@@ -29,8 +29,12 @@
 - There is [Postman](https://documenter.getpostman.com/view/12888943/2s8ZDSdRHA) documentation here for examples on how to run some of the API routes locally - after starting the elasticsearch backend via the compose.yml file.
 - The `/examples` folder shows an example of running stac-fastapi-elasticsearch from PyPI in docker without needing any code from the repository. There is also a Postman collection here that you can load into Postman for testing the API routes.
 
-- For changes, see the [Changelog](CHANGELOG.md)
-- We are always welcoming contributions. For the development notes: [Contributing](CONTRIBUTING.md)
+
+### Performance Note
+
+The `enable_direct_response` option is provided by the stac-fastapi core library (introduced in stac-fastapi 5.2.0) and is available in this project starting from v4.0.0. When enabled, it allows endpoints to return Starlette Response objects directly, bypassing FastAPI's default serialization for improved performance.
+
+See: [issue #347](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/347)
 
 
 ### To install from PyPI:

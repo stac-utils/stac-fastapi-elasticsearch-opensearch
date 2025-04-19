@@ -6,7 +6,7 @@ with open("README.md") as f:
     desc = f.read()
 
 install_requires = [
-    "stac-fastapi-core==4.0.0a1",
+    "stac-fastapi-core==4.0.0a2",
     "elasticsearch[async]~=8.18.0",
     "uvicorn~=0.23.0",
     "starlette>=0.35.0,<0.36.0",

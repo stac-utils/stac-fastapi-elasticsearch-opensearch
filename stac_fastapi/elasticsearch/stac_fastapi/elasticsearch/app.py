@@ -87,7 +87,7 @@ post_request_model = create_post_request_model(search_extensions)
 api = StacApi(
     title=os.getenv("STAC_FASTAPI_TITLE", "stac-fastapi-elasticsearch"),
     description=os.getenv("STAC_FASTAPI_DESCRIPTION", "stac-fastapi-elasticsearch"),
-    api_version=os.getenv("STAC_FASTAPI_VERSION", "2.1"),
+    api_version=os.getenv("STAC_FASTAPI_VERSION", "5.2.0"),
     settings=settings,
     extensions=extensions,
     client=CoreClient(
@@ -96,6 +96,8 @@ api = StacApi(
     search_get_request_model=create_get_request_model(search_extensions),
     search_post_request_model=post_request_model,
     route_dependencies=get_route_dependencies(),
+    enable_response_models=False,
+    enable_direct_response=True,
 )
 app = api.app
 app.root_path = os.getenv("STAC_FASTAPI_ROOT_PATH", "")

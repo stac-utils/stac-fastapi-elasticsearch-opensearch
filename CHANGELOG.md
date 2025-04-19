@@ -13,6 +13,20 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+## [v4.0.0a2] - 2025-04-20
+
+### Added
+- Enabled `enable_direct_response` to improve response performance by bypassing FastAPI's jsonable_encoder and Pydantic serialization when returning Response objects. This change significantly improves performance for large search responses, as profiled in [this issue](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/347) [#359](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/359)
+
+### Changed
+- Updated test suite to use `httpx.ASGITransport(app=...)` for FastAPI app testing (removes deprecation warning). [#359](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/359)
+- Updated stac-fastapi parent libraries to 5.2.0. [#359](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/359)
+- Migrated Elasticsearch index template creation from legacy `put_template` to composable `put_index_template` API in `database_logic.py`. This resolves deprecation warnings and ensures compatibility with Elasticsearch 7.x and 8.x. [#359](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/359)
+- Updated all Pydantic models to use `ConfigDict` instead of class-based `Config` for Pydantic v2 compatibility. This resolves deprecation warnings and prepares for Pydantic v3. [#359](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/359)
+- Migrated all Pydantic `@root_validator` validators to `@model_validator` for Pydantic v2 compatibility. [#359](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/359)
+
+### Fixed
+
 ## [v4.0.0a1] - 2925-04-17
 
 ### Changed
@@ -343,25 +357,26 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v4.0.0a1...main
-[v4.0.0a1]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v4.0.0a0...v4.0.0a1
-[v4.0.0a0]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.2.5...v4.0.0a0
-[v3.2.5]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.2.4...v3.2.5
-[v3.2.4]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.2.3...v3.2.4
-[v3.2.3]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.2.2...v3.2.3
-[v3.2.2]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.2.1...v3.2.2
-[v3.2.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.2.0...v3.2.1
-[v3.2.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.1.0...v3.2.0
-[v3.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.0.0...v3.1.0
-[v3.0.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.4.1...v3.0.0
-[v2.4.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.4.0...v2.4.1
-[v2.4.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.3.0...v2.4.0
-[v2.3.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.2.0...v2.3.0
-[v2.2.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.1.0...v2.2.0
-[v2.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.0.0...v2.1.0
-[v2.0.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v1.1.0...v2.0.0
-[v1.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v1.0.0...v1.1.0
-[v1.0.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v0.3.0...v1.0.0
-[v0.3.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v0.2.0...v0.3.0
-[v0.2.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v0.1.0...v0.2.0
-[v0.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v0.1.0
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v4.0.0a2...main
+[v4.0.0a2]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v4.0.0a1...v4.0.0a2
+[v4.0.0a1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v4.0.0a0...v4.0.0a1
+[v4.0.0a0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v3.2.5...v4.0.0a0
+[v3.2.5]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v3.2.4...v3.2.5
+[v3.2.4]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v3.2.3...v3.2.4
+[v3.2.3]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v3.2.2...v3.2.3
+[v3.2.2]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v3.2.1...v3.2.2
+[v3.2.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v3.2.0...v3.2.1
+[v3.2.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v3.1.0...v3.2.0
+[v3.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v3.0.0...v3.1.0
+[v3.0.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v2.4.1...v3.0.0
+[v2.4.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v2.4.0...v2.4.1
+[v2.4.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v2.3.0...v2.4.0
+[v2.3.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v2.2.0...v2.3.0
+[v2.2.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v2.1.0...v2.2.0
+[v2.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v2.0.0...v2.1.0
+[v2.0.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v1.1.0...v2.0.0
+[v1.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v1.0.0...v1.1.0
+[v1.0.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v0.3.0...v1.0.0
+[v0.3.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v0.2.0...v0.3.0
+[v0.2.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v0.1.0...v0.2.0
+[v0.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v0.1.0
