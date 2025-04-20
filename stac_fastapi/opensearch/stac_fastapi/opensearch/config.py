@@ -91,8 +91,8 @@ class OpensearchSettings(ApiSettings, ApiBaseSettings):
         return OpenSearch(**_es_config())
 
 
-# Warn at import if direct response is enabled
-if OpensearchSettings.enable_direct_response:
+# Warn at import if direct response is enabled (applies to both settings)
+if OpensearchSettings().enable_direct_response:
     logging.basicConfig(level=logging.WARNING)
     logging.warning(
         "ENABLE_DIRECT_RESPONSE is True: All FastAPI dependencies (including authentication) are DISABLED for all routes!"

@@ -94,7 +94,7 @@ class ElasticsearchSettings(ApiSettings, ApiBaseSettings):
 
 
 # Warn at import if direct response is enabled
-if ElasticsearchSettings.enable_direct_response:
+if ElasticsearchSettings().enable_direct_response:
     logging.basicConfig(level=logging.WARNING)
     logging.warning(
         "ENABLE_DIRECT_RESPONSE is True: All FastAPI dependencies (including authentication) are DISABLED for all routes!"
