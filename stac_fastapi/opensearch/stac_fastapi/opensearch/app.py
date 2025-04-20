@@ -96,8 +96,6 @@ api = StacApi(
     search_get_request_model=create_get_request_model(search_extensions),
     search_post_request_model=post_request_model,
     route_dependencies=get_route_dependencies(),
-    enable_response_models=False,
-    enable_direct_response=True,
 )
 app = api.app
 app.root_path = os.getenv("STAC_FASTAPI_ROOT_PATH", "")
