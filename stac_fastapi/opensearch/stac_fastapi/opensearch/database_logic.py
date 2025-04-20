@@ -9,7 +9,6 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple, Type
 
 import attr
 from opensearchpy import exceptions, helpers
-from opensearchpy.exceptions import TransportError
 from opensearchpy.helpers.query import Q
 from opensearchpy.helpers.search import Search
 from starlette.requests import Request
@@ -80,24 +79,21 @@ async def create_collection_index() -> None:
     """
     client = AsyncSearchSettings().create_client
 
-    search_body: Dict[str, Any] = {
-        "aliases": {COLLECTIONS_INDEX: {}},
-    }
-
     index = f"{COLLECTIONS_INDEX}-000001"
 
-    try:
-        await client.indices.create(index=index, body=search_body)
-    except TransportError as e:
-        if e.status_code == 400:
-            pass  # Ignore 400 status codes
-        else:
-            raise e
-
+    exists = await client.indices.exists(index=index)
+    if not exists:
+        await client.indices.create(
+            index=index,
+            body={
+                "aliases": {COLLECTIONS_INDEX: {}},
+                "mappings": ES_COLLECTIONS_MAPPINGS,
+            },
+        )
     await client.close()
 
 
-async def create_item_index(collection_id: str):
+async def create_item_index(collection_id: str) -> None:
     """
     Create the index for Items. The settings of the index template will be used implicitly.
 
@@ -109,24 +105,22 @@ async def create_item_index(collection_id: str):
 
     """
     client = AsyncSearchSettings().create_client
-    search_body: Dict[str, Any] = {
-        "aliases": {index_alias_by_collection_id(collection_id): {}},
-    }
 
-    try:
+    index_name = f"{index_by_collection_id(collection_id)}-000001"
+    exists = await client.indices.exists(index=index_name)
+    if not exists:
         await client.indices.create(
-            index=f"{index_by_collection_id(collection_id)}-000001", body=search_body
+            index=index_name,
+            body={
+                "aliases": {index_alias_by_collection_id(collection_id): {}},
+                "mappings": ES_ITEMS_MAPPINGS,
+                "settings": ES_ITEMS_SETTINGS,
+            },
         )
-    except TransportError as e:
-        if e.status_code == 400:
-            pass  # Ignore 400 status codes
-        else:
-            raise e
-
     await client.close()
 
 
-async def delete_item_index(collection_id: str):
+async def delete_item_index(collection_id: str) -> None:
     """Delete the index for items in a collection.
 
     Args:

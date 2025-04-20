@@ -79,7 +79,7 @@ async def create_collection_index() -> None:
 
     await client.options(ignore_status=400).indices.create(
         index=f"{COLLECTIONS_INDEX}-000001",
-        aliases={COLLECTIONS_INDEX: {}},
+        body={"aliases": {COLLECTIONS_INDEX: {}}},
     )
     await client.close()
 
@@ -99,7 +99,7 @@ async def create_item_index(collection_id: str):
 
     await client.options(ignore_status=400).indices.create(
         index=f"{index_by_collection_id(collection_id)}-000001",
-        aliases={index_alias_by_collection_id(collection_id): {}},
+        body={"aliases": {index_alias_by_collection_id(collection_id): {}}},
     )
     await client.close()
 
