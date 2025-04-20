@@ -1,4 +1,5 @@
 """API configuration."""
+import logging
 import os
 import ssl
 from typing import Any, Dict, Set
@@ -69,13 +70,20 @@ _forbidden_fields: Set[str] = {"type"}
 
 
 class OpensearchSettings(ApiSettings, ApiBaseSettings):
-    """API settings."""
+    """
+    API settings.
 
-    # Fields which are defined by STAC but not included in the database model
+    Set enable_direct_response via the ENABLE_DIRECT_RESPONSE environment variable.
+    If enabled, all API routes use direct response for maximum performance, but ALL FastAPI dependencies (including authentication, custom status codes, and validation) are disabled.
+    Default is False for safety.
+    """
+
     forbidden_fields: Set[str] = _forbidden_fields
     indexed_fields: Set[str] = {"datetime"}
     enable_response_models: bool = False
-    enable_direct_response: bool = True
+    enable_direct_response: bool = (
+        os.getenv("ENABLE_DIRECT_RESPONSE", "false").lower() == "true"
+    )
 
     @property
     def create_client(self):
@@ -83,14 +91,29 @@ class OpensearchSettings(ApiSettings, ApiBaseSettings):
         return OpenSearch(**_es_config())
 
 
-class AsyncOpensearchSettings(ApiSettings, ApiBaseSettings):
-    """API settings."""
+# Warn at import if direct response is enabled
+if OpensearchSettings.enable_direct_response:
+    logging.basicConfig(level=logging.WARNING)
+    logging.warning(
+        "ENABLE_DIRECT_RESPONSE is True: All FastAPI dependencies (including authentication) are DISABLED for all routes!"
+    )
 
-    # Fields which are defined by STAC but not included in the database model
+
+class AsyncOpensearchSettings(ApiSettings, ApiBaseSettings):
+    """
+    API settings.
+
+    Set enable_direct_response via the ENABLE_DIRECT_RESPONSE environment variable.
+    If enabled, all API routes use direct response for maximum performance, but ALL FastAPI dependencies (including authentication, custom status codes, and validation) are disabled.
+    Default is False for safety.
+    """
+
     forbidden_fields: Set[str] = _forbidden_fields
     indexed_fields: Set[str] = {"datetime"}
     enable_response_models: bool = False
-    enable_direct_response: bool = True
+    enable_direct_response: bool = (
+        os.getenv("ENABLE_DIRECT_RESPONSE", "false").lower() == "true"
+    )
 
     @property
     def create_client(self):

@@ -32,7 +32,13 @@
 
 ### Performance Note
 
-The `enable_direct_response` option is provided by the stac-fastapi core library (introduced in stac-fastapi 5.2.0) and is available in this project starting from v4.0.0. When enabled, it allows endpoints to return Starlette Response objects directly, bypassing FastAPI's default serialization for improved performance.
+The `enable_direct_response` option is provided by the stac-fastapi core library (introduced in stac-fastapi 5.2.0) and is available in this project starting from v4.0.0.
+
+**You can now control this setting via the `ENABLE_DIRECT_RESPONSE` environment variable.**
+
+When enabled (`ENABLE_DIRECT_RESPONSE=true`), endpoints return Starlette Response objects directly, bypassing FastAPI's default serialization for improved performance. **However, all FastAPI dependencies (including authentication, custom status codes, and validation) are disabled for all routes.**
+
+This mode is best suited for public or read-only APIs where authentication and custom logic are not required. Default is `false` for safety.
 
 See: [issue #347](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/347)
 
@@ -80,6 +86,7 @@ file named `.env` in the same directory you run Docker Compose from:
 ```shell
 ELASTICSEARCH_VERSION=7.17.1
 OPENSEARCH_VERSION=2.11.0
+ENABLE_DIRECT_RESPONSE=false
 ```
 The most recent Elasticsearch 7.x versions should also work. See the [opensearch-py docs](https://github.com/opensearch-project/opensearch-py/blob/main/COMPATIBILITY.md) for compatibility information.
 
@@ -104,7 +111,8 @@ You can customize additional settings in your `.env` file:
 | `RELOAD`                     | Enable auto-reload for development.                                                  | `true`                   | Optional                                                                                    |
 | `STAC_FASTAPI_RATE_LIMIT`    | API rate limit per client.                                                           | `200/minute`             | Optional                                                                                    |
 | `BACKEND`                    | Tests-related variable                                                               | `elasticsearch` or `opensearch` based on the backend | Optional                                                                                    |
-| `ELASTICSEARCH_VERSION`      | ElasticSearch version                                                                | `7.17.1`                 | Optional                                                                                    |
+| `ELASTICSEARCH_VERSION`          | Version of Elasticsearch to use.                                                         | N/A                      | Optional                                                                                    |
+| `ENABLE_DIRECT_RESPONSE`         | Enable direct response for maximum performance (disables all FastAPI dependencies, including authentication, custom status codes, and validation) | `false`                  | Optional                                                                                    |
 | `OPENSEARCH_VERSION`         | OpenSearch version                                                                   | `2.11.0`                 | Optional                                                                                    |
 
 > [!NOTE]
