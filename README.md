@@ -84,8 +84,8 @@ If you wish to use a different version, put the following in a
 file named `.env` in the same directory you run Docker Compose from:
 
 ```shell
-ELASTICSEARCH_VERSION=7.17.1
-OPENSEARCH_VERSION=2.11.0
+ELASTICSEARCH_VERSION=8.11.0
+OPENSEARCH_VERSION=2.11.1
 ENABLE_DIRECT_RESPONSE=false
 ```
 The most recent Elasticsearch 7.x versions should also work. See the [opensearch-py docs](https://github.com/opensearch-project/opensearch-py/blob/main/COMPATIBILITY.md) for compatibility information.
@@ -111,9 +111,9 @@ You can customize additional settings in your `.env` file:
 | `RELOAD`                     | Enable auto-reload for development.                                                  | `true`                   | Optional                                                                                    |
 | `STAC_FASTAPI_RATE_LIMIT`    | API rate limit per client.                                                           | `200/minute`             | Optional                                                                                    |
 | `BACKEND`                    | Tests-related variable                                                               | `elasticsearch` or `opensearch` based on the backend | Optional                                                                                    |
-| `ELASTICSEARCH_VERSION`          | Version of Elasticsearch to use.                                                         | N/A                      | Optional                                                                                    |
+| `ELASTICSEARCH_VERSION`          | Version of Elasticsearch to use.                                                         | `8.11.0`                      | Optional                                                                                    |
 | `ENABLE_DIRECT_RESPONSE`         | Enable direct response for maximum performance (disables all FastAPI dependencies, including authentication, custom status codes, and validation) | `false`                  | Optional                                                                                    |
-| `OPENSEARCH_VERSION`         | OpenSearch version                                                                   | `2.11.0`                 | Optional                                                                                    |
+| `OPENSEARCH_VERSION`         | OpenSearch version                                                                   | `2.11.1`                 | Optional                                                                                    |
 
 > [!NOTE]
 > The variables `ES_HOST`, `ES_PORT`, `ES_USE_SSL`, and `ES_VERIFY_CERTS` apply to both Elasticsearch and OpenSearch backends, so there is no need to rename the key names to `OS_` even if you're using OpenSearch.
