@@ -45,7 +45,7 @@ def _es_config() -> Dict[str, Any]:
 
     # Include SSL settings if using https
     config["ssl_version"] = ssl.PROTOCOL_SSLv23  # type: ignore
-    config["verify_certs"] = get_bool_env("ES_VERIFY_CERTS", default=True)  # type: ignore
+    config["verify_certs"] = get_bool_env("ES_VERIFY_CERTS", default=True)
 
     # Include CA Certificates if verifying certs
     if config["verify_certs"]:
