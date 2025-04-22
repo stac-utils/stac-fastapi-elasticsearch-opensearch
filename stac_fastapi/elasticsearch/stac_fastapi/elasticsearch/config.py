@@ -92,14 +92,6 @@ class ElasticsearchSettings(ApiSettings, ApiBaseSettings):
         return Elasticsearch(**_es_config())
 
 
-# Warn at import if direct response is enabled
-if ElasticsearchSettings().enable_direct_response:
-    logging.basicConfig(level=logging.WARNING)
-    logging.warning(
-        "ENABLE_DIRECT_RESPONSE is True: All FastAPI dependencies (including authentication) are DISABLED for all routes!"
-    )
-
-
 class AsyncElasticsearchSettings(ApiSettings, ApiBaseSettings):
     """
     API settings.
@@ -118,3 +110,14 @@ class AsyncElasticsearchSettings(ApiSettings, ApiBaseSettings):
     def create_client(self):
         """Create async elasticsearch client."""
         return AsyncElasticsearch(**_es_config())
+
+
+# Warn at import if direct response is enabled (applies to either settings class)
+if (
+    ElasticsearchSettings().enable_direct_response
+    or AsyncElasticsearchSettings().enable_direct_response
+):
+    logging.basicConfig(level=logging.WARNING)
+    logging.warning(
+        "ENABLE_DIRECT_RESPONSE is True: All FastAPI dependencies (including authentication) are DISABLED for all routes!"
+    )

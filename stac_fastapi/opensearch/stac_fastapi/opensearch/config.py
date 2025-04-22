@@ -90,14 +90,6 @@ class OpensearchSettings(ApiSettings, ApiBaseSettings):
         return OpenSearch(**_es_config())
 
 
-# Warn at import if direct response is enabled (applies to both settings)
-if OpensearchSettings().enable_direct_response:
-    logging.basicConfig(level=logging.WARNING)
-    logging.warning(
-        "ENABLE_DIRECT_RESPONSE is True: All FastAPI dependencies (including authentication) are DISABLED for all routes!"
-    )
-
-
 class AsyncOpensearchSettings(ApiSettings, ApiBaseSettings):
     """
     API settings.
@@ -110,11 +102,20 @@ class AsyncOpensearchSettings(ApiSettings, ApiBaseSettings):
     forbidden_fields: Set[str] = _forbidden_fields
     indexed_fields: Set[str] = {"datetime"}
     enable_response_models: bool = False
-    enable_direct_response: bool = (
-        os.getenv("ENABLE_DIRECT_RESPONSE", "false").lower() == "true"
-    )
+    enable_direct_response: bool = get_bool_env("ENABLE_DIRECT_RESPONSE", default=False)
 
     @property
     def create_client(self):
         """Create async elasticsearch client."""
         return AsyncOpenSearch(**_es_config())
+
+
+# Warn at import if direct response is enabled (applies to either settings class)
+if (
+    OpensearchSettings().enable_direct_response
+    or AsyncOpensearchSettings().enable_direct_response
+):
+    logging.basicConfig(level=logging.WARNING)
+    logging.warning(
+        "ENABLE_DIRECT_RESPONSE is True: All FastAPI dependencies (including authentication) are DISABLED for all routes!"
+    )
