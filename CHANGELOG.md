@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 - Added support for high-performance direct response mode for both Elasticsearch and Opensearch backends, controlled by the `ENABLE_DIRECT_RESPONSE` environment variable. When enabled (`ENABLE_DIRECT_RESPONSE=true`), endpoints return Starlette Response objects directly, bypassing FastAPI's jsonable_encoder and Pydantic serialization for significantly improved performance on large search responses. **Note:** In this mode, all FastAPI dependencies (including authentication, custom status codes, and validation) are disabled for all routes. Default is `false` for safety. A warning is logged at startup if enabled. See [issue #347](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/347) and [PR #359](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/359).
+- Added robust tests for the `ENABLE_DIRECT_RESPONSE` environment variable, covering both Elasticsearch and OpenSearch backends. Tests gracefully handle missing backends by attempting to import both configs and skipping if neither is available. [#359](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/359)
 
 ### Changed
 - Updated test suite to use `httpx.ASGITransport(app=...)` for FastAPI app testing (removes deprecation warning). [#359](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/359)
@@ -25,6 +26,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Updated all Pydantic models to use `ConfigDict` instead of class-based `Config` for Pydantic v2 compatibility. This resolves deprecation warnings and prepares for Pydantic v3. [#359](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/359)
 - Migrated all Pydantic `@root_validator` validators to `@model_validator` for Pydantic v2 compatibility. [#359](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/359)
 - Migrated startup event handling from deprecated `@app.on_event("startup")` to FastAPI's recommended lifespan context manager. This removes deprecation warnings and ensures compatibility with future FastAPI versions. [#359](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/359)
+- Refactored all boolean environment variable parsing in both Elasticsearch and OpenSearch backends to use the shared `get_bool_env` utility. This ensures robust and consistent handling of environment variables such as `ES_USE_SSL`, `ES_HTTP_COMPRESS`, and `ES_VERIFY_CERTS` across both backends. [#359](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/359)
+
 
 ### Fixed
 

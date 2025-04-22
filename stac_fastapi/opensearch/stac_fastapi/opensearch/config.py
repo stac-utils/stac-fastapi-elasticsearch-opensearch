@@ -8,12 +8,13 @@ import certifi
 from opensearchpy import AsyncOpenSearch, OpenSearch
 
 from stac_fastapi.core.base_settings import ApiBaseSettings
+from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.types.config import ApiSettings
 
 
 def _es_config() -> Dict[str, Any]:
     # Determine the scheme (http or https)
-    use_ssl = os.getenv("ES_USE_SSL", "true").lower() == "true"
+    use_ssl = get_bool_env("ES_USE_SSL", default=True)
     scheme = "https" if use_ssl else "http"
 
     # Configure the hosts parameter with the correct scheme
@@ -34,7 +35,7 @@ def _es_config() -> Dict[str, Any]:
         "headers": {"accept": "application/json", "Content-Type": "application/json"},
     }
 
-    http_compress = os.getenv("ES_HTTP_COMPRESS", "true").lower() == "true"
+    http_compress = get_bool_env("ES_HTTP_COMPRESS", default=True)
     if http_compress:
         config["http_compress"] = True
 
@@ -44,7 +45,7 @@ def _es_config() -> Dict[str, Any]:
 
     # Include SSL settings if using https
     config["ssl_version"] = ssl.PROTOCOL_SSLv23  # type: ignore
-    config["verify_certs"] = os.getenv("ES_VERIFY_CERTS", "true").lower() != "false"  # type: ignore
+    config["verify_certs"] = get_bool_env("ES_VERIFY_CERTS", default=True)  # type: ignore
 
     # Include CA Certificates if verifying certs
     if config["verify_certs"]:
@@ -81,9 +82,7 @@ class OpensearchSettings(ApiSettings, ApiBaseSettings):
     forbidden_fields: Set[str] = _forbidden_fields
     indexed_fields: Set[str] = {"datetime"}
     enable_response_models: bool = False
-    enable_direct_response: bool = (
-        os.getenv("ENABLE_DIRECT_RESPONSE", "false").lower() == "true"
-    )
+    enable_direct_response: bool = get_bool_env("ENABLE_DIRECT_RESPONSE", default=False)
 
     @property
     def create_client(self):
