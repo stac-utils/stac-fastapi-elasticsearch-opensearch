@@ -8,10 +8,11 @@ from copy import deepcopy
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Type
 
 import attr
+import elasticsearch.helpers as helpers
 from elasticsearch.dsl import Q, Search
+from elasticsearch.exceptions import NotFoundError as ESNotFoundError
 from starlette.requests import Request
 
-from elasticsearch import exceptions, helpers  # type: ignore
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.database_logic import (
     COLLECTIONS_INDEX,
@@ -50,19 +51,18 @@ async def create_index_templates() -> None:
 
     """
     client = AsyncElasticsearchSettings().create_client
-    await client.indices.put_template(
+    await client.indices.put_index_template(
         name=f"template_{COLLECTIONS_INDEX}",
         body={
             "index_patterns": [f"{COLLECTIONS_INDEX}*"],
-            "mappings": ES_COLLECTIONS_MAPPINGS,
+            "template": {"mappings": ES_COLLECTIONS_MAPPINGS},
         },
     )
-    await client.indices.put_template(
+    await client.indices.put_index_template(
         name=f"template_{ITEMS_INDEX_PREFIX}",
         body={
             "index_patterns": [f"{ITEMS_INDEX_PREFIX}*"],
-            "settings": ES_ITEMS_SETTINGS,
-            "mappings": ES_ITEMS_MAPPINGS,
+            "template": {"settings": ES_ITEMS_SETTINGS, "mappings": ES_ITEMS_MAPPINGS},
         },
     )
     await client.close()
@@ -80,7 +80,7 @@ async def create_collection_index() -> None:
 
     await client.options(ignore_status=400).indices.create(
         index=f"{COLLECTIONS_INDEX}-000001",
-        aliases={COLLECTIONS_INDEX: {}},
+        body={"aliases": {COLLECTIONS_INDEX: {}}},
     )
     await client.close()
 
@@ -100,7 +100,7 @@ async def create_item_index(collection_id: str):
 
     await client.options(ignore_status=400).indices.create(
         index=f"{index_by_collection_id(collection_id)}-000001",
-        aliases={index_alias_by_collection_id(collection_id): {}},
+        body={"aliases": {index_alias_by_collection_id(collection_id): {}}},
     )
     await client.close()
 
@@ -272,7 +272,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 index=index_alias_by_collection_id(collection_id),
                 id=mk_item_id(item_id, collection_id),
             )
-        except exceptions.NotFoundError:
+        except ESNotFoundError:
             raise NotFoundError(
                 f"Item {item_id} does not exist inside Collection {collection_id}"
             )
@@ -512,7 +512,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         try:
             es_response = await search_task
-        except exceptions.NotFoundError:
+        except ESNotFoundError:
             raise NotFoundError(f"Collections '{collection_ids}' do not exist")
 
         hits = es_response["hits"]["hits"]
@@ -595,7 +595,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         try:
             db_response = await search_task
-        except exceptions.NotFoundError:
+        except ESNotFoundError:
             raise NotFoundError(f"Collections '{collection_ids}' do not exist")
 
         return db_response
@@ -721,7 +721,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 id=mk_item_id(item_id, collection_id),
                 refresh=refresh,
             )
-        except exceptions.NotFoundError:
+        except ESNotFoundError:
             raise NotFoundError(
                 f"Item {item_id} in collection {collection_id} not found"
             )
@@ -741,7 +741,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 index=index_name, allow_no_indices=False
             )
             return mapping.body
-        except exceptions.NotFoundError:
+        except ESNotFoundError:
             raise NotFoundError(f"Mapping for index {index_name} not found")
 
     async def create_collection(self, collection: Collection, refresh: bool = False):
@@ -792,7 +792,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             collection = await self.client.get(
                 index=COLLECTIONS_INDEX, id=collection_id
             )
-        except exceptions.NotFoundError:
+        except ESNotFoundError:
             raise NotFoundError(f"Collection {collection_id} not found")
 
         return collection["_source"]

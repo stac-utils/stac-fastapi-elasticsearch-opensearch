@@ -29,8 +29,18 @@
 - There is [Postman](https://documenter.getpostman.com/view/12888943/2s8ZDSdRHA) documentation here for examples on how to run some of the API routes locally - after starting the elasticsearch backend via the compose.yml file.
 - The `/examples` folder shows an example of running stac-fastapi-elasticsearch from PyPI in docker without needing any code from the repository. There is also a Postman collection here that you can load into Postman for testing the API routes.
 
-- For changes, see the [Changelog](CHANGELOG.md)
-- We are always welcoming contributions. For the development notes: [Contributing](CONTRIBUTING.md)
+
+### Performance Note
+
+The `enable_direct_response` option is provided by the stac-fastapi core library (introduced in stac-fastapi 5.2.0) and is available in this project starting from v4.0.0.
+
+**You can now control this setting via the `ENABLE_DIRECT_RESPONSE` environment variable.**
+
+When enabled (`ENABLE_DIRECT_RESPONSE=true`), endpoints return Starlette Response objects directly, bypassing FastAPI's default serialization for improved performance. **However, all FastAPI dependencies (including authentication, custom status codes, and validation) are disabled for all routes.**
+
+This mode is best suited for public or read-only APIs where authentication and custom logic are not required. Default is `false` for safety.
+
+See: [issue #347](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/347)
 
 
 ### To install from PyPI:
@@ -74,8 +84,9 @@ If you wish to use a different version, put the following in a
 file named `.env` in the same directory you run Docker Compose from:
 
 ```shell
-ELASTICSEARCH_VERSION=7.17.1
-OPENSEARCH_VERSION=2.11.0
+ELASTICSEARCH_VERSION=8.11.0
+OPENSEARCH_VERSION=2.11.1
+ENABLE_DIRECT_RESPONSE=false
 ```
 The most recent Elasticsearch 7.x versions should also work. See the [opensearch-py docs](https://github.com/opensearch-project/opensearch-py/blob/main/COMPATIBILITY.md) for compatibility information.
 
@@ -100,8 +111,9 @@ You can customize additional settings in your `.env` file:
 | `RELOAD`                     | Enable auto-reload for development.                                                  | `true`                   | Optional                                                                                    |
 | `STAC_FASTAPI_RATE_LIMIT`    | API rate limit per client.                                                           | `200/minute`             | Optional                                                                                    |
 | `BACKEND`                    | Tests-related variable                                                               | `elasticsearch` or `opensearch` based on the backend | Optional                                                                                    |
-| `ELASTICSEARCH_VERSION`      | ElasticSearch version                                                                | `7.17.1`                 | Optional                                                                                    |
-| `OPENSEARCH_VERSION`         | OpenSearch version                                                                   | `2.11.0`                 | Optional                                                                                    |
+| `ELASTICSEARCH_VERSION`          | Version of Elasticsearch to use.                                                         | `8.11.0`                      | Optional                                                                                    |
+| `ENABLE_DIRECT_RESPONSE`         | Enable direct response for maximum performance (disables all FastAPI dependencies, including authentication, custom status codes, and validation) | `false`                  | Optional                                                                                    |
+| `OPENSEARCH_VERSION`         | OpenSearch version                                                                   | `2.11.1`                 | Optional                                                                                    |
 
 > [!NOTE]
 > The variables `ES_HOST`, `ES_PORT`, `ES_USE_SSL`, and `ES_VERIFY_CERTS` apply to both Elasticsearch and OpenSearch backends, so there is no need to rename the key names to `OS_` even if you're using OpenSearch.
