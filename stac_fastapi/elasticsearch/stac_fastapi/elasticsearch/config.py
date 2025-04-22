@@ -6,8 +6,9 @@ import ssl
 from typing import Any, Dict, Set
 
 import certifi
+from elasticsearch._async.client import AsyncElasticsearch
 
-from elasticsearch import AsyncElasticsearch, Elasticsearch  # type: ignore
+from elasticsearch import Elasticsearch  # type: ignore[attr-defined]
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.types.config import ApiSettings

@@ -334,7 +334,7 @@ class CoreClient(AsyncBaseCoreClient):
             search=search,
             limit=limit,
             sort=None,
-            token=token,  # type: ignore
+            token=token,
             collection_ids=[collection_id],
         )
 
@@ -633,7 +633,7 @@ class CoreClient(AsyncBaseCoreClient):
         items, maybe_count, next_token = await self.database.execute_search(
             search=search,
             limit=limit,
-            token=search_request.token,  # type: ignore
+            token=search_request.token,
             sort=sort,
             collection_ids=search_request.collections,
         )
@@ -701,7 +701,10 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 database=self.database, settings=self.settings
             )
             processed_items = [
-                bulk_client.preprocess_item(item, base_url, BulkTransactionMethod.INSERT) for item in item["features"]  # type: ignore
+                bulk_client.preprocess_item(
+                    item, base_url, BulkTransactionMethod.INSERT
+                )
+                for item in item["features"]
             ]
 
             await self.database.bulk_async(
