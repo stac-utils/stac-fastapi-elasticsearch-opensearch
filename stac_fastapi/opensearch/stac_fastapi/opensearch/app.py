@@ -1,6 +1,9 @@
 """FastAPI application."""
 
 import os
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
 
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import create_get_request_model, create_post_request_model
@@ -97,18 +100,21 @@ api = StacApi(
     search_post_request_model=post_request_model,
     route_dependencies=get_route_dependencies(),
 )
-app = api.app
-app.root_path = os.getenv("STAC_FASTAPI_ROOT_PATH", "")
 
 
-# Add rate limit
-setup_rate_limit(app, rate_limit=os.getenv("STAC_FASTAPI_RATE_LIMIT"))
-
-
-@app.on_event("startup")
-async def _startup_event() -> None:
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan handler for FastAPI app. Initializes index templates and collections at startup."""
     await create_index_templates()
     await create_collection_index()
+    yield
+
+
+app = api.app
+app.router.lifespan_context = lifespan
+app.root_path = os.getenv("STAC_FASTAPI_ROOT_PATH", "")
+# Add rate limit
+setup_rate_limit(app, rate_limit=os.getenv("STAC_FASTAPI_RATE_LIMIT"))
 
 
 def run() -> None:
