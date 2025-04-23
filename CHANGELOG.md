@@ -34,8 +34,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
   - Updated all related dependencies to use the new naming convention
 - Renamed `docker-compose.yml` to `compose.yml` to align with Docker Compose V2 conventions [#358](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/358)
 - Removed deprecated `version` field from all compose files [#358](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/358)
-- Updated `STAC_FASTAPI_VERSION` environment variables to 4.0.0a1 in all compose files [#358](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/358)
-- Bumped version from 4.0.0a0 to 4.0.0a1 for the PEP 625 compliant release [#358](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/358)
+- Updated `STAC_FASTAPI_VERSION` environment variables to 4.0.0 in all compose files [#362](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/362)
+- Bumped version from 4.0.0a2 to 4.0.0 for the PEP 625 compliant release [#362](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/362)
 - Updated dependency requirements to use compatible release specifiers (~=) for more controlled updates while allowing for bug fixes and security patches [#358](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/358)
 - Removed elasticsearch-dsl dependency as it's now part of the elasticsearch package since version 8.18.0 [#358](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/358)
 - Updated test suite to use `httpx.ASGITransport(app=...)` for FastAPI app testing (removes deprecation warning). [#359](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/359)
