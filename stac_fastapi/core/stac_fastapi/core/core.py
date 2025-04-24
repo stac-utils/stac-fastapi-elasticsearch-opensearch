@@ -1,10 +1,11 @@
 """Core client."""
 
 import logging
+from collections import deque
 from datetime import datetime as datetime_type
 from datetime import timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional, Set, Type, Union
+from typing import Any, Dict, List, Literal, Optional, Set, Type, Union
 from urllib.parse import unquote_plus, urljoin
 
 import attr
@@ -36,12 +37,10 @@ from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
 from stac_fastapi.types.core import AsyncBaseCoreClient, AsyncBaseTransactionsClient
 from stac_fastapi.types.extension import ApiExtension
 from stac_fastapi.types.requests import get_base_url
-from stac_fastapi.types.rfc3339 import DateTimeType
+from stac_fastapi.types.rfc3339 import DateTimeType, rfc3339_str_to_datetime
 from stac_fastapi.types.search import BaseSearchPostRequest
 
 logger = logging.getLogger(__name__)
-
-NumType = Union[float, int]
 
 
 @attr.s
@@ -278,7 +277,7 @@ class CoreClient(AsyncBaseCoreClient):
         self,
         collection_id: str,
         bbox: Optional[BBox] = None,
-        datetime: Optional[DateTimeType] = None,
+        datetime: Optional[str] = None,
         limit: Optional[int] = 10,
         token: Optional[str] = None,
         **kwargs,
@@ -288,7 +287,7 @@ class CoreClient(AsyncBaseCoreClient):
         Args:
             collection_id (str): The identifier of the collection to read items from.
             bbox (Optional[BBox]): The bounding box to filter items by.
-            datetime (Optional[DateTimeType]): The datetime range to filter items by.
+            datetime (Optional[str]): The datetime range to filter items by.
             limit (int): The maximum number of items to return. The default value is 10.
             token (str): A token used for pagination.
             request (Request): The incoming request.
@@ -335,7 +334,7 @@ class CoreClient(AsyncBaseCoreClient):
             search=search,
             limit=limit,
             sort=None,
-            token=token,  # type: ignore
+            token=token,
             collection_ids=[collection_id],
         )
 
@@ -427,23 +426,34 @@ class CoreClient(AsyncBaseCoreClient):
 
         return result
 
-    def _format_datetime_range(self, date_tuple: DateTimeType) -> str:
+    def _format_datetime_range(self, date_str: str) -> str:
         """
-        Convert a tuple of datetime objects or None into a formatted string for API requests.
+        Convert a datetime range string into a normalized UTC string for API requests using rfc3339_str_to_datetime.
 
         Args:
-            date_tuple (tuple): A tuple containing two elements, each can be a datetime object or None.
+            date_str (str): A string containing two datetime values separated by a '/'.
 
         Returns:
-            str: A string formatted as 'YYYY-MM-DDTHH:MM:SS.sssZ/YYYY-MM-DDTHH:MM:SS.sssZ', with '..' used if any element is None.
+            str: A string formatted as 'YYYY-MM-DDTHH:MM:SSZ/YYYY-MM-DDTHH:MM:SSZ', with '..' used if any element is None.
         """
 
-        def format_datetime(dt):
-            """Format a single datetime object to the ISO8601 extended format with 'Z'."""
-            return dt.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z" if dt else ".."
+        def normalize(dt):
+            dt = dt.strip()
+            if not dt or dt == "..":
+                return ".."
+            dt_obj = rfc3339_str_to_datetime(dt)
+            dt_utc = dt_obj.astimezone(timezone.utc)
+            return dt_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
 
-        start, end = date_tuple
-        return f"{format_datetime(start)}/{format_datetime(end)}"
+        if not isinstance(date_str, str):
+            return "../.."
+        if "/" not in date_str:
+            return f"{normalize(date_str)}/{normalize(date_str)}"
+        try:
+            start, end = date_str.split("/", 1)
+        except Exception:
+            return "../.."
+        return f"{normalize(start)}/{normalize(end)}"
 
     async def get_search(
         self,
@@ -451,7 +461,7 @@ class CoreClient(AsyncBaseCoreClient):
         collections: Optional[List[str]] = None,
         ids: Optional[List[str]] = None,
         bbox: Optional[BBox] = None,
-        datetime: Optional[DateTimeType] = None,
+        datetime: Optional[str] = None,
         limit: Optional[int] = 10,
         query: Optional[str] = None,
         token: Optional[str] = None,
@@ -459,7 +469,7 @@ class CoreClient(AsyncBaseCoreClient):
         sortby: Optional[str] = None,
         q: Optional[List[str]] = None,
         intersects: Optional[str] = None,
-        filter: Optional[str] = None,
+        filter_expr: Optional[str] = None,
         filter_lang: Optional[str] = None,
         **kwargs,
     ) -> stac_types.ItemCollection:
@@ -469,7 +479,7 @@ class CoreClient(AsyncBaseCoreClient):
             collections (Optional[List[str]]): List of collection IDs to search in.
             ids (Optional[List[str]]): List of item IDs to search for.
             bbox (Optional[BBox]): Bounding box to search in.
-            datetime (Optional[DateTimeType]): Filter items based on the datetime field.
+            datetime (Optional[str]): Filter items based on the datetime field.
             limit (Optional[int]): Maximum number of results to return.
             query (Optional[str]): Query string to filter the results.
             token (Optional[str]): Access token to use when searching the catalog.
@@ -496,7 +506,7 @@ class CoreClient(AsyncBaseCoreClient):
         }
 
         if datetime:
-            base_args["datetime"] = self._format_datetime_range(datetime)
+            base_args["datetime"] = self._format_datetime_range(date_str=datetime)
 
         if intersects:
             base_args["intersects"] = orjson.loads(unquote_plus(intersects))
@@ -507,12 +517,12 @@ class CoreClient(AsyncBaseCoreClient):
                 for sort in sortby
             ]
 
-        if filter:
-            base_args["filter-lang"] = "cql2-json"
+        if filter_expr:
+            base_args["filter_lang"] = "cql2-json"
             base_args["filter"] = orjson.loads(
-                unquote_plus(filter)
+                unquote_plus(filter_expr)
                 if filter_lang == "cql2-json"
-                else to_cql2(parse_cql2_text(filter))
+                else to_cql2(parse_cql2_text(filter_expr))
             )
 
         if fields:
@@ -594,8 +604,8 @@ class CoreClient(AsyncBaseCoreClient):
                     )
 
         # only cql2_json is supported here
-        if hasattr(search_request, "filter"):
-            cql2_filter = getattr(search_request, "filter", None)
+        if hasattr(search_request, "filter_expr"):
+            cql2_filter = getattr(search_request, "filter_expr", None)
             try:
                 search = self.database.apply_cql2_filter(search, cql2_filter)
             except Exception as e:
@@ -623,7 +633,7 @@ class CoreClient(AsyncBaseCoreClient):
         items, maybe_count, next_token = await self.database.execute_search(
             search=search,
             limit=limit,
-            token=search_request.token,  # type: ignore
+            token=search_request.token,
             sort=sort,
             collection_ids=search_request.collections,
         )
@@ -691,7 +701,10 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 database=self.database, settings=self.settings
             )
             processed_items = [
-                bulk_client.preprocess_item(item, base_url, BulkTransactionMethod.INSERT) for item in item["features"]  # type: ignore
+                bulk_client.preprocess_item(
+                    item, base_url, BulkTransactionMethod.INSERT
+                )
+                for item in item["features"]
             ]
 
             await self.database.bulk_async(
@@ -735,9 +748,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         return ItemSerializer.db_to_stac(item, base_url)
 
     @overrides
-    async def delete_item(
-        self, item_id: str, collection_id: str, **kwargs
-    ) -> Optional[stac_types.Item]:
+    async def delete_item(self, item_id: str, collection_id: str, **kwargs) -> None:
         """Delete an item from a collection.
 
         Args:
@@ -745,7 +756,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             collection_id (str): The identifier of the collection that contains the item.
 
         Returns:
-            Optional[stac_types.Item]: The deleted item, or `None` if the item was successfully deleted.
+            None: Returns 204 No Content on successful deletion
         """
         await self.database.delete_item(item_id=item_id, collection_id=collection_id)
         return None
@@ -815,23 +826,20 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         )
 
     @overrides
-    async def delete_collection(
-        self, collection_id: str, **kwargs
-    ) -> Optional[stac_types.Collection]:
+    async def delete_collection(self, collection_id: str, **kwargs) -> None:
         """
         Delete a collection.
 
         This method deletes an existing collection in the database.
 
         Args:
-            collection_id (str): The identifier of the collection that contains the item.
-            kwargs: Additional keyword arguments.
+            collection_id (str): The identifier of the collection to delete
 
         Returns:
-            None.
+            None: Returns 204 No Content on successful deletion
 
         Raises:
-            NotFoundError: If the collection doesn't exist.
+            NotFoundError: If the collection doesn't exist
         """
         await self.database.delete_collection(collection_id=collection_id)
         return None
@@ -907,11 +915,81 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         return f"Successfully added {len(processed_items)} Items."
 
 
+_DEFAULT_QUERYABLES: Dict[str, Dict[str, Any]] = {
+    "id": {
+        "description": "ID",
+        "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/definitions/core/allOf/2/properties/id",
+    },
+    "collection": {
+        "description": "Collection",
+        "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/definitions/core/allOf/2/then/properties/collection",
+    },
+    "geometry": {
+        "description": "Geometry",
+        "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/definitions/core/allOf/1/oneOf/0/properties/geometry",
+    },
+    "datetime": {
+        "description": "Acquisition Timestamp",
+        "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/datetime.json#/properties/datetime",
+    },
+    "created": {
+        "description": "Creation Timestamp",
+        "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/datetime.json#/properties/created",
+    },
+    "updated": {
+        "description": "Creation Timestamp",
+        "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/datetime.json#/properties/updated",
+    },
+    "cloud_cover": {
+        "description": "Cloud Cover",
+        "$ref": "https://stac-extensions.github.io/eo/v1.0.0/schema.json#/definitions/fields/properties/eo:cloud_cover",
+    },
+    "cloud_shadow_percentage": {
+        "title": "Cloud Shadow Percentage",
+        "description": "Cloud Shadow Percentage",
+        "type": "number",
+        "minimum": 0,
+        "maximum": 100,
+    },
+    "nodata_pixel_percentage": {
+        "title": "No Data Pixel Percentage",
+        "description": "No Data Pixel Percentage",
+        "type": "number",
+        "minimum": 0,
+        "maximum": 100,
+    },
+}
+
+_ES_MAPPING_TYPE_TO_JSON: Dict[
+    str, Literal["string", "number", "boolean", "object", "array", "null"]
+] = {
+    "date": "string",
+    "date_nanos": "string",
+    "keyword": "string",
+    "match_only_text": "string",
+    "text": "string",
+    "wildcard": "string",
+    "byte": "number",
+    "double": "number",
+    "float": "number",
+    "half_float": "number",
+    "long": "number",
+    "scaled_float": "number",
+    "short": "number",
+    "token_count": "number",
+    "unsigned_long": "number",
+    "geo_point": "object",
+    "geo_shape": "object",
+    "nested": "array",
+}
+
+
 @attr.s
 class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
     """Defines a pattern for implementing the STAC filter extension."""
 
-    # todo: use the ES _mapping endpoint to dynamically find what fields exist
+    database: BaseDatabaseLogic = attr.ib()
+
     async def get_queryables(
         self, collection_id: Optional[str] = None, **kwargs
     ) -> Dict[str, Any]:
@@ -932,55 +1010,62 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
         Returns:
             Dict[str, Any]: A dictionary containing the queryables for the given collection.
         """
-        return {
+        queryables: Dict[str, Any] = {
             "$schema": "https://json-schema.org/draft/2019-09/schema",
             "$id": "https://stac-api.example.com/queryables",
             "type": "object",
-            "title": "Queryables for Example STAC API",
-            "description": "Queryable names for the example STAC API Item Search filter.",
-            "properties": {
-                "id": {
-                    "description": "ID",
-                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/definitions/core/allOf/2/properties/id",
-                },
-                "collection": {
-                    "description": "Collection",
-                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/definitions/core/allOf/2/then/properties/collection",
-                },
-                "geometry": {
-                    "description": "Geometry",
-                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/definitions/core/allOf/1/oneOf/0/properties/geometry",
-                },
-                "datetime": {
-                    "description": "Acquisition Timestamp",
-                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/datetime.json#/properties/datetime",
-                },
-                "created": {
-                    "description": "Creation Timestamp",
-                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/datetime.json#/properties/created",
-                },
-                "updated": {
-                    "description": "Creation Timestamp",
-                    "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/datetime.json#/properties/updated",
-                },
-                "cloud_cover": {
-                    "description": "Cloud Cover",
-                    "$ref": "https://stac-extensions.github.io/eo/v1.0.0/schema.json#/definitions/fields/properties/eo:cloud_cover",
-                },
-                "cloud_shadow_percentage": {
-                    "description": "Cloud Shadow Percentage",
-                    "title": "Cloud Shadow Percentage",
-                    "type": "number",
-                    "minimum": 0,
-                    "maximum": 100,
-                },
-                "nodata_pixel_percentage": {
-                    "description": "No Data Pixel Percentage",
-                    "title": "No Data Pixel Percentage",
-                    "type": "number",
-                    "minimum": 0,
-                    "maximum": 100,
-                },
-            },
+            "title": "Queryables for STAC API",
+            "description": "Queryable names for the STAC API Item Search filter.",
+            "properties": _DEFAULT_QUERYABLES,
             "additionalProperties": True,
         }
+        if not collection_id:
+            return queryables
+
+        properties: Dict[str, Any] = queryables["properties"]
+        queryables.update(
+            {
+                "properties": properties,
+                "additionalProperties": False,
+            }
+        )
+
+        mapping_data = await self.database.get_items_mapping(collection_id)
+        mapping_properties = next(iter(mapping_data.values()))["mappings"]["properties"]
+        stack = deque(mapping_properties.items())
+
+        while stack:
+            field_name, field_def = stack.popleft()
+
+            # Iterate over nested fields
+            field_properties = field_def.get("properties")
+            if field_properties:
+                # Fields in Item Properties should be exposed with their un-prefixed names,
+                # and not require expressions to prefix them with properties,
+                # e.g., eo:cloud_cover instead of properties.eo:cloud_cover.
+                if field_name == "properties":
+                    stack.extend(field_properties.items())
+                else:
+                    stack.extend(
+                        (f"{field_name}.{k}", v) for k, v in field_properties.items()
+                    )
+
+            # Skip non-indexed or disabled fields
+            field_type = field_def.get("type")
+            if not field_type or not field_def.get("enabled", True):
+                continue
+
+            # Generate field properties
+            field_result = _DEFAULT_QUERYABLES.get(field_name, {})
+            properties[field_name] = field_result
+
+            field_name_human = field_name.replace("_", " ").title()
+            field_result.setdefault("title", field_name_human)
+
+            field_type_json = _ES_MAPPING_TYPE_TO_JSON.get(field_type, field_type)
+            field_result.setdefault("type", field_type_json)
+
+            if field_type in {"date", "date_nanos"}:
+                field_result.setdefault("format", "date-time")
+
+        return queryables

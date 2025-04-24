@@ -3,16 +3,32 @@
 import asyncio
 import json
 import logging
-import os
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from copy import deepcopy
-from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple, Type, Union
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Type
 
 import attr
-from elasticsearch_dsl import Q, Search
+import elasticsearch.helpers as helpers
+from elasticsearch.dsl import Q, Search
+from elasticsearch.exceptions import NotFoundError as ESNotFoundError
 from starlette.requests import Request
 
-from elasticsearch import exceptions, helpers  # type: ignore
+from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
+from stac_fastapi.core.database_logic import (
+    COLLECTIONS_INDEX,
+    DEFAULT_SORT,
+    ES_COLLECTIONS_MAPPINGS,
+    ES_ITEMS_MAPPINGS,
+    ES_ITEMS_SETTINGS,
+    ITEM_INDICES,
+    ITEMS_INDEX_PREFIX,
+    Geometry,
+    index_alias_by_collection_id,
+    index_by_collection_id,
+    indices,
+    mk_actions,
+    mk_item_id,
+)
 from stac_fastapi.core.extensions import filter
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon
@@ -25,168 +41,6 @@ from stac_fastapi.types.stac import Collection, Item
 
 logger = logging.getLogger(__name__)
 
-NumType = Union[float, int]
-
-COLLECTIONS_INDEX = os.getenv("STAC_COLLECTIONS_INDEX", "collections")
-ITEMS_INDEX_PREFIX = os.getenv("STAC_ITEMS_INDEX_PREFIX", "items_")
-ES_INDEX_NAME_UNSUPPORTED_CHARS = {
-    "\\",
-    "/",
-    "*",
-    "?",
-    '"',
-    "<",
-    ">",
-    "|",
-    " ",
-    ",",
-    "#",
-    ":",
-}
-
-ITEM_INDICES = f"{ITEMS_INDEX_PREFIX}*,-*kibana*,-{COLLECTIONS_INDEX}*"
-
-DEFAULT_SORT = {
-    "properties.datetime": {"order": "desc"},
-    "id": {"order": "desc"},
-    "collection": {"order": "desc"},
-}
-
-ES_ITEMS_SETTINGS = {
-    "index": {
-        "sort.field": list(DEFAULT_SORT.keys()),
-        "sort.order": [v["order"] for v in DEFAULT_SORT.values()],
-    }
-}
-
-ES_MAPPINGS_DYNAMIC_TEMPLATES = [
-    # Common https://github.com/radiantearth/stac-spec/blob/master/item-spec/common-metadata.md
-    {
-        "descriptions": {
-            "match_mapping_type": "string",
-            "match": "description",
-            "mapping": {"type": "text"},
-        }
-    },
-    {
-        "titles": {
-            "match_mapping_type": "string",
-            "match": "title",
-            "mapping": {"type": "text"},
-        }
-    },
-    # Projection Extension https://github.com/stac-extensions/projection
-    {"proj_epsg": {"match": "proj:epsg", "mapping": {"type": "integer"}}},
-    {
-        "proj_projjson": {
-            "match": "proj:projjson",
-            "mapping": {"type": "object", "enabled": False},
-        }
-    },
-    {
-        "proj_centroid": {
-            "match": "proj:centroid",
-            "mapping": {"type": "geo_point"},
-        }
-    },
-    {
-        "proj_geometry": {
-            "match": "proj:geometry",
-            "mapping": {"type": "object", "enabled": False},
-        }
-    },
-    {
-        "no_index_href": {
-            "match": "href",
-            "mapping": {"type": "text", "index": False},
-        }
-    },
-    # Default all other strings not otherwise specified to keyword
-    {"strings": {"match_mapping_type": "string", "mapping": {"type": "keyword"}}},
-    {"numerics": {"match_mapping_type": "long", "mapping": {"type": "float"}}},
-]
-
-ES_ITEMS_MAPPINGS = {
-    "numeric_detection": False,
-    "dynamic_templates": ES_MAPPINGS_DYNAMIC_TEMPLATES,
-    "properties": {
-        "id": {"type": "keyword"},
-        "collection": {"type": "keyword"},
-        "geometry": {"type": "geo_shape"},
-        "assets": {"type": "object", "enabled": False},
-        "links": {"type": "object", "enabled": False},
-        "properties": {
-            "type": "object",
-            "properties": {
-                # Common https://github.com/radiantearth/stac-spec/blob/master/item-spec/common-metadata.md
-                "datetime": {"type": "date"},
-                "start_datetime": {"type": "date"},
-                "end_datetime": {"type": "date"},
-                "created": {"type": "date"},
-                "updated": {"type": "date"},
-                # Satellite Extension https://github.com/stac-extensions/sat
-                "sat:absolute_orbit": {"type": "integer"},
-                "sat:relative_orbit": {"type": "integer"},
-            },
-        },
-    },
-}
-
-ES_COLLECTIONS_MAPPINGS = {
-    "numeric_detection": False,
-    "dynamic_templates": ES_MAPPINGS_DYNAMIC_TEMPLATES,
-    "properties": {
-        "id": {"type": "keyword"},
-        "extent.spatial.bbox": {"type": "long"},
-        "extent.temporal.interval": {"type": "date"},
-        "providers": {"type": "object", "enabled": False},
-        "links": {"type": "object", "enabled": False},
-        "item_assets": {"type": "object", "enabled": False},
-    },
-}
-
-
-def index_by_collection_id(collection_id: str) -> str:
-    """
-    Translate a collection id into an Elasticsearch index name.
-
-    Args:
-        collection_id (str): The collection id to translate into an index name.
-
-    Returns:
-        str: The index name derived from the collection id.
-    """
-    return f"{ITEMS_INDEX_PREFIX}{''.join(c for c in collection_id.lower() if c not in ES_INDEX_NAME_UNSUPPORTED_CHARS)}_{collection_id.encode('utf-8').hex()}"
-
-
-def index_alias_by_collection_id(collection_id: str) -> str:
-    """
-    Translate a collection id into an Elasticsearch index alias.
-
-    Args:
-        collection_id (str): The collection id to translate into an index alias.
-
-    Returns:
-        str: The index alias derived from the collection id.
-    """
-    return f"{ITEMS_INDEX_PREFIX}{''.join(c for c in collection_id if c not in ES_INDEX_NAME_UNSUPPORTED_CHARS)}"
-
-
-def indices(collection_ids: Optional[List[str]]) -> str:
-    """
-    Get a comma-separated string of index names for a given list of collection ids.
-
-    Args:
-        collection_ids: A list of collection ids.
-
-    Returns:
-        A string of comma-separated index names. If `collection_ids` is None, returns the default indices.
-    """
-    if collection_ids is None or collection_ids == []:
-        return ITEM_INDICES
-    else:
-        return ",".join([index_alias_by_collection_id(c) for c in collection_ids])
-
 
 async def create_index_templates() -> None:
     """
@@ -197,19 +51,18 @@ async def create_index_templates() -> None:
 
     """
     client = AsyncElasticsearchSettings().create_client
-    await client.indices.put_template(
+    await client.indices.put_index_template(
         name=f"template_{COLLECTIONS_INDEX}",
         body={
             "index_patterns": [f"{COLLECTIONS_INDEX}*"],
-            "mappings": ES_COLLECTIONS_MAPPINGS,
+            "template": {"mappings": ES_COLLECTIONS_MAPPINGS},
         },
     )
-    await client.indices.put_template(
+    await client.indices.put_index_template(
         name=f"template_{ITEMS_INDEX_PREFIX}",
         body={
             "index_patterns": [f"{ITEMS_INDEX_PREFIX}*"],
-            "settings": ES_ITEMS_SETTINGS,
-            "mappings": ES_ITEMS_MAPPINGS,
+            "template": {"settings": ES_ITEMS_SETTINGS, "mappings": ES_ITEMS_MAPPINGS},
         },
     )
     await client.close()
@@ -227,7 +80,7 @@ async def create_collection_index() -> None:
 
     await client.options(ignore_status=400).indices.create(
         index=f"{COLLECTIONS_INDEX}-000001",
-        aliases={COLLECTIONS_INDEX: {}},
+        body={"aliases": {COLLECTIONS_INDEX: {}}},
     )
     await client.close()
 
@@ -247,7 +100,7 @@ async def create_item_index(collection_id: str):
 
     await client.options(ignore_status=400).indices.create(
         index=f"{index_by_collection_id(collection_id)}-000001",
-        aliases={index_alias_by_collection_id(collection_id): {}},
+        body={"aliases": {index_alias_by_collection_id(collection_id): {}}},
     )
     await client.close()
 
@@ -271,53 +124,8 @@ async def delete_item_index(collection_id: str):
     await client.close()
 
 
-def mk_item_id(item_id: str, collection_id: str):
-    """Create the document id for an Item in Elasticsearch.
-
-    Args:
-        item_id (str): The id of the Item.
-        collection_id (str): The id of the Collection that the Item belongs to.
-
-    Returns:
-        str: The document id for the Item, combining the Item id and the Collection id, separated by a `|` character.
-    """
-    return f"{item_id}|{collection_id}"
-
-
-def mk_actions(collection_id: str, processed_items: List[Item]):
-    """Create Elasticsearch bulk actions for a list of processed items.
-
-    Args:
-        collection_id (str): The identifier for the collection the items belong to.
-        processed_items (List[Item]): The list of processed items to be bulk indexed.
-
-    Returns:
-        List[Dict[str, Union[str, Dict]]]: The list of bulk actions to be executed,
-        each action being a dictionary with the following keys:
-        - `_index`: the index to store the document in.
-        - `_id`: the document's identifier.
-        - `_source`: the source of the document.
-    """
-    return [
-        {
-            "_index": index_alias_by_collection_id(collection_id),
-            "_id": mk_item_id(item["id"], item["collection"]),
-            "_source": item,
-        }
-        for item in processed_items
-    ]
-
-
-# stac_pydantic classes extend _GeometryBase, which doesn't have a type field,
-# So create our own Protocol for typing
-# Union[ Point, MultiPoint, LineString, MultiLineString, Polygon, MultiPolygon, GeometryCollection]
-class Geometry(Protocol):  # noqa
-    type: str
-    coordinates: Any
-
-
 @attr.s
-class DatabaseLogic:
+class DatabaseLogic(BaseDatabaseLogic):
     """Database logic."""
 
     client = AsyncElasticsearchSettings().create_client
@@ -424,7 +232,7 @@ class DatabaseLogic:
             body={
                 "sort": [{"id": {"order": "asc"}}],
                 "size": limit,
-                "search_after": search_after,
+                **({"search_after": search_after} if search_after is not None else {}),
             },
         )
 
@@ -464,9 +272,9 @@ class DatabaseLogic:
                 index=index_alias_by_collection_id(collection_id),
                 id=mk_item_id(item_id, collection_id),
             )
-        except exceptions.NotFoundError:
+        except ESNotFoundError:
             raise NotFoundError(
-                f"Item {item_id} does not exist in Collection {collection_id}"
+                f"Item {item_id} does not exist inside Collection {collection_id}"
             )
         return item["_source"]
 
@@ -781,7 +589,7 @@ class DatabaseLogic:
                 ignore_unavailable=ignore_unavailable,
                 query=query,
                 sort=sort or DEFAULT_SORT,
-                search_after=search_after,
+                **({"search_after": search_after} if search_after is not None else {}),
                 size=size_limit,
             )
         )
@@ -796,7 +604,7 @@ class DatabaseLogic:
 
         try:
             es_response = await search_task
-        except exceptions.NotFoundError:
+        except ESNotFoundError:
             raise NotFoundError(f"Collections '{collection_ids}' do not exist")
 
         hits = es_response["hits"]["hits"]
@@ -879,7 +687,7 @@ class DatabaseLogic:
 
         try:
             db_response = await search_task
-        except exceptions.NotFoundError:
+        except ESNotFoundError:
             raise NotFoundError(f"Collections '{collection_ids}' do not exist")
 
         return db_response
@@ -1005,10 +813,28 @@ class DatabaseLogic:
                 id=mk_item_id(item_id, collection_id),
                 refresh=refresh,
             )
-        except exceptions.NotFoundError:
+        except ESNotFoundError:
             raise NotFoundError(
                 f"Item {item_id} in collection {collection_id} not found"
             )
+
+    async def get_items_mapping(self, collection_id: str) -> Dict[str, Any]:
+        """Get the mapping for the specified collection's items index.
+
+        Args:
+            collection_id (str): The ID of the collection to get items mapping for.
+
+        Returns:
+            Dict[str, Any]: The mapping information.
+        """
+        index_name = index_alias_by_collection_id(collection_id)
+        try:
+            mapping = await self.client.indices.get_mapping(
+                index=index_name, allow_no_indices=False
+            )
+            return mapping.body
+        except ESNotFoundError:
+            raise NotFoundError(f"Mapping for index {index_name} not found")
 
     async def create_collection(self, collection: Collection, refresh: bool = False):
         """Create a single collection in the database.
@@ -1058,7 +884,7 @@ class DatabaseLogic:
             collection = await self.client.get(
                 index=COLLECTIONS_INDEX, id=collection_id
             )
-        except exceptions.NotFoundError:
+        except ESNotFoundError:
             raise NotFoundError(f"Collection {collection_id} not found")
 
         return collection["_source"]
@@ -1093,7 +919,7 @@ class DatabaseLogic:
                     "source": {"index": f"{ITEMS_INDEX_PREFIX}{collection_id}"},
                     "script": {
                         "lang": "painless",
-                        "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection["id"]}'); ctx._source.collection = '{collection["id"]}' ;""",
+                        "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection["id"]}'); ctx._source.collection = '{collection["id"]}' ;""",  # noqa: E702
                     },
                 },
                 wait_for_completion=True,

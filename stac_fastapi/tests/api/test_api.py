@@ -8,6 +8,7 @@ from ..conftest import create_collection, create_item
 
 ROUTES = {
     "GET /_mgmt/ping",
+    "GET /_mgmt/health",
     "GET /docs/oauth2-redirect",
     "HEAD /docs/oauth2-redirect",
     "GET /",
