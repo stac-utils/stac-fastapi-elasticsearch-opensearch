@@ -3,11 +3,40 @@
 This module contains functions for transforming geospatial coordinates,
 such as converting bounding boxes to polygon representations.
 """
+import logging
+import os
 from typing import Any, Dict, List, Optional, Set, Union
 
 from stac_fastapi.types.stac import Item
 
 MAX_LIMIT = 10000
+
+
+def get_bool_env(name: str, default: bool = False) -> bool:
+    """
+    Retrieve a boolean value from an environment variable.
+
+    Args:
+        name (str): The name of the environment variable.
+        default (bool, optional): The default value to use if the variable is not set or unrecognized. Defaults to False.
+
+    Returns:
+        bool: The boolean value parsed from the environment variable.
+    """
+    value = os.getenv(name, str(default).lower())
+    true_values = ("true", "1", "yes", "y")
+    false_values = ("false", "0", "no", "n")
+    if value.lower() in true_values:
+        return True
+    elif value.lower() in false_values:
+        return False
+    else:
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            f"Environment variable '{name}' has unrecognized value '{value}'. "
+            f"Expected one of {true_values + false_values}. Using default: {default}"
+        )
+        return default
 
 
 def bbox2polygon(b0: float, b1: float, b2: float, b3: float) -> List[List[List[float]]]:

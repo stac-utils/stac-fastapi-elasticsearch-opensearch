@@ -8,17 +8,15 @@ import operator
 from dataclasses import dataclass
 from enum import auto
 from types import DynamicClassAttribute
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Optional
 
-from pydantic import BaseModel, root_validator
+from pydantic import BaseModel, model_validator
 from stac_pydantic.utils import AutoValueEnum
 
 from stac_fastapi.extensions.core.query import QueryExtension as QueryExtensionBase
 
 logger = logging.getLogger("uvicorn")
 logger.setLevel(logging.INFO)
-# Be careful: https://github.com/samuelcolvin/pydantic/issues/1423#issuecomment-642797287
-NumType = Union[float, int]
 
 
 class Operator(str, AutoValueEnum):
@@ -65,7 +63,7 @@ class QueryExtensionPostRequest(BaseModel):
 
     query: Optional[Dict[str, Dict[Operator, Any]]] = None
 
-    @root_validator(pre=True)
+    @model_validator(mode="before")
     def validate_query_fields(cls, values: Dict) -> Dict:
         """Validate query fields."""
         ...
