@@ -1,7 +1,7 @@
 import random
 import uuid
 from copy import deepcopy
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
 
 import pytest
