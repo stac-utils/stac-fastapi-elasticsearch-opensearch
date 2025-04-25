@@ -13,7 +13,6 @@ from opensearchpy.helpers.query import Q
 from opensearchpy.helpers.search import Search
 from starlette.requests import Request
 
-from stac_fastapi.core import serializers
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.database_logic import (
     COLLECTIONS_INDEX,
@@ -31,6 +30,7 @@ from stac_fastapi.core.database_logic import (
     mk_item_id,
 )
 from stac_fastapi.core.extensions import filter
+from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon
 from stac_fastapi.opensearch.config import (
     AsyncOpensearchSettings as AsyncSearchSettings,
@@ -146,11 +146,9 @@ class DatabaseLogic(BaseDatabaseLogic):
     client = AsyncSearchSettings().create_client
     sync_client = SyncSearchSettings().create_client
 
-    item_serializer: Type[serializers.ItemSerializer] = attr.ib(
-        default=serializers.ItemSerializer
-    )
-    collection_serializer: Type[serializers.CollectionSerializer] = attr.ib(
-        default=serializers.CollectionSerializer
+    item_serializer: Type[ItemSerializer] = attr.ib(default=ItemSerializer)
+    collection_serializer: Type[CollectionSerializer] = attr.ib(
+        default=CollectionSerializer
     )
 
     extensions: List[str] = attr.ib(default=attr.Factory(list))
