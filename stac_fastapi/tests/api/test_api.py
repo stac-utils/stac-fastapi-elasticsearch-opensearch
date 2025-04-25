@@ -3,7 +3,6 @@ import uuid
 from copy import deepcopy
 from datetime import datetime, timedelta
 
-
 import pytest
 
 from ..conftest import create_collection, create_item

@@ -13,7 +13,6 @@ from opensearchpy.helpers.query import Q
 from opensearchpy.helpers.search import Search
 from starlette.requests import Request
 
-
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.database_logic import (
     COLLECTIONS_INDEX,
