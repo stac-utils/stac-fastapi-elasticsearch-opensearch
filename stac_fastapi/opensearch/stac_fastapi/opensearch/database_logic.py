@@ -983,7 +983,11 @@ class DatabaseLogic(BaseDatabaseLogic):
         await delete_item_index(collection_id)
 
     async def bulk_async(
-        self, collection_id: str, processed_items: List[Item], refresh: bool = False
+        self,
+        collection_id: str,
+        processed_items: List[Item],
+        refresh: bool = False,
+        raise_on_error: bool = False,
     ) -> Tuple[int, List[Dict[str, Any]]]:
         """
         Perform a bulk insert of items into the database asynchronously.
@@ -992,6 +996,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             collection_id (str): The ID of the collection to which the items belong.
             processed_items (List[Item]): A list of `Item` objects to be inserted into the database.
             refresh (bool): Whether to refresh the index after the bulk insert (default: False).
+            raise_on_error (bool): Whether to raise an error if the bulk operation fails (default: False).
 
         Returns:
             Tuple[int, List[Dict[str, Any]]]: A tuple containing:
@@ -1008,12 +1013,16 @@ class DatabaseLogic(BaseDatabaseLogic):
             self.client,
             mk_actions(collection_id, processed_items),
             refresh=refresh,
-            raise_on_error=False,  # Do not raise errors
+            raise_on_error=raise_on_error,
         )
         return success, errors
 
     def bulk_sync(
-        self, collection_id: str, processed_items: List[Item], refresh: bool = False
+        self,
+        collection_id: str,
+        processed_items: List[Item],
+        refresh: bool = False,
+        raise_on_error: bool = False,
     ) -> Tuple[int, List[Dict[str, Any]]]:
         """
         Perform a bulk insert of items into the database synchronously.
@@ -1022,6 +1031,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             collection_id (str): The ID of the collection to which the items belong.
             processed_items (List[Item]): A list of `Item` objects to be inserted into the database.
             refresh (bool): Whether to refresh the index after the bulk insert (default: False).
+            raise_on_error (bool): Whether to raise an error if the bulk operation fails (default: False).
 
         Returns:
             Tuple[int, List[Dict[str, Any]]]: A tuple containing:
@@ -1038,7 +1048,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             self.sync_client,
             mk_actions(collection_id, processed_items),
             refresh=refresh,
-            raise_on_error=False,  # Do not raise errors
+            raise_on_error=raise_on_error,
         )
         return success, errors
 

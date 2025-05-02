@@ -1,6 +1,7 @@
 """Core client."""
 
 import logging
+import os
 from collections import deque
 from datetime import datetime as datetime_type
 from datetime import timezone
@@ -709,7 +710,10 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             ]
             attempted = len(processed_items)
             success, errors = await self.database.bulk_async(
-                collection_id, processed_items, refresh=kwargs.get("refresh", False)
+                collection_id,
+                processed_items,
+                refresh=kwargs.get("refresh", False),
+                raise_on_error=os.getenv("RAISE_ON_BULK_ERROR", False),
             )
             if errors:
                 logger.error(f"Bulk async operation encountered errors: {errors}")
@@ -914,7 +918,10 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         collection_id = processed_items[0]["collection"]
         attempted = len(processed_items)
         success, errors = self.database.bulk_sync(
-            collection_id, processed_items, refresh=kwargs.get("refresh", False)
+            collection_id,
+            processed_items,
+            refresh=kwargs.get("refresh", False),
+            raise_on_error=os.getenv("RAISE_ON_BULK_ERROR", False),
         )
         if errors:
             logger.error(f"Bulk sync operation encountered errors: {errors}")
