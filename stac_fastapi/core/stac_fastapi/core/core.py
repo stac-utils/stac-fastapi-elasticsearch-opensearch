@@ -1,7 +1,6 @@
 """Core client."""
 
 import logging
-import os
 from collections import deque
 from datetime import datetime as datetime_type
 from datetime import timezone
@@ -713,7 +712,6 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 collection_id,
                 processed_items,
                 refresh=kwargs.get("refresh", False),
-                raise_on_error=os.getenv("RAISE_ON_BULK_ERROR", False),
             )
             if errors:
                 logger.error(f"Bulk async operation encountered errors: {errors}")
@@ -722,7 +720,9 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
             return f"Successfully added {success} Items. {attempted - success} errors occurred."
         else:
-            item = await self.database.prep_create_item(item=item, base_url=base_url)
+            item = await self.database.async_prep_create_item(
+                item=item, base_url=base_url
+            )
             await self.database.create_item(item, refresh=kwargs.get("refresh", False))
             return ItemSerializer.db_to_stac(item, base_url)
 
@@ -885,7 +885,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
             The preprocessed item.
         """
         exist_ok = method == BulkTransactionMethod.UPSERT
-        return self.database.sync_prep_create_item(
+        return self.database.bulk_sync_prep_create_item(
             item=item, base_url=base_url, exist_ok=exist_ok
         )
 
@@ -921,7 +921,6 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
             collection_id,
             processed_items,
             refresh=kwargs.get("refresh", False),
-            raise_on_error=os.getenv("RAISE_ON_BULK_ERROR", False),
         )
         if errors:
             logger.error(f"Bulk sync operation encountered errors: {errors}")

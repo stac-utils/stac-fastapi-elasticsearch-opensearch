@@ -31,7 +31,7 @@ from stac_fastapi.core.database_logic import (
 )
 from stac_fastapi.core.extensions import filter
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
-from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon
+from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon, get_bool_env
 from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
 from stac_fastapi.elasticsearch.config import (
     ElasticsearchSettings as SyncElasticsearchSettings,
@@ -699,7 +699,37 @@ class DatabaseLogic(BaseDatabaseLogic):
         if not await self.client.exists(index=COLLECTIONS_INDEX, id=collection_id):
             raise NotFoundError(f"Collection {collection_id} does not exist")
 
-    async def prep_create_item(
+    async def async_prep_create_item(
+        self, item: Item, base_url: str, exist_ok: bool = False
+    ) -> Item:
+        """
+        Preps an item for insertion into the database.
+
+        Args:
+            item (Item): The item to be prepped for insertion.
+            base_url (str): The base URL used to create the item's self URL.
+            exist_ok (bool): Indicates whether the item can exist already.
+
+        Returns:
+            Item: The prepped item.
+
+        Raises:
+            ConflictError: If the item already exists in the database.
+
+        """
+        await self.check_collection_exists(collection_id=item["collection"])
+
+        if not exist_ok and await self.client.exists(
+            index=index_alias_by_collection_id(item["collection"]),
+            id=mk_item_id(item["id"], item["collection"]),
+        ):
+            raise ConflictError(
+                f"Item {item['id']} in collection {item['collection']} already exists"
+            )
+
+        return self.item_serializer.stac_to_db(item, base_url)
+
+    async def bulk_async_prep_create_item(
         self, item: Item, base_url: str, exist_ok: bool = False
     ) -> Item:
         """
@@ -721,7 +751,8 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         Raises:
             NotFoundError: If the collection that the item belongs to does not exist in the database.
-            ConflictError: If an item with the same ID already exists in the collection and `exist_ok` is False.
+            ConflictError: If an item with the same ID already exists in the collection and `exist_ok` is False,
+                        and `RAISE_ON_BULK_ERROR` is set to `true`.
         """
         logger.debug(f"Preparing item {item['id']} in collection {item['collection']}.")
 
@@ -733,19 +764,22 @@ class DatabaseLogic(BaseDatabaseLogic):
             index=index_alias_by_collection_id(item["collection"]),
             id=mk_item_id(item["id"], item["collection"]),
         ):
-            logger.warning(
+            error_message = (
                 f"Item {item['id']} in collection {item['collection']} already exists."
             )
-            raise ConflictError(
-                f"Item {item['id']} in collection {item['collection']} already exists"
-            )
+            if get_bool_env("RAISE_ON_BULK_ERROR", default=False):
+                raise ConflictError(error_message)
+            else:
+                logger.warning(
+                    f"{error_message} Continuing as `RAISE_ON_BULK_ERROR` is set to false."
+                )
 
         # Serialize the item into a database-compatible format
         prepped_item = self.item_serializer.stac_to_db(item, base_url)
         logger.debug(f"Item {item['id']} prepared successfully.")
         return prepped_item
 
-    def sync_prep_create_item(
+    def bulk_sync_prep_create_item(
         self, item: Item, base_url: str, exist_ok: bool = False
     ) -> Item:
         """
@@ -767,7 +801,8 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         Raises:
             NotFoundError: If the collection that the item belongs to does not exist in the database.
-            ConflictError: If an item with the same ID already exists in the collection and `exist_ok` is False.
+            ConflictError: If an item with the same ID already exists in the collection and `exist_ok` is False,
+                        and `RAISE_ON_BULK_ERROR` is set to `true`.
         """
         logger.debug(f"Preparing item {item['id']} in collection {item['collection']}.")
 
@@ -780,12 +815,15 @@ class DatabaseLogic(BaseDatabaseLogic):
             index=index_alias_by_collection_id(item["collection"]),
             id=mk_item_id(item["id"], item["collection"]),
         ):
-            logger.warning(
+            error_message = (
                 f"Item {item['id']} in collection {item['collection']} already exists."
             )
-            raise ConflictError(
-                f"Item {item['id']} in collection {item['collection']} already exists"
-            )
+            if get_bool_env("RAISE_ON_BULK_ERROR", default=False):
+                raise ConflictError(error_message)
+            else:
+                logger.warning(
+                    f"{error_message} Continuing as `RAISE_ON_BULK_ERROR` is set to false."
+                )
 
         # Serialize the item into a database-compatible format
         prepped_item = self.item_serializer.stac_to_db(item, base_url)
@@ -989,7 +1027,6 @@ class DatabaseLogic(BaseDatabaseLogic):
         collection_id: str,
         processed_items: List[Item],
         refresh: bool = False,
-        raise_on_error: bool = False,
     ) -> Tuple[int, List[Dict[str, Any]]]:
         """
         Perform a bulk insert of items into the database asynchronously.
@@ -998,7 +1035,6 @@ class DatabaseLogic(BaseDatabaseLogic):
             collection_id (str): The ID of the collection to which the items belong.
             processed_items (List[Item]): A list of `Item` objects to be inserted into the database.
             refresh (bool): Whether to refresh the index after the bulk insert (default: False).
-            raise_on_error (bool): Whether to raise an error if the bulk operation fails (default: False).
 
         Returns:
             Tuple[int, List[Dict[str, Any]]]: A tuple containing:
@@ -1011,6 +1047,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             The `mk_actions` function is called to generate a list of actions for the bulk insert. If `refresh` is set to True,
             the index is refreshed after the bulk insert.
         """
+        raise_on_error = get_bool_env("RAISE_ON_BULK_ERROR", default=False)
         success, errors = await helpers.async_bulk(
             self.client,
             mk_actions(collection_id, processed_items),
@@ -1024,7 +1061,6 @@ class DatabaseLogic(BaseDatabaseLogic):
         collection_id: str,
         processed_items: List[Item],
         refresh: bool = False,
-        raise_on_error: bool = False,
     ) -> Tuple[int, List[Dict[str, Any]]]:
         """
         Perform a bulk insert of items into the database synchronously.
@@ -1033,7 +1069,6 @@ class DatabaseLogic(BaseDatabaseLogic):
             collection_id (str): The ID of the collection to which the items belong.
             processed_items (List[Item]): A list of `Item` objects to be inserted into the database.
             refresh (bool): Whether to refresh the index after the bulk insert (default: False).
-            raise_on_error (bool): Whether to raise an error if the bulk operation fails (default: False).
 
         Returns:
             Tuple[int, List[Dict[str, Any]]]: A tuple containing:
@@ -1046,6 +1081,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             completed. The `mk_actions` function is called to generate a list of actions for the bulk insert. If `refresh` is set to
             True, the index is refreshed after the bulk insert.
         """
+        raise_on_error = get_bool_env("RAISE_ON_BULK_ERROR", default=False)
         success, errors = helpers.bulk(
             self.sync_client,
             mk_actions(collection_id, processed_items),
