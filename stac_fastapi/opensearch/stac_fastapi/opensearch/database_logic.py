@@ -984,51 +984,63 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     async def bulk_async(
         self, collection_id: str, processed_items: List[Item], refresh: bool = False
-    ) -> None:
-        """Perform a bulk insert of items into the database asynchronously.
+    ) -> Tuple[int, List[Dict[str, Any]]]:
+        """
+        Perform a bulk insert of items into the database asynchronously.
 
         Args:
-            self: The instance of the object calling this function.
             collection_id (str): The ID of the collection to which the items belong.
             processed_items (List[Item]): A list of `Item` objects to be inserted into the database.
             refresh (bool): Whether to refresh the index after the bulk insert (default: False).
 
+        Returns:
+            Tuple[int, List[Dict[str, Any]]]: A tuple containing:
+                - The number of successfully processed actions (`success`).
+                - A list of errors encountered during the bulk operation (`errors`).
+
         Notes:
-            This function performs a bulk insert of `processed_items` into the database using the specified `collection_id`. The
-            insert is performed asynchronously, and the event loop is used to run the operation in a separate executor. The
-            `mk_actions` function is called to generate a list of actions for the bulk insert. If `refresh` is set to True, the
-            index is refreshed after the bulk insert. The function does not return any value.
+            This function performs a bulk insert of `processed_items` into the database using the specified `collection_id`.
+            The insert is performed asynchronously, and the event loop is used to run the operation in a separate executor.
+            The `mk_actions` function is called to generate a list of actions for the bulk insert. If `refresh` is set to True,
+            the index is refreshed after the bulk insert.
         """
-        await helpers.async_bulk(
+        success, errors = await helpers.async_bulk(
             self.client,
             mk_actions(collection_id, processed_items),
             refresh=refresh,
-            raise_on_error=False,
+            raise_on_error=False,  # Do not raise errors
         )
+        return success, errors
 
     def bulk_sync(
         self, collection_id: str, processed_items: List[Item], refresh: bool = False
-    ) -> None:
-        """Perform a bulk insert of items into the database synchronously.
+    ) -> Tuple[int, List[Dict[str, Any]]]:
+        """
+        Perform a bulk insert of items into the database synchronously.
 
         Args:
-            self: The instance of the object calling this function.
             collection_id (str): The ID of the collection to which the items belong.
             processed_items (List[Item]): A list of `Item` objects to be inserted into the database.
             refresh (bool): Whether to refresh the index after the bulk insert (default: False).
 
+        Returns:
+            Tuple[int, List[Dict[str, Any]]]: A tuple containing:
+                - The number of successfully processed actions (`success`).
+                - A list of errors encountered during the bulk operation (`errors`).
+
         Notes:
-            This function performs a bulk insert of `processed_items` into the database using the specified `collection_id`. The
-            insert is performed synchronously and blocking, meaning that the function does not return until the insert has
+            This function performs a bulk insert of `processed_items` into the database using the specified `collection_id`.
+            The insert is performed synchronously and blocking, meaning that the function does not return until the insert has
             completed. The `mk_actions` function is called to generate a list of actions for the bulk insert. If `refresh` is set to
-            True, the index is refreshed after the bulk insert. The function does not return any value.
+            True, the index is refreshed after the bulk insert.
         """
-        helpers.bulk(
+        success, errors = helpers.bulk(
             self.sync_client,
             mk_actions(collection_id, processed_items),
             refresh=refresh,
-            raise_on_error=False,
+            raise_on_error=False,  # Do not raise errors
         )
+        return success, errors
 
     # DANGER
     async def delete_items(self) -> None:

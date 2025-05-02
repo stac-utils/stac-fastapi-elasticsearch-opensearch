@@ -703,31 +703,47 @@ class DatabaseLogic(BaseDatabaseLogic):
         self, item: Item, base_url: str, exist_ok: bool = False
     ) -> Item:
         """
-        Preps an item for insertion into the database.
+        Prepare an item for insertion into the database.
+
+        This method performs pre-insertion preparation on the given `item`, such as:
+        - Verifying that the collection the item belongs to exists.
+        - Optionally checking if an item with the same ID already exists in the database.
+        - Serializing the item into a database-compatible format.
 
         Args:
-            item (Item): The item to be prepped for insertion.
-            base_url (str): The base URL used to create the item's self URL.
-            exist_ok (bool): Indicates whether the item can exist already.
+            item (Item): The item to be prepared for insertion.
+            base_url (str): The base URL used to construct the item's self URL.
+            exist_ok (bool): Indicates whether the item can already exist in the database.
+                            If False, a `ConflictError` is raised if the item exists.
 
         Returns:
-            Item: The prepped item.
+            Item: The prepared item, serialized into a database-compatible format.
 
         Raises:
-            ConflictError: If the item already exists in the database.
-
+            NotFoundError: If the collection that the item belongs to does not exist in the database.
+            ConflictError: If an item with the same ID already exists in the collection and `exist_ok` is False.
         """
+        logger.debug(f"Preparing item {item['id']} in collection {item['collection']}.")
+
+        # Check if the collection exists
         await self.check_collection_exists(collection_id=item["collection"])
 
+        # Check if the item already exists in the database
         if not exist_ok and await self.client.exists(
             index=index_alias_by_collection_id(item["collection"]),
             id=mk_item_id(item["id"], item["collection"]),
         ):
+            logger.warning(
+                f"Item {item['id']} in collection {item['collection']} already exists."
+            )
             raise ConflictError(
                 f"Item {item['id']} in collection {item['collection']} already exists"
             )
 
-        return self.item_serializer.stac_to_db(item, base_url)
+        # Serialize the item into a database-compatible format
+        prepped_item = self.item_serializer.stac_to_db(item, base_url)
+        logger.debug(f"Item {item['id']} prepared successfully.")
+        return prepped_item
 
     def sync_prep_create_item(
         self, item: Item, base_url: str, exist_ok: bool = False
@@ -735,36 +751,46 @@ class DatabaseLogic(BaseDatabaseLogic):
         """
         Prepare an item for insertion into the database.
 
-        This method performs pre-insertion preparation on the given `item`,
-        such as checking if the collection the item belongs to exists,
-        and optionally verifying that an item with the same ID does not already exist in the database.
+        This method performs pre-insertion preparation on the given `item`, such as:
+        - Verifying that the collection the item belongs to exists.
+        - Optionally checking if an item with the same ID already exists in the database.
+        - Serializing the item into a database-compatible format.
 
         Args:
-            item (Item): The item to be inserted into the database.
-            base_url (str): The base URL used for constructing URLs for the item.
-            exist_ok (bool): Indicates whether the item can exist already.
+            item (Item): The item to be prepared for insertion.
+            base_url (str): The base URL used to construct the item's self URL.
+            exist_ok (bool): Indicates whether the item can already exist in the database.
+                            If False, a `ConflictError` is raised if the item exists.
 
         Returns:
-            Item: The item after preparation is done.
+            Item: The prepared item, serialized into a database-compatible format.
 
         Raises:
             NotFoundError: If the collection that the item belongs to does not exist in the database.
-            ConflictError: If an item with the same ID already exists in the collection.
+            ConflictError: If an item with the same ID already exists in the collection and `exist_ok` is False.
         """
-        item_id = item["id"]
-        collection_id = item["collection"]
-        if not self.sync_client.exists(index=COLLECTIONS_INDEX, id=collection_id):
-            raise NotFoundError(f"Collection {collection_id} does not exist")
+        logger.debug(f"Preparing item {item['id']} in collection {item['collection']}.")
 
+        # Check if the collection exists
+        if not self.sync_client.exists(index=COLLECTIONS_INDEX, id=item["collection"]):
+            raise NotFoundError(f"Collection {item['collection']} does not exist")
+
+        # Check if the item already exists in the database
         if not exist_ok and self.sync_client.exists(
-            index=index_alias_by_collection_id(collection_id),
-            id=mk_item_id(item_id, collection_id),
+            index=index_alias_by_collection_id(item["collection"]),
+            id=mk_item_id(item["id"], item["collection"]),
         ):
+            logger.warning(
+                f"Item {item['id']} in collection {item['collection']} already exists."
+            )
             raise ConflictError(
-                f"Item {item_id} in collection {collection_id} already exists"
+                f"Item {item['id']} in collection {item['collection']} already exists"
             )
 
-        return self.item_serializer.stac_to_db(item, base_url)
+        # Serialize the item into a database-compatible format
+        prepped_item = self.item_serializer.stac_to_db(item, base_url)
+        logger.debug(f"Item {item['id']} prepared successfully.")
+        return prepped_item
 
     async def create_item(self, item: Item, refresh: bool = False):
         """Database logic for creating one item.
@@ -960,51 +986,63 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     async def bulk_async(
         self, collection_id: str, processed_items: List[Item], refresh: bool = False
-    ) -> None:
-        """Perform a bulk insert of items into the database asynchronously.
+    ) -> Tuple[int, List[Dict[str, Any]]]:
+        """
+        Perform a bulk insert of items into the database asynchronously.
 
         Args:
-            self: The instance of the object calling this function.
             collection_id (str): The ID of the collection to which the items belong.
             processed_items (List[Item]): A list of `Item` objects to be inserted into the database.
             refresh (bool): Whether to refresh the index after the bulk insert (default: False).
 
+        Returns:
+            Tuple[int, List[Dict[str, Any]]]: A tuple containing:
+                - The number of successfully processed actions (`success`).
+                - A list of errors encountered during the bulk operation (`errors`).
+
         Notes:
-            This function performs a bulk insert of `processed_items` into the database using the specified `collection_id`. The
-            insert is performed asynchronously, and the event loop is used to run the operation in a separate executor. The
-            `mk_actions` function is called to generate a list of actions for the bulk insert. If `refresh` is set to True, the
-            index is refreshed after the bulk insert. The function does not return any value.
+            This function performs a bulk insert of `processed_items` into the database using the specified `collection_id`.
+            The insert is performed asynchronously, and the event loop is used to run the operation in a separate executor.
+            The `mk_actions` function is called to generate a list of actions for the bulk insert. If `refresh` is set to True,
+            the index is refreshed after the bulk insert.
         """
-        await helpers.async_bulk(
+        success, errors = await helpers.async_bulk(
             self.client,
             mk_actions(collection_id, processed_items),
             refresh=refresh,
-            raise_on_error=False,
+            raise_on_error=False,  # Do not raise errors
         )
+        return success, errors
 
     def bulk_sync(
         self, collection_id: str, processed_items: List[Item], refresh: bool = False
-    ) -> None:
-        """Perform a bulk insert of items into the database synchronously.
+    ) -> Tuple[int, List[Dict[str, Any]]]:
+        """
+        Perform a bulk insert of items into the database synchronously.
 
         Args:
-            self: The instance of the object calling this function.
             collection_id (str): The ID of the collection to which the items belong.
             processed_items (List[Item]): A list of `Item` objects to be inserted into the database.
             refresh (bool): Whether to refresh the index after the bulk insert (default: False).
 
+        Returns:
+            Tuple[int, List[Dict[str, Any]]]: A tuple containing:
+                - The number of successfully processed actions (`success`).
+                - A list of errors encountered during the bulk operation (`errors`).
+
         Notes:
-            This function performs a bulk insert of `processed_items` into the database using the specified `collection_id`. The
-            insert is performed synchronously and blocking, meaning that the function does not return until the insert has
+            This function performs a bulk insert of `processed_items` into the database using the specified `collection_id`.
+            The insert is performed synchronously and blocking, meaning that the function does not return until the insert has
             completed. The `mk_actions` function is called to generate a list of actions for the bulk insert. If `refresh` is set to
-            True, the index is refreshed after the bulk insert. The function does not return any value.
+            True, the index is refreshed after the bulk insert.
         """
-        helpers.bulk(
+        success, errors = helpers.bulk(
             self.sync_client,
             mk_actions(collection_id, processed_items),
             refresh=refresh,
-            raise_on_error=False,
+            raise_on_error=False,  # Do not raise errors
         )
+        return success, errors
 
     # DANGER
     async def delete_items(self) -> None:
