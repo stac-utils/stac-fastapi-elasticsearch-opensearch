@@ -83,6 +83,7 @@ class OpensearchSettings(ApiSettings, ApiBaseSettings):
     indexed_fields: Set[str] = {"datetime"}
     enable_response_models: bool = False
     enable_direct_response: bool = get_bool_env("ENABLE_DIRECT_RESPONSE", default=False)
+    raise_on_bulk_error: bool = get_bool_env("RAISE_ON_BULK_ERROR", default=False)
 
     @property
     def create_client(self):
@@ -103,6 +104,7 @@ class AsyncOpensearchSettings(ApiSettings, ApiBaseSettings):
     indexed_fields: Set[str] = {"datetime"}
     enable_response_models: bool = False
     enable_direct_response: bool = get_bool_env("ENABLE_DIRECT_RESPONSE", default=False)
+    raise_on_bulk_error: bool = get_bool_env("RAISE_ON_BULK_ERROR", default=False)
 
     @property
     def create_client(self):

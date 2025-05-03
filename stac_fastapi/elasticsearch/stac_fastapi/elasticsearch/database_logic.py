@@ -31,7 +31,7 @@ from stac_fastapi.core.database_logic import (
 )
 from stac_fastapi.core.extensions import filter
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
-from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon, get_bool_env
+from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon
 from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
 from stac_fastapi.elasticsearch.config import (
     ElasticsearchSettings as SyncElasticsearchSettings,
@@ -128,8 +128,20 @@ async def delete_item_index(collection_id: str):
 class DatabaseLogic(BaseDatabaseLogic):
     """Database logic."""
 
-    client = AsyncElasticsearchSettings().create_client
-    sync_client = SyncElasticsearchSettings().create_client
+    async_settings: AsyncElasticsearchSettings = attr.ib(
+        factory=AsyncElasticsearchSettings
+    )
+    sync_settings: SyncElasticsearchSettings = attr.ib(
+        factory=SyncElasticsearchSettings
+    )
+
+    client = attr.ib(init=False)
+    sync_client = attr.ib(init=False)
+
+    def __attrs_post_init__(self):
+        """Initialize clients after the class is instantiated."""
+        self.client = self.async_settings.create_client
+        self.sync_client = self.sync_settings.create_client
 
     item_serializer: Type[ItemSerializer] = attr.ib(default=ItemSerializer)
     collection_serializer: Type[CollectionSerializer] = attr.ib(
@@ -767,7 +779,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             error_message = (
                 f"Item {item['id']} in collection {item['collection']} already exists."
             )
-            if get_bool_env("RAISE_ON_BULK_ERROR", default=False):
+            if self.async_settings.raise_on_bulk_error:
                 raise ConflictError(error_message)
             else:
                 logger.warning(
@@ -818,7 +830,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             error_message = (
                 f"Item {item['id']} in collection {item['collection']} already exists."
             )
-            if get_bool_env("RAISE_ON_BULK_ERROR", default=False):
+            if self.sync_settings.raise_on_bulk_error:
                 raise ConflictError(error_message)
             else:
                 logger.warning(
@@ -1047,7 +1059,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             The `mk_actions` function is called to generate a list of actions for the bulk insert. If `refresh` is set to True,
             the index is refreshed after the bulk insert.
         """
-        raise_on_error = get_bool_env("RAISE_ON_BULK_ERROR", default=False)
+        raise_on_error = self.async_settings.raise_on_bulk_error
         success, errors = await helpers.async_bulk(
             self.client,
             mk_actions(collection_id, processed_items),
@@ -1081,7 +1093,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             completed. The `mk_actions` function is called to generate a list of actions for the bulk insert. If `refresh` is set to
             True, the index is refreshed after the bulk insert.
         """
-        raise_on_error = get_bool_env("RAISE_ON_BULK_ERROR", default=False)
+        raise_on_error = self.sync_settings.raise_on_bulk_error
         success, errors = helpers.bulk(
             self.sync_client,
             mk_actions(collection_id, processed_items),
