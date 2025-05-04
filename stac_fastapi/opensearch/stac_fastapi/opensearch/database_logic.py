@@ -3,20 +3,34 @@
 import asyncio
 import json
 import logging
-import os
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from copy import deepcopy
-from typing import Any, Dict, Iterable, List, Optional, Protocol, Tuple, Type, Union
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Type
 
 import attr
 from opensearchpy import exceptions, helpers
-from opensearchpy.exceptions import TransportError
 from opensearchpy.helpers.query import Q
 from opensearchpy.helpers.search import Search
 from starlette.requests import Request
 
-from stac_fastapi.core import serializers
+from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
+from stac_fastapi.core.database_logic import (
+    COLLECTIONS_INDEX,
+    DEFAULT_SORT,
+    ES_COLLECTIONS_MAPPINGS,
+    ES_ITEMS_MAPPINGS,
+    ES_ITEMS_SETTINGS,
+    ITEM_INDICES,
+    ITEMS_INDEX_PREFIX,
+    Geometry,
+    index_alias_by_collection_id,
+    index_by_collection_id,
+    indices,
+    mk_actions,
+    mk_item_id,
+)
 from stac_fastapi.core.extensions import filter
+from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon
 from stac_fastapi.opensearch.config import (
     AsyncOpensearchSettings as AsyncSearchSettings,
@@ -26,168 +40,6 @@ from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.stac import Collection, Item
 
 logger = logging.getLogger(__name__)
-
-NumType = Union[float, int]
-
-COLLECTIONS_INDEX = os.getenv("STAC_COLLECTIONS_INDEX", "collections")
-ITEMS_INDEX_PREFIX = os.getenv("STAC_ITEMS_INDEX_PREFIX", "items_")
-ES_INDEX_NAME_UNSUPPORTED_CHARS = {
-    "\\",
-    "/",
-    "*",
-    "?",
-    '"',
-    "<",
-    ">",
-    "|",
-    " ",
-    ",",
-    "#",
-    ":",
-}
-
-ITEM_INDICES = f"{ITEMS_INDEX_PREFIX}*,-*kibana*,-{COLLECTIONS_INDEX}*"
-
-DEFAULT_SORT = {
-    "properties.datetime": {"order": "desc"},
-    "id": {"order": "desc"},
-    "collection": {"order": "desc"},
-}
-
-ES_ITEMS_SETTINGS = {
-    "index": {
-        "sort.field": list(DEFAULT_SORT.keys()),
-        "sort.order": [v["order"] for v in DEFAULT_SORT.values()],
-    }
-}
-
-ES_MAPPINGS_DYNAMIC_TEMPLATES = [
-    # Common https://github.com/radiantearth/stac-spec/blob/master/item-spec/common-metadata.md
-    {
-        "descriptions": {
-            "match_mapping_type": "string",
-            "match": "description",
-            "mapping": {"type": "text"},
-        }
-    },
-    {
-        "titles": {
-            "match_mapping_type": "string",
-            "match": "title",
-            "mapping": {"type": "text"},
-        }
-    },
-    # Projection Extension https://github.com/stac-extensions/projection
-    {"proj_epsg": {"match": "proj:epsg", "mapping": {"type": "integer"}}},
-    {
-        "proj_projjson": {
-            "match": "proj:projjson",
-            "mapping": {"type": "object", "enabled": False},
-        }
-    },
-    {
-        "proj_centroid": {
-            "match": "proj:centroid",
-            "mapping": {"type": "geo_point"},
-        }
-    },
-    {
-        "proj_geometry": {
-            "match": "proj:geometry",
-            "mapping": {"type": "object", "enabled": False},
-        }
-    },
-    {
-        "no_index_href": {
-            "match": "href",
-            "mapping": {"type": "text", "index": False},
-        }
-    },
-    # Default all other strings not otherwise specified to keyword
-    {"strings": {"match_mapping_type": "string", "mapping": {"type": "keyword"}}},
-    {"numerics": {"match_mapping_type": "long", "mapping": {"type": "float"}}},
-]
-
-ES_ITEMS_MAPPINGS = {
-    "numeric_detection": False,
-    "dynamic_templates": ES_MAPPINGS_DYNAMIC_TEMPLATES,
-    "properties": {
-        "id": {"type": "keyword"},
-        "collection": {"type": "keyword"},
-        "geometry": {"type": "geo_shape"},
-        "assets": {"type": "object", "enabled": False},
-        "links": {"type": "object", "enabled": False},
-        "properties": {
-            "type": "object",
-            "properties": {
-                # Common https://github.com/radiantearth/stac-spec/blob/master/item-spec/common-metadata.md
-                "datetime": {"type": "date"},
-                "start_datetime": {"type": "date"},
-                "end_datetime": {"type": "date"},
-                "created": {"type": "date"},
-                "updated": {"type": "date"},
-                # Satellite Extension https://github.com/stac-extensions/sat
-                "sat:absolute_orbit": {"type": "integer"},
-                "sat:relative_orbit": {"type": "integer"},
-            },
-        },
-    },
-}
-
-ES_COLLECTIONS_MAPPINGS = {
-    "numeric_detection": False,
-    "dynamic_templates": ES_MAPPINGS_DYNAMIC_TEMPLATES,
-    "properties": {
-        "id": {"type": "keyword"},
-        "extent.spatial.bbox": {"type": "long"},
-        "extent.temporal.interval": {"type": "date"},
-        "providers": {"type": "object", "enabled": False},
-        "links": {"type": "object", "enabled": False},
-        "item_assets": {"type": "object", "enabled": False},
-    },
-}
-
-
-def index_by_collection_id(collection_id: str) -> str:
-    """
-    Translate a collection id into an Elasticsearch index name.
-
-    Args:
-        collection_id (str): The collection id to translate into an index name.
-
-    Returns:
-        str: The index name derived from the collection id.
-    """
-    return f"{ITEMS_INDEX_PREFIX}{''.join(c for c in collection_id.lower() if c not in ES_INDEX_NAME_UNSUPPORTED_CHARS)}_{collection_id.encode('utf-8').hex()}"
-
-
-def index_alias_by_collection_id(collection_id: str) -> str:
-    """
-    Translate a collection id into an Elasticsearch index alias.
-
-    Args:
-        collection_id (str): The collection id to translate into an index alias.
-
-    Returns:
-        str: The index alias derived from the collection id.
-    """
-    return f"{ITEMS_INDEX_PREFIX}{''.join(c for c in collection_id if c not in ES_INDEX_NAME_UNSUPPORTED_CHARS)}"
-
-
-def indices(collection_ids: Optional[List[str]]) -> str:
-    """
-    Get a comma-separated string of index names for a given list of collection ids.
-
-    Args:
-        collection_ids: A list of collection ids.
-
-    Returns:
-        A string of comma-separated index names. If `collection_ids` is None, returns the default indices.
-    """
-    if collection_ids is None or collection_ids == []:
-        return ITEM_INDICES
-    else:
-        return ",".join([index_alias_by_collection_id(c) for c in collection_ids])
 
 
 async def create_index_templates() -> None:
@@ -227,24 +79,21 @@ async def create_collection_index() -> None:
     """
     client = AsyncSearchSettings().create_client
 
-    search_body: Dict[str, Any] = {
-        "aliases": {COLLECTIONS_INDEX: {}},
-    }
-
     index = f"{COLLECTIONS_INDEX}-000001"
 
-    try:
-        await client.indices.create(index=index, body=search_body)
-    except TransportError as e:
-        if e.status_code == 400:
-            pass  # Ignore 400 status codes
-        else:
-            raise e
-
+    exists = await client.indices.exists(index=index)
+    if not exists:
+        await client.indices.create(
+            index=index,
+            body={
+                "aliases": {COLLECTIONS_INDEX: {}},
+                "mappings": ES_COLLECTIONS_MAPPINGS,
+            },
+        )
     await client.close()
 
 
-async def create_item_index(collection_id: str):
+async def create_item_index(collection_id: str) -> None:
     """
     Create the index for Items. The settings of the index template will be used implicitly.
 
@@ -256,24 +105,22 @@ async def create_item_index(collection_id: str):
 
     """
     client = AsyncSearchSettings().create_client
-    search_body: Dict[str, Any] = {
-        "aliases": {index_alias_by_collection_id(collection_id): {}},
-    }
 
-    try:
+    index_name = f"{index_by_collection_id(collection_id)}-000001"
+    exists = await client.indices.exists(index=index_name)
+    if not exists:
         await client.indices.create(
-            index=f"{index_by_collection_id(collection_id)}-000001", body=search_body
+            index=index_name,
+            body={
+                "aliases": {index_alias_by_collection_id(collection_id): {}},
+                "mappings": ES_ITEMS_MAPPINGS,
+                "settings": ES_ITEMS_SETTINGS,
+            },
         )
-    except TransportError as e:
-        if e.status_code == 400:
-            pass  # Ignore 400 status codes
-        else:
-            raise e
-
     await client.close()
 
 
-async def delete_item_index(collection_id: str):
+async def delete_item_index(collection_id: str) -> None:
     """Delete the index for items in a collection.
 
     Args:
@@ -292,63 +139,16 @@ async def delete_item_index(collection_id: str):
     await client.close()
 
 
-def mk_item_id(item_id: str, collection_id: str):
-    """Create the document id for an Item in Elasticsearch.
-
-    Args:
-        item_id (str): The id of the Item.
-        collection_id (str): The id of the Collection that the Item belongs to.
-
-    Returns:
-        str: The document id for the Item, combining the Item id and the Collection id, separated by a `|` character.
-    """
-    return f"{item_id}|{collection_id}"
-
-
-def mk_actions(collection_id: str, processed_items: List[Item]):
-    """Create Elasticsearch bulk actions for a list of processed items.
-
-    Args:
-        collection_id (str): The identifier for the collection the items belong to.
-        processed_items (List[Item]): The list of processed items to be bulk indexed.
-
-    Returns:
-        List[Dict[str, Union[str, Dict]]]: The list of bulk actions to be executed,
-        each action being a dictionary with the following keys:
-        - `_index`: the index to store the document in.
-        - `_id`: the document's identifier.
-        - `_source`: the source of the document.
-    """
-    return [
-        {
-            "_index": index_alias_by_collection_id(collection_id),
-            "_id": mk_item_id(item["id"], item["collection"]),
-            "_source": item,
-        }
-        for item in processed_items
-    ]
-
-
-# stac_pydantic classes extend _GeometryBase, which doesn't have a type field,
-# So create our own Protocol for typing
-# Union[ Point, MultiPoint, LineString, MultiLineString, Polygon, MultiPolygon, GeometryCollection]
-class Geometry(Protocol):  # noqa
-    type: str
-    coordinates: Any
-
-
 @attr.s
-class DatabaseLogic:
+class DatabaseLogic(BaseDatabaseLogic):
     """Database logic."""
 
     client = AsyncSearchSettings().create_client
     sync_client = SyncSearchSettings().create_client
 
-    item_serializer: Type[serializers.ItemSerializer] = attr.ib(
-        default=serializers.ItemSerializer
-    )
-    collection_serializer: Type[serializers.CollectionSerializer] = attr.ib(
-        default=serializers.CollectionSerializer
+    item_serializer: Type[ItemSerializer] = attr.ib(default=ItemSerializer)
+    collection_serializer: Type[CollectionSerializer] = attr.ib(
+        default=CollectionSerializer
     )
 
     extensions: List[str] = attr.ib(default=attr.Factory(list))
@@ -495,7 +295,7 @@ class DatabaseLogic:
             )
         except exceptions.NotFoundError:
             raise NotFoundError(
-                f"Item {item_id} does not exist in Collection {collection_id}"
+                f"Item {item_id} does not exist inside Collection {collection_id}"
             )
         return item["_source"]
 
@@ -527,7 +327,7 @@ class DatabaseLogic:
 
     @staticmethod
     def apply_datetime_filter(search: Search, datetime_search):
-        """Apply a filter to search based on datetime field.
+        """Apply a filter to search based on datetime field, start_datetime, and end_datetime fields.
 
         Args:
             search (Search): The search object to filter.
@@ -536,17 +336,109 @@ class DatabaseLogic:
         Returns:
             Search: The filtered search object.
         """
+        should = []
+
+        # If the request is a single datetime return
+        # items with datetimes equal to the requested datetime OR
+        # the requested datetime is between their start and end datetimes
         if "eq" in datetime_search:
-            search = search.filter(
-                "term", **{"properties__datetime": datetime_search["eq"]}
+            should.extend(
+                [
+                    Q(
+                        "bool",
+                        filter=[
+                            Q(
+                                "term",
+                                properties__datetime=datetime_search["eq"],
+                            ),
+                        ],
+                    ),
+                    Q(
+                        "bool",
+                        filter=[
+                            Q(
+                                "range",
+                                properties__start_datetime={
+                                    "lte": datetime_search["eq"],
+                                },
+                            ),
+                            Q(
+                                "range",
+                                properties__end_datetime={
+                                    "gte": datetime_search["eq"],
+                                },
+                            ),
+                        ],
+                    ),
+                ]
             )
+
+        # If the request is a date range return
+        # items with datetimes within the requested date range OR
+        # their startdatetime ithin the requested date range OR
+        # their enddatetime ithin the requested date range OR
+        # the requested daterange within their start and end datetimes
         else:
-            search = search.filter(
-                "range", properties__datetime={"lte": datetime_search["lte"]}
+            should.extend(
+                [
+                    Q(
+                        "bool",
+                        filter=[
+                            Q(
+                                "range",
+                                properties__datetime={
+                                    "gte": datetime_search["gte"],
+                                    "lte": datetime_search["lte"],
+                                },
+                            ),
+                        ],
+                    ),
+                    Q(
+                        "bool",
+                        filter=[
+                            Q(
+                                "range",
+                                properties__start_datetime={
+                                    "gte": datetime_search["gte"],
+                                    "lte": datetime_search["lte"],
+                                },
+                            ),
+                        ],
+                    ),
+                    Q(
+                        "bool",
+                        filter=[
+                            Q(
+                                "range",
+                                properties__end_datetime={
+                                    "gte": datetime_search["gte"],
+                                    "lte": datetime_search["lte"],
+                                },
+                            ),
+                        ],
+                    ),
+                    Q(
+                        "bool",
+                        filter=[
+                            Q(
+                                "range",
+                                properties__start_datetime={
+                                    "lte": datetime_search["gte"]
+                                },
+                            ),
+                            Q(
+                                "range",
+                                properties__end_datetime={
+                                    "gte": datetime_search["lte"]
+                                },
+                            ),
+                        ],
+                    ),
+                ]
             )
-            search = search.filter(
-                "range", properties__datetime={"gte": datetime_search["gte"]}
-            )
+
+        search = search.query(Q("bool", filter=[Q("bool", should=should)]))
+
         return search
 
     @staticmethod
@@ -950,6 +842,24 @@ class DatabaseLogic:
                 f"Item {item_id} in collection {collection_id} not found"
             )
 
+    async def get_items_mapping(self, collection_id: str) -> Dict[str, Any]:
+        """Get the mapping for the specified collection's items index.
+
+        Args:
+            collection_id (str): The ID of the collection to get items mapping for.
+
+        Returns:
+            Dict[str, Any]: The mapping information.
+        """
+        index_name = index_alias_by_collection_id(collection_id)
+        try:
+            mapping = await self.client.indices.get_mapping(
+                index=index_name, params={"allow_no_indices": "false"}
+            )
+            return mapping
+        except exceptions.NotFoundError:
+            raise NotFoundError(f"Mapping for index {index_name} not found")
+
     async def create_collection(self, collection: Collection, refresh: bool = False):
         """Create a single collection in the database.
 
@@ -1033,7 +943,7 @@ class DatabaseLogic:
                     "source": {"index": f"{ITEMS_INDEX_PREFIX}{collection_id}"},
                     "script": {
                         "lang": "painless",
-                        "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection["id"]}'); ctx._source.collection = '{collection["id"]}' ;""",
+                        "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection["id"]}'); ctx._source.collection = '{collection["id"]}' ;""",  # noqa: E702
                     },
                 },
                 wait_for_completion=True,
