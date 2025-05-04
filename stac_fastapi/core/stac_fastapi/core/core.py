@@ -927,7 +927,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         else:
             logger.info(f"Bulk sync operation succeeded with {success} actions.")
 
-        return f"Successfully added {success} Items. {attempted - success} errors occurred."
+        return f"Successfully added/updated {success} Items. {attempted - success} errors occurred."
 
 
 _DEFAULT_QUERYABLES: Dict[str, Dict[str, Any]] = {
