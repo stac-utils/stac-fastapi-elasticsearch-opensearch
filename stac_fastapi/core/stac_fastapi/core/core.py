@@ -742,8 +742,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         item["properties"]["updated"] = now
 
         await self.database.check_collection_exists(collection_id)
-        await self.delete_item(item_id=item_id, collection_id=collection_id)
-        await self.create_item(collection_id=collection_id, item=Item(**item), **kwargs)
+        await self.database.create_item(item, refresh=kwargs.get("refresh", False))
 
         return ItemSerializer.db_to_stac(item, base_url)
 
