@@ -752,7 +752,6 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         now = datetime_type.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         item["properties"]["updated"] = now
 
-        # await self.database.check_collection_exists(collection_id)
         await self.database.create_item(
             item, refresh=kwargs.get("refresh", False), base_url=base_url, exist_ok=True
         )
