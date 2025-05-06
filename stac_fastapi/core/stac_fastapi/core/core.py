@@ -676,21 +676,22 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     @overrides
     async def create_item(
         self, collection_id: str, item: Union[Item, ItemCollection], **kwargs
-    ) -> Optional[stac_types.Item]:
-        """Create an item in the collection.
+    ) -> Union[stac_types.Item, str]:
+        """
+        Create an item or a feature collection of items in the specified collection.
 
         Args:
-            collection_id (str): The id of the collection to add the item to.
-            item (stac_types.Item): The item to be added to the collection.
-            kwargs: Additional keyword arguments.
+            collection_id (str): The ID of the collection to add the item(s) to.
+            item (Union[Item, ItemCollection]): A single item or a collection of items to be added.
+            **kwargs: Additional keyword arguments, such as `request` and `refresh`.
 
         Returns:
-            stac_types.Item: The created item.
+            Union[stac_types.Item, str]: The created item if a single item is added, or a summary string
+            indicating the number of items successfully added and errors if a collection of items is added.
 
         Raises:
-            NotFound: If the specified collection is not found in the database.
-            ConflictError: If the item in the specified collection already exists.
-
+            NotFoundError: If the specified collection is not found in the database.
+            ConflictError: If an item with the same ID already exists in the collection.
         """
         item = item.model_dump(mode="json")
         base_url = str(kwargs["request"].base_url)
@@ -706,14 +707,22 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 )
                 for item in item["features"]
             ]
-
-            await self.database.bulk_async(
-                collection_id, processed_items, refresh=kwargs.get("refresh", False)
+            attempted = len(processed_items)
+            success, errors = await self.database.bulk_async(
+                collection_id,
+                processed_items,
+                refresh=kwargs.get("refresh", False),
             )
+            if errors:
+                logger.error(f"Bulk async operation encountered errors: {errors}")
+            else:
+                logger.info(f"Bulk async operation succeeded with {success} actions.")
 
-            return None
+            return f"Successfully added {success} Items. {attempted - success} errors occurred."
         else:
-            item = await self.database.prep_create_item(item=item, base_url=base_url)
+            item = await self.database.async_prep_create_item(
+                item=item, base_url=base_url
+            )
             await self.database.create_item(item, refresh=kwargs.get("refresh", False))
             return ItemSerializer.db_to_stac(item, base_url)
 
@@ -875,7 +884,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
             The preprocessed item.
         """
         exist_ok = method == BulkTransactionMethod.UPSERT
-        return self.database.sync_prep_create_item(
+        return self.database.bulk_sync_prep_create_item(
             item=item, base_url=base_url, exist_ok=exist_ok
         )
 
@@ -906,12 +915,18 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
 
         # not a great way to get the collection_id-- should be part of the method signature
         collection_id = processed_items[0]["collection"]
-
-        self.database.bulk_sync(
-            collection_id, processed_items, refresh=kwargs.get("refresh", False)
+        attempted = len(processed_items)
+        success, errors = self.database.bulk_sync(
+            collection_id,
+            processed_items,
+            refresh=kwargs.get("refresh", False),
         )
+        if errors:
+            logger.error(f"Bulk sync operation encountered errors: {errors}")
+        else:
+            logger.info(f"Bulk sync operation succeeded with {success} actions.")
 
-        return f"Successfully added {len(processed_items)} Items."
+        return f"Successfully added/updated {success} Items. {attempted - success} errors occurred."
 
 
 _DEFAULT_QUERYABLES: Dict[str, Dict[str, Any]] = {

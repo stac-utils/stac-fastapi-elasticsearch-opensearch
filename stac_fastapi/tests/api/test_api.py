@@ -5,6 +5,8 @@ from datetime import datetime, timedelta
 
 import pytest
 
+from stac_fastapi.types.errors import ConflictError
+
 from ..conftest import create_collection, create_item
 
 ROUTES = {
@@ -635,53 +637,47 @@ async def test_search_line_string_intersects(app_client, ctx):
 @pytest.mark.parametrize(
     "value, expected",
     [
-        (32767, 1),  # Short Limit,
+        (32767, 1),  # Short Limit
         (2147483647, 1),  # Int Limit
-        (2147483647 + 5000, 1),  # Above int Limit
-        (21474836470, 1),  # Above int Limit
-        # This value still fails to return 1
-        # Commenting out
-        # (9223372036854775807, 1),
+        (2147483647 + 5000, 1),  # Above Int Limit
+        (21474836470, 1),  # Above Int Limit
     ],
 )
 async def test_big_int_eo_search(
     app_client, txn_client, test_item, test_collection, value, expected
 ):
-
-    random_str = "".join(random.choice("abcdef") for i in range(random.randint(1, 5)))
+    random_str = "".join(random.choice("abcdef") for _ in range(5))
     collection_id = f"test-collection-eo-{random_str}"
 
-    test_big_int_item = test_item
-    del test_big_int_item["properties"]["eo:bands"]
-    test_big_int_item["collection"] = collection_id
-    test_big_int_collection = test_collection
-    test_big_int_collection["id"] = collection_id
-
-    # type number
-    attr = "eo:full_width_half_max"
-
-    stac_extensions = [
-        "https://stac-extensions.github.io/eo/v2.0.0/schema.json",
+    test_collection["id"] = collection_id
+    test_collection["stac_extensions"] = [
+        "https://stac-extensions.github.io/eo/v2.0.0/schema.json"
     ]
 
-    test_collection["stac_extensions"] = stac_extensions
+    test_item["collection"] = collection_id
+    test_item["stac_extensions"] = test_collection["stac_extensions"]
 
-    test_item["stac_extensions"] = stac_extensions
+    # Remove "eo:bands" to simplify the test
+    del test_item["properties"]["eo:bands"]
 
-    await create_collection(txn_client, test_collection)
+    # Attribute to test
+    attr = "eo:full_width_half_max"
 
-    for val in [
-        value,
-        value + random.randint(10, 1010),
-        value - random.randint(10, 1010),
-    ]:
+    try:
+        await create_collection(txn_client, test_collection)
+    except ConflictError:
+        pass
+
+    # Create items with deterministic offsets
+    for val in [value, value + 100, value - 100]:
         item = deepcopy(test_item)
         item["id"] = str(uuid.uuid4())
         item["properties"][attr] = val
         await create_item(txn_client, item)
 
+    # Search for the exact value
     params = {
-        "collections": [item["collection"]],
+        "collections": [collection_id],
         "filter": {
             "args": [
                 {
@@ -697,5 +693,8 @@ async def test_big_int_eo_search(
     }
     resp = await app_client.post("/search", json=params)
     resp_json = resp.json()
-    results = set([x["properties"][attr] for x in resp_json["features"]])
+
+    # Validate results
+    results = {x["properties"][attr] for x in resp_json["features"]}
     assert len(results) == expected
+    assert results == {value}

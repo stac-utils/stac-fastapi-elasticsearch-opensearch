@@ -1,3 +1,4 @@
+import os
 import uuid
 from copy import deepcopy
 from typing import Callable
@@ -9,6 +10,13 @@ from stac_fastapi.extensions.third_party.bulk_transactions import Items
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 
 from ..conftest import MockRequest, create_item
+
+if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
+    from stac_fastapi.opensearch.config import OpensearchSettings as SearchSettings
+else:
+    from stac_fastapi.elasticsearch.config import (
+        ElasticsearchSettings as SearchSettings,
+    )
 
 
 @pytest.mark.asyncio
@@ -295,6 +303,51 @@ async def test_bulk_item_insert(ctx, core_client, txn_client, bulk_txn_client):
     #     es_transactions.delete_item(
     #         item["id"], item["collection"], request=MockStarletteRequest
     #     )
+
+
+@pytest.mark.asyncio
+async def test_bulk_item_insert_with_raise_on_error(
+    ctx, core_client, txn_client, bulk_txn_client
+):
+    """
+    Test bulk_item_insert behavior with RAISE_ON_BULK_ERROR set to true and false.
+
+    This test verifies that when RAISE_ON_BULK_ERROR is set to true, a ConflictError
+    is raised for conflicting items. When set to false, the operation logs errors
+    and continues gracefully.
+    """
+
+    # Insert an initial item to set up a conflict
+    initial_item = deepcopy(ctx.item)
+    initial_item["id"] = str(uuid.uuid4())
+    await create_item(txn_client, initial_item)
+
+    # Verify the initial item is inserted
+    fc = await core_client.item_collection(ctx.collection["id"], request=MockRequest())
+    assert len(fc["features"]) >= 1
+
+    # Create conflicting items (same ID as the initial item)
+    conflicting_items = {initial_item["id"]: deepcopy(initial_item)}
+
+    # Test with RAISE_ON_BULK_ERROR set to true
+    os.environ["RAISE_ON_BULK_ERROR"] = "true"
+    bulk_txn_client.database.sync_settings = SearchSettings()
+
+    with pytest.raises(ConflictError):
+        bulk_txn_client.bulk_item_insert(Items(items=conflicting_items), refresh=True)
+
+    # Test with RAISE_ON_BULK_ERROR set to false
+    os.environ["RAISE_ON_BULK_ERROR"] = "false"
+    bulk_txn_client.database.sync_settings = SearchSettings()  # Reinitialize settings
+    result = bulk_txn_client.bulk_item_insert(
+        Items(items=conflicting_items), refresh=True
+    )
+
+    # Validate the results
+    assert "Successfully added/updated 1 Items" in result
+
+    # Clean up the inserted item
+    await txn_client.delete_item(initial_item["id"], ctx.item["collection"])
 
 
 @pytest.mark.asyncio
