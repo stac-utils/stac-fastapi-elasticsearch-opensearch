@@ -693,19 +693,26 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             NotFoundError: If the specified collection is not found in the database.
             ConflictError: If an item with the same ID already exists in the collection.
         """
-        item = item.model_dump(mode="json")
-        base_url = str(kwargs["request"].base_url)
+        # Ensure request is present
+        request = kwargs.get("request")
+        if not request:
+            raise ValueError("Request must be provided in kwargs")
+        base_url = str(request.base_url)
 
-        # If a feature collection is posted
-        if item["type"] == "FeatureCollection":
+        # Convert Pydantic model to dict for uniform processing
+        item_dict = item.model_dump(mode="json")
+
+        # Handle FeatureCollection (bulk insert)
+        if item_dict["type"] == "FeatureCollection":
             bulk_client = BulkTransactionsClient(
                 database=self.database, settings=self.settings
             )
+            features = item_dict["features"]
             processed_items = [
                 bulk_client.preprocess_item(
-                    item, base_url, BulkTransactionMethod.INSERT
+                    feature, base_url, BulkTransactionMethod.INSERT
                 )
-                for item in item["features"]
+                for feature in features
             ]
             attempted = len(processed_items)
             success, errors = await self.database.bulk_async(
@@ -714,19 +721,23 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 refresh=kwargs.get("refresh", False),
             )
             if errors:
-                logger.error(f"Bulk async operation encountered errors: {errors}")
+                logger.error(
+                    f"Bulk async operation encountered errors for collection {collection_id}: {errors} (attempted {attempted})"
+                )
             else:
-                logger.info(f"Bulk async operation succeeded with {success} actions.")
-
+                logger.info(
+                    f"Bulk async operation succeeded with {success} actions for collection {collection_id}."
+                )
             return f"Successfully added {success} Items. {attempted - success} errors occurred."
-        else:
-            await self.database.create_item(
-                item,
-                refresh=kwargs.get("refresh", False),
-                base_url=base_url,
-                exist_ok=False,
-            )
-            return ItemSerializer.db_to_stac(item, base_url)
+
+        # Handle single item
+        await self.database.create_item(
+            item_dict,
+            refresh=kwargs.get("refresh", False),
+            base_url=base_url,
+            exist_ok=False,
+        )
+        return ItemSerializer.db_to_stac(item_dict, base_url)
 
     @overrides
     async def update_item(
@@ -911,12 +922,22 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         else:
             base_url = ""
 
-        processed_items = [
-            self.preprocess_item(item, base_url, items.method)
-            for item in items.items.values()
-        ]
+        processed_items = []
+        for item in items.items.values():
+            try:
+                validated = Item(**item) if not isinstance(item, Item) else item
+                processed_items.append(
+                    self.preprocess_item(
+                        validated.model_dump(mode="json"), base_url, items.method
+                    )
+                )
+            except ValidationError:
+                # Immediately raise on the first invalid item (strict mode)
+                raise
 
-        # not a great way to get the collection_id-- should be part of the method signature
+        if not processed_items:
+            return "No valid items to insert."
+
         collection_id = processed_items[0]["collection"]
         attempted = len(processed_items)
         success, errors = self.database.bulk_sync(
