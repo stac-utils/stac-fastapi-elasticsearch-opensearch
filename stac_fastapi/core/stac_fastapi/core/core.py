@@ -693,10 +693,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             NotFoundError: If the specified collection is not found in the database.
             ConflictError: If an item with the same ID already exists in the collection.
         """
-        # Ensure request is present
         request = kwargs.get("request")
-        if not request:
-            raise ValueError("Request must be provided in kwargs")
         base_url = str(request.base_url)
 
         # Convert Pydantic model to dict for uniform processing
@@ -934,9 +931,6 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
             except ValidationError:
                 # Immediately raise on the first invalid item (strict mode)
                 raise
-
-        if not processed_items:
-            return "No valid items to insert."
 
         collection_id = processed_items[0]["collection"]
         attempted = len(processed_items)
