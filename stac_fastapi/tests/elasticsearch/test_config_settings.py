@@ -37,3 +37,19 @@ def test_enable_direct_response_false(monkeypatch):
     settings_class, _ = get_settings_class()
     settings = settings_class()
     assert settings.enable_direct_response is False
+
+
+def test_database_refresh_true(monkeypatch):
+    """Test that DATABASE_REFRESH env var enables database refresh."""
+    monkeypatch.setenv("DATABASE_REFRESH", "true")
+    settings_class, _ = get_settings_class()
+    settings = settings_class()
+    assert settings.database_refresh is True
+
+
+def test_database_refresh_false(monkeypatch):
+    """Test that DATABASE_REFRESH env var disables database refresh."""
+    monkeypatch.setenv("DATABASE_REFRESH", "false")
+    settings_class, _ = get_settings_class()
+    settings = settings_class()
+    assert settings.database_refresh is False
