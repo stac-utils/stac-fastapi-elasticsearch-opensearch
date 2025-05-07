@@ -34,11 +34,6 @@ async def test_bulk_item_insert(ctx, core_client, txn_client, bulk_txn_client):
     fc = await core_client.item_collection(ctx.collection["id"], request=MockRequest())
     assert len(fc["features"]) >= 10
 
-    # for item in items:
-    #     es_transactions.delete_item(
-    #         item["id"], item["collection"], request=MockStarletteRequest
-    #     )
-
 
 @pytest.mark.asyncio
 async def test_bulk_item_insert_with_raise_on_error(
