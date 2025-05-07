@@ -842,7 +842,13 @@ class DatabaseLogic(BaseDatabaseLogic):
         logger.debug(f"Item {item['id']} prepared successfully.")
         return prepped_item
 
-    async def create_item(self, item: Item, refresh: bool = False):
+    async def create_item(
+        self,
+        item: Item,
+        refresh: bool = False,
+        base_url: str = "",
+        exist_ok: bool = False,
+    ):
         """Database logic for creating one item.
 
         Args:
@@ -858,17 +864,15 @@ class DatabaseLogic(BaseDatabaseLogic):
         # todo: check if collection exists, but cache
         item_id = item["id"]
         collection_id = item["collection"]
-        es_resp = await self.client.index(
+        item = await self.async_prep_create_item(
+            item=item, base_url=base_url, exist_ok=exist_ok
+        )
+        await self.client.index(
             index=index_alias_by_collection_id(collection_id),
             id=mk_item_id(item_id, collection_id),
             document=item,
             refresh=refresh,
         )
-
-        if (meta := es_resp.get("meta")) and meta.get("status") == 409:
-            raise ConflictError(
-                f"Item {item_id} in collection {collection_id} already exists"
-            )
 
     async def delete_item(
         self, item_id: str, collection_id: str, refresh: bool = False
