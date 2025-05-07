@@ -84,6 +84,7 @@ class OpensearchSettings(ApiSettings, ApiBaseSettings):
     enable_response_models: bool = False
     enable_direct_response: bool = get_bool_env("ENABLE_DIRECT_RESPONSE", default=False)
     raise_on_bulk_error: bool = get_bool_env("RAISE_ON_BULK_ERROR", default=False)
+    database_refresh: bool = get_bool_env("DATABASE_REFRESH", default=False)
 
     @property
     def create_client(self):
@@ -105,7 +106,7 @@ class AsyncOpensearchSettings(ApiSettings, ApiBaseSettings):
     enable_response_models: bool = False
     enable_direct_response: bool = get_bool_env("ENABLE_DIRECT_RESPONSE", default=False)
     raise_on_bulk_error: bool = get_bool_env("RAISE_ON_BULK_ERROR", default=False)
-    es_os_refresh: bool = get_bool_env("ES_OS_REFRESH", default=False)
+    database_refresh: bool = get_bool_env("DATABASE_REFRESH", default=False)
 
     @property
     def create_client(self):
