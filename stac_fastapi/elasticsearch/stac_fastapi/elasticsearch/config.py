@@ -3,7 +3,7 @@
 import logging
 import os
 import ssl
-from typing import Any, Dict, Set
+from typing import Any, Dict, Set, Union
 
 import certifi
 from elasticsearch._async.client import AsyncElasticsearch
@@ -87,7 +87,24 @@ class ElasticsearchSettings(ApiSettings, ApiBaseSettings):
     enable_response_models: bool = False
     enable_direct_response: bool = get_bool_env("ENABLE_DIRECT_RESPONSE", default=False)
     raise_on_bulk_error: bool = get_bool_env("RAISE_ON_BULK_ERROR", default=False)
-    database_refresh: bool = get_bool_env("DATABASE_REFRESH", default=False)
+
+    @property
+    def database_refresh(self) -> Union[bool, str]:
+        """
+        Get the value of the DATABASE_REFRESH environment variable.
+
+        Returns:
+            Union[bool, str]: The value of DATABASE_REFRESH, which can be True, False, or "wait_for".
+        """
+        value = os.getenv("DATABASE_REFRESH", "false").lower()
+        if value in {"true", "false"}:
+            return value == "true"
+        elif value == "wait_for":
+            return "wait_for"
+        else:
+            raise ValueError(
+                "Invalid value for DATABASE_REFRESH. Must be 'true', 'false', or 'wait_for'."
+            )
 
     @property
     def create_client(self):
@@ -109,7 +126,24 @@ class AsyncElasticsearchSettings(ApiSettings, ApiBaseSettings):
     enable_response_models: bool = False
     enable_direct_response: bool = get_bool_env("ENABLE_DIRECT_RESPONSE", default=False)
     raise_on_bulk_error: bool = get_bool_env("RAISE_ON_BULK_ERROR", default=False)
-    database_refresh: bool = get_bool_env("DATABASE_REFRESH", default=False)
+
+    @property
+    def database_refresh(self) -> Union[bool, str]:
+        """
+        Get the value of the DATABASE_REFRESH environment variable.
+
+        Returns:
+            Union[bool, str]: The value of DATABASE_REFRESH, which can be True, False, or "wait_for".
+        """
+        value = os.getenv("DATABASE_REFRESH", "false").lower()
+        if value in {"true", "false"}:
+            return value == "true"
+        elif value == "wait_for":
+            return "wait_for"
+        else:
+            raise ValueError(
+                "Invalid value for DATABASE_REFRESH. Must be 'true', 'false', or 'wait_for'."
+            )
 
     @property
     def create_client(self):

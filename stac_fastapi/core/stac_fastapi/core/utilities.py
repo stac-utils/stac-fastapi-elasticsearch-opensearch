@@ -39,6 +39,30 @@ def get_bool_env(name: str, default: bool = False) -> bool:
         return default
 
 
+def resolve_refresh(refresh: str) -> str:
+    """
+    Resolve the `refresh` parameter from kwargs or the environment variable.
+
+    Args:
+        refresh (str): The `refresh` parameter value.
+
+    Returns:
+        str: The resolved value of the `refresh` parameter, which can be "true", "false", or "wait_for".
+    """
+    logger = logging.getLogger(__name__)
+
+    # Normalize and validate the `refresh` value
+    refresh = refresh.lower()
+    if refresh not in {"true", "false", "wait_for"}:
+        raise ValueError(
+            "Invalid value for `refresh`. Must be 'true', 'false', or 'wait_for'."
+        )
+
+    # Log the resolved value
+    logger.info(f"`refresh` parameter resolved to: {refresh}")
+    return refresh
+
+
 def bbox2polygon(b0: float, b1: float, b2: float, b3: float) -> List[List[List[float]]]:
     """Transform a bounding box represented by its four coordinates `b0`, `b1`, `b2`, and `b3` into a polygon.
 

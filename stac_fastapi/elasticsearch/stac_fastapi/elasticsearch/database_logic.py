@@ -31,7 +31,7 @@ from stac_fastapi.core.database_logic import (
 )
 from stac_fastapi.core.extensions import filter
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
-from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon
+from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon, resolve_refresh
 from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
 from stac_fastapi.elasticsearch.config import (
     ElasticsearchSettings as SyncElasticsearchSettings,
@@ -845,14 +845,16 @@ class DatabaseLogic(BaseDatabaseLogic):
     async def create_item(
         self,
         item: Item,
-        refresh: bool = False,
         base_url: str = "",
         exist_ok: bool = False,
+        **kwargs: Any,
     ):
         """Database logic for creating one item.
 
         Args:
             item (Item): The item to be created.
+            base_url (str, optional): The base URL for the item. Defaults to an empty string.
+            exist_ok (bool, optional): Whether to allow the item to exist already. Defaults to False.
             refresh (bool, optional): Refresh the index after performing the operation. Defaults to False.
 
         Raises:
@@ -861,12 +863,28 @@ class DatabaseLogic(BaseDatabaseLogic):
         Returns:
             None
         """
-        # todo: check if collection exists, but cache
+        # Extract item and collection IDs
         item_id = item["id"]
         collection_id = item["collection"]
+
+        # Ensure kwargs is a dictionary
+        kwargs = kwargs or {}
+
+        # Resolve the `refresh` parameter
+        refresh = kwargs.get("refresh", self.async_settings.database_refresh)
+        refresh = resolve_refresh(str(refresh).lower())
+
+        # Log the creation attempt
+        logger.info(
+            f"Creating item {item_id} in collection {collection_id} with refresh={refresh}"
+        )
+
+        # Prepare the item for insertion
         item = await self.async_prep_create_item(
             item=item, base_url=base_url, exist_ok=exist_ok
         )
+
+        # Index the item in the database
         await self.client.index(
             index=index_alias_by_collection_id(collection_id),
             id=mk_item_id(item_id, collection_id),
@@ -874,9 +892,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             refresh=refresh,
         )
 
-    async def delete_item(
-        self, item_id: str, collection_id: str, refresh: bool = False
-    ):
+    async def delete_item(self, item_id: str, collection_id: str, **kwargs: Any):
         """Delete a single item from the database.
 
         Args:
@@ -887,13 +903,27 @@ class DatabaseLogic(BaseDatabaseLogic):
         Raises:
             NotFoundError: If the Item does not exist in the database.
         """
+        # Ensure kwargs is a dictionary
+        kwargs = kwargs or {}
+
+        # Resolve the `refresh` parameter
+        refresh = kwargs.get("refresh", self.async_settings.database_refresh)
+        refresh = resolve_refresh(str(refresh).lower())
+
+        # Log the deletion attempt
+        logger.info(
+            f"Deleting item {item_id} from collection {collection_id} with refresh={refresh}"
+        )
+
         try:
+            # Perform the delete operation
             await self.client.delete(
                 index=index_alias_by_collection_id(collection_id),
                 id=mk_item_id(item_id, collection_id),
                 refresh=refresh,
             )
         except ESNotFoundError:
+            # Raise a custom NotFoundError if the item does not exist
             raise NotFoundError(
                 f"Item {item_id} in collection {collection_id} not found"
             )
@@ -916,12 +946,12 @@ class DatabaseLogic(BaseDatabaseLogic):
         except ESNotFoundError:
             raise NotFoundError(f"Mapping for index {index_name} not found")
 
-    async def create_collection(self, collection: Collection, refresh: bool = False):
+    async def create_collection(self, collection: Collection, **kwargs: Any):
         """Create a single collection in the database.
 
         Args:
             collection (Collection): The Collection object to be created.
-            refresh (bool, optional): Whether to refresh the index after the creation. Default is False.
+            refresh (str, optional): Whether to refresh the index after the creation. Can be "true", "false", or "wait_for".
 
         Raises:
             ConflictError: If a Collection with the same id already exists in the database.
@@ -931,9 +961,21 @@ class DatabaseLogic(BaseDatabaseLogic):
         """
         collection_id = collection["id"]
 
+        # Ensure kwargs is a dictionary
+        kwargs = kwargs or {}
+
+        # Resolve the `refresh` parameter
+        refresh = kwargs.get("refresh", self.async_settings.database_refresh)
+        refresh = resolve_refresh(str(refresh).lower())
+
+        # Log the creation attempt
+        logger.info(f"Creating collection {collection_id} with refresh={refresh}")
+
+        # Check if the collection already exists
         if await self.client.exists(index=COLLECTIONS_INDEX, id=collection_id):
             raise ConflictError(f"Collection {collection_id} already exists")
 
+        # Index the collection in the database
         await self.client.index(
             index=COLLECTIONS_INDEX,
             id=collection_id,
@@ -941,6 +983,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             refresh=refresh,
         )
 
+        # Create the item index for the collection
         await create_item_index(collection_id)
 
     async def find_collection(self, collection_id: str) -> Collection:
@@ -970,29 +1013,48 @@ class DatabaseLogic(BaseDatabaseLogic):
         return collection["_source"]
 
     async def update_collection(
-        self, collection_id: str, collection: Collection, refresh: bool = False
+        self, collection_id: str, collection: Collection, **kwargs: Any
     ):
-        """Update a collection from the database.
+        """Update a collection in the database.
 
         Args:
-            self: The instance of the object calling this function.
             collection_id (str): The ID of the collection to be updated.
             collection (Collection): The Collection object to be used for the update.
+            kwargs (Any, optional): Additional keyword arguments, including `refresh`.
 
         Raises:
-            NotFoundError: If the collection with the given `collection_id` is not
-            found in the database.
+            NotFoundError: If the collection with the given `collection_id` is not found in the database.
+            ConflictError: If a conflict occurs during the update.
 
         Notes:
             This function updates the collection in the database using the specified
-            `collection_id` and with the collection specified in the `Collection` object.
-            If the collection is not found, a `NotFoundError` is raised.
+            `collection_id` and the provided `Collection` object. If the collection ID
+            changes, the function creates a new collection, reindexes the items, and deletes
+            the old collection.
         """
+        # Ensure kwargs is a dictionary
+        kwargs = kwargs or {}
+
+        # Resolve the `refresh` parameter
+        refresh = kwargs.get("refresh", self.async_settings.database_refresh)
+        refresh = resolve_refresh(str(refresh).lower())
+
+        # Log the update attempt
+        logger.info(f"Updating collection {collection_id} with refresh={refresh}")
+
+        # Ensure the collection exists
         await self.find_collection(collection_id=collection_id)
 
+        # Handle collection ID change
         if collection_id != collection["id"]:
+            logger.info(
+                f"Collection ID change detected: {collection_id} -> {collection['id']}"
+            )
+
+            # Create the new collection
             await self.create_collection(collection, refresh=refresh)
 
+            # Reindex items from the old collection to the new collection
             await self.client.reindex(
                 body={
                     "dest": {"index": f"{ITEMS_INDEX_PREFIX}{collection['id']}"},
@@ -1006,9 +1068,11 @@ class DatabaseLogic(BaseDatabaseLogic):
                 refresh=refresh,
             )
 
+            # Delete the old collection
             await self.delete_collection(collection_id)
 
         else:
+            # Update the existing collection
             await self.client.index(
                 index=COLLECTIONS_INDEX,
                 id=collection_id,
@@ -1016,33 +1080,52 @@ class DatabaseLogic(BaseDatabaseLogic):
                 refresh=refresh,
             )
 
-    async def delete_collection(self, collection_id: str, refresh: bool = False):
+    async def delete_collection(self, collection_id: str, **kwargs: Any):
         """Delete a collection from the database.
 
         Parameters:
-            self: The instance of the object calling this function.
             collection_id (str): The ID of the collection to be deleted.
-            refresh (bool): Whether to refresh the index after the deletion (default: False).
+            kwargs (Any, optional): Additional keyword arguments, including `refresh`.
 
         Raises:
             NotFoundError: If the collection with the given `collection_id` is not found in the database.
 
         Notes:
             This function first verifies that the collection with the specified `collection_id` exists in the database, and then
-            deletes the collection. If `refresh` is set to True, the index is refreshed after the deletion. Additionally, this
-            function also calls `delete_item_index` to delete the index for the items in the collection.
+            deletes the collection. If `refresh` is set to "true", "false", or "wait_for", the index is refreshed accordingly after
+            the deletion. Additionally, this function also calls `delete_item_index` to delete the index for the items in the collection.
         """
+        # Ensure kwargs is a dictionary
+        kwargs = kwargs or {}
+
+        # Verify that the collection exists
         await self.find_collection(collection_id=collection_id)
+
+        # Resolve the `refresh` parameter
+        refresh = kwargs.get("refresh", self.async_settings.database_refresh)
+        refresh = resolve_refresh(str(refresh).lower())
+
+        # Log the deletion attempt
+        logger.info(f"Deleting collection {collection_id} with refresh={refresh}")
+
+        # Delete the collection from the database
         await self.client.delete(
             index=COLLECTIONS_INDEX, id=collection_id, refresh=refresh
         )
-        await delete_item_index(collection_id)
+
+        # Delete the item index for the collection
+        try:
+            await delete_item_index(collection_id)
+        except Exception as e:
+            logger.error(
+                f"Failed to delete item index for collection {collection_id}: {e}"
+            )
 
     async def bulk_async(
         self,
         collection_id: str,
         processed_items: List[Item],
-        refresh: bool = False,
+        **kwargs: Any,
     ) -> Tuple[int, List[Dict[str, Any]]]:
         """
         Perform a bulk insert of items into the database asynchronously.
@@ -1063,6 +1146,24 @@ class DatabaseLogic(BaseDatabaseLogic):
             The `mk_actions` function is called to generate a list of actions for the bulk insert. If `refresh` is set to True,
             the index is refreshed after the bulk insert.
         """
+        # Ensure kwargs is a dictionary
+        kwargs = kwargs or {}
+
+        # Resolve the `refresh` parameter
+        refresh = kwargs.get("refresh", self.async_settings.database_refresh)
+        refresh = resolve_refresh(str(refresh).lower())
+
+        # Log the bulk insert attempt
+        logger.info(
+            f"Performing bulk insert for collection {collection_id} with refresh={refresh}"
+        )
+
+        # Handle empty processed_items
+        if not processed_items:
+            logger.warning(f"No items to insert for collection {collection_id}")
+            return 0, []
+
+        # Perform the bulk insert
         raise_on_error = self.async_settings.raise_on_bulk_error
         success, errors = await helpers.async_bulk(
             self.client,
@@ -1070,13 +1171,19 @@ class DatabaseLogic(BaseDatabaseLogic):
             refresh=refresh,
             raise_on_error=raise_on_error,
         )
+
+        # Log the result
+        logger.info(
+            f"Bulk insert completed for collection {collection_id}: {success} successes, {len(errors)} errors"
+        )
+
         return success, errors
 
     def bulk_sync(
         self,
         collection_id: str,
         processed_items: List[Item],
-        refresh: bool = False,
+        **kwargs: Any,
     ) -> Tuple[int, List[Dict[str, Any]]]:
         """
         Perform a bulk insert of items into the database synchronously.
@@ -1084,7 +1191,9 @@ class DatabaseLogic(BaseDatabaseLogic):
         Args:
             collection_id (str): The ID of the collection to which the items belong.
             processed_items (List[Item]): A list of `Item` objects to be inserted into the database.
-            refresh (bool): Whether to refresh the index after the bulk insert (default: False).
+            **kwargs (Any): Additional keyword arguments, including:
+                - refresh (str, optional): Whether to refresh the index after the bulk insert.
+                Can be "true", "false", or "wait_for". Defaults to the value of `self.sync_settings.database_refresh`.
 
         Returns:
             Tuple[int, List[Dict[str, Any]]]: A tuple containing:
@@ -1094,9 +1203,30 @@ class DatabaseLogic(BaseDatabaseLogic):
         Notes:
             This function performs a bulk insert of `processed_items` into the database using the specified `collection_id`.
             The insert is performed synchronously and blocking, meaning that the function does not return until the insert has
-            completed. The `mk_actions` function is called to generate a list of actions for the bulk insert. If `refresh` is set to
-            True, the index is refreshed after the bulk insert.
+            completed. The `mk_actions` function is called to generate a list of actions for the bulk insert. The `refresh`
+            parameter determines whether the index is refreshed after the bulk insert:
+                - "true": Forces an immediate refresh of the index.
+                - "false": Does not refresh the index immediately (default behavior).
+                - "wait_for": Waits for the next refresh cycle to make the changes visible.
         """
+        # Ensure kwargs is a dictionary
+        kwargs = kwargs or {}
+
+        # Resolve the `refresh` parameter
+        refresh = kwargs.get("refresh", self.sync_settings.database_refresh)
+        refresh = resolve_refresh(str(refresh).lower())
+
+        # Log the bulk insert attempt
+        logger.info(
+            f"Performing bulk insert for collection {collection_id} with refresh={refresh}"
+        )
+
+        # Handle empty processed_items
+        if not processed_items:
+            logger.warning(f"No items to insert for collection {collection_id}")
+            return 0, []
+
+        # Perform the bulk insert
         raise_on_error = self.sync_settings.raise_on_bulk_error
         success, errors = helpers.bulk(
             self.sync_client,
@@ -1104,6 +1234,12 @@ class DatabaseLogic(BaseDatabaseLogic):
             refresh=refresh,
             raise_on_error=raise_on_error,
         )
+
+        # Log the result
+        logger.info(
+            f"Bulk insert completed for collection {collection_id}: {success} successes, {len(errors)} errors"
+        )
+
         return success, errors
 
     # DANGER

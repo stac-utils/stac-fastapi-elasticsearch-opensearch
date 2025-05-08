@@ -53,3 +53,11 @@ def test_database_refresh_false(monkeypatch):
     settings_class, _ = get_settings_class()
     settings = settings_class()
     assert settings.database_refresh is False
+
+
+def test_database_refresh_wait_for(monkeypatch):
+    """Test that DATABASE_REFRESH env var sets database refresh to 'wait_for'."""
+    monkeypatch.setenv("DATABASE_REFRESH", "wait_for")
+    settings_class, _ = get_settings_class()
+    settings = settings_class()
+    assert settings.database_refresh == "wait_for"
