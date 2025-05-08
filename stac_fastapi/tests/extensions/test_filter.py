@@ -481,3 +481,141 @@ async def test_search_filter_extension_isnull_get(app_client, ctx):
 
     assert resp.status_code == 200
     assert len(resp.json()["features"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_filter_extension_s_intersects_property(app_client, ctx):
+    intersecting_geom = {
+        "coordinates": [150.04, -33.14],
+        "type": "Point",
+    }
+    params = {
+        "filter": {
+            "op": "s_intersects",
+            "args": [
+                {"property": "geometry"},
+                intersecting_geom,
+            ],
+        },
+    }
+    resp = await app_client.post("/search", json=params)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["features"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_filter_extension_s_contains_property(app_client, ctx):
+    contains_geom = {
+        "coordinates": [150.04, -33.14],
+        "type": "Point",
+    }
+    params = {
+        "filter": {
+            "op": "s_contains",
+            "args": [
+                {"property": "geometry"},
+                contains_geom,
+            ],
+        },
+    }
+    resp = await app_client.post("/search", json=params)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["features"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_filter_extension_s_within_property(app_client, ctx):
+    within_geom = {
+        "coordinates": [[[152.15052873427666, -33.82243006904891], [150.1000346138806, -34.257132625788756], [149.5776607193635, -32.514709769700254], [151.6262528041627, -32.08081674221862], [152.15052873427666, -33.82243006904891]]],
+        "type": "Polygon",
+    }
+    params = {
+        "filter": {
+            "op": "s_within",
+            "args": [
+                {"property": "geometry"},
+                within_geom,
+            ],
+        },
+    }
+    resp = await app_client.post("/search", json=params)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["features"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_filter_extension_s_disjoint_property(app_client, ctx):
+    intersecting_geom = {
+        "coordinates": [0, 0],
+        "type": "Point",
+    }
+    params = {
+        "filter": {
+            "op": "s_disjoint",
+            "args": [
+                {"property": "geometry"},
+                intersecting_geom,
+            ],
+        },
+    }
+    resp = await app_client.post("/search", json=params)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["features"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_filter_extension_cql2text_s_intersects_property(app_client, ctx):
+    filter = 'S_INTERSECTS("geometry",POINT(150.04 -33.14))'
+    params = {
+        "filter": filter,
+        "filter_lang": "cql2-text",
+    }
+    resp = await app_client.get("/search", params=params)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["features"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_filter_extension_cql2text_s_contains_property(app_client, ctx):
+    filter = (
+        'S_CONTAINS("geometry",POINT(150.04 -33.14))'
+    )
+    params = {
+        "filter": filter,
+        "filter_lang": "cql2-text",
+    }
+    resp = await app_client.get("/search", params=params)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["features"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_filter_extension_cql2text_s_within_property(app_client, ctx):
+    filter = 'S_WITHIN("geometry",POLYGON((152.15052873427666 -33.82243006904891, 150.1000346138806 -34.257132625788756, 149.5776607193635 -32.514709769700254, 151.6262528041627 -32.08081674221862, 152.15052873427666 -33.82243006904891)))'
+    params = {
+        "filter": filter,
+        "filter_lang": "cql2-text",
+    }
+    resp = await app_client.get("/search", params=params)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["features"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_filter_extension_cql2text_s_disjoint_property(app_client, ctx):
+    filter = 'S_DISJOINT("geometry",POINT(0 0))'
+    params = {
+        "filter": filter,
+        "filter_lang": "cql2-text",
+    }
+    resp = await app_client.get("/search", params=params)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["features"]) == 1
