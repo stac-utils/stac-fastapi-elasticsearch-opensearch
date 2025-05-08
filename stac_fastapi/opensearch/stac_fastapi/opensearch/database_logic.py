@@ -1132,6 +1132,9 @@ class DatabaseLogic(BaseDatabaseLogic):
             **kwargs (Any): Additional keyword arguments, including:
                 - refresh (str, optional): Whether to refresh the index after the bulk insert.
                 Can be "true", "false", or "wait_for". Defaults to the value of `self.sync_settings.database_refresh`.
+                - refresh (bool, optional): Whether to refresh the index after the bulk insert.
+                - raise_on_error (bool, optional): Whether to raise an error if any of the bulk operations fail.
+                Defaults to the value of `self.async_settings.raise_on_bulk_error`.
 
         Returns:
             Tuple[int, List[Dict[str, Any]]]: A tuple containing:
@@ -1184,7 +1187,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         **kwargs: Any,
     ) -> Tuple[int, List[Dict[str, Any]]]:
         """
-        Perform a bulk insert of items into the database synchronously.
+        Perform a bulk insert of items into the database asynchronously.
 
         Args:
             collection_id (str): The ID of the collection to which the items belong.
@@ -1192,6 +1195,9 @@ class DatabaseLogic(BaseDatabaseLogic):
             **kwargs (Any): Additional keyword arguments, including:
                 - refresh (str, optional): Whether to refresh the index after the bulk insert.
                 Can be "true", "false", or "wait_for". Defaults to the value of `self.sync_settings.database_refresh`.
+                - refresh (bool, optional): Whether to refresh the index after the bulk insert.
+                - raise_on_error (bool, optional): Whether to raise an error if any of the bulk operations fail.
+                Defaults to the value of `self.async_settings.raise_on_bulk_error`.
 
         Returns:
             Tuple[int, List[Dict[str, Any]]]: A tuple containing:

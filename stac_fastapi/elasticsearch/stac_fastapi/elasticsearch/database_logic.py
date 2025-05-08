@@ -855,7 +855,9 @@ class DatabaseLogic(BaseDatabaseLogic):
             item (Item): The item to be created.
             base_url (str, optional): The base URL for the item. Defaults to an empty string.
             exist_ok (bool, optional): Whether to allow the item to exist already. Defaults to False.
-            refresh (bool, optional): Refresh the index after performing the operation. Defaults to False.
+            **kwargs: Additional keyword arguments.
+                - refresh (str): Whether to refresh the index after the operation. Can be "true", "false", or "wait_for".
+                - refresh (bool): Whether to refresh the index after the operation. Defaults to the value in `self.async_settings.database_refresh`.
 
         Raises:
             ConflictError: If the item already exists in the database.
@@ -898,10 +900,15 @@ class DatabaseLogic(BaseDatabaseLogic):
         Args:
             item_id (str): The id of the Item to be deleted.
             collection_id (str): The id of the Collection that the Item belongs to.
-            refresh (bool, optional): Whether to refresh the index after the deletion. Default is False.
+            **kwargs: Additional keyword arguments.
+                - refresh (str): Whether to refresh the index after the operation. Can be "true", "false", or "wait_for".
+                - refresh (bool): Whether to refresh the index after the operation. Defaults to the value in `self.async_settings.database_refresh`.
 
         Raises:
             NotFoundError: If the Item does not exist in the database.
+
+        Returns:
+            None
         """
         # Ensure kwargs is a dictionary
         kwargs = kwargs or {}
@@ -951,10 +958,15 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         Args:
             collection (Collection): The Collection object to be created.
-            refresh (str, optional): Whether to refresh the index after the creation. Can be "true", "false", or "wait_for".
+            **kwargs: Additional keyword arguments.
+                - refresh (str): Whether to refresh the index after the operation. Can be "true", "false", or "wait_for".
+                - refresh (bool): Whether to refresh the index after the operation. Defaults to the value in `self.async_settings.database_refresh`.
 
         Raises:
             ConflictError: If a Collection with the same id already exists in the database.
+
+        Returns:
+            None
 
         Notes:
             A new index is created for the items in the Collection using the `create_item_index` function.
@@ -1020,7 +1032,11 @@ class DatabaseLogic(BaseDatabaseLogic):
         Args:
             collection_id (str): The ID of the collection to be updated.
             collection (Collection): The Collection object to be used for the update.
-            kwargs (Any, optional): Additional keyword arguments, including `refresh`.
+            **kwargs: Additional keyword arguments.
+                - refresh (str): Whether to refresh the index after the operation. Can be "true", "false", or "wait_for".
+                - refresh (bool): Whether to refresh the index after the operation. Defaults to the value in `self.async_settings.database_refresh`.
+        Returns:
+            None
 
         Raises:
             NotFoundError: If the collection with the given `collection_id` is not found in the database.
@@ -1086,9 +1102,14 @@ class DatabaseLogic(BaseDatabaseLogic):
         Parameters:
             collection_id (str): The ID of the collection to be deleted.
             kwargs (Any, optional): Additional keyword arguments, including `refresh`.
+                - refresh (str): Whether to refresh the index after the operation. Can be "true", "false", or "wait_for".
+                - refresh (bool): Whether to refresh the index after the operation. Defaults to the value in `self.async_settings.database_refresh`.
 
         Raises:
             NotFoundError: If the collection with the given `collection_id` is not found in the database.
+
+        Returns:
+            None
 
         Notes:
             This function first verifies that the collection with the specified `collection_id` exists in the database, and then
@@ -1133,7 +1154,12 @@ class DatabaseLogic(BaseDatabaseLogic):
         Args:
             collection_id (str): The ID of the collection to which the items belong.
             processed_items (List[Item]): A list of `Item` objects to be inserted into the database.
-            refresh (bool): Whether to refresh the index after the bulk insert (default: False).
+            **kwargs (Any): Additional keyword arguments, including:
+                - refresh (str, optional): Whether to refresh the index after the bulk insert.
+                Can be "true", "false", or "wait_for". Defaults to the value of `self.sync_settings.database_refresh`.
+                - refresh (bool, optional): Whether to refresh the index after the bulk insert.
+                - raise_on_error (bool, optional): Whether to raise an error if any of the bulk operations fail.
+                Defaults to the value of `self.async_settings.raise_on_bulk_error`.
 
         Returns:
             Tuple[int, List[Dict[str, Any]]]: A tuple containing:
@@ -1142,9 +1168,12 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         Notes:
             This function performs a bulk insert of `processed_items` into the database using the specified `collection_id`.
-            The insert is performed asynchronously, and the event loop is used to run the operation in a separate executor.
-            The `mk_actions` function is called to generate a list of actions for the bulk insert. If `refresh` is set to True,
-            the index is refreshed after the bulk insert.
+            The insert is performed synchronously and blocking, meaning that the function does not return until the insert has
+            completed. The `mk_actions` function is called to generate a list of actions for the bulk insert. The `refresh`
+            parameter determines whether the index is refreshed after the bulk insert:
+                - "true": Forces an immediate refresh of the index.
+                - "false": Does not refresh the index immediately (default behavior).
+                - "wait_for": Waits for the next refresh cycle to make the changes visible.
         """
         # Ensure kwargs is a dictionary
         kwargs = kwargs or {}
@@ -1194,6 +1223,9 @@ class DatabaseLogic(BaseDatabaseLogic):
             **kwargs (Any): Additional keyword arguments, including:
                 - refresh (str, optional): Whether to refresh the index after the bulk insert.
                 Can be "true", "false", or "wait_for". Defaults to the value of `self.sync_settings.database_refresh`.
+                - refresh (bool, optional): Whether to refresh the index after the bulk insert.
+                - raise_on_error (bool, optional): Whether to raise an error if any of the bulk operations fail.
+                Defaults to the value of `self.async_settings.raise_on_bulk_error`.
 
         Returns:
             Tuple[int, List[Dict[str, Any]]]: A tuple containing:

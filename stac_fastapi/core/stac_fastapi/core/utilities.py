@@ -48,6 +48,9 @@ def resolve_refresh(refresh: str) -> str:
 
     Returns:
         str: The resolved value of the `refresh` parameter, which can be "true", "false", or "wait_for".
+
+    Raises:
+        ValueError: If the `refresh` value is not one of "true", "false", or "wait_for".
     """
     logger = logging.getLogger(__name__)
 
