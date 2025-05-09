@@ -1,6 +1,9 @@
 """FastAPI application."""
 
 import os
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
 
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import create_get_request_model, create_post_request_model
@@ -39,12 +42,14 @@ from stac_fastapi.opensearch.database_logic import (
 settings = OpensearchSettings()
 session = Session.create_from_settings(settings)
 
-filter_extension = FilterExtension(client=EsAsyncBaseFiltersClient())
+database_logic = DatabaseLogic()
+
+filter_extension = FilterExtension(
+    client=EsAsyncBaseFiltersClient(database=database_logic)
+)
 filter_extension.conformance_classes.append(
     "http://www.opengis.net/spec/cql2/1.0/conf/advanced-comparison-operators"
 )
-
-database_logic = DatabaseLogic()
 
 aggregation_extension = AggregationExtension(
     client=EsAsyncAggregationClient(
@@ -85,7 +90,7 @@ post_request_model = create_post_request_model(search_extensions)
 api = StacApi(
     title=os.getenv("STAC_FASTAPI_TITLE", "stac-fastapi-opensearch"),
     description=os.getenv("STAC_FASTAPI_DESCRIPTION", "stac-fastapi-opensearch"),
-    api_version=os.getenv("STAC_FASTAPI_VERSION", "2.1"),
+    api_version=os.getenv("STAC_FASTAPI_VERSION", "4.0.0"),
     settings=settings,
     extensions=extensions,
     client=CoreClient(
@@ -98,17 +103,21 @@ api = StacApi(
     search_post_request_model=post_request_model,
     route_dependencies=get_route_dependencies(),
 )
-app = api.app
-app.root_path = os.getenv("STAC_FASTAPI_ROOT_PATH", "")
-
-# Add rate limit
-setup_rate_limit(app, rate_limit=os.getenv("STAC_FASTAPI_RATE_LIMIT"))
 
 
-@app.on_event("startup")
-async def _startup_event() -> None:
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifespan handler for FastAPI app. Initializes index templates and collections at startup."""
     await create_index_templates()
     await create_collection_index()
+    yield
+
+
+app = api.app
+app.router.lifespan_context = lifespan
+app.root_path = os.getenv("STAC_FASTAPI_ROOT_PATH", "")
+# Add rate limit
+setup_rate_limit(app, rate_limit=os.getenv("STAC_FASTAPI_RATE_LIMIT"))
 
 
 def run() -> None:

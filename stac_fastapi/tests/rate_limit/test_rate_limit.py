@@ -18,7 +18,7 @@ async def test_rate_limit(app_client_rate_limit: AsyncClient, ctx):
         except RateLimitExceeded:
             status_code = 429
 
-        logger.info(f"Request {i+1}: Status code {status_code}")
+        logger.info(f"Request {i + 1}: Status code {status_code}")
         assert (
             status_code == expected_status_code
         ), f"Expected status code {expected_status_code}, but got {status_code}"
@@ -32,7 +32,7 @@ async def test_rate_limit_no_limit(app_client: AsyncClient, ctx):
         response = await app_client.get("/collections")
         status_code = response.status_code
 
-        logger.info(f"Request {i+1}: Status code {status_code}")
+        logger.info(f"Request {i + 1}: Status code {status_code}")
         assert (
             status_code == expected_status_code
         ), f"Expected status code {expected_status_code}, but got {status_code}"
