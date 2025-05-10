@@ -10,7 +10,7 @@ from elasticsearch._async.client import AsyncElasticsearch
 
 from elasticsearch import Elasticsearch  # type: ignore[attr-defined]
 from stac_fastapi.core.base_settings import ApiBaseSettings
-from stac_fastapi.core.utilities import get_bool_env
+from stac_fastapi.core.utilities import get_bool_env, validate_refresh
 from stac_fastapi.types.config import ApiSettings
 
 
@@ -96,15 +96,8 @@ class ElasticsearchSettings(ApiSettings, ApiBaseSettings):
         Returns:
             Union[bool, str]: The value of DATABASE_REFRESH, which can be True, False, or "wait_for".
         """
-        value = os.getenv("DATABASE_REFRESH", "false").lower()
-        if value in {"true", "false"}:
-            return value == "true"
-        elif value == "wait_for":
-            return "wait_for"
-        else:
-            raise ValueError(
-                "Invalid value for DATABASE_REFRESH. Must be 'true', 'false', or 'wait_for'."
-            )
+        value = os.getenv("DATABASE_REFRESH", "false")
+        return validate_refresh(value)
 
     @property
     def create_client(self):
@@ -135,15 +128,8 @@ class AsyncElasticsearchSettings(ApiSettings, ApiBaseSettings):
         Returns:
             Union[bool, str]: The value of DATABASE_REFRESH, which can be True, False, or "wait_for".
         """
-        value = os.getenv("DATABASE_REFRESH", "false").lower()
-        if value in {"true", "false"}:
-            return value == "true"
-        elif value == "wait_for":
-            return "wait_for"
-        else:
-            raise ValueError(
-                "Invalid value for DATABASE_REFRESH. Must be 'true', 'false', or 'wait_for'."
-            )
+        value = os.getenv("DATABASE_REFRESH", "false")
+        return validate_refresh(value)
 
     @property
     def create_client(self):

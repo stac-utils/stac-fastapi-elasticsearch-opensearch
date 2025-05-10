@@ -44,7 +44,7 @@ def test_database_refresh_true(monkeypatch):
     monkeypatch.setenv("DATABASE_REFRESH", "true")
     settings_class, _ = get_settings_class()
     settings = settings_class()
-    assert settings.database_refresh is True
+    assert settings.database_refresh == "true"
 
 
 def test_database_refresh_false(monkeypatch):
@@ -52,7 +52,7 @@ def test_database_refresh_false(monkeypatch):
     monkeypatch.setenv("DATABASE_REFRESH", "false")
     settings_class, _ = get_settings_class()
     settings = settings_class()
-    assert settings.database_refresh is False
+    assert settings.database_refresh == "false"
 
 
 def test_database_refresh_wait_for(monkeypatch):
