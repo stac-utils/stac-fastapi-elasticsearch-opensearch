@@ -31,7 +31,7 @@ from stac_fastapi.core.database_logic import (
 )
 from stac_fastapi.core.extensions import filter
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
-from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon, resolve_refresh
+from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon, validate_refresh
 from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
 from stac_fastapi.elasticsearch.config import (
     ElasticsearchSettings as SyncElasticsearchSettings,
@@ -874,7 +874,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         # Resolve the `refresh` parameter
         refresh = kwargs.get("refresh", self.async_settings.database_refresh)
-        refresh = resolve_refresh(str(refresh).lower())
+        refresh = validate_refresh(refresh)
 
         # Log the creation attempt
         logger.info(
@@ -915,7 +915,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         # Resolve the `refresh` parameter
         refresh = kwargs.get("refresh", self.async_settings.database_refresh)
-        refresh = resolve_refresh(str(refresh).lower())
+        refresh = validate_refresh(refresh)
 
         # Log the deletion attempt
         logger.info(
@@ -978,7 +978,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         # Resolve the `refresh` parameter
         refresh = kwargs.get("refresh", self.async_settings.database_refresh)
-        refresh = resolve_refresh(str(refresh).lower())
+        refresh = validate_refresh(refresh)
 
         # Log the creation attempt
         logger.info(f"Creating collection {collection_id} with refresh={refresh}")
@@ -1053,7 +1053,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         # Resolve the `refresh` parameter
         refresh = kwargs.get("refresh", self.async_settings.database_refresh)
-        refresh = resolve_refresh(str(refresh).lower())
+        refresh = validate_refresh(refresh)
 
         # Log the update attempt
         logger.info(f"Updating collection {collection_id} with refresh={refresh}")
@@ -1124,7 +1124,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         # Resolve the `refresh` parameter
         refresh = kwargs.get("refresh", self.async_settings.database_refresh)
-        refresh = resolve_refresh(str(refresh).lower())
+        refresh = validate_refresh(refresh)
 
         # Log the deletion attempt
         logger.info(f"Deleting collection {collection_id} with refresh={refresh}")
@@ -1180,7 +1180,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         # Resolve the `refresh` parameter
         refresh = kwargs.get("refresh", self.async_settings.database_refresh)
-        refresh = resolve_refresh(str(refresh).lower())
+        refresh = validate_refresh(refresh)
 
         # Log the bulk insert attempt
         logger.info(
@@ -1245,8 +1245,8 @@ class DatabaseLogic(BaseDatabaseLogic):
         kwargs = kwargs or {}
 
         # Resolve the `refresh` parameter
-        refresh = kwargs.get("refresh", self.sync_settings.database_refresh)
-        refresh = resolve_refresh(str(refresh).lower())
+        refresh = kwargs.get("refresh", self.async_settings.database_refresh)
+        refresh = validate_refresh(refresh)
 
         # Log the bulk insert attempt
         logger.info(
