@@ -3,14 +3,14 @@
 import logging
 import os
 import ssl
-from typing import Any, Dict, Set
+from typing import Any, Dict, Set, Union
 
 import certifi
 from elasticsearch._async.client import AsyncElasticsearch
 
 from elasticsearch import Elasticsearch  # type: ignore[attr-defined]
 from stac_fastapi.core.base_settings import ApiBaseSettings
-from stac_fastapi.core.utilities import get_bool_env
+from stac_fastapi.core.utilities import get_bool_env, validate_refresh
 from stac_fastapi.types.config import ApiSettings
 
 
@@ -89,6 +89,17 @@ class ElasticsearchSettings(ApiSettings, ApiBaseSettings):
     raise_on_bulk_error: bool = get_bool_env("RAISE_ON_BULK_ERROR", default=False)
 
     @property
+    def database_refresh(self) -> Union[bool, str]:
+        """
+        Get the value of the DATABASE_REFRESH environment variable.
+
+        Returns:
+            Union[bool, str]: The value of DATABASE_REFRESH, which can be True, False, or "wait_for".
+        """
+        value = os.getenv("DATABASE_REFRESH", "false")
+        return validate_refresh(value)
+
+    @property
     def create_client(self):
         """Create es client."""
         return Elasticsearch(**_es_config())
@@ -108,6 +119,17 @@ class AsyncElasticsearchSettings(ApiSettings, ApiBaseSettings):
     enable_response_models: bool = False
     enable_direct_response: bool = get_bool_env("ENABLE_DIRECT_RESPONSE", default=False)
     raise_on_bulk_error: bool = get_bool_env("RAISE_ON_BULK_ERROR", default=False)
+
+    @property
+    def database_refresh(self) -> Union[bool, str]:
+        """
+        Get the value of the DATABASE_REFRESH environment variable.
+
+        Returns:
+            Union[bool, str]: The value of DATABASE_REFRESH, which can be True, False, or "wait_for".
+        """
+        value = os.getenv("DATABASE_REFRESH", "false")
+        return validate_refresh(value)
 
     @property
     def create_client(self):

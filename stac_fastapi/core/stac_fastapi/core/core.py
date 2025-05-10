@@ -712,10 +712,11 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 for feature in features
             ]
             attempted = len(processed_items)
+
             success, errors = await self.database.bulk_async(
-                collection_id,
-                processed_items,
-                refresh=kwargs.get("refresh", False),
+                collection_id=collection_id,
+                processed_items=processed_items,
+                **kwargs,
             )
             if errors:
                 logger.error(
@@ -729,10 +730,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         # Handle single item
         await self.database.create_item(
-            item_dict,
-            refresh=kwargs.get("refresh", False),
-            base_url=base_url,
-            exist_ok=False,
+            item_dict, base_url=base_url, exist_ok=False, **kwargs
         )
         return ItemSerializer.db_to_stac(item_dict, base_url)
 
@@ -757,11 +755,12 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         """
         item = item.model_dump(mode="json")
         base_url = str(kwargs["request"].base_url)
+
         now = datetime_type.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         item["properties"]["updated"] = now
 
         await self.database.create_item(
-            item, refresh=kwargs.get("refresh", False), base_url=base_url, exist_ok=True
+            item, base_url=base_url, exist_ok=True, **kwargs
         )
 
         return ItemSerializer.db_to_stac(item, base_url)
@@ -777,7 +776,9 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         Returns:
             None: Returns 204 No Content on successful deletion
         """
-        await self.database.delete_item(item_id=item_id, collection_id=collection_id)
+        await self.database.delete_item(
+            item_id=item_id, collection_id=collection_id, **kwargs
+        )
         return None
 
     @overrides
@@ -798,8 +799,9 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         """
         collection = collection.model_dump(mode="json")
         request = kwargs["request"]
+
         collection = self.database.collection_serializer.stac_to_db(collection, request)
-        await self.database.create_collection(collection=collection)
+        await self.database.create_collection(collection=collection, **kwargs)
         return CollectionSerializer.db_to_stac(
             collection,
             request,
@@ -835,7 +837,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         collection = self.database.collection_serializer.stac_to_db(collection, request)
         await self.database.update_collection(
-            collection_id=collection_id, collection=collection
+            collection_id=collection_id, collection=collection, **kwargs
         )
 
         return CollectionSerializer.db_to_stac(
@@ -860,7 +862,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         Raises:
             NotFoundError: If the collection doesn't exist
         """
-        await self.database.delete_collection(collection_id=collection_id)
+        await self.database.delete_collection(collection_id=collection_id, **kwargs)
         return None
 
 
@@ -937,7 +939,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         success, errors = self.database.bulk_sync(
             collection_id,
             processed_items,
-            refresh=kwargs.get("refresh", False),
+            **kwargs,
         )
         if errors:
             logger.error(f"Bulk sync operation encountered errors: {errors}")
