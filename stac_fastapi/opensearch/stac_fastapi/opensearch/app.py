@@ -94,7 +94,10 @@ api = StacApi(
     settings=settings,
     extensions=extensions,
     client=CoreClient(
-        database=database_logic, session=session, post_request_model=post_request_model
+        database=database_logic,
+        session=session,
+        post_request_model=post_request_model,
+        landing_page_id=os.getenv("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"),
     ),
     search_get_request_model=create_get_request_model(search_extensions),
     search_post_request_model=post_request_model,
