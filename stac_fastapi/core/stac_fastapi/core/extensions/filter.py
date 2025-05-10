@@ -10,7 +10,7 @@
 # defines the LIKE, IN, and BETWEEN operators.
 
 # Basic Spatial Operators (http://www.opengis.net/spec/cql2/1.0/conf/basic-spatial-operators)
-# defines the intersects operator (S_INTERSECTS).
+# defines spatial operators (S_INTERSECTS, S_CONTAINS, S_WITHIN, S_DISJOINT).
 # """
 
 import re
@@ -82,10 +82,13 @@ class AdvancedComparisonOp(str, Enum):
     IN = "in"
 
 
-class SpatialIntersectsOp(str, Enum):
-    """Enumeration for spatial intersection operator as per CQL2 standards."""
+class SpatialOp(str, Enum):
+    """Enumeration for spatial operators as per CQL2 standards."""
 
     S_INTERSECTS = "s_intersects"
+    S_CONTAINS = "s_contains"
+    S_WITHIN = "s_within"
+    S_DISJOINT = "s_disjoint"
 
 
 queryables_mapping = {
@@ -194,9 +197,23 @@ def to_es(query: Dict[str, Any]) -> Dict[str, Any]:
         pattern = cql2_like_to_es(query["args"][1])
         return {"wildcard": {field: {"value": pattern, "case_insensitive": True}}}
 
-    elif query["op"] == SpatialIntersectsOp.S_INTERSECTS:
+    elif query["op"] in [
+        SpatialOp.S_INTERSECTS,
+        SpatialOp.S_CONTAINS,
+        SpatialOp.S_WITHIN,
+        SpatialOp.S_DISJOINT,
+    ]:
         field = to_es_field(query["args"][0]["property"])
         geometry = query["args"][1]
-        return {"geo_shape": {field: {"shape": geometry, "relation": "intersects"}}}
+
+        relation_mapping = {
+            SpatialOp.S_INTERSECTS: "intersects",
+            SpatialOp.S_CONTAINS: "contains",
+            SpatialOp.S_WITHIN: "within",
+            SpatialOp.S_DISJOINT: "disjoint",
+        }
+
+        relation = relation_mapping[query["op"]]
+        return {"geo_shape": {field: {"shape": geometry, "relation": relation}}}
 
     return {}
