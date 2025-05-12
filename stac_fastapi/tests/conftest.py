@@ -196,10 +196,6 @@ def bulk_txn_client():
 
 @pytest_asyncio.fixture(scope="session")
 async def app():
-    TRANSACTIONS_EXTENSIONS = get_bool_env(
-        "ENABLE_TRANSACTIONS_EXTENSIONS", default=True
-    )
-
     settings = AsyncSettings()
 
     aggregation_extension = AggregationExtension(
@@ -211,6 +207,12 @@ async def app():
     aggregation_extension.GET = EsAggregationExtensionGetRequest
 
     search_extensions = [
+        TransactionExtension(
+            client=TransactionsClient(
+                database=database, session=None, settings=settings
+            ),
+            settings=settings,
+        ),
         SortExtension(),
         FieldsExtension(),
         QueryExtension(),
@@ -218,17 +220,6 @@ async def app():
         FilterExtension(),
         FreeTextExtension(),
     ]
-
-    if TRANSACTIONS_EXTENSIONS:
-        search_extensions.insert(
-            0,
-            TransactionExtension(
-                client=TransactionsClient(
-                    database=database, session=None, settings=settings
-                ),
-                settings=settings,
-            ),
-        )
 
     extensions = [aggregation_extension] + search_extensions
 
