@@ -307,13 +307,13 @@ class DatabaseLogic(BaseDatabaseLogic):
         )
 
         for mapping in mappings.values():
-            fields = mapping["mappings"]["properties"]
-            properties = fields.pop("properties")
+            fields = mapping["mappings"].get("properties", {})
+            properties = fields.pop("properties", {}).get("properties", {}).keys()
 
             for field_key in fields:
                 queryables_mapping[field_key] = field_key
 
-            for property_key in properties["properties"]:
+            for property_key in properties:
                 queryables_mapping[property_key] = f"properties.{property_key}"
 
         return queryables_mapping
@@ -546,7 +546,9 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         return search
 
-    def apply_cql2_filter(self, search: Search, _filter: Optional[Dict[str, Any]]):
+    async def apply_cql2_filter(
+        self, search: Search, _filter: Optional[Dict[str, Any]]
+    ):
         """
         Apply a CQL2 filter to an Elasticsearch Search object.
 
@@ -566,7 +568,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                     otherwise the original Search object.
         """
         if _filter is not None:
-            es_query = filter.to_es(self.get_queryables_mapping(), _filter)
+            es_query = filter.to_es(await self.get_queryables_mapping(), _filter)
             search = search.query(es_query)
 
         return search
