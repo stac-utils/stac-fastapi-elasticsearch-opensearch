@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Added configurable landing page ID `STAC_FASTAPI_LANDING_PAGE_ID` [#352](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/352)
 - Added support for `S_CONTAINS`, `S_WITHIN`, `S_DISJOINT` spatial filter operations [#371](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/371)
 - Introduced the `DATABASE_REFRESH` environment variable to control whether database operations refresh the index immediately after changes. If set to `true`, changes will be immediately searchable. If set to `false`, changes may not be immediately visible but can improve performance for bulk operations. If set to `wait_for`, changes will wait for the next refresh cycle to become visible. [#370](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/370)
-- Added the `ENABLE_TRANSACTIONS_EXTENSIONS` environment variable to enable or disable the Transactions and Bulk Transactions API extensions. When set to `false`, endpoints provided by `TransactionsClient` and `BulkTransactionsClient` are not available. This allows for flexible deployment scenarios and improved API control.
+- Added the `ENABLE_TRANSACTIONS_EXTENSIONS` environment variable to enable or disable the Transactions and Bulk Transactions API extensions. When set to `false`, endpoints provided by `TransactionsClient` and `BulkTransactionsClient` are not available. This allows for flexible deployment scenarios and improved API control. [#374](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/374)
 
 ### Changed
 
