@@ -27,6 +27,7 @@ from stac_fastapi.core.extensions.aggregation import (
 )
 from stac_fastapi.core.rate_limit import setup_rate_limit
 from stac_fastapi.core.route_dependencies import get_route_dependencies
+from stac_fastapi.core.utilities import get_bool_env
 
 if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
     from stac_fastapi.opensearch.config import AsyncOpensearchSettings as AsyncSettings
@@ -479,3 +480,49 @@ async def route_dependencies_client(route_dependencies_app):
         base_url="http://test-server",
     ) as c:
         yield c
+
+
+def build_test_app():
+    TRANSACTIONS_EXTENSIONS = get_bool_env(
+        "ENABLE_TRANSACTIONS_EXTENSIONS", default=True
+    )
+    settings = AsyncSettings()
+    aggregation_extension = AggregationExtension(
+        client=EsAsyncAggregationClient(
+            database=database, session=None, settings=settings
+        )
+    )
+    aggregation_extension.POST = EsAggregationExtensionPostRequest
+    aggregation_extension.GET = EsAggregationExtensionGetRequest
+    search_extensions = [
+        SortExtension(),
+        FieldsExtension(),
+        QueryExtension(),
+        TokenPaginationExtension(),
+        FilterExtension(),
+        FreeTextExtension(),
+    ]
+    if TRANSACTIONS_EXTENSIONS:
+        search_extensions.insert(
+            0,
+            TransactionExtension(
+                client=TransactionsClient(
+                    database=database, session=None, settings=settings
+                ),
+                settings=settings,
+            ),
+        )
+    extensions = [aggregation_extension] + search_extensions
+    post_request_model = create_post_request_model(search_extensions)
+    return StacApi(
+        settings=settings,
+        client=CoreClient(
+            database=database,
+            session=None,
+            extensions=extensions,
+            post_request_model=post_request_model,
+        ),
+        extensions=extensions,
+        search_get_request_model=create_get_request_model(search_extensions),
+        search_post_request_model=post_request_model,
+    ).app
