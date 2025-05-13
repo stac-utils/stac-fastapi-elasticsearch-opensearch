@@ -91,19 +91,6 @@ class SpatialOp(str, Enum):
     S_DISJOINT = "s_disjoint"
 
 
-# queryables_mapping = {
-#     "id": "id",
-#     "collection": "collection",
-#     "geometry": "geometry",
-#     "datetime": "properties.datetime",
-#     "created": "properties.created",
-#     "updated": "properties.updated",
-#     "cloud_cover": "properties.eo:cloud_cover",
-#     "cloud_shadow_percentage": "properties.s2:cloud_shadow_percentage",
-#     "nodata_pixel_percentage": "properties.s2:nodata_pixel_percentage",
-# }
-
-
 def to_es_field(queryables_mapping: Dict[str, Any], field: str) -> str:
     """
     Map a given field to its corresponding Elasticsearch field according to a predefined mapping.
