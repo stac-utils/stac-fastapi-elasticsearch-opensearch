@@ -14,7 +14,14 @@ from elasticsearch.exceptions import NotFoundError as ESNotFoundError
 from starlette.requests import Request
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
-from stac_fastapi.core.database_logic import (
+from stac_fastapi.core.extensions import filter
+from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
+from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon
+from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
+from stac_fastapi.elasticsearch.config import (
+    ElasticsearchSettings as SyncElasticsearchSettings,
+)
+from stac_fastapi.sfeos_helpers.mappings import (
     COLLECTIONS_INDEX,
     DEFAULT_SORT,
     ES_COLLECTIONS_MAPPINGS,
@@ -29,13 +36,7 @@ from stac_fastapi.core.database_logic import (
     mk_actions,
     mk_item_id,
 )
-from stac_fastapi.core.extensions import filter
-from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
-from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon, validate_refresh
-from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
-from stac_fastapi.elasticsearch.config import (
-    ElasticsearchSettings as SyncElasticsearchSettings,
-)
+from stac_fastapi.sfeos_helpers.utilities import validate_refresh
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.stac import Collection, Item
 

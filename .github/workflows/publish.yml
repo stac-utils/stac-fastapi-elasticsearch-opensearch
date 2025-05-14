@@ -35,6 +35,18 @@ jobs:
           # Publish to PyPI
           twine upload dist/*
 
+      - name: Build and publish sfeos_helpers
+        working-directory: stac_fastapi/sfeos_helpers
+        env:
+          TWINE_USERNAME: "__token__"
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          # Build package
+          python setup.py sdist bdist_wheel
+  
+          # Publish to PyPI
+          twine upload dist/*
+
       - name: Build and publish stac-fastapi-elasticsearch
         working-directory: stac_fastapi/elasticsearch
         env:

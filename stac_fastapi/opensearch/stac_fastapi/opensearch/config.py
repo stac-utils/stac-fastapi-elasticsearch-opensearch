@@ -8,7 +8,7 @@ import certifi
 from opensearchpy import AsyncOpenSearch, OpenSearch
 
 from stac_fastapi.core.base_settings import ApiBaseSettings
-from stac_fastapi.core.utilities import get_bool_env, validate_refresh
+from stac_fastapi.sfeos_helpers.utilities import get_bool_env, validate_refresh
 from stac_fastapi.types.config import ApiSettings
 
 
