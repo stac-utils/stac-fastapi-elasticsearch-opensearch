@@ -6,54 +6,120 @@ from typing import Any, Dict, Optional
 import attr
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
+from stac_fastapi.core.extensions.filter import (
+    DEFAULT_QUERYABLES,
+    AdvancedComparisonOp,
+    ComparisonOp,
+    LogicalOp,
+    SpatialOp,
+    cql2_like_to_es,
+    to_es_field,
+)
 from stac_fastapi.extensions.core.filter.client import AsyncBaseFiltersClient
 
 from .mappings import ES_MAPPING_TYPE_TO_JSON
 
-_DEFAULT_QUERYABLES: Dict[str, Dict[str, Any]] = {
-    "id": {
-        "description": "ID",
-        "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/definitions/core/allOf/2/properties/id",
-    },
-    "collection": {
-        "description": "Collection",
-        "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/definitions/core/allOf/2/then/properties/collection",
-    },
-    "geometry": {
-        "description": "Geometry",
-        "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/definitions/core/allOf/1/oneOf/0/properties/geometry",
-    },
-    "datetime": {
-        "description": "Acquisition Timestamp",
-        "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/datetime.json#/properties/datetime",
-    },
-    "created": {
-        "description": "Creation Timestamp",
-        "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/datetime.json#/properties/created",
-    },
-    "updated": {
-        "description": "Creation Timestamp",
-        "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/datetime.json#/properties/updated",
-    },
-    "cloud_cover": {
-        "description": "Cloud Cover",
-        "$ref": "https://stac-extensions.github.io/eo/v1.0.0/schema.json#/definitions/fields/properties/eo:cloud_cover",
-    },
-    "cloud_shadow_percentage": {
-        "title": "Cloud Shadow Percentage",
-        "description": "Cloud Shadow Percentage",
-        "type": "number",
-        "minimum": 0,
-        "maximum": 100,
-    },
-    "nodata_pixel_percentage": {
-        "title": "No Data Pixel Percentage",
-        "description": "No Data Pixel Percentage",
-        "type": "number",
-        "minimum": 0,
-        "maximum": 100,
-    },
-}
+
+def to_es(query: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Transform a simplified CQL2 query structure to an Elasticsearch compatible query DSL.
+
+    Args:
+        query (Dict[str, Any]): The query dictionary containing 'op' and 'args'.
+
+    Returns:
+        Dict[str, Any]: The corresponding Elasticsearch query in the form of a dictionary.
+    """
+    if query["op"] in [LogicalOp.AND, LogicalOp.OR, LogicalOp.NOT]:
+        bool_type = {
+            LogicalOp.AND: "must",
+            LogicalOp.OR: "should",
+            LogicalOp.NOT: "must_not",
+        }[query["op"]]
+        return {"bool": {bool_type: [to_es(sub_query) for sub_query in query["args"]]}}
+
+    elif query["op"] in [
+        ComparisonOp.EQ,
+        ComparisonOp.NEQ,
+        ComparisonOp.LT,
+        ComparisonOp.LTE,
+        ComparisonOp.GT,
+        ComparisonOp.GTE,
+    ]:
+        range_op = {
+            ComparisonOp.LT: "lt",
+            ComparisonOp.LTE: "lte",
+            ComparisonOp.GT: "gt",
+            ComparisonOp.GTE: "gte",
+        }
+
+        field = to_es_field(query["args"][0]["property"])
+        value = query["args"][1]
+        if isinstance(value, dict) and "timestamp" in value:
+            value = value["timestamp"]
+            if query["op"] == ComparisonOp.EQ:
+                return {"range": {field: {"gte": value, "lte": value}}}
+            elif query["op"] == ComparisonOp.NEQ:
+                return {
+                    "bool": {
+                        "must_not": [{"range": {field: {"gte": value, "lte": value}}}]
+                    }
+                }
+            else:
+                return {"range": {field: {range_op[query["op"]]: value}}}
+        else:
+            if query["op"] == ComparisonOp.EQ:
+                return {"term": {field: value}}
+            elif query["op"] == ComparisonOp.NEQ:
+                return {"bool": {"must_not": [{"term": {field: value}}]}}
+            else:
+                return {"range": {field: {range_op[query["op"]]: value}}}
+
+    elif query["op"] == ComparisonOp.IS_NULL:
+        field = to_es_field(query["args"][0]["property"])
+        return {"bool": {"must_not": {"exists": {"field": field}}}}
+
+    elif query["op"] == AdvancedComparisonOp.BETWEEN:
+        field = to_es_field(query["args"][0]["property"])
+        gte, lte = query["args"][1], query["args"][2]
+        if isinstance(gte, dict) and "timestamp" in gte:
+            gte = gte["timestamp"]
+        if isinstance(lte, dict) and "timestamp" in lte:
+            lte = lte["timestamp"]
+        return {"range": {field: {"gte": gte, "lte": lte}}}
+
+    elif query["op"] == AdvancedComparisonOp.IN:
+        field = to_es_field(query["args"][0]["property"])
+        values = query["args"][1]
+        if not isinstance(values, list):
+            raise ValueError(f"Arg {values} is not a list")
+        return {"terms": {field: values}}
+
+    elif query["op"] == AdvancedComparisonOp.LIKE:
+        field = to_es_field(query["args"][0]["property"])
+        pattern = cql2_like_to_es(query["args"][1])
+        return {"wildcard": {field: {"value": pattern, "case_insensitive": True}}}
+
+    elif query["op"] in [
+        SpatialOp.S_INTERSECTS,
+        SpatialOp.S_CONTAINS,
+        SpatialOp.S_WITHIN,
+        SpatialOp.S_DISJOINT,
+    ]:
+        field = to_es_field(query["args"][0]["property"])
+        geometry = query["args"][1]
+
+        relation_mapping = {
+            SpatialOp.S_INTERSECTS: "intersects",
+            SpatialOp.S_CONTAINS: "contains",
+            SpatialOp.S_WITHIN: "within",
+            SpatialOp.S_DISJOINT: "disjoint",
+        }
+
+        relation = relation_mapping[query["op"]]
+        return {"geo_shape": {field: {"shape": geometry, "relation": relation}}}
+
+    return {}
 
 
 @attr.s
@@ -88,7 +154,7 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
             "type": "object",
             "title": "Queryables for STAC API",
             "description": "Queryable names for the STAC API Item Search filter.",
-            "properties": _DEFAULT_QUERYABLES,
+            "properties": DEFAULT_QUERYABLES,
             "additionalProperties": True,
         }
         if not collection_id:
@@ -128,7 +194,7 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
                 continue
 
             # Generate field properties
-            field_result = _DEFAULT_QUERYABLES.get(field_name, {})
+            field_result = DEFAULT_QUERYABLES.get(field_name, {})
             properties[field_name] = field_result
 
             field_name_human = field_name.replace("_", " ").title()

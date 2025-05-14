@@ -4,7 +4,7 @@ import logging
 from datetime import datetime as datetime_type
 from datetime import timezone
 from enum import Enum
-from typing import Dict, List, Optional, Set, Type, Union
+from typing import List, Optional, Set, Type, Union
 from urllib.parse import unquote_plus, urljoin
 
 import attr
@@ -21,6 +21,7 @@ from stac_pydantic.version import STAC_VERSION
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
+from stac_fastapi.core.datetime_utils import format_datetime_range, return_date
 from stac_fastapi.core.models.links import PagingLinks
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.session import Session
@@ -35,7 +36,6 @@ from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
 from stac_fastapi.types.core import AsyncBaseCoreClient, AsyncBaseTransactionsClient
 from stac_fastapi.types.extension import ApiExtension
 from stac_fastapi.types.requests import get_base_url
-from stac_fastapi.types.rfc3339 import DateTimeType, rfc3339_str_to_datetime
 from stac_fastapi.types.search import BaseSearchPostRequest
 
 logger = logging.getLogger(__name__)
@@ -316,7 +316,7 @@ class CoreClient(AsyncBaseCoreClient):
         )
 
         if datetime:
-            datetime_search = self._return_date(datetime)
+            datetime_search = return_date(datetime)
             search = self.database.apply_datetime_filter(
                 search=search, datetime_search=datetime_search
             )
@@ -372,87 +372,6 @@ class CoreClient(AsyncBaseCoreClient):
         )
         return self.item_serializer.db_to_stac(item, base_url)
 
-    @staticmethod
-    def _return_date(
-        interval: Optional[Union[DateTimeType, str]]
-    ) -> Dict[str, Optional[str]]:
-        """
-        Convert a date interval.
-
-        (which may be a datetime, a tuple of one or two datetimes a string
-        representing a datetime or range, or None) into a dictionary for filtering
-        search results with Elasticsearch.
-
-        This function ensures the output dictionary contains 'gte' and 'lte' keys,
-        even if they are set to None, to prevent KeyError in the consuming logic.
-
-        Args:
-            interval (Optional[Union[DateTimeType, str]]): The date interval, which might be a single datetime,
-                a tuple with one or two datetimes, a string, or None.
-
-        Returns:
-            dict: A dictionary representing the date interval for use in filtering search results,
-                always containing 'gte' and 'lte' keys.
-        """
-        result: Dict[str, Optional[str]] = {"gte": None, "lte": None}
-
-        if interval is None:
-            return result
-
-        if isinstance(interval, str):
-            if "/" in interval:
-                parts = interval.split("/")
-                result["gte"] = parts[0] if parts[0] != ".." else None
-                result["lte"] = (
-                    parts[1] if len(parts) > 1 and parts[1] != ".." else None
-                )
-            else:
-                converted_time = interval if interval != ".." else None
-                result["gte"] = result["lte"] = converted_time
-            return result
-
-        if isinstance(interval, datetime_type):
-            datetime_iso = interval.isoformat()
-            result["gte"] = result["lte"] = datetime_iso
-        elif isinstance(interval, tuple):
-            start, end = interval
-            # Ensure datetimes are converted to UTC and formatted with 'Z'
-            if start:
-                result["gte"] = start.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-            if end:
-                result["lte"] = end.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-
-        return result
-
-    def _format_datetime_range(self, date_str: str) -> str:
-        """
-        Convert a datetime range string into a normalized UTC string for API requests using rfc3339_str_to_datetime.
-
-        Args:
-            date_str (str): A string containing two datetime values separated by a '/'.
-
-        Returns:
-            str: A string formatted as 'YYYY-MM-DDTHH:MM:SSZ/YYYY-MM-DDTHH:MM:SSZ', with '..' used if any element is None.
-        """
-
-        def normalize(dt):
-            dt = dt.strip()
-            if not dt or dt == "..":
-                return ".."
-            dt_obj = rfc3339_str_to_datetime(dt)
-            dt_utc = dt_obj.astimezone(timezone.utc)
-            return dt_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
-
-        if not isinstance(date_str, str):
-            return "../.."
-        if "/" not in date_str:
-            return f"{normalize(date_str)}/{normalize(date_str)}"
-        try:
-            start, end = date_str.split("/", 1)
-        except Exception:
-            return "../.."
-        return f"{normalize(start)}/{normalize(end)}"
-
     async def get_search(
         self,
         request: Request,
@@ -504,7 +423,7 @@ class CoreClient(AsyncBaseCoreClient):
         }
 
         if datetime:
-            base_args["datetime"] = self._format_datetime_range(date_str=datetime)
+            base_args["datetime"] = format_datetime_range(date_str=datetime)
 
         if intersects:
             base_args["intersects"] = orjson.loads(unquote_plus(intersects))
@@ -574,7 +493,7 @@ class CoreClient(AsyncBaseCoreClient):
             )
 
         if search_request.datetime:
-            datetime_search = self._return_date(search_request.datetime)
+            datetime_search = return_date(search_request.datetime)
             search = self.database.apply_datetime_filter(
                 search=search, datetime_search=datetime_search
             )
