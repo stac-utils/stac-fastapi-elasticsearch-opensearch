@@ -467,7 +467,7 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
 
         if aggregate_request.filter_expr:
             try:
-                search = self.database.apply_cql2_filter(
+                search = await self.database.apply_cql2_filter(
                     search, aggregate_request.filter_expr
                 )
             except Exception as e:

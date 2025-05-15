@@ -307,6 +307,34 @@ class DatabaseLogic(BaseDatabaseLogic):
             )
         return item["_source"]
 
+    async def get_queryables_mapping(self, collection_id: str = "*") -> dict:
+        """Retrieve mapping of Queryables for search.
+
+        Args:
+            collection_id (str, optional): The id of the Collection the Queryables
+            belongs to. Defaults to "*".
+
+        Returns:
+            dict: A dictionary containing the Queryables mappings.
+        """
+        queryables_mapping = {}
+
+        mappings = await self.client.indices.get_mapping(
+            index=f"{ITEMS_INDEX_PREFIX}{collection_id}",
+        )
+
+        for mapping in mappings.values():
+            fields = mapping["mappings"].get("properties", {})
+            properties = fields.pop("properties", {}).get("properties", {}).keys()
+
+            for field_key in fields:
+                queryables_mapping[field_key] = field_key
+
+            for property_key in properties:
+                queryables_mapping[property_key] = f"properties.{property_key}"
+
+        return queryables_mapping
+
     @staticmethod
     def make_search():
         """Database logic to create a Search instance."""
@@ -535,8 +563,9 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         return search
 
-    @staticmethod
-    def apply_cql2_filter(search: Search, _filter: Optional[Dict[str, Any]]):
+    async def apply_cql2_filter(
+        self, search: Search, _filter: Optional[Dict[str, Any]]
+    ):
         """
         Apply a CQL2 filter to an Opensearch Search object.
 
@@ -556,7 +585,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                     otherwise the original Search object.
         """
         if _filter is not None:
-            es_query = filter.to_es(_filter)
+            es_query = filter.to_es(await self.get_queryables_mapping(), _filter)
             search = search.filter(es_query)
 
         return search
