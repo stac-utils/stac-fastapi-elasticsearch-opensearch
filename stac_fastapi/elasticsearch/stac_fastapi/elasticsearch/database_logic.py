@@ -21,12 +21,12 @@ from stac_fastapi.elasticsearch.config import (
     ElasticsearchSettings as SyncElasticsearchSettings,
 )
 from stac_fastapi.sfeos_helpers import filter
+from stac_fastapi.sfeos_helpers.database_logic_helpers import (
+    create_index_templates_shared,
+)
 from stac_fastapi.sfeos_helpers.mappings import (
     COLLECTIONS_INDEX,
     DEFAULT_SORT,
-    ES_COLLECTIONS_MAPPINGS,
-    ES_ITEMS_MAPPINGS,
-    ES_ITEMS_SETTINGS,
     ITEM_INDICES,
     ITEMS_INDEX_PREFIX,
     Geometry,
@@ -51,22 +51,7 @@ async def create_index_templates() -> None:
         None
 
     """
-    client = AsyncElasticsearchSettings().create_client
-    await client.indices.put_index_template(
-        name=f"template_{COLLECTIONS_INDEX}",
-        body={
-            "index_patterns": [f"{COLLECTIONS_INDEX}*"],
-            "template": {"mappings": ES_COLLECTIONS_MAPPINGS},
-        },
-    )
-    await client.indices.put_index_template(
-        name=f"template_{ITEMS_INDEX_PREFIX}",
-        body={
-            "index_patterns": [f"{ITEMS_INDEX_PREFIX}*"],
-            "template": {"settings": ES_ITEMS_SETTINGS, "mappings": ES_ITEMS_MAPPINGS},
-        },
-    )
-    await client.close()
+    await create_index_templates_shared(settings=AsyncElasticsearchSettings())
 
 
 async def create_collection_index() -> None:
