@@ -1,5 +1,6 @@
 """Shared filter extension methods for stac-fastapi elasticsearch and opensearch backends."""
 
+import re
 from collections import deque
 from typing import Any, Dict, Optional
 
@@ -12,12 +13,52 @@ from stac_fastapi.core.extensions.filter import (
     ComparisonOp,
     LogicalOp,
     SpatialOp,
-    cql2_like_to_es,
-    to_es_field,
+    cql2_like_patterns,
+    valid_like_substitutions,
 )
 from stac_fastapi.extensions.core.filter.client import AsyncBaseFiltersClient
 
 from .mappings import ES_MAPPING_TYPE_TO_JSON
+
+
+def _replace_like_patterns(match: re.Match) -> str:
+    pattern = match.group()
+    try:
+        return valid_like_substitutions[pattern]
+    except KeyError:
+        raise ValueError(f"'{pattern}' is not a valid escape sequence")
+
+
+def cql2_like_to_es(string: str) -> str:
+    """
+    Convert CQL2 "LIKE" characters to Elasticsearch "wildcard" characters.
+
+    Args:
+        string (str): The string containing CQL2 wildcard characters.
+
+    Returns:
+        str: The converted string with Elasticsearch compatible wildcards.
+
+    Raises:
+        ValueError: If an invalid escape sequence is encountered.
+    """
+    return cql2_like_patterns.sub(
+        repl=_replace_like_patterns,
+        string=string,
+    )
+
+
+def to_es_field(queryables_mapping: Dict[str, Any], field: str) -> str:
+    """
+    Map a given field to its corresponding Elasticsearch field according to a predefined mapping.
+
+    Args:
+        field (str): The field name from a user query or filter.
+
+    Returns:
+        str: The mapped field name suitable for Elasticsearch queries.
+    """
+    return queryables_mapping.get(field, field)
 
 
 def to_es(queryables_mapping: Dict[str, Any], query: Dict[str, Any]) -> Dict[str, Any]:

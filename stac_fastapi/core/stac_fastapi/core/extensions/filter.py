@@ -1,4 +1,4 @@
-"""Filter extension logic for es conversion."""
+"""Filter extension logic for conversion."""
 
 # """
 # Implements Filter Extension.
@@ -62,41 +62,14 @@ DEFAULT_QUERYABLES: Dict[str, Dict[str, Any]] = {
     },
 }
 
-_cql2_like_patterns = re.compile(r"\\.|[%_]|\\$")
-_valid_like_substitutions = {
+cql2_like_patterns = re.compile(r"\\.|[%_]|\\$")
+valid_like_substitutions = {
     "\\\\": "\\",
     "\\%": "%",
     "\\_": "_",
     "%": "*",
     "_": "?",
 }
-
-
-def _replace_like_patterns(match: re.Match) -> str:
-    pattern = match.group()
-    try:
-        return _valid_like_substitutions[pattern]
-    except KeyError:
-        raise ValueError(f"'{pattern}' is not a valid escape sequence")
-
-
-def cql2_like_to_es(string: str) -> str:
-    """
-    Convert CQL2 "LIKE" characters to Elasticsearch "wildcard" characters.
-
-    Args:
-        string (str): The string containing CQL2 wildcard characters.
-
-    Returns:
-        str: The converted string with Elasticsearch compatible wildcards.
-
-    Raises:
-        ValueError: If an invalid escape sequence is encountered.
-    """
-    return _cql2_like_patterns.sub(
-        repl=_replace_like_patterns,
-        string=string,
-    )
 
 
 class LogicalOp(str, Enum):
@@ -134,16 +107,3 @@ class SpatialOp(str, Enum):
     S_CONTAINS = "s_contains"
     S_WITHIN = "s_within"
     S_DISJOINT = "s_disjoint"
-
-
-def to_es_field(queryables_mapping: Dict[str, Any], field: str) -> str:
-    """
-    Map a given field to its corresponding Elasticsearch field according to a predefined mapping.
-
-    Args:
-        field (str): The field name from a user query or filter.
-
-    Returns:
-        str: The mapped field name suitable for Elasticsearch queries.
-    """
-    return queryables_mapping.get(field, field)
