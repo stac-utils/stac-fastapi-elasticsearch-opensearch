@@ -524,7 +524,7 @@ class CoreClient(AsyncBaseCoreClient):
         if hasattr(search_request, "filter_expr"):
             cql2_filter = getattr(search_request, "filter_expr", None)
             try:
-                search = self.database.apply_cql2_filter(search, cql2_filter)
+                search = await self.database.apply_cql2_filter(search, cql2_filter)
             except Exception as e:
                 raise HTTPException(
                     status_code=400, detail=f"Error with cql2_json filter: {e}"
