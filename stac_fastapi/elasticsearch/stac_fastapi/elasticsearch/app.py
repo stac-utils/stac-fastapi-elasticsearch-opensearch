@@ -11,7 +11,6 @@ from stac_fastapi.api.models import create_get_request_model, create_post_reques
 from stac_fastapi.core.core import (
     BulkTransactionsClient,
     CoreClient,
-    EsAsyncBaseFiltersClient,
     TransactionsClient,
 )
 from stac_fastapi.core.extensions import QueryExtension
@@ -40,6 +39,7 @@ from stac_fastapi.extensions.core import (
     TransactionExtension,
 )
 from stac_fastapi.extensions.third_party import BulkTransactionExtension
+from stac_fastapi.sfeos_helpers.filter import EsAsyncBaseFiltersClient
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

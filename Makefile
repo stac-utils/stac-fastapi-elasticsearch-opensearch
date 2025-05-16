@@ -95,7 +95,8 @@ pybase-install:
 	pip install -e ./stac_fastapi/api[dev] && \
 	pip install -e ./stac_fastapi/types[dev] && \
 	pip install -e ./stac_fastapi/extensions[dev] && \
-	pip install -e ./stac_fastapi/core
+	pip install -e ./stac_fastapi/core && \
+	pip install -e ./stac_fastapi/sfeos_helpers
 
 .PHONY: install-es
 install-es: pybase-install

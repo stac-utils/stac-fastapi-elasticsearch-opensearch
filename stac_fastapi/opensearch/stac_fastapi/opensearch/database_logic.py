@@ -14,7 +14,17 @@ from opensearchpy.helpers.search import Search
 from starlette.requests import Request
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
-from stac_fastapi.core.database_logic import (
+from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
+from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon
+from stac_fastapi.opensearch.config import (
+    AsyncOpensearchSettings as AsyncSearchSettings,
+)
+from stac_fastapi.opensearch.config import OpensearchSettings as SyncSearchSettings
+from stac_fastapi.sfeos_helpers import filter
+from stac_fastapi.sfeos_helpers.database_logic_helpers import (
+    create_index_templates_shared,
+)
+from stac_fastapi.sfeos_helpers.mappings import (
     COLLECTIONS_INDEX,
     DEFAULT_SORT,
     ES_COLLECTIONS_MAPPINGS,
@@ -29,13 +39,7 @@ from stac_fastapi.core.database_logic import (
     mk_actions,
     mk_item_id,
 )
-from stac_fastapi.core.extensions import filter
-from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
-from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon, validate_refresh
-from stac_fastapi.opensearch.config import (
-    AsyncOpensearchSettings as AsyncSearchSettings,
-)
-from stac_fastapi.opensearch.config import OpensearchSettings as SyncSearchSettings
+from stac_fastapi.sfeos_helpers.utilities import validate_refresh
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.stac import Collection, Item
 
@@ -50,23 +54,7 @@ async def create_index_templates() -> None:
         None
 
     """
-    client = AsyncSearchSettings().create_client
-    await client.indices.put_template(
-        name=f"template_{COLLECTIONS_INDEX}",
-        body={
-            "index_patterns": [f"{COLLECTIONS_INDEX}*"],
-            "mappings": ES_COLLECTIONS_MAPPINGS,
-        },
-    )
-    await client.indices.put_template(
-        name=f"template_{ITEMS_INDEX_PREFIX}",
-        body={
-            "index_patterns": [f"{ITEMS_INDEX_PREFIX}*"],
-            "settings": ES_ITEMS_SETTINGS,
-            "mappings": ES_ITEMS_MAPPINGS,
-        },
-    )
-    await client.close()
+    await create_index_templates_shared(settings=AsyncSearchSettings())
 
 
 async def create_collection_index() -> None:

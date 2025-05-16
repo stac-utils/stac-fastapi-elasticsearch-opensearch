@@ -1,8 +1,8 @@
-"""Database logic core."""
+"""Shared mappings for stac-fastapi elasticsearch and opensearch backends."""
 
 import os
 from functools import lru_cache
-from typing import Any, Dict, List, Optional, Protocol
+from typing import Any, Dict, List, Literal, Optional, Protocol
 
 from stac_fastapi.types.stac import Item
 
@@ -142,6 +142,30 @@ ES_COLLECTIONS_MAPPINGS = {
         "links": {"type": "object", "enabled": False},
         "item_assets": {"type": "object", "enabled": False},
     },
+}
+
+
+ES_MAPPING_TYPE_TO_JSON: Dict[
+    str, Literal["string", "number", "boolean", "object", "array", "null"]
+] = {
+    "date": "string",
+    "date_nanos": "string",
+    "keyword": "string",
+    "match_only_text": "string",
+    "text": "string",
+    "wildcard": "string",
+    "byte": "number",
+    "double": "number",
+    "float": "number",
+    "half_float": "number",
+    "long": "number",
+    "scaled_float": "number",
+    "short": "number",
+    "token_count": "number",
+    "unsigned_long": "number",
+    "geo_point": "object",
+    "geo_shape": "object",
+    "nested": "array",
 }
 
 
