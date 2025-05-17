@@ -17,8 +17,12 @@ The following organizations have contributed time and/or funding to support the 
 
 <p align="left">
   <a href="https://healy-hyperspatial.github.io/">
-    <img src="assets/hh-logo-blue.png" alt="Healy Hyperspatial" height="120">
+    <img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/hh-logo-blue.png" alt="Healy Hyperspatial" height="120" style="margin-right: 20px;">
   </a>
+  <a href="https://atomicmaps.io/">
+    <img src="assets/am-logo.png" alt="Atomic Maps" height="120" style="margin-right: 20px;">
+  </a>
+</p>
 
 ---
 
