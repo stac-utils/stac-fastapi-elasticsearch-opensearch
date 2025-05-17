@@ -3,15 +3,22 @@
 <!-- markdownlint-disable MD033 MD041 -->
 
 <p align="left">
-  <img src="https://github.com/radiantearth/stac-site/raw/master/images/logo/stac-030-long.png" width=600>
+  <img src="assets/stac-030-long.png" width=700>
   <p align="left"><b>Elasticsearch and Opensearch backends for the stac-fastapi project.</b></p>
-  <p align="left"><b>Featuring stac-fastapi.core for simplifying the creation and maintenance of custom STAC api backends.</b></p>
 </p>
 
   
   [![PyPI version](https://badge.fury.io/py/stac-fastapi-elasticsearch.svg)](https://badge.fury.io/py/stac-fastapi-elasticsearch) [![PyPI version](https://badge.fury.io/py/stac-fastapi-opensearch.svg)](https://badge.fury.io/py/stac-fastapi-opensearch)
   [![Join the chat at https://gitter.im/stac-fastapi-elasticsearch/community](https://badges.gitter.im/stac-fastapi-elasticsearch/community.svg)](https://gitter.im/stac-fastapi-elasticsearch/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
+## Sponsors & Supporters
+
+The following organizations have contributed time and/or funding to support the development of this project:
+
+<p align="left">
+  <a href="https://healy-hyperspatial.github.io/">
+    <img src="assets/hh-github.png" alt="Healy Hyperspatial" height="100" style="border-radius: 10px;">
+  </a>
 
 ---
 
