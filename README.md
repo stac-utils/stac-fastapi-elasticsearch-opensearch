@@ -21,7 +21,7 @@ The following organizations have contributed time and/or funding to support the 
   </a>
   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
   <a href="https://atomicmaps.io/">
-    <img src="assets/am-logo-black.png" alt="Atomic Maps" height="120">
+    <img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/am-logo-black.png" alt="Atomic Maps" height="120">
   </a>
 </p>
 
