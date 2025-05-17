@@ -17,7 +17,7 @@ The following organizations have contributed time and/or funding to support the 
 
 <p align="left">
   <a href="https://healy-hyperspatial.github.io/">
-    <img src="assets/hh-github.png" alt="Healy Hyperspatial" height="100" style="border-radius: 10px;">
+    <img src="assets/hh-logo-blue.png" alt="Healy Hyperspatial" height="120">
   </a>
 
 ---
