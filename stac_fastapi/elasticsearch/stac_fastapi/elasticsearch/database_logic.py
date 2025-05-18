@@ -25,6 +25,7 @@ from stac_fastapi.sfeos_helpers.database_logic_helpers import (
     apply_free_text_filter_shared,
     apply_intersects_filter_shared,
     create_index_templates_shared,
+    delete_item_index_shared,
     populate_sort_shared,
 )
 from stac_fastapi.sfeos_helpers.mappings import (
@@ -99,18 +100,13 @@ async def delete_item_index(collection_id: str):
 
     Args:
         collection_id (str): The ID of the collection whose items index will be deleted.
-    """
-    client = AsyncElasticsearchSettings().create_client
 
-    name = index_alias_by_collection_id(collection_id)
-    resolved = await client.indices.resolve_index(name=name)
-    if "aliases" in resolved and resolved["aliases"]:
-        [alias] = resolved["aliases"]
-        await client.indices.delete_alias(index=alias["indices"], name=alias["name"])
-        await client.indices.delete(index=alias["indices"])
-    else:
-        await client.indices.delete(index=name)
-    await client.close()
+    Notes:
+        This function delegates to the shared implementation in delete_item_index_shared.
+    """
+    await delete_item_index_shared(
+        settings=AsyncElasticsearchSettings(), collection_id=collection_id
+    )
 
 
 @attr.s

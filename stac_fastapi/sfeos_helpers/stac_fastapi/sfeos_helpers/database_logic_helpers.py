@@ -9,6 +9,7 @@ from stac_fastapi.sfeos_helpers.mappings import (
     ES_ITEMS_SETTINGS,
     ITEMS_INDEX_PREFIX,
     Geometry,
+    index_alias_by_collection_id,
 )
 
 
@@ -123,3 +124,31 @@ def populate_sort_shared(sortby: List) -> Optional[Dict[str, Dict[str, str]]]:
         return {s.field: {"order": s.direction} for s in sortby}
     else:
         return None
+
+
+async def delete_item_index_shared(settings: Any, collection_id: str) -> None:
+    """Delete the index for items in a collection.
+
+    Args:
+        settings (Any): The settings object containing the client configuration.
+            Must have a create_client attribute that returns an Elasticsearch/OpenSearch client.
+        collection_id (str): The ID of the collection whose items index will be deleted.
+
+    Returns:
+        None: This function doesn't return any value but deletes an item index in the database.
+
+    Notes:
+        This function deletes an item index and its alias. It first resolves the alias to find
+        the actual index name, then deletes both the alias and the index.
+    """
+    client = settings.create_client
+
+    name = index_alias_by_collection_id(collection_id)
+    resolved = await client.indices.resolve_index(name=name)
+    if "aliases" in resolved and resolved["aliases"]:
+        [alias] = resolved["aliases"]
+        await client.indices.delete_alias(index=alias["indices"], name=alias["name"])
+        await client.indices.delete(index=alias["indices"])
+    else:
+        await client.indices.delete(index=name)
+    await client.close()
