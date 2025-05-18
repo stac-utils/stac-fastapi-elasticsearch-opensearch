@@ -22,7 +22,10 @@ from stac_fastapi.opensearch.config import (
 from stac_fastapi.opensearch.config import OpensearchSettings as SyncSearchSettings
 from stac_fastapi.sfeos_helpers import filter
 from stac_fastapi.sfeos_helpers.database_logic_helpers import (
+    apply_free_text_filter_shared,
+    apply_intersects_filter_shared,
     create_index_templates_shared,
+    populate_sort_shared,
 )
 from stac_fastapi.sfeos_helpers.mappings import (
     COLLECTIONS_INDEX,
@@ -340,14 +343,21 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     @staticmethod
     def apply_free_text_filter(search: Search, free_text_queries: Optional[List[str]]):
-        """Database logic to perform query for search endpoint."""
-        if free_text_queries is not None:
-            free_text_query_string = '" OR properties.\\*:"'.join(free_text_queries)
-            search = search.query(
-                "query_string", query=f'properties.\\*:"{free_text_query_string}"'
-            )
+        """Create a free text query for OpenSearch queries.
 
-        return search
+        This method delegates to the shared implementation in apply_free_text_filter_shared.
+
+        Args:
+            search (Search): The search object to apply the query to.
+            free_text_queries (Optional[List[str]]): A list of text strings to search for in the properties.
+
+        Returns:
+            Search: The search object with the free text query applied, or the original search
+                object if no free_text_queries were provided.
+        """
+        return apply_free_text_filter_shared(
+            search=search, free_text_queries=free_text_queries
+        )
 
     @staticmethod
     def apply_datetime_filter(search: Search, datetime_search):
@@ -513,21 +523,8 @@ class DatabaseLogic(BaseDatabaseLogic):
         Notes:
             A geo_shape filter is added to the search object, set to intersect with the specified geometry.
         """
-        return search.filter(
-            Q(
-                {
-                    "geo_shape": {
-                        "geometry": {
-                            "shape": {
-                                "type": intersects.type.lower(),
-                                "coordinates": intersects.coordinates,
-                            },
-                            "relation": "intersects",
-                        }
-                    }
-                }
-            )
-        )
+        filter = apply_intersects_filter_shared(intersects=intersects)
+        return search.filter(Q(filter))
 
     @staticmethod
     def apply_stacql_filter(search: Search, op: str, field: str, value: float):
@@ -580,11 +577,18 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     @staticmethod
     def populate_sort(sortby: List) -> Optional[Dict[str, Dict[str, str]]]:
-        """Database logic to sort search instance."""
-        if sortby:
-            return {s.field: {"order": s.direction} for s in sortby}
-        else:
-            return None
+        """Create a sort configuration for OpenSearch queries.
+
+        This method delegates to the shared implementation in populate_sort_shared.
+
+        Args:
+            sortby (List): A list of sort specifications, each containing a field and direction.
+
+        Returns:
+            Optional[Dict[str, Dict[str, str]]]: A dictionary mapping field names to sort direction
+                configurations, or None if no sort was specified.
+        """
+        return populate_sort_shared(sortby=sortby)
 
     async def execute_search(
         self,

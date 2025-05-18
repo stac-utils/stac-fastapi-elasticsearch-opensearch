@@ -1,6 +1,6 @@
 """Shared code for elasticsearch/ opensearch database logic."""
 
-from typing import Any
+from typing import Any, Dict, List, Optional
 
 from stac_fastapi.sfeos_helpers.mappings import (
     COLLECTIONS_INDEX,
@@ -8,16 +8,27 @@ from stac_fastapi.sfeos_helpers.mappings import (
     ES_ITEMS_MAPPINGS,
     ES_ITEMS_SETTINGS,
     ITEMS_INDEX_PREFIX,
+    Geometry,
 )
 
 
 async def create_index_templates_shared(settings: Any) -> None:
-    """
-    Create index templates for the Collection and Item indices.
+    """Create index templates for Elasticsearch/OpenSearch Collection and Item indices.
+
+    Args:
+        settings (Any): The settings object containing the client configuration.
+            Must have a create_client attribute that returns an Elasticsearch/OpenSearch client.
 
     Returns:
-        None
+        None: This function doesn't return any value but creates index templates in the database.
 
+    Notes:
+        This function creates two index templates:
+        1. A template for the Collections index with the appropriate mappings
+        2. A template for the Items indices with both settings and mappings
+
+        These templates ensure that any new indices created with matching patterns
+        will automatically have the correct structure.
     """
     client = settings.create_client
     await client.indices.put_index_template(
@@ -35,3 +46,80 @@ async def create_index_templates_shared(settings: Any) -> None:
         },
     )
     await client.close()
+
+
+def apply_free_text_filter_shared(
+    search: Any, free_text_queries: Optional[List[str]]
+) -> Any:
+    """Create a free text query for Elasticsearch/OpenSearch.
+
+    Args:
+        search (Any): The search object to apply the query to.
+        free_text_queries (Optional[List[str]]): A list of text strings to search for in the properties.
+
+    Returns:
+        Any: The search object with the free text query applied, or the original search
+            object if no free_text_queries were provided.
+
+    Notes:
+        This function creates a query_string query that searches for the specified text strings
+        in all properties of the documents. The query strings are joined with OR operators.
+    """
+    if free_text_queries is not None:
+        free_text_query_string = '" OR properties.\\*:"'.join(free_text_queries)
+        search = search.query(
+            "query_string", query=f'properties.\\*:"{free_text_query_string}"'
+        )
+
+    return search
+
+
+def apply_intersects_filter_shared(
+    intersects: Geometry,
+) -> Dict[str, Dict]:
+    """Create a geo_shape filter for intersecting geometry.
+
+    Args:
+        intersects (Geometry): The intersecting geometry, represented as a GeoJSON-like object.
+
+    Returns:
+        Dict[str, Dict]: A dictionary containing the geo_shape filter configuration
+            that can be used with Elasticsearch/OpenSearch Q objects.
+
+    Notes:
+        This function creates a geo_shape filter configuration to find documents that intersect
+        with the specified geometry. The returned dictionary should be wrapped in a Q object
+        when applied to a search.
+    """
+    return {
+        "geo_shape": {
+            "geometry": {
+                "shape": {
+                    "type": intersects.type.lower(),
+                    "coordinates": intersects.coordinates,
+                },
+                "relation": "intersects",
+            }
+        }
+    }
+
+
+def populate_sort_shared(sortby: List) -> Optional[Dict[str, Dict[str, str]]]:
+    """Create a sort configuration for Elasticsearch/OpenSearch queries.
+
+    Args:
+        sortby (List): A list of sort specifications, each containing a field and direction.
+
+    Returns:
+        Optional[Dict[str, Dict[str, str]]]: A dictionary mapping field names to sort direction
+            configurations, or None if no sort was specified.
+
+    Notes:
+        This function transforms a list of sort specifications into the format required by
+        Elasticsearch/OpenSearch for sorting query results. The returned dictionary can be
+        directly used in search requests.
+    """
+    if sortby:
+        return {s.field: {"order": s.direction} for s in sortby}
+    else:
+        return None
