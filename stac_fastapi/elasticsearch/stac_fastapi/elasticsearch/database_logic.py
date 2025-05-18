@@ -26,6 +26,7 @@ from stac_fastapi.sfeos_helpers.database_logic_helpers import (
     apply_intersects_filter_shared,
     create_index_templates_shared,
     delete_item_index_shared,
+    get_queryables_mapping_shared,
     populate_sort_shared,
 )
 from stac_fastapi.sfeos_helpers.mappings import (
@@ -219,23 +220,12 @@ class DatabaseLogic(BaseDatabaseLogic):
         Returns:
             dict: A dictionary containing the Queryables mappings.
         """
-        queryables_mapping = {}
-
         mappings = await self.client.indices.get_mapping(
             index=f"{ITEMS_INDEX_PREFIX}{collection_id}",
         )
-
-        for mapping in mappings.values():
-            fields = mapping["mappings"].get("properties", {})
-            properties = fields.pop("properties", {}).get("properties", {}).keys()
-
-            for field_key in fields:
-                queryables_mapping[field_key] = field_key
-
-            for property_key in properties:
-                queryables_mapping[property_key] = f"properties.{property_key}"
-
-        return queryables_mapping
+        return await get_queryables_mapping_shared(
+            collection_id=collection_id, mappings=mappings
+        )
 
     @staticmethod
     def make_search():
