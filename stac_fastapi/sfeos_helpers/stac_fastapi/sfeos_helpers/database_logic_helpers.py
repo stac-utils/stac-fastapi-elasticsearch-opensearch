@@ -9,8 +9,8 @@ from stac_fastapi.sfeos_helpers.mappings import (
     ES_ITEMS_SETTINGS,
     ITEMS_INDEX_PREFIX,
     Geometry,
-    index_alias_by_collection_id,
 )
+from stac_fastapi.sfeos_helpers.utilities import index_alias_by_collection_id
 
 
 async def create_index_templates_shared(settings: Any) -> None:

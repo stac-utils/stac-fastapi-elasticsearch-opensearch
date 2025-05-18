@@ -1,10 +1,7 @@
 """Shared mappings for stac-fastapi elasticsearch and opensearch backends."""
 
 import os
-from functools import lru_cache
-from typing import Any, Dict, List, Literal, Optional, Protocol
-
-from stac_fastapi.types.stac import Item
+from typing import Any, Dict, Literal, Protocol
 
 
 # stac_pydantic classes extend _GeometryBase, which doesn't have a type field,
@@ -238,90 +235,3 @@ ES_MAPPING_TYPE_TO_JSON: Dict[
     "geo_shape": "object",
     "nested": "array",
 }
-
-
-@lru_cache(256)
-def index_by_collection_id(collection_id: str) -> str:
-    """
-    Translate a collection id into an Elasticsearch index name.
-
-    Args:
-        collection_id (str): The collection id to translate into an index name.
-
-    Returns:
-        str: The index name derived from the collection id.
-    """
-    cleaned = collection_id.translate(_ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE)
-    return (
-        f"{ITEMS_INDEX_PREFIX}{cleaned.lower()}_{collection_id.encode('utf-8').hex()}"
-    )
-
-
-@lru_cache(256)
-def index_alias_by_collection_id(collection_id: str) -> str:
-    """
-    Translate a collection id into an Elasticsearch index alias.
-
-    Args:
-        collection_id (str): The collection id to translate into an index alias.
-
-    Returns:
-        str: The index alias derived from the collection id.
-    """
-    cleaned = collection_id.translate(_ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE)
-    return f"{ITEMS_INDEX_PREFIX}{cleaned}"
-
-
-def indices(collection_ids: Optional[List[str]]) -> str:
-    """
-    Get a comma-separated string of index names for a given list of collection ids.
-
-    Args:
-        collection_ids: A list of collection ids.
-
-    Returns:
-        A string of comma-separated index names. If `collection_ids` is empty, returns the default indices.
-    """
-    return (
-        ",".join(map(index_alias_by_collection_id, collection_ids))
-        if collection_ids
-        else ITEM_INDICES
-    )
-
-
-def mk_item_id(item_id: str, collection_id: str) -> str:
-    """Create the document id for an Item in Elasticsearch.
-
-    Args:
-        item_id (str): The id of the Item.
-        collection_id (str): The id of the Collection that the Item belongs to.
-
-    Returns:
-        str: The document id for the Item, combining the Item id and the Collection id, separated by a `|` character.
-    """
-    return f"{item_id}|{collection_id}"
-
-
-def mk_actions(collection_id: str, processed_items: List[Item]) -> List[Dict[str, Any]]:
-    """Create Elasticsearch bulk actions for a list of processed items.
-
-    Args:
-        collection_id (str): The identifier for the collection the items belong to.
-        processed_items (List[Item]): The list of processed items to be bulk indexed.
-
-    Returns:
-        List[Dict[str, Union[str, Dict]]]: The list of bulk actions to be executed,
-        each action being a dictionary with the following keys:
-        - `_index`: the index to store the document in.
-        - `_id`: the document's identifier.
-        - `_source`: the source of the document.
-    """
-    index_alias = index_alias_by_collection_id(collection_id)
-    return [
-        {
-            "_index": index_alias,
-            "_id": mk_item_id(item["id"], item["collection"]),
-            "_source": item,
-        }
-        for item in processed_items
-    ]

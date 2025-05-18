@@ -35,13 +35,15 @@ from stac_fastapi.sfeos_helpers.mappings import (
     ITEM_INDICES,
     ITEMS_INDEX_PREFIX,
     Geometry,
+)
+from stac_fastapi.sfeos_helpers.utilities import (
     index_alias_by_collection_id,
     index_by_collection_id,
     indices,
     mk_actions,
     mk_item_id,
+    validate_refresh,
 )
-from stac_fastapi.sfeos_helpers.utilities import validate_refresh
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.stac import Collection, Item
 

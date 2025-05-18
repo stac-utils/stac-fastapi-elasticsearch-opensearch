@@ -7,8 +7,8 @@ from stac_fastapi.sfeos_helpers.mappings import (
     COLLECTIONS_INDEX,
     ES_COLLECTIONS_MAPPINGS,
     ES_ITEMS_MAPPINGS,
-    index_alias_by_collection_id,
 )
+from stac_fastapi.sfeos_helpers.utilities import index_alias_by_collection_id
 
 from ..conftest import MockRequest, database
 
