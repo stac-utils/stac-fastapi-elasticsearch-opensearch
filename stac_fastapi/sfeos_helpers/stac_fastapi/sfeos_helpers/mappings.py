@@ -144,6 +144,77 @@ ES_COLLECTIONS_MAPPINGS = {
     },
 }
 
+# Shared aggregation mapping for both Elasticsearch and OpenSearch
+AGGREGATION_MAPPING: Dict[str, Dict[str, Any]] = {
+    "total_count": {"value_count": {"field": "id"}},
+    "collection_frequency": {"terms": {"field": "collection", "size": 100}},
+    "platform_frequency": {"terms": {"field": "properties.platform", "size": 100}},
+    "cloud_cover_frequency": {
+        "range": {
+            "field": "properties.eo:cloud_cover",
+            "ranges": [
+                {"to": 5},
+                {"from": 5, "to": 15},
+                {"from": 15, "to": 40},
+                {"from": 40},
+            ],
+        }
+    },
+    "datetime_frequency": {
+        "date_histogram": {
+            "field": "properties.datetime",
+            "calendar_interval": "month",
+        }
+    },
+    "datetime_min": {"min": {"field": "properties.datetime"}},
+    "datetime_max": {"max": {"field": "properties.datetime"}},
+    "grid_code_frequency": {
+        "terms": {
+            "field": "properties.grid:code",
+            "missing": "none",
+            "size": 10000,
+        }
+    },
+    "sun_elevation_frequency": {
+        "histogram": {"field": "properties.view:sun_elevation", "interval": 5}
+    },
+    "sun_azimuth_frequency": {
+        "histogram": {"field": "properties.view:sun_azimuth", "interval": 5}
+    },
+    "off_nadir_frequency": {
+        "histogram": {"field": "properties.view:off_nadir", "interval": 5}
+    },
+    "centroid_geohash_grid_frequency": {
+        "geohash_grid": {
+            "field": "properties.proj:centroid",
+            "precision": 1,
+        }
+    },
+    "centroid_geohex_grid_frequency": {
+        "geohex_grid": {
+            "field": "properties.proj:centroid",
+            "precision": 0,
+        }
+    },
+    "centroid_geotile_grid_frequency": {
+        "geotile_grid": {
+            "field": "properties.proj:centroid",
+            "precision": 0,
+        }
+    },
+    "geometry_geohash_grid_frequency": {
+        "geohash_grid": {
+            "field": "geometry",
+            "precision": 1,
+        }
+    },
+    "geometry_geotile_grid_frequency": {
+        "geotile_grid": {
+            "field": "geometry",
+            "precision": 0,
+        }
+    },
+}
 
 ES_MAPPING_TYPE_TO_JSON: Dict[
     str, Literal["string", "number", "boolean", "object", "array", "null"]
