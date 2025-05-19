@@ -8,6 +8,7 @@ implementations of STAC FastAPI. It includes:
 3. Mapping functions for working with Elasticsearch/OpenSearch mappings
 4. Document operations for working with documents
 5. Utility functions for database operations
+6. Datetime utilities for query formatting
 
 The database package is organized as follows:
 - index.py: Index management functions
@@ -15,6 +16,7 @@ The database package is organized as follows:
 - mapping.py: Mapping functions
 - document.py: Document operations
 - utils.py: Utility functions
+- datetime.py: Datetime utilities for query formatting
 
 When adding new functionality to this package, consider:
 1. Will this code be used by both Elasticsearch and OpenSearch implementations?
@@ -28,6 +30,7 @@ Function Naming Conventions:
 """
 
 # Re-export all functions for backward compatibility
+from .datetime import return_date
 from .document import mk_actions, mk_item_id
 from .index import (
     create_index_templates_shared,
@@ -42,7 +45,7 @@ from .query import (
     apply_intersects_filter_shared,
     populate_sort_shared,
 )
-from .utils import validate_refresh
+from .utils import get_bool_env, validate_refresh
 
 __all__ = [
     # Index operations
@@ -62,4 +65,7 @@ __all__ = [
     "mk_actions",
     # Utility functions
     "validate_refresh",
+    "get_bool_env",
+    # Datetime utilities
+    "return_date",
 ]

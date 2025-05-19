@@ -21,7 +21,7 @@ from stac_pydantic.version import STAC_VERSION
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
-from stac_fastapi.core.datetime_utils import format_datetime_range, return_date
+from stac_fastapi.core.datetime_utils import format_datetime_range
 from stac_fastapi.core.models.links import PagingLinks
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.session import Session
@@ -316,9 +316,8 @@ class CoreClient(AsyncBaseCoreClient):
         )
 
         if datetime:
-            datetime_search = return_date(datetime)
             search = self.database.apply_datetime_filter(
-                search=search, datetime_search=datetime_search
+                search=search, interval=datetime
             )
 
         if bbox:
@@ -493,9 +492,8 @@ class CoreClient(AsyncBaseCoreClient):
             )
 
         if search_request.datetime:
-            datetime_search = return_date(search_request.datetime)
             search = self.database.apply_datetime_filter(
-                search=search, datetime_search=datetime_search
+                search=search, interval=search_request.datetime
             )
 
         if search_request.bbox:

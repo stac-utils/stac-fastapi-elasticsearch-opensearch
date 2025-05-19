@@ -5,7 +5,7 @@ import json
 import logging
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from copy import deepcopy
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Type
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Type, Union
 
 import attr
 from opensearchpy import exceptions, helpers
@@ -33,6 +33,7 @@ from stac_fastapi.sfeos_helpers.database import (
     mk_actions,
     mk_item_id,
     populate_sort_shared,
+    return_date,
     validate_refresh,
 )
 from stac_fastapi.sfeos_helpers.mappings import (
@@ -47,6 +48,7 @@ from stac_fastapi.sfeos_helpers.mappings import (
     Geometry,
 )
 from stac_fastapi.types.errors import ConflictError, NotFoundError
+from stac_fastapi.types.rfc3339 import DateTimeType
 from stac_fastapi.types.stac import Collection, Item
 
 logger = logging.getLogger(__name__)
@@ -278,17 +280,20 @@ class DatabaseLogic(BaseDatabaseLogic):
         )
 
     @staticmethod
-    def apply_datetime_filter(search: Search, datetime_search):
+    def apply_datetime_filter(
+        search: Search, interval: Optional[Union[DateTimeType, str]]
+    ):
         """Apply a filter to search based on datetime field, start_datetime, and end_datetime fields.
 
         Args:
             search (Search): The search object to filter.
-            datetime_search (dict): The datetime filter criteria.
+            interval: Optional[Union[DateTimeType, str]]
 
         Returns:
             Search: The filtered search object.
         """
         should = []
+        datetime_search = return_date(interval)
 
         # If the request is a single datetime return
         # items with datetimes equal to the requested datetime OR
