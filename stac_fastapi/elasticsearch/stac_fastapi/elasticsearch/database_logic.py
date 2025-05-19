@@ -21,7 +21,7 @@ from stac_fastapi.elasticsearch.config import (
     ElasticsearchSettings as SyncElasticsearchSettings,
 )
 from stac_fastapi.sfeos_helpers import filter
-from stac_fastapi.sfeos_helpers.database_logic_helpers import (
+from stac_fastapi.sfeos_helpers.database import (
     apply_free_text_filter_shared,
     apply_intersects_filter_shared,
     create_index_templates_shared,
