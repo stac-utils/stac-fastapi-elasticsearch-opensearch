@@ -1,4 +1,28 @@
-"""Shared filter extension methods for stac-fastapi elasticsearch and opensearch backends."""
+"""Shared filter extension methods for stac-fastapi elasticsearch and opensearch backends.
+
+This module provides shared functionality for implementing the STAC API Filter Extension
+with Elasticsearch and OpenSearch. It includes:
+
+1. Functions for converting CQL2 queries to Elasticsearch/OpenSearch query DSL
+2. Helper functions for field mapping and query transformation
+3. Base implementation of the AsyncBaseFiltersClient for Elasticsearch/OpenSearch
+
+The sfeos_helpers package is organized as follows:
+- database_logic_helpers.py: Shared database operations
+- filter.py: Shared filter extension implementation (this file)
+- mappings.py: Shared constants and mapping definitions
+- utilities.py: Shared utility functions
+
+When adding new functionality to this package, consider:
+1. Will this code be used by both Elasticsearch and OpenSearch implementations?
+2. Is the functionality stable and unlikely to diverge between implementations?
+3. Is the function well-documented with clear input/output contracts?
+
+Function Naming Conventions:
+- All shared functions should end with `_shared` to clearly indicate they're meant to be used by both implementations
+- Function names should be descriptive and indicate their purpose
+- Parameter names should be consistent across similar functions
+"""
 
 import re
 from collections import deque
@@ -19,6 +43,10 @@ from stac_fastapi.core.extensions.filter import (
 from stac_fastapi.extensions.core.filter.client import AsyncBaseFiltersClient
 
 from .mappings import ES_MAPPING_TYPE_TO_JSON
+
+# ============================================================================
+# CQL2 Pattern Conversion Helpers
+# ============================================================================
 
 
 def _replace_like_patterns(match: re.Match) -> str:
@@ -46,6 +74,11 @@ def cql2_like_to_es(string: str) -> str:
         repl=_replace_like_patterns,
         string=string,
     )
+
+
+# ============================================================================
+# Query Transformation Functions
+# ============================================================================
 
 
 def to_es_field(queryables_mapping: Dict[str, Any], field: str) -> str:
@@ -167,6 +200,11 @@ def to_es(queryables_mapping: Dict[str, Any], query: Dict[str, Any]) -> Dict[str
         return {"geo_shape": {field: {"shape": geometry, "relation": relation}}}
 
     return {}
+
+
+# ============================================================================
+# Filter Client Implementation
+# ============================================================================
 
 
 @attr.s

@@ -1,4 +1,25 @@
-"""Shared utilities functions for stac-fastapi elasticsearch and opensearch backends."""
+"""Shared utilities functions for stac-fastapi elasticsearch and opensearch backends.
+
+This module contains general utility functions used by both the Elasticsearch and OpenSearch
+implementations of STAC FastAPI. These functions handle common tasks like parameter validation,
+index naming, and document ID generation.
+
+The sfeos_helpers package is organized as follows:
+- database_logic_helpers.py: Shared database operations
+- filter.py: Shared filter extension implementation
+- mappings.py: Shared constants and mapping definitions
+- utilities.py: Shared utility functions (this file)
+
+When adding new functionality to this package, consider:
+1. Will this code be used by both Elasticsearch and OpenSearch implementations?
+2. Is the functionality stable and unlikely to diverge between implementations?
+3. Is the function well-documented with clear input/output contracts?
+
+Function Naming Conventions:
+- All shared functions should end with `_shared` to clearly indicate they're meant to be used by both implementations
+- Function names should be descriptive and indicate their purpose
+- Parameter names should be consistent across similar functions
+"""
 import logging
 from functools import lru_cache
 from typing import Any, Dict, List, Optional, Union
@@ -12,6 +33,10 @@ from stac_fastapi.sfeos_helpers.mappings import (
     ITEMS_INDEX_PREFIX,
 )
 from stac_fastapi.types.stac import Item
+
+# ============================================================================
+# Parameter Validation
+# ============================================================================
 
 
 def validate_refresh(value: Union[str, bool]) -> str:
@@ -52,6 +77,11 @@ def validate_refresh(value: Union[str, bool]) -> str:
         f"Invalid value for `refresh`: '{value}'. Expected 'true', 'false', or 'wait_for'. Defaulting to 'false'."
     )
     return "false"
+
+
+# ============================================================================
+# Index and Document ID Utilities
+# ============================================================================
 
 
 @lru_cache(256)
@@ -101,6 +131,11 @@ def indices(collection_ids: Optional[List[str]]) -> str:
         if collection_ids
         else ITEM_INDICES
     )
+
+
+# ============================================================================
+# Document ID and Action Generation
+# ============================================================================
 
 
 def mk_item_id(item_id: str, collection_id: str) -> str:

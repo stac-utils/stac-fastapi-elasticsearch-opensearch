@@ -1,4 +1,25 @@
-"""Shared code for elasticsearch/ opensearch database logic."""
+"""Shared code for elasticsearch/ opensearch database logic.
+
+This module contains shared functions used by both the Elasticsearch and OpenSearch
+implementations of STAC FastAPI for database operations. It helps reduce code duplication
+and ensures consistent behavior between the two implementations.
+
+The sfeos_helpers package is organized as follows:
+- database_logic_helpers.py: Shared database operations (this file)
+- filter.py: Shared filter extension implementation
+- mappings.py: Shared constants and mapping definitions
+- utilities.py: Shared utility functions
+
+When adding new functionality to this package, consider:
+1. Will this code be used by both Elasticsearch and OpenSearch implementations?
+2. Is the functionality stable and unlikely to diverge between implementations?
+3. Is the function well-documented with clear input/output contracts?
+
+Function Naming Conventions:
+- All shared functions should end with `_shared` to clearly indicate they're meant to be used by both implementations
+- Function names should be descriptive and indicate their purpose
+- Parameter names should be consistent across similar functions
+"""
 
 from typing import Any, Dict, List, Optional
 
@@ -11,6 +32,10 @@ from stac_fastapi.sfeos_helpers.mappings import (
     Geometry,
 )
 from stac_fastapi.sfeos_helpers.utilities import index_alias_by_collection_id
+
+# ============================================================================
+# Index Management Functions
+# ============================================================================
 
 
 async def create_index_templates_shared(settings: Any) -> None:
@@ -47,6 +72,39 @@ async def create_index_templates_shared(settings: Any) -> None:
         },
     )
     await client.close()
+
+
+async def delete_item_index_shared(settings: Any, collection_id: str) -> None:
+    """Delete the index for items in a collection.
+
+    Args:
+        settings (Any): The settings object containing the client configuration.
+            Must have a create_client attribute that returns an Elasticsearch/OpenSearch client.
+        collection_id (str): The ID of the collection whose items index will be deleted.
+
+    Returns:
+        None: This function doesn't return any value but deletes an item index in the database.
+
+    Notes:
+        This function deletes an item index and its alias. It first resolves the alias to find
+        the actual index name, then deletes both the alias and the index.
+    """
+    client = settings.create_client
+
+    name = index_alias_by_collection_id(collection_id)
+    resolved = await client.indices.resolve_index(name=name)
+    if "aliases" in resolved and resolved["aliases"]:
+        [alias] = resolved["aliases"]
+        await client.indices.delete_alias(index=alias["indices"], name=alias["name"])
+        await client.indices.delete(index=alias["indices"])
+    else:
+        await client.indices.delete(index=name)
+    await client.close()
+
+
+# ============================================================================
+# Query Building Functions
+# ============================================================================
 
 
 def apply_free_text_filter_shared(
@@ -126,32 +184,9 @@ def populate_sort_shared(sortby: List) -> Optional[Dict[str, Dict[str, str]]]:
         return None
 
 
-async def delete_item_index_shared(settings: Any, collection_id: str) -> None:
-    """Delete the index for items in a collection.
-
-    Args:
-        settings (Any): The settings object containing the client configuration.
-            Must have a create_client attribute that returns an Elasticsearch/OpenSearch client.
-        collection_id (str): The ID of the collection whose items index will be deleted.
-
-    Returns:
-        None: This function doesn't return any value but deletes an item index in the database.
-
-    Notes:
-        This function deletes an item index and its alias. It first resolves the alias to find
-        the actual index name, then deletes both the alias and the index.
-    """
-    client = settings.create_client
-
-    name = index_alias_by_collection_id(collection_id)
-    resolved = await client.indices.resolve_index(name=name)
-    if "aliases" in resolved and resolved["aliases"]:
-        [alias] = resolved["aliases"]
-        await client.indices.delete_alias(index=alias["indices"], name=alias["name"])
-        await client.indices.delete(index=alias["indices"])
-    else:
-        await client.indices.delete(index=name)
-    await client.close()
+# ============================================================================
+# Mapping Functions
+# ============================================================================
 
 
 async def get_queryables_mapping_shared(
