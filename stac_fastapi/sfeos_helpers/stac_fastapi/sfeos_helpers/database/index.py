@@ -3,16 +3,67 @@
 This module provides functions for creating and managing indices in Elasticsearch/OpenSearch.
 """
 
-from typing import Any
+from functools import lru_cache
+from typing import Any, List, Optional
 
 from stac_fastapi.sfeos_helpers.mappings import (
+    _ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE,
     COLLECTIONS_INDEX,
     ES_COLLECTIONS_MAPPINGS,
     ES_ITEMS_MAPPINGS,
     ES_ITEMS_SETTINGS,
+    ITEM_INDICES,
     ITEMS_INDEX_PREFIX,
 )
-from stac_fastapi.sfeos_helpers.utilities import index_alias_by_collection_id
+
+
+@lru_cache(256)
+def index_by_collection_id(collection_id: str) -> str:
+    """
+    Translate a collection id into an Elasticsearch index name.
+
+    Args:
+        collection_id (str): The collection id to translate into an index name.
+
+    Returns:
+        str: The index name derived from the collection id.
+    """
+    cleaned = collection_id.translate(_ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE)
+    return (
+        f"{ITEMS_INDEX_PREFIX}{cleaned.lower()}_{collection_id.encode('utf-8').hex()}"
+    )
+
+
+@lru_cache(256)
+def index_alias_by_collection_id(collection_id: str) -> str:
+    """
+    Translate a collection id into an Elasticsearch index alias.
+
+    Args:
+        collection_id (str): The collection id to translate into an index alias.
+
+    Returns:
+        str: The index alias derived from the collection id.
+    """
+    cleaned = collection_id.translate(_ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE)
+    return f"{ITEMS_INDEX_PREFIX}{cleaned}"
+
+
+def indices(collection_ids: Optional[List[str]]) -> str:
+    """
+    Get a comma-separated string of index names for a given list of collection ids.
+
+    Args:
+        collection_ids: A list of collection ids.
+
+    Returns:
+        A string of comma-separated index names. If `collection_ids` is empty, returns the default indices.
+    """
+    return (
+        ",".join(map(index_alias_by_collection_id, collection_ids))
+        if collection_ids
+        else ITEM_INDICES
+    )
 
 
 async def create_index_templates_shared(settings: Any) -> None:

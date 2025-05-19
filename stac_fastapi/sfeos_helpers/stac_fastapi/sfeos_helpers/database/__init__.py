@@ -6,11 +6,15 @@ implementations of STAC FastAPI. It includes:
 1. Index management functions for creating and deleting indices
 2. Query building functions for constructing search queries
 3. Mapping functions for working with Elasticsearch/OpenSearch mappings
+4. Document operations for working with documents
+5. Utility functions for database operations
 
 The database package is organized as follows:
 - index.py: Index management functions
 - query.py: Query building functions
 - mapping.py: Mapping functions
+- document.py: Document operations
+- utils.py: Utility functions
 
 When adding new functionality to this package, consider:
 1. Will this code be used by both Elasticsearch and OpenSearch implementations?
@@ -24,19 +28,38 @@ Function Naming Conventions:
 """
 
 # Re-export all functions for backward compatibility
-from .index import create_index_templates_shared, delete_item_index_shared
+from .document import mk_actions, mk_item_id
+from .index import (
+    create_index_templates_shared,
+    delete_item_index_shared,
+    index_alias_by_collection_id,
+    index_by_collection_id,
+    indices,
+)
 from .mapping import get_queryables_mapping_shared
 from .query import (
     apply_free_text_filter_shared,
     apply_intersects_filter_shared,
     populate_sort_shared,
 )
+from .utils import validate_refresh
 
 __all__ = [
+    # Index operations
     "create_index_templates_shared",
     "delete_item_index_shared",
+    "index_alias_by_collection_id",
+    "index_by_collection_id",
+    "indices",
+    # Query operations
     "apply_free_text_filter_shared",
     "apply_intersects_filter_shared",
     "populate_sort_shared",
+    # Mapping operations
     "get_queryables_mapping_shared",
+    # Document operations
+    "mk_item_id",
+    "mk_actions",
+    # Utility functions
+    "validate_refresh",
 ]
