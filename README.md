@@ -3,7 +3,9 @@
 <!-- markdownlint-disable MD033 MD041 -->
 
 <p align="left">
-  <img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/stac-030-long.png" width=700>
+  <img src="assets/sfeos-banner.png" width=1700>
+  <!-- <img src="assets/sfeos-navy.png" width=200>
+  <img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/stac-030-long.png" width=600> -->
   <p align="left"><b>Elasticsearch and Opensearch backends for the stac-fastapi project.</b></p>
 </p>
 
