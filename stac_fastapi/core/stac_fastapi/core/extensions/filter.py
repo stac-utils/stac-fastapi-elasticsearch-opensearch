@@ -27,6 +27,14 @@ _valid_like_substitutions = {
 }
 
 
+def _get_value_for_terms_query(value: dict):
+    """Return property value for terms queries."""
+    if isinstance(value, dict):
+        if "property" in value:
+            return value["property"]
+    return value
+
+
 def _replace_like_patterns(match: re.Match) -> str:
     pattern = match.group()
     try:
@@ -159,9 +167,15 @@ def to_es(queryables_mapping: Dict[str, Any], query: Dict[str, Any]) -> Dict[str
                 return {"range": {field: {range_op[query["op"]]: value}}}
         else:
             if query["op"] == ComparisonOp.EQ:
-                return {"term": {field: value}}
+                return {"term": {field: _get_value_for_terms_query(value)}}
             elif query["op"] == ComparisonOp.NEQ:
-                return {"bool": {"must_not": [{"term": {field: value}}]}}
+                return {
+                    "bool": {
+                        "must_not": [
+                            {"term": {field: _get_value_for_terms_query(value)}}
+                        ]
+                    }
+                }
             else:
                 return {"range": {field: {range_op[query["op"]]: value}}}
 
@@ -183,7 +197,7 @@ def to_es(queryables_mapping: Dict[str, Any], query: Dict[str, Any]) -> Dict[str
         values = query["args"][1]
         if not isinstance(values, list):
             raise ValueError(f"Arg {values} is not a list")
-        return {"terms": {field: values}}
+        return {"terms": {field: [_get_value_for_terms_query(x) for x in values]}}
 
     elif query["op"] == AdvancedComparisonOp.LIKE:
         field = to_es_field(queryables_mapping, query["args"][0]["property"])
