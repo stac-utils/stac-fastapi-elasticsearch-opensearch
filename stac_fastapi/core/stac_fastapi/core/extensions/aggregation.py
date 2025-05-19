@@ -14,7 +14,7 @@ from typing_extensions import Annotated
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
-from stac_fastapi.core.datetime_utils import datetime_to_str
+from stac_fastapi.core.datetime_utils import datetime_to_str, format_datetime_range
 from stac_fastapi.core.session import Session
 from stac_fastapi.extensions.core.aggregation.client import AsyncBaseAggregationClient
 from stac_fastapi.extensions.core.aggregation.request import (
@@ -257,24 +257,6 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
                 detail=f"Unknown filter-lang: {filter_lang}. Only cql2-json or cql2-text are supported.",
             )
 
-    def _format_datetime_range(self, date_tuple: DateTimeType) -> str:
-        """
-        Convert a tuple of datetime objects or None into a formatted string for API requests.
-
-        Args:
-            date_tuple (tuple): A tuple containing two elements, each can be a datetime object or None.
-
-        Returns:
-            str: A string formatted as 'YYYY-MM-DDTHH:MM:SS.sssZ/YYYY-MM-DDTHH:MM:SS.sssZ', with '..' used if any element is None.
-        """
-
-        def format_datetime(dt):
-            """Format a single datetime object to the ISO8601 extended format with 'Z'."""
-            return dt.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z" if dt else ".."
-
-        start, end = date_tuple
-        return f"{format_datetime(start)}/{format_datetime(end)}"
-
     async def aggregate(
         self,
         aggregate_request: Optional[EsAggregationExtensionPostRequest] = None,
@@ -325,7 +307,7 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
                 base_args["intersects"] = orjson.loads(unquote_plus(intersects))
 
             if datetime:
-                base_args["datetime"] = self._format_datetime_range(datetime)
+                base_args["datetime"] = format_datetime_range(datetime)
 
             if filter_expr:
                 base_args["filter"] = self.get_filter(filter_expr, filter_lang)
