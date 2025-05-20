@@ -1,5 +1,3 @@
-version: '3.9'
-
 services:
   app-elasticsearch:
     container_name: stac-fastapi-es
@@ -11,7 +9,8 @@ services:
     environment:
       - STAC_FASTAPI_TITLE=stac-fastapi-elasticsearch
       - STAC_FASTAPI_DESCRIPTION=A STAC FastAPI with an Elasticsearch backend
-      - STAC_FASTAPI_VERSION=3.0.0a2
+      - STAC_FASTAPI_VERSION=4.2.0
+      - STAC_FASTAPI_LANDING_PAGE_ID=stac-fastapi-elasticsearch
       - APP_HOST=0.0.0.0
       - APP_PORT=8080
       - RELOAD=true
@@ -22,13 +21,13 @@ services:
       - ES_USE_SSL=false
       - ES_VERIFY_CERTS=false
       - BACKEND=elasticsearch
-      - STAC_FASTAPI_ROUTE_DEPENDENCIES=[{"routes":[{"method":"GET","path":"/collections"}],"dependencies":[{"method":"conftest.must_be_bob"}]}]
+      - STAC_FASTAPI_RATE_LIMIT=500/minute
     ports:
       - "8080:8080"
     volumes:
-      - ../../stac_fastapi:/app/stac_fastapi
-      - ../../scripts:/app/scripts
-      - ../../esdata:/usr/share/elasticsearch/data
+      - ./stac_fastapi:/app/stac_fastapi
+      - ./scripts:/app/scripts
+      - ./esdata:/usr/share/elasticsearch/data
     depends_on:
       - elasticsearch
     command:
@@ -44,7 +43,7 @@ services:
     environment:
       - STAC_FASTAPI_TITLE=stac-fastapi-opensearch
       - STAC_FASTAPI_DESCRIPTION=A STAC FastAPI with an Opensearch backend
-      - STAC_FASTAPI_VERSION=2.1
+      - STAC_FASTAPI_VERSION=4.2.0
       - APP_HOST=0.0.0.0
       - APP_PORT=8082
       - RELOAD=true
@@ -55,13 +54,13 @@ services:
       - ES_USE_SSL=false
       - ES_VERIFY_CERTS=false
       - BACKEND=opensearch
-      - STAC_FASTAPI_ROUTE_DEPENDENCIES=[{"routes":[{"method":"GET","path":"/collections"}],"dependencies":[{"method":"conftest.must_be_bob"}]}]
+      - STAC_FASTAPI_RATE_LIMIT=200/minute
     ports:
       - "8082:8082"
     volumes:
-      - ../../stac_fastapi:/app/stac_fastapi
-      - ../../scripts:/app/scripts
-      - ../../osdata:/usr/share/opensearch/data
+      - ./stac_fastapi:/app/stac_fastapi
+      - ./scripts:/app/scripts
+      - ./osdata:/usr/share/opensearch/data
     depends_on:
       - opensearch
     command:
@@ -74,8 +73,8 @@ services:
     environment:
       ES_JAVA_OPTS: -Xms512m -Xmx1g
     volumes:
-      - ../../elasticsearch/config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
-      - ../../elasticsearch/snapshots:/usr/share/elasticsearch/snapshots
+      - ./elasticsearch/config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
+      - ./elasticsearch/snapshots:/usr/share/elasticsearch/snapshots
     ports:
       - "9200:9200"
 
@@ -88,7 +87,7 @@ services:
       - plugins.security.disabled=true
       - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
     volumes:
-      - ../../opensearch/config/opensearch.yml:/usr/share/opensearch/config/opensearch.yml
-      - ../../opensearch/snapshots:/usr/share/opensearch/snapshots
+      - ./opensearch/config/opensearch.yml:/usr/share/opensearch/config/opensearch.yml
+      - ./opensearch/snapshots:/usr/share/opensearch/snapshots
     ports:
       - "9202:9202"

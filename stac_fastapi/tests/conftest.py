@@ -8,7 +8,8 @@ from typing import Any, Callable, Dict, Optional
 import pytest
 import pytest_asyncio
 from fastapi import Depends, HTTPException, security, status
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
+from pydantic import ConfigDict
 from stac_pydantic import api
 
 from stac_fastapi.api.app import StacApi
@@ -26,6 +27,7 @@ from stac_fastapi.core.extensions.aggregation import (
 )
 from stac_fastapi.core.rate_limit import setup_rate_limit
 from stac_fastapi.core.route_dependencies import get_route_dependencies
+from stac_fastapi.core.utilities import get_bool_env
 
 if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
     from stac_fastapi.opensearch.config import AsyncOpensearchSettings as AsyncSettings
@@ -85,8 +87,7 @@ class MockRequest:
 
 
 class TestSettings(AsyncSettings):
-    class Config:
-        env_file = ".env.test"
+    model_config = ConfigDict(env_file=".env.test")
 
 
 settings = TestSettings()
@@ -243,7 +244,9 @@ async def app_client(app):
     await create_index_templates()
     await create_collection_index()
 
-    async with AsyncClient(app=app, base_url="http://test-server") as c:
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test-server"
+    ) as c:
         yield c
 
 
@@ -302,7 +305,9 @@ async def app_client_rate_limit(app_rate_limit):
     await create_index_templates()
     await create_collection_index()
 
-    async with AsyncClient(app=app_rate_limit, base_url="http://test-server") as c:
+    async with AsyncClient(
+        transport=ASGITransport(app=app_rate_limit), base_url="http://test-server"
+    ) as c:
         yield c
 
 
@@ -392,7 +397,9 @@ async def app_client_basic_auth(app_basic_auth):
     await create_index_templates()
     await create_collection_index()
 
-    async with AsyncClient(app=app_basic_auth, base_url="http://test-server") as c:
+    async with AsyncClient(
+        transport=ASGITransport(app=app_basic_auth), base_url="http://test-server"
+    ) as c:
         yield c
 
 
@@ -469,6 +476,53 @@ async def route_dependencies_client(route_dependencies_app):
     await create_collection_index()
 
     async with AsyncClient(
-        app=route_dependencies_app, base_url="http://test-server"
+        transport=ASGITransport(app=route_dependencies_app),
+        base_url="http://test-server",
     ) as c:
         yield c
+
+
+def build_test_app():
+    TRANSACTIONS_EXTENSIONS = get_bool_env(
+        "ENABLE_TRANSACTIONS_EXTENSIONS", default=True
+    )
+    settings = AsyncSettings()
+    aggregation_extension = AggregationExtension(
+        client=EsAsyncAggregationClient(
+            database=database, session=None, settings=settings
+        )
+    )
+    aggregation_extension.POST = EsAggregationExtensionPostRequest
+    aggregation_extension.GET = EsAggregationExtensionGetRequest
+    search_extensions = [
+        SortExtension(),
+        FieldsExtension(),
+        QueryExtension(),
+        TokenPaginationExtension(),
+        FilterExtension(),
+        FreeTextExtension(),
+    ]
+    if TRANSACTIONS_EXTENSIONS:
+        search_extensions.insert(
+            0,
+            TransactionExtension(
+                client=TransactionsClient(
+                    database=database, session=None, settings=settings
+                ),
+                settings=settings,
+            ),
+        )
+    extensions = [aggregation_extension] + search_extensions
+    post_request_model = create_post_request_model(search_extensions)
+    return StacApi(
+        settings=settings,
+        client=CoreClient(
+            database=database,
+            session=None,
+            extensions=extensions,
+            post_request_model=post_request_model,
+        ),
+        extensions=extensions,
+        search_get_request_model=create_get_request_model(search_extensions),
+        search_post_request_model=post_request_model,
+    ).app

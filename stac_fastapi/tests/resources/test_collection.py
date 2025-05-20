@@ -1,10 +1,17 @@
 import copy
+import os
 import uuid
 
 import pytest
+from httpx import AsyncClient
 from stac_pydantic import api
 
-from ..conftest import create_collection, delete_collections_and_items, refresh_indices
+from ..conftest import (
+    build_test_app,
+    create_collection,
+    delete_collections_and_items,
+    refresh_indices,
+)
 
 CORE_COLLECTION_PROPS = [
     "id",
@@ -34,6 +41,32 @@ async def test_create_and_delete_collection(app_client, load_test_data):
 
     resp = await app_client.delete(f"/collections/{test_collection['id']}")
     assert resp.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_create_collection_transactions_extension(load_test_data):
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = "test"
+
+    os.environ["ENABLE_TRANSACTIONS_EXTENSIONS"] = "false"
+    app_disabled = build_test_app()
+    async with AsyncClient(app=app_disabled, base_url="http://test") as client:
+        resp = await client.post("/collections", json=test_collection)
+        assert resp.status_code in (
+            404,
+            405,
+            501,
+        ), f"Expected failure, got {resp.status_code}"
+
+    os.environ["ENABLE_TRANSACTIONS_EXTENSIONS"] = "true"
+    app_enabled = build_test_app()
+    async with AsyncClient(app=app_enabled, base_url="http://test") as client:
+        resp = await client.post("/collections", json=test_collection)
+        assert resp.status_code == 201
+        resp = await client.delete(f"/collections/{test_collection['id']}")
+        assert resp.status_code == 204
+
+    del os.environ["ENABLE_TRANSACTIONS_EXTENSIONS"]
 
 
 @pytest.mark.asyncio

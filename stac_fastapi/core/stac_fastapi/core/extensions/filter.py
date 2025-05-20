@@ -10,7 +10,7 @@
 # defines the LIKE, IN, and BETWEEN operators.
 
 # Basic Spatial Operators (http://www.opengis.net/spec/cql2/1.0/conf/basic-spatial-operators)
-# defines the intersects operator (S_INTERSECTS).
+# defines spatial operators (S_INTERSECTS, S_CONTAINS, S_WITHIN, S_DISJOINT).
 # """
 
 import re
@@ -82,26 +82,16 @@ class AdvancedComparisonOp(str, Enum):
     IN = "in"
 
 
-class SpatialIntersectsOp(str, Enum):
-    """Enumeration for spatial intersection operator as per CQL2 standards."""
+class SpatialOp(str, Enum):
+    """Enumeration for spatial operators as per CQL2 standards."""
 
     S_INTERSECTS = "s_intersects"
+    S_CONTAINS = "s_contains"
+    S_WITHIN = "s_within"
+    S_DISJOINT = "s_disjoint"
 
 
-queryables_mapping = {
-    "id": "id",
-    "collection": "collection",
-    "geometry": "geometry",
-    "datetime": "properties.datetime",
-    "created": "properties.created",
-    "updated": "properties.updated",
-    "cloud_cover": "properties.eo:cloud_cover",
-    "cloud_shadow_percentage": "properties.s2:cloud_shadow_percentage",
-    "nodata_pixel_percentage": "properties.s2:nodata_pixel_percentage",
-}
-
-
-def to_es_field(field: str) -> str:
+def to_es_field(queryables_mapping: Dict[str, Any], field: str) -> str:
     """
     Map a given field to its corresponding Elasticsearch field according to a predefined mapping.
 
@@ -114,7 +104,7 @@ def to_es_field(field: str) -> str:
     return queryables_mapping.get(field, field)
 
 
-def to_es(query: Dict[str, Any]) -> Dict[str, Any]:
+def to_es(queryables_mapping: Dict[str, Any], query: Dict[str, Any]) -> Dict[str, Any]:
     """
     Transform a simplified CQL2 query structure to an Elasticsearch compatible query DSL.
 
@@ -130,7 +120,13 @@ def to_es(query: Dict[str, Any]) -> Dict[str, Any]:
             LogicalOp.OR: "should",
             LogicalOp.NOT: "must_not",
         }[query["op"]]
-        return {"bool": {bool_type: [to_es(sub_query) for sub_query in query["args"]]}}
+        return {
+            "bool": {
+                bool_type: [
+                    to_es(queryables_mapping, sub_query) for sub_query in query["args"]
+                ]
+            }
+        }
 
     elif query["op"] in [
         ComparisonOp.EQ,
@@ -147,7 +143,7 @@ def to_es(query: Dict[str, Any]) -> Dict[str, Any]:
             ComparisonOp.GTE: "gte",
         }
 
-        field = to_es_field(query["args"][0]["property"])
+        field = to_es_field(queryables_mapping, query["args"][0]["property"])
         value = query["args"][1]
         if isinstance(value, dict) and "timestamp" in value:
             value = value["timestamp"]
@@ -170,11 +166,11 @@ def to_es(query: Dict[str, Any]) -> Dict[str, Any]:
                 return {"range": {field: {range_op[query["op"]]: value}}}
 
     elif query["op"] == ComparisonOp.IS_NULL:
-        field = to_es_field(query["args"][0]["property"])
+        field = to_es_field(queryables_mapping, query["args"][0]["property"])
         return {"bool": {"must_not": {"exists": {"field": field}}}}
 
     elif query["op"] == AdvancedComparisonOp.BETWEEN:
-        field = to_es_field(query["args"][0]["property"])
+        field = to_es_field(queryables_mapping, query["args"][0]["property"])
         gte, lte = query["args"][1], query["args"][2]
         if isinstance(gte, dict) and "timestamp" in gte:
             gte = gte["timestamp"]
@@ -183,20 +179,34 @@ def to_es(query: Dict[str, Any]) -> Dict[str, Any]:
         return {"range": {field: {"gte": gte, "lte": lte}}}
 
     elif query["op"] == AdvancedComparisonOp.IN:
-        field = to_es_field(query["args"][0]["property"])
+        field = to_es_field(queryables_mapping, query["args"][0]["property"])
         values = query["args"][1]
         if not isinstance(values, list):
             raise ValueError(f"Arg {values} is not a list")
         return {"terms": {field: values}}
 
     elif query["op"] == AdvancedComparisonOp.LIKE:
-        field = to_es_field(query["args"][0]["property"])
+        field = to_es_field(queryables_mapping, query["args"][0]["property"])
         pattern = cql2_like_to_es(query["args"][1])
         return {"wildcard": {field: {"value": pattern, "case_insensitive": True}}}
 
-    elif query["op"] == SpatialIntersectsOp.S_INTERSECTS:
-        field = to_es_field(query["args"][0]["property"])
+    elif query["op"] in [
+        SpatialOp.S_INTERSECTS,
+        SpatialOp.S_CONTAINS,
+        SpatialOp.S_WITHIN,
+        SpatialOp.S_DISJOINT,
+    ]:
+        field = to_es_field(queryables_mapping, query["args"][0]["property"])
         geometry = query["args"][1]
-        return {"geo_shape": {field: {"shape": geometry, "relation": "intersects"}}}
+
+        relation_mapping = {
+            SpatialOp.S_INTERSECTS: "intersects",
+            SpatialOp.S_CONTAINS: "contains",
+            SpatialOp.S_WITHIN: "within",
+            SpatialOp.S_DISJOINT: "disjoint",
+        }
+
+        relation = relation_mapping[query["op"]]
+        return {"geo_shape": {field: {"shape": geometry, "relation": relation}}}
 
     return {}

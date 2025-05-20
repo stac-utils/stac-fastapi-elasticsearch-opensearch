@@ -6,23 +6,23 @@ with open("README.md") as f:
     desc = f.read()
 
 install_requires = [
-    "fastapi-slim",
+    "fastapi~=0.109.0",
     "attrs>=23.2.0",
-    "pydantic",
-    "stac_pydantic>=3",
+    "pydantic>=2.4.1,<3.0.0",
+    "stac_pydantic~=3.1.0",
     "stac-fastapi.types@git+https://github.com/stac-utils/stac-fastapi.git@refs/pull/744/head#subdirectory=stac_fastapi/types",
     "stac-fastapi.api@git+https://github.com/stac-utils/stac-fastapi.git@refs/pull/744/head#subdirectory=stac_fastapi/api",
     "stac-fastapi.extensions@git+https://github.com/stac-utils/stac-fastapi.git@refs/pull/744/head#subdirectory=stac_fastapi/extensions",
-    "orjson",
-    "overrides",
-    "geojson-pydantic",
-    "pygeofilter==0.3.1",
-    "jsonschema",
-    "slowapi==0.1.9",
+    "orjson~=3.9.0",
+    "overrides~=7.4.0",
+    "geojson-pydantic~=1.0.0",
+    "pygeofilter~=0.3.1",
+    "jsonschema~=4.0.0",
+    "slowapi~=0.1.9",
 ]
 
 setup(
-    name="stac_fastapi.core",
+    name="stac_fastapi_core",
     description="Core library for the Elasticsearch and Opensearch stac-fastapi backends.",
     long_description=desc,
     long_description_content_type="text/markdown",

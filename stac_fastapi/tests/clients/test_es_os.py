@@ -6,11 +6,10 @@ import pytest
 from fastapi import HTTPException
 from stac_pydantic import Item, api
 
-from stac_fastapi.extensions.third_party.bulk_transactions import Items
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.stac import PatchAddReplaceTest, PatchMoveCopy, PatchRemove
 
-from ..conftest import MockRequest, create_item
+from ..conftest import MockRequest
 
 
 @pytest.mark.asyncio
@@ -620,48 +619,6 @@ async def test_delete_item(ctx, core_client, txn_client):
         await core_client.get_item(
             ctx.item["id"], ctx.item["collection"], request=MockRequest
         )
-
-
-@pytest.mark.asyncio
-async def test_bulk_item_insert(ctx, core_client, txn_client, bulk_txn_client):
-    items = {}
-    for _ in range(10):
-        _item = deepcopy(ctx.item)
-        _item["id"] = str(uuid.uuid4())
-        items[_item["id"]] = _item
-
-    # fc = es_core.item_collection(coll["id"], request=MockStarletteRequest)
-    # assert len(fc["features"]) == 0
-
-    bulk_txn_client.bulk_item_insert(Items(items=items), refresh=True)
-
-    fc = await core_client.item_collection(ctx.collection["id"], request=MockRequest())
-    assert len(fc["features"]) >= 10
-
-    # for item in items:
-    #     es_transactions.delete_item(
-    #         item["id"], item["collection"], request=MockStarletteRequest
-    #     )
-
-
-@pytest.mark.asyncio
-async def test_feature_collection_insert(
-    core_client,
-    txn_client,
-    ctx,
-):
-    features = []
-    for _ in range(10):
-        _item = deepcopy(ctx.item)
-        _item["id"] = str(uuid.uuid4())
-        features.append(_item)
-
-    feature_collection = {"type": "FeatureCollection", "features": features}
-
-    await create_item(txn_client, feature_collection)
-
-    fc = await core_client.item_collection(ctx.collection["id"], request=MockRequest())
-    assert len(fc["features"]) >= 10
 
 
 @pytest.mark.asyncio

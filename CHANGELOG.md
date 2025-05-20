@@ -7,7 +7,96 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
 ### Changed
+
+### Fixed
+
+
+## [v4.2.0] - 2025-05-15
+
+### Added
+
+- Added dynamic queryables mapping for search and aggregations [#375](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/375)
+- Added configurable landing page ID `STAC_FASTAPI_LANDING_PAGE_ID` [#352](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/352)
+- Added support for `S_CONTAINS`, `S_WITHIN`, `S_DISJOINT` spatial filter operations [#371](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/371)
+- Introduced the `DATABASE_REFRESH` environment variable to control whether database operations refresh the index immediately after changes. If set to `true`, changes will be immediately searchable. If set to `false`, changes may not be immediately visible but can improve performance for bulk operations. If set to `wait_for`, changes will wait for the next refresh cycle to become visible. [#370](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/370)
+- Added the `ENABLE_TRANSACTIONS_EXTENSIONS` environment variable to enable or disable the Transactions and Bulk Transactions API extensions. When set to `false`, endpoints provided by `TransactionsClient` and `BulkTransactionsClient` are not available. This allows for flexible deployment scenarios and improved API control. [#374](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/374)
+
+### Changed
+
+- Refactored CRUD methods in `TransactionsClient` to use the `validate_refresh` helper method for consistent and reusable handling of the `refresh` parameter. [#370](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/370)
+
+### Fixed
+
+- Fixed an issue where some routes were not passing the `refresh` parameter from `kwargs` to the database logic, ensuring consistent behavior across all CRUD operations. [#370](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/370)
+
+## [v4.1.0] - 2025-05-09
+
+### Added
+
+- Added logging to bulk insertion methods to provide detailed feedback on errors encountered during operations. [#364](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/364)
+- Introduced the `RAISE_ON_BULK_ERROR` environment variable to control whether bulk insertion methods raise exceptions on errors (`true`) or log warnings and continue processing (`false`). [#364](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/364)
+- Added code coverage reporting to the test suite using pytest-cov. [#87](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/87)
+
+### Changed
+
+- Updated dynamic mapping for items to map long values to double versus float. [#326](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/326)
+- Extended Datetime Search to search on start_datetime and end_datetime as well as datetime fields. [#182](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/182)
+- Changed item update operation to use Elasticsearch index API instead of delete and create for better efficiency and atomicity. [#75](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/75)
+- Bulk insertion via `BulkTransactionsClient` now strictly validates all STAC Items using the Pydantic model before insertion. Any invalid item will immediately raise a `ValidationError`, ensuring consistent validation with single-item inserts and preventing invalid STAC Items from being stored. This validation is enforced regardless of the `RAISE_ON_BULK_ERROR` setting. [#368](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/368)
+
+### Changed
+
+### Fixed
+
+- Refactored `create_item` and `update_item` methods to share unified logic, ensuring consistent conflict detection, validation, and database operations. [#368](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/368)
+
+## [v4.0.0] - 2025-04-23
+
+### Added
+- Added support for dynamically-generated queryables based on Elasticsearch/OpenSearch mappings, with extensible metadata augmentation [#351](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/351)
+- Included default queryables configuration for seamless integration. [#351](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/351)
+- Added support for high-performance direct response mode for both Elasticsearch and Opensearch backends, controlled by the `ENABLE_DIRECT_RESPONSE` environment variable. When enabled (`ENABLE_DIRECT_RESPONSE=true`), endpoints return Starlette Response objects directly, bypassing FastAPI's jsonable_encoder and Pydantic serialization for significantly improved performance on large search responses. **Note:** In this mode, all FastAPI dependencies (including authentication, custom status codes, and validation) are disabled for all routes. Default is `false` for safety. A warning is logged at startup if enabled. See [issue #347](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/347) and [PR #359](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/359).
+- Added robust tests for the `ENABLE_DIRECT_RESPONSE` environment variable, covering both Elasticsearch and OpenSearch backends. Tests gracefully handle missing backends by attempting to import both configs and skipping if neither is available. [#359](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/359)
+
+### Changed
+- Refactored database logic to reduce duplication [#351](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/351)
+- Replaced `fastapi-slim` with `fastapi` dependency [#351](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/351)
+- Changed minimum Python version to 3.9 [#354](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/354)
+- Updated stac-fastapi api, types, and extensions libraries to 5.1.1 from 3.0.0 and made various associated changes [#354](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/354)
+- Changed makefile commands from 'docker-compose' to 'docker compose' [#354](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/354)
+- Updated package names in setup.py files to use underscores instead of periods for PEP 625 compliance [#358](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/358)
+  - Changed `stac_fastapi.opensearch` to `stac_fastapi_opensearch`
+  - Changed `stac_fastapi.elasticsearch` to `stac_fastapi_elasticsearch`
+  - Changed `stac_fastapi.core` to `stac_fastapi_core`
+  - Updated all related dependencies to use the new naming convention
+- Renamed `docker-compose.yml` to `compose.yml` to align with Docker Compose V2 conventions [#358](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/358)
+- Removed deprecated `version` field from all compose files [#358](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/358)
+- Updated `STAC_FASTAPI_VERSION` environment variables to 4.0.0 in all compose files [#362](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/362)
+- Bumped version from 4.0.0a2 to 4.0.0 for the PEP 625 compliant release [#362](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/362)
+- Updated dependency requirements to use compatible release specifiers (~=) for more controlled updates while allowing for bug fixes and security patches [#358](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/358)
+- Removed elasticsearch-dsl dependency as it's now part of the elasticsearch package since version 8.18.0 [#358](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/358)
+- Updated test suite to use `httpx.ASGITransport(app=...)` for FastAPI app testing (removes deprecation warning). [#359](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/359)
+- Updated stac-fastapi parent libraries to 5.2.0. [#359](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/359)
+- Migrated Elasticsearch index template creation from legacy `put_template` to composable `put_index_template` API in `database_logic.py`. This resolves deprecation warnings and ensures compatibility with Elasticsearch 7.x and 8.x. [#359](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/359)
+- Updated all Pydantic models to use `ConfigDict` instead of class-based `Config` for Pydantic v2 compatibility. This resolves deprecation warnings and prepares for Pydantic v3. [#359](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/359)
+- Migrated all Pydantic `@root_validator` validators to `@model_validator` for Pydantic v2 compatibility. [#359](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/359)
+- Migrated startup event handling from deprecated `@app.on_event("startup")` to FastAPI's recommended lifespan context manager. This removes deprecation warnings and ensures compatibility with future FastAPI versions. [#361](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/361)
+- Refactored all boolean environment variable parsing in both Elasticsearch and OpenSearch backends to use the shared `get_bool_env` utility. This ensures robust and consistent handling of environment variables such as `ES_USE_SSL`, `ES_HTTP_COMPRESS`, and `ES_VERIFY_CERTS` across both backends. [#359](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/359)
+
+### Fixed
+- Improved performance of `mk_actions` and `filter-links` methods [#351](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/351)
+- Fixed inheritance relating to BaseDatabaseSettings and ApiBaseSettings [#355](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/355)
+- Fixed delete_item and delete_collection methods return types [#355](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/355)
+- Fixed inheritance relating to DatabaseLogic and BaseDatabaseLogic, and ApiBaseSettings [#355](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/355)
+
+## [v3.2.5] - 2025-04-07
+
+### Added
+
+- Option to configure multiple Elasticsearch/OpenSearch hosts and enable `http_compress`. [#349](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/349)
 
 ## [v3.2.4] - 2025-03-14
 
@@ -299,22 +388,26 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.2.4...main
-[v3.2.4]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.2.3...v3.2.4
-[v3.2.3]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.2.2...v3.2.3
-[v3.2.2]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.2.1...v3.2.2
-[v3.2.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.2.0...v3.2.1
-[v3.2.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.1.0...v3.2.0
-[v3.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v3.0.0...v3.1.0
-[v3.0.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.4.1...v3.0.0
-[v2.4.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.4.0...v2.4.1
-[v2.4.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.3.0...v2.4.0
-[v2.3.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.2.0...v2.3.0
-[v2.2.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.1.0...v2.2.0
-[v2.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v2.0.0...v2.1.0
-[v2.0.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v1.1.0...v2.0.0
-[v1.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v1.0.0...v1.1.0
-[v1.0.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v0.3.0...v1.0.0
-[v0.3.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v0.2.0...v0.3.0
-[v0.2.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v0.1.0...v0.2.0
-[v0.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch/tree/v0.1.0
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v4.2.0...main
+[v4.2.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v4.1.0...v4.2.0
+[v4.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v4.0.0...v4.1.0
+[v4.0.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v3.2.5...v4.0.0
+[v3.2.5]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v3.2.4...v3.2.5
+[v3.2.4]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v3.2.3...v3.2.4
+[v3.2.3]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v3.2.2...v3.2.3
+[v3.2.2]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v3.2.1...v3.2.2
+[v3.2.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v3.2.0...v3.2.1
+[v3.2.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v3.1.0...v3.2.0
+[v3.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v3.0.0...v3.1.0
+[v3.0.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v2.4.1...v3.0.0
+[v2.4.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v2.4.0...v2.4.1
+[v2.4.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v2.3.0...v2.4.0
+[v2.3.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v2.2.0...v2.3.0
+[v2.2.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v2.1.0...v2.2.0
+[v2.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v2.0.0...v2.1.0
+[v2.0.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v1.1.0...v2.0.0
+[v1.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v1.0.0...v1.1.0
+[v1.0.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v0.3.0...v1.0.0
+[v0.3.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v0.2.0...v0.3.0
+[v0.2.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v0.1.0...v0.2.0
+[v0.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v0.1.0

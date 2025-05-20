@@ -378,6 +378,9 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
             if intersects:
                 base_args["intersects"] = orjson.loads(unquote_plus(intersects))
 
+            if datetime:
+                base_args["datetime"] = self._format_datetime_range(datetime)
+
             if filter_expr:
                 base_args["filter"] = self.get_filter(filter_expr, filter_lang)
             aggregate_request = EsAggregationExtensionPostRequest(**base_args)
@@ -465,7 +468,7 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
 
         if aggregate_request.filter_expr:
             try:
-                search = self.database.apply_cql2_filter(
+                search = await self.database.apply_cql2_filter(
                     search, aggregate_request.filter_expr
                 )
             except Exception as e:

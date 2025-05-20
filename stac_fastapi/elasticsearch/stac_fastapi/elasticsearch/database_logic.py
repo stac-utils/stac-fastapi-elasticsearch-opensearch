@@ -3,29 +3,34 @@
 import asyncio
 import json
 import logging
-import os
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from copy import deepcopy
-from typing import (
-    Any,
-    Dict,
-    Iterable,
-    List,
-    Literal,
-    Optional,
-    Protocol,
-    Tuple,
-    Type,
-    Union,
-)
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Type
 
 import attr
-from elasticsearch_dsl import Q, Search
+import elasticsearch.helpers as helpers
+from elasticsearch.dsl import Q, Search
+from elasticsearch.exceptions import BadRequestError
+from elasticsearch.exceptions import NotFoundError as ESNotFoundError
 from fastapi import HTTPException
-from pydantic import TypeAdapter
 from starlette.requests import Request
 
-from elasticsearch import exceptions, helpers  # type: ignore
+from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
+from stac_fastapi.core.database_logic import (
+    COLLECTIONS_INDEX,
+    DEFAULT_SORT,
+    ES_COLLECTIONS_MAPPINGS,
+    ES_ITEMS_MAPPINGS,
+    ES_ITEMS_SETTINGS,
+    ITEM_INDICES,
+    ITEMS_INDEX_PREFIX,
+    Geometry,
+    index_alias_by_collection_id,
+    index_by_collection_id,
+    indices,
+    mk_actions,
+    mk_item_id,
+)
 from stac_fastapi.core.extensions import filter
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.utilities import (
@@ -33,6 +38,7 @@ from stac_fastapi.core.utilities import (
     bbox2polygon,
     merge_to_operations,
     operations_to_script,
+    validate_refresh,
 )
 from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
 from stac_fastapi.elasticsearch.config import (
@@ -50,168 +56,6 @@ from stac_fastapi.types.stac import (
 
 logger = logging.getLogger(__name__)
 
-NumType = Union[float, int]
-
-COLLECTIONS_INDEX = os.getenv("STAC_COLLECTIONS_INDEX", "collections")
-ITEMS_INDEX_PREFIX = os.getenv("STAC_ITEMS_INDEX_PREFIX", "items_")
-ES_INDEX_NAME_UNSUPPORTED_CHARS = {
-    "\\",
-    "/",
-    "*",
-    "?",
-    '"',
-    "<",
-    ">",
-    "|",
-    " ",
-    ",",
-    "#",
-    ":",
-}
-
-ITEM_INDICES = f"{ITEMS_INDEX_PREFIX}*,-*kibana*,-{COLLECTIONS_INDEX}*"
-
-DEFAULT_SORT = {
-    "properties.datetime": {"order": "desc"},
-    "id": {"order": "desc"},
-    "collection": {"order": "desc"},
-}
-
-ES_ITEMS_SETTINGS = {
-    "index": {
-        "sort.field": list(DEFAULT_SORT.keys()),
-        "sort.order": [v["order"] for v in DEFAULT_SORT.values()],
-    }
-}
-
-ES_MAPPINGS_DYNAMIC_TEMPLATES = [
-    # Common https://github.com/radiantearth/stac-spec/blob/master/item-spec/common-metadata.md
-    {
-        "descriptions": {
-            "match_mapping_type": "string",
-            "match": "description",
-            "mapping": {"type": "text"},
-        }
-    },
-    {
-        "titles": {
-            "match_mapping_type": "string",
-            "match": "title",
-            "mapping": {"type": "text"},
-        }
-    },
-    # Projection Extension https://github.com/stac-extensions/projection
-    {"proj_epsg": {"match": "proj:epsg", "mapping": {"type": "integer"}}},
-    {
-        "proj_projjson": {
-            "match": "proj:projjson",
-            "mapping": {"type": "object", "enabled": False},
-        }
-    },
-    {
-        "proj_centroid": {
-            "match": "proj:centroid",
-            "mapping": {"type": "geo_point"},
-        }
-    },
-    {
-        "proj_geometry": {
-            "match": "proj:geometry",
-            "mapping": {"type": "object", "enabled": False},
-        }
-    },
-    {
-        "no_index_href": {
-            "match": "href",
-            "mapping": {"type": "text", "index": False},
-        }
-    },
-    # Default all other strings not otherwise specified to keyword
-    {"strings": {"match_mapping_type": "string", "mapping": {"type": "keyword"}}},
-    {"numerics": {"match_mapping_type": "long", "mapping": {"type": "float"}}},
-]
-
-ES_ITEMS_MAPPINGS = {
-    "numeric_detection": False,
-    "dynamic_templates": ES_MAPPINGS_DYNAMIC_TEMPLATES,
-    "properties": {
-        "id": {"type": "keyword"},
-        "collection": {"type": "keyword"},
-        "geometry": {"type": "geo_shape"},
-        "assets": {"type": "object", "enabled": False},
-        "links": {"type": "object", "enabled": False},
-        "properties": {
-            "type": "object",
-            "properties": {
-                # Common https://github.com/radiantearth/stac-spec/blob/master/item-spec/common-metadata.md
-                "datetime": {"type": "date"},
-                "start_datetime": {"type": "date"},
-                "end_datetime": {"type": "date"},
-                "created": {"type": "date"},
-                "updated": {"type": "date"},
-                # Satellite Extension https://github.com/stac-extensions/sat
-                "sat:absolute_orbit": {"type": "integer"},
-                "sat:relative_orbit": {"type": "integer"},
-            },
-        },
-    },
-}
-
-ES_COLLECTIONS_MAPPINGS = {
-    "numeric_detection": False,
-    "dynamic_templates": ES_MAPPINGS_DYNAMIC_TEMPLATES,
-    "properties": {
-        "id": {"type": "keyword"},
-        "extent.spatial.bbox": {"type": "long"},
-        "extent.temporal.interval": {"type": "date"},
-        "providers": {"type": "object", "enabled": False},
-        "links": {"type": "object", "enabled": False},
-        "item_assets": {"type": "object", "enabled": False},
-    },
-}
-
-
-def index_by_collection_id(collection_id: str) -> str:
-    """
-    Translate a collection id into an Elasticsearch index name.
-
-    Args:
-        collection_id (str): The collection id to translate into an index name.
-
-    Returns:
-        str: The index name derived from the collection id.
-    """
-    return f"{ITEMS_INDEX_PREFIX}{''.join(c for c in collection_id.lower() if c not in ES_INDEX_NAME_UNSUPPORTED_CHARS)}_{collection_id.encode('utf-8').hex()}"
-
-
-def index_alias_by_collection_id(collection_id: str) -> str:
-    """
-    Translate a collection id into an Elasticsearch index alias.
-
-    Args:
-        collection_id (str): The collection id to translate into an index alias.
-
-    Returns:
-        str: The index alias derived from the collection id.
-    """
-    return f"{ITEMS_INDEX_PREFIX}{''.join(c for c in collection_id if c not in ES_INDEX_NAME_UNSUPPORTED_CHARS)}"
-
-
-def indices(collection_ids: Optional[List[str]]) -> str:
-    """
-    Get a comma-separated string of index names for a given list of collection ids.
-
-    Args:
-        collection_ids: A list of collection ids.
-
-    Returns:
-        A string of comma-separated index names. If `collection_ids` is None, returns the default indices.
-    """
-    if collection_ids is None or collection_ids == []:
-        return ITEM_INDICES
-    else:
-        return ",".join([index_alias_by_collection_id(c) for c in collection_ids])
-
 
 async def create_index_templates() -> None:
     """
@@ -222,19 +66,18 @@ async def create_index_templates() -> None:
 
     """
     client = AsyncElasticsearchSettings().create_client
-    await client.indices.put_template(
+    await client.indices.put_index_template(
         name=f"template_{COLLECTIONS_INDEX}",
         body={
             "index_patterns": [f"{COLLECTIONS_INDEX}*"],
-            "mappings": ES_COLLECTIONS_MAPPINGS,
+            "template": {"mappings": ES_COLLECTIONS_MAPPINGS},
         },
     )
-    await client.indices.put_template(
+    await client.indices.put_index_template(
         name=f"template_{ITEMS_INDEX_PREFIX}",
         body={
             "index_patterns": [f"{ITEMS_INDEX_PREFIX}*"],
-            "settings": ES_ITEMS_SETTINGS,
-            "mappings": ES_ITEMS_MAPPINGS,
+            "template": {"settings": ES_ITEMS_SETTINGS, "mappings": ES_ITEMS_MAPPINGS},
         },
     )
     await client.close()
@@ -252,7 +95,7 @@ async def create_collection_index() -> None:
 
     await client.options(ignore_status=400).indices.create(
         index=f"{COLLECTIONS_INDEX}-000001",
-        aliases={COLLECTIONS_INDEX: {}},
+        body={"aliases": {COLLECTIONS_INDEX: {}}},
     )
     await client.close()
 
@@ -272,7 +115,7 @@ async def create_item_index(collection_id: str):
 
     await client.options(ignore_status=400).indices.create(
         index=f"{index_by_collection_id(collection_id)}-000001",
-        aliases={index_alias_by_collection_id(collection_id): {}},
+        body={"aliases": {index_alias_by_collection_id(collection_id): {}}},
     )
     await client.close()
 
@@ -296,60 +139,29 @@ async def delete_item_index(collection_id: str):
     await client.close()
 
 
-def mk_item_id(item_id: str, collection_id: str):
-    """Create the document id for an Item in Elasticsearch.
-
-    Args:
-        item_id (str): The id of the Item.
-        collection_id (str): The id of the Collection that the Item belongs to.
-
-    Returns:
-        str: The document id for the Item, combining the Item id and the Collection id, separated by a `|` character.
-    """
-    return f"{item_id}|{collection_id}"
-
-
-def mk_actions(collection_id: str, processed_items: List[Item]):
-    """Create Elasticsearch bulk actions for a list of processed items.
-
-    Args:
-        collection_id (str): The identifier for the collection the items belong to.
-        processed_items (List[Item]): The list of processed items to be bulk indexed.
-
-    Returns:
-        List[Dict[str, Union[str, Dict]]]: The list of bulk actions to be executed,
-        each action being a dictionary with the following keys:
-        - `_index`: the index to store the document in.
-        - `_id`: the document's identifier.
-        - `_source`: the source of the document.
-    """
-    return [
-        {
-            "_index": index_alias_by_collection_id(collection_id),
-            "_id": mk_item_id(item["id"], item["collection"]),
-            "_source": item,
-        }
-        for item in processed_items
-    ]
-
-
-# stac_pydantic classes extend _GeometryBase, which doesn't have a type field,
-# So create our own Protocol for typing
-# Union[ Point, MultiPoint, LineString, MultiLineString, Polygon, MultiPolygon, GeometryCollection]
-class Geometry(Protocol):  # noqa
-    type: str
-    coordinates: Any
-
-
 @attr.s
-class DatabaseLogic:
+class DatabaseLogic(BaseDatabaseLogic):
     """Database logic."""
 
-    client = AsyncElasticsearchSettings().create_client
-    sync_client = SyncElasticsearchSettings().create_client
+    async_settings: AsyncElasticsearchSettings = attr.ib(
+        factory=AsyncElasticsearchSettings
+    )
+    sync_settings: SyncElasticsearchSettings = attr.ib(
+        factory=SyncElasticsearchSettings
+    )
+
+    client = attr.ib(init=False)
+    sync_client = attr.ib(init=False)
+
+    def __attrs_post_init__(self):
+        """Initialize clients after the class is instantiated."""
+        self.client = self.async_settings.create_client
+        self.sync_client = self.sync_settings.create_client
 
     item_serializer: Type[ItemSerializer] = attr.ib(default=ItemSerializer)
-    collection_serializer: Type[CollectionSerializer] = attr.ib(default=CollectionSerializer)
+    collection_serializer: Type[CollectionSerializer] = attr.ib(
+        default=CollectionSerializer
+    )
 
     extensions: List[str] = attr.ib(default=attr.Factory(list))
 
@@ -383,9 +195,15 @@ class DatabaseLogic:
                 "size": 10000,
             }
         },
-        "sun_elevation_frequency": {"histogram": {"field": "properties.view:sun_elevation", "interval": 5}},
-        "sun_azimuth_frequency": {"histogram": {"field": "properties.view:sun_azimuth", "interval": 5}},
-        "off_nadir_frequency": {"histogram": {"field": "properties.view:off_nadir", "interval": 5}},
+        "sun_elevation_frequency": {
+            "histogram": {"field": "properties.view:sun_elevation", "interval": 5}
+        },
+        "sun_azimuth_frequency": {
+            "histogram": {"field": "properties.view:sun_azimuth", "interval": 5}
+        },
+        "off_nadir_frequency": {
+            "histogram": {"field": "properties.view:off_nadir", "interval": 5}
+        },
         "centroid_geohash_grid_frequency": {
             "geohash_grid": {
                 "field": "properties.proj:centroid",
@@ -441,7 +259,7 @@ class DatabaseLogic:
             body={
                 "sort": [{"id": {"order": "asc"}}],
                 "size": limit,
-                "search_after": search_after,
+                **({"search_after": search_after} if search_after is not None else {}),
             },
         )
 
@@ -481,9 +299,39 @@ class DatabaseLogic:
                 index=index_alias_by_collection_id(collection_id),
                 id=mk_item_id(item_id, collection_id),
             )
-        except exceptions.NotFoundError:
-            raise NotFoundError(f"Item {item_id} does not exist in Collection {collection_id}")
+        except ESNotFoundError:
+            raise NotFoundError(
+                f"Item {item_id} does not exist inside Collection {collection_id}"
+            )
         return item["_source"]
+
+    async def get_queryables_mapping(self, collection_id: str = "*") -> dict:
+        """Retrieve mapping of Queryables for search.
+
+        Args:
+            collection_id (str, optional): The id of the Collection the Queryables
+            belongs to. Defaults to "*".
+
+        Returns:
+            dict: A dictionary containing the Queryables mappings.
+        """
+        queryables_mapping = {}
+
+        mappings = await self.client.indices.get_mapping(
+            index=f"{ITEMS_INDEX_PREFIX}{collection_id}",
+        )
+
+        for mapping in mappings.values():
+            fields = mapping["mappings"].get("properties", {})
+            properties = fields.pop("properties", {}).get("properties", {}).keys()
+
+            for field_key in fields:
+                queryables_mapping[field_key] = field_key
+
+            for property_key in properties:
+                queryables_mapping[property_key] = f"properties.{property_key}"
+
+        return queryables_mapping
 
     @staticmethod
     def make_search():
@@ -501,8 +349,8 @@ class DatabaseLogic:
         return search.filter("terms", collection=collection_ids)
 
     @staticmethod
-    def apply_datetime_filter(search: Search, datetime_search):
-        """Apply a filter to search based on datetime field.
+    def apply_datetime_filter(search: Search, datetime_search: dict):
+        """Apply a filter to search on datetime, start_datetime, and end_datetime fields.
 
         Args:
             search (Search): The search object to filter.
@@ -511,11 +359,109 @@ class DatabaseLogic:
         Returns:
             Search: The filtered search object.
         """
+        should = []
+
+        # If the request is a single datetime return
+        # items with datetimes equal to the requested datetime OR
+        # the requested datetime is between their start and end datetimes
         if "eq" in datetime_search:
-            search = search.filter("term", **{"properties__datetime": datetime_search["eq"]})
+            should.extend(
+                [
+                    Q(
+                        "bool",
+                        filter=[
+                            Q(
+                                "term",
+                                properties__datetime=datetime_search["eq"],
+                            ),
+                        ],
+                    ),
+                    Q(
+                        "bool",
+                        filter=[
+                            Q(
+                                "range",
+                                properties__start_datetime={
+                                    "lte": datetime_search["eq"],
+                                },
+                            ),
+                            Q(
+                                "range",
+                                properties__end_datetime={
+                                    "gte": datetime_search["eq"],
+                                },
+                            ),
+                        ],
+                    ),
+                ]
+            )
+
+        # If the request is a date range return
+        # items with datetimes within the requested date range OR
+        # their startdatetime ithin the requested date range OR
+        # their enddatetime ithin the requested date range OR
+        # the requested daterange within their start and end datetimes
         else:
-            search = search.filter("range", properties__datetime={"lte": datetime_search["lte"]})
-            search = search.filter("range", properties__datetime={"gte": datetime_search["gte"]})
+            should.extend(
+                [
+                    Q(
+                        "bool",
+                        filter=[
+                            Q(
+                                "range",
+                                properties__datetime={
+                                    "gte": datetime_search["gte"],
+                                    "lte": datetime_search["lte"],
+                                },
+                            ),
+                        ],
+                    ),
+                    Q(
+                        "bool",
+                        filter=[
+                            Q(
+                                "range",
+                                properties__start_datetime={
+                                    "gte": datetime_search["gte"],
+                                    "lte": datetime_search["lte"],
+                                },
+                            ),
+                        ],
+                    ),
+                    Q(
+                        "bool",
+                        filter=[
+                            Q(
+                                "range",
+                                properties__end_datetime={
+                                    "gte": datetime_search["gte"],
+                                    "lte": datetime_search["lte"],
+                                },
+                            ),
+                        ],
+                    ),
+                    Q(
+                        "bool",
+                        filter=[
+                            Q(
+                                "range",
+                                properties__start_datetime={
+                                    "lte": datetime_search["gte"]
+                                },
+                            ),
+                            Q(
+                                "range",
+                                properties__end_datetime={
+                                    "gte": datetime_search["lte"]
+                                },
+                            ),
+                        ],
+                    ),
+                ]
+            )
+
+        search = search.query(Q("bool", filter=[Q("bool", should=should)]))
+
         return search
 
     @staticmethod
@@ -609,12 +555,15 @@ class DatabaseLogic:
         """Database logic to perform query for search endpoint."""
         if free_text_queries is not None:
             free_text_query_string = '" OR properties.\\*:"'.join(free_text_queries)
-            search = search.query("query_string", query=f'properties.\\*:"{free_text_query_string}"')
+            search = search.query(
+                "query_string", query=f'properties.\\*:"{free_text_query_string}"'
+            )
 
         return search
 
-    @staticmethod
-    def apply_cql2_filter(search: Search, filter_expr: Optional[Dict[str, Any]]):
+    async def apply_cql2_filter(
+        self, search: Search, _filter: Optional[Dict[str, Any]]
+    ):
         """
         Apply a CQL2 filter to an Elasticsearch Search object.
 
@@ -633,8 +582,8 @@ class DatabaseLogic:
             Search: The modified Search object with the filter applied if a filter is provided,
                     otherwise the original Search object.
         """
-        if filter_expr is not None:
-            es_query = filter.to_es(filter_expr)
+        if _filter is not None:
+            es_query = filter.to_es(await self.get_queryables_mapping(), _filter)
             search = search.query(es_query)
 
         return search
@@ -696,7 +645,7 @@ class DatabaseLogic:
                 ignore_unavailable=ignore_unavailable,
                 query=query,
                 sort=sort or DEFAULT_SORT,
-                search_after=search_after,
+                **({"search_after": search_after} if search_after is not None else {}),
                 size=size_limit,
             )
         )
@@ -711,7 +660,7 @@ class DatabaseLogic:
 
         try:
             es_response = await search_task
-        except exceptions.NotFoundError:
+        except ESNotFoundError:
             raise NotFoundError(f"Collections '{collection_ids}' do not exist")
 
         hits = es_response["hits"]["hits"]
@@ -722,7 +671,11 @@ class DatabaseLogic:
             if hits and (sort_array := hits[limit - 1].get("sort")):
                 next_token = urlsafe_b64encode(json.dumps(sort_array).encode()).decode()
 
-        matched = es_response["hits"]["total"]["value"] if es_response["hits"]["total"]["relation"] == "eq" else None
+        matched = (
+            es_response["hits"]["total"]["value"]
+            if es_response["hits"]["total"]["relation"] == "eq"
+            else None
+        )
         if count_task.done():
             try:
                 matched = count_task.result().get("count")
@@ -790,7 +743,7 @@ class DatabaseLogic:
 
         try:
             db_response = await search_task
-        except exceptions.NotFoundError:
+        except ESNotFoundError:
             raise NotFoundError(f"Collections '{collection_ids}' do not exist")
 
         return db_response
@@ -802,7 +755,9 @@ class DatabaseLogic:
         if not await self.client.exists(index=COLLECTIONS_INDEX, id=collection_id):
             raise NotFoundError(f"Collection {collection_id} does not exist")
 
-    async def prep_create_item(self, item: Item, base_url: str, exist_ok: bool = False) -> Item:
+    async def async_prep_create_item(
+        self, item: Item, base_url: str, exist_ok: bool = False
+    ) -> Item:
         """
         Preps an item for insertion into the database.
 
@@ -824,49 +779,129 @@ class DatabaseLogic:
             index=index_alias_by_collection_id(item["collection"]),
             id=mk_item_id(item["id"], item["collection"]),
         ):
-            raise ConflictError(f"Item {item['id']} in collection {item['collection']} already exists")
+            raise ConflictError(
+                f"Item {item['id']} in collection {item['collection']} already exists"
+            )
 
         return self.item_serializer.stac_to_db(item, base_url)
 
-    def sync_prep_create_item(self, item: Item, base_url: str, exist_ok: bool = False) -> Item:
+    async def bulk_async_prep_create_item(
+        self, item: Item, base_url: str, exist_ok: bool = False
+    ) -> Item:
         """
         Prepare an item for insertion into the database.
 
-        This method performs pre-insertion preparation on the given `item`,
-        such as checking if the collection the item belongs to exists,
-        and optionally verifying that an item with the same ID does not already exist in the database.
+        This method performs pre-insertion preparation on the given `item`, such as:
+        - Verifying that the collection the item belongs to exists.
+        - Optionally checking if an item with the same ID already exists in the database.
+        - Serializing the item into a database-compatible format.
 
         Args:
-            item (Item): The item to be inserted into the database.
-            base_url (str): The base URL used for constructing URLs for the item.
-            exist_ok (bool): Indicates whether the item can exist already.
+            item (Item): The item to be prepared for insertion.
+            base_url (str): The base URL used to construct the item's self URL.
+            exist_ok (bool): Indicates whether the item can already exist in the database.
+                            If False, a `ConflictError` is raised if the item exists.
 
         Returns:
-            Item: The item after preparation is done.
+            Item: The prepared item, serialized into a database-compatible format.
 
         Raises:
             NotFoundError: If the collection that the item belongs to does not exist in the database.
-            ConflictError: If an item with the same ID already exists in the collection.
+            ConflictError: If an item with the same ID already exists in the collection and `exist_ok` is False,
+                        and `RAISE_ON_BULK_ERROR` is set to `true`.
         """
-        item_id = item["id"]
-        collection_id = item["collection"]
-        if not self.sync_client.exists(index=COLLECTIONS_INDEX, id=collection_id):
-            raise NotFoundError(f"Collection {collection_id} does not exist")
+        logger.debug(f"Preparing item {item['id']} in collection {item['collection']}.")
 
-        if not exist_ok and self.sync_client.exists(
-            index=index_alias_by_collection_id(collection_id),
-            id=mk_item_id(item_id, collection_id),
+        # Check if the collection exists
+        await self.check_collection_exists(collection_id=item["collection"])
+
+        # Check if the item already exists in the database
+        if not exist_ok and await self.client.exists(
+            index=index_alias_by_collection_id(item["collection"]),
+            id=mk_item_id(item["id"], item["collection"]),
         ):
-            raise ConflictError(f"Item {item_id} in collection {collection_id} already exists")
+            error_message = (
+                f"Item {item['id']} in collection {item['collection']} already exists."
+            )
+            if self.async_settings.raise_on_bulk_error:
+                raise ConflictError(error_message)
+            else:
+                logger.warning(
+                    f"{error_message} Continuing as `RAISE_ON_BULK_ERROR` is set to false."
+                )
 
-        return self.item_serializer.stac_to_db(item, base_url)
+        # Serialize the item into a database-compatible format
+        prepped_item = self.item_serializer.stac_to_db(item, base_url)
+        logger.debug(f"Item {item['id']} prepared successfully.")
+        return prepped_item
 
-    async def create_item(self, item: Item, refresh: bool = False):
+    def bulk_sync_prep_create_item(
+        self, item: Item, base_url: str, exist_ok: bool = False
+    ) -> Item:
+        """
+        Prepare an item for insertion into the database.
+
+        This method performs pre-insertion preparation on the given `item`, such as:
+        - Verifying that the collection the item belongs to exists.
+        - Optionally checking if an item with the same ID already exists in the database.
+        - Serializing the item into a database-compatible format.
+
+        Args:
+            item (Item): The item to be prepared for insertion.
+            base_url (str): The base URL used to construct the item's self URL.
+            exist_ok (bool): Indicates whether the item can already exist in the database.
+                            If False, a `ConflictError` is raised if the item exists.
+
+        Returns:
+            Item: The prepared item, serialized into a database-compatible format.
+
+        Raises:
+            NotFoundError: If the collection that the item belongs to does not exist in the database.
+            ConflictError: If an item with the same ID already exists in the collection and `exist_ok` is False,
+                        and `RAISE_ON_BULK_ERROR` is set to `true`.
+        """
+        logger.debug(f"Preparing item {item['id']} in collection {item['collection']}.")
+
+        # Check if the collection exists
+        if not self.sync_client.exists(index=COLLECTIONS_INDEX, id=item["collection"]):
+            raise NotFoundError(f"Collection {item['collection']} does not exist")
+
+        # Check if the item already exists in the database
+        if not exist_ok and self.sync_client.exists(
+            index=index_alias_by_collection_id(item["collection"]),
+            id=mk_item_id(item["id"], item["collection"]),
+        ):
+            error_message = (
+                f"Item {item['id']} in collection {item['collection']} already exists."
+            )
+            if self.sync_settings.raise_on_bulk_error:
+                raise ConflictError(error_message)
+            else:
+                logger.warning(
+                    f"{error_message} Continuing as `RAISE_ON_BULK_ERROR` is set to false."
+                )
+
+        # Serialize the item into a database-compatible format
+        prepped_item = self.item_serializer.stac_to_db(item, base_url)
+        logger.debug(f"Item {item['id']} prepared successfully.")
+        return prepped_item
+
+    async def create_item(
+        self,
+        item: Item,
+        base_url: str = "",
+        exist_ok: bool = False,
+        **kwargs: Any,
+    ):
         """Database logic for creating one item.
 
         Args:
             item (Item): The item to be created.
-            refresh (bool, optional): Refresh the index after performing the operation. Defaults to False.
+            base_url (str, optional): The base URL for the item. Defaults to an empty string.
+            exist_ok (bool, optional): Whether to allow the item to exist already. Defaults to False.
+            **kwargs: Additional keyword arguments.
+                - refresh (str): Whether to refresh the index after the operation. Can be "true", "false", or "wait_for".
+                - refresh (bool): Whether to refresh the index after the operation. Defaults to the value in `self.async_settings.database_refresh`.
 
         Raises:
             ConflictError: If the item already exists in the database.
@@ -874,18 +909,34 @@ class DatabaseLogic:
         Returns:
             None
         """
-        # todo: check if collection exists, but cache
+        # Extract item and collection IDs
         item_id = item["id"]
         collection_id = item["collection"]
-        es_resp = await self.client.index(
+
+        # Ensure kwargs is a dictionary
+        kwargs = kwargs or {}
+
+        # Resolve the `refresh` parameter
+        refresh = kwargs.get("refresh", self.async_settings.database_refresh)
+        refresh = validate_refresh(refresh)
+
+        # Log the creation attempt
+        logger.info(
+            f"Creating item {item_id} in collection {collection_id} with refresh={refresh}"
+        )
+
+        # Prepare the item for insertion
+        item = await self.async_prep_create_item(
+            item=item, base_url=base_url, exist_ok=exist_ok
+        )
+
+        # Index the item in the database
+        await self.client.index(
             index=index_alias_by_collection_id(collection_id),
             id=mk_item_id(item_id, collection_id),
             document=item,
             refresh=refresh,
         )
-
-        if (meta := es_resp.get("meta")) and meta.get("status") == 409:
-            raise ConflictError(f"Item {item_id} in collection {collection_id} already exists")
 
     async def merge_patch_item(
         self,
@@ -967,8 +1018,10 @@ class DatabaseLogic:
                 refresh=True,
             )
 
-        except exceptions.BadRequestError as exc:
-            raise HTTPException(status_code=400, detail=exc.info["error"]["caused_by"]) from exc
+        except BadRequestError as exc:
+            raise HTTPException(
+                status_code=400, detail=exc.info["error"]["caused_by"]
+            ) from exc
 
         item = await self.get_one_item(collection_id, item_id)
 
@@ -1008,44 +1061,100 @@ class DatabaseLogic:
 
         return item
 
-    async def delete_item(self, item_id: str, collection_id: str, refresh: bool = False):
+    async def delete_item(self, item_id: str, collection_id: str, **kwargs: Any):
         """Delete a single item from the database.
 
         Args:
             item_id (str): The id of the Item to be deleted.
             collection_id (str): The id of the Collection that the Item belongs to.
-            refresh (bool, optional): Whether to refresh the index after the deletion. Default is False.
+            **kwargs: Additional keyword arguments.
+                - refresh (str): Whether to refresh the index after the operation. Can be "true", "false", or "wait_for".
+                - refresh (bool): Whether to refresh the index after the operation. Defaults to the value in `self.async_settings.database_refresh`.
 
         Raises:
             NotFoundError: If the Item does not exist in the database.
+
+        Returns:
+            None
         """
+        # Ensure kwargs is a dictionary
+        kwargs = kwargs or {}
+
+        # Resolve the `refresh` parameter
+        refresh = kwargs.get("refresh", self.async_settings.database_refresh)
+        refresh = validate_refresh(refresh)
+
+        # Log the deletion attempt
+        logger.info(
+            f"Deleting item {item_id} from collection {collection_id} with refresh={refresh}"
+        )
+
         try:
+            # Perform the delete operation
             await self.client.delete(
                 index=index_alias_by_collection_id(collection_id),
                 id=mk_item_id(item_id, collection_id),
                 refresh=refresh,
             )
-        except exceptions.NotFoundError:
-            raise NotFoundError(f"Item {item_id} in collection {collection_id} not found")
+        except ESNotFoundError:
+            # Raise a custom NotFoundError if the item does not exist
+            raise NotFoundError(
+                f"Item {item_id} in collection {collection_id} not found"
+            )
 
-    async def create_collection(self, collection: Collection, refresh: bool = False):
+    async def get_items_mapping(self, collection_id: str) -> Dict[str, Any]:
+        """Get the mapping for the specified collection's items index.
+
+        Args:
+            collection_id (str): The ID of the collection to get items mapping for.
+
+        Returns:
+            Dict[str, Any]: The mapping information.
+        """
+        index_name = index_alias_by_collection_id(collection_id)
+        try:
+            mapping = await self.client.indices.get_mapping(
+                index=index_name, allow_no_indices=False
+            )
+            return mapping.body
+        except ESNotFoundError:
+            raise NotFoundError(f"Mapping for index {index_name} not found")
+
+    async def create_collection(self, collection: Collection, **kwargs: Any):
         """Create a single collection in the database.
 
         Args:
             collection (Collection): The Collection object to be created.
-            refresh (bool, optional): Whether to refresh the index after the creation. Default is False.
+            **kwargs: Additional keyword arguments.
+                - refresh (str): Whether to refresh the index after the operation. Can be "true", "false", or "wait_for".
+                - refresh (bool): Whether to refresh the index after the operation. Defaults to the value in `self.async_settings.database_refresh`.
 
         Raises:
             ConflictError: If a Collection with the same id already exists in the database.
+
+        Returns:
+            None
 
         Notes:
             A new index is created for the items in the Collection using the `create_item_index` function.
         """
         collection_id = collection["id"]
 
+        # Ensure kwargs is a dictionary
+        kwargs = kwargs or {}
+
+        # Resolve the `refresh` parameter
+        refresh = kwargs.get("refresh", self.async_settings.database_refresh)
+        refresh = validate_refresh(refresh)
+
+        # Log the creation attempt
+        logger.info(f"Creating collection {collection_id} with refresh={refresh}")
+
+        # Check if the collection already exists
         if await self.client.exists(index=COLLECTIONS_INDEX, id=collection_id):
             raise ConflictError(f"Collection {collection_id} already exists")
 
+        # Index the collection in the database
         await self.client.index(
             index=COLLECTIONS_INDEX,
             id=collection_id,
@@ -1053,6 +1162,7 @@ class DatabaseLogic:
             refresh=refresh,
         )
 
+        # Create the item index for the collection
         await create_item_index(collection_id)
 
     async def find_collection(self, collection_id: str) -> Collection:
@@ -1073,50 +1183,79 @@ class DatabaseLogic:
             collection as a `Collection` object. If the collection is not found, a `NotFoundError` is raised.
         """
         try:
-            collection = await self.client.get(index=COLLECTIONS_INDEX, id=collection_id)
-        except exceptions.NotFoundError:
+            collection = await self.client.get(
+                index=COLLECTIONS_INDEX, id=collection_id
+            )
+        except ESNotFoundError:
             raise NotFoundError(f"Collection {collection_id} not found")
 
         return collection["_source"]
 
-    async def update_collection(self, collection_id: str, collection: Collection, refresh: bool = False):
-        """Update a collection from the database.
+    async def update_collection(
+        self, collection_id: str, collection: Collection, **kwargs: Any
+    ):
+        """Update a collection in the database.
 
         Args:
-            self: The instance of the object calling this function.
             collection_id (str): The ID of the collection to be updated.
             collection (Collection): The Collection object to be used for the update.
+            **kwargs: Additional keyword arguments.
+                - refresh (str): Whether to refresh the index after the operation. Can be "true", "false", or "wait_for".
+                - refresh (bool): Whether to refresh the index after the operation. Defaults to the value in `self.async_settings.database_refresh`.
+        Returns:
+            None
 
         Raises:
-            NotFoundError: If the collection with the given `collection_id` is not
-            found in the database.
+            NotFoundError: If the collection with the given `collection_id` is not found in the database.
+            ConflictError: If a conflict occurs during the update.
 
         Notes:
             This function updates the collection in the database using the specified
-            `collection_id` and with the collection specified in the `Collection` object.
-            If the collection is not found, a `NotFoundError` is raised.
+            `collection_id` and the provided `Collection` object. If the collection ID
+            changes, the function creates a new collection, reindexes the items, and deletes
+            the old collection.
         """
+        # Ensure kwargs is a dictionary
+        kwargs = kwargs or {}
+
+        # Resolve the `refresh` parameter
+        refresh = kwargs.get("refresh", self.async_settings.database_refresh)
+        refresh = validate_refresh(refresh)
+
+        # Log the update attempt
+        logger.info(f"Updating collection {collection_id} with refresh={refresh}")
+
+        # Ensure the collection exists
         await self.find_collection(collection_id=collection_id)
 
+        # Handle collection ID change
         if collection_id != collection["id"]:
+            logger.info(
+                f"Collection ID change detected: {collection_id} -> {collection['id']}"
+            )
+
+            # Create the new collection
             await self.create_collection(collection, refresh=refresh)
 
+            # Reindex items from the old collection to the new collection
             await self.client.reindex(
                 body={
                     "dest": {"index": f"{ITEMS_INDEX_PREFIX}{collection['id']}"},
                     "source": {"index": f"{ITEMS_INDEX_PREFIX}{collection_id}"},
                     "script": {
                         "lang": "painless",
-                        "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection["id"]}'); ctx._source.collection = '{collection["id"]}' ;""",
+                        "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection["id"]}'); ctx._source.collection = '{collection["id"]}' ;""",  # noqa: E702
                     },
                 },
                 wait_for_completion=True,
                 refresh=refresh,
             )
 
+            # Delete the old collection
             await self.delete_collection(collection_id)
 
         else:
+            # Update the existing collection
             await self.client.index(
                 index=COLLECTIONS_INDEX,
                 id=collection_id,
@@ -1194,8 +1333,10 @@ class DatabaseLogic:
                 refresh=True,
             )
 
-        except exceptions.BadRequestError as exc:
-            raise HTTPException(status_code=400, detail=exc.info["error"]["caused_by"]) from exc
+        except BadRequestError as exc:
+            raise HTTPException(
+                status_code=400, detail=exc.info["error"]["caused_by"]
+            ) from exc
 
         collection = await self.find_collection(collection_id)
 
@@ -1211,69 +1352,170 @@ class DatabaseLogic:
 
         return collection
 
-    async def delete_collection(self, collection_id: str, refresh: bool = False):
+    async def delete_collection(self, collection_id: str, **kwargs: Any):
         """Delete a collection from the database.
 
         Parameters:
-            self: The instance of the object calling this function.
             collection_id (str): The ID of the collection to be deleted.
-            refresh (bool): Whether to refresh the index after the deletion (default: False).
+            kwargs (Any, optional): Additional keyword arguments, including `refresh`.
+                - refresh (str): Whether to refresh the index after the operation. Can be "true", "false", or "wait_for".
+                - refresh (bool): Whether to refresh the index after the operation. Defaults to the value in `self.async_settings.database_refresh`.
 
         Raises:
             NotFoundError: If the collection with the given `collection_id` is not found in the database.
 
+        Returns:
+            None
+
         Notes:
             This function first verifies that the collection with the specified `collection_id` exists in the database, and then
-            deletes the collection. If `refresh` is set to True, the index is refreshed after the deletion. Additionally, this
-            function also calls `delete_item_index` to delete the index for the items in the collection.
+            deletes the collection. If `refresh` is set to "true", "false", or "wait_for", the index is refreshed accordingly after
+            the deletion. Additionally, this function also calls `delete_item_index` to delete the index for the items in the collection.
         """
+        # Ensure kwargs is a dictionary
+        kwargs = kwargs or {}
+
+        refresh = kwargs.get("refresh", self.async_settings.database_refresh)
+        refresh = validate_refresh(refresh)
+
+        # Verify that the collection exists
         await self.find_collection(collection_id=collection_id)
-        await self.client.delete(index=COLLECTIONS_INDEX, id=collection_id, refresh=refresh)
+        await self.client.delete(
+            index=COLLECTIONS_INDEX, id=collection_id, refresh=refresh
+        )
         await delete_item_index(collection_id)
 
-    async def bulk_async(self, collection_id: str, processed_items: List[Item], refresh: bool = False) -> None:
-        """Perform a bulk insert of items into the database asynchronously.
+    async def bulk_async(
+        self,
+        collection_id: str,
+        processed_items: List[Item],
+        **kwargs: Any,
+    ) -> Tuple[int, List[Dict[str, Any]]]:
+        """
+        Perform a bulk insert of items into the database asynchronously.
 
         Args:
-            self: The instance of the object calling this function.
             collection_id (str): The ID of the collection to which the items belong.
             processed_items (List[Item]): A list of `Item` objects to be inserted into the database.
-            refresh (bool): Whether to refresh the index after the bulk insert (default: False).
+            **kwargs (Any): Additional keyword arguments, including:
+                - refresh (str, optional): Whether to refresh the index after the bulk insert.
+                Can be "true", "false", or "wait_for". Defaults to the value of `self.sync_settings.database_refresh`.
+                - refresh (bool, optional): Whether to refresh the index after the bulk insert.
+                - raise_on_error (bool, optional): Whether to raise an error if any of the bulk operations fail.
+                Defaults to the value of `self.async_settings.raise_on_bulk_error`.
+
+        Returns:
+            Tuple[int, List[Dict[str, Any]]]: A tuple containing:
+                - The number of successfully processed actions (`success`).
+                - A list of errors encountered during the bulk operation (`errors`).
 
         Notes:
-            This function performs a bulk insert of `processed_items` into the database using the specified `collection_id`. The
-            insert is performed asynchronously, and the event loop is used to run the operation in a separate executor. The
-            `mk_actions` function is called to generate a list of actions for the bulk insert. If `refresh` is set to True, the
-            index is refreshed after the bulk insert. The function does not return any value.
+            This function performs a bulk insert of `processed_items` into the database using the specified `collection_id`.
+            The insert is performed synchronously and blocking, meaning that the function does not return until the insert has
+            completed. The `mk_actions` function is called to generate a list of actions for the bulk insert. The `refresh`
+            parameter determines whether the index is refreshed after the bulk insert:
+                - "true": Forces an immediate refresh of the index.
+                - "false": Does not refresh the index immediately (default behavior).
+                - "wait_for": Waits for the next refresh cycle to make the changes visible.
         """
-        await helpers.async_bulk(
+        # Ensure kwargs is a dictionary
+        kwargs = kwargs or {}
+
+        # Resolve the `refresh` parameter
+        refresh = kwargs.get("refresh", self.async_settings.database_refresh)
+        refresh = validate_refresh(refresh)
+
+        # Log the bulk insert attempt
+        logger.info(
+            f"Performing bulk insert for collection {collection_id} with refresh={refresh}"
+        )
+
+        # Handle empty processed_items
+        if not processed_items:
+            logger.warning(f"No items to insert for collection {collection_id}")
+            return 0, []
+
+        # Perform the bulk insert
+        raise_on_error = self.async_settings.raise_on_bulk_error
+        success, errors = await helpers.async_bulk(
             self.client,
             mk_actions(collection_id, processed_items),
             refresh=refresh,
-            raise_on_error=False,
+            raise_on_error=raise_on_error,
         )
 
-    def bulk_sync(self, collection_id: str, processed_items: List[Item], refresh: bool = False) -> None:
-        """Perform a bulk insert of items into the database synchronously.
+        # Log the result
+        logger.info(
+            f"Bulk insert completed for collection {collection_id}: {success} successes, {len(errors)} errors"
+        )
+
+        return success, errors
+
+    def bulk_sync(
+        self,
+        collection_id: str,
+        processed_items: List[Item],
+        **kwargs: Any,
+    ) -> Tuple[int, List[Dict[str, Any]]]:
+        """
+        Perform a bulk insert of items into the database synchronously.
 
         Args:
-            self: The instance of the object calling this function.
             collection_id (str): The ID of the collection to which the items belong.
             processed_items (List[Item]): A list of `Item` objects to be inserted into the database.
-            refresh (bool): Whether to refresh the index after the bulk insert (default: False).
+            **kwargs (Any): Additional keyword arguments, including:
+                - refresh (str, optional): Whether to refresh the index after the bulk insert.
+                Can be "true", "false", or "wait_for". Defaults to the value of `self.sync_settings.database_refresh`.
+                - refresh (bool, optional): Whether to refresh the index after the bulk insert.
+                - raise_on_error (bool, optional): Whether to raise an error if any of the bulk operations fail.
+                Defaults to the value of `self.async_settings.raise_on_bulk_error`.
+
+        Returns:
+            Tuple[int, List[Dict[str, Any]]]: A tuple containing:
+                - The number of successfully processed actions (`success`).
+                - A list of errors encountered during the bulk operation (`errors`).
 
         Notes:
-            This function performs a bulk insert of `processed_items` into the database using the specified `collection_id`. The
-            insert is performed synchronously and blocking, meaning that the function does not return until the insert has
-            completed. The `mk_actions` function is called to generate a list of actions for the bulk insert. If `refresh` is set to
-            True, the index is refreshed after the bulk insert. The function does not return any value.
+            This function performs a bulk insert of `processed_items` into the database using the specified `collection_id`.
+            The insert is performed synchronously and blocking, meaning that the function does not return until the insert has
+            completed. The `mk_actions` function is called to generate a list of actions for the bulk insert. The `refresh`
+            parameter determines whether the index is refreshed after the bulk insert:
+                - "true": Forces an immediate refresh of the index.
+                - "false": Does not refresh the index immediately (default behavior).
+                - "wait_for": Waits for the next refresh cycle to make the changes visible.
         """
-        helpers.bulk(
+        # Ensure kwargs is a dictionary
+        kwargs = kwargs or {}
+
+        # Resolve the `refresh` parameter
+        refresh = kwargs.get("refresh", self.async_settings.database_refresh)
+        refresh = validate_refresh(refresh)
+
+        # Log the bulk insert attempt
+        logger.info(
+            f"Performing bulk insert for collection {collection_id} with refresh={refresh}"
+        )
+
+        # Handle empty processed_items
+        if not processed_items:
+            logger.warning(f"No items to insert for collection {collection_id}")
+            return 0, []
+
+        # Perform the bulk insert
+        raise_on_error = self.sync_settings.raise_on_bulk_error
+        success, errors = helpers.bulk(
             self.sync_client,
             mk_actions(collection_id, processed_items),
             refresh=refresh,
-            raise_on_error=False,
+            raise_on_error=raise_on_error,
         )
+
+        # Log the result
+        logger.info(
+            f"Bulk insert completed for collection {collection_id}: {success} successes, {len(errors)} errors"
+        )
+
+        return success, errors
 
     # DANGER
     async def delete_items(self) -> None:

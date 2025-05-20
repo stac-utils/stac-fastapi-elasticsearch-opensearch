@@ -6,29 +6,28 @@ with open("README.md") as f:
     desc = f.read()
 
 install_requires = [
-    "stac-fastapi.core==3.2.4",
-    "elasticsearch[async]==8.11.0",
-    "elasticsearch-dsl==8.11.0",
-    "uvicorn",
-    "starlette",
+    "stac-fastapi-core==4.2.0",
+    "elasticsearch[async]~=8.18.0",
+    "uvicorn~=0.23.0",
+    "starlette>=0.35.0,<0.36.0",
 ]
 
 extra_reqs = {
     "dev": [
-        "pytest",
-        "pytest-cov",
-        "pytest-asyncio",
-        "pre-commit",
-        "requests",
-        "ciso8601",
-        "httpx<=0.27.2",
+        "pytest~=7.0.0",
+        "pytest-cov~=4.0.0",
+        "pytest-asyncio~=0.21.0",
+        "pre-commit~=3.0.0",
+        "requests>=2.32.0,<3.0.0",
+        "ciso8601~=2.3.0",
+        "httpx>=0.24.0,<0.28.0",
     ],
-    "docs": ["mkdocs", "mkdocs-material", "pdocs"],
-    "server": ["uvicorn[standard]==0.19.0"],
+    "docs": ["mkdocs~=1.4.0", "mkdocs-material~=9.0.0", "pdocs~=1.2.0"],
+    "server": ["uvicorn[standard]~=0.23.0"],
 }
 
 setup(
-    name="stac_fastapi.elasticsearch",
+    name="stac_fastapi_elasticsearch",
     description="An implementation of STAC API based on the FastAPI framework with both Elasticsearch and Opensearch.",
     long_description=desc,
     long_description_content_type="text/markdown",

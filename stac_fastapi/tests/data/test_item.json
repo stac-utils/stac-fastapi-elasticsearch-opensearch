@@ -35,6 +35,8 @@
     },
     "properties": {
         "datetime": "2020-02-12T12:30:22Z",
+        "start_datetime": "2020-02-08T12:30:22Z",
+        "end_datetime": "2020-02-16T12:30:22Z",
         "landsat:scene_id": "LC82081612020043LGN00",
         "landsat:row": "161",
         "gsd": 15,
@@ -131,10 +133,6 @@
         "view:off_nadir": 0,
         "height": 2500,
         "width": 2500,
-        "area": [
-            2500,
-            -200
-        ],
         "proj:centroid": {
             "lat": -33.168923093262876,
             "lon": 150.86362466374058
