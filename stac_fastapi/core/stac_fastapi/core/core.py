@@ -42,6 +42,8 @@ from stac_fastapi.types.search import BaseSearchPostRequest
 logger = logging.getLogger(__name__)
 
 NumType = Union[float, int]
+partialItemValidator = TypeAdapter(stac_types.PartialItem)
+partialCollectionValidator = TypeAdapter(stac_types.PartialCollection)
 
 
 @attr.s
@@ -682,84 +684,35 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         patch: Union[stac_types.PartialItem, List[stac_types.PatchOperation]],
         **kwargs,
     ):
+        base_url = str(kwargs["request"].base_url)
+
         content_type = kwargs["request"].headers.get("content-type")
+
+        item = None
         if isinstance(patch, list) and content_type == "application/json-patch+json":
-            return await self.json_patch_item(
-                collection_id,
-                item_id,
-                patch,
-                **kwargs,
+            item = await self.database.json_patch_item(
+                collection_id=collection_id,
+                item_id=item_id,
+                operations=patch,
+                base_url=base_url,
             )
 
         if isinstance(patch, dict) and content_type in [
             "application/merge-patch+json",
             "application/json",
         ]:
-            partialItemValidator = TypeAdapter(stac_types.PartialItem)
-
             patch = partialItemValidator.validate_python(patch)
-            return await self.merge_patch_item(
-                collection_id,
-                item_id,
-                patch,
-                **kwargs,
+            item = await self.database.merge_patch_item(
+                collection_id=collection_id,
+                item_id=item_id,
+                item=patch,
+                base_url=base_url,
             )
 
+        if item:
+            return ItemSerializer.db_to_stac(item, base_url=base_url)
+
         raise NotImplementedError("Content-Type and body combination not implemented")
-
-    async def merge_patch_item(
-        self, collection_id: str, item_id: str, item: stac_types.PartialItem, **kwargs
-    ) -> Optional[stac_types.Item]:
-        """Patch an item in the collection following RF7396..
-
-        Args:
-            collection_id (str): The ID of the collection the item belongs to.
-            item_id (str): The ID of the item to be updated.
-            item (stac_types.PartialItem): The partial item data.
-            kwargs: Other optional arguments, including the request object.
-
-        Returns:
-            stac_types.Item: The patched item object.
-
-        """
-        base_url = str(kwargs["request"].base_url)
-
-        item = await self.database.merge_patch_item(
-            collection_id=collection_id,
-            item_id=item_id,
-            item=item,
-            base_url=base_url,
-        )
-        return ItemSerializer.db_to_stac(item, base_url=base_url)
-
-    async def json_patch_item(
-        self,
-        collection_id: str,
-        item_id: str,
-        operations: List[stac_types.PatchOperation],
-        **kwargs,
-    ) -> Optional[stac_types.Item]:
-        """Patch an item in the collection following RF6902.
-
-        Args:
-            collection_id (str): The ID of the collection the item belongs to.
-            item_id (str): The ID of the item to be updated.
-            operations (List): List of operations to run on item.
-            kwargs: Other optional arguments, including the request object.
-
-        Returns:
-            stac_types.Item: The patched item object.
-
-        """
-        base_url = str(kwargs["request"].base_url)
-
-        item = await self.database.json_patch_item(
-            collection_id=collection_id,
-            item_id=item_id,
-            base_url=base_url,
-            operations=operations,
-        )
-        return ItemSerializer.db_to_stac(item, base_url=base_url)
 
     @overrides
     async def delete_item(self, item_id: str, collection_id: str, **kwargs) -> Optional[stac_types.Item]:
@@ -851,76 +804,35 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             The patched collection.
         """
         content_type = kwargs["request"].headers.get("content-type")
+        base_url = str(kwargs["request"].base_url)
 
+        collection = None
         if isinstance(patch, list) and content_type == "application/json-patch+json":
-            return self.json_patch_collection(collection_id, patch, **kwargs)
+            collection = self.database.json_patch_collection(
+                collection_id=collection_id,
+                operations=patch,
+                base_url=base_url,
+            )
 
         if isinstance(patch, dict) and content_type in [
             "application/merge-patch+json",
             "application/json",
         ]:
-            partialCollectionValidator = TypeAdapter(stac_types.PartialCollection)
-
             patch = partialCollectionValidator.validate_python(patch)
-            return self.merge_patch_collection(
-                collection_id,
-                patch,
-                **kwargs,
+            collection = self.database.merge_patch_collection(
+                collection_id=collection_id,
+                collection=patch,
+                base_url=base_url,
+            )
+
+        if collection:
+            return CollectionSerializer.db_to_stac(
+                collection,
+                kwargs["request"],
+                extensions=[type(ext).__name__ for ext in self.database.extensions],
             )
 
         raise NotImplementedError("Content-Type and body combination not implemented")
-
-    async def merge_patch_collection(
-        self, collection_id: str, collection: stac_types.PartialCollection, **kwargs
-    ) -> Optional[stac_types.Collection]:
-        """Patch a collection following RF7396..
-
-        Args:
-            collection_id (str): The ID of the collection  to patch.
-            collection (stac_types.Collection): The partial collection data.
-            kwargs: Other optional arguments, including the request object.
-
-        Returns:
-            stac_types.Collection: The patched collection object.
-
-        """
-        collection = await self.database.merge_patch_collection(
-            collection_id=collection_id,
-            base_url=str(kwargs["request"].base_url),
-            collection=collection,
-        )
-
-        return CollectionSerializer.db_to_stac(
-            collection,
-            kwargs["request"],
-            extensions=[type(ext).__name__ for ext in self.database.extensions],
-        )
-
-    async def json_patch_collection(
-        self, collection_id: str, operations: List[stac_types.PatchOperation], **kwargs
-    ) -> Optional[stac_types.Collection]:
-        """Patch a collection following RF6902.
-
-        Args:
-            collection_id (str): The ID of the collection to patch.
-            operations (List): List of operations to run on collection.
-            kwargs: Other optional arguments, including the request object.
-
-        Returns:
-            stac_types.Collection: The patched collection object.
-
-        """
-        collection = await self.database.json_patch_collection(
-            collection_id=collection_id,
-            operations=operations,
-            base_url=str(kwargs["request"].base_url),
-        )
-
-        return CollectionSerializer.db_to_stac(
-            collection,
-            kwargs["request"],
-            extensions=[type(ext).__name__ for ext in self.database.extensions],
-        )
 
     @overrides
     async def delete_collection(self, collection_id: str, **kwargs) -> Optional[stac_types.Collection]:
