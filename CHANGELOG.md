@@ -5,11 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+
 ## [Unreleased]
 
 ### Added
 
+- Created new `sfeos_helpers` package to improve code organization and maintainability [#376](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/376)
+
 ### Changed
+
+- Refactored utility functions into dedicated modules within `sfeos_helpers` [#376](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/376):
+  - Created `database` package with specialized modules for index, document, and utility operations
+  - Created `aggregation` package for Elasticsearch/OpenSearch-specific aggregation functionality
+  - Moved shared logic from core module to helper functions for better code reuse
+  - Separated utility functions from constant mappings for clearer code organization
+- Improved README documentation with consistent formatting and enhanced sections [#376](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/376):
+  - Added a comprehensive Quick Start guide
+  - Reorganized sections for better navigation
+  - Reformatted content with bullet points for improved readability
+  - Added more detailed examples for API interaction
+  - Updated documentation to reflect recent code refactoring
 
 ### Fixed
 
