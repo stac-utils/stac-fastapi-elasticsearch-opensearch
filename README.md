@@ -1,9 +1,9 @@
-# stac-fastapi-elasticsearch-opensearch (sfeos)
+# sfeos - stac-fastapi-elasticsearch-opensearch
 
 <!-- markdownlint-disable MD033 MD041 -->
 
 <p align="left">
-  <img src="assets/sfeos-grid.png" width=1700>
+  <img src="assets/sfeos-banner.png" width=1700>
   <p align="left"><b>Elasticsearch and Opensearch backends for the stac-fastapi project.</b></p>
 </p>
 
