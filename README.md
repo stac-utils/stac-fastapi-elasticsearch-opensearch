@@ -11,10 +11,27 @@
   [![PyPI version](https://badge.fury.io/py/stac-fastapi-elasticsearch.svg)](https://badge.fury.io/py/stac-fastapi-elasticsearch) [![PyPI version](https://badge.fury.io/py/stac-fastapi-opensearch.svg)](https://badge.fury.io/py/stac-fastapi-opensearch)
   [![Join the chat at https://gitter.im/stac-fastapi-elasticsearch/community](https://badges.gitter.im/stac-fastapi-elasticsearch/community.svg)](https://gitter.im/stac-fastapi-elasticsearch/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
 
+## Sponsors & Supporters
+
+The following organizations have contributed time and/or funding to support the development of this project:
+
+<table>
+  <tr>
+    <td align="center" width="50%">
+      <a href="https://healy-hyperspatial.github.io/">
+        <img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/hh-logo-blue.png" alt="Healy Hyperspatial" height="120">
+      </a>
+    </td>
+    <td align="center" width="50%">
+      <a href="https://atomicmaps.io/">
+        <img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/am-logo-black.png" alt="Atomic Maps" height="120">
+      </a>
+    </td>
+  </tr>
+</table>
 
 ## Table of Contents
 
-- [Sponsors & Supporters](#sponsors--supporters)
 - [Documentation & Resources](#documentation--resources)
 - [Package Structure](#package-structure)
 - [Examples](#examples)
@@ -34,25 +51,6 @@
 - [Auth](#auth)
 - [Aggregation](#aggregation)
 - [Rate Limiting](#rate-limiting)
-
-## Sponsors & Supporters
-
-The following organizations have contributed time and/or funding to support the development of this project:
-
-<table>
-  <tr>
-    <td align="center" width="50%">
-      <a href="https://healy-hyperspatial.github.io/">
-        <img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/hh-logo-blue.png" alt="Healy Hyperspatial" height="120">
-      </a>
-    </td>
-    <td align="center" width="50%">
-      <a href="https://atomicmaps.io/">
-        <img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/am-logo-black.png" alt="Atomic Maps" height="120">
-      </a>
-    </td>
-  </tr>
-</table>
 
 ## Documentation & Resources
 
