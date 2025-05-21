@@ -3,7 +3,7 @@
 <!-- markdownlint-disable MD033 MD041 -->
 
 <p align="left">
-  <img src="assets/sfeos-banner.png" width=1000>
+  <img src="assets/sfeos-banner.png" width=1200>
   <p align="left"><b>Elasticsearch and Opensearch backends for the stac-fastapi project.</b></p>
 </p>
 
@@ -32,7 +32,7 @@ The following organizations have contributed time and/or funding to support the 
 
 ## Technologies
 
-This project is built on the following technologies:
+This project is built on the following technologies: STAC, stac-fastapi, FastAPI, Elasticsearch, Python
 
 <p align="left">
   <a href="https://stacspec.org/"><img src="assets/STAC-01.png" alt="STAC" height="100" hspace="10"></a>
