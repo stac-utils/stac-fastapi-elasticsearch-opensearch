@@ -11,6 +11,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 
+- Improved README documentation with consistent formatting and enhanced sections [#381](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/381):
+  - Added sfeos logo and banner
+  - Added a comprehensive Quick Start guide
+  - Reorganized sections for better navigation
+  - Reformatted content with bullet points for improved readability
+  - Added more detailed examples for API interaction
+
 ### Fixed
 
 
