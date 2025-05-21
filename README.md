@@ -1,5 +1,5 @@
 <h1>
-  sfeos - stac-fastapi-elasticsearch-opensearch
+  stac-fastapi-elasticsearch-opensearch
   <a href="https://stacspec.org/" style="vertical-align: middle; margin-left: 50px;">
     <img src="assets/STAC-01.png" alt="STAC Specification" height="100">
   </a>
