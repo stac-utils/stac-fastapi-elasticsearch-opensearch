@@ -71,6 +71,7 @@ class Context:
 class MockRequest:
     base_url = "http://test-server"
     url = "http://test-server/test"
+    headers = {}
     query_params = {}
 
     def __init__(
@@ -79,11 +80,13 @@ class MockRequest:
         url: str = "XXXX",
         app: Optional[Any] = None,
         query_params: Dict[str, Any] = {"limit": "10"},
+        headers: Dict[str, Any] = {"Content-type": "application/json"},
     ):
         self.method = method
         self.url = url
         self.app = app
         self.query_params = query_params
+        self.headers = headers
 
 
 class TestSettings(AsyncSettings):
@@ -127,9 +130,7 @@ def test_collection() -> Dict:
 
 
 async def create_collection(txn_client: TransactionsClient, collection: Dict) -> None:
-    await txn_client.create_collection(
-        api.Collection(**dict(collection)), request=MockRequest, refresh=True
-    )
+    await txn_client.create_collection(api.Collection(**dict(collection)), request=MockRequest, refresh=True)
 
 
 async def create_item(txn_client: TransactionsClient, item: Dict) -> None:
@@ -199,18 +200,14 @@ async def app():
     settings = AsyncSettings()
 
     aggregation_extension = AggregationExtension(
-        client=EsAsyncAggregationClient(
-            database=database, session=None, settings=settings
-        )
+        client=EsAsyncAggregationClient(database=database, session=None, settings=settings)
     )
     aggregation_extension.POST = EsAggregationExtensionPostRequest
     aggregation_extension.GET = EsAggregationExtensionGetRequest
 
     search_extensions = [
         TransactionExtension(
-            client=TransactionsClient(
-                database=database, session=None, settings=settings
-            ),
+            client=TransactionsClient(database=database, session=None, settings=settings),
             settings=settings,
         ),
         SortExtension(),
@@ -244,9 +241,7 @@ async def app_client(app):
     await create_index_templates()
     await create_collection_index()
 
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test-server"
-    ) as c:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test-server") as c:
         yield c
 
 
@@ -255,18 +250,14 @@ async def app_rate_limit():
     settings = AsyncSettings()
 
     aggregation_extension = AggregationExtension(
-        client=EsAsyncAggregationClient(
-            database=database, session=None, settings=settings
-        )
+        client=EsAsyncAggregationClient(database=database, session=None, settings=settings)
     )
     aggregation_extension.POST = EsAggregationExtensionPostRequest
     aggregation_extension.GET = EsAggregationExtensionGetRequest
 
     search_extensions = [
         TransactionExtension(
-            client=TransactionsClient(
-                database=database, session=None, settings=settings
-            ),
+            client=TransactionsClient(database=database, session=None, settings=settings),
             settings=settings,
         ),
         SortExtension(),
@@ -305,9 +296,7 @@ async def app_client_rate_limit(app_rate_limit):
     await create_index_templates()
     await create_collection_index()
 
-    async with AsyncClient(
-        transport=ASGITransport(app=app_rate_limit), base_url="http://test-server"
-    ) as c:
+    async with AsyncClient(transport=ASGITransport(app=app_rate_limit), base_url="http://test-server") as c:
         yield c
 
 
@@ -349,18 +338,14 @@ async def app_basic_auth():
     settings = AsyncSettings()
 
     aggregation_extension = AggregationExtension(
-        client=EsAsyncAggregationClient(
-            database=database, session=None, settings=settings
-        )
+        client=EsAsyncAggregationClient(database=database, session=None, settings=settings)
     )
     aggregation_extension.POST = EsAggregationExtensionPostRequest
     aggregation_extension.GET = EsAggregationExtensionGetRequest
 
     search_extensions = [
         TransactionExtension(
-            client=TransactionsClient(
-                database=database, session=None, settings=settings
-            ),
+            client=TransactionsClient(database=database, session=None, settings=settings),
             settings=settings,
         ),
         SortExtension(),
@@ -397,9 +382,7 @@ async def app_client_basic_auth(app_basic_auth):
     await create_index_templates()
     await create_collection_index()
 
-    async with AsyncClient(
-        transport=ASGITransport(app=app_basic_auth), base_url="http://test-server"
-    ) as c:
+    async with AsyncClient(transport=ASGITransport(app=app_basic_auth), base_url="http://test-server") as c:
         yield c
 
 
@@ -440,9 +423,7 @@ async def route_dependencies_app():
     settings = AsyncSettings()
     extensions = [
         TransactionExtension(
-            client=TransactionsClient(
-                database=database, session=None, settings=settings
-            ),
+            client=TransactionsClient(database=database, session=None, settings=settings),
             settings=settings,
         ),
         SortExtension(),
@@ -483,14 +464,10 @@ async def route_dependencies_client(route_dependencies_app):
 
 
 def build_test_app():
-    TRANSACTIONS_EXTENSIONS = get_bool_env(
-        "ENABLE_TRANSACTIONS_EXTENSIONS", default=True
-    )
+    TRANSACTIONS_EXTENSIONS = get_bool_env("ENABLE_TRANSACTIONS_EXTENSIONS", default=True)
     settings = AsyncSettings()
     aggregation_extension = AggregationExtension(
-        client=EsAsyncAggregationClient(
-            database=database, session=None, settings=settings
-        )
+        client=EsAsyncAggregationClient(database=database, session=None, settings=settings)
     )
     aggregation_extension.POST = EsAggregationExtensionPostRequest
     aggregation_extension.GET = EsAggregationExtensionGetRequest
@@ -506,9 +483,7 @@ def build_test_app():
         search_extensions.insert(
             0,
             TransactionExtension(
-                client=TransactionsClient(
-                    database=database, session=None, settings=settings
-                ),
+                client=TransactionsClient(database=database, session=None, settings=settings),
                 settings=settings,
             ),
         )
