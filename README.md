@@ -324,12 +324,14 @@ You can customize additional settings in your `.env` file:
   curl -X "PUT" "http://localhost:9200/_snapshot/my_fs_backup" \
        -H 'Content-Type: application/json; charset=utf-8' \
        -d $'{
-              "type": "fs",
-              "settings": {
-                  "location": "/usr/share/elasticsearch/snapshots/my_fs_backup"
-              }
+               "type": "fs",
+               "settings": {
+                   "location": "/usr/share/elasticsearch/snapshots/my_fs_backup"
+               }
   }'
   ```
+  - This creates a snapshot repository that stores files in the elasticsearch/snapshots directory in this git repo clone
+  - The elasticsearch.yml and compose files create a mapping from that directory to /usr/share/elasticsearch/snapshots within the Elasticsearch container and grant permissions for using it
 
 - **Creating a Snapshot**:
   ```shell
@@ -345,6 +347,9 @@ You can customize additional settings in your `.env` file:
     "indices": "items_my-collection"
   }'
   ```
+  - This creates a snapshot named my_snapshot_2 and waits for the action to be completed before returning
+  - This can also be done asynchronously by omitting the wait_for_completion parameter, and queried for status later
+  - The indices parameter determines which indices are snapshotted, and can include wildcards
 
 - **Viewing Snapshots**:
   ```shell
@@ -354,6 +359,7 @@ You can customize additional settings in your `.env` file:
   # View all snapshots
   curl http://localhost:9200/_snapshot/my_fs_backup/_all
   ```
+  - These commands allow you to check the status and details of your snapshots
 
 - **Restoring a Snapshot**:
   ```shell
@@ -368,6 +374,8 @@ You can customize additional settings in your `.env` file:
     "rename_pattern": "items_(.+)"
   }'
   ```
+  - This specific command will restore any indices that match items_* and rename them so that the new index name will be suffixed with -copy
+  - The rename_pattern and rename_replacement parameters allow you to restore indices under new names
 
 - **Updating Collection References**:
   ```shell
@@ -386,6 +394,8 @@ You can customize additional settings in your `.env` file:
     }
   }'
   ```
+  - After restoring, the item documents have been restored in the new index (e.g., my-collection-copy), but the value of the collection field in those documents is still the original value of my-collection
+  - This command updates these values to match the new collection name using Elasticsearch's Update By Query feature
 
 - **Creating a New Collection**:
   ```shell
@@ -395,6 +405,8 @@ You can customize additional settings in your `.env` file:
     "id": "my-collection-copy"
   }'
   ```
+  - The final step is to create a new collection through the API with the new name for each of the restored indices
+  - This gives you a copy of the collection that has a resource URI (/collections/my-collection-copy) and can be correctly queried by collection name
 
 ### Reindexing
 
@@ -404,6 +416,7 @@ You can customize additional settings in your `.env` file:
   - Apply changes to documents
   - Correct dynamically generated mappings
   - Transform data (e.g., lowercase identifiers)
+  - The index templates will make sure that manually created indices will also have the correct mappings and settings
 
 - **Example: Reindexing with Transformation**:
   ```shell
@@ -422,6 +435,8 @@ You can customize additional settings in your `.env` file:
       }
     }'
   ```
+  - In this example, we make a copy of an existing Item index but change the Item identifier to be lowercase
+  - The script parameter allows you to transform documents during the reindexing process
 
 - **Updating Aliases**:
   ```shell
@@ -444,6 +459,9 @@ You can customize additional settings in your `.env` file:
       ]
     }'
   ```
+  - If you are happy with the data in the newly created index, you can move the alias items_my-collection to the new index
+  - This makes the modified Items with lowercase identifiers visible to users accessing my-collection in the STAC API
+  - Using aliases allows you to switch between different index versions without changing the API endpoint
 
 ## Auth
 
