@@ -369,6 +369,7 @@ class EsAsyncAggregationClient(AsyncBaseAggregationClient):
                 "geometry_geohash_grid_frequency_precision": geometry_geohash_grid_frequency_precision,
                 "geometry_geotile_grid_frequency_precision": geometry_geotile_grid_frequency_precision,
                 "datetime_frequency_interval": datetime_frequency_interval,
+                "datetime": datetime,
             }
 
             if collection_id:
