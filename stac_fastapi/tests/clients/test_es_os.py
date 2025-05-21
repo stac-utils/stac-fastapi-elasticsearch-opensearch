@@ -243,10 +243,10 @@ async def test_merge_patch_item_add(ctx, core_client, txn_client):
     item = ctx.item
     collection_id = item["collection"]
     item_id = item["id"]
-    await txn_client.merge_patch_item(
+    await txn_client.patch_item(
         collection_id=collection_id,
         item_id=item_id,
-        item={"properties": {"foo": "bar", "ext:hello": "world"}},
+        patch={"properties": {"foo": "bar", "ext:hello": "world"}},
         request=MockRequest,
     )
 
@@ -262,10 +262,10 @@ async def test_merge_patch_item_remove(ctx, core_client, txn_client):
     item = ctx.item
     collection_id = item["collection"]
     item_id = item["id"]
-    await txn_client.merge_patch_item(
+    await txn_client.patch_item(
         collection_id=collection_id,
         item_id=item_id,
-        item={"properties": {"gsd": None, "proj:epsg": None}},
+        patch={"properties": {"gsd": None, "proj:epsg": None}},
         request=MockRequest,
     )
 
@@ -293,11 +293,11 @@ async def test_json_patch_item_add(ctx, core_client, txn_client):
         ),
     ]
 
-    await txn_client.json_patch_item(
+    await txn_client.patch_item(
         collection_id=collection_id,
         item_id=item_id,
-        operations=operations,
-        request=MockRequest,
+        patch=operations,
+        request=MockRequest(headers={"Content-type": "application/json-patch+json"}),
     )
 
     updated_item = await core_client.get_item(
@@ -326,11 +326,11 @@ async def test_json_patch_item_replace(ctx, core_client, txn_client):
         ),
     ]
 
-    await txn_client.json_patch_item(
+    await txn_client.patch_item(
         collection_id=collection_id,
         item_id=item_id,
-        operations=operations,
-        request=MockRequest,
+        patch=operations,
+        request=MockRequest(headers={"Content-type": "application/json-patch+json"}),
     )
 
     updated_item = await core_client.get_item(
@@ -359,11 +359,11 @@ async def test_json_patch_item_test(ctx, core_client, txn_client):
         ),
     ]
 
-    await txn_client.json_patch_item(
+    await txn_client.patch_item(
         collection_id=collection_id,
         item_id=item_id,
-        operations=operations,
-        request=MockRequest,
+        patch=operations,
+        request=MockRequest(headers={"Content-type": "application/json-patch+json"}),
     )
 
     updated_item = await core_client.get_item(
@@ -392,11 +392,11 @@ async def test_json_patch_item_move(ctx, core_client, txn_client):
         ),
     ]
 
-    await txn_client.json_patch_item(
+    await txn_client.patch_item(
         collection_id=collection_id,
         item_id=item_id,
-        operations=operations,
-        request=MockRequest,
+        patch=operations,
+        request=MockRequest(headers={"Content-type": "application/json-patch+json"}),
     )
 
     updated_item = await core_client.get_item(
@@ -427,11 +427,11 @@ async def test_json_patch_item_copy(ctx, core_client, txn_client):
         ),
     ]
 
-    await txn_client.json_patch_item(
+    await txn_client.patch_item(
         collection_id=collection_id,
         item_id=item_id,
-        operations=operations,
-        request=MockRequest,
+        patch=operations,
+        request=MockRequest(headers={"Content-type": "application/json-patch+json"}),
     )
 
     updated_item = await core_client.get_item(
@@ -456,11 +456,11 @@ async def test_json_patch_item_remove(ctx, core_client, txn_client):
         PatchRemove.model_validate({"op": "remove", "path": "/properties/area/1"}),
     ]
 
-    await txn_client.json_patch_item(
+    await txn_client.patch_item(
         collection_id=collection_id,
         item_id=item_id,
-        operations=operations,
-        request=MockRequest,
+        patch=operations,
+        request=MockRequest(headers={"Content-type": "application/json-patch+json"}),
     )
 
     updated_item = await core_client.get_item(
@@ -485,11 +485,13 @@ async def test_json_patch_item_test_wrong_value(ctx, core_client, txn_client):
 
     with pytest.raises(HTTPException):
 
-        await txn_client.json_patch_item(
+        await txn_client.patch_item(
             collection_id=collection_id,
             item_id=item_id,
-            operations=operations,
-            request=MockRequest,
+            patch=operations,
+            request=MockRequest(
+                headers={"Content-type": "application/json-patch+json"}
+            ),
         )
 
 
@@ -508,11 +510,13 @@ async def test_json_patch_item_replace_property_does_not_exists(
 
     with pytest.raises(HTTPException):
 
-        await txn_client.json_patch_item(
+        await txn_client.patch_item(
             collection_id=collection_id,
             item_id=item_id,
-            operations=operations,
-            request=MockRequest,
+            patch=operations,
+            request=MockRequest(
+                headers={"Content-type": "application/json-patch+json"}
+            ),
         )
 
 
@@ -529,11 +533,13 @@ async def test_json_patch_item_remove_property_does_not_exists(
 
     with pytest.raises(HTTPException):
 
-        await txn_client.json_patch_item(
+        await txn_client.patch_item(
             collection_id=collection_id,
             item_id=item_id,
-            operations=operations,
-            request=MockRequest,
+            patch=operations,
+            request=MockRequest(
+                headers={"Content-type": "application/json-patch+json"}
+            ),
         )
 
 
@@ -552,11 +558,13 @@ async def test_json_patch_item_move_property_does_not_exists(
 
     with pytest.raises(HTTPException):
 
-        await txn_client.json_patch_item(
+        await txn_client.patch_item(
             collection_id=collection_id,
             item_id=item_id,
-            operations=operations,
-            request=MockRequest,
+            patch=operations,
+            request=MockRequest(
+                headers={"Content-type": "application/json-patch+json"}
+            ),
         )
 
 
@@ -575,11 +583,13 @@ async def test_json_patch_item_copy_property_does_not_exists(
 
     with pytest.raises(HTTPException):
 
-        await txn_client.json_patch_item(
+        await txn_client.patch_item(
             collection_id=collection_id,
             item_id=item_id,
-            operations=operations,
-            request=MockRequest,
+            patch=operations,
+            request=MockRequest(
+                headers={"Content-type": "application/json-patch+json"}
+            ),
         )
 
 
@@ -640,9 +650,9 @@ async def test_merge_patch_collection_add(ctx, core_client, txn_client):
     collection = ctx.collection
     collection_id = collection["id"]
 
-    await txn_client.merge_patch_collection(
+    await txn_client.patch_collection(
         collection_id=collection_id,
-        collection={"summaries": {"foo": "bar", "hello": "world"}},
+        patch={"summaries": {"foo": "bar", "hello": "world"}},
         request=MockRequest,
     )
 
@@ -657,9 +667,9 @@ async def test_merge_patch_collection_add(ctx, core_client, txn_client):
 async def test_merge_patch_collection_remove(ctx, core_client, txn_client):
     collection = ctx.collection
     collection_id = collection["id"]
-    await txn_client.merge_patch_collection(
+    await txn_client.patch_collection(
         collection_id=collection_id,
-        collection={"summaries": {"gsd": None}},
+        patch={"summaries": {"gsd": None}},
         request=MockRequest,
     )
 
@@ -682,10 +692,10 @@ async def test_json_patch_collection_add(ctx, core_client, txn_client):
         ),
     ]
 
-    await txn_client.json_patch_collection(
+    await txn_client.patch_collection(
         collection_id=collection_id,
-        operations=operations,
-        request=MockRequest,
+        patch=operations,
+        request=MockRequest(headers={"Content-type": "application/json-patch+json"}),
     )
 
     updated_collection = await core_client.get_collection(
@@ -706,10 +716,10 @@ async def test_json_patch_collection_replace(ctx, core_client, txn_client):
         ),
     ]
 
-    await txn_client.json_patch_collection(
+    await txn_client.patch_collection(
         collection_id=collection_id,
-        operations=operations,
-        request=MockRequest,
+        patch=operations,
+        request=MockRequest(headers={"Content-type": "application/json-patch+json"}),
     )
 
     updated_collection = await core_client.get_collection(
@@ -729,10 +739,10 @@ async def test_json_patch_collection_test(ctx, core_client, txn_client):
         ),
     ]
 
-    await txn_client.json_patch_collection(
+    await txn_client.patch_collection(
         collection_id=collection_id,
-        operations=operations,
-        request=MockRequest,
+        patch=operations,
+        request=MockRequest(headers={"Content-type": "application/json-patch+json"}),
     )
 
     updated_collection = await core_client.get_collection(
@@ -752,10 +762,10 @@ async def test_json_patch_collection_move(ctx, core_client, txn_client):
         ),
     ]
 
-    await txn_client.json_patch_collection(
+    await txn_client.patch_collection(
         collection_id=collection_id,
-        operations=operations,
-        request=MockRequest,
+        patch=operations,
+        request=MockRequest(headers={"Content-type": "application/json-patch+json"}),
     )
 
     updated_collection = await core_client.get_collection(
@@ -776,10 +786,10 @@ async def test_json_patch_collection_copy(ctx, core_client, txn_client):
         ),
     ]
 
-    await txn_client.json_patch_collection(
+    await txn_client.patch_collection(
         collection_id=collection_id,
-        operations=operations,
-        request=MockRequest,
+        patch=operations,
+        request=MockRequest(headers={"Content-type": "application/json-patch+json"}),
     )
 
     updated_collection = await core_client.get_collection(
@@ -799,10 +809,10 @@ async def test_json_patch_collection_remove(ctx, core_client, txn_client):
         PatchRemove.model_validate({"op": "remove", "path": "/summaries/gsd"}),
     ]
 
-    await txn_client.json_patch_collection(
+    await txn_client.patch_collection(
         collection_id=collection_id,
-        operations=operations,
-        request=MockRequest,
+        patch=operations,
+        request=MockRequest(headers={"Content-type": "application/json-patch+json"}),
     )
 
     updated_collection = await core_client.get_collection(
@@ -824,10 +834,12 @@ async def test_json_patch_collection_test_wrong_value(ctx, core_client, txn_clie
 
     with pytest.raises(HTTPException):
 
-        await txn_client.json_patch_collection(
+        await txn_client.patch_collection(
             collection_id=collection_id,
-            operations=operations,
-            request=MockRequest,
+            patch=operations,
+            request=MockRequest(
+                headers={"Content-type": "application/json-patch+json"}
+            ),
         )
 
 
@@ -845,10 +857,12 @@ async def test_json_patch_collection_replace_property_does_not_exists(
 
     with pytest.raises(HTTPException):
 
-        await txn_client.json_patch_collection(
+        await txn_client.patch_collection(
             collection_id=collection_id,
-            operations=operations,
-            request=MockRequest,
+            patch=operations,
+            request=MockRequest(
+                headers={"Content-type": "application/json-patch+json"}
+            ),
         )
 
 
@@ -864,10 +878,12 @@ async def test_json_patch_collection_remove_property_does_not_exists(
 
     with pytest.raises(HTTPException):
 
-        await txn_client.json_patch_collection(
+        await txn_client.patch_collection(
             collection_id=collection_id,
-            operations=operations,
-            request=MockRequest,
+            patch=operations,
+            request=MockRequest(
+                headers={"Content-type": "application/json-patch+json"}
+            ),
         )
 
 
@@ -885,10 +901,12 @@ async def test_json_patch_collection_move_property_does_not_exists(
 
     with pytest.raises(HTTPException):
 
-        await txn_client.json_patch_collection(
+        await txn_client.patch_collection(
             collection_id=collection_id,
-            operations=operations,
-            request=MockRequest,
+            patch=operations,
+            request=MockRequest(
+                headers={"Content-type": "application/json-patch+json"}
+            ),
         )
 
 
@@ -906,8 +924,10 @@ async def test_json_patch_collection_copy_property_does_not_exists(
 
     with pytest.raises(HTTPException):
 
-        await txn_client.json_patch_collection(
+        await txn_client.patch_collection(
             collection_id=collection_id,
-            operations=operations,
-            request=MockRequest,
+            patch=operations,
+            request=MockRequest(
+                headers={"Content-type": "application/json-patch+json"}
+            ),
         )

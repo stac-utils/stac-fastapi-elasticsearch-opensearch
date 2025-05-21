@@ -1044,14 +1044,20 @@ class DatabaseLogic(BaseDatabaseLogic):
                 wait_for_completion=True,
                 refresh=True,
             )
+
+            await self.delete_item(
+                item_id=item_id,
+                collection_id=collection_id,
+                refresh=refresh,
+            )
+
             item["collection"] = new_collection_id
+            collection_id = new_collection_id
 
         if new_item_id:
             item["id"] = new_item_id
-            item = await self.prep_create_item(item=item, base_url=base_url)
+            item = await self.async_prep_create_item(item=item, base_url=base_url)
             await self.create_item(item=item, refresh=False)
-
-        if new_collection_id or new_item_id:
 
             await self.delete_item(
                 item_id=item_id,

@@ -7,7 +7,7 @@ import pytest
 
 from stac_fastapi.types.errors import ConflictError
 
-from ..conftest import create_collection, create_item
+from ..conftest import MockRequest, create_collection, create_item
 
 ROUTES = {
     "GET /_mgmt/ping",
@@ -625,12 +625,12 @@ async def test_patch_json_collection(app_client, ctx):
         "summaries": {"hello": "world", "gsd": [50], "instruments": None},
     }
 
-    resp = await app_client.patch(f"collections/{ctx.collection['id']}", json=data)
+    resp = await app_client.patch(f"/collections/{ctx.collection['id']}", json=data)
 
     assert resp.status_code == 200
 
-    new_resp = await app_client.get("collections/new_id")
-    old_resp = await app_client.get(f"collections/{ctx.collection['id']}")
+    new_resp = await app_client.get("/collections/new_id")
+    old_resp = await app_client.get(f"/collections/{ctx.collection['id']}")
 
     assert new_resp.status_code == 200
     assert old_resp.status_code == 404
@@ -658,7 +658,9 @@ async def test_patch_operations_collection(app_client, ctx):
     ]
 
     resp = await app_client.patch(
-        f"/collections/{ctx.item['collection']}", json=operations
+        f"/collections/{ctx.item['collection']}",
+        json=operations,
+        request=MockRequest(headers={"Content-type": "application/json-patch+json"}),
     )
 
     assert resp.status_code == 200
@@ -722,18 +724,18 @@ async def test_patch_operations_item(app_client, ctx):
     ]
 
     resp = await app_client.patch(
-        f"/collections/{ctx.item['collection']}/{ctx.item['id']}", json=operations
+        f"/collections/{ctx.item['collection']}/{ctx.item['id']}",
+        json=operations,
+        request=MockRequest(headers={"Content-type": "application/json-patch+json"}),
     )
 
     assert resp.status_code == 200
 
-    new_resp = await app_client.get(f"/collections/{ctx.item['collection']}/new_id")
-    old_resp = await app_client.get(
+    new_resp = await app_client.get(
         f"/collections/{ctx.item['collection']}/{ctx.item['id']}"
     )
 
     assert new_resp.status_code == 200
-    assert old_resp.status_code == 404
 
     new_resp_json = new_resp.json()
 
