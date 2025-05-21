@@ -1,9 +1,4 @@
-<h1>
-  stac-fastapi-elasticsearch-opensearch
-  <a href="https://stacspec.org/" style="vertical-align: middle; margin-left: 50px;">
-    <img src="assets/STAC-01.png" alt="STAC Specification" height="100">
-  </a>
-</h1>
+# stac-fastapi-elasticsearch-opensearch
 
 <!-- markdownlint-disable MD033 MD041 -->
 
@@ -34,6 +29,17 @@ The following organizations have contributed time and/or funding to support the 
     </td>
   </tr>
 </table>
+
+## Technologies
+
+This project is built on the following technologies:
+
+<p align="left">
+  <a href="https://stacspec.org/"><img src="assets/STAC-01.png" alt="STAC" height="100" hspace="10"></a>
+  <a href="https://www.python.org/"><img src="assets/python.png" alt="Python" height="80" hspace="10"></a>
+  <a href="https://fastapi.tiangolo.com/"><img src="assets/fastapi.svg" alt="FastAPI" height="80" hspace="10"></a>
+  <a href="https://www.elastic.co/"><img src="assets/elasticsearch.png" alt="Elasticsearch" height="80" hspace="10"></a>
+</p>
 
 ## Table of Contents
 
