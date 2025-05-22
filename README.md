@@ -8,8 +8,11 @@
 </p>
 
   
-  [![PyPI version](https://badge.fury.io/py/stac-fastapi-elasticsearch.svg)](https://badge.fury.io/py/stac-fastapi-elasticsearch) [![PyPI version](https://badge.fury.io/py/stac-fastapi-opensearch.svg)](https://badge.fury.io/py/stac-fastapi-opensearch)
-  [![Join the chat at https://gitter.im/stac-fastapi-elasticsearch/community](https://badges.gitter.im/stac-fastapi-elasticsearch/community.svg)](https://gitter.im/stac-fastapi-elasticsearch/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+  [![PyPI version](https://badge.fury.io/py/stac-fastapi-elasticsearch.svg)](https://badge.fury.io/py/stac-fastapi-elasticsearch)
+  [![CI Status](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/workflows/sfeos/badge.svg)](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/actions?query=workflow%3Asfeos)
+  [![License](https://img.shields.io/github/license/stac-utils/stac-fastapi-elasticsearch-opensearch)](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/blob/main/LICENSE)
+  [![Python](https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue.svg)](https://www.python.org/)
+  [![GitHub stars](https://img.shields.io/github/stars/stac-utils/stac-fastapi-elasticsearch-opensearch.svg)](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/stargazers)
 
 ## Sponsors & Supporters
 
