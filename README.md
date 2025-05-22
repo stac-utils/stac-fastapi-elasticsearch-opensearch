@@ -3,7 +3,7 @@
 <!-- markdownlint-disable MD033 MD041 -->
 
 <p align="left">
-  <img src="assets/sfeos-banner.png" width=1200>
+  <img src="assets/sfeos-bw.png" width=1200>
   <p align="left"><b>Elasticsearch and Opensearch backends for the stac-fastapi project.</b></p>
 </p>
 
