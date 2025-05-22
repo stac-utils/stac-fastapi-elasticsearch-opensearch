@@ -1,116 +1,166 @@
-# stac-fastapi-elasticsearch-opensearch (sfeos)
+# stac-fastapi-elasticsearch-opensearch
 
 <!-- markdownlint-disable MD033 MD041 -->
 
+
+
 <p align="left">
-  <img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/stac-030-long.png" width=700>
-  <p align="left"><b>Elasticsearch and Opensearch backends for the stac-fastapi project.</b></p>
+  <img src="assets/sfeos.png" width=1200>
 </p>
+<p align="left"><b>Elasticsearch and Opensearch backends for the stac-fastapi project.</b></p>
+
+  [![Downloads](https://static.pepy.tech/badge/stac-fastapi-core?color=blue)](https://pepy.tech/project/stac-fastapi-core)
+  [![GitHub contributors](https://img.shields.io/github/contributors/stac-utils/stac-fastapi-elasticsearch-opensearch?color=blue)](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/graphs/contributors)
+  [![GitHub stars](https://img.shields.io/github/stars/stac-utils/stac-fastapi-elasticsearch-opensearch.svg?color=blue)](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/stargazers)
+  [![GitHub forks](https://img.shields.io/github/forks/stac-utils/stac-fastapi-elasticsearch-opensearch.svg?color=blue)](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/network/members)
+   [![PyPI version](https://img.shields.io/pypi/v/stac-fastapi-elasticsearch.svg?color=blue)](https://pypi.org/project/stac-fastapi-elasticsearch/)
+  [![STAC](https://img.shields.io/badge/STAC-1.1.0-blue.svg)](https://github.com/radiantearth/stac-spec/tree/v1.1.0)
+  [![stac-fastapi](https://img.shields.io/badge/stac--fastapi-5.2.0-blue.svg)](https://github.com/stac-utils/stac-fastapi)
 
   
-  [![PyPI version](https://badge.fury.io/py/stac-fastapi-elasticsearch.svg)](https://badge.fury.io/py/stac-fastapi-elasticsearch) [![PyPI version](https://badge.fury.io/py/stac-fastapi-opensearch.svg)](https://badge.fury.io/py/stac-fastapi-opensearch)
-  [![Join the chat at https://gitter.im/stac-fastapi-elasticsearch/community](https://badges.gitter.im/stac-fastapi-elasticsearch/community.svg)](https://gitter.im/stac-fastapi-elasticsearch/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+<br>
+
 
 ## Sponsors & Supporters
 
 The following organizations have contributed time and/or funding to support the development of this project:
 
-<table>
-  <tr>
-    <td align="center" width="50%">
-      <a href="https://healy-hyperspatial.github.io/">
-        <img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/hh-logo-blue.png" alt="Healy Hyperspatial" height="120">
-      </a>
-    </td>
-    <td align="center" width="50%">
-      <a href="https://atomicmaps.io/">
-        <img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/am-logo-black.png" alt="Atomic Maps" height="120">
-      </a>
-    </td>
-  </tr>
-</table>
+<p align="left">
+  <a href="https://healy-hyperspatial.github.io/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/hh-logo-blue.png" alt="Healy Hyperspatial" height="120" hspace="20"></a>
+  <a href="https://atomicmaps.io/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/am-logo-black.png" alt="Atomic Maps" height="120" hspace="20"></a>
+</p>
 
----
+## Technologies
 
-**Online Documentation**: [https://stac-utils.github.io/stac-fastapi-elasticsearch-opensearch](https://stac-utils.github.io/stac-fastapi-elasticsearch-opensearch/)
+This project is built on the following technologies: STAC, stac-fastapi, FastAPI, Elasticsearch, Python, OpenSearch
 
-**Source Code**: [https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch)
+<p align="left">
+  <a href="https://stacspec.org/"><img src="assets/STAC-01.png" alt="STAC" height="100" hspace="10"></a>
+  <a href="https://www.python.org/"><img src="assets/python.png" alt="Python" height="80" hspace="10"></a>
+  <a href="https://fastapi.tiangolo.com/"><img src="assets/fastapi.svg" alt="FastAPI" height="80" hspace="10"></a>
+  <a href="https://www.elastic.co/"><img src="assets/elasticsearch.png" alt="Elasticsearch" height="80" hspace="10"></a>
+  <a href="https://opensearch.org/"><img src="assets/opensearch.svg" alt="OpenSearch" height="80" hspace="10"></a>
+</p>
 
+## Table of Contents
 
----
+- [Documentation & Resources](#documentation--resources)
+- [Examples](#examples)
+- [Performance](#performance)
+- [Quick Start](#quick-start)
+  - [Installation](#installation)
+  - [Running Locally](#running-locally)
+- [Configuration reference](#configuration-reference)
+- [Interacting with the API](#interacting-with-the-api)
+- [Configure the API](#configure-the-api)
+- [Collection pagination](#collection-pagination)
+- [Ingesting Sample Data CLI Tool](#ingesting-sample-data-cli-tool)
+- [Elasticsearch Mappings](#elasticsearch-mappings)
+- [Managing Elasticsearch Indices](#managing-elasticsearch-indices)
+  - [Snapshots](#snapshots)
+  - [Reindexing](#reindexing)
+- [Auth](#auth)
+- [Aggregation](#aggregation)
+- [Rate Limiting](#rate-limiting)
 
-### Notes:
-  
-- Our Api core library can be used to create custom backends. See [stac-fastapi-mongo](https://github.com/Healy-Hyperspatial/stac-fastapi-mongo) for a working example.
-- Reach out on our [Gitter](https://app.gitter.im/#/room/#stac-fastapi-elasticsearch_community:gitter.im) channel or feel free to add to our [Discussions](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/discussions) page here on github.
-- There is [Postman](https://documenter.getpostman.com/view/12888943/2s8ZDSdRHA) documentation here for examples on how to run some of the API routes locally - after starting the elasticsearch backend via the compose.yml file.
-- The `/examples` folder shows an example of running stac-fastapi-elasticsearch from PyPI in docker without needing any code from the repository. There is also a Postman collection here that you can load into Postman for testing the API routes.
+## Documentation & Resources
 
+- **Online Documentation**: [https://stac-utils.github.io/stac-fastapi-elasticsearch-opensearch](https://stac-utils.github.io/stac-fastapi-elasticsearch-opensearch/)
+- **Source Code**: [https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch)
+- **API Examples**: [Postman Documentation](https://documenter.getpostman.com/view/12888943/2s8ZDSdRHA) - Examples of how to use the API endpoints
+- **Community**:
+  - [Gitter Chat](https://app.gitter.im/#/room/#stac-fastapi-elasticsearch_community:gitter.im) - For real-time discussions
+  - [GitHub Discussions](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/discussions) - For longer-form questions and answers
 
-### Performance Note
+## Examples
 
-The `enable_direct_response` option is provided by the stac-fastapi core library (introduced in stac-fastapi 5.2.0) and is available in this project starting from v4.0.0.
+The `/examples` directory contains several useful examples and reference implementations:
 
-**You can now control this setting via the `ENABLE_DIRECT_RESPONSE` environment variable.**
+- **pip_docker**: Examples of running stac-fastapi-elasticsearch from PyPI in Docker without needing any code from the repository
+- **auth**: Authentication examples including:
+  - Basic authentication
+  - OAuth2 with Keycloak
+  - Route dependencies configuration
+- **rate_limit**: Example of implementing rate limiting for API requests
+- **postman_collections**: Postman collection files you can import for testing API endpoints
 
-When enabled (`ENABLE_DIRECT_RESPONSE=true`), endpoints return Starlette Response objects directly, bypassing FastAPI's default serialization for improved performance. **However, all FastAPI dependencies (including authentication, custom status codes, and validation) are disabled for all routes.**
+These examples provide practical reference implementations for various deployment scenarios and features.
 
-This mode is best suited for public or read-only APIs where authentication and custom logic are not required. Default is `false` for safety.
+## Performance
 
-See: [issue #347](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/347)
+### Direct Response Mode
 
+- The `enable_direct_response` option is provided by the stac-fastapi core library (introduced in stac-fastapi 5.2.0) and is available in this project starting from v4.0.0.
+- **Control via environment variable**: Set `ENABLE_DIRECT_RESPONSE=true` to enable this feature.
+- **How it works**: When enabled, endpoints return Starlette Response objects directly, bypassing FastAPI's default serialization for improved performance.
+- **Important limitation**: All FastAPI dependencies (including authentication, custom status codes, and validation) are disabled for all routes when this mode is enabled.
+- **Best use case**: This mode is best suited for public or read-only APIs where authentication and custom logic are not required.
+- **Default setting**: `false` for safety.
+- **More information**: See [issue #347](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/347) for background and implementation details.
 
-### To install from PyPI:
+## Quick Start
 
-```bash
-# For versions 4.0.0a1 and newer (PEP 625 compliant naming):
-pip install stac-fastapi-elasticsearch  # Elasticsearch backend
-pip install stac-fastapi-opensearch    # Opensearch backend
-pip install stac-fastapi-core          # Core library
+This section helps you get up and running with stac-fastapi-elasticsearch-opensearch quickly.
 
-# For versions 4.0.0a0 and older:
-pip install stac-fastapi.elasticsearch  # Elasticsearch backend
-pip install stac-fastapi.opensearch    # Opensearch backend
-pip install stac-fastapi.core          # Core library
-```
+### Installation
+
+- **For versions 4.0.0a1 and newer** (PEP 625 compliant naming):
+  ```bash
+  pip install stac-fastapi-elasticsearch  # Elasticsearch backend
+  pip install stac-fastapi-opensearch    # Opensearch backend
+  pip install stac-fastapi-core          # Core library
+  ```
+
+- **For versions 4.0.0a0 and older**:
+  ```bash
+  pip install stac-fastapi.elasticsearch  # Elasticsearch backend
+  pip install stac-fastapi.opensearch    # Opensearch backend
+  pip install stac-fastapi.core          # Core library
+  ```
 
 > **Important Note:** Starting with version 4.0.0a1, package names have changed from using periods (e.g., `stac-fastapi.core`) to using hyphens (e.g., `stac-fastapi-core`) to comply with PEP 625. The internal package structure uses underscores, but users should install with hyphens as shown above. Please update your requirements files accordingly.
 
-### To install and run via pre-built Docker Images
+### Running Locally
 
-We provide ready-to-use Docker images through GitHub Container Registry ([ElasticSearch](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pkgs/container/stac-fastapi-es) and [OpenSearch](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pkgs/container/stac-fastapi-os) backends). You can easily pull and run these images:
+There are two main ways to run the API locally:
 
-```shell
-# For Elasticsearch backend
-docker pull ghcr.io/stac-utils/stac-fastapi-es:latest
+#### Using Pre-built Docker Images
 
-# For OpenSearch backend
-docker pull ghcr.io/stac-utils/stac-fastapi-os:latest
-```
+- We provide ready-to-use Docker images through GitHub Container Registry:
+  - [ElasticSearch backend](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pkgs/container/stac-fastapi-es)
+  - [OpenSearch backend](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pkgs/container/stac-fastapi-os)
 
-## Run Elasticsearch API backend on localhost:8080
+- **Pull and run the images**:
+  ```shell
+  # For Elasticsearch backend
+  docker pull ghcr.io/stac-utils/stac-fastapi-es:latest
 
-You need to ensure [**Docker Compose**](https://docs.docker.com/compose/install/) or [**Podman Compose**](https://podman-desktop.io/docs/compose) installed and running on your machine. In the following command instead of `docker compose` you can use `podman-compose` as well.
+  # For OpenSearch backend
+  docker pull ghcr.io/stac-utils/stac-fastapi-os:latest
+  ```
 
-```shell
-docker compose up elasticsearch app-elasticsearch
-```
+#### Using Docker Compose
 
-By default, Docker Compose uses Elasticsearch 8.x and OpenSearch 2.11.1.
-If you wish to use a different version, put the following in a 
-file named `.env` in the same directory you run Docker Compose from:
+- **Prerequisites**: Ensure [Docker Compose](https://docs.docker.com/compose/install/) or [Podman Compose](https://podman-desktop.io/docs/compose) is installed on your machine.
 
-```shell
-ELASTICSEARCH_VERSION=8.11.0
-OPENSEARCH_VERSION=2.11.1
-ENABLE_DIRECT_RESPONSE=false
-```
-The most recent Elasticsearch 7.x versions should also work. See the [opensearch-py docs](https://github.com/opensearch-project/opensearch-py/blob/main/COMPATIBILITY.md) for compatibility information.
+- **Start the API**:
+  ```shell
+  docker compose up elasticsearch app-elasticsearch
+  ```
 
-#### **Configuration reference keys:**
+- **Configuration**: By default, Docker Compose uses Elasticsearch 8.x and OpenSearch 2.11.1. To use different versions, create a `.env` file:
+  ```shell
+  ELASTICSEARCH_VERSION=8.11.0
+  OPENSEARCH_VERSION=2.11.1
+  ENABLE_DIRECT_RESPONSE=false
+  ```
+
+- **Compatibility**: The most recent Elasticsearch 7.x versions should also work. See the [opensearch-py docs](https://github.com/opensearch-project/opensearch-py/blob/main/COMPATIBILITY.md) for compatibility information.
+
+
+## Configuration Reference
 
 You can customize additional settings in your `.env` file:
-###### Key variables to configure:
 
 | Variable                     | Description                                                                          | Default                  | Required                                                                                     |
 |------------------------------|--------------------------------------------------------------------------------------|--------------------------|---------------------------------------------------------------------------------------------|
@@ -118,7 +168,7 @@ You can customize additional settings in your `.env` file:
 | `ES_PORT`                    | Port for Elasticsearch/OpenSearch.                                                   | `9200` (ES) / `9202` (OS)| Optional                                                                                    |
 | `ES_USE_SSL`                 | Use SSL for connecting to Elasticsearch/OpenSearch.                                  | `false`                  | Optional                                                                                    |
 | `ES_VERIFY_CERTS`            | Verify SSL certificates when connecting.                                             | `false`                  | Optional                                                                                    |
-| `STAC_FASTAPI_TITLE`         | Title of the API in the documentation.                                               | `stac-fastapi-elasticsearch` or `stac-fastapi-opensearch` | Optional                                                                                    |
+| `STAC_FASTAPI_TITLE`         | Title of the API in the documentation.                                               | `stac-fastapi-<backend>` | Optional                                                                                    |
 | `STAC_FASTAPI_DESCRIPTION`   | Description of the API in the documentation.                                         | N/A                      | Optional                                                                                    |
 | `STAC_FASTAPI_VERSION`       | API version.                                                                         | `2.1`                    | Optional                                                                                    |
 | `STAC_FASTAPI_LANDING_PAGE_ID` | Landing page ID                                                                      | `stac-fastapi`           | Optional                                                                                    |
@@ -141,223 +191,309 @@ You can customize additional settings in your `.env` file:
 
 ## Interacting with the API
 
-To create a new Collection:
+- **Creating a Collection**:
+  ```shell
+  curl -X "POST" "http://localhost:8080/collections" \
+       -H 'Content-Type: application/json; charset=utf-8' \
+       -d $'{
+    "id": "my_collection"
+  }'
+  ```
 
-```shell
-curl -X "POST" "http://localhost:8080/collections" \
-     -H 'Content-Type: application/json; charset=utf-8' \
-     -d $'{
-  "id": "my_collection"
-}'
-```
+- **Adding an Item to a Collection**:
+  ```shell
+  curl -X "POST" "http://localhost:8080/collections/my_collection/items" \
+       -H 'Content-Type: application/json; charset=utf-8' \
+       -d @item.json
+  ```
 
-Note: this "Collections Transaction" behavior is not part of the STAC API, but may be soon.
+- **Searching for Items**:
+  ```shell
+  curl -X "GET" "http://localhost:8080/search" \
+       -H 'Content-Type: application/json; charset=utf-8' \
+       -d $'{
+    "collections": ["my_collection"],
+    "limit": 10
+  }'
+  ```
+
+- **Filtering by Bbox**:
+  ```shell
+  curl -X "GET" "http://localhost:8080/search" \
+       -H 'Content-Type: application/json; charset=utf-8' \
+       -d $'{
+    "collections": ["my_collection"],
+    "bbox": [-180, -90, 180, 90]
+  }'
+  ```
+
+- **Filtering by Datetime**:
+  ```shell
+  curl -X "GET" "http://localhost:8080/search" \
+       -H 'Content-Type: application/json; charset=utf-8' \
+       -d $'{
+    "collections": ["my_collection"],
+    "datetime": "2020-01-01T00:00:00Z/2020-12-31T23:59:59Z"
+  }'
+  ```
 
 ## Configure the API
 
-By default the API title and description are set to `stac-fastapi-<backend>`. Change the API title and description from the default by setting the `STAC_FASTAPI_TITLE` and `STAC_FASTAPI_DESCRIPTION` environment variables, respectively.
+- **API Title and Description**: By default set to `stac-fastapi-<backend>`. Customize these by setting:
+  - `STAC_FASTAPI_TITLE`: Changes the API title in the documentation
+  - `STAC_FASTAPI_DESCRIPTION`: Changes the API description in the documentation
 
-By default the API will read from and write to the `collections` and `items_<collection name>` indices. To change the API collections index and the items index prefix, change the `STAC_COLLECTIONS_INDEX` and `STAC_ITEMS_INDEX_PREFIX` environment variables.
+- **Database Indices**: By default, the API reads from and writes to:
+  - `collections` index for collections
+  - `items_<collection name>` indices for items
+  - Customize with `STAC_COLLECTIONS_INDEX` and `STAC_ITEMS_INDEX_PREFIX` environment variables
 
-The application root path is left as the base url by default. If deploying to AWS Lambda with a Gateway API, you will need to define the app root path to be the same as the Gateway API stage name where you will deploy the API. The app root path can be defined with the `STAC_FASTAPI_ROOT_PATH` environment variable (`/v1`, for example)
+- **Root Path Configuration**: The application root path is the base URL by default.
+  - For AWS Lambda with Gateway API: Set `STAC_FASTAPI_ROOT_PATH` to match the Gateway API stage name (e.g., `/v1`)
 
-## Collection pagination
 
-The collections route handles optional `limit` and `token` parameters. The `links` field that is
-returned from the `/collections` route contains a `next` link with the token that can be used to 
-get the next page of results.
+## Collection Pagination
 
-```shell
-curl -X "GET" "http://localhost:8080/collections?limit=1&token=example_token"
-```
+- **Overview**: The collections route supports pagination through optional query parameters.
+- **Parameters**:
+  - `limit`: Controls the number of collections returned per page
+  - `token`: Used to retrieve subsequent pages of results
+- **Response Structure**: The `links` field in the response contains a `next` link with the token for the next page of results.
+- **Example Usage**:
+  ```shell
+  curl -X "GET" "http://localhost:8080/collections?limit=1&token=example_token"
+  ```
 
 ## Ingesting Sample Data CLI Tool
 
-```shell
-Usage: data_loader.py [OPTIONS]
+- **Overview**: The `data_loader.py` script provides a convenient way to load STAC items into the database.
 
-  Load STAC items into the database.
+- **Usage**:
+  ```shell
+  python3 data_loader.py --base-url http://localhost:8080
+  ```
 
-Options:
+- **Options**:
+  ```
   --base-url TEXT       Base URL of the STAC API  [required]
   --collection-id TEXT  ID of the collection to which items are added
   --use-bulk            Use bulk insert method for items
   --data-dir PATH       Directory containing collection.json and feature
                         collection file
   --help                Show this message and exit.
-```
+  ```
 
-```shell
-python3 data_loader.py --base-url http://localhost:8080
-```
-
+- **Example Workflows**:
+  - **Loading Sample Data**: 
+    ```shell
+    python3 data_loader.py --base-url http://localhost:8080
+    ```
+  - **Loading Data to a Specific Collection**:
+    ```shell
+    python3 data_loader.py --base-url http://localhost:8080 --collection-id my-collection
+    ```
+  - **Using Bulk Insert for Performance**:
+    ```shell
+    python3 data_loader.py --base-url http://localhost:8080 --use-bulk
+    ```
 
 ## Elasticsearch Mappings
 
-Mappings apply to search index, not source. The mappings are stored in index templates on application startup.
-These templates will be used implicitly when creating new Collection and Item indices.
-    
+- **Overview**: Mappings apply to search index, not source data. They define how documents and their fields are stored and indexed.
+- **Implementation**: 
+  - Mappings are stored in index templates that are created on application startup
+  - These templates are automatically applied when creating new Collection and Item indices
+  - The `sfeos_helpers` package contains shared mapping definitions used by both Elasticsearch and OpenSearch backends
+- **Customization**: Custom mappings can be defined by extending the base mapping templates.
 
 ## Managing Elasticsearch Indices
+
 ### Snapshots
 
-This section covers how to create a snapshot repository and then create and restore snapshots with this.
+- **Overview**: Snapshots provide a way to backup and restore your indices.
 
-Create a snapshot repository. This puts the files in the `elasticsearch/snapshots` in this git repo clone, as
-the elasticsearch.yml and compose files create a mapping from that directory to 
-`/usr/share/elasticsearch/snapshots` within the Elasticsearch container and grant permissions on using it.
+- **Creating a Snapshot Repository**:
+  ```shell
+  curl -X "PUT" "http://localhost:9200/_snapshot/my_fs_backup" \
+       -H 'Content-Type: application/json; charset=utf-8' \
+       -d $'{
+               "type": "fs",
+               "settings": {
+                   "location": "/usr/share/elasticsearch/snapshots/my_fs_backup"
+               }
+  }'
+  ```
+  - This creates a snapshot repository that stores files in the elasticsearch/snapshots directory in this git repo clone
+  - The elasticsearch.yml and compose files create a mapping from that directory to /usr/share/elasticsearch/snapshots within the Elasticsearch container and grant permissions for using it
 
-```shell
-curl -X "PUT" "http://localhost:9200/_snapshot/my_fs_backup" \
-     -H 'Content-Type: application/json; charset=utf-8' \
-     -d $'{
-            "type": "fs",
-            "settings": {
-                "location": "/usr/share/elasticsearch/snapshots/my_fs_backup"
-            }
-}'
-```
+- **Creating a Snapshot**:
+  ```shell
+  curl -X "PUT" "http://localhost:9200/_snapshot/my_fs_backup/my_snapshot_2?wait_for_completion=true" \
+       -H 'Content-Type: application/json; charset=utf-8' \
+       -d $'{
+    "metadata": {
+      "taken_because": "dump of all items",
+      "taken_by": "pvarner"
+    },
+    "include_global_state": false,
+    "ignore_unavailable": false,
+    "indices": "items_my-collection"
+  }'
+  ```
+  - This creates a snapshot named my_snapshot_2 and waits for the action to be completed before returning
+  - This can also be done asynchronously by omitting the wait_for_completion parameter, and queried for status later
+  - The indices parameter determines which indices are snapshotted, and can include wildcards
 
-The next step is to create a snapshot of one or more indices into this snapshot repository.  This command creates
-a snapshot named `my_snapshot_2` and waits for the action to be completed before returning. This can also be done
-asynchronously, and queried for status. The `indices` parameter determines which indices are snapshotted, and
-can include wildcards.
+- **Viewing Snapshots**:
+  ```shell
+  # View a specific snapshot
+  curl http://localhost:9200/_snapshot/my_fs_backup/my_snapshot_2
+  
+  # View all snapshots
+  curl http://localhost:9200/_snapshot/my_fs_backup/_all
+  ```
+  - These commands allow you to check the status and details of your snapshots
 
-```shell
-curl -X "PUT" "http://localhost:9200/_snapshot/my_fs_backup/my_snapshot_2?wait_for_completion=true" \
-     -H 'Content-Type: application/json; charset=utf-8' \
-     -d $'{
-  "metadata": {
-    "taken_because": "dump of all items",
-    "taken_by": "pvarner"
+- **Restoring a Snapshot**:
+  ```shell
+  curl -X "POST" "http://localhost:9200/_snapshot/my_fs_backup/my_snapshot_2/_restore?wait_for_completion=true" \
+       -H 'Content-Type: application/json; charset=utf-8' \
+       -d $'{
+    "include_aliases": false,
+    "include_global_state": false,
+    "ignore_unavailable": true,
+    "rename_replacement": "items_$1-copy",
+    "indices": "items_*",
+    "rename_pattern": "items_(.+)"
+  }'
+  ```
+  - This specific command will restore any indices that match items_* and rename them so that the new index name will be suffixed with -copy
+  - The rename_pattern and rename_replacement parameters allow you to restore indices under new names
+
+- **Updating Collection References**:
+  ```shell
+  curl -X "POST" "http://localhost:9200/items_my-collection-copy/_update_by_query" \
+       -H 'Content-Type: application/json; charset=utf-8' \
+       -d $'{
+      "query": {
+          "match_all": {}
   },
-  "include_global_state": false,
-  "ignore_unavailable": false,
-  "indices": "items_my-collection"
-}'
-```
-
-To see the status of this snapshot:
-
-```shell
-curl http://localhost:9200/_snapshot/my_fs_backup/my_snapshot_2
-```
-
-To see all the snapshots:
-
-```shell
-curl http://localhost:9200/_snapshot/my_fs_backup/_all
-```
-
-To restore a snapshot, run something similar to the following. This specific command will restore any indices that
-match `items_*` and rename them so that the new index name will be suffixed with `-copy`.
-
-```shell
-curl -X "POST" "http://localhost:9200/_snapshot/my_fs_backup/my_snapshot_2/_restore?wait_for_completion=true" \
-     -H 'Content-Type: application/json; charset=utf-8' \
-     -d $'{
-  "include_aliases": false,
-  "include_global_state": false,
-  "ignore_unavailable": true,
-  "rename_replacement": "items_$1-copy",
-  "indices": "items_*",
-  "rename_pattern": "items_(.+)"
-}'
-```
-
-Now the item documents have been restored in to the new index (e.g., `my-collection-copy`), but the value of the
-`collection` field in those documents is still the original value of `my-collection`. To update these to match the
-new collection name, run the following Elasticsearch Update By Query command, substituting the old collection name
-into the term filter and the new collection name into the script parameter:
-
-```shell
-curl -X "POST" "http://localhost:9200/items_my-collection-copy/_update_by_query" \
-     -H 'Content-Type: application/json; charset=utf-8' \
-     -d $'{
-    "query": {
-        "match_all": {}
-},
-  "script": {
-    "lang": "painless",
-    "params": {
-      "collection": "my-collection-copy"
-    },
-    "source": "ctx._source.collection = params.collection"
-  }
-}'
-```
-
-Then, create a new collection through the api with the new name for each of the restored indices:
-
-```shell
-curl -X "POST" "http://localhost:8080/collections" \
-     -H 'Content-Type: application/json' \
-     -d $'{
-  "id": "my-collection-copy"
-}'
-```
-
-Voila! You have a copy of the collection now that has a resource URI (`/collections/my-collection-copy`) and can be
-correctly queried by collection name.
-
-### Reindexing
-This section covers how to reindex documents stored in Elasticsearch/OpenSearch. 
-A reindex operation might be useful to apply changes to documents or to correct dynamically generated mappings.
-
-The index templates will make sure that manually created indices will also have the correct mappings and settings.
-
-In this example, we will make a copy of an existing Item index `items_my-collection-lower_my-collection-hex-000001` but change the Item identifier to be lowercase.
-
-```shell
-curl -X "POST" "http://localhost:9200/_reindex" \
-  -H 'Content-Type: application/json' \
-  -d $'{
-    "source": {
-      "index": "items_my-collection-lower_my-collection-hex-000001"
-    }, 
-    "dest": {
-      "index": "items_my-collection-lower_my-collection-hex-000002"
-    },
     "script": {
-      "source": "ctx._source.id = ctx._source.id.toLowerCase()",
-      "lang": "painless"
+      "lang": "painless",
+      "params": {
+        "collection": "my-collection-copy"
+      },
+      "source": "ctx._source.collection = params.collection"
     }
   }'
-```
+  ```
+  - After restoring, the item documents have been restored in the new index (e.g., my-collection-copy), but the value of the collection field in those documents is still the original value of my-collection
+  - This command updates these values to match the new collection name using Elasticsearch's Update By Query feature
 
-If we are happy with the data in the newly created index, we can move the alias `items_my-collection` to the new index `items_my-collection-lower_my-collection-hex-000002`.
-```shell
-curl -X "POST" "http://localhost:9200/_aliases" \
-  -h 'Content-Type: application/json' \
-  -d $'{
-    "actions": [
-      {
-        "remove": {
-          "index": "*",
-          "alias": "items_my-collection"
-        }
-      },
-      {
-        "add": {
-          "index": "items_my-collection-lower_my-collection-hex-000002",
-          "alias": "items_my-collection"
-        }
-      }
-    ]
+- **Creating a New Collection**:
+  ```shell
+  curl -X "POST" "http://localhost:8080/collections" \
+       -H 'Content-Type: application/json' \
+       -d $'{
+    "id": "my-collection-copy"
   }'
-```
+  ```
+  - The final step is to create a new collection through the API with the new name for each of the restored indices
+  - This gives you a copy of the collection that has a resource URI (/collections/my-collection-copy) and can be correctly queried by collection name
 
-The modified Items with lowercase identifiers will now be visible to users accessing `my-collection` in the STAC API.
+### Reindexing
 
+- **Overview**: Reindexing allows you to copy documents from one index to another, optionally transforming them in the process.
+
+- **Use Cases**:
+  - Apply changes to documents
+  - Correct dynamically generated mappings
+  - Transform data (e.g., lowercase identifiers)
+  - The index templates will make sure that manually created indices will also have the correct mappings and settings
+
+- **Example: Reindexing with Transformation**:
+  ```shell
+  curl -X "POST" "http://localhost:9200/_reindex" \
+    -H 'Content-Type: application/json' \
+    -d $'{
+      "source": {
+        "index": "items_my-collection-lower_my-collection-hex-000001"
+      }, 
+      "dest": {
+        "index": "items_my-collection-lower_my-collection-hex-000002"
+      },
+      "script": {
+        "source": "ctx._source.id = ctx._source.id.toLowerCase()",
+        "lang": "painless"
+      }
+    }'
+  ```
+  - In this example, we make a copy of an existing Item index but change the Item identifier to be lowercase
+  - The script parameter allows you to transform documents during the reindexing process
+
+- **Updating Aliases**:
+  ```shell
+  curl -X "POST" "http://localhost:9200/_aliases" \
+    -H 'Content-Type: application/json' \
+    -d $'{
+      "actions": [
+        {
+          "remove": {
+            "index": "*",
+            "alias": "items_my-collection"
+          }
+        },
+        {
+          "add": {
+            "index": "items_my-collection-lower_my-collection-hex-000002",
+            "alias": "items_my-collection"
+          }
+        }
+      ]
+    }'
+  ```
+  - If you are happy with the data in the newly created index, you can move the alias items_my-collection to the new index
+  - This makes the modified Items with lowercase identifiers visible to users accessing my-collection in the STAC API
+  - Using aliases allows you to switch between different index versions without changing the API endpoint
 
 ## Auth
 
-Authentication is an optional feature that can be enabled through `Route Dependencies` examples can be found and a more detailed explanation in [examples/auth](examples/auth).
+- **Overview**: Authentication is an optional feature that can be enabled through Route Dependencies.
+- **Implementation Options**:
+  - Basic authentication
+  - OAuth2 with Keycloak
+  - Custom route dependencies
+- **Configuration**: Authentication can be configured using the `STAC_FASTAPI_ROUTE_DEPENDENCIES` environment variable.
+- **Examples and Documentation**: Detailed examples and implementation guides can be found in the [examples/auth](examples/auth) directory.
 
 ## Aggregation
 
-Aggregation of points and geometries, as well as frequency distribution aggregation of any other property including dates is supported in stac-fatsapi-elasticsearch-opensearch. Aggregations can be defined at the root Catalog level (`/aggregations`) and at the Collection level (`/<collection_id>/aggregations`). Details for supported aggregations can be found in [the aggregation docs](./docs/src/aggregation.md)
+- **Supported Aggregations**:
+  - Spatial aggregations of points and geometries
+  - Frequency distribution aggregation of any property including dates
+  - Temporal distribution of datetime values
+
+- **Endpoint Locations**:
+  - Root Catalog level: `/aggregations`
+  - Collection level: `/<collection_id>/aggregations`
+
+- **Implementation Details**: The `sfeos_helpers.aggregation` package provides specialized functionality for both Elasticsearch and OpenSearch backends.
+
+- **Documentation**: Detailed information about supported aggregations can be found in [the aggregation docs](./docs/src/aggregation.md).
+
 
 ## Rate Limiting
 
-Rate limiting is an optional security feature that controls API request frequency on a remote address basis. It's enabled by setting the `STAC_FASTAPI_RATE_LIMIT` environment variable, e.g., `500/minute`. This limits each client to 500 requests per minute, helping prevent abuse and maintain API stability. Implementation examples are available in the [examples/rate_limit](examples/rate_limit) directory.
+- **Overview**: Rate limiting is an optional security feature that controls API request frequency on a remote address basis.
+
+- **Configuration**: Enabled by setting the `STAC_FASTAPI_RATE_LIMIT` environment variable:
+  ```
+  STAC_FASTAPI_RATE_LIMIT=500/minute
+  ```
+
+- **Functionality**: 
+  - Limits each client to a specified number of requests per time period (e.g., 500 requests per minute)
+  - Helps prevent API abuse and maintains system stability
+  - Ensures fair resource allocation among all clients
+
+- **Examples**: Implementation examples are available in the [examples/rate_limit](examples/rate_limit) directory.
