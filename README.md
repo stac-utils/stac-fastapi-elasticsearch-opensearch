@@ -2,10 +2,14 @@
 
 <!-- markdownlint-disable MD033 MD041 -->
 
+<br>
+
+
 <p align="left">
-  <img src="assets/sfeos-bw.png" width=1200>
-  <p align="left"><b>Elasticsearch and Opensearch backends for the stac-fastapi project.</b></p>
+  <img src="assets/sfeos.png" width=1200>
 </p>
+<p align="left"><b>Elasticsearch and Opensearch backends for the stac-fastapi project.</b></p>
+<br>
 
   [![Downloads](https://static.pepy.tech/badge/stac-fastapi-core?color=blue)](https://pepy.tech/project/stac-fastapi-core)
   [![GitHub contributors](https://img.shields.io/github/contributors/stac-utils/stac-fastapi-elasticsearch-opensearch?color=blue)](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/graphs/contributors)
@@ -15,6 +19,8 @@
   [![STAC](https://img.shields.io/badge/STAC-1.1.0-blue.svg)](https://github.com/radiantearth/stac-spec/tree/v1.1.0)
   [![stac-fastapi](https://img.shields.io/badge/stac--fastapi-5.2.0-blue.svg)](https://github.com/stac-utils/stac-fastapi)
 
+  
+<br>
 
 
 ## Sponsors & Supporters
@@ -28,13 +34,14 @@ The following organizations have contributed time and/or funding to support the 
 
 ## Technologies
 
-This project is built on the following technologies: STAC, stac-fastapi, FastAPI, Elasticsearch, Python
+This project is built on the following technologies: STAC, stac-fastapi, FastAPI, Elasticsearch, Python, OpenSearch
 
 <p align="left">
   <a href="https://stacspec.org/"><img src="assets/STAC-01.png" alt="STAC" height="100" hspace="10"></a>
   <a href="https://www.python.org/"><img src="assets/python.png" alt="Python" height="80" hspace="10"></a>
   <a href="https://fastapi.tiangolo.com/"><img src="assets/fastapi.svg" alt="FastAPI" height="80" hspace="10"></a>
   <a href="https://www.elastic.co/"><img src="assets/elasticsearch.png" alt="Elasticsearch" height="80" hspace="10"></a>
+  <a href="https://opensearch.org/"><img src="assets/opensearch.svg" alt="OpenSearch" height="80" hspace="10"></a>
 </p>
 
 ## Table of Contents
