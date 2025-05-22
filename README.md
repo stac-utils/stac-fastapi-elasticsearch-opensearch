@@ -2,14 +2,12 @@
 
 <!-- markdownlint-disable MD033 MD041 -->
 
-<br>
 
 
 <p align="left">
   <img src="assets/sfeos.png" width=1200>
 </p>
 <p align="left"><b>Elasticsearch and Opensearch backends for the stac-fastapi project.</b></p>
-<br>
 
   [![Downloads](https://static.pepy.tech/badge/stac-fastapi-core?color=blue)](https://pepy.tech/project/stac-fastapi-core)
   [![GitHub contributors](https://img.shields.io/github/contributors/stac-utils/stac-fastapi-elasticsearch-opensearch?color=blue)](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/graphs/contributors)
