@@ -8,7 +8,18 @@
   <img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/sfeos.png" width=1200>
 </p>
 
-## What is stac-fastapi-elasticsearch-opensearch?
+
+  [![Downloads](https://static.pepy.tech/badge/stac-fastapi-core?color=blue)](https://pepy.tech/project/stac-fastapi-core)
+  [![GitHub contributors](https://img.shields.io/github/contributors/stac-utils/stac-fastapi-elasticsearch-opensearch?color=blue)](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/graphs/contributors)
+  [![GitHub stars](https://img.shields.io/github/stars/stac-utils/stac-fastapi-elasticsearch-opensearch.svg?color=blue)](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/stargazers)
+  [![GitHub forks](https://img.shields.io/github/forks/stac-utils/stac-fastapi-elasticsearch-opensearch.svg?color=blue)](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/network/members)
+   [![PyPI version](https://img.shields.io/pypi/v/stac-fastapi-elasticsearch.svg?color=blue)](https://pypi.org/project/stac-fastapi-elasticsearch/)
+  [![STAC](https://img.shields.io/badge/STAC-1.1.0-blue.svg)](https://github.com/radiantearth/stac-spec/tree/v1.1.0)
+  [![stac-fastapi](https://img.shields.io/badge/stac--fastapi-5.2.0-blue.svg)](https://github.com/stac-utils/stac-fastapi)
+
+**Jump to:** [Project Overview](#project-overview) | [Sponsors & Supporters](#sponsors--supporters) | [Common Deployment Patterns](#common-deployment-patterns) | [Technologies](#technologies) | [Documentation & Resources](#documentation--resources) | [Quick Start](#quick-start) | [Full Table of Contents](#table-of-contents)
+
+## Project Overview
 
 Stac-fastapi-elasticsearch-opensearch provides a high-performance, scalable API implementation for serving SpatioTemporal Asset Catalog (STAC) data - an enhanced GeoJSON format designed specifically for geospatial assets like satellite imagery, aerial photography, and other Earth observation data. This project enables organizations to:
 
@@ -20,17 +31,6 @@ Stac-fastapi-elasticsearch-opensearch provides a high-performance, scalable API 
 
 This implementation builds on the STAC-FastAPI framework, providing a production-ready solution specifically optimized for Elasticsearch and OpenSearch databases. It's ideal for organizations managing large geospatial data catalogs who need efficient discovery and access capabilities through standardized APIs.
 
-  [![Downloads](https://static.pepy.tech/badge/stac-fastapi-core?color=blue)](https://pepy.tech/project/stac-fastapi-core)
-  [![GitHub contributors](https://img.shields.io/github/contributors/stac-utils/stac-fastapi-elasticsearch-opensearch?color=blue)](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/graphs/contributors)
-  [![GitHub stars](https://img.shields.io/github/stars/stac-utils/stac-fastapi-elasticsearch-opensearch.svg?color=blue)](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/stargazers)
-  [![GitHub forks](https://img.shields.io/github/forks/stac-utils/stac-fastapi-elasticsearch-opensearch.svg?color=blue)](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/network/members)
-   [![PyPI version](https://img.shields.io/pypi/v/stac-fastapi-elasticsearch.svg?color=blue)](https://pypi.org/project/stac-fastapi-elasticsearch/)
-  [![STAC](https://img.shields.io/badge/STAC-1.1.0-blue.svg)](https://github.com/radiantearth/stac-spec/tree/v1.1.0)
-  [![stac-fastapi](https://img.shields.io/badge/stac--fastapi-5.2.0-blue.svg)](https://github.com/stac-utils/stac-fastapi)
-
-  
-
-
 ## Sponsors & Supporters
 
 The following organizations have contributed time and/or funding to support the development of this project:
@@ -39,6 +39,17 @@ The following organizations have contributed time and/or funding to support the 
   <a href="https://healy-hyperspatial.github.io/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/hh-logo-blue.png" alt="Healy Hyperspatial" height="120" hspace="20"></a>
   <a href="https://atomicmaps.io/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/am-logo-black.png" alt="Atomic Maps" height="120" hspace="20"></a>
 </p>
+
+## Common Deployment Patterns
+
+stac-fastapi-elasticsearch-opensearch can be deployed in several ways depending on your needs:
+
+- **Containerized Application**: Run as a Docker container with connections to Elasticsearch/OpenSearch databases
+- **Serverless Function**: Deploy as AWS Lambda or similar serverless function with API Gateway
+- **Traditional Server**: Run on virtual machines or bare metal servers in your infrastructure
+- **Kubernetes**: Deploy as part of a larger microservices architecture with container orchestration
+
+The implementation is flexible and can scale from small local deployments to large production environments serving millions of geospatial assets.
 
 ## Technologies
 
