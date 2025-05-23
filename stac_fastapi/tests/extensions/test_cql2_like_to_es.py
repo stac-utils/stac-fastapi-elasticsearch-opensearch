@@ -1,6 +1,6 @@
 import pytest
 
-from stac_fastapi.core.extensions.filter import cql2_like_to_es
+from stac_fastapi.sfeos_helpers.filter import cql2_like_to_es
 
 
 @pytest.mark.parametrize(

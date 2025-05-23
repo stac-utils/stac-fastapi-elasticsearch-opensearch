@@ -3,7 +3,6 @@
 <!-- markdownlint-disable MD033 MD041 -->
 
 
-
 <p align="left">
   <img src="assets/sfeos.png" width=1200>
 </p>
@@ -45,6 +44,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
 ## Table of Contents
 
 - [Documentation & Resources](#documentation--resources)
+- [Package Structure](#package-structure)
 - [Examples](#examples)
 - [Performance](#performance)
 - [Quick Start](#quick-start)
@@ -71,6 +71,21 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
 - **Community**:
   - [Gitter Chat](https://app.gitter.im/#/room/#stac-fastapi-elasticsearch_community:gitter.im) - For real-time discussions
   - [GitHub Discussions](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/discussions) - For longer-form questions and answers
+
+## Package Structure
+
+This project is organized into several packages, each with a specific purpose:
+
+- **stac_fastapi_core**: Core functionality that's database-agnostic, including API models, extensions, and shared utilities. This package provides the foundation for building STAC API implementations with any database backend. See [stac-fastapi-mongo](https://github.com/Healy-Hyperspatial/stac-fastapi-mongo) for a working example.
+
+- **sfeos_helpers**: Shared helper functions and utilities used by both the Elasticsearch and OpenSearch backends. This package includes:
+  - `database`: Specialized modules for index, document, and database utility operations
+  - `aggregation`: Elasticsearch/OpenSearch-specific aggregation functionality
+  - Shared logic and utilities that improve code reuse between backends
+
+- **stac_fastapi_elasticsearch**: Complete implementation of the STAC API using Elasticsearch as the backend database. This package depends on both `stac_fastapi_core` and `sfeos_helpers`.
+- 
+- **stac_fastapi_opensearch**: Complete implementation of the STAC API using OpenSearch as the backend database. This package depends on both `stac_fastapi_core` and `sfeos_helpers`.
 
 ## Examples
 
@@ -156,6 +171,7 @@ There are two main ways to run the API locally:
   ```
 
 - **Compatibility**: The most recent Elasticsearch 7.x versions should also work. See the [opensearch-py docs](https://github.com/opensearch-project/opensearch-py/blob/main/COMPATIBILITY.md) for compatibility information.
+
 
 
 ## Configuration Reference
@@ -495,5 +511,6 @@ You can customize additional settings in your `.env` file:
   - Limits each client to a specified number of requests per time period (e.g., 500 requests per minute)
   - Helps prevent API abuse and maintains system stability
   - Ensures fair resource allocation among all clients
-
+  
 - **Examples**: Implementation examples are available in the [examples/rate_limit](examples/rate_limit) directory.
+

@@ -23,11 +23,11 @@ from stac_fastapi.core.extensions import QueryExtension
 from stac_fastapi.core.extensions.aggregation import (
     EsAggregationExtensionGetRequest,
     EsAggregationExtensionPostRequest,
-    EsAsyncAggregationClient,
 )
 from stac_fastapi.core.rate_limit import setup_rate_limit
 from stac_fastapi.core.route_dependencies import get_route_dependencies
 from stac_fastapi.core.utilities import get_bool_env
+from stac_fastapi.sfeos_helpers.aggregation import EsAsyncBaseAggregationClient
 
 if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
     from stac_fastapi.opensearch.config import AsyncOpensearchSettings as AsyncSettings
@@ -199,7 +199,7 @@ async def app():
     settings = AsyncSettings()
 
     aggregation_extension = AggregationExtension(
-        client=EsAsyncAggregationClient(
+        client=EsAsyncBaseAggregationClient(
             database=database, session=None, settings=settings
         )
     )
@@ -255,7 +255,7 @@ async def app_rate_limit():
     settings = AsyncSettings()
 
     aggregation_extension = AggregationExtension(
-        client=EsAsyncAggregationClient(
+        client=EsAsyncBaseAggregationClient(
             database=database, session=None, settings=settings
         )
     )
@@ -349,7 +349,7 @@ async def app_basic_auth():
     settings = AsyncSettings()
 
     aggregation_extension = AggregationExtension(
-        client=EsAsyncAggregationClient(
+        client=EsAsyncBaseAggregationClient(
             database=database, session=None, settings=settings
         )
     )
@@ -488,7 +488,7 @@ def build_test_app():
     )
     settings = AsyncSettings()
     aggregation_extension = AggregationExtension(
-        client=EsAsyncAggregationClient(
+        client=EsAsyncBaseAggregationClient(
             database=database, session=None, settings=settings
         )
     )

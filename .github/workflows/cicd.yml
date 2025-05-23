@@ -96,6 +96,10 @@ jobs:
         run: |
           pip install ./stac_fastapi/core
 
+      - name: Install helpers library stac-fastapi
+        run: |
+          pip install ./stac_fastapi/sfeos_helpers
+          
       - name: Install elasticsearch stac-fastapi
         run: |
           pip install ./stac_fastapi/elasticsearch[dev,server]
