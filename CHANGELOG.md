@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+- Filter Extension - patch terms value to prevent 'property reference not allowed in terms query' 500 
+
 ### Added
 
 ### Changed
