@@ -133,6 +133,8 @@ This section helps you get up and running with stac-fastapi-elasticsearch-opense
   pip install stac-fastapi.core          # Core library
   ```
 
+> **Important Note:** Starting with version 4.0.0a1, package names have changed from using periods (e.g., `stac-fastapi.core`) to using hyphens (e.g., `stac-fastapi-core`) to comply with PEP 625. The internal package structure uses underscores, but users should install with hyphens as shown above. Please update your requirements files accordingly.
+
 ### Running Locally
 
 There are two main ways to run the API locally:
