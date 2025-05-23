@@ -17,7 +17,7 @@
   [![STAC](https://img.shields.io/badge/STAC-1.1.0-blue.svg)](https://github.com/radiantearth/stac-spec/tree/v1.1.0)
   [![stac-fastapi](https://img.shields.io/badge/stac--fastapi-5.2.0-blue.svg)](https://github.com/stac-utils/stac-fastapi)
 
-**Jump to:** [Project Overview](#project-overview) | [Sponsors & Supporters](#sponsors--supporters) | [Common Deployment Patterns](#common-deployment-patterns) | [Technologies](#technologies) | [Documentation & Resources](#documentation--resources) | [Quick Start](#quick-start) | [Full Table of Contents](#table-of-contents)
+**Jump to:** [Common Deployment Patterns](#common-deployment-patterns) | [Documentation & Resources](#documentation--resources) | [Quick Start](#quick-start) | [Full Table of Contents](#table-of-contents)
 
 ## Project Overview
 
