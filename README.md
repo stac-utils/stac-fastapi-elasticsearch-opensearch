@@ -3,7 +3,6 @@
 <!-- markdownlint-disable MD033 MD041 -->
 
 
-
 <p align="left">
   <img src="assets/sfeos.png" width=1200>
 </p>
@@ -85,7 +84,7 @@ This project is organized into several packages, each with a specific purpose:
   - Shared logic and utilities that improve code reuse between backends
 
 - **stac_fastapi_elasticsearch**: Complete implementation of the STAC API using Elasticsearch as the backend database. This package depends on both `stac_fastapi_core` and `sfeos_helpers`.
-
+- 
 - **stac_fastapi_opensearch**: Complete implementation of the STAC API using OpenSearch as the backend database. This package depends on both `stac_fastapi_core` and `sfeos_helpers`.
 
 ## Examples
@@ -134,8 +133,6 @@ This section helps you get up and running with stac-fastapi-elasticsearch-opense
   pip install stac-fastapi.core          # Core library
   ```
 
-> **Important Note:** Starting with version 4.0.0a1, package names have changed from using periods (e.g., `stac-fastapi.core`) to using hyphens (e.g., `stac-fastapi-core`) to comply with PEP 625. The internal package structure uses underscores, but users should install with hyphens as shown above. Please update your requirements files accordingly.
-
 ### Running Locally
 
 There are two main ways to run the API locally:
@@ -172,6 +169,7 @@ There are two main ways to run the API locally:
   ```
 
 - **Compatibility**: The most recent Elasticsearch 7.x versions should also work. See the [opensearch-py docs](https://github.com/opensearch-project/opensearch-py/blob/main/COMPATIBILITY.md) for compatibility information.
+
 
 
 ## Configuration Reference
@@ -511,5 +509,6 @@ You can customize additional settings in your `.env` file:
   - Limits each client to a specified number of requests per time period (e.g., 500 requests per minute)
   - Helps prevent API abuse and maintains system stability
   - Ensures fair resource allocation among all clients
-
+  
 - **Examples**: Implementation examples are available in the [examples/rate_limit](examples/rate_limit) directory.
+

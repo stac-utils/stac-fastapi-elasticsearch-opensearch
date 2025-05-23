@@ -19,15 +19,15 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
   - Created `aggregation` package for Elasticsearch/OpenSearch-specific aggregation functionality
   - Moved shared logic from core module to helper functions for better code reuse
   - Separated utility functions from constant mappings for clearer code organization
-- Improved README documentation with consistent formatting and enhanced sections [#376](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/376):
+- Updated documentation to reflect recent code refactoring  [#376](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/376)
+- Improved README documentation with consistent formatting and enhanced sections [#381](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/381):
+  - Added sfeos logo and banner
   - Added a comprehensive Quick Start guide
   - Reorganized sections for better navigation
   - Reformatted content with bullet points for improved readability
   - Added more detailed examples for API interaction
-  - Updated documentation to reflect recent code refactoring
-
+  
 ### Fixed
-
 
 ## [v4.2.0] - 2025-05-15
 
