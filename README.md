@@ -7,7 +7,18 @@
 <p align="left">
   <img src="assets/sfeos.png" width=1200>
 </p>
-<p align="left"><b>Elasticsearch and Opensearch backends for the stac-fastapi project.</b></p>
+
+## What is STAC-FastAPI-Elasticsearch-OpenSearch?
+
+STAC-FastAPI-Elasticsearch-OpenSearch provides a high-performance, scalable API implementation for serving SpatioTemporal Asset Catalog (STAC) data - an enhanced GeoJSON format designed specifically for geospatial assets like satellite imagery, aerial photography, and other Earth observation data. This project enables organizations to:
+
+- **Efficiently catalog and search geospatial data** such as satellite imagery, aerial photography, DEMs, and other geospatial assets using Elasticsearch or OpenSearch as the database backend
+- **Implement standardized STAC APIs** that support complex spatial, temporal, and property-based queries across large collections of geospatial data
+- **Scale to millions of geospatial assets** with fast search performance through optimized spatial indexing and query capabilities
+- **Support OGC-compliant filtering** including spatial operations (intersects, contains, etc.) and temporal queries
+- **Perform geospatial aggregations** to analyze data distribution across space and time
+
+This implementation builds on the STAC-FastAPI framework, providing a production-ready solution specifically optimized for Elasticsearch and OpenSearch databases. It's ideal for organizations managing large geospatial data catalogs who need efficient discovery and access capabilities through standardized APIs.
 
   [![Downloads](https://static.pepy.tech/badge/stac-fastapi-core?color=blue)](https://pepy.tech/project/stac-fastapi-core)
   [![GitHub contributors](https://img.shields.io/github/contributors/stac-utils/stac-fastapi-elasticsearch-opensearch?color=blue)](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/graphs/contributors)
@@ -18,7 +29,6 @@
   [![stac-fastapi](https://img.shields.io/badge/stac--fastapi-5.2.0-blue.svg)](https://github.com/stac-utils/stac-fastapi)
 
   
-<br>
 
 
 ## Sponsors & Supporters
