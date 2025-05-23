@@ -8,9 +8,9 @@
   <img src="assets/sfeos.png" width=1200>
 </p>
 
-## What is STAC-FastAPI-Elasticsearch-OpenSearch?
+## What is stac-fastapi-elasticsearch-opensearch?
 
-STAC-FastAPI-Elasticsearch-OpenSearch provides a high-performance, scalable API implementation for serving SpatioTemporal Asset Catalog (STAC) data - an enhanced GeoJSON format designed specifically for geospatial assets like satellite imagery, aerial photography, and other Earth observation data. This project enables organizations to:
+Stac-fastapi-elasticsearch-opensearch provides a high-performance, scalable API implementation for serving SpatioTemporal Asset Catalog (STAC) data - an enhanced GeoJSON format designed specifically for geospatial assets like satellite imagery, aerial photography, and other Earth observation data. This project enables organizations to:
 
 - **Efficiently catalog and search geospatial data** such as satellite imagery, aerial photography, DEMs, and other geospatial assets using Elasticsearch or OpenSearch as the database backend
 - **Implement standardized STAC APIs** that support complex spatial, temporal, and property-based queries across large collections of geospatial data
