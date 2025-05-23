@@ -8,7 +8,7 @@
   <img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/sfeos.png" width=1200>
 </p>
 
-**Jump to:** [Common Deployment Patterns](#common-deployment-patterns) | [Documentation & Resources](#documentation--resources) | [Quick Start](#quick-start) | [Full Table of Contents](#table-of-contents)
+**Jump to:** [Quick Start](#quick-start) | [Table of Contents](#table-of-contents)
 
   [![Downloads](https://static.pepy.tech/badge/stac-fastapi-core?color=blue)](https://pepy.tech/project/stac-fastapi-core)
   [![GitHub contributors](https://img.shields.io/github/contributors/stac-utils/stac-fastapi-elasticsearch-opensearch?color=blue)](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/graphs/contributors)
