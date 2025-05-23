@@ -5,7 +5,7 @@
 
 
 <p align="left">
-  <img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/sfeos.png" width=1200>
+  <img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/sfeos.png" width=1000>
 </p>
 
 **Jump to:** [Project Overview](#project-overview) | [Quick Start](#quick-start) | [Table of Contents](#table-of-contents)
