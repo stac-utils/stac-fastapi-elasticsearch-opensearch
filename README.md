@@ -5,9 +5,10 @@
 
 
 <p align="left">
-  <img src="assets/sfeos.png" width=1200>
+  <img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/sfeos.png" width=1000>
 </p>
-<p align="left"><b>Elasticsearch and Opensearch backends for the stac-fastapi project.</b></p>
+
+**Jump to:** [Project Introduction](#project-introduction---what-is-sfeos) | [Quick Start](#quick-start) | [Table of Contents](#table-of-contents)
 
   [![Downloads](https://static.pepy.tech/badge/stac-fastapi-core?color=blue)](https://pepy.tech/project/stac-fastapi-core)
   [![GitHub contributors](https://img.shields.io/github/contributors/stac-utils/stac-fastapi-elasticsearch-opensearch?color=blue)](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/graphs/contributors)
@@ -17,29 +18,50 @@
   [![STAC](https://img.shields.io/badge/STAC-1.1.0-blue.svg)](https://github.com/radiantearth/stac-spec/tree/v1.1.0)
   [![stac-fastapi](https://img.shields.io/badge/stac--fastapi-5.2.0-blue.svg)](https://github.com/stac-utils/stac-fastapi)
 
-  
-<br>
-
-
 ## Sponsors & Supporters
 
 The following organizations have contributed time and/or funding to support the development of this project:
 
 <p align="left">
-  <a href="https://healy-hyperspatial.github.io/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/hh-logo-blue.png" alt="Healy Hyperspatial" height="120" hspace="20"></a>
-  <a href="https://atomicmaps.io/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/am-logo-black.png" alt="Atomic Maps" height="120" hspace="20"></a>
+  <a href="https://healy-hyperspatial.github.io/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/hh-logo-blue.png" alt="Healy Hyperspatial" height="100" hspace="20"></a>
+  <a href="https://atomicmaps.io/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/am-logo-black.png" alt="Atomic Maps" height="100" hspace="20"></a>
 </p>
+
+## Project Introduction - What is SFEOS?
+
+SFEOS (stac-fastapi-elasticsearch-opensearch) is a high-performance, scalable API implementation for serving SpatioTemporal Asset Catalog (STAC) data - an enhanced GeoJSON format designed specifically for geospatial assets like satellite imagery, aerial photography, and other Earth observation data. This project enables organizations to:
+
+- **Efficiently catalog and search geospatial data** such as satellite imagery, aerial photography, DEMs, and other geospatial assets using Elasticsearch or OpenSearch as the database backend
+- **Implement standardized STAC APIs** that support complex spatial, temporal, and property-based queries across large collections of geospatial data
+- **Scale to millions of geospatial assets** with fast search performance through optimized spatial indexing and query capabilities
+- **Support OGC-compliant filtering** including spatial operations (intersects, contains, etc.) and temporal queries
+- **Perform geospatial aggregations** to analyze data distribution across space and time
+
+This implementation builds on the STAC-FastAPI framework, providing a production-ready solution specifically optimized for Elasticsearch and OpenSearch databases. It's ideal for organizations managing large geospatial data catalogs who need efficient discovery and access capabilities through standardized APIs.
+
+
+
+## Common Deployment Patterns
+
+stac-fastapi-elasticsearch-opensearch can be deployed in several ways depending on your needs:
+
+- **Containerized Application**: Run as a Docker container with connections to Elasticsearch/OpenSearch databases
+- **Serverless Function**: Deploy as AWS Lambda or similar serverless function with API Gateway
+- **Traditional Server**: Run on virtual machines or bare metal servers in your infrastructure
+- **Kubernetes**: Deploy as part of a larger microservices architecture with container orchestration
+
+The implementation is flexible and can scale from small local deployments to large production environments serving millions of geospatial assets.
 
 ## Technologies
 
 This project is built on the following technologies: STAC, stac-fastapi, FastAPI, Elasticsearch, Python, OpenSearch
 
 <p align="left">
-  <a href="https://stacspec.org/"><img src="assets/STAC-01.png" alt="STAC" height="100" hspace="10"></a>
-  <a href="https://www.python.org/"><img src="assets/python.png" alt="Python" height="80" hspace="10"></a>
-  <a href="https://fastapi.tiangolo.com/"><img src="assets/fastapi.svg" alt="FastAPI" height="80" hspace="10"></a>
-  <a href="https://www.elastic.co/"><img src="assets/elasticsearch.png" alt="Elasticsearch" height="80" hspace="10"></a>
-  <a href="https://opensearch.org/"><img src="assets/opensearch.svg" alt="OpenSearch" height="80" hspace="10"></a>
+  <a href="https://stacspec.org/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/STAC-01.png" alt="STAC" height="100" hspace="10"></a>
+  <a href="https://www.python.org/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/python.png" alt="Python" height="80" hspace="10"></a>
+  <a href="https://fastapi.tiangolo.com/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/fastapi.svg" alt="FastAPI" height="80" hspace="10"></a>
+  <a href="https://www.elastic.co/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/elasticsearch.png" alt="Elasticsearch" height="80" hspace="10"></a>
+  <a href="https://opensearch.org/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/opensearch.svg" alt="OpenSearch" height="80" hspace="10"></a>
 </p>
 
 ## Table of Contents
