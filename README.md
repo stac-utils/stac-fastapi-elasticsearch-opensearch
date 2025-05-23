@@ -1,34 +1,46 @@
-# sfeos - stac-fastapi-elasticsearch-opensearch
+# stac-fastapi-elasticsearch-opensearch
 
 <!-- markdownlint-disable MD033 MD041 -->
 
+
+
 <p align="left">
-  <img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/stac-030-long.png" width=700>
-  <p align="left"><b>Elasticsearch and Opensearch backends for the stac-fastapi project.</b></p>
+  <img src="assets/sfeos.png" width=1200>
 </p>
+<p align="left"><b>Elasticsearch and Opensearch backends for the stac-fastapi project.</b></p>
+
+  [![Downloads](https://static.pepy.tech/badge/stac-fastapi-core?color=blue)](https://pepy.tech/project/stac-fastapi-core)
+  [![GitHub contributors](https://img.shields.io/github/contributors/stac-utils/stac-fastapi-elasticsearch-opensearch?color=blue)](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/graphs/contributors)
+  [![GitHub stars](https://img.shields.io/github/stars/stac-utils/stac-fastapi-elasticsearch-opensearch.svg?color=blue)](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/stargazers)
+  [![GitHub forks](https://img.shields.io/github/forks/stac-utils/stac-fastapi-elasticsearch-opensearch.svg?color=blue)](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/network/members)
+   [![PyPI version](https://img.shields.io/pypi/v/stac-fastapi-elasticsearch.svg?color=blue)](https://pypi.org/project/stac-fastapi-elasticsearch/)
+  [![STAC](https://img.shields.io/badge/STAC-1.1.0-blue.svg)](https://github.com/radiantearth/stac-spec/tree/v1.1.0)
+  [![stac-fastapi](https://img.shields.io/badge/stac--fastapi-5.2.0-blue.svg)](https://github.com/stac-utils/stac-fastapi)
 
   
-  [![PyPI version](https://badge.fury.io/py/stac-fastapi-elasticsearch.svg)](https://badge.fury.io/py/stac-fastapi-elasticsearch) [![PyPI version](https://badge.fury.io/py/stac-fastapi-opensearch.svg)](https://badge.fury.io/py/stac-fastapi-opensearch)
-  [![Join the chat at https://gitter.im/stac-fastapi-elasticsearch/community](https://badges.gitter.im/stac-fastapi-elasticsearch/community.svg)](https://gitter.im/stac-fastapi-elasticsearch/community?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+<br>
+
 
 ## Sponsors & Supporters
 
 The following organizations have contributed time and/or funding to support the development of this project:
 
-<table>
-  <tr>
-    <td align="center" width="50%">
-      <a href="https://healy-hyperspatial.github.io/">
-        <img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/hh-logo-blue.png" alt="Healy Hyperspatial" height="120">
-      </a>
-    </td>
-    <td align="center" width="50%">
-      <a href="https://atomicmaps.io/">
-        <img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/am-logo-black.png" alt="Atomic Maps" height="120">
-      </a>
-    </td>
-  </tr>
-</table>
+<p align="left">
+  <a href="https://healy-hyperspatial.github.io/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/hh-logo-blue.png" alt="Healy Hyperspatial" height="120" hspace="20"></a>
+  <a href="https://atomicmaps.io/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/am-logo-black.png" alt="Atomic Maps" height="120" hspace="20"></a>
+</p>
+
+## Technologies
+
+This project is built on the following technologies: STAC, stac-fastapi, FastAPI, Elasticsearch, Python, OpenSearch
+
+<p align="left">
+  <a href="https://stacspec.org/"><img src="assets/STAC-01.png" alt="STAC" height="100" hspace="10"></a>
+  <a href="https://www.python.org/"><img src="assets/python.png" alt="Python" height="80" hspace="10"></a>
+  <a href="https://fastapi.tiangolo.com/"><img src="assets/fastapi.svg" alt="FastAPI" height="80" hspace="10"></a>
+  <a href="https://www.elastic.co/"><img src="assets/elasticsearch.png" alt="Elasticsearch" height="80" hspace="10"></a>
+  <a href="https://opensearch.org/"><img src="assets/opensearch.svg" alt="OpenSearch" height="80" hspace="10"></a>
+</p>
 
 ## Table of Contents
 
@@ -75,7 +87,6 @@ This project is organized into several packages, each with a specific purpose:
 - **stac_fastapi_elasticsearch**: Complete implementation of the STAC API using Elasticsearch as the backend database. This package depends on both `stac_fastapi_core` and `sfeos_helpers`.
 
 - **stac_fastapi_opensearch**: Complete implementation of the STAC API using OpenSearch as the backend database. This package depends on both `stac_fastapi_core` and `sfeos_helpers`.
-
 
 ## Examples
 
