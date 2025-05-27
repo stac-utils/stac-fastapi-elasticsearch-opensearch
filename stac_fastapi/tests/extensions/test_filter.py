@@ -160,6 +160,24 @@ async def test_search_filter_ext_and_get_cql2text_id(app_client, ctx):
 
 
 @pytest.mark.asyncio
+async def test_search_filter_ext_cql_property_terms_query(app_client, ctx):
+    """Tests for terms queries not supporting property reference."""
+    landsat_row = ctx.item["properties"]["landsat:row"]
+
+    cql2_text_property_queries = {
+        f'properties.landsat:row="{landsat_row}"': 1,
+        f'properties.landsat:row!="{landsat_row}"': 0,
+        f'properties.landsat:row IN ("{landsat_row}")': 1,
+    }
+
+    for filter, result in cql2_text_property_queries.items():
+        resp = await app_client.get(f"/search?filter-lang=cql2-text&filter={filter}")
+        content = resp.json()
+        assert resp.status_code == 200
+        assert len(content["features"]) == result
+
+
+@pytest.mark.asyncio
 async def test_search_filter_ext_and_get_cql2text_cloud_cover(app_client, ctx):
     collection = ctx.item["collection"]
     cloud_cover = ctx.item["properties"]["eo:cloud_cover"]
