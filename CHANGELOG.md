@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 
 - Created new `sfeos_helpers` package to improve code organization and maintainability [#376](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/376)
+- Added introduction section - What is stac-fastapi-elasticsearch-opensearch? - to README [#384](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/384)
 
 ### Changed
 
