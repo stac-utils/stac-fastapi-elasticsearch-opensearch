@@ -805,7 +805,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 base_url=base_url,
             )
 
-        if isinstance(patch, dict) and content_type in [
+        if isinstance(patch, stac_types.PartialItem) and content_type in [
             "application/merge-patch+json",
             "application/json",
         ]:
@@ -931,7 +931,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 base_url=base_url,
             )
 
-        if isinstance(patch, dict) and content_type in [
+        if isinstance(patch, stac_types.PartialCollection) and content_type in [
             "application/merge-patch+json",
             "application/json",
         ]:

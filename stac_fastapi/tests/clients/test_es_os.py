@@ -297,7 +297,7 @@ async def test_json_patch_item_add(ctx, core_client, txn_client):
         collection_id=collection_id,
         item_id=item_id,
         patch=operations,
-        request=MockRequest(headers={"Content-type": "application/json-patch+json"}),
+        request=MockRequest(headers={"content-type": "application/json-patch+json"}),
     )
 
     updated_item = await core_client.get_item(
@@ -330,7 +330,7 @@ async def test_json_patch_item_replace(ctx, core_client, txn_client):
         collection_id=collection_id,
         item_id=item_id,
         patch=operations,
-        request=MockRequest(headers={"Content-type": "application/json-patch+json"}),
+        request=MockRequest(headers={"content-type": "application/json-patch+json"}),
     )
 
     updated_item = await core_client.get_item(
@@ -363,7 +363,7 @@ async def test_json_patch_item_test(ctx, core_client, txn_client):
         collection_id=collection_id,
         item_id=item_id,
         patch=operations,
-        request=MockRequest(headers={"Content-type": "application/json-patch+json"}),
+        request=MockRequest(headers={"content-type": "application/json-patch+json"}),
     )
 
     updated_item = await core_client.get_item(
@@ -396,7 +396,7 @@ async def test_json_patch_item_move(ctx, core_client, txn_client):
         collection_id=collection_id,
         item_id=item_id,
         patch=operations,
-        request=MockRequest(headers={"Content-type": "application/json-patch+json"}),
+        request=MockRequest(headers={"content-type": "application/json-patch+json"}),
     )
 
     updated_item = await core_client.get_item(
@@ -431,7 +431,7 @@ async def test_json_patch_item_copy(ctx, core_client, txn_client):
         collection_id=collection_id,
         item_id=item_id,
         patch=operations,
-        request=MockRequest(headers={"Content-type": "application/json-patch+json"}),
+        request=MockRequest(headers={"content-type": "application/json-patch+json"}),
     )
 
     updated_item = await core_client.get_item(
@@ -460,7 +460,7 @@ async def test_json_patch_item_remove(ctx, core_client, txn_client):
         collection_id=collection_id,
         item_id=item_id,
         patch=operations,
-        request=MockRequest(headers={"Content-type": "application/json-patch+json"}),
+        request=MockRequest(headers={"content-type": "application/json-patch+json"}),
     )
 
     updated_item = await core_client.get_item(
@@ -490,7 +490,7 @@ async def test_json_patch_item_test_wrong_value(ctx, core_client, txn_client):
             item_id=item_id,
             patch=operations,
             request=MockRequest(
-                headers={"Content-type": "application/json-patch+json"}
+                headers={"content-type": "application/json-patch+json"}
             ),
         )
 
@@ -515,7 +515,7 @@ async def test_json_patch_item_replace_property_does_not_exists(
             item_id=item_id,
             patch=operations,
             request=MockRequest(
-                headers={"Content-type": "application/json-patch+json"}
+                headers={"content-type": "application/json-patch+json"}
             ),
         )
 
@@ -538,7 +538,7 @@ async def test_json_patch_item_remove_property_does_not_exists(
             item_id=item_id,
             patch=operations,
             request=MockRequest(
-                headers={"Content-type": "application/json-patch+json"}
+                headers={"content-type": "application/json-patch+json"}
             ),
         )
 
@@ -563,7 +563,7 @@ async def test_json_patch_item_move_property_does_not_exists(
             item_id=item_id,
             patch=operations,
             request=MockRequest(
-                headers={"Content-type": "application/json-patch+json"}
+                headers={"content-type": "application/json-patch+json"}
             ),
         )
 
@@ -588,7 +588,7 @@ async def test_json_patch_item_copy_property_does_not_exists(
             item_id=item_id,
             patch=operations,
             request=MockRequest(
-                headers={"Content-type": "application/json-patch+json"}
+                headers={"content-type": "application/json-patch+json"}
             ),
         )
 
@@ -695,7 +695,7 @@ async def test_json_patch_collection_add(ctx, core_client, txn_client):
     await txn_client.patch_collection(
         collection_id=collection_id,
         patch=operations,
-        request=MockRequest(headers={"Content-type": "application/json-patch+json"}),
+        request=MockRequest(headers={"content-type": "application/json-patch+json"}),
     )
 
     updated_collection = await core_client.get_collection(
@@ -719,7 +719,7 @@ async def test_json_patch_collection_replace(ctx, core_client, txn_client):
     await txn_client.patch_collection(
         collection_id=collection_id,
         patch=operations,
-        request=MockRequest(headers={"Content-type": "application/json-patch+json"}),
+        request=MockRequest(headers={"content-type": "application/json-patch+json"}),
     )
 
     updated_collection = await core_client.get_collection(
@@ -742,7 +742,7 @@ async def test_json_patch_collection_test(ctx, core_client, txn_client):
     await txn_client.patch_collection(
         collection_id=collection_id,
         patch=operations,
-        request=MockRequest(headers={"Content-type": "application/json-patch+json"}),
+        request=MockRequest(headers={"content-type": "application/json-patch+json"}),
     )
 
     updated_collection = await core_client.get_collection(
@@ -765,7 +765,7 @@ async def test_json_patch_collection_move(ctx, core_client, txn_client):
     await txn_client.patch_collection(
         collection_id=collection_id,
         patch=operations,
-        request=MockRequest(headers={"Content-type": "application/json-patch+json"}),
+        request=MockRequest(headers={"content-type": "application/json-patch+json"}),
     )
 
     updated_collection = await core_client.get_collection(
@@ -789,7 +789,7 @@ async def test_json_patch_collection_copy(ctx, core_client, txn_client):
     await txn_client.patch_collection(
         collection_id=collection_id,
         patch=operations,
-        request=MockRequest(headers={"Content-type": "application/json-patch+json"}),
+        request=MockRequest(headers={"content-type": "application/json-patch+json"}),
     )
 
     updated_collection = await core_client.get_collection(
@@ -812,7 +812,7 @@ async def test_json_patch_collection_remove(ctx, core_client, txn_client):
     await txn_client.patch_collection(
         collection_id=collection_id,
         patch=operations,
-        request=MockRequest(headers={"Content-type": "application/json-patch+json"}),
+        request=MockRequest(headers={"content-type": "application/json-patch+json"}),
     )
 
     updated_collection = await core_client.get_collection(
@@ -838,7 +838,7 @@ async def test_json_patch_collection_test_wrong_value(ctx, core_client, txn_clie
             collection_id=collection_id,
             patch=operations,
             request=MockRequest(
-                headers={"Content-type": "application/json-patch+json"}
+                headers={"content-type": "application/json-patch+json"}
             ),
         )
 
@@ -861,7 +861,7 @@ async def test_json_patch_collection_replace_property_does_not_exists(
             collection_id=collection_id,
             patch=operations,
             request=MockRequest(
-                headers={"Content-type": "application/json-patch+json"}
+                headers={"content-type": "application/json-patch+json"}
             ),
         )
 
@@ -882,7 +882,7 @@ async def test_json_patch_collection_remove_property_does_not_exists(
             collection_id=collection_id,
             patch=operations,
             request=MockRequest(
-                headers={"Content-type": "application/json-patch+json"}
+                headers={"content-type": "application/json-patch+json"}
             ),
         )
 
@@ -905,7 +905,7 @@ async def test_json_patch_collection_move_property_does_not_exists(
             collection_id=collection_id,
             patch=operations,
             request=MockRequest(
-                headers={"Content-type": "application/json-patch+json"}
+                headers={"content-type": "application/json-patch+json"}
             ),
         )
 
@@ -928,6 +928,6 @@ async def test_json_patch_collection_copy_property_does_not_exists(
             collection_id=collection_id,
             patch=operations,
             request=MockRequest(
-                headers={"Content-type": "application/json-patch+json"}
+                headers={"content-type": "application/json-patch+json"}
             ),
         )

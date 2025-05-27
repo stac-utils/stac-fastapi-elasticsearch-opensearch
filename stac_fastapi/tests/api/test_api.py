@@ -660,7 +660,7 @@ async def test_patch_operations_collection(app_client, ctx):
     resp = await app_client.patch(
         f"/collections/{ctx.item['collection']}",
         json=operations,
-        request=MockRequest(headers={"Content-type": "application/json-patch+json"}),
+        request=MockRequest(headers={"content-type": "application/json-patch+json"}),
     )
 
     assert resp.status_code == 200
@@ -726,7 +726,7 @@ async def test_patch_operations_item(app_client, ctx):
     resp = await app_client.patch(
         f"/collections/{ctx.item['collection']}/{ctx.item['id']}",
         json=operations,
-        request=MockRequest(headers={"Content-type": "application/json-patch+json"}),
+        request=MockRequest(headers={"content-type": "application/json-patch+json"}),
     )
 
     assert resp.status_code == 200
