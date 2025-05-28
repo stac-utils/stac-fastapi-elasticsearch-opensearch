@@ -33,7 +33,9 @@ ROUTES = {
     "POST /collections",
     "POST /collections/{collection_id}/items",
     "PUT /collections/{collection_id}",
+    "PATCH /collections/{collection_id}",
     "PUT /collections/{collection_id}/items/{item_id}",
+    "PATCH /collections/{collection_id}/items/{item_id}",
     "GET /aggregations",
     "GET /aggregate",
     "POST /aggregations",
@@ -614,6 +616,137 @@ async def test_bbox_3d(app_client, ctx):
     assert resp.status_code == 200
     resp_json = resp.json()
     assert len(resp_json["features"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_patch_json_collection(app_client, ctx):
+    data = {
+        "id": "new_id",
+        "summaries": {"hello": "world", "gsd": [50], "instruments": None},
+    }
+
+    resp = await app_client.patch(f"/collections/{ctx.collection['id']}", json=data)
+
+    assert resp.status_code == 200
+
+    new_resp = await app_client.get("/collections/new_id")
+    old_resp = await app_client.get(f"/collections/{ctx.collection['id']}")
+
+    assert new_resp.status_code == 200
+    assert old_resp.status_code == 404
+
+    new_resp_json = new_resp.json()
+
+    assert new_resp_json["id"] == "new_id"
+    assert new_resp_json["summaries"]["hello"] == "world"
+    assert "instruments" not in new_resp_json["summaries"]
+    assert new_resp_json["summaries"]["gsd"] == [50]
+    assert new_resp_json["summaries"]["platform"] == ["landsat-8"]
+
+
+@pytest.mark.asyncio
+async def test_patch_operations_collection(app_client, ctx):
+    operations = [
+        {"op": "add", "path": "/summaries/hello", "value": "world"},
+        {"op": "replace", "path": "/summaries/gsd", "value": [50]},
+        {
+            "op": "move",
+            "path": "/summaries/instruments",
+            "from": "/summaries/instrument",
+        },
+        {"op": "copy", "path": "license", "from": "/summaries/license"},
+    ]
+
+    resp = await app_client.patch(
+        f"/collections/{ctx.item['collection']}",
+        json=operations,
+        headers={"content-type": "application/json-patch+json"},
+    )
+
+    assert resp.status_code == 200
+
+    new_resp = await app_client.get(
+        f"/collections/{ctx.item['collection']}/{ctx.item['id']}"
+    )
+
+    assert new_resp.status_code == 200
+
+    new_resp_json = new_resp.json()
+
+    assert new_resp_json["summaries"]["hello"] == "world"
+    assert "instruments" not in new_resp_json["summaries"]
+    assert new_resp_json["summaries"]["gsd"] == [50]
+    assert new_resp_json["license"] == "PDDL-1.0"
+    assert new_resp_json["summaries"]["license"] == "PDDL-1.0"
+    assert new_resp_json["summaries"]["instrument"] == ["oli", "tirs"]
+    assert new_resp_json["summaries"]["platform"] == ["landsat-8"]
+
+
+@pytest.mark.asyncio
+async def test_patch_json_item(app_client, ctx):
+
+    data = {
+        "id": "new_id",
+        "properties": {"hello": "world", "proj:epsg": 1000, "landsat:column": None},
+    }
+
+    resp = await app_client.patch(
+        f"/collections/{ctx.item['collection']}/{ctx.item['id']}", json=data
+    )
+
+    assert resp.status_code == 200
+
+    new_resp = await app_client.get(f"/collections/{ctx.item['collection']}/new_id")
+    old_resp = await app_client.get(
+        f"/collections/{ctx.item['collection']}/{ctx.item['id']}"
+    )
+
+    assert new_resp.status_code == 200
+    assert old_resp.status_code == 404
+
+    new_resp_json = new_resp.json()
+
+    assert new_resp_json["id"] == "new_id"
+    assert new_resp_json["properties"]["hello"] == "world"
+    assert "landsat:column" not in new_resp_json["properties"]
+    assert new_resp_json["properties"]["proj:epsg"] == 1000
+    assert new_resp_json["properties"]["platform"] == "landsat-8"
+
+
+@pytest.mark.asyncio
+async def test_patch_operations_item(app_client, ctx):
+    operations = [
+        {"op": "add", "path": "/properties/hello", "value": "world"},
+        {"op": "remove", "path": "/properties/landsat:column"},
+        {"op": "replace", "path": "/properties/proj:epsg", "value": 1000},
+        {"op": "move", "path": "/properties/foo", "from": "/properties/instrument"},
+        {"op": "copy", "path": "properties/bar", "from": "/properties/height"},
+    ]
+
+    resp = await app_client.patch(
+        f"/collections/{ctx.item['collection']}/{ctx.item['id']}",
+        json=operations,
+        headers={"content-type": "application/json-patch+json"},
+    )
+
+    assert resp.status_code == 200
+
+    new_resp = await app_client.get(
+        f"/collections/{ctx.item['collection']}/{ctx.item['id']}"
+    )
+
+    assert new_resp.status_code == 200
+
+    new_resp_json = new_resp.json()
+
+    assert new_resp_json["properties"]["hello"] == "world"
+    assert "landsat:column" not in new_resp_json["properties"]
+    assert "instrument" not in new_resp_json["properties"]
+    assert new_resp_json["properties"]["proj:epsg"] == 1000
+    assert new_resp_json["properties"]["foo"] == "OLI_TIRS"
+    assert new_resp_json["properties"]["bar"] == 2500
+    assert new_resp_json["properties"]["height"] == 2500
+    assert new_resp_json["properties"]["platform"] == "landsat-8"
 
 
 @pytest.mark.asyncio
