@@ -6,6 +6,7 @@ from typing import Any, Dict, Optional, Union
 from pydantic import BaseModel, computed_field, model_validator
 
 regex = re.compile(r"([^.' ]*:[^.'[ ]*)\.?")
+replacements = str.maketrans({"/": "", ".": "", ":": "", "[": "", "]": ""})
 
 
 class ESCommandSet:
@@ -153,3 +154,13 @@ class ElasticPath(BaseModel):
         return (
             f"{self.nest.replace('.','_').replace(':','_')}_{self.key.replace(':','_')}"
         )
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def param_key(self) -> str:
+        """Param key for scripting.
+
+        Returns:
+            str: param key
+        """
+        return self.path.translate(replacements)

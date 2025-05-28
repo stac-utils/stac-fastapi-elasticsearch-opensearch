@@ -316,6 +316,7 @@ def add_commands(
     operation: PatchOperation,
     path: ElasticPath,
     from_path: ElasticPath,
+    params: Dict,
 ) -> None:
     """Add value at path.
 
@@ -332,7 +333,8 @@ def add_commands(
             else f"ctx._source.{from_path.es_path}"
         )
     else:
-        value = operation.json_value
+        value = f"params.{path.param_key}"
+        params[path.param_key] = operation.json_value
 
     if path.index is not None:
         commands.add(
@@ -372,6 +374,8 @@ def operations_to_script(operations: List) -> Dict:
         Dict: elasticsearch update script.
     """
     commands: ESCommandSet = ESCommandSet()
+    params: Dict = {}
+
     for operation in operations:
         path = ElasticPath(path=operation.path)
         from_path = (
@@ -390,7 +394,11 @@ def operations_to_script(operations: List) -> Dict:
 
         if operation.op in ["add", "replace", "copy", "move"]:
             add_commands(
-                commands=commands, operation=operation, path=path, from_path=from_path
+                commands=commands,
+                operation=operation,
+                path=path,
+                from_path=from_path,
+                params=params,
             )
 
         if operation.op == "test":
@@ -401,4 +409,5 @@ def operations_to_script(operations: List) -> Dict:
     return {
         "source": source,
         "lang": "painless",
+        "params": params,
     }
