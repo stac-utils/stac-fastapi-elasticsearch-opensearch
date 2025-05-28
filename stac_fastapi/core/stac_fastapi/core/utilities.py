@@ -405,7 +405,9 @@ def operations_to_script(operations: List) -> Dict:
             )
 
         if operation.op == "test":
-            test_commands(commands=commands, operation=operation, path=path)
+            test_commands(
+                commands=commands, operation=operation, path=path, params=params
+            )
 
         source = "".join(commands)
 
