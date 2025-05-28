@@ -5,7 +5,7 @@ from typing import Any, Dict, Optional, Union
 
 from pydantic import BaseModel, computed_field, model_validator
 
-regex = re.compile(r"([^.' ]*:[^.'[ ]]*)\.?")
+regex = re.compile(r"([^.' ]*:[^.'[ ]*)\.?")
 
 
 class ESCommandSet:
