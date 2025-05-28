@@ -958,7 +958,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         Returns:
             patched item.
         """
-        operations = merge_to_operations(item)
+        operations = merge_to_operations(item.model_dump())
 
         return await self.json_patch_item(
             collection_id=collection_id,
@@ -1288,7 +1288,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         Returns:
             patched collection.
         """
-        operations = merge_to_operations(collection)
+        operations = merge_to_operations(collection.model_dump())
 
         return await self.json_patch_collection(
             collection_id=collection_id,

@@ -247,7 +247,7 @@ async def test_merge_patch_item_add(ctx, core_client, txn_client):
         collection_id=collection_id,
         item_id=item_id,
         patch={"properties": {"foo": "bar", "ext:hello": "world"}},
-        request=MockRequest,
+        request=MockRequest(headers={"content-type": "application/json"}),
     )
 
     updated_item = await core_client.get_item(
@@ -266,7 +266,7 @@ async def test_merge_patch_item_remove(ctx, core_client, txn_client):
         collection_id=collection_id,
         item_id=item_id,
         patch={"properties": {"gsd": None, "proj:epsg": None}},
-        request=MockRequest,
+        request=MockRequest(headers={"content-type": "application/merge-patch+json"}),
     )
 
     updated_item = await core_client.get_item(
@@ -289,7 +289,17 @@ async def test_json_patch_item_add(ctx, core_client, txn_client):
             {"op": "add", "path": "/properties/ext:hello", "value": "world"}
         ),
         PatchAddReplaceTest.model_validate(
-            {"op": "add", "path": "/properties/area/1", "value": 10}
+            {
+                "op": "add",
+                "path": "/properties/eo:bands/1",
+                "value": {
+                    "gsd": 10,
+                    "name": "FB",
+                    "common_name": "fake_band",
+                    "center_wavelength": 3.45,
+                    "full_width_half_max": 1.23,
+                },
+            }
         ),
     ]
 
@@ -306,7 +316,17 @@ async def test_json_patch_item_add(ctx, core_client, txn_client):
 
     assert updated_item["properties"]["foo"] == "bar"
     assert updated_item["properties"]["ext:hello"] == "world"
-    assert updated_item["properties"]["area"] == [2500, 10, -200]
+    assert (
+        len(updated_item["properties"]["eo:bands"])
+        == len(ctx.item["properties"]["eo:bands"]) + 1
+    )
+    assert updated_item["properties"]["eo:bands"][1] == {
+        "gsd": 10,
+        "name": "FB",
+        "common_name": "fake_band",
+        "center_wavelength": 3.45,
+        "full_width_half_max": 1.23,
+    }
 
 
 @pytest.mark.asyncio
@@ -322,7 +342,17 @@ async def test_json_patch_item_replace(ctx, core_client, txn_client):
             {"op": "replace", "path": "/properties/proj:epsg", "value": 12345}
         ),
         PatchAddReplaceTest.model_validate(
-            {"op": "replace", "path": "/properties/area/1", "value": 50}
+            {
+                "op": "replace",
+                "path": "/properties/eo:bands/1",
+                "value": {
+                    "gsd": 10,
+                    "name": "FB",
+                    "common_name": "fake_band",
+                    "center_wavelength": 3.45,
+                    "full_width_half_max": 1.23,
+                },
+            }
         ),
     ]
 
@@ -339,7 +369,16 @@ async def test_json_patch_item_replace(ctx, core_client, txn_client):
 
     assert updated_item["properties"]["gsd"] == 100
     assert updated_item["properties"]["proj:epsg"] == 12345
-    assert updated_item["properties"]["area"] == [2500, 50]
+    assert len(updated_item["properties"]["eo:bands"]) == len(
+        ctx.item["properties"]["eo:bands"]
+    )
+    assert updated_item["properties"]["eo:bands"][1] == {
+        "gsd": 10,
+        "name": "FB",
+        "common_name": "fake_band",
+        "center_wavelength": 3.45,
+        "full_width_half_max": 1.23,
+    }
 
 
 @pytest.mark.asyncio
@@ -355,7 +394,11 @@ async def test_json_patch_item_test(ctx, core_client, txn_client):
             {"op": "test", "path": "/properties/proj:epsg", "value": 32756}
         ),
         PatchAddReplaceTest.model_validate(
-            {"op": "test", "path": "/properties/area/1", "value": -200}
+            {
+                "op": "test",
+                "path": "/properties/eo:bands/1",
+                "value": item["properties"]["eo:bands"][1],
+            }
         ),
     ]
 
@@ -372,7 +415,9 @@ async def test_json_patch_item_test(ctx, core_client, txn_client):
 
     assert updated_item["properties"]["gsd"] == 15
     assert updated_item["properties"]["proj:epsg"] == 32756
-    assert updated_item["properties"]["area"][1] == -200
+    assert (
+        updated_item["properties"]["eo:bands"][1] == item["properties"]["eo:bands"][1]
+    )
 
 
 @pytest.mark.asyncio
@@ -388,7 +433,11 @@ async def test_json_patch_item_move(ctx, core_client, txn_client):
             {"op": "move", "path": "/properties/bar", "from": "/properties/proj:epsg"}
         ),
         PatchMoveCopy.model_validate(
-            {"op": "move", "path": "/properties/area/0", "from": "/properties/area/1"}
+            {
+                "op": "move",
+                "path": "/properties/eo:bands/0",
+                "from": "/properties/eo:bands/1",
+            }
         ),
     ]
 
@@ -407,7 +456,17 @@ async def test_json_patch_item_move(ctx, core_client, txn_client):
     assert "gsd" not in updated_item["properties"]
     assert updated_item["properties"]["bar"] == 32756
     assert "proj:epsg" not in updated_item["properties"]
-    assert updated_item["properties"]["area"] == [-200, 2500]
+    assert len(updated_item["properties"]["eo:bands"]) == len(
+        ctx.item["properties"]["eo:bands"]
+    )
+    assert (
+        updated_item["properties"]["eo:bands"][0]
+        == ctx.item["properties"]["eo:bands"][1]
+    )
+    assert (
+        updated_item["properties"]["eo:bands"][1]
+        != ctx.item["properties"]["eo:bands"][1]
+    )
 
 
 @pytest.mark.asyncio
@@ -423,7 +482,11 @@ async def test_json_patch_item_copy(ctx, core_client, txn_client):
             {"op": "copy", "path": "/properties/bar", "from": "/properties/proj:epsg"}
         ),
         PatchMoveCopy.model_validate(
-            {"op": "copy", "path": "/properties/area/0", "from": "/properties/area/1"}
+            {
+                "op": "copy",
+                "path": "/properties/eo:bands/0",
+                "from": "/properties/eo:bands/1",
+            }
         ),
     ]
 
@@ -441,7 +504,12 @@ async def test_json_patch_item_copy(ctx, core_client, txn_client):
     assert updated_item["properties"]["foo"] == updated_item["properties"]["gsd"]
     assert updated_item["properties"]["bar"] == updated_item["properties"]["proj:epsg"]
     assert (
-        updated_item["properties"]["area"][0] == updated_item["properties"]["area"][1]
+        len(updated_item["properties"]["eo:bands"])
+        == len(ctx.item["properties"]["eo:bands"]) + 1
+    )
+    assert (
+        updated_item["properties"]["eo:bands"][0]
+        == ctx.item["properties"]["eo:bands"][1]
     )
 
 
@@ -453,7 +521,7 @@ async def test_json_patch_item_remove(ctx, core_client, txn_client):
     operations = [
         PatchRemove.model_validate({"op": "remove", "path": "/properties/gsd"}),
         PatchRemove.model_validate({"op": "remove", "path": "/properties/proj:epsg"}),
-        PatchRemove.model_validate({"op": "remove", "path": "/properties/area/1"}),
+        PatchRemove.model_validate({"op": "remove", "path": "/properties/eo:bands/1"}),
     ]
 
     await txn_client.patch_item(
@@ -469,7 +537,15 @@ async def test_json_patch_item_remove(ctx, core_client, txn_client):
 
     assert "gsd" not in updated_item["properties"]
     assert "proj:epsg" not in updated_item["properties"]
-    assert updated_item["properties"]["area"] == [2500]
+    assert (
+        len(updated_item["properties"]["eo:bands"])
+        == len(ctx.item["properties"]["eo:bands"]) - 1
+    )
+    assert (
+        updated_item["properties"]["eo:bands"]
+        == ctx.item["properties"]["eo:bands"][:1]
+        + ctx.item["properties"]["eo:bands"][2:]
+    )
 
 
 @pytest.mark.asyncio
@@ -653,7 +729,7 @@ async def test_merge_patch_collection_add(ctx, core_client, txn_client):
     await txn_client.patch_collection(
         collection_id=collection_id,
         patch={"summaries": {"foo": "bar", "hello": "world"}},
-        request=MockRequest,
+        request=MockRequest(headers={"content-type": "application/json"}),
     )
 
     updated_collection = await core_client.get_collection(
@@ -670,7 +746,7 @@ async def test_merge_patch_collection_remove(ctx, core_client, txn_client):
     await txn_client.patch_collection(
         collection_id=collection_id,
         patch={"summaries": {"gsd": None}},
-        request=MockRequest,
+        request=MockRequest(headers={"content-type": "application/merge-patch+json"}),
     )
 
     updated_collection = await core_client.get_collection(
