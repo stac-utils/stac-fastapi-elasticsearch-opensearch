@@ -820,7 +820,11 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         if item:
             return ItemSerializer.db_to_stac(item, base_url=base_url)
 
-        raise NotImplementedError("Content-Type and body combination not implemented")
+        raise NotImplementedError(
+            "Content-Type: %s and body: %s combination not implemented",
+            content_type,
+            patch,
+        )
 
     @overrides
     async def delete_item(self, item_id: str, collection_id: str, **kwargs) -> None:
@@ -903,7 +907,8 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             extensions=[type(ext).__name__ for ext in self.database.extensions],
         )
 
-    def patch_collection(
+    @overrides
+    async def patch_collection(
         self,
         collection_id: str,
         patch: Union[stac_types.PartialCollection, List[stac_types.PatchOperation]],
@@ -925,7 +930,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         collection = None
         if isinstance(patch, list) and content_type == "application/json-patch+json":
-            collection = self.database.json_patch_collection(
+            collection = await self.database.json_patch_collection(
                 collection_id=collection_id,
                 operations=patch,
                 base_url=base_url,
@@ -936,7 +941,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             "application/json",
         ]:
             patch = partialCollectionValidator.validate_python(patch)
-            collection = self.database.merge_patch_collection(
+            collection = await self.database.merge_patch_collection(
                 collection_id=collection_id,
                 collection=patch,
                 base_url=base_url,
@@ -949,7 +954,11 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 extensions=[type(ext).__name__ for ext in self.database.extensions],
             )
 
-        raise NotImplementedError("Content-Type and body combination not implemented")
+        raise NotImplementedError(
+            "Content-Type: %s and body: %s combination not implemented",
+            content_type,
+            patch,
+        )
 
     @overrides
     async def delete_collection(self, collection_id: str, **kwargs) -> None:

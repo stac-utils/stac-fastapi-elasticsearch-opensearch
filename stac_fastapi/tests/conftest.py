@@ -80,7 +80,7 @@ class MockRequest:
         url: str = "XXXX",
         app: Optional[Any] = None,
         query_params: Dict[str, Any] = {"limit": "10"},
-        headers: Dict[str, Any] = {"Content-type": "application/json"},
+        headers: Dict[str, Any] = {"content-type": "application/json"},
     ):
         self.method = method
         self.url = url
