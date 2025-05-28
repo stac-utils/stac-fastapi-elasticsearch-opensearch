@@ -1062,7 +1062,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         if new_item_id:
             item["id"] = new_item_id
             item = await self.prep_create_item(item=item, base_url=base_url)
-            await self.create_item(item=item, refresh=False)
+            await self.create_item(item=item, refresh=True)
 
         if new_collection_id or new_item_id:
 
@@ -1332,7 +1332,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             collection["id"] = new_collection_id
             collection["links"] = resolve_links([], base_url)
             await self.update_collection(
-                collection_id=collection_id, collection=collection, refresh=False
+                collection_id=collection_id, collection=collection, refresh=True
             )
 
         return collection

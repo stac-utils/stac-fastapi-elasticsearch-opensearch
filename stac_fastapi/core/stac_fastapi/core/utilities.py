@@ -348,7 +348,7 @@ def add_commands(
 
 
 def test_commands(
-    commands: ESCommandSet, operation: PatchOperation, path: ElasticPath
+    commands: ESCommandSet, operation: PatchOperation, path: ElasticPath, params: Dict
 ) -> None:
     """Test value at path.
 
@@ -357,8 +357,11 @@ def test_commands(
         operation (PatchOperation): operation to run
         path (ElasticPath): path for value to be tested
     """
+    value = f"params.{path.param_key}"
+    params[path.param_key] = operation.value
+
     commands.add(
-        f"if (ctx._source.{path.es_path} != {operation.json_value})"
+        f"if (ctx._source.{path.es_path} != {value})"
         f"{{Debug.explain('Test failed `{path.path}` | "
         f"{operation.json_value} != ' + ctx._source.{path.es_path});}}"
     )
