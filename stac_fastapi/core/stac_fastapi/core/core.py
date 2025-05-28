@@ -805,11 +805,13 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 base_url=base_url,
             )
 
+        if isinstance(patch, dict):
+            patch = partialItemValidator.validate_python(patch)
+
         if isinstance(patch, stac_types.PartialItem) and content_type in [
             "application/merge-patch+json",
             "application/json",
         ]:
-            patch = partialItemValidator.validate_python(patch)
             item = await self.database.merge_patch_item(
                 collection_id=collection_id,
                 item_id=item_id,
@@ -936,11 +938,13 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 base_url=base_url,
             )
 
+        if isinstance(patch, dict):
+            patch = partialCollectionValidator.validate_python(patch)
+
         if isinstance(patch, stac_types.PartialCollection) and content_type in [
             "application/merge-patch+json",
             "application/json",
         ]:
-            patch = partialCollectionValidator.validate_python(patch)
             collection = await self.database.merge_patch_collection(
                 collection_id=collection_id,
                 collection=patch,
