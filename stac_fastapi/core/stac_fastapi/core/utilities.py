@@ -334,7 +334,7 @@ def add_commands(
         )
     else:
         value = f"params.{path.param_key}"
-        params[path.param_key] = operation.json_value
+        params[path.param_key] = operation.value
 
     if path.index is not None:
         commands.add(
