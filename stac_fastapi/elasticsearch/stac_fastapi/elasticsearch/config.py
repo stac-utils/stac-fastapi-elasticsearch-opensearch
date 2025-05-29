@@ -52,6 +52,10 @@ def _es_config() -> Dict[str, Any]:
     if http_compress:
         config["http_compress"] = True
 
+    # Handle authentication
+    if (u := os.getenv("ES_USER")) and (p := os.getenv("ES_PASS")):
+        config["http_auth"] = (u, p)
+
     # Explicitly exclude SSL settings when not using SSL
     if not use_ssl:
         return config
@@ -63,10 +67,6 @@ def _es_config() -> Dict[str, Any]:
     # Include CA Certificates if verifying certs
     if config["verify_certs"]:
         config["ca_certs"] = os.getenv("CURL_CA_BUNDLE", certifi.where())
-
-    # Handle authentication
-    if (u := os.getenv("ES_USER")) and (p := os.getenv("ES_PASS")):
-        config["http_auth"] = (u, p)
 
     return config
 
