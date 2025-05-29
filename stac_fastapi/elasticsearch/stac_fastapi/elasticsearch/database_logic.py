@@ -5,7 +5,7 @@ import json
 import logging
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from copy import deepcopy
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Type
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Type, Union
 
 import attr
 import elasticsearch.helpers as helpers
@@ -14,29 +14,38 @@ from elasticsearch.exceptions import NotFoundError as ESNotFoundError
 from starlette.requests import Request
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
-from stac_fastapi.core.database_logic import (
-    COLLECTIONS_INDEX,
-    DEFAULT_SORT,
-    ES_COLLECTIONS_MAPPINGS,
-    ES_ITEMS_MAPPINGS,
-    ES_ITEMS_SETTINGS,
-    ITEM_INDICES,
-    ITEMS_INDEX_PREFIX,
-    Geometry,
+from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
+from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon
+from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
+from stac_fastapi.elasticsearch.config import (
+    ElasticsearchSettings as SyncElasticsearchSettings,
+)
+from stac_fastapi.sfeos_helpers import filter
+from stac_fastapi.sfeos_helpers.database import (
+    apply_free_text_filter_shared,
+    apply_intersects_filter_shared,
+    create_index_templates_shared,
+    delete_item_index_shared,
+    get_queryables_mapping_shared,
     index_alias_by_collection_id,
     index_by_collection_id,
     indices,
     mk_actions,
     mk_item_id,
+    populate_sort_shared,
+    return_date,
+    validate_refresh,
 )
-from stac_fastapi.core.extensions import filter
-from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
-from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon, validate_refresh
-from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
-from stac_fastapi.elasticsearch.config import (
-    ElasticsearchSettings as SyncElasticsearchSettings,
+from stac_fastapi.sfeos_helpers.mappings import (
+    AGGREGATION_MAPPING,
+    COLLECTIONS_INDEX,
+    DEFAULT_SORT,
+    ITEM_INDICES,
+    ITEMS_INDEX_PREFIX,
+    Geometry,
 )
 from stac_fastapi.types.errors import ConflictError, NotFoundError
+from stac_fastapi.types.rfc3339 import DateTimeType
 from stac_fastapi.types.stac import Collection, Item
 
 logger = logging.getLogger(__name__)
@@ -50,22 +59,7 @@ async def create_index_templates() -> None:
         None
 
     """
-    client = AsyncElasticsearchSettings().create_client
-    await client.indices.put_index_template(
-        name=f"template_{COLLECTIONS_INDEX}",
-        body={
-            "index_patterns": [f"{COLLECTIONS_INDEX}*"],
-            "template": {"mappings": ES_COLLECTIONS_MAPPINGS},
-        },
-    )
-    await client.indices.put_index_template(
-        name=f"template_{ITEMS_INDEX_PREFIX}",
-        body={
-            "index_patterns": [f"{ITEMS_INDEX_PREFIX}*"],
-            "template": {"settings": ES_ITEMS_SETTINGS, "mappings": ES_ITEMS_MAPPINGS},
-        },
-    )
-    await client.close()
+    await create_index_templates_shared(settings=AsyncElasticsearchSettings())
 
 
 async def create_collection_index() -> None:
@@ -110,18 +104,13 @@ async def delete_item_index(collection_id: str):
 
     Args:
         collection_id (str): The ID of the collection whose items index will be deleted.
-    """
-    client = AsyncElasticsearchSettings().create_client
 
-    name = index_alias_by_collection_id(collection_id)
-    resolved = await client.indices.resolve_index(name=name)
-    if "aliases" in resolved and resolved["aliases"]:
-        [alias] = resolved["aliases"]
-        await client.indices.delete_alias(index=alias["indices"], name=alias["name"])
-        await client.indices.delete(index=alias["indices"])
-    else:
-        await client.indices.delete(index=name)
-    await client.close()
+    Notes:
+        This function delegates to the shared implementation in delete_item_index_shared.
+    """
+    await delete_item_index_shared(
+        settings=AsyncElasticsearchSettings(), collection_id=collection_id
+    )
 
 
 @attr.s
@@ -150,76 +139,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     extensions: List[str] = attr.ib(default=attr.Factory(list))
 
-    aggregation_mapping: Dict[str, Dict[str, Any]] = {
-        "total_count": {"value_count": {"field": "id"}},
-        "collection_frequency": {"terms": {"field": "collection", "size": 100}},
-        "platform_frequency": {"terms": {"field": "properties.platform", "size": 100}},
-        "cloud_cover_frequency": {
-            "range": {
-                "field": "properties.eo:cloud_cover",
-                "ranges": [
-                    {"to": 5},
-                    {"from": 5, "to": 15},
-                    {"from": 15, "to": 40},
-                    {"from": 40},
-                ],
-            }
-        },
-        "datetime_frequency": {
-            "date_histogram": {
-                "field": "properties.datetime",
-                "calendar_interval": "month",
-            }
-        },
-        "datetime_min": {"min": {"field": "properties.datetime"}},
-        "datetime_max": {"max": {"field": "properties.datetime"}},
-        "grid_code_frequency": {
-            "terms": {
-                "field": "properties.grid:code",
-                "missing": "none",
-                "size": 10000,
-            }
-        },
-        "sun_elevation_frequency": {
-            "histogram": {"field": "properties.view:sun_elevation", "interval": 5}
-        },
-        "sun_azimuth_frequency": {
-            "histogram": {"field": "properties.view:sun_azimuth", "interval": 5}
-        },
-        "off_nadir_frequency": {
-            "histogram": {"field": "properties.view:off_nadir", "interval": 5}
-        },
-        "centroid_geohash_grid_frequency": {
-            "geohash_grid": {
-                "field": "properties.proj:centroid",
-                "precision": 1,
-            }
-        },
-        "centroid_geohex_grid_frequency": {
-            "geohex_grid": {
-                "field": "properties.proj:centroid",
-                "precision": 0,
-            }
-        },
-        "centroid_geotile_grid_frequency": {
-            "geotile_grid": {
-                "field": "properties.proj:centroid",
-                "precision": 0,
-            }
-        },
-        "geometry_geohash_grid_frequency": {
-            "geohash_grid": {
-                "field": "geometry",
-                "precision": 1,
-            }
-        },
-        "geometry_geotile_grid_frequency": {
-            "geotile_grid": {
-                "field": "geometry",
-                "precision": 0,
-            }
-        },
-    }
+    aggregation_mapping: Dict[str, Dict[str, Any]] = AGGREGATION_MAPPING
 
     """CORE LOGIC"""
 
@@ -300,23 +220,12 @@ class DatabaseLogic(BaseDatabaseLogic):
         Returns:
             dict: A dictionary containing the Queryables mappings.
         """
-        queryables_mapping = {}
-
         mappings = await self.client.indices.get_mapping(
             index=f"{ITEMS_INDEX_PREFIX}{collection_id}",
         )
-
-        for mapping in mappings.values():
-            fields = mapping["mappings"].get("properties", {})
-            properties = fields.pop("properties", {}).get("properties", {}).keys()
-
-            for field_key in fields:
-                queryables_mapping[field_key] = field_key
-
-            for property_key in properties:
-                queryables_mapping[property_key] = f"properties.{property_key}"
-
-        return queryables_mapping
+        return await get_queryables_mapping_shared(
+            collection_id=collection_id, mappings=mappings
+        )
 
     @staticmethod
     def make_search():
@@ -334,17 +243,20 @@ class DatabaseLogic(BaseDatabaseLogic):
         return search.filter("terms", collection=collection_ids)
 
     @staticmethod
-    def apply_datetime_filter(search: Search, datetime_search: dict):
+    def apply_datetime_filter(
+        search: Search, interval: Optional[Union[DateTimeType, str]]
+    ):
         """Apply a filter to search on datetime, start_datetime, and end_datetime fields.
 
         Args:
             search (Search): The search object to filter.
-            datetime_search (dict): The datetime filter criteria.
+            interval: Optional[Union[DateTimeType, str]]
 
         Returns:
             Search: The filtered search object.
         """
         should = []
+        datetime_search = return_date(interval)
 
         # If the request is a single datetime return
         # items with datetimes equal to the requested datetime OR
@@ -497,21 +409,8 @@ class DatabaseLogic(BaseDatabaseLogic):
         Notes:
             A geo_shape filter is added to the search object, set to intersect with the specified geometry.
         """
-        return search.filter(
-            Q(
-                {
-                    "geo_shape": {
-                        "geometry": {
-                            "shape": {
-                                "type": intersects.type.lower(),
-                                "coordinates": intersects.coordinates,
-                            },
-                            "relation": "intersects",
-                        }
-                    }
-                }
-            )
-        )
+        filter = apply_intersects_filter_shared(intersects=intersects)
+        return search.filter(Q(filter))
 
     @staticmethod
     def apply_stacql_filter(search: Search, op: str, field: str, value: float):
@@ -537,14 +436,21 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     @staticmethod
     def apply_free_text_filter(search: Search, free_text_queries: Optional[List[str]]):
-        """Database logic to perform query for search endpoint."""
-        if free_text_queries is not None:
-            free_text_query_string = '" OR properties.\\*:"'.join(free_text_queries)
-            search = search.query(
-                "query_string", query=f'properties.\\*:"{free_text_query_string}"'
-            )
+        """Create a free text query for Elasticsearch queries.
 
-        return search
+        This method delegates to the shared implementation in apply_free_text_filter_shared.
+
+        Args:
+            search (Search): The search object to apply the query to.
+            free_text_queries (Optional[List[str]]): A list of text strings to search for in the properties.
+
+        Returns:
+            Search: The search object with the free text query applied, or the original search
+                object if no free_text_queries were provided.
+        """
+        return apply_free_text_filter_shared(
+            search=search, free_text_queries=free_text_queries
+        )
 
     async def apply_cql2_filter(
         self, search: Search, _filter: Optional[Dict[str, Any]]
@@ -575,11 +481,18 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     @staticmethod
     def populate_sort(sortby: List) -> Optional[Dict[str, Dict[str, str]]]:
-        """Database logic to sort search instance."""
-        if sortby:
-            return {s.field: {"order": s.direction} for s in sortby}
-        else:
-            return None
+        """Create a sort configuration for Elasticsearch queries.
+
+        This method delegates to the shared implementation in populate_sort_shared.
+
+        Args:
+            sortby (List): A list of sort specifications, each containing a field and direction.
+
+        Returns:
+            Optional[Dict[str, Dict[str, str]]]: A dictionary mapping field names to sort direction
+                configurations, or None if no sort was specified.
+        """
+        return populate_sort_shared(sortby=sortby)
 
     async def execute_search(
         self,
