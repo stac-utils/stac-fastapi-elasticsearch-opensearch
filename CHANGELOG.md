@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 - Updated mkdocs/ sfeos doucmentation page [#386](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/386)
 
+### Fixed
+
+- Added the ability to authenticate with OpenSearch/ElasticSearch with SSL disabled [#388](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/388)
+
 ## [v5.0.0a0] - 2025-05-29
 
 ### Added
