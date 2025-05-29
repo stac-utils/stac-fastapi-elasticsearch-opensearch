@@ -25,10 +25,17 @@ Function Naming Conventions:
 from .client import EsAsyncBaseFiltersClient
 
 # Re-export the main functions and classes for backward compatibility
-from .cql2 import _replace_like_patterns, cql2_like_to_es
+from .cql2 import (
+    _replace_like_patterns,
+    cql2_like_patterns,
+    cql2_like_to_es,
+    valid_like_substitutions,
+)
 from .transform import to_es, to_es_field
 
 __all__ = [
+    "cql2_like_patterns",
+    "valid_like_substitutions",
     "cql2_like_to_es",
     "_replace_like_patterns",
     "to_es_field",

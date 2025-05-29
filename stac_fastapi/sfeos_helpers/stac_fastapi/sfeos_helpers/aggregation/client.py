@@ -139,7 +139,7 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
                     "href": urljoin(base_url, "aggregations"),
                 }
             )
-            aggregations = self.DEFAULT_AGGREGATIONS
+            aggregations = self.DEFAULT_AGGREGATIONS.copy()
 
         return {
             "type": "AggregationCollection",

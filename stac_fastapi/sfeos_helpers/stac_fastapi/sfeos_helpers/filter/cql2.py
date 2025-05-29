@@ -2,10 +2,14 @@
 
 import re
 
-from stac_fastapi.core.extensions.filter import (
-    cql2_like_patterns,
-    valid_like_substitutions,
-)
+cql2_like_patterns = re.compile(r"\\.|[%_]|\\$")
+valid_like_substitutions = {
+    "\\\\": "\\",
+    "\\%": "%",
+    "\\_": "_",
+    "%": "*",
+    "_": "?",
+}
 
 
 def _replace_like_patterns(match: re.Match) -> str:

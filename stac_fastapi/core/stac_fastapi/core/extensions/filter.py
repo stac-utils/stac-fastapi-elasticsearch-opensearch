@@ -13,7 +13,6 @@
 # defines spatial operators (S_INTERSECTS, S_CONTAINS, S_WITHIN, S_DISJOINT).
 # """
 
-import re
 from enum import Enum
 from typing import Any, Dict
 
@@ -60,15 +59,6 @@ DEFAULT_QUERYABLES: Dict[str, Dict[str, Any]] = {
         "minimum": 0,
         "maximum": 100,
     },
-}
-
-cql2_like_patterns = re.compile(r"\\.|[%_]|\\$")
-valid_like_substitutions = {
-    "\\\\": "\\",
-    "\\%": "%",
-    "\\_": "_",
-    "%": "*",
-    "_": "?",
 }
 
 
