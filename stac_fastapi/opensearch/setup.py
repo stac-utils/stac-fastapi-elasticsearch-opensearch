@@ -6,8 +6,8 @@ with open("README.md") as f:
     desc = f.read()
 
 install_requires = [
-    "stac-fastapi-core==5.0.0a0",
-    "sfeos-helpers==5.0.0a0",
+    "stac-fastapi-core==5.0.0a1",
+    "sfeos-helpers==5.0.0a1",
     "opensearch-py~=2.8.0",
     "opensearch-py[async]~=2.8.0",
     "uvicorn~=0.23.0",
