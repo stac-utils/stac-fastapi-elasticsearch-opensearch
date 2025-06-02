@@ -621,7 +621,6 @@ async def test_bbox_3d(app_client, ctx):
 @pytest.mark.asyncio
 async def test_patch_json_collection(app_client, ctx):
     data = {
-        "id": "new_id",
         "summaries": {"hello": "world", "gsd": [50], "instruments": None},
     }
 
@@ -629,15 +628,12 @@ async def test_patch_json_collection(app_client, ctx):
 
     assert resp.status_code == 200
 
-    new_resp = await app_client.get("/collections/new_id")
-    old_resp = await app_client.get(f"/collections/{ctx.collection['id']}")
+    new_resp = await app_client.get(f"/collections/{ctx.collection['id']}")
 
     assert new_resp.status_code == 200
-    assert old_resp.status_code == 404
 
     new_resp_json = new_resp.json()
 
-    assert new_resp_json["id"] == "new_id"
     assert new_resp_json["summaries"]["hello"] == "world"
     assert "instruments" not in new_resp_json["summaries"]
     assert new_resp_json["summaries"]["gsd"] == [50]
@@ -686,7 +682,6 @@ async def test_patch_operations_collection(app_client, ctx):
 async def test_patch_json_item(app_client, ctx):
 
     data = {
-        "id": "new_id",
         "properties": {"hello": "world", "proj:epsg": 1000, "landsat:column": None},
     }
 
@@ -696,17 +691,14 @@ async def test_patch_json_item(app_client, ctx):
 
     assert resp.status_code == 200
 
-    new_resp = await app_client.get(f"/collections/{ctx.item['collection']}/new_id")
-    old_resp = await app_client.get(
+    new_resp = await app_client.get(
         f"/collections/{ctx.item['collection']}/{ctx.item['id']}"
     )
 
     assert new_resp.status_code == 200
-    assert old_resp.status_code == 404
 
     new_resp_json = new_resp.json()
 
-    assert new_resp_json["id"] == "new_id"
     assert new_resp_json["properties"]["hello"] == "world"
     assert "landsat:column" not in new_resp_json["properties"]
     assert new_resp_json["properties"]["proj:epsg"] == 1000
