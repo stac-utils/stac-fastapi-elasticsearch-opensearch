@@ -17,4 +17,5 @@ WORKDIR /app
 COPY . /app
 
 RUN pip install --no-cache-dir -e ./stac_fastapi/core
+RUN pip install --no-cache-dir -e ./stac_fastapi/sfeos_helpers
 RUN pip install --no-cache-dir -e ./stac_fastapi/opensearch[dev,server]

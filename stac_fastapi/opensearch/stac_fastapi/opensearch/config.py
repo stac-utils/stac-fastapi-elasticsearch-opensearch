@@ -8,7 +8,8 @@ import certifi
 from opensearchpy import AsyncOpenSearch, OpenSearch
 
 from stac_fastapi.core.base_settings import ApiBaseSettings
-from stac_fastapi.core.utilities import get_bool_env, validate_refresh
+from stac_fastapi.core.utilities import get_bool_env
+from stac_fastapi.sfeos_helpers.database import validate_refresh
 from stac_fastapi.types.config import ApiSettings
 
 
@@ -39,18 +40,6 @@ def _es_config() -> Dict[str, Any]:
     if http_compress:
         config["http_compress"] = True
 
-    # Explicitly exclude SSL settings when not using SSL
-    if not use_ssl:
-        return config
-
-    # Include SSL settings if using https
-    config["ssl_version"] = ssl.PROTOCOL_SSLv23
-    config["verify_certs"] = get_bool_env("ES_VERIFY_CERTS", default=True)
-
-    # Include CA Certificates if verifying certs
-    if config["verify_certs"]:
-        config["ca_certs"] = os.getenv("CURL_CA_BUNDLE", certifi.where())
-
     # Handle authentication
     if (u := os.getenv("ES_USER")) and (p := os.getenv("ES_PASS")):
         config["http_auth"] = (u, p)
@@ -63,6 +52,18 @@ def _es_config() -> Dict[str, Any]:
             config["headers"] = {"x-api-key": api_key}
 
         config["headers"] = headers
+
+    # Explicitly exclude SSL settings when not using SSL
+    if not use_ssl:
+        return config
+
+    # Include SSL settings if using https
+    config["ssl_version"] = ssl.PROTOCOL_SSLv23
+    config["verify_certs"] = get_bool_env("ES_VERIFY_CERTS", default=True)
+
+    # Include CA Certificates if verifying certs
+    if config["verify_certs"]:
+        config["ca_certs"] = os.getenv("CURL_CA_BUNDLE", certifi.where())
 
     return config
 

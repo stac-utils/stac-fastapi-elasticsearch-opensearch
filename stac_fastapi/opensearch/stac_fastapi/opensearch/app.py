@@ -11,14 +11,12 @@ from stac_fastapi.api.models import create_get_request_model, create_post_reques
 from stac_fastapi.core.core import (
     BulkTransactionsClient,
     CoreClient,
-    EsAsyncBaseFiltersClient,
     TransactionsClient,
 )
 from stac_fastapi.core.extensions import QueryExtension
 from stac_fastapi.core.extensions.aggregation import (
     EsAggregationExtensionGetRequest,
     EsAggregationExtensionPostRequest,
-    EsAsyncAggregationClient,
 )
 from stac_fastapi.core.extensions.fields import FieldsExtension
 from stac_fastapi.core.rate_limit import setup_rate_limit
@@ -40,6 +38,8 @@ from stac_fastapi.opensearch.database_logic import (
     create_collection_index,
     create_index_templates,
 )
+from stac_fastapi.sfeos_helpers.aggregation import EsAsyncBaseAggregationClient
+from stac_fastapi.sfeos_helpers.filter import EsAsyncBaseFiltersClient
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -60,7 +60,7 @@ filter_extension.conformance_classes.append(
 )
 
 aggregation_extension = AggregationExtension(
-    client=EsAsyncAggregationClient(
+    client=EsAsyncBaseAggregationClient(
         database=database_logic, session=session, settings=settings
     )
 )
@@ -107,7 +107,7 @@ post_request_model = create_post_request_model(search_extensions)
 api = StacApi(
     title=os.getenv("STAC_FASTAPI_TITLE", "stac-fastapi-opensearch"),
     description=os.getenv("STAC_FASTAPI_DESCRIPTION", "stac-fastapi-opensearch"),
-    api_version=os.getenv("STAC_FASTAPI_VERSION", "4.2.0"),
+    api_version=os.getenv("STAC_FASTAPI_VERSION", "5.0.0a1"),
     settings=settings,
     extensions=extensions,
     client=CoreClient(

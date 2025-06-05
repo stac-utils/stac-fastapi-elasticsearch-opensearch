@@ -12,6 +12,7 @@ WORKDIR /opt/src
 
 RUN python -m pip install \
     stac_fastapi/core \
+    stac_fastapi/sfeos_helpers \
     stac_fastapi/elasticsearch \
     stac_fastapi/opensearch
 

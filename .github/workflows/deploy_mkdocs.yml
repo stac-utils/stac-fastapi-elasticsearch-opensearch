@@ -30,6 +30,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install \
             stac_fastapi/core \
+            stac_fastapi/sfeos_helpers \
             stac_fastapi/elasticsearch[docs] \
             stac_fastapi/opensearch \
 

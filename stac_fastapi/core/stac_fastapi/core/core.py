@@ -1,11 +1,10 @@
 """Core client."""
 
 import logging
-from collections import deque
 from datetime import datetime as datetime_type
 from datetime import timezone
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional, Set, Type, Union
+from typing import List, Optional, Set, Type, Union
 from urllib.parse import unquote_plus, urljoin
 
 import attr
@@ -22,11 +21,11 @@ from stac_pydantic.version import STAC_VERSION
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
+from stac_fastapi.core.datetime_utils import format_datetime_range
 from stac_fastapi.core.models.links import PagingLinks
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.session import Session
 from stac_fastapi.core.utilities import filter_fields
-from stac_fastapi.extensions.core.filter.client import AsyncBaseFiltersClient
 from stac_fastapi.extensions.third_party.bulk_transactions import (
     BaseBulkTransactionsClient,
     BulkTransactionMethod,
@@ -37,7 +36,6 @@ from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
 from stac_fastapi.types.core import AsyncBaseCoreClient, AsyncBaseTransactionsClient
 from stac_fastapi.types.extension import ApiExtension
 from stac_fastapi.types.requests import get_base_url
-from stac_fastapi.types.rfc3339 import DateTimeType, rfc3339_str_to_datetime
 from stac_fastapi.types.search import BaseSearchPostRequest
 
 logger = logging.getLogger(__name__)
@@ -321,9 +319,8 @@ class CoreClient(AsyncBaseCoreClient):
         )
 
         if datetime:
-            datetime_search = self._return_date(datetime)
             search = self.database.apply_datetime_filter(
-                search=search, datetime_search=datetime_search
+                search=search, interval=datetime
             )
 
         if bbox:
@@ -377,87 +374,6 @@ class CoreClient(AsyncBaseCoreClient):
         )
         return self.item_serializer.db_to_stac(item, base_url)
 
-    @staticmethod
-    def _return_date(
-        interval: Optional[Union[DateTimeType, str]],
-    ) -> Dict[str, Optional[str]]:
-        """
-        Convert a date interval.
-
-        (which may be a datetime, a tuple of one or two datetimes a string
-        representing a datetime or range, or None) into a dictionary for filtering
-        search results with Elasticsearch.
-
-        This function ensures the output dictionary contains 'gte' and 'lte' keys,
-        even if they are set to None, to prevent KeyError in the consuming logic.
-
-        Args:
-            interval (Optional[Union[DateTimeType, str]]): The date interval, which might be a single datetime,
-                a tuple with one or two datetimes, a string, or None.
-
-        Returns:
-            dict: A dictionary representing the date interval for use in filtering search results,
-                always containing 'gte' and 'lte' keys.
-        """
-        result: Dict[str, Optional[str]] = {"gte": None, "lte": None}
-
-        if interval is None:
-            return result
-
-        if isinstance(interval, str):
-            if "/" in interval:
-                parts = interval.split("/")
-                result["gte"] = parts[0] if parts[0] != ".." else None
-                result["lte"] = (
-                    parts[1] if len(parts) > 1 and parts[1] != ".." else None
-                )
-            else:
-                converted_time = interval if interval != ".." else None
-                result["gte"] = result["lte"] = converted_time
-            return result
-
-        if isinstance(interval, datetime_type):
-            datetime_iso = interval.isoformat()
-            result["gte"] = result["lte"] = datetime_iso
-        elif isinstance(interval, tuple):
-            start, end = interval
-            # Ensure datetimes are converted to UTC and formatted with 'Z'
-            if start:
-                result["gte"] = start.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-            if end:
-                result["lte"] = end.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-
-        return result
-
-    def _format_datetime_range(self, date_str: str) -> str:
-        """
-        Convert a datetime range string into a normalized UTC string for API requests using rfc3339_str_to_datetime.
-
-        Args:
-            date_str (str): A string containing two datetime values separated by a '/'.
-
-        Returns:
-            str: A string formatted as 'YYYY-MM-DDTHH:MM:SSZ/YYYY-MM-DDTHH:MM:SSZ', with '..' used if any element is None.
-        """
-
-        def normalize(dt):
-            dt = dt.strip()
-            if not dt or dt == "..":
-                return ".."
-            dt_obj = rfc3339_str_to_datetime(dt)
-            dt_utc = dt_obj.astimezone(timezone.utc)
-            return dt_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
-
-        if not isinstance(date_str, str):
-            return "../.."
-        if "/" not in date_str:
-            return f"{normalize(date_str)}/{normalize(date_str)}"
-        try:
-            start, end = date_str.split("/", 1)
-        except Exception:
-            return "../.."
-        return f"{normalize(start)}/{normalize(end)}"
-
     async def get_search(
         self,
         request: Request,
@@ -510,7 +426,7 @@ class CoreClient(AsyncBaseCoreClient):
         }
 
         if datetime:
-            base_args["datetime"] = self._format_datetime_range(date_str=datetime)
+            base_args["datetime"] = format_datetime_range(date_str=datetime)
 
         if intersects:
             base_args["intersects"] = orjson.loads(unquote_plus(intersects))
@@ -580,9 +496,8 @@ class CoreClient(AsyncBaseCoreClient):
             )
 
         if search_request.datetime:
-            datetime_search = self._return_date(search_request.datetime)
             search = self.database.apply_datetime_filter(
-                search=search, datetime_search=datetime_search
+                search=search, interval=search_request.datetime
             )
 
         if search_request.bbox:
@@ -1065,159 +980,3 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
             logger.info(f"Bulk sync operation succeeded with {success} actions.")
 
         return f"Successfully added/updated {success} Items. {attempted - success} errors occurred."
-
-
-_DEFAULT_QUERYABLES: Dict[str, Dict[str, Any]] = {
-    "id": {
-        "description": "ID",
-        "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/definitions/core/allOf/2/properties/id",
-    },
-    "collection": {
-        "description": "Collection",
-        "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/definitions/core/allOf/2/then/properties/collection",
-    },
-    "geometry": {
-        "description": "Geometry",
-        "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/definitions/core/allOf/1/oneOf/0/properties/geometry",
-    },
-    "datetime": {
-        "description": "Acquisition Timestamp",
-        "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/datetime.json#/properties/datetime",
-    },
-    "created": {
-        "description": "Creation Timestamp",
-        "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/datetime.json#/properties/created",
-    },
-    "updated": {
-        "description": "Creation Timestamp",
-        "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/datetime.json#/properties/updated",
-    },
-    "cloud_cover": {
-        "description": "Cloud Cover",
-        "$ref": "https://stac-extensions.github.io/eo/v1.0.0/schema.json#/definitions/fields/properties/eo:cloud_cover",
-    },
-    "cloud_shadow_percentage": {
-        "title": "Cloud Shadow Percentage",
-        "description": "Cloud Shadow Percentage",
-        "type": "number",
-        "minimum": 0,
-        "maximum": 100,
-    },
-    "nodata_pixel_percentage": {
-        "title": "No Data Pixel Percentage",
-        "description": "No Data Pixel Percentage",
-        "type": "number",
-        "minimum": 0,
-        "maximum": 100,
-    },
-}
-
-_ES_MAPPING_TYPE_TO_JSON: Dict[
-    str, Literal["string", "number", "boolean", "object", "array", "null"]
-] = {
-    "date": "string",
-    "date_nanos": "string",
-    "keyword": "string",
-    "match_only_text": "string",
-    "text": "string",
-    "wildcard": "string",
-    "byte": "number",
-    "double": "number",
-    "float": "number",
-    "half_float": "number",
-    "long": "number",
-    "scaled_float": "number",
-    "short": "number",
-    "token_count": "number",
-    "unsigned_long": "number",
-    "geo_point": "object",
-    "geo_shape": "object",
-    "nested": "array",
-}
-
-
-@attr.s
-class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
-    """Defines a pattern for implementing the STAC filter extension."""
-
-    database: BaseDatabaseLogic = attr.ib()
-
-    async def get_queryables(
-        self, collection_id: Optional[str] = None, **kwargs
-    ) -> Dict[str, Any]:
-        """Get the queryables available for the given collection_id.
-
-        If collection_id is None, returns the intersection of all
-        queryables over all collections.
-
-        This base implementation returns a blank queryable schema. This is not allowed
-        under OGC CQL but it is allowed by the STAC API Filter Extension
-
-        https://github.com/radiantearth/stac-api-spec/tree/master/fragments/filter#queryables
-
-        Args:
-            collection_id (str, optional): The id of the collection to get queryables for.
-            **kwargs: additional keyword arguments
-
-        Returns:
-            Dict[str, Any]: A dictionary containing the queryables for the given collection.
-        """
-        queryables: Dict[str, Any] = {
-            "$schema": "https://json-schema.org/draft/2019-09/schema",
-            "$id": "https://stac-api.example.com/queryables",
-            "type": "object",
-            "title": "Queryables for STAC API",
-            "description": "Queryable names for the STAC API Item Search filter.",
-            "properties": _DEFAULT_QUERYABLES,
-            "additionalProperties": True,
-        }
-        if not collection_id:
-            return queryables
-
-        properties: Dict[str, Any] = queryables["properties"]
-        queryables.update(
-            {
-                "properties": properties,
-                "additionalProperties": False,
-            }
-        )
-
-        mapping_data = await self.database.get_items_mapping(collection_id)
-        mapping_properties = next(iter(mapping_data.values()))["mappings"]["properties"]
-        stack = deque(mapping_properties.items())
-
-        while stack:
-            field_name, field_def = stack.popleft()
-
-            # Iterate over nested fields
-            field_properties = field_def.get("properties")
-            if field_properties:
-                # Fields in Item Properties should be exposed with their un-prefixed names,
-                # and not require expressions to prefix them with properties,
-                # e.g., eo:cloud_cover instead of properties.eo:cloud_cover.
-                if field_name == "properties":
-                    stack.extend(field_properties.items())
-                else:
-                    stack.extend(
-                        (f"{field_name}.{k}", v) for k, v in field_properties.items()
-                    )
-
-            # Skip non-indexed or disabled fields
-            field_type = field_def.get("type")
-            if not field_type or not field_def.get("enabled", True):
-                continue
-
-            # Generate field properties
-            field_result = _DEFAULT_QUERYABLES.get(field_name, {})
-            properties[field_name] = field_result
-
-            field_name_human = field_name.replace("_", " ").title()
-            field_result.setdefault("title", field_name_human)
-
-            field_type_json = _ES_MAPPING_TYPE_TO_JSON.get(field_type, field_type)
-            field_result.setdefault("type", field_type_json)
-
-            if field_type in {"date", "date_nanos"}:
-                field_result.setdefault("format", "date-time")
-
-        return queryables
