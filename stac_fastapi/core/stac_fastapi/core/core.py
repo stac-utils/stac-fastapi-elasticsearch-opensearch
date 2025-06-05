@@ -422,7 +422,6 @@ class CoreClient(AsyncBaseCoreClient):
             "token": token,
             "query": orjson.loads(query) if query else query,
             "q": q,
-            "datetime": datetime,
         }
 
         if datetime:
