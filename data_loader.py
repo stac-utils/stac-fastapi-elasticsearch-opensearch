@@ -8,19 +8,19 @@ import orjson
 from httpx import Client
 
 
-def load_data(data_dir: str, filename: str) -> dict[str, Any]:
+def load_data(filepath: str) -> dict[str, Any]:
     """Load json data from a file within the specified data directory."""
-    filepath = os.path.join(data_dir, filename)
-    if not os.path.exists(filepath):
+    try:
+        with open(filepath, "rb") as file:
+            return orjson.loads(file.read())
+    except FileNotFoundError as e:
         click.secho(f"File not found: {filepath}", fg="red", err=True)
-        raise click.Abort()
-    with open(filepath, "rb") as file:
-        return orjson.loads(file.read())
+        raise click.Abort() from e
 
 
 def load_collection(client: Client, collection_id: str, data_dir: str) -> None:
     """Load a STAC collection into the database."""
-    collection = load_data(data_dir, "collection.json")
+    collection = load_data(os.path.join(data_dir, "collection.json"))
     collection["id"] = collection_id
     resp = client.post("/collections", json=collection)
     if resp.status_code == 200 or resp.status_code == 201:
@@ -38,13 +38,21 @@ def load_items(
     client: Client, collection_id: str, use_bulk: bool, data_dir: str
 ) -> None:
     """Load STAC items into the database based on the method selected."""
-    # Attempt to dynamically find a suitable feature collection file
-    feature_files = [
-        file
-        for file in os.listdir(data_dir)
-        if file.endswith(".json") and file != "collection.json"
-    ]
-    if not feature_files:
+    with os.scandir(data_dir) as entries:
+        # Attempt to dynamically find a suitable feature collection file
+        # Use the first found feature collection file
+        feature_file = next(
+            (
+                entry.path
+                for entry in entries
+                if entry.is_file()
+                and entry.name.endswith(".json")
+                and entry.name != "collection.json"
+            ),
+            None,
+        )
+
+    if feature_file is None:
         click.secho(
             "No feature collection files found in the specified directory.",
             fg="red",
@@ -52,8 +60,7 @@ def load_items(
         )
         raise click.Abort()
 
-    # Use the first found feature collection file
-    feature_collection = load_data(data_dir, feature_files[0])
+    feature_collection = load_data(feature_file)
 
     load_collection(client, collection_id, data_dir)
     if use_bulk:
