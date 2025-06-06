@@ -3,8 +3,15 @@ import logging
 import os
 from os import listdir
 from os.path import isfile, join
+from typing import Callable, Dict
 
 import pytest
+from httpx import AsyncClient
+from stac_pydantic import api
+
+from stac_fastapi.core.core import TransactionsClient
+
+from ..conftest import MockRequest
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -40,7 +47,6 @@ async def test_filter_extension_collection_link(app_client, load_test_data):
 
 @pytest.mark.asyncio
 async def test_search_filters_post(app_client, ctx):
-
     filters = []
     pwd = f"{THIS_DIR}/cql2"
     for fn in [fn for f in listdir(pwd) if isfile(fn := join(pwd, f))]:
@@ -625,3 +631,65 @@ async def test_search_filter_extension_cql2text_s_disjoint_property(app_client, 
     assert resp.status_code == 200
     resp_json = resp.json()
     assert len(resp_json["features"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_queryables_enum_platform(
+    app_client: AsyncClient,
+    txn_client: TransactionsClient,
+    load_test_data: Callable[[str], Dict],
+):
+    # Arrange
+    # Create collection
+    collection_data = load_test_data("test_collection.json")
+    collection_id = collection_data["id"] = "enum-test-collection"
+    await txn_client.create_collection(
+        api.Collection(**collection_data), request=MockRequest
+    )
+
+    # Create items with different platform values
+    item_data_1 = load_test_data("test_item.json")
+    item_data_1["id"] = "enum-test-item-1"
+    item_data_1["properties"]["platform"] = "landsat-8"
+    await txn_client.create_item(
+        collection_id=collection_id,
+        item=api.Item(**item_data_1),
+        request=MockRequest,
+    )
+
+    item_data_2 = load_test_data("test_item.json")
+    item_data_2["id"] = "enum-test-item-2"
+    item_data_2["properties"]["platform"] = "sentinel-2"
+    await txn_client.create_item(
+        collection_id=collection_id,
+        item=api.Item(**item_data_2),
+        request=MockRequest,
+    )
+
+    item_data_3 = load_test_data("test_item.json")
+    item_data_3["id"] = "enum-test-item-3"
+    item_data_3["properties"]["platform"] = "landsat-8"
+    await txn_client.create_item(
+        collection_id=collection_id,
+        item=api.Item(**item_data_3),
+        request=MockRequest,
+        refresh=True,
+    )
+
+    # Act
+    # Test queryables endpoint
+    queryables = (
+        (await app_client.get(f"/collections/{collection_data['id']}/queryables"))
+        .raise_for_status()
+        .json()
+    )
+
+    # Assert
+    # Verify distinct values (should only have 2 unique values despite 3 items)
+    properties = queryables["properties"]
+    platform_info = properties["platform"]
+    platform_values = platform_info["enum"]
+    assert set(platform_values) == {"landsat-8", "sentinel-2"}
+
+    # Clean up
+    await txn_client.delete_collection(collection_id)
