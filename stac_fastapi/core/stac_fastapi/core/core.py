@@ -11,7 +11,7 @@ import attr
 import orjson
 from fastapi import HTTPException, Request
 from overrides import overrides
-from pydantic import ValidationError
+from pydantic import TypeAdapter, ValidationError
 from pygeofilter.backends.cql2_json import to_cql2
 from pygeofilter.parsers.cql2_text import parse as parse_cql2_text
 from stac_pydantic import Collection, Item, ItemCollection
@@ -39,6 +39,9 @@ from stac_fastapi.types.requests import get_base_url
 from stac_fastapi.types.search import BaseSearchPostRequest
 
 logger = logging.getLogger(__name__)
+
+partialItemValidator = TypeAdapter(stac_types.PartialItem)
+partialCollectionValidator = TypeAdapter(stac_types.PartialCollection)
 
 
 @attr.s
@@ -681,6 +684,65 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         return ItemSerializer.db_to_stac(item, base_url)
 
     @overrides
+    async def patch_item(
+        self,
+        collection_id: str,
+        item_id: str,
+        patch: Union[stac_types.PartialItem, List[stac_types.PatchOperation]],
+        **kwargs,
+    ):
+        """Patch an item in the collection.
+
+        Args:
+            collection_id (str): The ID of the collection the item belongs to.
+            item_id (str): The ID of the item to be updated.
+            patch (Union[stac_types.PartialItem, List[stac_types.PatchOperation]]): The item data or operations.
+            kwargs: Other optional arguments, including the request object.
+
+        Returns:
+            stac_types.Item: The updated item object.
+
+        Raises:
+            NotFound: If the specified collection is not found in the database.
+
+        """
+        base_url = str(kwargs["request"].base_url)
+
+        content_type = kwargs["request"].headers.get("content-type")
+
+        item = None
+        if isinstance(patch, list) and content_type == "application/json-patch+json":
+            item = await self.database.json_patch_item(
+                collection_id=collection_id,
+                item_id=item_id,
+                operations=patch,
+                base_url=base_url,
+            )
+
+        if isinstance(patch, dict):
+            patch = partialItemValidator.validate_python(patch)
+
+        if isinstance(patch, stac_types.PartialItem) and content_type in [
+            "application/merge-patch+json",
+            "application/json",
+        ]:
+            item = await self.database.merge_patch_item(
+                collection_id=collection_id,
+                item_id=item_id,
+                item=patch,
+                base_url=base_url,
+            )
+
+        if item:
+            return ItemSerializer.db_to_stac(item, base_url=base_url)
+
+        raise NotImplementedError(
+            "Content-Type: %s and body: %s combination not implemented",
+            content_type,
+            patch,
+        )
+
+    @overrides
     async def delete_item(self, item_id: str, collection_id: str, **kwargs) -> None:
         """Delete an item from a collection.
 
@@ -759,6 +821,61 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             collection,
             request,
             extensions=[type(ext).__name__ for ext in self.database.extensions],
+        )
+
+    @overrides
+    async def patch_collection(
+        self,
+        collection_id: str,
+        patch: Union[stac_types.PartialCollection, List[stac_types.PatchOperation]],
+        **kwargs,
+    ):
+        """Update a collection.
+
+        Called with `PATCH /collections/{collection_id}`
+
+        Args:
+            collection_id: id of the collection.
+            patch: either the partial collection or list of patch operations.
+
+        Returns:
+            The patched collection.
+        """
+        content_type = kwargs["request"].headers.get("content-type")
+        base_url = str(kwargs["request"].base_url)
+
+        collection = None
+        if isinstance(patch, list) and content_type == "application/json-patch+json":
+            collection = await self.database.json_patch_collection(
+                collection_id=collection_id,
+                operations=patch,
+                base_url=base_url,
+            )
+
+        if isinstance(patch, dict):
+            patch = partialCollectionValidator.validate_python(patch)
+
+        if isinstance(patch, stac_types.PartialCollection) and content_type in [
+            "application/merge-patch+json",
+            "application/json",
+        ]:
+            collection = await self.database.merge_patch_collection(
+                collection_id=collection_id,
+                collection=patch,
+                base_url=base_url,
+            )
+
+        if collection:
+            return CollectionSerializer.db_to_stac(
+                collection,
+                kwargs["request"],
+                extensions=[type(ext).__name__ for ext in self.database.extensions],
+            )
+
+        raise NotImplementedError(
+            "Content-Type: %s and body: %s combination not implemented",
+            content_type,
+            patch,
         )
 
     @overrides
