@@ -28,6 +28,7 @@ from stac_fastapi.core.rate_limit import setup_rate_limit
 from stac_fastapi.core.route_dependencies import get_route_dependencies
 from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.sfeos_helpers.aggregation import EsAsyncBaseAggregationClient
+from stac_fastapi.sfeos_helpers.filter import EsAsyncBaseFiltersClient
 
 if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
     from stac_fastapi.opensearch.config import AsyncOpensearchSettings as AsyncSettings
@@ -39,8 +40,10 @@ if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
     )
 else:
     from stac_fastapi.elasticsearch.config import (
-        ElasticsearchSettings as SearchSettings,
         AsyncElasticsearchSettings as AsyncSettings,
+    )
+    from stac_fastapi.elasticsearch.config import (
+        ElasticsearchSettings as SearchSettings,
     )
     from stac_fastapi.elasticsearch.database_logic import (
         DatabaseLogic,
@@ -198,6 +201,13 @@ def bulk_txn_client():
 async def app():
     settings = AsyncSettings()
 
+    filter_extension = FilterExtension(
+        client=EsAsyncBaseFiltersClient(database=database)
+    )
+    filter_extension.conformance_classes.append(
+        "http://www.opengis.net/spec/cql2/1.0/conf/advanced-comparison-operators"
+    )
+
     aggregation_extension = AggregationExtension(
         client=EsAsyncBaseAggregationClient(
             database=database, session=None, settings=settings
@@ -217,7 +227,7 @@ async def app():
         FieldsExtension(),
         QueryExtension(),
         TokenPaginationExtension(),
-        FilterExtension(),
+        filter_extension,
         FreeTextExtension(),
     ]
 
@@ -313,7 +323,6 @@ async def app_client_rate_limit(app_rate_limit):
 
 @pytest_asyncio.fixture(scope="session")
 async def app_basic_auth():
-
     stac_fastapi_route_dependencies = """[
         {
             "routes":[{"method":"*","path":"*"}],
