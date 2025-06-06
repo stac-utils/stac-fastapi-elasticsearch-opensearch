@@ -1,10 +1,10 @@
 """Data Loader CLI STAC_API Ingestion Tool."""
 
-import json
 import os
 from typing import Any
 
 import click
+import orjson
 from httpx import Client
 
 
@@ -14,8 +14,8 @@ def load_data(data_dir: str, filename: str) -> dict[str, Any]:
     if not os.path.exists(filepath):
         click.secho(f"File not found: {filepath}", fg="red", err=True)
         raise click.Abort()
-    with open(filepath) as file:
-        return json.load(file)
+    with open(filepath, "rb") as file:
+        return orjson.loads(file.read())
 
 
 def load_collection(client: Client, collection_id: str, data_dir: str) -> None:
