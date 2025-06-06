@@ -245,121 +245,76 @@ class DatabaseLogic(BaseDatabaseLogic):
     @staticmethod
     def apply_datetime_filter(
         search: Search, interval: Optional[Union[DateTimeType, str]]
-    ):
+    ) -> Search:
         """Apply a filter to search on datetime, start_datetime, and end_datetime fields.
 
         Args:
-            search (Search): The search object to filter.
-            interval: Optional[Union[DateTimeType, str]]
+            search: The search object to filter.
+            interval: Optional datetime interval to filter by. Can be:
+                - A single datetime string
+                - A datetime range string (e.g., "2020-01-01/2020-12-31")
+                - A datetime object
+                - A tuple of (start_datetime, end_datetime)
 
         Returns:
-            Search: The filtered search object.
+            The filtered search object.
         """
+        if not interval:
+            return search
+
         should = []
         datetime_search = return_date(interval)
 
-        # If the request is a single datetime return
-        # items with datetimes equal to the requested datetime OR
-        # the requested datetime is between their start and end datetimes
         if "eq" in datetime_search:
-            should.extend(
-                [
-                    Q(
-                        "bool",
-                        filter=[
-                            Q(
-                                "term",
-                                properties__datetime=datetime_search["eq"],
-                            ),
-                        ],
-                    ),
-                    Q(
-                        "bool",
-                        filter=[
-                            Q(
-                                "range",
-                                properties__start_datetime={
-                                    "lte": datetime_search["eq"],
-                                },
-                            ),
-                            Q(
-                                "range",
-                                properties__end_datetime={
-                                    "gte": datetime_search["eq"],
-                                },
-                            ),
-                        ],
-                    ),
-                ]
-            )
-
-        # If the request is a date range return
-        # items with datetimes within the requested date range OR
-        # their startdatetime ithin the requested date range OR
-        # their enddatetime ithin the requested date range OR
-        # the requested daterange within their start and end datetimes
+            # For exact matches, include:
+            # 1. Items with matching exact datetime
+            # 2. Items with datetime:null where the time falls within their range
+            should = [
+                Q("term", **{"properties.datetime": datetime_search["eq"]}),
+                Q(
+                    "bool",
+                    must_not=[Q("exists", field="properties.datetime")],
+                    filter=[
+                        Q(
+                            "range",
+                            properties__start_datetime={"lte": datetime_search["eq"]},
+                        ),
+                        Q(
+                            "range",
+                            properties__end_datetime={"gte": datetime_search["eq"]},
+                        ),
+                    ],
+                ),
+            ]
+            return search.query(Q("bool", should=should, minimum_should_match=1))
         else:
-            should.extend(
-                [
-                    Q(
-                        "bool",
-                        filter=[
-                            Q(
-                                "range",
-                                properties__datetime={
-                                    "gte": datetime_search["gte"],
-                                    "lte": datetime_search["lte"],
-                                },
-                            ),
-                        ],
-                    ),
-                    Q(
-                        "bool",
-                        filter=[
-                            Q(
-                                "range",
-                                properties__start_datetime={
-                                    "gte": datetime_search["gte"],
-                                    "lte": datetime_search["lte"],
-                                },
-                            ),
-                        ],
-                    ),
-                    Q(
-                        "bool",
-                        filter=[
-                            Q(
-                                "range",
-                                properties__end_datetime={
-                                    "gte": datetime_search["gte"],
-                                    "lte": datetime_search["lte"],
-                                },
-                            ),
-                        ],
-                    ),
-                    Q(
-                        "bool",
-                        filter=[
-                            Q(
-                                "range",
-                                properties__start_datetime={
-                                    "lte": datetime_search["gte"]
-                                },
-                            ),
-                            Q(
-                                "range",
-                                properties__end_datetime={
-                                    "gte": datetime_search["lte"]
-                                },
-                            ),
-                        ],
-                    ),
-                ]
-            )
-
-        search = search.query(Q("bool", filter=[Q("bool", should=should)]))
-
-        return search
+            # For date ranges, include both:
+            # 1. Items with datetime in the range
+            should = [
+                Q(
+                    "range",
+                    properties__datetime={
+                        "gte": datetime_search["gte"],
+                        "lte": datetime_search["lte"],
+                    },
+                ),
+                # 2. Items with datetime:null that overlap the search range
+                Q(
+                    "bool",
+                    must_not=[Q("exists", field="properties.datetime")],
+                    filter=[
+                        Q(
+                            "range",
+                            properties__start_datetime={"lte": datetime_search["lte"]},
+                        ),
+                        Q(
+                            "range",
+                            properties__end_datetime={"gte": datetime_search["gte"]},
+                        ),
+                    ],
+                ),
+            ]
+            return search.query(Q("bool", should=should, minimum_should_match=1))
 
     @staticmethod
     def apply_bbox_filter(search: Search, bbox: List):
