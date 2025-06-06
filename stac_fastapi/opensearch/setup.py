@@ -20,7 +20,6 @@ extra_reqs = {
         "pytest-cov~=4.0.0",
         "pytest-asyncio~=0.21.0",
         "pre-commit~=3.0.0",
-        "requests>=2.32.0,<3.0.0",
         "ciso8601~=2.3.0",
         "httpx>=0.24.0,<0.28.0",
     ],
