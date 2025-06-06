@@ -3,12 +3,10 @@ APP_HOST ?= 0.0.0.0
 EXTERNAL_APP_PORT ?= 8080
 
 ES_APP_PORT ?= 8080
+OS_APP_PORT ?= 8082
+
 ES_HOST ?= docker.for.mac.localhost
 ES_PORT ?= 9200
-
-OS_APP_PORT ?= 8082
-OS_HOST ?= docker.for.mac.localhost
-OS_PORT ?= 9202
 
 run_es = docker compose \
 	run \
