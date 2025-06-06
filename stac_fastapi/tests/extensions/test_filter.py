@@ -648,33 +648,18 @@ async def test_queryables_enum_platform(
     )
 
     # Create items with different platform values
-    item_data_1 = load_test_data("test_item.json")
-    item_data_1["id"] = "enum-test-item-1"
-    item_data_1["properties"]["platform"] = "landsat-8"
-    await txn_client.create_item(
-        collection_id=collection_id,
-        item=api.Item(**item_data_1),
-        request=MockRequest,
-    )
-
-    item_data_2 = load_test_data("test_item.json")
-    item_data_2["id"] = "enum-test-item-2"
-    item_data_2["properties"]["platform"] = "sentinel-2"
-    await txn_client.create_item(
-        collection_id=collection_id,
-        item=api.Item(**item_data_2),
-        request=MockRequest,
-    )
-
-    item_data_3 = load_test_data("test_item.json")
-    item_data_3["id"] = "enum-test-item-3"
-    item_data_3["properties"]["platform"] = "landsat-8"
-    await txn_client.create_item(
-        collection_id=collection_id,
-        item=api.Item(**item_data_3),
-        request=MockRequest,
-        refresh=True,
-    )
+    NUM_ITEMS = 3
+    for i in range(1, NUM_ITEMS + 1):
+        item_data = load_test_data("test_item.json")
+        item_data["id"] = f"enum-test-item-{i}"
+        item_data["collection"] = collection_id
+        item_data["properties"]["platform"] = "landsat-8" if i % 2 else "sentinel-2"
+        await txn_client.create_item(
+            collection_id=collection_id,
+            item=api.Item(**item_data),
+            request=MockRequest,
+            refresh=i == NUM_ITEMS,
+        )
 
     # Act
     # Test queryables endpoint
