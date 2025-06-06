@@ -251,8 +251,8 @@ class DatabaseLogic(BaseDatabaseLogic):
         Args:
             search: The search object to filter.
             interval: Optional datetime interval to filter by. Can be:
-                - A single datetime string
-                - A datetime range string (e.g., "2020-01-01/2020-12-31")
+                - A single datetime string (e.g., "2023-01-01T12:00:00")
+                - A datetime range string (e.g., "2023-01-01/2023-12-31")
                 - A datetime object
                 - A tuple of (start_datetime, end_datetime)
 
@@ -263,18 +263,31 @@ class DatabaseLogic(BaseDatabaseLogic):
             return search
 
         should = []
-        datetime_search = return_date(interval)
+        try:
+            datetime_search = return_date(interval)
+        except (ValueError, TypeError) as e:
+            # Handle invalid interval formats if return_date fails
+            logger.error(f"Invalid interval format: {interval}, error: {e}")
+            return search
 
         if "eq" in datetime_search:
             # For exact matches, include:
             # 1. Items with matching exact datetime
             # 2. Items with datetime:null where the time falls within their range
             should = [
-                Q("term", **{"properties.datetime": datetime_search["eq"]}),
+                Q(
+                    "bool",
+                    filter=[
+                        Q("exists", field="properties.datetime"),
+                        Q("term", **{"properties__datetime": datetime_search["eq"]}),
+                    ],
+                ),
                 Q(
                     "bool",
                     must_not=[Q("exists", field="properties.datetime")],
                     filter=[
+                        Q("exists", field="properties.start_datetime"),
+                        Q("exists", field="properties.end_datetime"),
                         Q(
                             "range",
                             properties__start_datetime={"lte": datetime_search["eq"]},
@@ -286,23 +299,30 @@ class DatabaseLogic(BaseDatabaseLogic):
                     ],
                 ),
             ]
-            return search.query(Q("bool", should=should, minimum_should_match=1))
         else:
-            # For date ranges, include both:
+            # For date ranges, include:
             # 1. Items with datetime in the range
+            # 2. Items with datetime:null that overlap the search range
             should = [
                 Q(
-                    "range",
-                    properties__datetime={
-                        "gte": datetime_search["gte"],
-                        "lte": datetime_search["lte"],
-                    },
+                    "bool",
+                    filter=[
+                        Q("exists", field="properties.datetime"),
+                        Q(
+                            "range",
+                            properties__datetime={
+                                "gte": datetime_search["gte"],
+                                "lte": datetime_search["lte"],
+                            },
+                        ),
+                    ],
                 ),
-                # 2. Items with datetime:null that overlap the search range
                 Q(
                     "bool",
                     must_not=[Q("exists", field="properties.datetime")],
                     filter=[
+                        Q("exists", field="properties.start_datetime"),
+                        Q("exists", field="properties.end_datetime"),
                         Q(
                             "range",
                             properties__start_datetime={"lte": datetime_search["lte"]},
@@ -314,7 +334,8 @@ class DatabaseLogic(BaseDatabaseLogic):
                     ],
                 ),
             ]
-            return search.query(Q("bool", should=should, minimum_should_match=1))
+
+        return search.query(Q("bool", should=should, minimum_should_match=1))
 
     @staticmethod
     def apply_bbox_filter(search: Search, bbox: List):

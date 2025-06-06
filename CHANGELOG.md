@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Changed
+
+- Improved datetime query handling to only check start and end datetime values when datetime is None
+
 ## [v5.0.0a1] - 2025-05-30
 
 ### Changed
