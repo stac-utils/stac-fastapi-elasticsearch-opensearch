@@ -1,17 +1,13 @@
 import json
 import logging
 import os
+import uuid
 from os import listdir
 from os.path import isfile, join
 from typing import Callable, Dict
 
 import pytest
 from httpx import AsyncClient
-from stac_pydantic import api
-
-from stac_fastapi.core.core import TransactionsClient
-
-from ..conftest import MockRequest
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -636,16 +632,19 @@ async def test_search_filter_extension_cql2text_s_disjoint_property(app_client, 
 @pytest.mark.asyncio
 async def test_queryables_enum_platform(
     app_client: AsyncClient,
-    txn_client: TransactionsClient,
     load_test_data: Callable[[str], Dict],
+    monkeypatch: pytest.MonkeyPatch,
 ):
     # Arrange
+    # Enforce instant database refresh
+    # TODO: Is there a better way to do this?
+    monkeypatch.setenv("DATABASE_REFRESH", "true")
+
     # Create collection
     collection_data = load_test_data("test_collection.json")
-    collection_id = collection_data["id"] = "enum-test-collection"
-    await txn_client.create_collection(
-        api.Collection(**collection_data), request=MockRequest
-    )
+    collection_id = collection_data["id"] = f"enum-test-collection-{uuid.uuid4()}"
+    r = await app_client.post("/collections", json=collection_data)
+    r.raise_for_status()
 
     # Create items with different platform values
     NUM_ITEMS = 3
@@ -654,12 +653,8 @@ async def test_queryables_enum_platform(
         item_data["id"] = f"enum-test-item-{i}"
         item_data["collection"] = collection_id
         item_data["properties"]["platform"] = "landsat-8" if i % 2 else "sentinel-2"
-        await txn_client.create_item(
-            collection_id=collection_id,
-            item=api.Item(**item_data),
-            request=MockRequest,
-            refresh=i == NUM_ITEMS,
-        )
+        r = await app_client.post(f"/collections/{collection_id}/items", json=item_data)
+        r.raise_for_status()
 
     # Act
     # Test queryables endpoint
@@ -677,4 +672,5 @@ async def test_queryables_enum_platform(
     assert set(platform_values) == {"landsat-8", "sentinel-2"}
 
     # Clean up
-    await txn_client.delete_collection(collection_id)
+    r = await app_client.delete(f"/collections/{collection_id}")
+    r.raise_for_status()
