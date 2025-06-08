@@ -60,6 +60,17 @@ DEFAULT_QUERYABLES: Dict[str, Dict[str, Any]] = {
         "maximum": 100,
     },
 }
+"""Queryables that are present in all collections."""
+
+OPTIONAL_QUERYABLES: Dict[str, Dict[str, Any]] = {
+    "platform": {
+        "$enum": True,
+        "description": "Satellite platform identifier",
+    },
+}
+"""Queryables that are present in some collections."""
+
+ALL_QUERYABLES: Dict[str, Dict[str, Any]] = DEFAULT_QUERYABLES | OPTIONAL_QUERYABLES
 
 
 class LogicalOp(str, Enum):

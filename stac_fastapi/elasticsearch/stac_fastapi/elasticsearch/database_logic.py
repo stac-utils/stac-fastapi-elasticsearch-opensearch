@@ -895,6 +895,37 @@ class DatabaseLogic(BaseDatabaseLogic):
         except ESNotFoundError:
             raise NotFoundError(f"Mapping for index {index_name} not found")
 
+    async def get_items_unique_values(
+        self, collection_id: str, field_names: Iterable[str], *, limit: int = 100
+    ) -> Dict[str, List[str]]:
+        """Get the unique values for the given fields in the collection."""
+        limit_plus_one = limit + 1
+        index_name = index_alias_by_collection_id(collection_id)
+
+        query = await self.client.search(
+            index=index_name,
+            body={
+                "size": 0,
+                "aggs": {
+                    field: {"terms": {"field": field, "size": limit_plus_one}}
+                    for field in field_names
+                },
+            },
+        )
+
+        result: Dict[str, List[str]] = {}
+        for field, agg in query["aggregations"].items():
+            if len(agg["buckets"]) > limit:
+                logger.warning(
+                    "Skipping enum field %s: exceeds limit of %d unique values. "
+                    "Consider excluding this field from enumeration or increase the limit.",
+                    field,
+                    limit,
+                )
+                continue
+            result[field] = [bucket["key"] for bucket in agg["buckets"]]
+        return result
+
     async def create_collection(self, collection: Collection, **kwargs: Any):
         """Create a single collection in the database.
 
