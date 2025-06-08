@@ -916,7 +916,13 @@ class DatabaseLogic(BaseDatabaseLogic):
         result: Dict[str, List[str]] = {}
         for field, agg in query["aggregations"].items():
             if len(agg["buckets"]) > limit:
-                raise ValueError(f"Field {field} has more than {limit} unique values.")
+                logger.warning(
+                    "Skipping enum field %s: exceeds limit of %d unique values. "
+                    "Consider excluding this field from enumeration or increase the limit.",
+                    field,
+                    limit,
+                )
+                continue
             result[field] = [bucket["key"] for bucket in agg["buckets"]]
         return result
 
