@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 
-- Improved datetime query handling to only check start and end datetime values when datetime is None
+- Improved datetime query handling to only check start and end datetime values when datetime is None [#396](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/396)
 
 ## [v5.0.0a1] - 2025-05-30
 
