@@ -31,6 +31,7 @@ from stac_fastapi.extensions.core import (
     TokenPaginationExtension,
     TransactionExtension,
 )
+from stac_fastapi.extensions.core.filter import FilterConformanceClasses
 from stac_fastapi.extensions.third_party import BulkTransactionExtension
 from stac_fastapi.opensearch.config import OpensearchSettings
 from stac_fastapi.opensearch.database_logic import (
@@ -56,7 +57,7 @@ filter_extension = FilterExtension(
     client=EsAsyncBaseFiltersClient(database=database_logic)
 )
 filter_extension.conformance_classes.append(
-    "http://www.opengis.net/spec/cql2/1.0/conf/advanced-comparison-operators"
+    FilterConformanceClasses.ADVANCED_COMPARISON_OPERATORS
 )
 
 aggregation_extension = AggregationExtension(
