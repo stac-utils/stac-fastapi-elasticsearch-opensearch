@@ -27,6 +27,7 @@ from stac_fastapi.core.extensions.aggregation import (
 from stac_fastapi.core.rate_limit import setup_rate_limit
 from stac_fastapi.core.route_dependencies import get_route_dependencies
 from stac_fastapi.core.utilities import get_bool_env
+from stac_fastapi.extensions.core.filter import FilterConformanceClasses
 from stac_fastapi.sfeos_helpers.aggregation import EsAsyncBaseAggregationClient
 from stac_fastapi.sfeos_helpers.filter import EsAsyncBaseFiltersClient
 
@@ -205,7 +206,7 @@ async def app():
         client=EsAsyncBaseFiltersClient(database=database)
     )
     filter_extension.conformance_classes.append(
-        "http://www.opengis.net/spec/cql2/1.0/conf/advanced-comparison-operators"
+        FilterConformanceClasses.ADVANCED_COMPARISON_OPERATORS
     )
 
     aggregation_extension = AggregationExtension(
