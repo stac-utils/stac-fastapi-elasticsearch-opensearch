@@ -678,38 +678,52 @@ async def test_queryables_enum_platform(
 
 @pytest.mark.asyncio
 async def test_search_filter_ext_or_with_must_condition(app_client, ctx):
-    """Test that OR conditions work correctly when combined with MUST conditions."""
-    # This test verifies that when combining MUST and SHOULD clauses,
-    # we still require at least one SHOULD condition to match
+    """
+    Test that OR conditions require at least one match when combined with MUST.
+    This test will fail if minimum_should_match=1 is not set in the ES query.
+    """
+    # Case 1: At least one OR condition matches (should return the item)
     params = {
         "filter": {
             "op": "and",
             "args": [
-                # MUST condition (matches all test items)
-                {"op": ">=", "args": [{"property": "eo:cloud_cover"}, 0]},
-                # OR condition (only some items match)
+                {
+                    "op": ">=",
+                    "args": [{"property": "eo:cloud_cover"}, 0],
+                },  # True for test item (cloud_cover=0)
                 {
                     "op": "or",
                     "args": [
-                        {"op": "<", "args": [{"property": "eo:cloud_cover"}, 10]},
+                        {
+                            "op": "<",
+                            "args": [{"property": "eo:cloud_cover"}, 1],
+                        },  # True for test item (cloud_cover=0)
                         {
                             "op": "=",
                             "args": [{"property": "properties.proj:epsg"}, 99999],
-                        },
+                        },  # False
                     ],
                 },
             ],
         }
     }
-
-    # Test the API
     resp = await app_client.post("/search", json=params)
     assert resp.status_code == 200
     resp_json = resp.json()
+    assert any(
+        f["properties"].get("eo:cloud_cover") == 0 for f in resp_json["features"]
+    ), "Should return the test item when at least one OR condition matches"
 
-    # Should only find items where cloud_cover < 10 (second condition is false for all)
-    for feature in resp_json["features"]:
-        props = feature.get("properties", {})
-        assert (
-            props.get("eo:cloud_cover", 100) < 10
-        ), "Items should only be returned if they match at least one OR condition"
+    # Case 2: No OR conditions match (should NOT return the item if minimum_should_match=1 is set)
+    params["filter"]["args"][1]["args"][0]["args"][
+        1
+    ] = -1  # Now: cloud_cover < -1 (False)
+    params["filter"]["args"][1]["args"][1]["args"][
+        1
+    ] = 99998  # Now: proj:epsg == 99998 (False)
+    resp = await app_client.post("/search", json=params)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert all(
+        f["properties"].get("eo:cloud_cover") != 0 for f in resp_json["features"]
+    ), "Should NOT return the test item when no OR conditions match (requires minimum_should_match=1)"
