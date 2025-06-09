@@ -105,7 +105,6 @@ database_logic.extensions = [type(ext).__name__ for ext in extensions]
 
 post_request_model = create_post_request_model(search_extensions)
 
-# Export the configuration that would be used to create the app
 app_config = {
     "title": os.getenv("STAC_FASTAPI_TITLE", "stac-fastapi-opensearch"),
     "description": os.getenv("STAC_FASTAPI_DESCRIPTION", "stac-fastapi-opensearch"),
@@ -123,7 +122,6 @@ app_config = {
     "route_dependencies": get_route_dependencies(),
 }
 
-# Create the app instance for production use
 api = StacApi(**app_config)
 
 
