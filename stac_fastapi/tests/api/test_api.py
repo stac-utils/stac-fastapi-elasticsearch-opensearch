@@ -34,6 +34,7 @@ ROUTES = {
     "POST /collections/{collection_id}/items",
     "PUT /collections/{collection_id}",
     "PUT /collections/{collection_id}/items/{item_id}",
+    "POST /collections/{collection_id}/bulk_items",
     "GET /aggregations",
     "GET /aggregate",
     "POST /aggregations",
@@ -70,6 +71,14 @@ async def test_api_headers(app_client):
 @pytest.mark.asyncio
 async def test_router(app):
     api_routes = set([f"{list(route.methods)[0]} {route.path}" for route in app.routes])
+    print("\nActual routes:")
+    for route in sorted(api_routes):
+        print(f"  {route}")
+    print("\nExpected routes:")
+    for route in sorted(ROUTES):
+        print(f"  {route}")
+    print("\nMissing routes:", ROUTES - api_routes)
+    print("Extra routes:", api_routes - ROUTES)
     assert len(api_routes - ROUTES) == 0
 
 

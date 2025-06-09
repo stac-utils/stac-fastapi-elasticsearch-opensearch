@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Changed
 
 - Optimize data_loader.py script [#395](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/395)
+- Refactored test configuration to use shared app config pattern [#396](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/396)
 
 ### Removed
 

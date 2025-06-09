@@ -104,22 +104,26 @@ database_logic.extensions = [type(ext).__name__ for ext in extensions]
 
 post_request_model = create_post_request_model(search_extensions)
 
-api = StacApi(
-    title=os.getenv("STAC_FASTAPI_TITLE", "stac-fastapi-elasticsearch"),
-    description=os.getenv("STAC_FASTAPI_DESCRIPTION", "stac-fastapi-elasticsearch"),
-    api_version=os.getenv("STAC_FASTAPI_VERSION", "5.0.0a1"),
-    settings=settings,
-    extensions=extensions,
-    client=CoreClient(
+# Export the configuration that would be used to create the app
+app_config = {
+    "title": os.getenv("STAC_FASTAPI_TITLE", "stac-fastapi-elasticsearch"),
+    "description": os.getenv("STAC_FASTAPI_DESCRIPTION", "stac-fastapi-elasticsearch"),
+    "api_version": os.getenv("STAC_FASTAPI_VERSION", "5.0.0a1"),
+    "settings": settings,
+    "extensions": extensions,
+    "client": CoreClient(
         database=database_logic,
         session=session,
         post_request_model=post_request_model,
         landing_page_id=os.getenv("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"),
     ),
-    search_get_request_model=create_get_request_model(search_extensions),
-    search_post_request_model=post_request_model,
-    route_dependencies=get_route_dependencies(),
-)
+    "search_get_request_model": create_get_request_model(search_extensions),
+    "search_post_request_model": post_request_model,
+    "route_dependencies": get_route_dependencies(),
+}
+
+# Create the app instance for production use
+api = StacApi(**app_config)
 
 
 @asynccontextmanager
