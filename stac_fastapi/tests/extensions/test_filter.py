@@ -677,11 +677,21 @@ async def test_queryables_enum_platform(
 
 
 @pytest.mark.asyncio
-async def test_search_filter_ext_or_with_must_condition(app_client, load_test_data):
+async def test_search_filter_ext_or_with_must_condition(
+    app_client,
+    load_test_data,
+    monkeypatch: pytest.MonkeyPatch,
+):
     """
     Test that OR conditions require at least one match when combined with MUST.
     This test will fail if minimum_should_match=1 is not set in the ES/OS query.
     """
+
+    # Arrange
+    # Enforce instant database refresh
+    # TODO: Is there a better way to do this?
+    monkeypatch.setenv("DATABASE_REFRESH", "true")
+
     # Arrange: Create a unique collection for this test
     collection_data = load_test_data("test_collection.json")
     collection_id = collection_data["id"] = f"or-test-collection-{uuid.uuid4()}"
