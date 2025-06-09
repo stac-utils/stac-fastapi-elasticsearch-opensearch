@@ -674,3 +674,57 @@ async def test_queryables_enum_platform(
     # Clean up
     r = await app_client.delete(f"/collections/{collection_id}")
     r.raise_for_status()
+
+
+@pytest.mark.asyncio
+async def test_search_filter_ext_or_condition(app_client, ctx):
+    """Test that OR conditions work correctly in filters."""
+    # This test verifies that OR conditions work by checking for items that match
+    # either of two conditions where only one should match the test item
+    params = {
+        "filter": {
+            "op": "or",
+            "args": [
+                {
+                    "op": "<",
+                    "args": [
+                        {"property": "eo:cloud_cover"},
+                        0,  # This condition should NOT match (cloud_cover is 0, not < 0)
+                    ],
+                },
+                {
+                    "op": "=",
+                    "args": [
+                        {"property": "properties.proj:epsg"},
+                        32756,  # This condition SHOULD match
+                    ],
+                },
+            ],
+        }
+    }
+
+    # First verify the test item matches exactly one of the conditions
+    props = ctx.item.get("properties", {})
+    matches = [
+        props.get("eo:cloud_cover", 100) < 0,  # Should be False
+        props.get("proj:epsg") == 32756,  # Should be True
+    ]
+    assert sum(matches) == 1, "Test item should match exactly one condition"
+
+    # Now test the API
+    resp = await app_client.post("/search", json=params)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+
+    # Should find at least the test item
+    assert len(resp_json["features"]) >= 1
+
+    # Verify at least one feature matches one of the conditions
+    matched = False
+    for feature in resp_json["features"]:
+        props = feature.get("properties", {})
+        if props.get("eo:cloud_cover", 100) < 0 or props.get("proj:epsg") == 32756:
+            matched = True
+            break
+
+    assert matched, "No features matched the OR condition"
