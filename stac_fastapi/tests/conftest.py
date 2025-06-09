@@ -254,7 +254,7 @@ async def app_basic_auth():
         "/collections/{collection_id}": ["GET"],
         "/collections/{collection_id}/items": ["GET"],
         "/queryables": ["GET"],
-        "/queryables/collections/{collection_id}/queryables": ["GET"],
+        "/collections/{collection_id}/queryables": ["GET"],
         "/_mgmt/ping": ["GET"],
     }
 
