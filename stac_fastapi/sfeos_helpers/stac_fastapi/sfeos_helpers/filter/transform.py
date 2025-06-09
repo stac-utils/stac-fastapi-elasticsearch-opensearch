@@ -50,9 +50,9 @@ def to_es(queryables_mapping: Dict[str, Any], query: Dict[str, Any]) -> Dict[str
                 ]
             }
         }
-        # Add minimum_should_match for OR conditions
-        if query["op"] == LogicalOp.OR:
-            bool_query["bool"]["minimum_should_match"] = 1
+        # # Add minimum_should_match for OR conditions
+        # if query["op"] == LogicalOp.OR:
+        #     bool_query["bool"]["minimum_should_match"] = 1
 
         return bool_query
 
