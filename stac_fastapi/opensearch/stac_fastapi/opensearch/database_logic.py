@@ -1,13 +1,13 @@
 """Database logic."""
 
 import asyncio
-import json
 import logging
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from copy import deepcopy
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Type, Union
 
 import attr
+import orjson
 from opensearchpy import exceptions, helpers
 from opensearchpy.helpers.query import Q
 from opensearchpy.helpers.search import Search
@@ -551,7 +551,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         search_after = None
 
         if token:
-            search_after = json.loads(urlsafe_b64decode(token).decode())
+            search_after = orjson.loads(urlsafe_b64decode(token))
         if search_after:
             search_body["search_after"] = search_after
 
@@ -591,7 +591,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         next_token = None
         if len(hits) > limit and limit < max_result_window:
             if hits and (sort_array := hits[limit - 1].get("sort")):
-                next_token = urlsafe_b64encode(json.dumps(sort_array).encode()).decode()
+                next_token = urlsafe_b64encode(orjson.dumps(sort_array)).decode()
 
         matched = (
             es_response["hits"]["total"]["value"]
