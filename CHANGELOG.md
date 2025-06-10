@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 - Improved datetime query handling to only check start and end datetime values when datetime is None [#396](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/396)
 - Optimize data_loader.py script [#395](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/395)
+- Refactored test configuration to use shared app config pattern [#399](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/399)
 
 ### Removed
 
