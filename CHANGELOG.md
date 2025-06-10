@@ -8,6 +8,19 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- Added support for enum queryables [#390](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/390)
+
+### Changed
+
+- Optimize data_loader.py script [#395](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/395)
+- Refactored test configuration to use shared app config pattern [#399](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/399)
+
+### Removed
+
+- Removed `requests` dev dependency [#395](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/395)
+
 ## [v5.0.0a1] - 2025-05-30
 
 ### Changed

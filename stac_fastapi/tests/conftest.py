@@ -2,7 +2,6 @@ import asyncio
 import copy
 import json
 import os
-import sys
 from typing import Any, Callable, Dict, Optional
 
 import pytest
@@ -13,7 +12,7 @@ from pydantic import ConfigDict
 from stac_pydantic import api
 
 from stac_fastapi.api.app import StacApi
-from stac_fastapi.api.models import create_get_request_model, create_post_request_model
+from stac_fastapi.core.basic_auth import BasicAuth
 from stac_fastapi.core.core import (
     BulkTransactionsClient,
     CoreClient,
@@ -25,11 +24,11 @@ from stac_fastapi.core.extensions.aggregation import (
     EsAggregationExtensionPostRequest,
 )
 from stac_fastapi.core.rate_limit import setup_rate_limit
-from stac_fastapi.core.route_dependencies import get_route_dependencies
 from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.sfeos_helpers.aggregation import EsAsyncBaseAggregationClient
 
 if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
+    from stac_fastapi.opensearch.app import app_config
     from stac_fastapi.opensearch.config import AsyncOpensearchSettings as AsyncSettings
     from stac_fastapi.opensearch.config import OpensearchSettings as SearchSettings
     from stac_fastapi.opensearch.database_logic import (
@@ -38,9 +37,12 @@ if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
         create_index_templates,
     )
 else:
+    from stac_fastapi.elasticsearch.app import app_config
+    from stac_fastapi.elasticsearch.config import (
+        AsyncElasticsearchSettings as AsyncSettings,
+    )
     from stac_fastapi.elasticsearch.config import (
         ElasticsearchSettings as SearchSettings,
-        AsyncElasticsearchSettings as AsyncSettings,
     )
     from stac_fastapi.elasticsearch.database_logic import (
         DatabaseLogic,
@@ -199,47 +201,7 @@ def bulk_txn_client():
 
 @pytest_asyncio.fixture(scope="session")
 async def app():
-    settings = AsyncSettings()
-
-    aggregation_extension = AggregationExtension(
-        client=EsAsyncBaseAggregationClient(
-            database=database, session=None, settings=settings
-        )
-    )
-    aggregation_extension.POST = EsAggregationExtensionPostRequest
-    aggregation_extension.GET = EsAggregationExtensionGetRequest
-
-    search_extensions = [
-        TransactionExtension(
-            client=TransactionsClient(
-                database=database, session=None, settings=settings
-            ),
-            settings=settings,
-        ),
-        SortExtension(),
-        FieldsExtension(),
-        QueryExtension(),
-        TokenPaginationExtension(),
-        FilterExtension(),
-        FreeTextExtension(),
-    ]
-
-    extensions = [aggregation_extension] + search_extensions
-
-    post_request_model = create_post_request_model(search_extensions)
-
-    return StacApi(
-        settings=settings,
-        client=CoreClient(
-            database=database,
-            session=None,
-            extensions=extensions,
-            post_request_model=post_request_model,
-        ),
-        extensions=extensions,
-        search_get_request_model=create_get_request_model(search_extensions),
-        search_post_request_model=post_request_model,
-    ).app
+    return StacApi(**app_config).app
 
 
 @pytest_asyncio.fixture(scope="session")
@@ -255,49 +217,8 @@ async def app_client(app):
 
 @pytest_asyncio.fixture(scope="session")
 async def app_rate_limit():
-    settings = AsyncSettings()
-
-    aggregation_extension = AggregationExtension(
-        client=EsAsyncBaseAggregationClient(
-            database=database, session=None, settings=settings
-        )
-    )
-    aggregation_extension.POST = EsAggregationExtensionPostRequest
-    aggregation_extension.GET = EsAggregationExtensionGetRequest
-
-    search_extensions = [
-        TransactionExtension(
-            client=TransactionsClient(
-                database=database, session=None, settings=settings
-            ),
-            settings=settings,
-        ),
-        SortExtension(),
-        FieldsExtension(),
-        QueryExtension(),
-        TokenPaginationExtension(),
-        FilterExtension(),
-        FreeTextExtension(),
-    ]
-
-    extensions = [aggregation_extension] + search_extensions
-
-    post_request_model = create_post_request_model(search_extensions)
-
-    app = StacApi(
-        settings=settings,
-        client=CoreClient(
-            database=database,
-            session=None,
-            extensions=extensions,
-            post_request_model=post_request_model,
-        ),
-        extensions=extensions,
-        search_get_request_model=create_get_request_model(search_extensions),
-        search_post_request_model=post_request_model,
-    ).app
-
-    # Set up rate limit
+    """Fixture to get the FastAPI app with test-specific rate limiting."""
+    app = StacApi(**app_config).app
     setup_rate_limit(app, rate_limit="2/minute")
 
     return app
@@ -316,83 +237,52 @@ async def app_client_rate_limit(app_rate_limit):
 
 @pytest_asyncio.fixture(scope="session")
 async def app_basic_auth():
+    """Fixture to get the FastAPI app with basic auth configured."""
 
-    stac_fastapi_route_dependencies = """[
-        {
-            "routes":[{"method":"*","path":"*"}],
-            "dependencies":[
-                {
-                    "method":"stac_fastapi.core.basic_auth.BasicAuth",
-                    "kwargs":{"credentials":[{"username":"admin","password":"admin"}]}
-                }
-            ]
-        },
-        {
-            "routes":[
-                {"path":"/","method":["GET"]},
-                {"path":"/conformance","method":["GET"]},
-                {"path":"/collections/{collection_id}/items/{item_id}","method":["GET"]},
-                {"path":"/search","method":["GET","POST"]},
-                {"path":"/collections","method":["GET"]},
-                {"path":"/collections/{collection_id}","method":["GET"]},
-                {"path":"/collections/{collection_id}/items","method":["GET"]},
-                {"path":"/queryables","method":["GET"]},
-                {"path":"/queryables/collections/{collection_id}/queryables","method":["GET"]},
-                {"path":"/_mgmt/ping","method":["GET"]}
-            ],
-            "dependencies":[
-                {
-                    "method":"stac_fastapi.core.basic_auth.BasicAuth",
-                    "kwargs":{"credentials":[{"username":"reader","password":"reader"}]}
-                }
-            ]
-        }
-    ]"""
+    # Create a copy of the app config
+    test_config = app_config.copy()
 
-    settings = AsyncSettings()
-
-    aggregation_extension = AggregationExtension(
-        client=EsAsyncBaseAggregationClient(
-            database=database, session=None, settings=settings
-        )
+    # Create basic auth dependency wrapped in Depends
+    basic_auth = Depends(
+        BasicAuth(credentials=[{"username": "admin", "password": "admin"}])
     )
-    aggregation_extension.POST = EsAggregationExtensionPostRequest
-    aggregation_extension.GET = EsAggregationExtensionGetRequest
 
-    search_extensions = [
-        TransactionExtension(
-            client=TransactionsClient(
-                database=database, session=None, settings=settings
-            ),
-            settings=settings,
-        ),
-        SortExtension(),
-        FieldsExtension(),
-        QueryExtension(),
-        TokenPaginationExtension(),
-        FilterExtension(),
-        FreeTextExtension(),
+    # Define public routes that don't require auth
+    public_paths = {
+        "/": ["GET"],
+        "/conformance": ["GET"],
+        "/collections/{collection_id}/items/{item_id}": ["GET"],
+        "/search": ["GET", "POST"],
+        "/collections": ["GET"],
+        "/collections/{collection_id}": ["GET"],
+        "/collections/{collection_id}/items": ["GET"],
+        "/queryables": ["GET"],
+        "/collections/{collection_id}/queryables": ["GET"],
+        "/_mgmt/ping": ["GET"],
+    }
+
+    # Initialize route dependencies with public paths
+    test_config["route_dependencies"] = [
+        (
+            [{"path": path, "method": method} for method in methods],
+            [],  # No auth for public routes
+        )
+        for path, methods in public_paths.items()
     ]
 
-    extensions = [aggregation_extension] + search_extensions
-
-    post_request_model = create_post_request_model(search_extensions)
-
-    stac_api = StacApi(
-        settings=settings,
-        client=CoreClient(
-            database=database,
-            session=None,
-            extensions=extensions,
-            post_request_model=post_request_model,
-        ),
-        extensions=extensions,
-        search_get_request_model=create_get_request_model(search_extensions),
-        search_post_request_model=post_request_model,
-        route_dependencies=get_route_dependencies(stac_fastapi_route_dependencies),
+    # Add catch-all route with basic auth
+    test_config["route_dependencies"].extend(
+        [
+            (
+                [{"path": "*", "method": "*"}],
+                [basic_auth],
+            )  # Require auth for all other routes
+        ]
     )
 
-    return stac_api.app
+    # Create the app with basic auth
+    api = StacApi(**test_config)
+    return api.app
 
 
 @pytest_asyncio.fixture(scope="session")
@@ -421,56 +311,19 @@ def must_be_bob(
 
 @pytest_asyncio.fixture(scope="session")
 async def route_dependencies_app():
-    # Add file to python path to allow get_route_dependencies to import must_be_bob
-    sys.path.append(os.path.dirname(__file__))
+    """Fixture to get the FastAPI app with custom route dependencies."""
 
-    stac_fastapi_route_dependencies = """[
-            {
-                "routes": [
-                    {
-                        "method": "GET",
-                        "path": "/collections"
-                    }
-                ],
-                "dependencies": [
-                    {
-                        "method": "conftest.must_be_bob"
-                    }
-                ]
-            }
-        ]"""
+    # Create a copy of the app config
+    test_config = app_config.copy()
 
-    settings = AsyncSettings()
-    extensions = [
-        TransactionExtension(
-            client=TransactionsClient(
-                database=database, session=None, settings=settings
-            ),
-            settings=settings,
-        ),
-        SortExtension(),
-        FieldsExtension(),
-        QueryExtension(),
-        TokenPaginationExtension(),
-        FilterExtension(),
-        FreeTextExtension(),
+    # Define route dependencies
+    test_config["route_dependencies"] = [
+        ([{"method": "GET", "path": "/collections"}], [Depends(must_be_bob)])
     ]
 
-    post_request_model = create_post_request_model(extensions)
-
-    return StacApi(
-        settings=settings,
-        client=CoreClient(
-            database=database,
-            session=None,
-            extensions=extensions,
-            post_request_model=post_request_model,
-        ),
-        extensions=extensions,
-        search_get_request_model=create_get_request_model(extensions),
-        search_post_request_model=post_request_model,
-        route_dependencies=get_route_dependencies(stac_fastapi_route_dependencies),
-    ).app
+    # Create the app with custom route dependencies
+    api = StacApi(**test_config)
+    return api.app
 
 
 @pytest_asyncio.fixture(scope="session")
@@ -486,9 +339,16 @@ async def route_dependencies_client(route_dependencies_app):
 
 
 def build_test_app():
+    """Build a test app with configurable transaction extensions."""
+    # Create a copy of the base config
+    test_config = app_config.copy()
+
+    # Get transaction extensions setting
     TRANSACTIONS_EXTENSIONS = get_bool_env(
         "ENABLE_TRANSACTIONS_EXTENSIONS", default=True
     )
+
+    # Configure extensions
     settings = AsyncSettings()
     aggregation_extension = AggregationExtension(
         client=EsAsyncBaseAggregationClient(
@@ -497,6 +357,7 @@ def build_test_app():
     )
     aggregation_extension.POST = EsAggregationExtensionPostRequest
     aggregation_extension.GET = EsAggregationExtensionGetRequest
+
     search_extensions = [
         SortExtension(),
         FieldsExtension(),
@@ -505,27 +366,30 @@ def build_test_app():
         FilterExtension(),
         FreeTextExtension(),
     ]
+
+    # Add transaction extension if enabled
     if TRANSACTIONS_EXTENSIONS:
-        search_extensions.insert(
-            0,
+        search_extensions.append(
             TransactionExtension(
                 client=TransactionsClient(
                     database=database, session=None, settings=settings
                 ),
                 settings=settings,
-            ),
+            )
         )
+
+    # Update extensions in config
     extensions = [aggregation_extension] + search_extensions
-    post_request_model = create_post_request_model(search_extensions)
-    return StacApi(
-        settings=settings,
-        client=CoreClient(
-            database=database,
-            session=None,
-            extensions=extensions,
-            post_request_model=post_request_model,
-        ),
+    test_config["extensions"] = extensions
+
+    # Update client with new extensions
+    test_config["client"] = CoreClient(
+        database=database,
+        session=None,
         extensions=extensions,
-        search_get_request_model=create_get_request_model(search_extensions),
-        search_post_request_model=post_request_model,
-    ).app
+        post_request_model=test_config["search_post_request_model"],
+    )
+
+    # Create and return the app
+    api = StacApi(**test_config)
+    return api.app

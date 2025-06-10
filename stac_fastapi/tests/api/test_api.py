@@ -36,6 +36,7 @@ ROUTES = {
     "PATCH /collections/{collection_id}",
     "PUT /collections/{collection_id}/items/{item_id}",
     "PATCH /collections/{collection_id}/items/{item_id}",
+    "POST /collections/{collection_id}/bulk_items",
     "GET /aggregations",
     "GET /aggregate",
     "POST /aggregations",

@@ -123,7 +123,7 @@ limited permissions to specific read-only endpoints.
       {"path": "/collections/{collection_id}", "method": ["GET"]},
       {"path": "/collections/{collection_id}/items", "method": ["GET"]},
       {"path": "/queryables", "method": ["GET"]},
-      {"path": "/queryables/collections/{collection_id}/queryables", "method": ["GET"]},
+      {"path": "/collections/{collection_id}/queryables", "method": ["GET"]},
       {"path": "/_mgmt/ping", "method": ["GET"]}
     ],
     "dependencies": [

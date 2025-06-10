@@ -31,6 +31,7 @@ from stac_fastapi.extensions.core import (
     TokenPaginationExtension,
     TransactionExtension,
 )
+from stac_fastapi.extensions.core.filter import FilterConformanceClasses
 from stac_fastapi.extensions.third_party import BulkTransactionExtension
 from stac_fastapi.opensearch.config import OpensearchSettings
 from stac_fastapi.opensearch.database_logic import (
@@ -56,7 +57,7 @@ filter_extension = FilterExtension(
     client=EsAsyncBaseFiltersClient(database=database_logic)
 )
 filter_extension.conformance_classes.append(
-    "http://www.opengis.net/spec/cql2/1.0/conf/advanced-comparison-operators"
+    FilterConformanceClasses.ADVANCED_COMPARISON_OPERATORS
 )
 
 aggregation_extension = AggregationExtension(
@@ -104,22 +105,24 @@ database_logic.extensions = [type(ext).__name__ for ext in extensions]
 
 post_request_model = create_post_request_model(search_extensions)
 
-api = StacApi(
-    title=os.getenv("STAC_FASTAPI_TITLE", "stac-fastapi-opensearch"),
-    description=os.getenv("STAC_FASTAPI_DESCRIPTION", "stac-fastapi-opensearch"),
-    api_version=os.getenv("STAC_FASTAPI_VERSION", "5.0.0a1"),
-    settings=settings,
-    extensions=extensions,
-    client=CoreClient(
+app_config = {
+    "title": os.getenv("STAC_FASTAPI_TITLE", "stac-fastapi-opensearch"),
+    "description": os.getenv("STAC_FASTAPI_DESCRIPTION", "stac-fastapi-opensearch"),
+    "api_version": os.getenv("STAC_FASTAPI_VERSION", "5.0.0a1"),
+    "settings": settings,
+    "extensions": extensions,
+    "client": CoreClient(
         database=database_logic,
         session=session,
         post_request_model=post_request_model,
         landing_page_id=os.getenv("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"),
     ),
-    search_get_request_model=create_get_request_model(search_extensions),
-    search_post_request_model=post_request_model,
-    route_dependencies=get_route_dependencies(),
-)
+    "search_get_request_model": create_get_request_model(search_extensions),
+    "search_post_request_model": post_request_model,
+    "route_dependencies": get_route_dependencies(),
+}
+
+api = StacApi(**app_config)
 
 
 @asynccontextmanager

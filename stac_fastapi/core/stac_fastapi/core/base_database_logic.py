@@ -61,6 +61,18 @@ class BaseDatabaseLogic(abc.ABC):
         pass
 
     @abc.abstractmethod
+    async def get_items_mapping(self, collection_id: str) -> Dict[str, Dict[str, Any]]:
+        """Get the mapping for the items in the collection."""
+        pass
+
+    @abc.abstractmethod
+    async def get_items_unique_values(
+        self, collection_id: str, field_names: Iterable[str], *, limit: int = ...
+    ) -> Dict[str, List[str]]:
+        """Get the unique values for the given fields in the collection."""
+        pass
+
+    @abc.abstractmethod
     async def create_collection(self, collection: Dict, refresh: bool = False) -> None:
         """Create a collection in the database."""
         pass
