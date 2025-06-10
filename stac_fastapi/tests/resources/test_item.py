@@ -1116,7 +1116,7 @@ async def test_search_datetime_with_null_datetime(
         },
     )
     assert feature_ids == {
-        "null-datetime-item",  # Matches start_datetime <= lte, end_datetime >= gte
+        "null-datetime-item",  # Overlaps: search range [12:00-01-01 to 12:00-02-01] overlaps item range [00:00-01-01 to 00:00-02-01]
     }, "Range search excluding range-item datetime failed"
 
     # Cleanup
