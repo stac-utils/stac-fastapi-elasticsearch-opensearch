@@ -52,20 +52,20 @@ ROUTES = {
 async def test_post_search_content_type(app_client, ctx):
     params = {"limit": 1}
     resp = await app_client.post("/search", json=params)
-    assert resp.headers["content-type"] == "application/geo+json"
+    assert resp.headers["Content-Type"] == "application/geo+json"
 
 
 @pytest.mark.asyncio
 async def test_get_search_content_type(app_client, ctx):
     resp = await app_client.get("/search")
-    assert resp.headers["content-type"] == "application/geo+json"
+    assert resp.headers["Content-Type"] == "application/geo+json"
 
 
 @pytest.mark.asyncio
 async def test_api_headers(app_client):
     resp = await app_client.get("/api")
     assert (
-        resp.headers["content-type"] == "application/vnd.oai.openapi+json;version=3.0"
+        resp.headers["Content-Type"] == "application/vnd.oai.openapi+json;version=3.0"
     )
     assert resp.status_code == 200
 
@@ -657,7 +657,7 @@ async def test_patch_operations_collection(app_client, ctx):
     resp = await app_client.patch(
         f"/collections/{ctx.item['collection']}",
         json=operations,
-        headers={"content-type": "application/json-patch+json"},
+        headers={"Content-Type": "application/json-patch+json"},
     )
 
     assert resp.status_code == 200
@@ -719,7 +719,7 @@ async def test_patch_operations_item(app_client, ctx):
     resp = await app_client.patch(
         f"/collections/{ctx.item['collection']}/{ctx.item['id']}",
         json=operations,
-        headers={"content-type": "application/json-patch+json"},
+        headers={"Content-Type": "application/json-patch+json"},
     )
 
     assert resp.status_code == 200

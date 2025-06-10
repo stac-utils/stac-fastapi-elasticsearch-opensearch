@@ -737,9 +737,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             return ItemSerializer.db_to_stac(item, base_url=base_url)
 
         raise NotImplementedError(
-            "Content-Type: %s and body: %s combination not implemented",
-            content_type,
-            patch,
+            f"Content-Type: {content_type} and body: {patch} combination not implemented"
         )
 
     @overrides
@@ -841,8 +839,8 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         Returns:
             The patched collection.
         """
-        content_type = kwargs["request"].headers.get("content-type")
         base_url = str(kwargs["request"].base_url)
+        content_type = kwargs["request"].headers.get("content-type")
 
         collection = None
         if isinstance(patch, list) and content_type == "application/json-patch+json":
@@ -873,9 +871,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             )
 
         raise NotImplementedError(
-            "Content-Type: %s and body: %s combination not implemented",
-            content_type,
-            patch,
+            f"Content-Type: {content_type} and body: {patch} combination not implemented"
         )
 
     @overrides
