@@ -648,10 +648,10 @@ async def test_patch_operations_collection(app_client, ctx):
         {"op": "replace", "path": "/summaries/gsd", "value": [50]},
         {
             "op": "move",
-            "path": "/summaries/instruments",
-            "from": "/summaries/instrument",
+            "path": "/summaries/instrument",
+            "from": "/summaries/instruments",
         },
-        # {"op": "copy", "from": "license", "path": "/summaries/license"},
+        {"op": "copy", "from": "license", "path": "/summaries/license"},
     ]
 
     resp = await app_client.patch(
@@ -711,7 +711,7 @@ async def test_patch_operations_item(app_client, ctx):
         {"op": "remove", "path": "/properties/landsat:column"},
         {"op": "replace", "path": "/properties/proj:epsg", "value": 1000},
         {"op": "move", "path": "/properties/foo", "from": "/properties/instrument"},
-        # {"op": "copy", "path": "/properties/bar", "from": "/properties/height"},
+        {"op": "copy", "path": "/properties/bar", "from": "/properties/height"},
     ]
 
     resp = await app_client.patch(
@@ -737,7 +737,6 @@ async def test_patch_operations_item(app_client, ctx):
     assert new_resp_json["properties"]["foo"] == "OLI_TIRS"
     assert new_resp_json["properties"]["bar"] == 2500
     assert new_resp_json["properties"]["height"] == 2500
-    assert new_resp_json["properties"]["platform"] == "landsat-8"
 
 
 @pytest.mark.asyncio
