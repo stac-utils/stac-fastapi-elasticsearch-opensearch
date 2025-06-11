@@ -645,7 +645,7 @@ async def test_patch_json_collection(app_client, ctx):
 async def test_patch_operations_collection(app_client, ctx):
     operations = [
         {"op": "add", "path": "/summaries/hello", "value": "world"},
-        # {"op": "replace", "path": "/summaries/gsd", "value": [50]},
+        {"op": "replace", "path": "/summaries/gsd", "value": [50]},
         # {
         #     "op": "move",
         #     "path": "/summaries/instrument",
@@ -669,8 +669,8 @@ async def test_patch_operations_collection(app_client, ctx):
     new_resp_json = new_resp.json()
 
     assert new_resp_json["summaries"]["hello"] == "world"
-    # assert "instruments" not in new_resp_json["summaries"]
-    # assert new_resp_json["summaries"]["gsd"] == [50]
+    assert "instruments" not in new_resp_json["summaries"]
+    assert new_resp_json["summaries"]["gsd"] == [50]
     # assert new_resp_json["license"] == "PDDL-1.0"
     # assert new_resp_json["summaries"]["license"] == "PDDL-1.0"
     # assert new_resp_json["summaries"]["instrument"] == ["oli", "tirs"]
