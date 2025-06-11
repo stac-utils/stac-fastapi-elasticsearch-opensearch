@@ -646,11 +646,11 @@ async def test_patch_operations_collection(app_client, ctx):
     operations = [
         {"op": "add", "path": "/summaries/hello", "value": "world"},
         {"op": "replace", "path": "/summaries/gsd", "value": [50]},
-        # {
-        #     "op": "move",
-        #     "path": "/summaries/instrument",
-        #     "from": "/summaries/instruments",
-        # },
+        {
+            "op": "move",
+            "path": "/summaries/instrument",
+            "from": "/summaries/instruments",
+        },
         # {"op": "copy", "from": "license", "path": "/summaries/license"},
     ]
 
@@ -669,12 +669,14 @@ async def test_patch_operations_collection(app_client, ctx):
     new_resp_json = new_resp.json()
 
     assert new_resp_json["summaries"]["hello"] == "world"
-    assert "instruments" not in new_resp_json["summaries"]
     assert new_resp_json["summaries"]["gsd"] == [50]
+    assert "instruments" not in new_resp_json["summaries"]
+    assert (
+        new_resp_json["summaries"]["instrument"]
+        == ctx.collection["summaries"]["instruments"]
+    )
     # assert new_resp_json["license"] == "PDDL-1.0"
     # assert new_resp_json["summaries"]["license"] == "PDDL-1.0"
-    # assert new_resp_json["summaries"]["instrument"] == ["oli", "tirs"]
-    # assert new_resp_json["summaries"]["platform"] == ["landsat-8"]
 
 
 @pytest.mark.asyncio
@@ -732,11 +734,11 @@ async def test_patch_operations_item(app_client, ctx):
 
     assert new_resp_json["properties"]["hello"] == "world"
     assert "landsat:column" not in new_resp_json["properties"]
-    assert "instrument" not in new_resp_json["properties"]
     assert new_resp_json["properties"]["proj:epsg"] == 1000
-    assert new_resp_json["properties"]["foo"] == "OLI_TIRS"
-    assert new_resp_json["properties"]["bar"] == 2500
-    assert new_resp_json["properties"]["height"] == 2500
+    assert "instrument" not in new_resp_json["properties"]
+    assert new_resp_json["properties"]["foo"] == ctx.item["properties"]["instrument"]
+    assert new_resp_json["properties"]["bar"] == ctx.item["properties"]["height"]
+    assert new_resp_json["properties"]["height"] == ctx.item["properties"]["height"]
 
 
 @pytest.mark.asyncio
