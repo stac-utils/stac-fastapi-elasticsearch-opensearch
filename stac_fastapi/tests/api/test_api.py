@@ -651,7 +651,7 @@ async def test_patch_operations_collection(app_client, ctx):
             "path": "/summaries/instrument",
             "from": "/summaries/instruments",
         },
-        # {"op": "copy", "from": "license", "path": "/summaries/license"},
+        {"op": "copy", "from": "/license", "path": "/summaries/license"},
     ]
 
     resp = await app_client.patch(
@@ -675,8 +675,8 @@ async def test_patch_operations_collection(app_client, ctx):
         new_resp_json["summaries"]["instrument"]
         == ctx.collection["summaries"]["instruments"]
     )
-    # assert new_resp_json["license"] == "PDDL-1.0"
-    # assert new_resp_json["summaries"]["license"] == "PDDL-1.0"
+    assert new_resp_json["license"] == ctx.collection["license"]
+    assert new_resp_json["summaries"]["license"] == ctx.collection["license"]
 
 
 @pytest.mark.asyncio
