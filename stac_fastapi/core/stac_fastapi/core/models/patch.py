@@ -99,7 +99,7 @@ class ElasticPath(BaseModel):
             data["nest"], data["partition"], data["key"] = data["nest"].rpartition(".")
 
         data["es_path"] = to_es(data["path"])
-        data["es_nest"] = to_es(data["nest"])
+        data["es_nest"] = f".{to_es(data['nest'])}" if data["nest"] else ""
         data["es_key"] = to_es(data["key"])
 
         return data
