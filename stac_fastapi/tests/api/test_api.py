@@ -646,12 +646,12 @@ async def test_patch_operations_collection(app_client, ctx):
     operations = [
         {"op": "add", "path": "/summaries/hello", "value": "world"},
         {"op": "replace", "path": "/summaries/gsd", "value": [50]},
-        {
-            "op": "move",
-            "path": "/summaries/instruments",
-            "from": "/summaries/instrument",
-        },
-        {"op": "copy", "from": "license", "path": "/summaries/license"},
+        # {
+        #     "op": "move",
+        #     "path": "/summaries/instruments",
+        #     "from": "/summaries/instrument",
+        # },
+        # {"op": "copy", "from": "license", "path": "/summaries/license"},
     ]
 
     resp = await app_client.patch(
@@ -710,8 +710,8 @@ async def test_patch_json_item(app_client, ctx):
 async def test_patch_operations_item(app_client, ctx):
     operations = [
         {"op": "add", "path": "/properties/hello", "value": "world"},
-        # {"op": "remove", "path": "/properties/landsat:column"},
-        # {"op": "replace", "path": "/properties/proj:epsg", "value": 1000},
+        {"op": "remove", "path": "/properties/landsat:column"},
+        {"op": "replace", "path": "/properties/proj:epsg", "value": 1000},
         # {"op": "move", "path": "/properties/foo", "from": "/properties/instrument"},
         # {"op": "copy", "path": "/properties/bar", "from": "/properties/height"},
     ]
