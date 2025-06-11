@@ -316,8 +316,9 @@ async def test_json_patch_item_add(ctx, core_client, txn_client):
 
     assert updated_item["properties"]["foo"] == "bar"
     assert updated_item["properties"]["ext:hello"] == "world"
-    assert len(updated_item["properties"]["eo:bands"]) == len(
-        ctx.item["properties"]["eo:bands"]
+    assert (
+        len(updated_item["properties"]["eo:bands"])
+        == len(ctx.item["properties"]["eo:bands"]) + 1
     )
     assert updated_item["properties"]["eo:bands"][1] == {
         "gsd": 10,
