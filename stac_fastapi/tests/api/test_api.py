@@ -33,7 +33,9 @@ ROUTES = {
     "POST /collections",
     "POST /collections/{collection_id}/items",
     "PUT /collections/{collection_id}",
+    "PATCH /collections/{collection_id}",
     "PUT /collections/{collection_id}/items/{item_id}",
+    "PATCH /collections/{collection_id}/items/{item_id}",
     "POST /collections/{collection_id}/bulk_items",
     "GET /aggregations",
     "GET /aggregate",
@@ -50,20 +52,20 @@ ROUTES = {
 async def test_post_search_content_type(app_client, ctx):
     params = {"limit": 1}
     resp = await app_client.post("/search", json=params)
-    assert resp.headers["content-type"] == "application/geo+json"
+    assert resp.headers["Content-Type"] == "application/geo+json"
 
 
 @pytest.mark.asyncio
 async def test_get_search_content_type(app_client, ctx):
     resp = await app_client.get("/search")
-    assert resp.headers["content-type"] == "application/geo+json"
+    assert resp.headers["Content-Type"] == "application/geo+json"
 
 
 @pytest.mark.asyncio
 async def test_api_headers(app_client):
     resp = await app_client.get("/api")
     assert (
-        resp.headers["content-type"] == "application/vnd.oai.openapi+json;version=3.0"
+        resp.headers["Content-Type"] == "application/vnd.oai.openapi+json;version=3.0"
     )
     assert resp.status_code == 200
 
@@ -615,6 +617,128 @@ async def test_bbox_3d(app_client, ctx):
     assert resp.status_code == 200
     resp_json = resp.json()
     assert len(resp_json["features"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_patch_json_collection(app_client, ctx):
+    data = {
+        "summaries": {"hello": "world", "gsd": [50], "instruments": None},
+    }
+
+    resp = await app_client.patch(f"/collections/{ctx.collection['id']}", json=data)
+
+    assert resp.status_code == 200
+
+    new_resp = await app_client.get(f"/collections/{ctx.collection['id']}")
+
+    assert new_resp.status_code == 200
+
+    new_resp_json = new_resp.json()
+
+    assert new_resp_json["summaries"]["hello"] == "world"
+    assert "instruments" not in new_resp_json["summaries"]
+    assert new_resp_json["summaries"]["gsd"] == [50]
+    assert new_resp_json["summaries"]["platform"] == ["landsat-8"]
+
+
+@pytest.mark.asyncio
+async def test_patch_operations_collection(app_client, ctx):
+    operations = [
+        {"op": "add", "path": "/summaries/hello", "value": "world"},
+        {"op": "replace", "path": "/summaries/gsd", "value": [50]},
+        {
+            "op": "move",
+            "path": "/summaries/instrument",
+            "from": "/summaries/instruments",
+        },
+        {"op": "copy", "from": "/license", "path": "/summaries/license"},
+    ]
+
+    resp = await app_client.patch(
+        f"/collections/{ctx.collection['id']}",
+        json=operations,
+        headers={"Content-Type": "application/json-patch+json"},
+    )
+
+    assert resp.status_code == 200
+
+    new_resp = await app_client.get(f"/collections/{ctx.collection['id']}")
+
+    assert new_resp.status_code == 200
+
+    new_resp_json = new_resp.json()
+
+    assert new_resp_json["summaries"]["hello"] == "world"
+    assert new_resp_json["summaries"]["gsd"] == [50]
+    assert "instruments" not in new_resp_json["summaries"]
+    assert (
+        new_resp_json["summaries"]["instrument"]
+        == ctx.collection["summaries"]["instruments"]
+    )
+    assert new_resp_json["license"] == ctx.collection["license"]
+    assert new_resp_json["summaries"]["license"] == ctx.collection["license"]
+
+
+@pytest.mark.asyncio
+async def test_patch_json_item(app_client, ctx):
+
+    data = {
+        "properties": {"hello": "world", "proj:epsg": 1000, "landsat:column": None},
+    }
+
+    resp = await app_client.patch(
+        f"/collections/{ctx.item['collection']}/items/{ctx.item['id']}", json=data
+    )
+
+    assert resp.status_code == 200
+
+    new_resp = await app_client.get(
+        f"/collections/{ctx.item['collection']}/items/{ctx.item['id']}"
+    )
+
+    assert new_resp.status_code == 200
+
+    new_resp_json = new_resp.json()
+
+    assert new_resp_json["properties"]["hello"] == "world"
+    assert "landsat:column" not in new_resp_json["properties"]
+    assert new_resp_json["properties"]["proj:epsg"] == 1000
+    assert new_resp_json["properties"]["platform"] == "landsat-8"
+
+
+@pytest.mark.asyncio
+async def test_patch_operations_item(app_client, ctx):
+    operations = [
+        {"op": "add", "path": "/properties/hello", "value": "world"},
+        {"op": "remove", "path": "/properties/landsat:column"},
+        {"op": "replace", "path": "/properties/proj:epsg", "value": 1000},
+        {"op": "move", "path": "/properties/foo", "from": "/properties/instrument"},
+        {"op": "copy", "path": "/properties/bar", "from": "/properties/height"},
+    ]
+
+    resp = await app_client.patch(
+        f"/collections/{ctx.item['collection']}/items/{ctx.item['id']}",
+        json=operations,
+        headers={"Content-Type": "application/json-patch+json"},
+    )
+
+    assert resp.status_code == 200
+
+    new_resp = await app_client.get(
+        f"/collections/{ctx.item['collection']}/items/{ctx.item['id']}"
+    )
+
+    assert new_resp.status_code == 200
+
+    new_resp_json = new_resp.json()
+
+    assert new_resp_json["properties"]["hello"] == "world"
+    assert "landsat:column" not in new_resp_json["properties"]
+    assert new_resp_json["properties"]["proj:epsg"] == 1000
+    assert "instrument" not in new_resp_json["properties"]
+    assert new_resp_json["properties"]["foo"] == ctx.item["properties"]["instrument"]
+    assert new_resp_json["properties"]["bar"] == ctx.item["properties"]["height"]
+    assert new_resp_json["properties"]["height"] == ctx.item["properties"]["height"]
 
 
 @pytest.mark.asyncio
