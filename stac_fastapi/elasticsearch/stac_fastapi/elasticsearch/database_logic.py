@@ -1,7 +1,6 @@
 """Database logic."""
 
 import asyncio
-import json
 import logging
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from copy import deepcopy
@@ -9,6 +8,7 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple, Type, Union
 
 import attr
 import elasticsearch.helpers as helpers
+import orjson
 from elasticsearch.dsl import Q, Search
 from elasticsearch.exceptions import NotFoundError as ESNotFoundError
 from starlette.requests import Request
@@ -503,7 +503,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         search_after = None
 
         if token:
-            search_after = json.loads(urlsafe_b64decode(token).decode())
+            search_after = orjson.loads(urlsafe_b64decode(token))
 
         query = search.query.to_dict() if search.query else None
 
@@ -543,7 +543,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         next_token = None
         if len(hits) > limit and limit < max_result_window:
             if hits and (sort_array := hits[limit - 1].get("sort")):
-                next_token = urlsafe_b64encode(json.dumps(sort_array).encode()).decode()
+                next_token = urlsafe_b64encode(orjson.dumps(sort_array)).decode()
 
         matched = (
             es_response["hits"]["total"]["value"]
