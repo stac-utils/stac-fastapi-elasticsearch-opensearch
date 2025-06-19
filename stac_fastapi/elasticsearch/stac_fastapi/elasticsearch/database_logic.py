@@ -17,12 +17,7 @@ from starlette.requests import Request
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
-from stac_fastapi.core.utilities import (
-    MAX_LIMIT,
-    bbox2polygon,
-    merge_to_operations,
-    operations_to_script,
-)
+from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon
 from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
 from stac_fastapi.elasticsearch.config import (
     ElasticsearchSettings as SyncElasticsearchSettings,
@@ -42,6 +37,10 @@ from stac_fastapi.sfeos_helpers.database import (
     populate_sort_shared,
     return_date,
     validate_refresh,
+)
+from stac_fastapi.sfeos_helpers.database.utils import (
+    merge_to_operations,
+    operations_to_script,
 )
 from stac_fastapi.sfeos_helpers.mappings import (
     AGGREGATION_MAPPING,
