@@ -8,36 +8,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
-### Added
-
-- Added support for enum queryables [#390](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/390)
-
-### Changed
-
-- Improved datetime query handling to only check start and end datetime values when datetime is None [#396](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/396)
-- Optimize data_loader.py script [#395](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/395)
-- Refactored test configuration to use shared app config pattern [#399](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/399)
-
-### Removed
-
-- Removed `requests` dev dependency [#395](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/395)
-
-## [v5.0.0a1] - 2025-05-30
-
-### Changed
-
-- Updated mkdocs/ sfeos doucmentation page [#386](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/386)
-
-### Fixed
-
-- Added the ability to authenticate with OpenSearch/ElasticSearch with SSL disabled [#388](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/388)
-
-## [v5.0.0a0] - 2025-05-29
+## [v5.0.0] - 2025-06-11
 
 ### Added
 
 - Created new `sfeos_helpers` package to improve code organization and maintainability [#376](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/376)
 - Added introduction section - What is stac-fastapi-elasticsearch-opensearch? - to README [#384](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/384)
+- Added support for enum queryables [#390](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/390)
 
 ### Changed
 
@@ -46,15 +23,27 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
   - Created `aggregation` package for Elasticsearch/OpenSearch-specific aggregation functionality
   - Moved shared logic from core module to helper functions for better code reuse
   - Separated utility functions from constant mappings for clearer code organization
-- Updated documentation to reflect recent code refactoring  [#376](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/376)
+- Updated documentation to reflect recent code refactoring [#376](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/376)
 - Improved README documentation with consistent formatting and enhanced sections [#381](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/381):
   - Added sfeos logo and banner
   - Added a comprehensive Quick Start guide
   - Reorganized sections for better navigation
   - Reformatted content with bullet points for improved readability
   - Added more detailed examples for API interaction
-  
+- Updated mkdocs/ sfeos doucmentation page [#386](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/386)
+- Improved datetime query handling to only check start and end datetime values when datetime is None [#396](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/396)
+- Optimize data_loader.py script [#395](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/395)
+- Refactored test configuration to use shared app config pattern [#399](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/399)
+- Make `orjson` usage more consistent [#402](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/402)
+
 ### Fixed
+
+- Added the ability to authenticate with OpenSearch/ElasticSearch with SSL disabled [#388](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/388)
+
+### Removed
+
+- Removed `requests` dev dependency [#395](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/395)
+
 
 ## [v4.2.0] - 2025-05-15
 
@@ -430,9 +419,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v5.0.0a1...main
-[v5.0.0a1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v5.0.0a0...v5.0.0a1
-[v5.0.0a0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v4.2.0...v5.0.0a0
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v5.0.0...main
+[v5.0.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v4.2.0...v5.0.0
 [v4.2.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v4.1.0...v4.2.0
 [v4.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v4.0.0...v4.1.0
 [v4.0.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v3.2.5...v4.0.0

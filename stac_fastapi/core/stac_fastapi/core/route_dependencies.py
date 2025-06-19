@@ -2,11 +2,11 @@
 
 import importlib
 import inspect
-import json
 import logging
 import os
 from typing import List
 
+import orjson
 from fastapi import Depends
 from jsonschema import validate
 
@@ -84,14 +84,14 @@ route_dependencies_schema = {
 
 def get_route_dependencies_conf(route_dependencies_env: str) -> list:
     """Get Route dependencies configuration from file or environment variable."""
-    if os.path.exists(route_dependencies_env):
-        with open(route_dependencies_env, encoding="utf-8") as route_dependencies_file:
-            route_dependencies_conf = json.load(route_dependencies_file)
+    if os.path.isfile(route_dependencies_env):
+        with open(route_dependencies_env, "rb") as f:
+            route_dependencies_conf = orjson.loads(f.read())
 
     else:
         try:
-            route_dependencies_conf = json.loads(route_dependencies_env)
-        except json.JSONDecodeError as exception:
+            route_dependencies_conf = orjson.loads(route_dependencies_env)
+        except orjson.JSONDecodeError as exception:
             _LOGGER.error("Invalid JSON format for route dependencies. %s", exception)
             raise
 
