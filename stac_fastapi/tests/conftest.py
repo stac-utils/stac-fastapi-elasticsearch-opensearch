@@ -73,6 +73,7 @@ class Context:
 class MockRequest:
     base_url = "http://test-server"
     url = "http://test-server/test"
+    headers = {}
     query_params = {}
 
     def __init__(
@@ -81,11 +82,13 @@ class MockRequest:
         url: str = "XXXX",
         app: Optional[Any] = None,
         query_params: Dict[str, Any] = {"limit": "10"},
+        headers: Dict[str, Any] = {"content-type": "application/json"},
     ):
         self.method = method
         self.url = url
         self.app = app
         self.query_params = query_params
+        self.headers = headers
 
 
 class TestSettings(AsyncSettings):
