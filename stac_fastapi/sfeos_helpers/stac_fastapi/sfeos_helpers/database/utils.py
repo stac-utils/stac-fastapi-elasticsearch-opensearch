@@ -8,8 +8,12 @@ import logging
 from typing import Dict, List, Union
 
 from stac_fastapi.core.utilities import get_bool_env
+from stac_fastapi.extensions.core.transaction.request import (
+    PatchAddReplaceTest,
+    PatchOperation,
+    PatchRemove,
+)
 from stac_fastapi.sfeos_helpers.models.patch import ElasticPath, ESCommandSet
-from stac_fastapi.types.stac import PatchAddReplaceTest, PatchOperation, PatchRemove
 
 
 def validate_refresh(value: Union[str, bool]) -> str:

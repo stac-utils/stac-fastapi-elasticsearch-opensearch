@@ -26,6 +26,12 @@ from stac_fastapi.core.models.links import PagingLinks
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.session import Session
 from stac_fastapi.core.utilities import filter_fields
+from stac_fastapi.extensions.core.transaction import AsyncBaseTransactionsClient
+from stac_fastapi.extensions.core.transaction.request import (
+    PartialCollection,
+    PartialItem,
+    PatchOperation,
+)
 from stac_fastapi.extensions.third_party.bulk_transactions import (
     BaseBulkTransactionsClient,
     BulkTransactionMethod,
@@ -33,15 +39,15 @@ from stac_fastapi.extensions.third_party.bulk_transactions import (
 )
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
-from stac_fastapi.types.core import AsyncBaseCoreClient, AsyncBaseTransactionsClient
+from stac_fastapi.types.core import AsyncBaseCoreClient
 from stac_fastapi.types.extension import ApiExtension
 from stac_fastapi.types.requests import get_base_url
 from stac_fastapi.types.search import BaseSearchPostRequest
 
 logger = logging.getLogger(__name__)
 
-partialItemValidator = TypeAdapter(stac_types.PartialItem)
-partialCollectionValidator = TypeAdapter(stac_types.PartialCollection)
+partialItemValidator = TypeAdapter(PartialItem)
+partialCollectionValidator = TypeAdapter(PartialCollection)
 
 
 @attr.s
@@ -688,7 +694,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         self,
         collection_id: str,
         item_id: str,
-        patch: Union[stac_types.PartialItem, List[stac_types.PatchOperation]],
+        patch: Union[PartialItem, List[PatchOperation]],
         **kwargs,
     ):
         """Patch an item in the collection.
@@ -696,7 +702,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         Args:
             collection_id (str): The ID of the collection the item belongs to.
             item_id (str): The ID of the item to be updated.
-            patch (Union[stac_types.PartialItem, List[stac_types.PatchOperation]]): The item data or operations.
+            patch (Union[PartialItem, List[PatchOperation]]): The item data or operations.
             kwargs: Other optional arguments, including the request object.
 
         Returns:
@@ -722,7 +728,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         if isinstance(patch, dict):
             patch = partialItemValidator.validate_python(patch)
 
-        if isinstance(patch, stac_types.PartialItem) and content_type in [
+        if isinstance(patch, PartialItem) and content_type in [
             "application/merge-patch+json",
             "application/json",
         ]:
@@ -825,7 +831,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     async def patch_collection(
         self,
         collection_id: str,
-        patch: Union[stac_types.PartialCollection, List[stac_types.PatchOperation]],
+        patch: Union[PartialCollection, List[PatchOperation]],
         **kwargs,
     ):
         """Update a collection.
@@ -853,7 +859,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         if isinstance(patch, dict):
             patch = partialCollectionValidator.validate_python(patch)
 
-        if isinstance(patch, stac_types.PartialCollection) and content_type in [
+        if isinstance(patch, PartialCollection) and content_type in [
             "application/merge-patch+json",
             "application/json",
         ]:

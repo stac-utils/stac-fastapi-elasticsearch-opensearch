@@ -22,6 +22,11 @@ from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
 from stac_fastapi.elasticsearch.config import (
     ElasticsearchSettings as SyncElasticsearchSettings,
 )
+from stac_fastapi.extensions.core.transaction.request import (
+    PartialCollection,
+    PartialItem,
+    PatchOperation,
+)
 from stac_fastapi.sfeos_helpers import filter
 from stac_fastapi.sfeos_helpers.database import (
     apply_free_text_filter_shared,
@@ -53,13 +58,7 @@ from stac_fastapi.sfeos_helpers.mappings import (
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.links import resolve_links
 from stac_fastapi.types.rfc3339 import DateTimeType
-from stac_fastapi.types.stac import (
-    Collection,
-    Item,
-    PartialCollection,
-    PartialItem,
-    PatchOperation,
-)
+from stac_fastapi.types.stac import Collection, Item
 
 logger = logging.getLogger(__name__)
 

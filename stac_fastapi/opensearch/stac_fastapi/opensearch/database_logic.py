@@ -17,6 +17,11 @@ from starlette.requests import Request
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon
+from stac_fastapi.extensions.core.transaction.request import (
+    PartialCollection,
+    PartialItem,
+    PatchOperation,
+)
 from stac_fastapi.opensearch.config import (
     AsyncOpensearchSettings as AsyncSearchSettings,
 )
@@ -55,13 +60,7 @@ from stac_fastapi.sfeos_helpers.mappings import (
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.links import resolve_links
 from stac_fastapi.types.rfc3339 import DateTimeType
-from stac_fastapi.types.stac import (
-    Collection,
-    Item,
-    PartialCollection,
-    PartialItem,
-    PatchOperation,
-)
+from stac_fastapi.types.stac import Collection, Item
 
 logger = logging.getLogger(__name__)
 

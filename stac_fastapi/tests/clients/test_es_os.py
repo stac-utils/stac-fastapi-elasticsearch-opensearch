@@ -6,8 +6,12 @@ import pytest
 from fastapi import HTTPException
 from stac_pydantic import Item, api
 
+from stac_fastapi.extensions.core.transaction.request import (
+    PatchAddReplaceTest,
+    PatchMoveCopy,
+    PatchRemove,
+)
 from stac_fastapi.types.errors import ConflictError, NotFoundError
-from stac_fastapi.types.stac import PatchAddReplaceTest, PatchMoveCopy, PatchRemove
 
 from ..conftest import MockRequest
 
