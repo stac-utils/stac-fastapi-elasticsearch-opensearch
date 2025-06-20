@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- Added support for PATCH update through  [RFC 6902](https://datatracker.ietf.org/doc/html/rfc6902) and [RFC 7396](https://datatracker.ietf.org/doc/html/rfc7396) [#291](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/291)
+
 ## [v5.0.0] - 2025-06-11
 
 ### Added
