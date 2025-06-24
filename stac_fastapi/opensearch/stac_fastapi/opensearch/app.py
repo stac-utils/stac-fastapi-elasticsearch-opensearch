@@ -1,5 +1,6 @@
 """FastAPI application."""
 
+import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -21,6 +22,7 @@ from stac_fastapi.core.extensions.fields import FieldsExtension
 from stac_fastapi.core.rate_limit import setup_rate_limit
 from stac_fastapi.core.route_dependencies import get_route_dependencies
 from stac_fastapi.core.session import Session
+from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.extensions.core import (
     AggregationExtension,
     CollectionSearchExtension,
@@ -46,6 +48,12 @@ from stac_fastapi.opensearch.database_logic import (
 from stac_fastapi.sfeos_helpers.aggregation import EsAsyncBaseAggregationClient
 from stac_fastapi.sfeos_helpers.filter import EsAsyncBaseFiltersClient
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+TRANSACTIONS_EXTENSIONS = get_bool_env("ENABLE_TRANSACTIONS_EXTENSIONS", default=True)
+logger.info("TRANSACTIONS_EXTENSIONS is set to %s", TRANSACTIONS_EXTENSIONS)
+
 settings = OpensearchSettings()
 session = Session.create_from_settings(settings)
 
@@ -55,9 +63,8 @@ filter_extension = FilterExtension(
     client=EsAsyncBaseFiltersClient(database=database_logic)
 )
 filter_extension.conformance_classes.append(
-    "http://www.opengis.net/spec/cql2/1.0/conf/advanced-comparison-operators"
+    FilterConformanceClasses.ADVANCED_COMPARISON_OPERATORS
 )
-
 aggregation_extension = AggregationExtension(
     client=EsAsyncBaseAggregationClient(
         database=database_logic, session=session, settings=settings
@@ -66,21 +73,8 @@ aggregation_extension = AggregationExtension(
 aggregation_extension.POST = EsAggregationExtensionPostRequest
 aggregation_extension.GET = EsAggregationExtensionGetRequest
 
+# Base search extensions (without CollectionSearchExtension to avoid duplicates)
 search_extensions = [
-    TransactionExtension(
-        client=TransactionsClient(
-            database=database_logic, session=session, settings=settings
-        ),
-        settings=settings,
-    ),
-    BulkTransactionExtension(
-        client=BulkTransactionsClient(
-            database=database_logic,
-            session=session,
-            settings=settings,
-        )
-    ),
-    CollectionSearchExtension(),
     FieldsExtension(),
     QueryExtension(),
     SortExtension(),
@@ -89,39 +83,49 @@ search_extensions = [
     FreeTextExtension(),
 ]
 
+if TRANSACTIONS_EXTENSIONS:
+    search_extensions.insert(
+        0,
+        TransactionExtension(
+            client=TransactionsClient(
+                database=database_logic, session=session, settings=settings
+            ),
+            settings=settings,
+        ),
+    )
+    search_extensions.insert(
+        1,
+        BulkTransactionExtension(
+            client=BulkTransactionsClient(
+                database=database_logic,
+                session=session,
+                settings=settings,
+            )
+        ),
+    )
+
+# Initialize extensions with just the search and aggregation extensions
+# Initialize with base extensions
 extensions = [aggregation_extension] + search_extensions
 
-post_request_model = create_post_request_model(search_extensions)
-
-# Define the collection search extensions map
-cs_extensions_map = {
-    "query": QueryExtension(conformance_classes=[QueryConformanceClasses.COLLECTIONS]),
-    "sort": SortExtension(conformance_classes=[SortConformanceClasses.COLLECTIONS]),
-    "fields": FieldsExtension(
-        conformance_classes=[FieldsConformanceClasses.COLLECTIONS]
-    ),
-    "filter": CollectionSearchFilterExtension(
+# Create collection search extensions
+collection_search_extensions = [
+    QueryExtension(conformance_classes=[QueryConformanceClasses.COLLECTIONS]),
+    SortExtension(conformance_classes=[SortConformanceClasses.COLLECTIONS]),
+    FieldsExtension(conformance_classes=[FieldsConformanceClasses.COLLECTIONS]),
+    CollectionSearchFilterExtension(
         conformance_classes=[FilterConformanceClasses.COLLECTIONS]
     ),
-    "free_text": FreeTextExtension(
-        conformance_classes=[FreeTextConformanceClasses.COLLECTIONS],
-    ),
-}
-
-# Determine enabled extensions (customize as needed)
-enabled_extensions = set(cs_extensions_map.keys())
-
-# Build the enabled collection search extensions
-cs_extensions = [
-    extension
-    for key, extension in cs_extensions_map.items()
-    if key in enabled_extensions
+    FreeTextExtension(conformance_classes=[FreeTextConformanceClasses.COLLECTIONS]),
 ]
 
-# Create the CollectionSearchExtension from the enabled extensions
-collection_search_extension = CollectionSearchExtension.from_extensions(cs_extensions)
-collections_get_request_model = collection_search_extension.GET
-extensions.append(collection_search_extension)
+# Initialize collection search with its extensions
+collection_search_ext = CollectionSearchExtension.from_extensions(
+    collection_search_extensions
+)
+collections_get_request_model = collection_search_ext.GET
+
+extensions.append(collection_search_ext)
 
 database_logic.extensions = [type(ext).__name__ for ext in extensions]
 
@@ -168,7 +172,7 @@ def run() -> None:
         import uvicorn
 
         uvicorn.run(
-            "stac_fastapi.elasticsearch.app:app",
+            "stac_fastapi.opensearch.app:app",
             host=settings.app_host,
             port=settings.app_port,
             log_level="info",

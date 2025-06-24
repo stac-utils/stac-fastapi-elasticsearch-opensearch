@@ -18,14 +18,9 @@ from stac_fastapi.core.core import (
     CoreClient,
     TransactionsClient,
 )
-from stac_fastapi.core.extensions import QueryExtension
-from stac_fastapi.core.extensions.aggregation import (
-    EsAggregationExtensionGetRequest,
-    EsAggregationExtensionPostRequest,
-)
 from stac_fastapi.core.rate_limit import setup_rate_limit
 from stac_fastapi.core.utilities import get_bool_env
-from stac_fastapi.sfeos_helpers.aggregation import EsAsyncBaseAggregationClient
+from stac_fastapi.extensions.third_party import BulkTransactionExtension
 
 if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
     from stac_fastapi.opensearch.app import app_config
@@ -50,15 +45,7 @@ else:
         create_index_templates,
     )
 
-from stac_fastapi.extensions.core import (
-    AggregationExtension,
-    FieldsExtension,
-    FilterExtension,
-    FreeTextExtension,
-    SortExtension,
-    TokenPaginationExtension,
-    TransactionExtension,
-)
+from stac_fastapi.extensions.core import TransactionExtension
 from stac_fastapi.types.config import Settings
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
@@ -340,7 +327,7 @@ async def route_dependencies_client(route_dependencies_app):
 
 def build_test_app():
     """Build a test app with configurable transaction extensions."""
-    # Create a copy of the base config
+    # Create a copy of the base config which already has all extensions configured
     test_config = app_config.copy()
 
     # Get transaction extensions setting
@@ -348,47 +335,32 @@ def build_test_app():
         "ENABLE_TRANSACTIONS_EXTENSIONS", default=True
     )
 
-    # Configure extensions
-    settings = AsyncSettings()
-    aggregation_extension = AggregationExtension(
-        client=EsAsyncBaseAggregationClient(
-            database=database, session=None, settings=settings
-        )
-    )
-    aggregation_extension.POST = EsAggregationExtensionPostRequest
-    aggregation_extension.GET = EsAggregationExtensionGetRequest
-
-    search_extensions = [
-        SortExtension(),
-        FieldsExtension(),
-        QueryExtension(),
-        TokenPaginationExtension(),
-        FilterExtension(),
-        FreeTextExtension(),
-    ]
+    # First remove any existing transaction extensions
+    if "extensions" in test_config:
+        test_config["extensions"] = [
+            ext
+            for ext in test_config["extensions"]
+            if not isinstance(ext, (TransactionExtension, BulkTransactionExtension))
+        ]
 
     # Add transaction extension if enabled
     if TRANSACTIONS_EXTENSIONS:
-        search_extensions.append(
-            TransactionExtension(
-                client=TransactionsClient(
-                    database=database, session=None, settings=settings
+        settings = AsyncSettings()
+        test_config["extensions"].extend(
+            [
+                TransactionExtension(
+                    client=TransactionsClient(
+                        database=database, session=None, settings=settings
+                    ),
+                    settings=settings,
                 ),
-                settings=settings,
-            )
+                BulkTransactionExtension(
+                    client=BulkTransactionsClient(
+                        database=database, session=None, settings=settings
+                    )
+                ),
+            ]
         )
-
-    # Update extensions in config
-    extensions = [aggregation_extension] + search_extensions
-    test_config["extensions"] = extensions
-
-    # Update client with new extensions
-    test_config["client"] = CoreClient(
-        database=database,
-        session=None,
-        extensions=extensions,
-        post_request_model=test_config["search_post_request_model"],
-    )
 
     # Create and return the app
     api = StacApi(**test_config)
