@@ -1,5 +1,6 @@
 """FastAPI application."""
 
+import logging
 import os
 from contextlib import asynccontextmanager
 
@@ -21,6 +22,7 @@ from stac_fastapi.core.extensions.fields import FieldsExtension
 from stac_fastapi.core.rate_limit import setup_rate_limit
 from stac_fastapi.core.route_dependencies import get_route_dependencies
 from stac_fastapi.core.session import Session
+from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
 from stac_fastapi.elasticsearch.database_logic import (
     DatabaseLogic,
@@ -46,6 +48,12 @@ from stac_fastapi.extensions.third_party import BulkTransactionExtension
 from stac_fastapi.sfeos_helpers.aggregation import EsAsyncBaseAggregationClient
 from stac_fastapi.sfeos_helpers.filter import EsAsyncBaseFiltersClient
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+TRANSACTIONS_EXTENSIONS = get_bool_env("ENABLE_TRANSACTIONS_EXTENSIONS", default=True)
+logger.info("TRANSACTIONS_EXTENSIONS is set to %s", TRANSACTIONS_EXTENSIONS)
+
 settings = ElasticsearchSettings()
 session = Session.create_from_settings(settings)
 
@@ -55,9 +63,8 @@ filter_extension = FilterExtension(
     client=EsAsyncBaseFiltersClient(database=database_logic)
 )
 filter_extension.conformance_classes.append(
-    "http://www.opengis.net/spec/cql2/1.0/conf/advanced-comparison-operators"
+    FilterConformanceClasses.ADVANCED_COMPARISON_OPERATORS
 )
-
 aggregation_extension = AggregationExtension(
     client=EsAsyncBaseAggregationClient(
         database=database_logic, session=session, settings=settings
@@ -67,19 +74,6 @@ aggregation_extension.POST = EsAggregationExtensionPostRequest
 aggregation_extension.GET = EsAggregationExtensionGetRequest
 
 search_extensions = [
-    TransactionExtension(
-        client=TransactionsClient(
-            database=database_logic, session=session, settings=settings
-        ),
-        settings=settings,
-    ),
-    BulkTransactionExtension(
-        client=BulkTransactionsClient(
-            database=database_logic,
-            session=session,
-            settings=settings,
-        )
-    ),
     CollectionSearchExtension(),
     FieldsExtension(),
     QueryExtension(),
@@ -89,9 +83,28 @@ search_extensions = [
     FreeTextExtension(),
 ]
 
-extensions = [aggregation_extension] + search_extensions
+if TRANSACTIONS_EXTENSIONS:
+    search_extensions.insert(
+        0,
+        TransactionExtension(
+            client=TransactionsClient(
+                database=database_logic, session=session, settings=settings
+            ),
+            settings=settings,
+        ),
+    )
+    search_extensions.insert(
+        1,
+        BulkTransactionExtension(
+            client=BulkTransactionsClient(
+                database=database_logic,
+                session=session,
+                settings=settings,
+            )
+        ),
+    )
 
-post_request_model = create_post_request_model(search_extensions)
+extensions = [aggregation_extension] + search_extensions
 
 # Define the collection search extensions map
 cs_extensions_map = {
