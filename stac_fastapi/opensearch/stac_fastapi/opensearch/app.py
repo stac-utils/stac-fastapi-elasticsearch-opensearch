@@ -25,13 +25,19 @@ from stac_fastapi.core.session import Session
 from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.extensions.core import (
     AggregationExtension,
+    CollectionSearchExtension,
+    CollectionSearchFilterExtension,
     FilterExtension,
     FreeTextExtension,
     SortExtension,
     TokenPaginationExtension,
     TransactionExtension,
 )
+from stac_fastapi.extensions.core.fields import FieldsConformanceClasses
 from stac_fastapi.extensions.core.filter import FilterConformanceClasses
+from stac_fastapi.extensions.core.free_text import FreeTextConformanceClasses
+from stac_fastapi.extensions.core.query import QueryConformanceClasses
+from stac_fastapi.extensions.core.sort import SortConformanceClasses
 from stac_fastapi.extensions.third_party import BulkTransactionExtension
 from stac_fastapi.opensearch.config import OpensearchSettings
 from stac_fastapi.opensearch.database_logic import (
@@ -59,7 +65,6 @@ filter_extension = FilterExtension(
 filter_extension.conformance_classes.append(
     FilterConformanceClasses.ADVANCED_COMPARISON_OPERATORS
 )
-
 aggregation_extension = AggregationExtension(
     client=EsAsyncBaseAggregationClient(
         database=database_logic, session=session, settings=settings
@@ -68,6 +73,7 @@ aggregation_extension = AggregationExtension(
 aggregation_extension.POST = EsAggregationExtensionPostRequest
 aggregation_extension.GET = EsAggregationExtensionGetRequest
 
+# Base search extensions (without CollectionSearchExtension to avoid duplicates)
 search_extensions = [
     FieldsExtension(),
     QueryExtension(),
@@ -76,7 +82,6 @@ search_extensions = [
     filter_extension,
     FreeTextExtension(),
 ]
-
 
 if TRANSACTIONS_EXTENSIONS:
     search_extensions.insert(
@@ -99,7 +104,28 @@ if TRANSACTIONS_EXTENSIONS:
         ),
     )
 
+# Initialize extensions with just the search and aggregation extensions
+# Initialize with base extensions
 extensions = [aggregation_extension] + search_extensions
+
+# Create collection search extensions
+collection_search_extensions = [
+    QueryExtension(conformance_classes=[QueryConformanceClasses.COLLECTIONS]),
+    SortExtension(conformance_classes=[SortConformanceClasses.COLLECTIONS]),
+    FieldsExtension(conformance_classes=[FieldsConformanceClasses.COLLECTIONS]),
+    CollectionSearchFilterExtension(
+        conformance_classes=[FilterConformanceClasses.COLLECTIONS]
+    ),
+    FreeTextExtension(conformance_classes=[FreeTextConformanceClasses.COLLECTIONS]),
+]
+
+# Initialize collection search with its extensions
+collection_search_ext = CollectionSearchExtension.from_extensions(
+    collection_search_extensions
+)
+collections_get_request_model = collection_search_ext.GET
+
+extensions.append(collection_search_ext)
 
 database_logic.extensions = [type(ext).__name__ for ext in extensions]
 

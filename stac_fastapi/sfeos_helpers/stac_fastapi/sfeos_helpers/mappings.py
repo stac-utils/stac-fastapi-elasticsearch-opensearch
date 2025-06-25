@@ -158,8 +158,17 @@ ES_COLLECTIONS_MAPPINGS = {
     "dynamic_templates": ES_MAPPINGS_DYNAMIC_TEMPLATES,
     "properties": {
         "id": {"type": "keyword"},
-        "extent.spatial.bbox": {"type": "long"},
-        "extent.temporal.interval": {"type": "date"},
+        "bbox_shape": {"type": "geo_shape"},  # Only this is used for spatial queries
+        "extent": {
+            "properties": {"temporal": {"properties": {"interval": {"type": "date"}}}}
+        },
+        "properties": {
+            "properties": {
+                "datetime": {"type": "date"},
+                "start_datetime": {"type": "date"},
+                "end_datetime": {"type": "date"},
+            }
+        },
         "providers": {"type": "object", "enabled": False},
         "links": {"type": "object", "enabled": False},
         "item_assets": {"type": "object", "enabled": False},
