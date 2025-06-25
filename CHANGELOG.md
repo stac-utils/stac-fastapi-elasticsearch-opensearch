@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- Added support for Collections search
+
 ## [v6.0.0] - 2025-06-22
 
 ### Added
