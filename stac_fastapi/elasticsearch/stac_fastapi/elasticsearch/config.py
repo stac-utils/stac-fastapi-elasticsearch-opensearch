@@ -57,8 +57,8 @@ def _es_config() -> Dict[str, Any]:
         config["http_auth"] = (u, p)
 
     # Include timeout setting if set
-    if timeout := os.getenv("ES_TIMEOUT"):
-        config["timeout"] = timeout
+    if request_timeout := os.getenv("ES_TIMEOUT"):
+        config["request_timeout"] = request_timeout
 
     # Explicitly exclude SSL settings when not using SSL
     if not use_ssl:
