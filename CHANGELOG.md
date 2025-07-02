@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 - Updated stac-fastapi parent libraries to v6.0.0 [#291](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/291)
 - Updated documentation to reflect use of ES environment variables
+- Updated documentation to reflect `APP_PORT` in [stac-fastapi-core ApiSettings](https://github.com/stac-utils/stac-fastapi/blob/fa42985255fad0bab7dbe3aadbf1f74cb1635f3a/stac_fastapi/types/stac_fastapi/types/config.py#L30)
 
 ## [v5.0.0] - 2025-06-11
 
