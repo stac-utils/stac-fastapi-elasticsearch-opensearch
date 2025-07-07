@@ -30,11 +30,12 @@ Function Naming Conventions:
 """
 
 # Re-export all functions for backward compatibility
-from .datetime import return_date
-from .document import mk_actions, mk_item_id
+from .datetime import extract_date, extract_first_date_from_index, return_date
+from .document import mk_item_id
 from .index import (
     create_index_templates_shared,
     delete_item_index_shared,
+    filter_indexes_by_datetime,
     index_alias_by_collection_id,
     index_by_collection_id,
     indices,
@@ -53,6 +54,7 @@ __all__ = [
     "delete_item_index_shared",
     "index_alias_by_collection_id",
     "index_by_collection_id",
+    "filter_indexes_by_datetime",
     "indices",
     # Query operations
     "apply_free_text_filter_shared",
@@ -62,10 +64,11 @@ __all__ = [
     "get_queryables_mapping_shared",
     # Document operations
     "mk_item_id",
-    "mk_actions",
     # Utility functions
     "validate_refresh",
     "get_bool_env",
     # Datetime utilities
     "return_date",
+    "extract_date",
+    "extract_first_date_from_index",
 ]

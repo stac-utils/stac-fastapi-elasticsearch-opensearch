@@ -4,7 +4,7 @@ import asyncio
 import logging
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from copy import deepcopy
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Type, Union
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Type
 
 import attr
 import elasticsearch.helpers as helpers
@@ -36,11 +36,8 @@ from stac_fastapi.sfeos_helpers.database import (
     get_queryables_mapping_shared,
     index_alias_by_collection_id,
     index_by_collection_id,
-    indices,
-    mk_actions,
     mk_item_id,
     populate_sort_shared,
-    return_date,
     validate_refresh,
 )
 from stac_fastapi.sfeos_helpers.database.utils import (
@@ -55,9 +52,14 @@ from stac_fastapi.sfeos_helpers.mappings import (
     ITEMS_INDEX_PREFIX,
     Geometry,
 )
+from stac_fastapi.sfeos_helpers.search_engine import (
+    BaseIndexInserter,
+    IndexInsertionFactory,
+    IndexSelectionStrategy,
+    IndexSelectorFactory,
+)
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.links import resolve_links
-from stac_fastapi.types.rfc3339 import DateTimeType
 from stac_fastapi.types.stac import Collection, Item
 
 logger = logging.getLogger(__name__)
@@ -135,6 +137,10 @@ class DatabaseLogic(BaseDatabaseLogic):
     sync_settings: SyncElasticsearchSettings = attr.ib(
         factory=SyncElasticsearchSettings
     )
+    async_index_selector: IndexSelectionStrategy = attr.ib(init=False)
+    sync_index_selector: IndexSelectionStrategy = attr.ib(init=False)
+    async_index_inserter: BaseIndexInserter = attr.ib(init=False)
+    sync_index_inserter: BaseIndexInserter = attr.ib(init=False)
 
     client = attr.ib(init=False)
     sync_client = attr.ib(init=False)
@@ -143,6 +149,18 @@ class DatabaseLogic(BaseDatabaseLogic):
         """Initialize clients after the class is instantiated."""
         self.client = self.async_settings.create_client
         self.sync_client = self.sync_settings.create_client
+        self.async_index_inserter = (
+            IndexInsertionFactory.create_async_insertion_strategy(self.client)
+        )
+        self.sync_index_inserter = IndexInsertionFactory.create_sync_insertion_strategy(
+            self.sync_client
+        )
+        self.async_index_selector = IndexSelectorFactory.create_async_selector(
+            self.client
+        )
+        self.sync_index_selector = IndexSelectorFactory.create_sync_selector(
+            self.sync_client
+        )
 
     item_serializer: Type[ItemSerializer] = attr.ib(default=ItemSerializer)
     collection_serializer: Type[CollectionSerializer] = attr.ib(
@@ -256,30 +274,18 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     @staticmethod
     def apply_datetime_filter(
-        search: Search, interval: Optional[Union[DateTimeType, str]]
+        search: Search, datetime_search: Dict[str, Optional[str]]
     ) -> Search:
         """Apply a filter to search on datetime, start_datetime, and end_datetime fields.
 
         Args:
             search: The search object to filter.
-            interval: Optional datetime interval to filter by. Can be:
-                - A single datetime string (e.g., "2023-01-01T12:00:00")
-                - A datetime range string (e.g., "2023-01-01/2023-12-31")
-                - A datetime object
-                - A tuple of (start_datetime, end_datetime)
+            datetime_search: Dict[str, Optional[str]]
 
         Returns:
             The filtered search object.
         """
-        if not interval:
-            return search
-
-        should = []
-        try:
-            datetime_search = return_date(interval)
-        except (ValueError, TypeError) as e:
-            # Handle invalid interval formats if return_date fails
-            logger.error(f"Invalid interval format: {interval}, error: {e}")
+        if not datetime_search:
             return search
 
         if "eq" in datetime_search:
@@ -489,6 +495,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         token: Optional[str],
         sort: Optional[Dict[str, Dict[str, str]]],
         collection_ids: Optional[List[str]],
+        datetime_search: Dict[str, Optional[str]],
         ignore_unavailable: bool = True,
     ) -> Tuple[Iterable[Dict[str, Any]], Optional[int], Optional[str]]:
         """Execute a search query with limit and other optional parameters.
@@ -499,6 +506,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             token (Optional[str]): The token used to return the next set of results.
             sort (Optional[Dict[str, Dict[str, str]]]): Specifies how the results should be sorted.
             collection_ids (Optional[List[str]]): The collection ids to search.
+            datetime_search (Dict[str, Optional[str]]): Datetime range used for index selection.
             ignore_unavailable (bool, optional): Whether to ignore unavailable collections. Defaults to True.
 
         Returns:
@@ -519,7 +527,9 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         query = search.query.to_dict() if search.query else None
 
-        index_param = indices(collection_ids)
+        index_param = await self.async_index_selector.select_indexes(
+            collection_ids, datetime_search
+        )
 
         max_result_window = MAX_LIMIT
 
@@ -583,6 +593,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         geometry_geohash_grid_precision: int,
         geometry_geotile_grid_precision: int,
         datetime_frequency_interval: str,
+        datetime_search,
         ignore_unavailable: Optional[bool] = True,
     ):
         """Return aggregations of STAC Items."""
@@ -618,7 +629,10 @@ class DatabaseLogic(BaseDatabaseLogic):
             if k in aggregations
         }
 
-        index_param = indices(collection_ids)
+        index_param = await self.async_index_selector.select_indexes(
+            collection_ids, datetime_search
+        )
+
         search_task = asyncio.create_task(
             self.client.search(
                 index=index_param,
@@ -816,9 +830,12 @@ class DatabaseLogic(BaseDatabaseLogic):
             item=item, base_url=base_url, exist_ok=exist_ok
         )
 
+        target_index = await self.async_index_inserter.get_target_index(
+            collection_id, item
+        )
         # Index the item in the database
         await self.client.index(
-            index=index_alias_by_collection_id(collection_id),
+            index=target_index,
             id=mk_item_id(item_id, collection_id),
             document=item,
             refresh=refresh,
@@ -983,9 +1000,9 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         try:
             # Perform the delete operation
-            await self.client.delete(
+            await self.client.delete_by_query(
                 index=index_alias_by_collection_id(collection_id),
-                id=mk_item_id(item_id, collection_id),
+                body={"query": {"term": {"_id": mk_item_id(item_id, collection_id)}}},
                 refresh=refresh,
             )
         except ESNotFoundError:
@@ -1085,8 +1102,10 @@ class DatabaseLogic(BaseDatabaseLogic):
             refresh=refresh,
         )
 
-        # Create the item index for the collection
-        await create_item_index(collection_id)
+        if self.async_index_inserter.should_create_collection_index():
+            await self.async_index_inserter.create_simple_index(
+                self.client, collection_id
+            )
 
     async def find_collection(self, collection_id: str) -> Collection:
         """Find and return a collection from the database.
@@ -1360,9 +1379,12 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         # Perform the bulk insert
         raise_on_error = self.async_settings.raise_on_bulk_error
+        actions = await self.async_index_inserter.prepare_bulk_actions(
+            collection_id, processed_items
+        )
         success, errors = await helpers.async_bulk(
             self.client,
-            mk_actions(collection_id, processed_items),
+            actions,
             refresh=refresh,
             raise_on_error=raise_on_error,
         )
@@ -1426,9 +1448,12 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         # Perform the bulk insert
         raise_on_error = self.sync_settings.raise_on_bulk_error
+        actions = self.sync_index_inserter.prepare_bulk_actions(
+            collection_id, processed_items
+        )
         success, errors = helpers.bulk(
             self.sync_client,
-            mk_actions(collection_id, processed_items),
+            actions,
             refresh=refresh,
             raise_on_error=raise_on_error,
         )

@@ -21,6 +21,7 @@ from stac_fastapi.extensions.core.aggregation.types import (
     Aggregation,
     AggregationCollection,
 )
+from stac_fastapi.sfeos_helpers.database import return_date
 from stac_fastapi.types.rfc3339 import DateTimeType
 
 from .format import frequency_agg, metric_agg
@@ -312,9 +313,10 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
                 search=search, item_ids=aggregate_request.ids
             )
 
+        datetime_search = return_date(aggregate_request.datetime)
         if aggregate_request.datetime:
             search = self.database.apply_datetime_filter(
-                search=search, interval=aggregate_request.datetime
+                search=search, datetime_search=datetime_search
             )
 
         if aggregate_request.bbox:
@@ -414,6 +416,7 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
                 geometry_geohash_grid_precision,
                 geometry_geotile_grid_precision,
                 datetime_frequency_interval,
+                datetime_search,
             )
         except Exception as error:
             if not isinstance(error, IndexError):
