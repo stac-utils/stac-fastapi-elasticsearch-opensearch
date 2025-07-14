@@ -31,6 +31,7 @@ from stac_fastapi.elasticsearch.database_logic import (
 )
 from stac_fastapi.extensions.core import (
     AggregationExtension,
+    CollectionSearchExtension,
     FilterExtension,
     FreeTextExtension,
     SortExtension,
@@ -59,6 +60,10 @@ filter_extension = FilterExtension(
 filter_extension.conformance_classes.append(
     FilterConformanceClasses.ADVANCED_COMPARISON_OPERATORS
 )
+collection_search_extension = CollectionSearchExtension()
+collection_search_extension.conformance_classes.append(
+    "https://api.stacspec.org/v1.0.0-rc.1/collection-search#filter"
+)
 
 aggregation_extension = AggregationExtension(
     client=EsAsyncBaseAggregationClient(
@@ -75,6 +80,7 @@ search_extensions = [
     TokenPaginationExtension(),
     filter_extension,
     FreeTextExtension(),
+    collection_search_extension,
 ]
 
 if TRANSACTIONS_EXTENSIONS:
