@@ -63,7 +63,7 @@ from stac_fastapi.types.rfc3339 import DateTimeType
 from stac_fastapi.types.stac import Collection, Item
 
 logger = logging.getLogger(__name__)
-
+ES_MAX_URL_LENGTH = 4096
 
 async def create_index_templates() -> None:
     """
@@ -545,6 +545,17 @@ class DatabaseLogic(BaseDatabaseLogic):
         search_body["sort"] = sort if sort else DEFAULT_SORT
 
         index_param = indices(collection_ids)
+
+        if len(index_param) > ES_MAX_URL_LENGTH-300:
+            index_param = ITEM_INDICES
+            index_filter = {"terms": {"collection": collection_ids}}
+            if not "bool" in search_body["query"]:
+                search_body["query"]["bool"] = {}
+            if not "filter" in search_body["query"]["bool"]:
+                search_body["query"]["bool"]["filter"] = [index_filter]
+            filters = search_body["query"]["bool"]["filter"]
+            if not index_filter in filters:
+                filters.append(index_filter)
 
         max_result_window = MAX_LIMIT
 
