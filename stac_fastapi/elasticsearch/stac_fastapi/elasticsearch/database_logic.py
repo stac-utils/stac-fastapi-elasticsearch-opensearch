@@ -27,7 +27,6 @@ from stac_fastapi.extensions.core.transaction.request import (
     PartialItem,
     PatchOperation,
 )
-
 from stac_fastapi.sfeos_helpers import filter
 from stac_fastapi.sfeos_helpers.database import (
     apply_free_text_filter_shared,
@@ -43,6 +42,10 @@ from stac_fastapi.sfeos_helpers.database import (
     populate_sort_shared,
     return_date,
     validate_refresh,
+)
+from stac_fastapi.sfeos_helpers.database.query import (
+    ES_MAX_URL_LENGTH,
+    add_collections_to_body,
 )
 from stac_fastapi.sfeos_helpers.database.utils import (
     merge_to_operations,
@@ -60,9 +63,6 @@ from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.links import resolve_links
 from stac_fastapi.types.rfc3339 import DateTimeType
 from stac_fastapi.types.stac import Collection, Item
-
-from stac_fastapi.sfeos_helpers.database.query import add_collections_to_body, \
-    ES_MAX_URL_LENGTH
 
 logger = logging.getLogger(__name__)
 
