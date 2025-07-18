@@ -62,7 +62,8 @@ from stac_fastapi.types.links import resolve_links
 from stac_fastapi.types.rfc3339 import DateTimeType
 from stac_fastapi.types.stac import Collection, Item
 
-from stac_fastapi.sfeos_helpers.stac_fastapi.sfeos_helpers.database.query import add_collections_to_body
+from stac_fastapi.sfeos_helpers.stac_fastapi.sfeos_helpers.database.query import add_collections_to_body, \
+    ES_MAX_URL_LENGTH
 
 logger = logging.getLogger(__name__)
 
