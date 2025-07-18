@@ -28,7 +28,6 @@ from stac_fastapi.extensions.core.transaction.request import (
     PatchOperation,
 )
 
-from stac_fastapi.opensearch.stac_fastapi.opensearch.database_logic import ES_MAX_URL_LENGTH
 from stac_fastapi.sfeos_helpers import filter
 from stac_fastapi.sfeos_helpers.database import (
     apply_free_text_filter_shared,
@@ -62,7 +61,7 @@ from stac_fastapi.types.links import resolve_links
 from stac_fastapi.types.rfc3339 import DateTimeType
 from stac_fastapi.types.stac import Collection, Item
 
-from stac_fastapi.sfeos_helpers.stac_fastapi.sfeos_helpers.database.query import add_collections_to_body, \
+from stac_fastapi.sfeos_helpers.database.query import add_collections_to_body, \
     ES_MAX_URL_LENGTH
 
 logger = logging.getLogger(__name__)
