@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional
 
 from stac_fastapi.sfeos_helpers.mappings import Geometry
 
+ES_MAX_URL_LENGTH = 4096
 
 def apply_free_text_filter_shared(
     search: Any, free_text_queries: Optional[List[str]]
@@ -83,3 +84,31 @@ def populate_sort_shared(sortby: List) -> Optional[Dict[str, Dict[str, str]]]:
         return {s.field: {"order": s.direction} for s in sortby}
     else:
         return None
+
+
+def add_collections_to_body(collection_ids: List[str], query: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+    """Adds a list of collection ids to the body of a query.
+
+    Args:
+        collection_ids (List[str]): A list of collections ids.
+        query (Optional[Dict[str, Any]]): The query to add collections to. If none, create a query that filters
+        the collection ids.
+
+    Returns:
+        Dict[str, Any]: A query that contains a filter on the given collection ids.
+
+    Notes:
+        This function is needed in the execute_search function when the size of the URL path will exceed the maximum of ES.
+    """
+    index_filter = {"terms": {"collection": collection_ids}}
+    if query is None:
+        query = {"query": {}}
+    if "bool" not in query:
+        query["bool"] = {}
+    if "filter" not in query["bool"]:
+        query["bool"]["filter"] = []
+
+    filters = query["bool"]["filter"]
+    if index_filter not in filters:
+        filters.append(index_filter)
+    return query

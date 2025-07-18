@@ -62,8 +62,10 @@ from stac_fastapi.types.links import resolve_links
 from stac_fastapi.types.rfc3339 import DateTimeType
 from stac_fastapi.types.stac import Collection, Item
 
+from stac_fastapi.sfeos_helpers.stac_fastapi.sfeos_helpers.database.query import add_collections_to_body, \
+    ES_MAX_URL_LENGTH
+
 logger = logging.getLogger(__name__)
-ES_MAX_URL_LENGTH = 4096
 
 
 async def create_index_templates() -> None:
@@ -533,6 +535,12 @@ class DatabaseLogic(BaseDatabaseLogic):
         """
         search_body: Dict[str, Any] = {}
         query = search.query.to_dict() if search.query else None
+
+        index_param = indices(collection_ids)
+        if len(index_param) > ES_MAX_URL_LENGTH - 300:
+            index_param = ITEM_INDICES
+            query = add_collections_to_body(collection_ids, query)
+
         if query:
             search_body["query"] = query
 
@@ -544,19 +552,6 @@ class DatabaseLogic(BaseDatabaseLogic):
             search_body["search_after"] = search_after
 
         search_body["sort"] = sort if sort else DEFAULT_SORT
-
-        index_param = indices(collection_ids)
-
-        if len(index_param) > ES_MAX_URL_LENGTH - 300:
-            index_param = ITEM_INDICES
-            index_filter = {"terms": {"collection": collection_ids}}
-            if "bool" not in search_body["query"]:
-                search_body["query"]["bool"] = {}
-            if "filter" not in search_body["query"]["bool"]:
-                search_body["query"]["bool"]["filter"] = [index_filter]
-            filters = search_body["query"]["bool"]["filter"]
-            if index_filter not in filters:
-                filters.append(index_filter)
 
         max_result_window = MAX_LIMIT
 

@@ -27,6 +27,8 @@ from stac_fastapi.extensions.core.transaction.request import (
     PartialItem,
     PatchOperation,
 )
+
+from stac_fastapi.opensearch.stac_fastapi.opensearch.database_logic import ES_MAX_URL_LENGTH
 from stac_fastapi.sfeos_helpers import filter
 from stac_fastapi.sfeos_helpers.database import (
     apply_free_text_filter_shared,
@@ -59,6 +61,8 @@ from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.links import resolve_links
 from stac_fastapi.types.rfc3339 import DateTimeType
 from stac_fastapi.types.stac import Collection, Item
+
+from stac_fastapi.sfeos_helpers.stac_fastapi.sfeos_helpers.database.query import add_collections_to_body
 
 logger = logging.getLogger(__name__)
 
@@ -520,6 +524,9 @@ class DatabaseLogic(BaseDatabaseLogic):
         query = search.query.to_dict() if search.query else None
 
         index_param = indices(collection_ids)
+        if len(index_param) > ES_MAX_URL_LENGTH - 300:
+            index_param = ITEM_INDICES
+            query = add_collections_to_body(collection_ids, query)
 
         max_result_window = MAX_LIMIT
 
