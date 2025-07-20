@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Changed
 
 - Updated collection to index logic to support searching a large amount of indices [#412](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/412)
+- Updated documentation to reflect use of ES environment variables [#410](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/410)
+- Updated documentation to reflect `APP_PORT` in [stac-fastapi-core ApiSettings](https://github.com/stac-utils/stac-fastapi/blob/fa42985255fad0bab7dbe3aadbf1f74cb1635f3a/stac_fastapi/types/stac_fastapi/types/config.py#L30) [#410](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/410)
 
 ## [v6.0.0] - 2025-06-22
 
