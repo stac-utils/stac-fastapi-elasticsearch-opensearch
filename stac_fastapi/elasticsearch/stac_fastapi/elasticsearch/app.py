@@ -60,6 +60,10 @@ filter_extension = FilterExtension(
 filter_extension.conformance_classes.append(
     FilterConformanceClasses.ADVANCED_COMPARISON_OPERATORS
 )
+
+# Adding collection search extension for compatibility with stac-auth-proxy
+# (https://github.com/developmentseed/stac-auth-proxy)
+# The extension is not fully implemented yet but is required for collection filtering support
 collection_search_extension = CollectionSearchExtension()
 collection_search_extension.conformance_classes.append(
     "https://api.stacspec.org/v1.0.0-rc.1/collection-search#filter"
