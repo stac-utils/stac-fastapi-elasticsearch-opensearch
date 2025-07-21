@@ -31,6 +31,7 @@ from stac_fastapi.elasticsearch.database_logic import (
 )
 from stac_fastapi.extensions.core import (
     AggregationExtension,
+    CollectionSearchExtension,
     FilterExtension,
     FreeTextExtension,
     SortExtension,
@@ -60,6 +61,14 @@ filter_extension.conformance_classes.append(
     FilterConformanceClasses.ADVANCED_COMPARISON_OPERATORS
 )
 
+# Adding collection search extension for compatibility with stac-auth-proxy
+# (https://github.com/developmentseed/stac-auth-proxy)
+# The extension is not fully implemented yet but is required for collection filtering support
+collection_search_extension = CollectionSearchExtension()
+collection_search_extension.conformance_classes.append(
+    "https://api.stacspec.org/v1.0.0-rc.1/collection-search#filter"
+)
+
 aggregation_extension = AggregationExtension(
     client=EsAsyncBaseAggregationClient(
         database=database_logic, session=session, settings=settings
@@ -75,6 +84,7 @@ search_extensions = [
     TokenPaginationExtension(),
     filter_extension,
     FreeTextExtension(),
+    collection_search_extension,
 ]
 
 if TRANSACTIONS_EXTENSIONS:
