@@ -28,6 +28,7 @@ jobs:
           xpack.security.enabled: false
           xpack.security.transport.ssl.enabled: false
           ES_JAVA_OPTS: -Xms512m -Xmx1g
+          action.destructive_requires_name: false
         ports:
           - 9200:9200
 
@@ -44,6 +45,7 @@ jobs:
           xpack.security.enabled: false
           xpack.security.transport.ssl.enabled: false
           ES_JAVA_OPTS: -Xms512m -Xmx1g
+          action.destructive_requires_name: false
         ports:
           - 9400:9400
 
@@ -60,6 +62,7 @@ jobs:
           plugins.security.disabled: true
           plugins.security.ssl.http.enabled: true
           OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+          action.destructive_requires_name: false
         ports:
           - 9202:9202
 
