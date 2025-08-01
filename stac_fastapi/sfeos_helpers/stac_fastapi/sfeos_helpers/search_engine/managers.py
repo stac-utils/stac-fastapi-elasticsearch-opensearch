@@ -11,9 +11,8 @@ from stac_fastapi.sfeos_helpers.database import (
     extract_date,
     extract_first_date_from_index,
 )
-from stac_fastapi.sfeos_helpers.stac_fastapi.sfeos_helpers.search_engine import (
-    IndexOperations,
-)
+
+from .index_operations import IndexOperations
 
 logger = logging.getLogger(__name__)
 
@@ -42,18 +41,6 @@ class IndexSizeManager:
         data = await self.client.indices.stats(index=index_name)
         return data["_all"]["primaries"]["store"]["size_in_bytes"] / 1e9
 
-    def get_index_size_in_gb_sync(self, index_name: str) -> float:
-        """Get index size in gigabytes synchronously.
-
-        Args:
-            index_name (str): Name of the index to check.
-
-        Returns:
-            float: Size of the index in gigabytes.
-        """
-        data = self.client.indices.stats(index=index_name)
-        return data["_all"]["primaries"]["store"]["size_in_bytes"] / 1e9
-
     async def is_index_oversized(self, index_name: str) -> bool:
         """Check if index exceeds size limit asynchronously.
 
@@ -64,30 +51,6 @@ class IndexSizeManager:
             bool: True if index exceeds size limit, False otherwise.
         """
         size_gb = await self.get_index_size_in_gb(index_name)
-        is_oversized = size_gb > self.max_size_gb
-
-        gb_milestone = int(size_gb)
-        if gb_milestone > 0:
-            logger.info(f"Index '{index_name}' size: {gb_milestone}GB")
-
-        if is_oversized:
-            logger.warning(
-                f"Index '{index_name}' is oversized: {size_gb:.2f} GB "
-                f"(limit: {self.max_size_gb} GB)"
-            )
-
-        return is_oversized
-
-    def is_index_oversized_sync(self, index_name: str) -> bool:
-        """Check if index exceeds size limit synchronously.
-
-        Args:
-            index_name (str): Name of the index to check.
-
-        Returns:
-            bool: True if index exceeds size limit, False otherwise.
-        """
-        size_gb = self.get_index_size_in_gb_sync(index_name)
         is_oversized = size_gb > self.max_size_gb
 
         gb_milestone = int(size_gb)
@@ -166,72 +129,44 @@ class DatetimeIndexManager:
             )
         return product_datetime
 
-    async def handle_new_collection(self, collection_id: str) -> str:
+    async def handle_new_collection(
+        self, collection_id: str, product_datetime: str
+    ) -> str:
         """Handle index creation for new collection asynchronously.
 
         Args:
             collection_id (str): Collection identifier.
+            product_datetime (str): Product datetime for index naming.
+
 
         Returns:
             str: Created index name.
         """
         target_index = await self.index_operations.create_datetime_index(
-            self.client, collection_id
+            self.client, collection_id, extract_date(product_datetime)
         )
         logger.info(
             f"Successfully created index '{target_index}' for collection '{collection_id}'"
         )
         return target_index
 
-    def handle_new_collection_sync(self, collection_id: str) -> str:
-        """Handle index creation for new collection synchronously.
-
-        Args:
-            collection_id (str): Collection identifier.
-
-        Returns:
-            str: Created index name.
-        """
-        target_index = self.index_operations.create_datetime_index_sync(
-            self.client, collection_id
-        )
-        logger.info(
-            f"Successfully created index '{target_index}' for collection '{collection_id}'"
-        )
-        return target_index
-
-    async def handle_early_date(self, collection_id: str, end_date: datetime) -> str:
+    async def handle_early_date(
+        self, collection_id: str, start_date: datetime, end_date: datetime
+    ) -> str:
         """Handle product with date earlier than existing indexes asynchronously.
 
         Args:
             collection_id (str): Collection identifier.
+            start_date (datetime): Start date for the new index.
             end_date (datetime): End date for alias update.
 
         Returns:
             str: Updated alias name.
         """
         target_index = await self.index_operations.create_datetime_index(
-            self.client, collection_id
+            self.client, collection_id, str(start_date)
         )
         alias = await self.index_operations.update_index_alias(
-            self.client, str(end_date - timedelta(days=1)), target_index
-        )
-        return alias
-
-    def handle_early_date_sync(self, collection_id: str, end_date: datetime) -> str:
-        """Handle product with date earlier than existing indexes synchronously.
-
-        Args:
-            collection_id (str): Collection identifier.
-            end_date (datetime): End date for alias update.
-
-        Returns:
-            str: Updated alias name.
-        """
-        target_index = self.index_operations.create_datetime_index_sync(
-            self.client, collection_id
-        )
-        alias = self.index_operations.update_index_alias_sync(
             self.client, str(end_date - timedelta(days=1)), target_index
         )
         return alias
@@ -257,33 +192,7 @@ class DatetimeIndexManager:
                 self.client, str(end_date), target_index
             )
             target_index = await self.index_operations.create_datetime_index(
-                self.client, collection_id
-            )
-
-        return target_index
-
-    def handle_oversized_index_sync(
-        self, collection_id: str, target_index: str, product_datetime: str
-    ) -> str:
-        """Handle index that exceeds size limit synchronously.
-
-        Args:
-            collection_id (str): Collection identifier.
-            target_index (str): Current target index name.
-            product_datetime (str): Product datetime for new index.
-
-        Returns:
-            str: New or updated index name.
-        """
-        end_date = extract_date(product_datetime)
-        latest_index_start = extract_first_date_from_index(target_index)
-
-        if end_date != latest_index_start:
-            self.index_operations.update_index_alias_sync(
-                self.client, str(end_date), target_index
-            )
-            target_index = self.index_operations.create_datetime_index_sync(
-                self.client, collection_id
+                self.client, collection_id, str(end_date + timedelta(days=1))
             )
 
         return target_index

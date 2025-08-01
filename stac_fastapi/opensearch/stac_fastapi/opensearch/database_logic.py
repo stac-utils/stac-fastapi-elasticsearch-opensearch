@@ -26,7 +26,6 @@ from stac_fastapi.opensearch.config import (
     AsyncOpensearchSettings as AsyncSearchSettings,
 )
 from stac_fastapi.opensearch.config import OpensearchSettings as SyncSearchSettings
-from stac_fastapi.sfeos_helpers import filter
 from stac_fastapi.sfeos_helpers.database import (
     apply_free_text_filter_shared,
     apply_intersects_filter_shared,
@@ -34,6 +33,7 @@ from stac_fastapi.sfeos_helpers.database import (
     delete_item_index_shared,
     get_queryables_mapping_shared,
     index_alias_by_collection_id,
+    mk_actions,
     mk_item_id,
     populate_sort_shared,
     validate_refresh,
@@ -42,6 +42,7 @@ from stac_fastapi.sfeos_helpers.database.utils import (
     merge_to_operations,
     operations_to_script,
 )
+from stac_fastapi.sfeos_helpers.filter import cql2 as filter
 from stac_fastapi.sfeos_helpers.mappings import (
     AGGREGATION_MAPPING,
     COLLECTIONS_INDEX,
@@ -53,8 +54,8 @@ from stac_fastapi.sfeos_helpers.mappings import (
 )
 from stac_fastapi.sfeos_helpers.search_engine import (
     BaseIndexInserter,
+    BaseIndexSelector,
     IndexInsertionFactory,
-    IndexSelectionStrategy,
     IndexSelectorFactory,
 )
 from stac_fastapi.types.errors import ConflictError, NotFoundError
@@ -120,10 +121,8 @@ class DatabaseLogic(BaseDatabaseLogic):
     async_settings: AsyncSearchSettings = attr.ib(factory=AsyncSearchSettings)
     sync_settings: SyncSearchSettings = attr.ib(factory=SyncSearchSettings)
 
-    async_index_selector: IndexSelectionStrategy = attr.ib(init=False)
-    sync_index_selector: IndexSelectionStrategy = attr.ib(init=False)
+    async_index_selector: BaseIndexSelector = attr.ib(init=False)
     async_index_inserter: BaseIndexInserter = attr.ib(init=False)
-    sync_index_inserter: BaseIndexInserter = attr.ib(init=False)
 
     client = attr.ib(init=False)
     sync_client = attr.ib(init=False)
@@ -132,18 +131,10 @@ class DatabaseLogic(BaseDatabaseLogic):
         """Initialize clients after the class is instantiated."""
         self.client = self.async_settings.create_client
         self.sync_client = self.sync_settings.create_client
-        self.async_index_inserter = (
-            IndexInsertionFactory.create_async_insertion_strategy(self.client)
-        )
-        self.sync_index_inserter = IndexInsertionFactory.create_sync_insertion_strategy(
-            self.sync_client
-        )
-        self.async_index_selector = IndexSelectorFactory.create_async_selector(
+        self.async_index_inserter = IndexInsertionFactory.create_insertion_strategy(
             self.client
         )
-        self.sync_index_selector = IndexSelectorFactory.create_sync_selector(
-            self.sync_client
-        )
+        self.async_index_selector = IndexSelectorFactory.create_selector(self.client)
 
     item_serializer: Type[ItemSerializer] = attr.ib(default=ItemSerializer)
     collection_serializer: Type[CollectionSerializer] = attr.ib(
@@ -1323,6 +1314,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 - "false": Does not refresh the index immediately (default behavior).
                 - "wait_for": Waits for the next refresh cycle to make the changes visible.
         """
+        breakpoint()
         # Ensure kwargs is a dictionary
         kwargs = kwargs or {}
 
@@ -1407,14 +1399,15 @@ class DatabaseLogic(BaseDatabaseLogic):
             logger.warning(f"No items to insert for collection {collection_id}")
             return 0, []
 
-        raise_on_error = self.sync_settings.raise_on_bulk_error
-        actions = self.sync_index_inserter.prepare_bulk_actions(
-            collection_id, processed_items
-        )
+        # Handle empty processed_items
+        if not processed_items:
+            logger.warning(f"No items to insert for collection {collection_id}")
+            return 0, []
 
+        raise_on_error = self.sync_settings.raise_on_bulk_error
         success, errors = helpers.bulk(
             self.sync_client,
-            actions,
+            mk_actions(collection_id, processed_items),
             refresh=refresh,
             raise_on_error=raise_on_error,
         )

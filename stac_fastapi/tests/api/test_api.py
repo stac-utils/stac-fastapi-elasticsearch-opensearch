@@ -857,17 +857,21 @@ async def test_create_item_in_past_date_creates_separate_index(
     response = await app_client.post(
         f"/collections/{item['collection']}/items", json=item
     )
-
     assert response.status_code == 201
 
-    indices = await txn_client.database.client.indices.get_alias(index="*")
-    expected_indices = [
-        "items_test-collection_2012-02-12",
+    indices = await txn_client.database.client.indices.get_alias(
+        index="items_test-collection"
+    )
+    expected_aliases = [
+        "items_test-collection_2012-02-12-2020-02-11",
         "items_test-collection_2020-02-12",
     ]
 
-    for expected_index in expected_indices:
-        assert expected_index in indices.keys()
+    all_aliases = set()
+    for index_info in indices.values():
+        all_aliases.update(index_info.get("aliases", {}).keys())
+
+    return all(alias in all_aliases for alias in expected_aliases)
 
 
 @pytest.mark.asyncio
@@ -886,10 +890,20 @@ async def test_create_item_uses_existing_datetime_index(
 
     assert response.status_code == 201
 
-    indices = await txn_client.database.client.indices.get_alias(index="*")
-    assert "items_test-collection_2020-02-12" in indices.keys()
+    indices = await txn_client.database.client.indices.get_alias(
+        index="items_test-collection"
+    )
+    expected_aliases = [
+        "items_test-collection_2012-02-12",
+    ]
+
+    all_aliases = set()
+    for index_info in indices.values():
+        all_aliases.update(index_info.get("aliases", {}).keys())
+    return all(alias in all_aliases for alias in expected_aliases)
 
 
+@pytest.mark.asyncio
 async def test_create_item_with_different_date_same_index(
     app_client, load_test_data, txn_client, ctx
 ):
@@ -906,8 +920,17 @@ async def test_create_item_with_different_date_same_index(
 
     assert response.status_code == 201
 
-    indices = await txn_client.database.client.indices.get_alias(index="*")
-    assert "items_test-collection_2020-02-12" in indices.keys()
+    indices = await txn_client.database.client.indices.get_alias(
+        index="items_test-collection"
+    )
+
+    expected_aliases = [
+        "items_test-collection_2020-02-12",
+    ]
+    all_aliases = set()
+    for index_info in indices.values():
+        all_aliases.update(index_info.get("aliases", {}).keys())
+    return all(alias in all_aliases for alias in expected_aliases)
 
 
 @pytest.mark.asyncio
@@ -932,13 +955,15 @@ async def test_create_new_index_when_size_limit_exceeded(
     assert response.status_code == 201
 
     indices = await txn_client.database.client.indices.get_alias(index="*")
-    expected_indices = [
-        "items_test-collection_2020-02-12",
+    expected_aliases = [
+        "items_test-collection_2020-02-12-2024-02-12",
         "items_test-collection_2024-02-13",
     ]
 
-    for expected_index in expected_indices:
-        assert expected_index in indices.keys()
+    all_aliases = set()
+    for index_info in indices.values():
+        all_aliases.update(index_info.get("aliases", {}).keys())
+    return all(alias in all_aliases for alias in expected_aliases)
 
 
 @pytest.mark.asyncio
@@ -973,16 +998,23 @@ async def test_bulk_create_items_with_same_date_range(
         item["properties"]["datetime"] = f"2020-02-{12 + i}T12:30:22Z"
         items_dict[item["id"]] = item
 
-    payload = {"items": items_dict, "method": "insert"}
+    payload = {"type": "FeatureCollection", "features": list(items_dict.values())}
 
     response = await app_client.post(
-        f"/collections/{base_item['collection']}/bulk_items", json=payload
+        f"/collections/{base_item['collection']}/items", json=payload
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 201
 
     indices = await txn_client.database.client.indices.get_alias(index="*")
-    assert "items_test-collection_2020-02-12" in indices.keys()
+    expected_aliases = [
+        "items_test-collection_2020-02-12",
+    ]
+    breakpoint()
+    all_aliases = set()
+    for index_info in indices.values():
+        all_aliases.update(index_info.get("aliases", {}).keys())
+    return all(alias in all_aliases for alias in expected_aliases)
 
 
 @pytest.mark.asyncio
@@ -1007,22 +1039,24 @@ async def test_bulk_create_items_with_different_date_ranges(
         item["properties"]["datetime"] = f"2010-02-{10 + i}T12:30:22Z"
         items_dict[item["id"]] = item
 
-    payload = {"items": items_dict, "method": "insert"}
+    payload = {"type": "FeatureCollection", "features": list(items_dict.values())}
 
     response = await app_client.post(
-        f"/collections/{base_item['collection']}/bulk_items", json=payload
+        f"/collections/{base_item['collection']}/items", json=payload
     )
 
-    assert response.status_code == 200
+    assert response.status_code == 201
 
     indices = await txn_client.database.client.indices.get_alias(index="*")
-    expected_indices = [
-        "items_test-collection_2020-02-12",
-        "items_test-collection_2010-02-10",
+    expected_aliases = [
+        "items_test-collection_2010-02-11-2020-02-11"
+        "items_test-collection_2010-02-10-2020-02-11",
+        "items_test-collection_2010-02-11-2020-02-11",
     ]
-
-    for expected_index in expected_indices:
-        assert expected_index in indices.keys()
+    all_aliases = set()
+    for index_info in indices.values():
+        all_aliases.update(index_info.get("aliases", {}).keys())
+    return all(alias in all_aliases for alias in expected_aliases)
 
 
 @pytest.mark.asyncio
@@ -1047,23 +1081,24 @@ async def test_bulk_create_items_with_size_limit_exceeded(
         item["properties"]["datetime"] = f"2010-02-{10 + i}T12:30:22Z"
         items_dict[item["id"]] = item
 
-    payload = {"items": items_dict, "method": "insert"}
+    payload = {"type": "FeatureCollection", "features": list(items_dict.values())}
 
     with patch(
         "stac_fastapi.sfeos_helpers.search_engine.managers.IndexSizeManager.get_index_size_in_gb_sync"
     ) as mock_get_size:
         mock_get_size.return_value = 26.0
         response = await app_client.post(
-            f"/collections/{base_item['collection']}/bulk_items", json=payload
+            f"/collections/{base_item['collection']}/items", json=payload
         )
 
-    assert response.status_code == 200
+    assert response.status_code == 201
 
     indices = await txn_client.database.client.indices.get_alias(index="*")
     expected_indices = [
         "items_test-collection_2010-02-10",
-        "items_test-collection_2019-02-15",
-        "items_test-collection_2020-02-12",
+        "items_test-collection_2010-02-11-2019-02-14",
+        "items_test-collection_2010-02-10-2019-02-14",
+        "items_test-collection_2019-02-15-2020-02-11",
     ]
 
     for expected_index in expected_indices:

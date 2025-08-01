@@ -33,69 +33,31 @@ class IndexOperations:
 
         await client.indices.create(
             index=index_name,
-            body=self._create_index_body({alias_name: {}}),
+            body=self.create_index_body({alias_name: {}}),
             params={"ignore": [400]},
         )
         return index_name
 
-    async def create_datetime_index(self, client: Any, collection_id: str) -> str:
+    async def create_datetime_index(
+        self, client: Any, collection_id: str, start_date: str
+    ) -> str:
         """Create a datetime-based index for the given collection.
 
         Args:
             client: Search engine client instance.
             collection_id (str): Collection identifier.
+            start_date (str): Start date for the alias.
 
         Returns:
             str: Created index alias name.
         """
         index_name = self.create_index_name(collection_id)
-        alias_name = index_name.removeprefix(ITEMS_INDEX_PREFIX)
+        alias_name = self.create_alias_name(collection_id, start_date)
         collection_alias = index_alias_by_collection_id(collection_id)
 
         await client.indices.create(
             index=index_name,
-            body=self._create_index_body({collection_alias: {}, alias_name: {}}),
-            params={"ignore": [400]},
-        )
-        return alias_name
-
-    def create_simple_index_sync(self, sync_client: Any, collection_id: str) -> str:
-        """Create a simple index synchronously.
-
-        Args:
-            sync_client: Synchronous search engine client instance.
-            collection_id (str): Collection identifier.
-
-        Returns:
-            str: Created index name.
-        """
-        index_name = f"{index_by_collection_id(collection_id)}-000001"
-        alias_name = index_alias_by_collection_id(collection_id)
-
-        sync_client.indices.create(
-            index=index_name,
-            body=self._create_index_body({alias_name: {}}),
-            params={"ignore": [400]},
-        )
-        return index_name
-
-    def create_datetime_index_sync(self, sync_client: Any, collection_id: str) -> str:
-        """Create a datetime-based index synchronously.
-
-        Args:
-            sync_client: Synchronous search engine client instance.
-            collection_id (str): Collection identifier.
-
-        Returns:
-            str: Created index alias name.
-        """
-        index_name = self.create_index_name(collection_id)
-        alias_name = index_name.removeprefix(ITEMS_INDEX_PREFIX)
-        collection_alias = index_alias_by_collection_id(collection_id)
-
-        sync_client.indices.create(
-            index=index_name,
-            body=self._create_index_body({collection_alias: {}, alias_name: {}}),
+            body=self.create_index_body({collection_alias: {}, alias_name: {}}),
             params={"ignore": [400]},
         )
         return alias_name
@@ -112,42 +74,16 @@ class IndexOperations:
         Returns:
             str: New alias name.
         """
-        index = ITEMS_INDEX_PREFIX + old_alias
         new_alias = f"{old_alias}-{end_date}"
+        aliases_info = await client.indices.get_alias(name=old_alias)
+        actions = []
 
-        await client.indices.update_aliases(
-            body={
-                "actions": [
-                    {"remove": {"index": index, "alias": old_alias}},
-                    {"add": {"index": index, "alias": new_alias}},
-                ]
-            }
-        )
-        return new_alias
+        for index_name in aliases_info.keys():
+            actions.append({"remove": {"index": index_name, "alias": old_alias}})
+            actions.append({"add": {"index": index_name, "alias": new_alias}})
 
-    @staticmethod
-    def update_index_alias_sync(client: Any, end_date: str, old_alias: str) -> str:
-        """Update index alias synchronously.
+        await client.indices.update_aliases(body={"actions": actions})
 
-        Args:
-            client: Search engine client instance.
-            end_date (str): End date for the alias.
-            old_alias (str): Current alias name.
-
-        Returns:
-            str: New alias name.
-        """
-        index = ITEMS_INDEX_PREFIX + old_alias
-        new_alias = f"{old_alias}-{end_date}"
-
-        client.indices.update_aliases(
-            body={
-                "actions": [
-                    {"remove": {"index": index, "alias": old_alias}},
-                    {"add": {"index": index, "alias": new_alias}},
-                ]
-            }
-        )
         return new_alias
 
     @staticmethod
@@ -164,7 +100,21 @@ class IndexOperations:
         return f"{ITEMS_INDEX_PREFIX}{cleaned.lower()}_{uuid.uuid4()}"
 
     @staticmethod
-    def _create_index_body(aliases: Dict[str, Dict]) -> Dict[str, Any]:
+    def create_alias_name(collection_id: str, start_date: str) -> str:
+        """Create index name from collection ID and uuid4.
+
+        Args:
+            collection_id (str): Collection identifier.
+            start_date (str): Start date for the alias.
+
+        Returns:
+            str: Alias name with initial date.
+        """
+        cleaned = collection_id.translate(_ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE)
+        return f"{ITEMS_INDEX_PREFIX}{cleaned.lower()}_{start_date}"
+
+    @staticmethod
+    def create_index_body(aliases: Dict[str, Dict]) -> Dict[str, Any]:
         """Create index body with common settings.
 
         Args:

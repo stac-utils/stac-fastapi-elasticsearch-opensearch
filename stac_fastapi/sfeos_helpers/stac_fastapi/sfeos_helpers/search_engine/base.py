@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Dict, List
 
 
-class BaseAsyncIndexInserter(ABC):
+class BaseIndexInserter(ABC):
     """Base async index inserter with common async methods."""
 
     @abstractmethod
@@ -40,51 +40,6 @@ class BaseAsyncIndexInserter(ABC):
     @abstractmethod
     async def create_simple_index(self, client: Any, collection_id: str) -> str:
         """Create a simple index asynchronously.
-
-        Args:
-            client: Search engine client instance.
-            collection_id (str): Collection identifier.
-
-        Returns:
-            str: Created index name.
-        """
-        pass
-
-
-class BaseSyncIndexInserter(ABC):
-    """Base sync index inserter with common sync methods."""
-
-    @abstractmethod
-    def get_target_index(self, collection_id: str, product: Dict[str, Any]) -> str:
-        """Get target index for a product synchronously.
-
-        Args:
-            collection_id (str): Collection identifier.
-            product (Dict[str, Any]): Product data.
-
-        Returns:
-            str: Target index name.
-        """
-        pass
-
-    @abstractmethod
-    def prepare_bulk_actions(
-        self, collection_id: str, items: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
-        """Prepare bulk actions for multiple items synchronously.
-
-        Args:
-            collection_id (str): Collection identifier.
-            items (List[Dict[str, Any]]): List of items to process.
-
-        Returns:
-            List[Dict[str, Any]]: List of bulk actions.
-        """
-        pass
-
-    @abstractmethod
-    def create_simple_index(self, client: Any, collection_id: str) -> str:
-        """Create a simple index synchronously.
 
         Args:
             client: Search engine client instance.

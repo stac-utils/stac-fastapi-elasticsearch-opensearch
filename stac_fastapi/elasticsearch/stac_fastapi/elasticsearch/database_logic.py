@@ -27,7 +27,6 @@ from stac_fastapi.extensions.core.transaction.request import (
     PartialItem,
     PatchOperation,
 )
-from stac_fastapi.sfeos_helpers import filter
 from stac_fastapi.sfeos_helpers.database import (
     apply_free_text_filter_shared,
     apply_intersects_filter_shared,
@@ -36,6 +35,7 @@ from stac_fastapi.sfeos_helpers.database import (
     get_queryables_mapping_shared,
     index_alias_by_collection_id,
     index_by_collection_id,
+    mk_actions,
     mk_item_id,
     populate_sort_shared,
     validate_refresh,
@@ -44,6 +44,7 @@ from stac_fastapi.sfeos_helpers.database.utils import (
     merge_to_operations,
     operations_to_script,
 )
+from stac_fastapi.sfeos_helpers.filter import cql2 as filter
 from stac_fastapi.sfeos_helpers.mappings import (
     AGGREGATION_MAPPING,
     COLLECTIONS_INDEX,
@@ -54,8 +55,8 @@ from stac_fastapi.sfeos_helpers.mappings import (
 )
 from stac_fastapi.sfeos_helpers.search_engine import (
     BaseIndexInserter,
+    BaseIndexSelector,
     IndexInsertionFactory,
-    IndexSelectionStrategy,
     IndexSelectorFactory,
 )
 from stac_fastapi.types.errors import ConflictError, NotFoundError
@@ -137,10 +138,8 @@ class DatabaseLogic(BaseDatabaseLogic):
     sync_settings: SyncElasticsearchSettings = attr.ib(
         factory=SyncElasticsearchSettings
     )
-    async_index_selector: IndexSelectionStrategy = attr.ib(init=False)
-    sync_index_selector: IndexSelectionStrategy = attr.ib(init=False)
+    async_index_selector: BaseIndexSelector = attr.ib(init=False)
     async_index_inserter: BaseIndexInserter = attr.ib(init=False)
-    sync_index_inserter: BaseIndexInserter = attr.ib(init=False)
 
     client = attr.ib(init=False)
     sync_client = attr.ib(init=False)
@@ -149,18 +148,10 @@ class DatabaseLogic(BaseDatabaseLogic):
         """Initialize clients after the class is instantiated."""
         self.client = self.async_settings.create_client
         self.sync_client = self.sync_settings.create_client
-        self.async_index_inserter = (
-            IndexInsertionFactory.create_async_insertion_strategy(self.client)
-        )
-        self.sync_index_inserter = IndexInsertionFactory.create_sync_insertion_strategy(
-            self.sync_client
-        )
-        self.async_index_selector = IndexSelectorFactory.create_async_selector(
+        self.async_index_inserter = IndexInsertionFactory.create_insertion_strategy(
             self.client
         )
-        self.sync_index_selector = IndexSelectorFactory.create_sync_selector(
-            self.sync_client
-        )
+        self.async_index_selector = IndexSelectorFactory.create_selector(self.client)
 
     item_serializer: Type[ItemSerializer] = attr.ib(default=ItemSerializer)
     collection_serializer: Type[CollectionSerializer] = attr.ib(
@@ -1448,12 +1439,9 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         # Perform the bulk insert
         raise_on_error = self.sync_settings.raise_on_bulk_error
-        actions = self.sync_index_inserter.prepare_bulk_actions(
-            collection_id, processed_items
-        )
         success, errors = helpers.bulk(
             self.sync_client,
-            actions,
+            mk_actions(collection_id, processed_items),
             refresh=refresh,
             raise_on_error=raise_on_error,
         )

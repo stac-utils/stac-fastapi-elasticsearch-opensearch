@@ -1,33 +1,27 @@
 """Search engine index management package."""
 
-from .async_inserters import AsyncDatetimeIndexInserter, AsyncSimpleIndexInserter
-from .base import BaseAsyncIndexInserter, BaseSyncIndexInserter
+from .base import BaseIndexInserter
 from .factory import IndexInsertionFactory
 from .index_operations import IndexOperations
+from .inserters import DatetimeIndexInserter, SimpleIndexInserter
 from .managers import DatetimeIndexManager, IndexSizeManager
 from .selection import (
-    AsyncDatetimeBasedIndexSelector,
-    IndexSelectionStrategy,
+    BaseIndexSelector,
+    DatetimeBasedIndexSelector,
     IndexSelectorFactory,
-    SyncDatetimeBasedIndexSelector,
     UnfilteredIndexSelector,
 )
-from .sync_inserters import SyncDatetimeIndexInserter, SyncSimpleIndexInserter
 
 __all__ = [
-    "BaseAsyncIndexInserter",
-    "BaseSyncIndexInserter",
+    "BaseIndexInserter",
+    "BaseIndexSelector",
+    "IndexOperations",
     "IndexSizeManager",
     "DatetimeIndexManager",
-    "AsyncDatetimeIndexInserter",
-    "AsyncSimpleIndexInserter",
-    "SyncDatetimeIndexInserter",
-    "SyncSimpleIndexInserter",
-    "IndexOperations",
+    "DatetimeIndexInserter",
+    "SimpleIndexInserter",
     "IndexInsertionFactory",
-    "IndexSelectionStrategy",
-    "AsyncDatetimeBasedIndexSelector",
-    "SyncDatetimeBasedIndexSelector",
+    "DatetimeBasedIndexSelector",
     "UnfilteredIndexSelector",
     "IndexSelectorFactory",
 ]

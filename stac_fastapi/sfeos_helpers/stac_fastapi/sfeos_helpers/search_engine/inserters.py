@@ -1,5 +1,5 @@
-"""Sync index insertion strategies."""
-
+"""Async index insertion strategies."""
+from datetime import timedelta
 from typing import Any, Dict, List, Optional
 
 from stac_fastapi.sfeos_helpers.database import (
@@ -9,27 +9,28 @@ from stac_fastapi.sfeos_helpers.database import (
     mk_item_id,
 )
 
-from .base import BaseSyncIndexInserter
+from .base import BaseIndexInserter
 from .index_operations import IndexOperations
 from .managers import DatetimeIndexManager
-from .selection import SyncDatetimeBasedIndexSelector
+from .selection import DatetimeBasedIndexSelector
 
 
-class SyncDatetimeIndexInserter(BaseSyncIndexInserter):
-    """Sync datetime-based index insertion strategy."""
+class DatetimeIndexInserter(BaseIndexInserter):
+    """Async datetime-based index insertion strategy."""
 
     def __init__(self, client: Any, index_operations: IndexOperations):
-        """Initialize the sync datetime index inserter.
+        """Initialize the async datetime index inserter.
 
         Args:
-            client: Sync search engine client instance.
+            client: Async search engine client instance.
             index_operations (IndexOperations): Search engine adapter instance.
         """
         self.client = client
-        self.index_operations = index_operations
+        self.search_adapter = index_operations
         self.datetime_manager = DatetimeIndexManager(client, index_operations)
 
-    def should_create_collection_index(self) -> bool:
+    @staticmethod
+    def should_create_collection_index() -> bool:
         """Whether this strategy requires collection index creation.
 
         Returns:
@@ -37,8 +38,8 @@ class SyncDatetimeIndexInserter(BaseSyncIndexInserter):
         """
         return False
 
-    def create_simple_index(self, client: Any, collection_id: str) -> str:
-        """Create a simple index synchronously.
+    async def create_simple_index(self, client: Any, collection_id: str) -> str:
+        """Create a simple index asynchronously.
 
         Args:
             client: Search engine client instance.
@@ -47,9 +48,11 @@ class SyncDatetimeIndexInserter(BaseSyncIndexInserter):
         Returns:
             str: Created index name.
         """
-        return self.index_operations.create_simple_index_sync(client, collection_id)
+        return await self.search_adapter.create_simple_index(client, collection_id)
 
-    def get_target_index(self, collection_id: str, product: Dict[str, Any]) -> str:
+    async def get_target_index(
+        self, collection_id: str, product: Dict[str, Any]
+    ) -> str:
         """Get target index for a single product.
 
         Args:
@@ -59,12 +62,12 @@ class SyncDatetimeIndexInserter(BaseSyncIndexInserter):
         Returns:
             str: Target index name for the product.
         """
-        index_selector = SyncDatetimeBasedIndexSelector(self.client)
-        return self._get_target_index_internal(
+        index_selector = DatetimeBasedIndexSelector(self.client)
+        return await self._get_target_index_internal(
             index_selector, collection_id, product, check_size=True
         )
 
-    def prepare_bulk_actions(
+    async def prepare_bulk_actions(
         self, collection_id: str, items: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
         """Prepare bulk actions for multiple items.
@@ -76,15 +79,17 @@ class SyncDatetimeIndexInserter(BaseSyncIndexInserter):
         Returns:
             List[Dict[str, Any]]: List of bulk actions ready for execution.
         """
-        index_selector = SyncDatetimeBasedIndexSelector(self.client)
+        index_selector = DatetimeBasedIndexSelector(self.client)
 
-        self._ensure_indexes_exist(index_selector, collection_id)
-        split_info = self._handle_index_splitting(index_selector, collection_id, items)
-        return self._create_bulk_actions(
+        await self._ensure_indexes_exist(index_selector, collection_id, items)
+        split_info = await self._handle_index_splitting(
+            index_selector, collection_id, items
+        )
+        return await self._create_bulk_actions(
             index_selector, collection_id, items, split_info
         )
 
-    def _get_target_index_internal(
+    async def _get_target_index_internal(
         self,
         index_selector,
         collection_id: str,
@@ -105,14 +110,16 @@ class SyncDatetimeIndexInserter(BaseSyncIndexInserter):
         product_datetime = self.datetime_manager._validate_product_datetime(product)
 
         datetime_range = {"gte": product_datetime, "lte": product_datetime}
-        target_index = index_selector.select_indexes([collection_id], datetime_range)
-        all_indexes = index_selector.get_collection_indexes(collection_id)
+        target_index = await index_selector.select_indexes(
+            [collection_id], datetime_range
+        )
+        all_indexes = await index_selector.get_collection_indexes(collection_id)
 
         if not all_indexes:
-            target_index = self.datetime_manager.handle_new_collection_sync(
-                collection_id
+            target_index = await self.datetime_manager.handle_new_collection(
+                collection_id, product_datetime
             )
-            index_selector.refresh_cache()
+            await index_selector.refresh_cache()
             return target_index
 
         all_indexes.sort()
@@ -120,42 +127,47 @@ class SyncDatetimeIndexInserter(BaseSyncIndexInserter):
         end_date = extract_first_date_from_index(all_indexes[0])
 
         if start_date < end_date:
-            alias = self.datetime_manager.handle_early_date_sync(
-                collection_id, start_date
+            alias = await self.datetime_manager.handle_early_date(
+                collection_id, start_date, end_date
             )
-            index_selector.refresh_cache()
+            await index_selector.refresh_cache()
             return alias
 
         if target_index != all_indexes[-1]:
             return target_index
 
-        if check_size and self.datetime_manager.size_manager.is_index_oversized_sync(
+        if check_size and await self.datetime_manager.size_manager.is_index_oversized(
             target_index
         ):
-            target_index = self.datetime_manager.handle_oversized_index_sync(
+            target_index = await self.datetime_manager.handle_oversized_index(
                 collection_id, target_index, product_datetime
             )
-            index_selector.refresh_cache()
+            await index_selector.refresh_cache()
 
         return target_index
 
-    def _ensure_indexes_exist(self, index_selector, collection_id: str):
+    async def _ensure_indexes_exist(
+        self, index_selector, collection_id: str, items: List[Dict[str, Any]]
+    ):
         """Ensure necessary indexes exist for the items.
 
         Args:
             index_selector: Index selector instance.
             collection_id (str): Collection identifier.
+            items (List[Dict[str, Any]]): List of items to process.
         """
-        all_indexes = index_selector.get_collection_indexes(collection_id)
+        all_indexes = await index_selector.get_collection_indexes(collection_id)
 
         if not all_indexes:
-            self.index_operations.create_datetime_index_sync(
+            first_item = items[0]
+            await self.search_adapter.create_datetime_index(
                 self.client,
                 collection_id,
+                extract_date(first_item["properties"]["datetime"]),
             )
-            index_selector.refresh_cache()
+            await index_selector.refresh_cache()
 
-    def _handle_index_splitting(
+    async def _handle_index_splitting(
         self, index_selector, collection_id: str, items: List[Dict[str, Any]]
     ):
         """Handle potential index splitting due to size limits.
@@ -168,26 +180,30 @@ class SyncDatetimeIndexInserter(BaseSyncIndexInserter):
         Returns:
             Optional[Dict]: Split information if splitting occurred, None otherwise.
         """
-        all_indexes = index_selector.get_collection_indexes(collection_id)
+        all_indexes = await index_selector.get_collection_indexes(collection_id)
         all_indexes.sort()
         latest_index = all_indexes[-1]
 
         first_item = items[0]
-        first_item_index = self._get_target_index_internal(
+        first_item_index = await self._get_target_index_internal(
             index_selector, collection_id, first_item, check_size=False
         )
 
         if first_item_index != latest_index:
             return None
 
-        if self.datetime_manager.size_manager.is_index_oversized_sync(first_item_index):
-            return self._create_new_index_for_split(
-                collection_id, first_item_index, first_item
+        if await self.datetime_manager.size_manager.is_index_oversized(
+            first_item_index
+        ):
+            return await self._create_new_index_for_split(
+                collection_id,
+                first_item_index,
+                first_item,
             )
 
         return None
 
-    def _create_new_index_for_split(
+    async def _create_new_index_for_split(
         self, collection_id: str, latest_index: str, first_item: Dict[str, Any]
     ):
         """Create new index for splitting oversized index.
@@ -204,11 +220,12 @@ class SyncDatetimeIndexInserter(BaseSyncIndexInserter):
         first_item_date = extract_date(first_item["properties"]["datetime"])
 
         if first_item_date != current_index_end_date:
-            self.index_operations.update_index_alias_sync(
+            await self.search_adapter.update_index_alias(
                 self.client, str(current_index_end_date), latest_index
             )
-            new_index = self.index_operations.create_datetime_index_sync(
-                self.client, collection_id
+            next_day_start = current_index_end_date + timedelta(days=1)
+            new_index = await self.search_adapter.create_datetime_index(
+                self.client, collection_id, next_day_start
             )
             return {
                 "split_date": current_index_end_date,
@@ -216,7 +233,7 @@ class SyncDatetimeIndexInserter(BaseSyncIndexInserter):
             }
         return None
 
-    def _create_bulk_actions(
+    async def _create_bulk_actions(
         self,
         index_selector,
         collection_id: str,
@@ -242,11 +259,11 @@ class SyncDatetimeIndexInserter(BaseSyncIndexInserter):
                 if item_date > split_info["split_date"]:
                     target_index = split_info["new_index"]
                 else:
-                    target_index = self._get_target_index_internal(
+                    target_index = await self._get_target_index_internal(
                         index_selector, collection_id, item, check_size=False
                     )
             else:
-                target_index = self._get_target_index_internal(
+                target_index = await self._get_target_index_internal(
                     index_selector, collection_id, item, check_size=False
                 )
 
@@ -261,20 +278,21 @@ class SyncDatetimeIndexInserter(BaseSyncIndexInserter):
         return actions
 
 
-class SyncSimpleIndexInserter(BaseSyncIndexInserter):
-    """Simple sync index insertion strategy."""
+class SimpleIndexInserter(BaseIndexInserter):
+    """Simple async index insertion strategy."""
 
     def __init__(self, index_operations: IndexOperations, client: Any):
-        """Initialize the sync simple index inserter.
+        """Initialize the async simple index inserter.
 
         Args:
             index_operations (IndexOperations): Search engine adapter instance.
-            client: Sync search engine client instance.
+            client: Async search engine client instance.
         """
-        self.index_operations = index_operations
+        self.search_adapter = index_operations
         self.client = client
 
-    def should_create_collection_index(self) -> bool:
+    @staticmethod
+    def should_create_collection_index() -> bool:
         """Whether this strategy requires collection index creation.
 
         Returns:
@@ -282,8 +300,8 @@ class SyncSimpleIndexInserter(BaseSyncIndexInserter):
         """
         return True
 
-    def create_simple_index(self, client: Any, collection_id: str) -> str:
-        """Create a simple index synchronously.
+    async def create_simple_index(self, client: Any, collection_id: str) -> str:
+        """Create a simple index asynchronously.
 
         Args:
             client: Search engine client instance.
@@ -292,9 +310,11 @@ class SyncSimpleIndexInserter(BaseSyncIndexInserter):
         Returns:
             str: Created index name.
         """
-        return self.index_operations.create_simple_index_sync(client, collection_id)
+        return await self.search_adapter.create_simple_index(client, collection_id)
 
-    def get_target_index(self, collection_id: str, product: Dict[str, Any]) -> str:
+    async def get_target_index(
+        self, collection_id: str, product: Dict[str, Any]
+    ) -> str:
         """Get target index (always the collection alias).
 
         Args:
@@ -306,7 +326,7 @@ class SyncSimpleIndexInserter(BaseSyncIndexInserter):
         """
         return index_alias_by_collection_id(collection_id)
 
-    def prepare_bulk_actions(
+    async def prepare_bulk_actions(
         self, collection_id: str, items: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
         """Prepare bulk actions for simple indexing.

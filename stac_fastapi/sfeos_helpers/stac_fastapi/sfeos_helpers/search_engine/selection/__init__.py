@@ -1,25 +1,15 @@
 """Index selection strategies package."""
 
-from .async_selectors import AsyncDatetimeBasedIndexSelector
-from .base import BaseAsyncIndexSelector, BaseSyncIndexSelector, IndexSelectionStrategy
-from .cache_manager import (
-    AsyncIndexAliasLoader,
-    IndexCacheManager,
-    SyncIndexAliasLoader,
-)
+from .base import BaseIndexSelector
+from .cache_manager import IndexAliasLoader, IndexCacheManager
 from .factory import IndexSelectorFactory
-from .sync_selectors import SyncDatetimeBasedIndexSelector
-from .unfiltered_selector import UnfilteredIndexSelector
+from .selectors import DatetimeBasedIndexSelector, UnfilteredIndexSelector
 
 __all__ = [
-    "IndexSelectionStrategy",
-    "BaseAsyncIndexSelector",
-    "BaseSyncIndexSelector",
     "IndexCacheManager",
-    "AsyncIndexAliasLoader",
-    "SyncIndexAliasLoader",
-    "AsyncDatetimeBasedIndexSelector",
-    "SyncDatetimeBasedIndexSelector",
+    "IndexAliasLoader",
+    "DatetimeBasedIndexSelector",
     "UnfilteredIndexSelector",
     "IndexSelectorFactory",
+    "BaseIndexSelector",
 ]

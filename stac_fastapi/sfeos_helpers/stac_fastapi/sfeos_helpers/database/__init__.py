@@ -31,7 +31,7 @@ Function Naming Conventions:
 
 # Re-export all functions for backward compatibility
 from .datetime import extract_date, extract_first_date_from_index, return_date
-from .document import mk_item_id
+from .document import mk_actions, mk_item_id
 from .index import (
     create_index_templates_shared,
     delete_item_index_shared,
@@ -64,6 +64,7 @@ __all__ = [
     "get_queryables_mapping_shared",
     # Document operations
     "mk_item_id",
+    "mk_actions",
     # Utility functions
     "validate_refresh",
     "get_bool_env",
