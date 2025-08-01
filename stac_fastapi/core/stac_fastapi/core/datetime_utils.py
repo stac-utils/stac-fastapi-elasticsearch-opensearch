@@ -1,4 +1,5 @@
 """Utility functions to handle datetime parsing."""
+
 from datetime import datetime, timezone
 
 from stac_fastapi.types.rfc3339 import rfc3339_str_to_datetime
