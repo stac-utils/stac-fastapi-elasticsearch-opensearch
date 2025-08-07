@@ -46,7 +46,7 @@ from stac_fastapi.sfeos_helpers.database.utils import (
     merge_to_operations,
     operations_to_script,
 )
-from stac_fastapi.sfeos_helpers.filter import filter as filter_module
+from stac_fastapi.sfeos_helpers import filter as filter_module
 from stac_fastapi.sfeos_helpers.mappings import (
     AGGREGATION_MAPPING,
     COLLECTIONS_INDEX,
