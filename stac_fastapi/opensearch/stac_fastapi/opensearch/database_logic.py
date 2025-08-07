@@ -924,7 +924,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             await self.client.update(
                 index=document_index,
                 id=mk_item_id(item_id, collection_id),
-                script=script,
+                body={"script": script},
                 refresh=True,
             )
         except exceptions.NotFoundError:
