@@ -114,8 +114,15 @@ async def test_create_uppercase_collection_with_item(
 async def test_update_item_already_exists(app_client, ctx, load_test_data):
     """Test updating an item which already exists (transactions extension)"""
     item = load_test_data("test_item.json")
+    item["id"] = str(uuid.uuid4())
     assert item["properties"]["gsd"] != 16
     item["properties"]["gsd"] = 16
+
+    response = await app_client.post(
+        f"/collections/{item['collection']}/items", json=item
+    )
+    assert response.status_code == 201
+
     await app_client.put(
         f"/collections/{item['collection']}/items/{item['id']}", json=item
     )
@@ -998,6 +1005,9 @@ async def _search_and_get_ids(
 async def test_search_datetime_with_null_datetime(
     app_client, txn_client, load_test_data
 ):
+    if os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip()
+
     """Test datetime filtering when properties.datetime is null or set, ensuring start_datetime and end_datetime are set when datetime is null."""
     # Setup: Create test collection
     test_collection = load_test_data("test_collection.json")

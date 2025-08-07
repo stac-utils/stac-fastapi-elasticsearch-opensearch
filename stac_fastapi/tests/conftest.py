@@ -26,6 +26,7 @@ from stac_fastapi.core.extensions.aggregation import (
 from stac_fastapi.core.rate_limit import setup_rate_limit
 from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.sfeos_helpers.aggregation import EsAsyncBaseAggregationClient
+from stac_fastapi.sfeos_helpers.mappings import ITEMS_INDEX_PREFIX
 
 if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
     from stac_fastapi.opensearch.app import app_config
@@ -158,6 +159,8 @@ async def delete_collections_and_items(txn_client: TransactionsClient) -> None:
     await refresh_indices(txn_client)
     await txn_client.database.delete_items()
     await txn_client.database.delete_collections()
+    await txn_client.database.client.indices.delete(index=f"{ITEMS_INDEX_PREFIX}*")
+    await txn_client.database.async_index_selector.refresh_cache()
 
 
 async def refresh_indices(txn_client: TransactionsClient) -> None:
