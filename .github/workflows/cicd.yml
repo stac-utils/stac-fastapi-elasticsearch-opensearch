@@ -123,5 +123,6 @@ jobs:
           ES_PORT: ${{ matrix.backend == 'elasticsearch7' && '9400' || matrix.backend == 'elasticsearch8' && '9200' || '9202' }}
           ES_HOST: 172.17.0.1
           ES_USE_SSL: false
+          DATABASE_REFRESH: true
           ES_VERIFY_CERTS: false
           BACKEND: ${{ matrix.backend == 'elasticsearch7' && 'elasticsearch' || matrix.backend == 'elasticsearch8' && 'elasticsearch' || 'opensearch' }}
