@@ -27,7 +27,7 @@ run_os = docker compose \
 .PHONY: image-deploy-es
 image-deploy-es:
 	docker build -f dockerfiles/Dockerfile.dev.es -t stac-fastapi-elasticsearch:latest .
-	
+
 .PHONY: image-deploy-os
 image-deploy-os:
 	docker build -f dockerfiles/Dockerfile.dev.os -t stac-fastapi-opensearch:latest .
@@ -71,13 +71,18 @@ test-opensearch:
 	-$(run_os) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh opensearch:9202 && cd stac_fastapi/tests/ && pytest'
 	docker compose down
 
-.PHONY: test
-test:
-	-$(run_es) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd stac_fastapi/tests/ && pytest --cov=stac_fastapi --cov-report=term-missing'
+.PHONY: test-datetime-filtering-es
+test-datetime-filtering-es:
+	-$(run_es) /bin/bash -c 'export ENABLE_DATETIME_INDEX_FILTERING=true && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd stac_fastapi/tests/ && pytest -s --cov=stac_fastapi --cov-report=term-missing -m datetime_filtering'
 	docker compose down
 
-	-$(run_os) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh opensearch:9202 && cd stac_fastapi/tests/ && pytest --cov=stac_fastapi --cov-report=term-missing'
+.PHONY: test-datetime-filtering-os
+test-datetime-filtering-os:
+	-$(run_os) /bin/bash -c 'export ENABLE_DATETIME_INDEX_FILTERING=true && ./scripts/wait-for-it-es.sh opensearch:9202 && cd stac_fastapi/tests/ && pytest -s --cov=stac_fastapi --cov-report=term-missing -m datetime_filtering'
 	docker compose down
+
+.PHONY: test
+test: test-elasticsearch test-datetime-filtering-es test-opensearch test-datetime-filtering-os
 
 .PHONY: run-database-es
 run-database-es:
