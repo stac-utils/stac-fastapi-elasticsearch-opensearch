@@ -20,7 +20,7 @@ pytest:
   tags:
     - kubernetes
   services:
-    - name: opensearchproject/opensearch:2.19.1
+    - name: opensearchproject/opensearch:2.11.1
       alias: opensearch
       variables:
         cluster.name: stac-cluster
@@ -29,10 +29,10 @@ pytest:
         transport.host: 0.0.0.0
         discovery.type: single-node
         http.port: 9200
-        http.cors.enabled: "true"
-        plugins.security.disabled: "true"
-        plugins.security.ssl.http.enabled: "false"
-        OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx1g"
+        http.cors.enabled: true
+        plugins.security.disabled: true
+        plugins.security.ssl.http.enabled: true
+        OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
   before_script:
     - ./ci/before_tests.sh
   script:
