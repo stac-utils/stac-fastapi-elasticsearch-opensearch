@@ -63,7 +63,7 @@ tag_check:
 deploy-staging-cyrus:
   <<: *deploy_configuration
   variables:
-    ARGOCD_APP_NAME: "cyrus-staging-ingestion-engine-subscriptions"
+    ARGOCD_APP_NAME: "stac-fastapi-os"
   script: ./ci/deploy.sh staging/cyrus
 
 deploy-production-creo:
