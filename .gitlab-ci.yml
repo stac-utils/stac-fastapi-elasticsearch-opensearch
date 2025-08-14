@@ -28,7 +28,6 @@ pytest:
         discovery.type: "single-node"
         plugins.security.disabled: "true"
         OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx1g"
-        OPENSEARCH_INITIAL_ADMIN_PASSWORD: "admin123!"
   before_script:
     - ./ci/before_tests.sh
   script:
@@ -40,8 +39,6 @@ pytest:
     ES_USE_SSL: "false"
     ES_VERIFY_CERTS: "false"
     BACKEND: "opensearch"
-    ES_USER: "admin"
-    ES_PASS: "admin"
   when: on_success
 
 tag_check:
