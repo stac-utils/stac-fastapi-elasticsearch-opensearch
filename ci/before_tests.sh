@@ -11,6 +11,7 @@ pip install --upgrade pip setuptools wheel
 pip install ./stac_fastapi/core
 pip install ./stac_fastapi/sfeos_helpers
 pip install ./stac_fastapi/opensearch[dev,server]
+pip install pytest-timout
 
 echo "Waiting for OpenSearch"
 timeout 100 bash -c 'until curl -f http://opensearch:9200/_cluster/health; do sleep 5; done'

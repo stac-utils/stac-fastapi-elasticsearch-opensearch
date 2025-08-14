@@ -2,5 +2,4 @@
 set -e
 
 echo "Running OpenSearch tests"
-pytest -sv --timeout=10 stac_fastapi/tests/
-
+pytest -v --timeout=10 --log-cli-level=ERROR stac_fastapi/tests/ 2>/dev/null
