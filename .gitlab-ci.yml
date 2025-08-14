@@ -15,7 +15,7 @@ build:
 
 pytest:
   stage: tests
-  image: python:3.12-slim
+  image: python:3.13-slim
   allow_failure: false
   tags:
     - kubernetes
@@ -64,13 +64,13 @@ deploy-staging-cyrus:
   <<: *deploy_configuration
   variables:
     ARGOCD_APP_NAME: "cyrus-staging-ingestion-engine-subscriptions"
-  script: ./ci/deploy.sh staging-cyrus
+  script: ./ci/deploy.sh staging/cyrus
 
 deploy-production-creo:
   <<: *deploy_configuration
   only:
     - tags
   variables:
-    ARGOCD_APP_NAME: "waw3-2-general-01-prod-catalogue-subscriptions"
+    ARGOCD_APP_NAME: "stac-fastapi-os"
   script:
-    - ./ci/deploy.sh production-waw3-2-general-01
+    - ./ci/deploy.sh prod/waw3-2-general-01
