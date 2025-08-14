@@ -14,5 +14,5 @@ pip install ./stac_fastapi/opensearch[dev,server]
 pip install pytest-timeout
 
 echo "Waiting for OpenSearch"
-timeout 45 bash -c 'until curl -f http://opensearch:9200/_cluster/health; do sleep 5; done'
+timeout 100 bash -c 'until curl -f http://opensearch:9200/_cluster/health; do sleep 5; done'
 echo "OpenSearch is ready"
