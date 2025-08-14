@@ -23,28 +23,25 @@ pytest:
     - name: opensearchproject/opensearch:2.11.1
       alias: opensearch
       variables:
-        cluster.name: stac-cluster
-        node.name: os01
-        network.host: 0.0.0.0
-        transport.host: 0.0.0.0
-        discovery.type: single-node
-        http.port: 9200
-        http.cors.enabled: true
-        plugins.security.disabled: true
-        plugins.security.ssl.http.enabled: true
-        OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+        cluster.name: "stac-cluster"
+        node.name: "os01"
+        discovery.type: "single-node"
+        plugins.security.disabled: "true"
+        OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx1g"
+        OPENSEARCH_INITIAL_ADMIN_PASSWORD: "admin123!"
   before_script:
     - ./ci/before_tests.sh
   script:
     - ./ci/pytest.sh
   variables:
-    ES_HOST: opensearch
+    ENVIRONMENT: "testing"
+    ES_HOST: "opensearch"
     ES_PORT: "9200"
     ES_USE_SSL: "false"
     ES_VERIFY_CERTS: "false"
-    BACKEND: opensearch
-    ES_USER: admin
-    ES_PASS: admin
+    BACKEND: "opensearch"
+    ES_USER: "admin"
+    ES_PASS: "admin"
   when: on_success
 
 tag_check:
