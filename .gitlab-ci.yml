@@ -1,7 +1,7 @@
 stages:
   - build
 #  - tests
-  - tag_check
+#  - tag_check
   - deploy
 
 build:
@@ -45,16 +45,16 @@ build:
 #
 #  when: on_success
 
-tag_check:
-  stage: tag_check
-  script: ./ci/tag_image.sh
-  tags:
-    - kubernetes
-  image:
-    name: registry-public.cloudferro.com/kaniko-project/executor:v1.9.2-debug
-    entrypoint: [""]
-  only:
-    - tags
+#tag_check:
+#  stage: tag_check
+#  script: ./ci/tag_image.sh
+#  tags:
+#    - kubernetes
+#  image:
+#    name: registry-public.cloudferro.com/kaniko-project/executor:v1.9.2-debug
+#    entrypoint: [""]
+#  only:
+#    - tags
 
 .deploy_template: &deploy_configuration
   stage: deploy
@@ -72,8 +72,8 @@ deploy-staging-cyrus:
 
 deploy-production-creo:
   <<: *deploy_configuration
-  only:
-    - tags
+#  only:
+#    - tags
   variables:
     ARGOCD_APP_NAME: "stac-fastapi-os"
   script:
