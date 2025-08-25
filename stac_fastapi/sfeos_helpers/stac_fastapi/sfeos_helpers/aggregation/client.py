@@ -313,10 +313,9 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
                 search=search, item_ids=aggregate_request.ids
             )
 
-        datetime_search = return_date(aggregate_request.datetime)
         if aggregate_request.datetime:
             search = self.database.apply_datetime_filter(
-                search=search, datetime_search=datetime_search
+                search=search, datetime=aggregate_request.datetime
             )
 
         if aggregate_request.bbox:

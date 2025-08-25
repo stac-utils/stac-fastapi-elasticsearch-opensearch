@@ -37,7 +37,6 @@ from stac_fastapi.extensions.third_party.bulk_transactions import (
     BulkTransactionMethod,
     Items,
 )
-from stac_fastapi.sfeos_helpers.database import return_date
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
 from stac_fastapi.types.core import AsyncBaseCoreClient
@@ -326,9 +325,8 @@ class CoreClient(AsyncBaseCoreClient):
         )
 
         try:
-            datetime_search = return_date(datetime)
             search = self.database.apply_datetime_filter(
-                search=search, datetime_search=datetime_search
+                search=search, datetime=datetime
             )
         except (ValueError, TypeError) as e:
             # Handle invalid interval formats if return_date fails
@@ -509,9 +507,8 @@ class CoreClient(AsyncBaseCoreClient):
             )
 
         try:
-            datetime_search = return_date(search_request.datetime)
             search = self.database.apply_datetime_filter(
-                search=search, datetime_search=datetime_search
+                search=search, datetime=search_request.datetime
             )
         except (ValueError, TypeError) as e:
             # Handle invalid interval formats if return_date fails

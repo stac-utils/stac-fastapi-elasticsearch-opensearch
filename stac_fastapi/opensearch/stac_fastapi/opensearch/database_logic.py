@@ -37,6 +37,7 @@ from stac_fastapi.sfeos_helpers.database import (
     mk_actions,
     mk_item_id,
     populate_sort_shared,
+    return_date,
     validate_refresh,
 )
 from stac_fastapi.sfeos_helpers.database.query import (
@@ -65,6 +66,7 @@ from stac_fastapi.sfeos_helpers.search_engine import (
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.links import resolve_links
 from stac_fastapi.types.stac import Collection, Item
+
 
 logger = logging.getLogger(__name__)
 
@@ -284,17 +286,19 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     @staticmethod
     def apply_datetime_filter(
-        search: Search, datetime_search: Dict[str, Optional[str]]
+        search: Search, datetime: str | None
     ) -> Search:
         """Apply a filter to search on datetime, start_datetime, and end_datetime fields.
 
         Args:
             search: The search object to filter.
-            datetime_search: Dict[str, Optional[str]]
+            datetime: str | None
 
         Returns:
             The filtered search object.
         """
+        datetime_search = return_date(datetime)
+
         if not datetime_search:
             return search
 
