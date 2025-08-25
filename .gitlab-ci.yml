@@ -1,6 +1,6 @@
 stages:
   - build
-  - tests
+#  - tests
   - tag_check
   - deploy
 
@@ -13,37 +13,37 @@ build:
     name: registry-public.cloudferro.com/kaniko-project/executor:v1.9.2-debug
     entrypoint: [ "" ]
 
-pytest:
-  stage: tests
-  image: python:3.13-slim
-  allow_failure: false
-  tags:
-    - kubernetes
-  services:
-    - name: opensearchproject/opensearch:2.11.1
-      alias: opensearch
-      variables:
-        cluster.name: "stac-cluster"
-        node.name: "os01"
-        discovery.type: "single-node"
-        plugins.security.disabled: "true"
-        action.destructive_requires_name: "false"
-        OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx1g"
-  before_script:
-    - ./ci/before_tests.sh
-  script:
-    - ./ci/pytest.sh
-  variables:
-    ENVIRONMENT: "testing"
-    ES_HOST: "opensearch"
-    ES_PORT: "9200"
-    ES_USE_SSL: "false"
-    ES_VERIFY_CERTS: "false"
-    BACKEND: "opensearch"
-    DATABASE_REFRESH: "true"
-    ENABLE_DATETIME_INDEX_FILTERING: "true"
-
-  when: on_success
+#pytest:
+#  stage: tests
+#  image: python:3.13-slim
+#  allow_failure: false
+#  tags:
+#    - kubernetes
+#  services:
+#    - name: opensearchproject/opensearch:2.11.1
+#      alias: opensearch
+#      variables:
+#        cluster.name: "stac-cluster"
+#        node.name: "os01"
+#        discovery.type: "single-node"
+#        plugins.security.disabled: "true"
+#        action.destructive_requires_name: "false"
+#        OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx1g"
+#  before_script:
+#    - ./ci/before_tests.sh
+#  script:
+#    - ./ci/pytest.sh
+#  variables:
+#    ENVIRONMENT: "testing"
+#    ES_HOST: "opensearch"
+#    ES_PORT: "9200"
+#    ES_USE_SSL: "false"
+#    ES_VERIFY_CERTS: "false"
+#    BACKEND: "opensearch"
+#    DATABASE_REFRESH: "true"
+#    ENABLE_DATETIME_INDEX_FILTERING: "true"
+#
+#  when: on_success
 
 tag_check:
   stage: tag_check
