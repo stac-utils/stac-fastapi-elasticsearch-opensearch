@@ -27,6 +27,7 @@ pytest:
         node.name: "os01"
         discovery.type: "single-node"
         plugins.security.disabled: "true"
+        action.destructive_requires_name: "false"
         OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx1g"
   before_script:
     - ./ci/before_tests.sh
@@ -39,6 +40,9 @@ pytest:
     ES_USE_SSL: "false"
     ES_VERIFY_CERTS: "false"
     BACKEND: "opensearch"
+    DATABASE_REFRESH: "true"
+    ENABLE_DATETIME_INDEX_FILTERING: "true"
+
   when: on_success
 
 tag_check:
