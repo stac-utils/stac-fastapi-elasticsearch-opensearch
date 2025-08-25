@@ -1,3 +1,4 @@
+import os
 import uuid
 
 import pytest
@@ -27,6 +28,9 @@ async def test_index_mapping_collections(ctx):
 
 @pytest.mark.asyncio
 async def test_index_mapping_items(txn_client, load_test_data):
+    if os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip()
+
     collection = load_test_data("test_collection.json")
     collection["id"] = str(uuid.uuid4())
     await txn_client.create_collection(

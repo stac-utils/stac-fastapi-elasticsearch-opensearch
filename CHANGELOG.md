@@ -8,6 +8,32 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added 
+
+- Added comprehensive index management system with dynamic selection and insertion strategies for improved performance and scalability [#405](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/405)
+- Added `ENABLE_DATETIME_INDEX_FILTERING` environment variable to enable datetime-based index selection using collection IDs. When enabled, the system creates indexes with UUID-based names and manages them through time-based aliases. Default is `false`. [#405](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/405)
+- Added `DATETIME_INDEX_MAX_SIZE_GB` environment variable to set maximum size limit in GB for datetime-based indexes. When an index exceeds this size, a new time-partitioned index will be created. Note: add +20% to target size due to ES/OS compression. Default is `25` GB. Only applies when `ENABLE_DATETIME_INDEX_FILTERING` is enabled. [#405](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/405)
+- Added index operations system with unified interface for both Elasticsearch and OpenSearch [#405](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/405):
+  - `IndexOperations` class with common index creation and management methods
+  - UUID-based physical index naming: `{prefix}_{collection-id}_{uuid4}`
+  - Alias management: main collection alias, temporal aliases, and closed index aliases
+  - Automatic alias updates when indexes reach size limits
+- Added datetime-based index selection strategies with caching support [#405](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/405):
+  - `DatetimeBasedIndexSelector` for temporal filtering with intelligent caching
+  - `IndexCacheManager` with configurable TTL-based cache expiration (default 1 hour)
+  - `IndexAliasLoader` for alias management and cache refresh
+  - `UnfilteredIndexSelector` as fallback for returning all available indexes
+- Added index insertion strategies with automatic partitioning [#405](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/405):
+  - Simple insertion strategy (`SimpleIndexInserter`) for traditional single-index-per-collection approach
+  - Datetime-based insertion strategy (`DatetimeIndexInserter`) with time-based partitioning
+  - Automatic index size monitoring and splitting when limits exceeded
+  - Handling of chronologically early data and bulk operations
+- Added index management utilities [#405](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/405):
+  - `IndexSizeManager` for size monitoring and overflow handling with compression awareness
+  - `DatetimeIndexManager` for datetime-based index operations and validation
+  - Factory patterns (`IndexInsertionFactory`, `IndexSelectorFactory`) for strategy creation based on configuration
+
+
 ## [v6.1.0] - 2025-07-24
 
 ### Added

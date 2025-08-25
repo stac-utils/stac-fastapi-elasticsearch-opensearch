@@ -324,10 +324,15 @@ class CoreClient(AsyncBaseCoreClient):
             search=search, collection_ids=[collection_id]
         )
 
-        if datetime:
-            search = self.database.apply_datetime_filter(
-                search=search, interval=datetime
+        try:
+            search, datetime_search = self.database.apply_datetime_filter(
+                search=search, datetime=datetime
             )
+        except (ValueError, TypeError) as e:
+            # Handle invalid interval formats if return_date fails
+            msg = f"Invalid interval format: {datetime}, error: {e}"
+            logger.error(msg)
+            raise HTTPException(status_code=400, detail=msg)
 
         if bbox:
             bbox = [float(x) for x in bbox]
@@ -342,6 +347,7 @@ class CoreClient(AsyncBaseCoreClient):
             sort=None,
             token=token,
             collection_ids=[collection_id],
+            datetime_search=datetime_search,
         )
 
         items = [
@@ -500,10 +506,15 @@ class CoreClient(AsyncBaseCoreClient):
                 search=search, collection_ids=search_request.collections
             )
 
-        if search_request.datetime:
-            search = self.database.apply_datetime_filter(
-                search=search, interval=search_request.datetime
+        try:
+            search, datetime_search = self.database.apply_datetime_filter(
+                search=search, datetime=search_request.datetime
             )
+        except (ValueError, TypeError) as e:
+            # Handle invalid interval formats if return_date fails
+            msg = f"Invalid interval format: {search_request.datetime}, error: {e}"
+            logger.error(msg)
+            raise HTTPException(status_code=400, detail=msg)
 
         if search_request.bbox:
             bbox = search_request.bbox
@@ -560,6 +571,7 @@ class CoreClient(AsyncBaseCoreClient):
             token=search_request.token,
             sort=sort,
             collection_ids=search_request.collections,
+            datetime_search=datetime_search,
         )
 
         fields = (

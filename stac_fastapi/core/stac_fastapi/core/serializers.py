@@ -1,4 +1,5 @@
 """Serializers."""
+
 import abc
 from copy import deepcopy
 from typing import Any, List, Optional
