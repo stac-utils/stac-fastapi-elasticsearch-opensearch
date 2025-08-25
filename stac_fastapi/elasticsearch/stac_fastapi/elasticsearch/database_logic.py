@@ -278,13 +278,13 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     @staticmethod
     def apply_datetime_filter(
-        search: Search, datetime: str | None
+        search: Search, datetime: Optional[str]
     ) -> Tuple[Search, Dict[str, Optional[str]]]:
         """Apply a filter to search on datetime, start_datetime, and end_datetime fields.
 
         Args:
             search: The search object to filter.
-            datetime: str | None
+            datetime: Optional[str]
 
         Returns:
             The filtered search object.
