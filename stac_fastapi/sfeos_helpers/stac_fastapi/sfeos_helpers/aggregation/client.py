@@ -21,7 +21,6 @@ from stac_fastapi.extensions.core.aggregation.types import (
     Aggregation,
     AggregationCollection,
 )
-from stac_fastapi.sfeos_helpers.database import return_date
 from stac_fastapi.types.rfc3339 import DateTimeType
 
 from .format import frequency_agg, metric_agg
@@ -314,7 +313,7 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
             )
 
         if aggregate_request.datetime:
-            search = self.database.apply_datetime_filter(
+            search, datetime_search = self.database.apply_datetime_filter(
                 search=search, datetime=aggregate_request.datetime
             )
 

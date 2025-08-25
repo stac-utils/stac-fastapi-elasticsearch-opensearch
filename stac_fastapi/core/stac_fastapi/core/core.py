@@ -325,7 +325,7 @@ class CoreClient(AsyncBaseCoreClient):
         )
 
         try:
-            search = self.database.apply_datetime_filter(
+            search, datetime_search = self.database.apply_datetime_filter(
                 search=search, datetime=datetime
             )
         except (ValueError, TypeError) as e:
@@ -507,7 +507,7 @@ class CoreClient(AsyncBaseCoreClient):
             )
 
         try:
-            search = self.database.apply_datetime_filter(
+            search, datetime_search = self.database.apply_datetime_filter(
                 search=search, datetime=search_request.datetime
             )
         except (ValueError, TypeError) as e:

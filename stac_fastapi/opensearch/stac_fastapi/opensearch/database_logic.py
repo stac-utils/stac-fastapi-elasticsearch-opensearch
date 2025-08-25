@@ -67,7 +67,6 @@ from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.links import resolve_links
 from stac_fastapi.types.stac import Collection, Item
 
-
 logger = logging.getLogger(__name__)
 
 
@@ -287,7 +286,7 @@ class DatabaseLogic(BaseDatabaseLogic):
     @staticmethod
     def apply_datetime_filter(
         search: Search, datetime: str | None
-    ) -> Search:
+    ) -> Tuple[Search, Dict[str, Optional[str]]]:
         """Apply a filter to search on datetime, start_datetime, and end_datetime fields.
 
         Args:
@@ -300,7 +299,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         datetime_search = return_date(datetime)
 
         if not datetime_search:
-            return search
+            return search, datetime_search
 
         if "eq" in datetime_search:
             # For exact matches, include:
@@ -367,7 +366,10 @@ class DatabaseLogic(BaseDatabaseLogic):
                 ),
             ]
 
-        return search.query(Q("bool", should=should, minimum_should_match=1))
+        return (
+            search.query(Q("bool", should=should, minimum_should_match=1)),
+            datetime_search,
+        )
 
     @staticmethod
     def apply_bbox_filter(search: Search, bbox: List):
