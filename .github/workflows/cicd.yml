@@ -26,6 +26,7 @@ jobs:
           http.port: 9200
           xpack.license.self_generated.type: basic
           xpack.security.enabled: false
+          plugins.security.ssl.http.enabled: "true"
           xpack.security.transport.ssl.enabled: false
           ES_JAVA_OPTS: -Xms512m -Xmx1g
           action.destructive_requires_name: false
