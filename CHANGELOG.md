@@ -36,6 +36,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
   - `DatetimeIndexManager` for datetime-based index operations and validation
   - Factory patterns (`IndexInsertionFactory`, `IndexSelectorFactory`) for strategy creation based on configuration
 
+### Changed
+
+- Added the Datetime-Based Index Management section to the Table of Contents in the readme, updating heading sizes to match the rest of the document [#418](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/418)
 
 ## [v6.1.0] - 2025-07-24
 
