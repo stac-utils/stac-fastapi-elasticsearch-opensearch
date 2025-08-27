@@ -1470,3 +1470,73 @@ async def test_put_item_for_datetime_index(app_client, load_test_data, txn_clien
             f"/collections/{collection_id}/items/{base_item['id']}", json=item_data
         )
         assert response.json()["properties"]["platform"] == "Updated platform via PUT"
+
+
+@pytest.mark.asyncio
+async def test_collections_limit_env_variable(app_client, txn_client, load_test_data):
+    limit = "5"
+    os.environ["STAC_ITEM_LIMIT"] = limit
+    item = load_test_data("test_collection.json")
+
+    for i in range(10):
+        test_collection = item.copy()
+        test_collection["id"] = f"test-collection-env-{i}"
+        test_collection["title"] = f"Test Collection Env {i}"
+        await create_collection(txn_client, test_collection)
+
+    resp = await app_client.get("/collections")
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert int(limit) == len(resp_json["collections"])
+
+
+@pytest.mark.asyncio
+async def test_search_collection_limit_env_variable(
+    app_client, txn_client, load_test_data
+):
+    limit = "5"
+    os.environ["STAC_ITEM_LIMIT"] = limit
+
+    test_collection = load_test_data("test_collection.json")
+    test_collection_id = "test-collection-search-limit"
+    test_collection["id"] = test_collection_id
+    await create_collection(txn_client, test_collection)
+
+    item = load_test_data("test_item.json")
+    item["collection"] = test_collection_id
+
+    for i in range(10):
+        test_item = item.copy()
+        test_item["id"] = f"test-item-search-{i}"
+        await create_item(txn_client, test_item)
+
+    resp = await app_client.get("/search", params={"collections": [test_collection_id]})
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert int(limit) == len(resp_json["features"])
+
+
+@pytest.mark.asyncio
+async def test_collection_items_limit_env_variable(
+    app_client, txn_client, load_test_data
+):
+    limit = "5"
+    os.environ["STAC_ITEM_LIMIT"] = limit
+
+    test_collection = load_test_data("test_collection.json")
+    test_collection_id = "test-collection-items-limit"
+    test_collection["id"] = test_collection_id
+    await create_collection(txn_client, test_collection)
+
+    item = load_test_data("test_item.json")
+    item["collection"] = test_collection_id
+
+    for i in range(10):
+        test_item = item.copy()
+        test_item["id"] = f"test-item-collection-{i}"
+        await create_item(txn_client, test_item)
+
+    resp = await app_client.get(f"/collections/{test_collection_id}/items")
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert int(limit) == len(resp_json["features"])
