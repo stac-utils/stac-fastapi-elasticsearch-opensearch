@@ -85,6 +85,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
 - [Auth](#auth)
 - [Aggregation](#aggregation)
 - [Rate Limiting](#rate-limiting)
+- [Datetime-Based Index Management](#datetime-based-index-management)
 
 ## Documentation & Resources
 
@@ -230,9 +231,9 @@ You can customize additional settings in your `.env` file:
 > [!NOTE]
 > The variables `ES_HOST`, `ES_PORT`, `ES_USE_SSL`, `ES_VERIFY_CERTS` and `ES_TIMEOUT` apply to both Elasticsearch and OpenSearch backends, so there is no need to rename the key names to `OS_` even if you're using OpenSearch.
 
-# Datetime-Based Index Management
+## Datetime-Based Index Management
 
-## Overview
+### Overview
 
 SFEOS supports two indexing strategies for managing STAC items:
 
@@ -241,7 +242,7 @@ SFEOS supports two indexing strategies for managing STAC items:
 
 The datetime-based indexing strategy is particularly useful for large temporal datasets. When a user provides a datetime parameter in a query, the system knows exactly which index to search, providing **multiple times faster searches** and significantly **reducing database load**.
 
-## When to Use
+### When to Use
 
 **Recommended for:**
 - Systems with large collections containing millions of items
@@ -255,9 +256,9 @@ The datetime-based indexing strategy is particularly useful for large temporal d
 - Slightly longer item indexing time (automatic index management)
 - Greater management complexity
 
-## Configuration
+### Configuration
 
-### Enabling Datetime-Based Indexing
+#### Enabling Datetime-Based Indexing
 
 Enable datetime-based indexing by setting the following environment variable:
 
