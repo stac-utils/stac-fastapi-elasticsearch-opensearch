@@ -212,8 +212,8 @@ def test_commands(
 
     commands.add(
         f"if (ctx._source{path.es_location} != {value})"
-        f"{{Debug.explain('Test failed `{path.location}` | "
-        f"{operation.json_value} != ' + ctx._source{path.es_location});}}"
+        f"{{Debug.explain('Test failed `{path.location}`"
+        f" != ' + ctx._source{path.es_location});}}"
     )
 
 
