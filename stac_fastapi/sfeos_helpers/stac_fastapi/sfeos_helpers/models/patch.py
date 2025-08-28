@@ -112,9 +112,7 @@ class ElasticPath(BaseModel):
         data["es_key"] = f"['{data['key']}']"
         data["es_nest"] = "".join([f"['{part}']" for part in data["parts"]])
         data["es_location"] = data["es_nest"] + data["es_key"]
-        data[
-            "variable_name"
-        ] = f"{data['nest'].replace('.','_').replace(':','_')}_{data['key'].replace(':','_')}"
+        data["variable_name"] = f"{data['nest'].replace('.','_').replace(':','_')}_{data['key'].replace(':','_')}"
         data["param_key"] = data["location"].translate(replacements)
 
         if "index" in data:
@@ -124,8 +122,8 @@ class ElasticPath(BaseModel):
                 else str(data["index"])
             )
 
-            data[
-                "variable_name"
-            ] = f"{data['location'].replace('.','_').replace(':','_')}_{data['index']}"
+            data["es_location"] = data["es_location"] + f"[{data['es_index']}]"
+
+            data["variable_name"] = f"{data['location'].replace('.','_').replace(':','_')}_{data['index']}"
 
         return data
