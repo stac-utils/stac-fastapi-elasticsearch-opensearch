@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+- Added default environment variable `STAC_ITEM_LIMIT` to SFEOS for result limiting of returned items and STAC collections [#419](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/419)
+
+## [v6.2.0] - 2025-08-27
+
 ### Added 
 
 - Added comprehensive index management system with dynamic selection and insertion strategies for improved performance and scalability [#405](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/405)
