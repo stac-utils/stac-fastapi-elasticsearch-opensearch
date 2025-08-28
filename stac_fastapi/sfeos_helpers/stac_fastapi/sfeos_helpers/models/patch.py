@@ -121,7 +121,7 @@ class ElasticPath(BaseModel):
             data["es_index"] = (
                 f"ctx._source{data['es_location']}.size() - {-data['index']}"
                 if data["index"] < 0
-                else data["index"]
+                else str(data["index"])
             )
 
             data[
