@@ -76,7 +76,7 @@ def merge_to_operations(data: Dict) -> List:
             nested_operations = merge_to_operations(value)
 
             for nested_operation in nested_operations:
-                nested_operation.path = f"{key}.{nested_operation.path}"
+                nested_operation.path = f"{key}/{nested_operation.path}"
                 operations.append(nested_operation)
 
         else:
