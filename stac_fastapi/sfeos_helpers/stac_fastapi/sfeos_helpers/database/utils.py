@@ -120,7 +120,7 @@ def check_commands(
             else:
                 commands.add(
                     f"if (!ctx._source{part_nest}.containsKey('{path_part}'))"
-                    f"{{Debug.explain('{path_part} in {path.nest} does not exist');}}"
+                    f"{{Debug.explain('{path_part} in {path.path} does not exist');}}"
                 )
 
             part_nest += f"['{path_part}']"
@@ -221,7 +221,7 @@ def test_commands(
 
     commands.add(
         f"if (ctx._source{path.es_path} != {value})"
-        f"{{Debug.explain('Test failed `{path.es_path}`"
+        f"{{Debug.explain('Test failed `{path.path}`"
         f" != ' + ctx._source{path.es_path});}}"
     )
 
