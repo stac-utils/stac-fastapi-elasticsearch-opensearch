@@ -3,7 +3,7 @@
 import re
 from typing import Any, Dict, Optional, Union
 
-from pydantic import BaseModel, computed_field, model_validator
+from pydantic import BaseModel, model_validator
 
 regex = re.compile(r"([^.' ]*:[^.'[ ]*)\.?")
 replacements = str.maketrans({"/": "", ".": "", ":": "", "[": "", "]": ""})
@@ -71,16 +71,23 @@ class ElasticPath(BaseModel):
 
     """
 
-    path: str
+    parts: list[str] = []
+
+    path: Optional[str] = None
+    key: Optional[Union[str, int]] = None
     nest: Optional[str] = None
-    partition: Optional[str] = None
-    key: Optional[str] = None
 
     es_path: Optional[str] = None
-    es_nest: Optional[str] = None
     es_key: Optional[str] = None
+    es_nest: Optional[str] = None
 
-    index_: Optional[int] = None
+    variable_name: Optional[str] = None
+    param_key: Optional[str] = None
+
+    class Config:
+        """Class config."""
+
+        frozen = True
 
     @model_validator(mode="before")
     @classmethod
@@ -90,77 +97,28 @@ class ElasticPath(BaseModel):
         Args:
             data (Any): input data
         """
-        data["path"] = data["path"].lstrip("/").replace("/", ".")
-        data["nest"], data["partition"], data["key"] = data["path"].rpartition(".")
+        data["parts"] = data["path"].lstrip("/").split("/")
+
+        data["key"] = data["parts"].pop(-1)
+        data["nest"] = "/".join(data["parts"])
+        data["path"] = data["nest"] + "/" + data["key"]
+
+        data["es_key"] = data["key"]
+        data["es_nest"] = "".join([f"['{part}']" for part in data["parts"]])
+        data["es_path"] = data["es_nest"] + f"['{data['es_key']}']"
 
         if data["key"].lstrip("-").isdigit() or data["key"] == "-":
-            data["index_"] = -1 if data["key"] == "-" else int(data["key"])
-            data["path"] = f"{data['nest']}[{data['index_']}]"
-            data["nest"], data["partition"], data["key"] = data["nest"].rpartition(".")
+            data["key"] = -1 if data["key"] == "-" else int(data["key"])
+            data["es_key"] = (
+                f"ctx._source{data['es_nest']}.size() - {-data['key']}"
+                if data["key"] < 0
+                else str(data["key"])
+            )
+            data["es_path"] = data["es_nest"] + f"[{data['es_key']}]"
 
-        data["es_path"] = to_es(data["path"])
-        data["es_nest"] = f".{to_es(data['nest'])}" if data["nest"] else ""
-        data["es_key"] = to_es(data["key"])
+        data[
+            "variable_name"
+        ] = f"{data['nest'].replace('/','_').replace(':','_')}_{str(data['key']).replace(':','_')}"
+        data["param_key"] = data["path"].translate(replacements)
 
         return data
-
-    @computed_field  # type: ignore[misc]
-    @property
-    def index(self) -> Union[int, str, None]:
-        """Compute location of path.
-
-        Returns:
-            str: path index
-        """
-        if self.index_ and self.index_ < 0:
-
-            return f"ctx._source.{self.location}.size() - {-self.index_}"
-
-        return self.index_
-
-    @computed_field  # type: ignore[misc]
-    @property
-    def location(self) -> str:
-        """Compute location of path.
-
-        Returns:
-            str: path location
-        """
-        return self.nest + self.partition + self.key
-
-    @computed_field  # type: ignore[misc]
-    @property
-    def es_location(self) -> str:
-        """Compute location of path.
-
-        Returns:
-            str: path location
-        """
-        if self.es_key and ":" in self.es_key:
-            return self.es_nest + self.es_key
-        return self.es_nest + self.partition + self.es_key
-
-    @computed_field  # type: ignore[misc]
-    @property
-    def variable_name(self) -> str:
-        """Variable name for scripting.
-
-        Returns:
-            str: variable name
-        """
-        if self.index is not None:
-            return f"{self.location.replace('.','_').replace(':','_')}_{self.index}"
-
-        return (
-            f"{self.nest.replace('.','_').replace(':','_')}_{self.key.replace(':','_')}"
-        )
-
-    @computed_field  # type: ignore[misc]
-    @property
-    def param_key(self) -> str:
-        """Param key for scripting.
-
-        Returns:
-            str: param key
-        """
-        return self.path.translate(replacements)
