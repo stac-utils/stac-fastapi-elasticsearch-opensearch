@@ -152,7 +152,7 @@ def remove_commands(commands: ESCommandSet, path: ElasticPath) -> None:
     """
     if isinstance(path.key, int):
         commands.add(
-            f"if ((ctx._source{path.es_nest} instanceof ArrayList"
+            f"if (ctx._source{path.es_nest} instanceof ArrayList)"
             f"{{def {path.variable_name} = ctx._source{path.es_nest}.remove({path.es_key});}} else "
         )
 
