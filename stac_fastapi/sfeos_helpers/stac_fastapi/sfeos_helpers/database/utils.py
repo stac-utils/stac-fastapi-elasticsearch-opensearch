@@ -194,7 +194,7 @@ def add_commands(
             f" else "
         )
 
-    commands.add(f"ctx._source{path.es_location} = {value};")
+    commands.add(f"ctx._source{path.es_path} = {value};")
 
 
 def test_commands(
