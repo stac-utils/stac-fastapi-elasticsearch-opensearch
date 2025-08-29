@@ -1,7 +1,7 @@
 """patch helpers."""
 
 import re
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Union
 
 from pydantic import BaseModel, model_validator
 
@@ -74,7 +74,7 @@ class ElasticPath(BaseModel):
     parts: list[str] = []
 
     path: Optional[str] = None
-    key: Optional[str] = None
+    key: Optional[Union[str, int]] = None
     nest: Optional[str] = None
 
     es_path: Optional[str] = None
@@ -114,7 +114,6 @@ class ElasticPath(BaseModel):
                 if data["key"] < 0
                 else str(data["key"])
             )
-            # data["es_key"] = f"[{data['key']}]"
             data["es_path"] = data["es_nest"] + f"[{data['es_key']}]"
 
         data[

@@ -214,7 +214,7 @@ def test_commands(
         commands.add(
             f"if (ctx._source{path.es_nest} instanceof ArrayList)"
             f"{{if (ctx._source{path.es_nest}[{path.es_key}] != {value})"
-            f"{{Debug.explain('Test failed `{path.es_path}`"
+            f"{{Debug.explain('Test failed `{path.path}`"
             f" != ' + ctx._source{path.es_path});}}"
             f"}} else "
         )
