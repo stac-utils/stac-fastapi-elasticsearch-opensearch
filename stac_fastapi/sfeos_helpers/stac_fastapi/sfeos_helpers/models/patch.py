@@ -73,15 +73,13 @@ class ElasticPath(BaseModel):
 
     parts: list[str] = []
 
+    path: Optional[str] = None
     key: Optional[str] = None
     nest: Optional[str] = None
-    location: Optional[str] = None
-    index: Optional[int] = None
 
+    es_path: Optional[str] = None
     es_key: Optional[str] = None
     es_nest: Optional[str] = None
-    es_location: Optional[str] = None
-    es_index: Optional[str] = None
 
     variable_name: Optional[str] = None
     param_key: Optional[str] = None
@@ -100,34 +98,28 @@ class ElasticPath(BaseModel):
             data (Any): input data
         """
         data["parts"] = data["path"].lstrip("/").split("/")
+
         data["key"] = data["parts"].pop(-1)
+        data["nest"] = "/".join(data["parts"])
+        data["path"] = data["nest"] + "/" + data["key"]
+
+        data["es_key"] = data["key"]
+        data["es_nest"] = "".join([f"['{part}']" for part in data["parts"]])
+        data["es_path"] = data["es_nest"] + f"['{data['es_key']}']"
 
         if data["key"].lstrip("-").isdigit() or data["key"] == "-":
-            data["index"] = -1 if data["key"] == "-" else int(data["key"])
-            data["key"] = data["parts"].pop(-1)
+            data["key"] = -1 if data["key"] == "-" else int(data["key"])
+            data["es_key"] = (
+                f"ctx._source{data['es_nest']}.size() - {-data['key']}"
+                if data["key"] < 0
+                else str(data["key"])
+            )
+            # data["es_key"] = f"[{data['key']}]"
+            data["es_path"] = data["es_nest"] + f"[{data['es_key']}]"
 
-        data["nest"] = ".".join(data["parts"])
-        data["location"] = data["nest"] + "." + data["key"]
-
-        data["es_key"] = f"['{data['key']}']"
-        data["es_nest"] = "".join([f"['{part}']" for part in data["parts"]])
-        data["es_location"] = data["es_nest"] + data["es_key"]
         data[
             "variable_name"
-        ] = f"{data['nest'].replace('.','_').replace(':','_')}_{data['key'].replace(':','_')}"
-        data["param_key"] = data["location"].translate(replacements)
-
-        if "index" in data:
-            data["es_index"] = (
-                f"ctx._source{data['es_location']}.size() - {-data['index']}"
-                if data["index"] < 0
-                else str(data["index"])
-            )
-
-            data["es_location"] = data["es_location"] + f"[{data['es_index']}]"
-
-            data[
-                "variable_name"
-            ] = f"{data['location'].replace('.','_').replace(':','_')}_{data['index']}"
+        ] = f"{data['nest'].replace('.','_').replace(':','_')}_{str(data['key']).replace(':','_')}"
+        data["param_key"] = data["path"].translate(replacements)
 
         return data
