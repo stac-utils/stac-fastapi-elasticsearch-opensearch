@@ -1,6 +1,7 @@
 """Core client."""
 
 import logging
+import os
 from datetime import datetime as datetime_type
 from datetime import timezone
 from enum import Enum
@@ -234,7 +235,7 @@ class CoreClient(AsyncBaseCoreClient):
         """
         request = kwargs["request"]
         base_url = str(request.base_url)
-        limit = int(request.query_params.get("limit", 10))
+        limit = int(request.query_params.get("limit", os.getenv("STAC_ITEM_LIMIT", 10)))
         token = request.query_params.get("token")
 
         collections, next_token = await self.database.get_all_collections(
@@ -285,7 +286,7 @@ class CoreClient(AsyncBaseCoreClient):
         collection_id: str,
         bbox: Optional[BBox] = None,
         datetime: Optional[str] = None,
-        limit: Optional[int] = 10,
+        limit: Optional[int] = None,
         token: Optional[str] = None,
         **kwargs,
     ) -> stac_types.ItemCollection:
@@ -295,7 +296,7 @@ class CoreClient(AsyncBaseCoreClient):
             collection_id (str): The identifier of the collection to read items from.
             bbox (Optional[BBox]): The bounding box to filter items by.
             datetime (Optional[str]): The datetime range to filter items by.
-            limit (int): The maximum number of items to return. The default value is 10.
+            limit (int): The maximum number of items to return.
             token (str): A token used for pagination.
             request (Request): The incoming request.
 
@@ -341,6 +342,7 @@ class CoreClient(AsyncBaseCoreClient):
 
             search = self.database.apply_bbox_filter(search=search, bbox=bbox)
 
+        limit = int(request.query_params.get("limit", os.getenv("STAC_ITEM_LIMIT", 10)))
         items, maybe_count, next_token = await self.database.execute_search(
             search=search,
             limit=limit,
@@ -393,7 +395,7 @@ class CoreClient(AsyncBaseCoreClient):
         ids: Optional[List[str]] = None,
         bbox: Optional[BBox] = None,
         datetime: Optional[str] = None,
-        limit: Optional[int] = 10,
+        limit: Optional[int] = None,
         query: Optional[str] = None,
         token: Optional[str] = None,
         fields: Optional[List[str]] = None,
@@ -426,6 +428,7 @@ class CoreClient(AsyncBaseCoreClient):
         Raises:
             HTTPException: If any error occurs while searching the catalog.
         """
+        limit = int(request.query_params.get("limit", os.getenv("STAC_ITEM_LIMIT", 10)))
         base_args = {
             "collections": collections,
             "ids": ids,
