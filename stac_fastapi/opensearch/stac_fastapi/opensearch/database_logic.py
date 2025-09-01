@@ -520,7 +520,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         """
         search_body: Dict[str, Any] = {}
         query = search.query.to_dict() if search.query else None
-
+        # print("query: ", query)
         index_param = await self.async_index_selector.select_indexes(
             collection_ids, datetime_search
         )

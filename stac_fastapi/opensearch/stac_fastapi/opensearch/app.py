@@ -159,7 +159,7 @@ def run() -> None:
             "stac_fastapi.opensearch.app:app",
             host=settings.app_host,
             port=settings.app_port,
-            log_level="info",
+            log_level="debug",
             reload=settings.reload,
         )
     except ImportError:

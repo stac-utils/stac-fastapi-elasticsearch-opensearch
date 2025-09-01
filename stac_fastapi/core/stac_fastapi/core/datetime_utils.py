@@ -35,6 +35,44 @@ def format_datetime_range(date_str: str) -> str:
     return f"{normalize(start)}/{normalize(end)}"
 
 
+# def format_datetime_range(date_str: str) -> str:
+#     """
+#     Convert a datetime range string while preserving millisecond precision.
+#     """
+# if not isinstance(date_str, str):
+#     return "../.."
+
+# # If it's already a range with "..", return as-is to preserve precision
+# if "/" in date_str and ".." in date_str:
+#     return date_str  # <-- PRESERVE original format like "../2025-07-16T00:24:19.000Z"
+
+# # Only apply normalization for closed ranges without ".."
+# if "/" not in date_str:
+#     # Single datetime - normalize with precision
+#     return normalize(date_str)
+
+# # For closed ranges (start/end without ".."), normalize both parts
+# try:
+#     start, end = date_str.split("/", 1)
+#     return f"{normalize(start)}/{normalize(end)}"
+# except Exception:
+#     return "../.."
+
+
+# def normalize(dt):
+#     dt = dt.strip()
+#     if not dt or dt == "..":
+#         return ".."
+#     dt_obj = rfc3339_str_to_datetime(dt)
+#     dt_utc = dt_obj.astimezone(timezone.utc)
+
+#     # PRESERVE MILLISECONDS
+#     if dt_obj.microsecond > 0:
+#         return dt_utc.isoformat(timespec='milliseconds').replace('+00:00', 'Z')
+#     else:
+#         return dt_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 # Borrowed from pystac - https://github.com/stac-utils/pystac/blob/f5e4cf4a29b62e9ef675d4a4dac7977b09f53c8f/pystac/utils.py#L370-L394
 def datetime_to_str(dt: datetime, timespec: str = "auto") -> str:
     """Convert a :class:`datetime.datetime` instance to an ISO8601 string in the `RFC 3339, section 5.6.

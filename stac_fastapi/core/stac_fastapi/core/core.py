@@ -439,8 +439,12 @@ class CoreClient(AsyncBaseCoreClient):
             "q": q,
         }
 
+        print("datetime:", datetime)
+
         if datetime:
             base_args["datetime"] = format_datetime_range(date_str=datetime)
+
+        print("get_search:  base_args[datetime]", base_args["datetime"])
 
         if intersects:
             base_args["intersects"] = orjson.loads(unquote_plus(intersects))
@@ -498,6 +502,8 @@ class CoreClient(AsyncBaseCoreClient):
         base_url = str(request.base_url)
 
         search = self.database.make_search()
+
+        # print("search_request: ", search_request)
 
         if search_request.ids:
             search = self.database.apply_ids_filter(
