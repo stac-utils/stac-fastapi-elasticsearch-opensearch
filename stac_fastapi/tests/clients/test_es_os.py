@@ -48,7 +48,9 @@ async def test_update_collection(
     collection_data = load_test_data("test_collection.json")
     item_data = load_test_data("test_item.json")
 
-    await txn_client.create_collection(api.Collection(**collection_data), request=MockRequest)
+    await txn_client.create_collection(
+        api.Collection(**collection_data), request=MockRequest
+    )
     await txn_client.create_item(
         collection_id=collection_data["id"],
         item=api.Item(**item_data),
@@ -57,7 +59,9 @@ async def test_update_collection(
     )
 
     collection_data["keywords"].append("new keyword")
-    await txn_client.update_collection(collection_data["id"], api.Collection(**collection_data), request=MockRequest)
+    await txn_client.update_collection(
+        collection_data["id"], api.Collection(**collection_data), request=MockRequest
+    )
 
     coll = await core_client.get_collection(collection_data["id"], request=MockRequest)
     assert "new keyword" in coll["keywords"]
@@ -84,7 +88,9 @@ async def test_update_collection_id(
     item_data = load_test_data("test_item.json")
     new_collection_id = "new-test-collection"
 
-    await txn_client.create_collection(api.Collection(**collection_data), request=MockRequest)
+    await txn_client.create_collection(
+        api.Collection(**collection_data), request=MockRequest
+    )
     await txn_client.create_item(
         collection_id=collection_data["id"],
         item=api.Item(**item_data),
@@ -196,10 +202,14 @@ async def test_get_collection_items(app_client, ctx, core_client, txn_client):
 
 @pytest.mark.asyncio
 async def test_create_item(ctx, core_client, txn_client):
-    resp = await core_client.get_item(ctx.item["id"], ctx.item["collection"], request=MockRequest)
-    assert Item(**ctx.item).model_dump(exclude={"links": ..., "properties": {"created", "updated"}}) == Item(
-        **resp
-    ).model_dump(exclude={"links": ..., "properties": {"created", "updated"}})
+    resp = await core_client.get_item(
+        ctx.item["id"], ctx.item["collection"], request=MockRequest
+    )
+    assert Item(**ctx.item).model_dump(
+        exclude={"links": ..., "properties": {"created", "updated"}}
+    ) == Item(**resp).model_dump(
+        exclude={"links": ..., "properties": {"created", "updated"}}
+    )
 
 
 @pytest.mark.asyncio
@@ -226,7 +236,9 @@ async def test_update_item(ctx, core_client, txn_client):
         request=MockRequest,
     )
 
-    updated_item = await core_client.get_item(item_id, collection_id, request=MockRequest)
+    updated_item = await core_client.get_item(
+        item_id, collection_id, request=MockRequest
+    )
     assert updated_item["properties"]["foo"] == "bar"
 
 
@@ -242,7 +254,9 @@ async def test_merge_patch_item_add(ctx, core_client, txn_client):
         request=MockRequest(headers={"content-type": "application/json"}),
     )
 
-    updated_item = await core_client.get_item(item_id, collection_id, request=MockRequest)
+    updated_item = await core_client.get_item(
+        item_id, collection_id, request=MockRequest
+    )
     assert updated_item["properties"]["foo"] == "bar"
     assert updated_item["properties"]["ext:hello"] == "world"
 
@@ -259,7 +273,9 @@ async def test_merge_patch_item_remove(ctx, core_client, txn_client):
         request=MockRequest(headers={"content-type": "application/merge-patch+json"}),
     )
 
-    updated_item = await core_client.get_item(item_id, collection_id, request=MockRequest)
+    updated_item = await core_client.get_item(
+        item_id, collection_id, request=MockRequest
+    )
     assert "gsd" not in updated_item["properties"]
     assert "proj:epsg" not in updated_item["properties"]
 
@@ -276,7 +292,9 @@ async def test_merge_patch_create_nest(ctx, core_client, txn_client):
         request=MockRequest(headers={"content-type": "application/merge-patch+json"}),
     )
 
-    updated_item = await core_client.get_item(item_id, collection_id, request=MockRequest)
+    updated_item = await core_client.get_item(
+        item_id, collection_id, request=MockRequest
+    )
     assert "new" in updated_item["properties"]
     assert "nest" in updated_item["properties"]["new"]
     assert updated_item["properties"]["new"]["nest"] == "foo"
@@ -288,8 +306,12 @@ async def test_json_patch_item_add(ctx, core_client, txn_client):
     collection_id = item["collection"]
     item_id = item["id"]
     operations = [
-        PatchAddReplaceTest.model_validate({"op": "add", "path": "/properties/foo", "value": "bar"}),
-        PatchAddReplaceTest.model_validate({"op": "add", "path": "/properties/ext:hello", "value": "world"}),
+        PatchAddReplaceTest.model_validate(
+            {"op": "add", "path": "/properties/foo", "value": "bar"}
+        ),
+        PatchAddReplaceTest.model_validate(
+            {"op": "add", "path": "/properties/ext:hello", "value": "world"}
+        ),
         PatchAddReplaceTest.model_validate(
             {
                 "op": "add",
@@ -312,11 +334,16 @@ async def test_json_patch_item_add(ctx, core_client, txn_client):
         request=MockRequest(headers={"content-type": "application/json-patch+json"}),
     )
 
-    updated_item = await core_client.get_item(item_id, collection_id, request=MockRequest)
+    updated_item = await core_client.get_item(
+        item_id, collection_id, request=MockRequest
+    )
 
     assert updated_item["properties"]["foo"] == "bar"
     assert updated_item["properties"]["ext:hello"] == "world"
-    assert len(updated_item["properties"]["eo:bands"]) == len(ctx.item["properties"]["eo:bands"]) + 1
+    assert (
+        len(updated_item["properties"]["eo:bands"])
+        == len(ctx.item["properties"]["eo:bands"]) + 1
+    )
     assert updated_item["properties"]["eo:bands"][1] == {
         "gsd": 10,
         "name": "FB",
@@ -332,8 +359,12 @@ async def test_json_patch_item_replace(ctx, core_client, txn_client):
     collection_id = item["collection"]
     item_id = item["id"]
     operations = [
-        PatchAddReplaceTest.model_validate({"op": "replace", "path": "/properties/gsd", "value": 100}),
-        PatchAddReplaceTest.model_validate({"op": "replace", "path": "/properties/proj:epsg", "value": 12345}),
+        PatchAddReplaceTest.model_validate(
+            {"op": "replace", "path": "/properties/gsd", "value": 100}
+        ),
+        PatchAddReplaceTest.model_validate(
+            {"op": "replace", "path": "/properties/proj:epsg", "value": 12345}
+        ),
         PatchAddReplaceTest.model_validate(
             {
                 "op": "replace",
@@ -356,11 +387,15 @@ async def test_json_patch_item_replace(ctx, core_client, txn_client):
         request=MockRequest(headers={"content-type": "application/json-patch+json"}),
     )
 
-    updated_item = await core_client.get_item(item_id, collection_id, request=MockRequest)
+    updated_item = await core_client.get_item(
+        item_id, collection_id, request=MockRequest
+    )
 
     assert updated_item["properties"]["gsd"] == 100
     assert updated_item["properties"]["proj:epsg"] == 12345
-    assert len(updated_item["properties"]["eo:bands"]) == len(ctx.item["properties"]["eo:bands"])
+    assert len(updated_item["properties"]["eo:bands"]) == len(
+        ctx.item["properties"]["eo:bands"]
+    )
     assert updated_item["properties"]["eo:bands"][1] == {
         "gsd": 10,
         "name": "FB",
@@ -376,8 +411,12 @@ async def test_json_patch_item_test(ctx, core_client, txn_client):
     collection_id = item["collection"]
     item_id = item["id"]
     operations = [
-        PatchAddReplaceTest.model_validate({"op": "test", "path": "/properties/gsd", "value": 15}),
-        PatchAddReplaceTest.model_validate({"op": "test", "path": "/properties/proj:epsg", "value": 32756}),
+        PatchAddReplaceTest.model_validate(
+            {"op": "test", "path": "/properties/gsd", "value": 15}
+        ),
+        PatchAddReplaceTest.model_validate(
+            {"op": "test", "path": "/properties/proj:epsg", "value": 32756}
+        ),
         PatchAddReplaceTest.model_validate(
             {
                 "op": "test",
@@ -394,11 +433,15 @@ async def test_json_patch_item_test(ctx, core_client, txn_client):
         request=MockRequest(headers={"content-type": "application/json-patch+json"}),
     )
 
-    updated_item = await core_client.get_item(item_id, collection_id, request=MockRequest)
+    updated_item = await core_client.get_item(
+        item_id, collection_id, request=MockRequest
+    )
 
     assert updated_item["properties"]["gsd"] == 15
     assert updated_item["properties"]["proj:epsg"] == 32756
-    assert updated_item["properties"]["eo:bands"][1] == item["properties"]["eo:bands"][1]
+    assert (
+        updated_item["properties"]["eo:bands"][1] == item["properties"]["eo:bands"][1]
+    )
 
 
 @pytest.mark.asyncio
@@ -407,8 +450,12 @@ async def test_json_patch_item_move(ctx, core_client, txn_client):
     collection_id = item["collection"]
     item_id = item["id"]
     operations = [
-        PatchMoveCopy.model_validate({"op": "move", "path": "/properties/foo", "from": "/properties/gsd"}),
-        PatchMoveCopy.model_validate({"op": "move", "path": "/properties/bar", "from": "/properties/proj:epsg"}),
+        PatchMoveCopy.model_validate(
+            {"op": "move", "path": "/properties/foo", "from": "/properties/gsd"}
+        ),
+        PatchMoveCopy.model_validate(
+            {"op": "move", "path": "/properties/bar", "from": "/properties/proj:epsg"}
+        ),
         PatchMoveCopy.model_validate(
             {
                 "op": "move",
@@ -425,15 +472,25 @@ async def test_json_patch_item_move(ctx, core_client, txn_client):
         request=MockRequest(headers={"content-type": "application/json-patch+json"}),
     )
 
-    updated_item = await core_client.get_item(item_id, collection_id, request=MockRequest)
+    updated_item = await core_client.get_item(
+        item_id, collection_id, request=MockRequest
+    )
 
     assert updated_item["properties"]["foo"] == 15
     assert "gsd" not in updated_item["properties"]
     assert updated_item["properties"]["bar"] == 32756
     assert "proj:epsg" not in updated_item["properties"]
-    assert len(updated_item["properties"]["eo:bands"]) == len(ctx.item["properties"]["eo:bands"])
-    assert updated_item["properties"]["eo:bands"][0] == ctx.item["properties"]["eo:bands"][1]
-    assert updated_item["properties"]["eo:bands"][1] != ctx.item["properties"]["eo:bands"][1]
+    assert len(updated_item["properties"]["eo:bands"]) == len(
+        ctx.item["properties"]["eo:bands"]
+    )
+    assert (
+        updated_item["properties"]["eo:bands"][0]
+        == ctx.item["properties"]["eo:bands"][1]
+    )
+    assert (
+        updated_item["properties"]["eo:bands"][1]
+        != ctx.item["properties"]["eo:bands"][1]
+    )
 
 
 @pytest.mark.asyncio
@@ -442,8 +499,12 @@ async def test_json_patch_item_copy(ctx, core_client, txn_client):
     collection_id = item["collection"]
     item_id = item["id"]
     operations = [
-        PatchMoveCopy.model_validate({"op": "copy", "path": "/properties/foo", "from": "/properties/gsd"}),
-        PatchMoveCopy.model_validate({"op": "copy", "path": "/properties/bar", "from": "/properties/proj:epsg"}),
+        PatchMoveCopy.model_validate(
+            {"op": "copy", "path": "/properties/foo", "from": "/properties/gsd"}
+        ),
+        PatchMoveCopy.model_validate(
+            {"op": "copy", "path": "/properties/bar", "from": "/properties/proj:epsg"}
+        ),
         PatchMoveCopy.model_validate(
             {
                 "op": "copy",
@@ -460,12 +521,19 @@ async def test_json_patch_item_copy(ctx, core_client, txn_client):
         request=MockRequest(headers={"content-type": "application/json-patch+json"}),
     )
 
-    updated_item = await core_client.get_item(item_id, collection_id, request=MockRequest)
+    updated_item = await core_client.get_item(
+        item_id, collection_id, request=MockRequest
+    )
 
     assert updated_item["properties"]["foo"] == updated_item["properties"]["gsd"]
     assert updated_item["properties"]["bar"] == updated_item["properties"]["proj:epsg"]
-    assert len(updated_item["properties"]["eo:bands"]) == len(ctx.item["properties"]["eo:bands"])
-    assert updated_item["properties"]["eo:bands"][0] == ctx.item["properties"]["eo:bands"][1]
+    assert len(updated_item["properties"]["eo:bands"]) == len(
+        ctx.item["properties"]["eo:bands"]
+    )
+    assert (
+        updated_item["properties"]["eo:bands"][0]
+        == ctx.item["properties"]["eo:bands"][1]
+    )
 
 
 @pytest.mark.asyncio
@@ -486,14 +554,20 @@ async def test_json_patch_item_remove(ctx, core_client, txn_client):
         request=MockRequest(headers={"content-type": "application/json-patch+json"}),
     )
 
-    updated_item = await core_client.get_item(item_id, collection_id, request=MockRequest)
+    updated_item = await core_client.get_item(
+        item_id, collection_id, request=MockRequest
+    )
 
     assert "gsd" not in updated_item["properties"]
     assert "proj:epsg" not in updated_item["properties"]
-    assert len(updated_item["properties"]["eo:bands"]) == len(ctx.item["properties"]["eo:bands"]) - 1
+    assert (
+        len(updated_item["properties"]["eo:bands"])
+        == len(ctx.item["properties"]["eo:bands"]) - 1
+    )
     assert (
         updated_item["properties"]["eo:bands"]
-        == ctx.item["properties"]["eo:bands"][:1] + ctx.item["properties"]["eo:bands"][2:]
+        == ctx.item["properties"]["eo:bands"][:1]
+        + ctx.item["properties"]["eo:bands"][2:]
     )
 
 
@@ -503,7 +577,9 @@ async def test_json_patch_add_with_bad_nest(ctx, core_client, txn_client):
     collection_id = item["collection"]
     item_id = item["id"]
     operations = [
-        PatchAddReplaceTest.model_validate({"op": "add", "path": "/properties/bad/nest", "value": "foo"}),
+        PatchAddReplaceTest.model_validate(
+            {"op": "add", "path": "/properties/bad/nest", "value": "foo"}
+        ),
     ]
 
     with pytest.raises(HTTPException):
@@ -512,7 +588,9 @@ async def test_json_patch_add_with_bad_nest(ctx, core_client, txn_client):
             collection_id=collection_id,
             item_id=item_id,
             patch=operations,
-            request=MockRequest(headers={"content-type": "application/json-patch+json"}),
+            request=MockRequest(
+                headers={"content-type": "application/json-patch+json"}
+            ),
         )
 
 
@@ -522,7 +600,9 @@ async def test_json_patch_item_test_wrong_value(ctx, core_client, txn_client):
     collection_id = item["collection"]
     item_id = item["id"]
     operations = [
-        PatchAddReplaceTest.model_validate({"op": "test", "path": "/properties/platform", "value": "landsat-9"}),
+        PatchAddReplaceTest.model_validate(
+            {"op": "test", "path": "/properties/platform", "value": "landsat-9"}
+        ),
     ]
 
     with pytest.raises(HTTPException):
@@ -531,17 +611,23 @@ async def test_json_patch_item_test_wrong_value(ctx, core_client, txn_client):
             collection_id=collection_id,
             item_id=item_id,
             patch=operations,
-            request=MockRequest(headers={"content-type": "application/json-patch+json"}),
+            request=MockRequest(
+                headers={"content-type": "application/json-patch+json"}
+            ),
         )
 
 
 @pytest.mark.asyncio
-async def test_json_patch_item_replace_property_does_not_exists(ctx, core_client, txn_client):
+async def test_json_patch_item_replace_property_does_not_exists(
+    ctx, core_client, txn_client
+):
     item = ctx.item
     collection_id = item["collection"]
     item_id = item["id"]
     operations = [
-        PatchAddReplaceTest.model_validate({"op": "replace", "path": "/properties/foo", "value": "landsat-9"}),
+        PatchAddReplaceTest.model_validate(
+            {"op": "replace", "path": "/properties/foo", "value": "landsat-9"}
+        ),
     ]
 
     with pytest.raises(HTTPException):
@@ -550,12 +636,16 @@ async def test_json_patch_item_replace_property_does_not_exists(ctx, core_client
             collection_id=collection_id,
             item_id=item_id,
             patch=operations,
-            request=MockRequest(headers={"content-type": "application/json-patch+json"}),
+            request=MockRequest(
+                headers={"content-type": "application/json-patch+json"}
+            ),
         )
 
 
 @pytest.mark.asyncio
-async def test_json_patch_item_remove_property_does_not_exists(ctx, core_client, txn_client):
+async def test_json_patch_item_remove_property_does_not_exists(
+    ctx, core_client, txn_client
+):
     item = ctx.item
     collection_id = item["collection"]
     item_id = item["id"]
@@ -569,17 +659,23 @@ async def test_json_patch_item_remove_property_does_not_exists(ctx, core_client,
             collection_id=collection_id,
             item_id=item_id,
             patch=operations,
-            request=MockRequest(headers={"content-type": "application/json-patch+json"}),
+            request=MockRequest(
+                headers={"content-type": "application/json-patch+json"}
+            ),
         )
 
 
 @pytest.mark.asyncio
-async def test_json_patch_item_move_property_does_not_exists(ctx, core_client, txn_client):
+async def test_json_patch_item_move_property_does_not_exists(
+    ctx, core_client, txn_client
+):
     item = ctx.item
     collection_id = item["collection"]
     item_id = item["id"]
     operations = [
-        PatchMoveCopy.model_validate({"op": "move", "path": "/properties/bar", "from": "/properties/foo"}),
+        PatchMoveCopy.model_validate(
+            {"op": "move", "path": "/properties/bar", "from": "/properties/foo"}
+        ),
     ]
 
     with pytest.raises(HTTPException):
@@ -588,17 +684,23 @@ async def test_json_patch_item_move_property_does_not_exists(ctx, core_client, t
             collection_id=collection_id,
             item_id=item_id,
             patch=operations,
-            request=MockRequest(headers={"content-type": "application/json-patch+json"}),
+            request=MockRequest(
+                headers={"content-type": "application/json-patch+json"}
+            ),
         )
 
 
 @pytest.mark.asyncio
-async def test_json_patch_item_copy_property_does_not_exists(ctx, core_client, txn_client):
+async def test_json_patch_item_copy_property_does_not_exists(
+    ctx, core_client, txn_client
+):
     item = ctx.item
     collection_id = item["collection"]
     item_id = item["id"]
     operations = [
-        PatchMoveCopy.model_validate({"op": "copy", "path": "/properties/bar", "from": "/properties/foo"}),
+        PatchMoveCopy.model_validate(
+            {"op": "copy", "path": "/properties/bar", "from": "/properties/foo"}
+        ),
     ]
 
     with pytest.raises(HTTPException):
@@ -607,7 +709,9 @@ async def test_json_patch_item_copy_property_does_not_exists(ctx, core_client, t
             collection_id=collection_id,
             item_id=item_id,
             patch=operations,
-            request=MockRequest(headers={"content-type": "application/json-patch+json"}),
+            request=MockRequest(
+                headers={"content-type": "application/json-patch+json"}
+            ),
         )
 
 
@@ -633,7 +737,9 @@ async def test_update_geometry(ctx, core_client, txn_client):
         request=MockRequest,
     )
 
-    updated_item = await core_client.get_item(item_id, collection_id, request=MockRequest)
+    updated_item = await core_client.get_item(
+        item_id, collection_id, request=MockRequest
+    )
     assert updated_item["geometry"]["coordinates"] == new_coordinates
 
 
@@ -642,14 +748,18 @@ async def test_delete_item(ctx, core_client, txn_client):
     await txn_client.delete_item(ctx.item["id"], ctx.item["collection"])
 
     with pytest.raises(NotFoundError):
-        await core_client.get_item(ctx.item["id"], ctx.item["collection"], request=MockRequest)
+        await core_client.get_item(
+            ctx.item["id"], ctx.item["collection"], request=MockRequest
+        )
 
 
 @pytest.mark.asyncio
 async def test_landing_page_no_collection_title(ctx, core_client, txn_client, app):
     ctx.collection["id"] = "new_id"
     del ctx.collection["title"]
-    await txn_client.create_collection(api.Collection(**ctx.collection), request=MockRequest)
+    await txn_client.create_collection(
+        api.Collection(**ctx.collection), request=MockRequest
+    )
 
     landing_page = await core_client.landing_page(request=MockRequest(app=app))
     for link in landing_page["links"]:
@@ -668,7 +778,9 @@ async def test_merge_patch_collection_add(ctx, core_client, txn_client):
         request=MockRequest(headers={"content-type": "application/json"}),
     )
 
-    updated_collection = await core_client.get_collection(collection_id, request=MockRequest)
+    updated_collection = await core_client.get_collection(
+        collection_id, request=MockRequest
+    )
     assert updated_collection["summaries"]["foo"] == "bar"
     assert updated_collection["summaries"]["hello"] == "world"
 
@@ -683,7 +795,9 @@ async def test_merge_patch_collection_remove(ctx, core_client, txn_client):
         request=MockRequest(headers={"content-type": "application/merge-patch+json"}),
     )
 
-    updated_collection = await core_client.get_collection(collection_id, request=MockRequest)
+    updated_collection = await core_client.get_collection(
+        collection_id, request=MockRequest
+    )
     assert "gsd" not in updated_collection["summaries"]
 
 
@@ -706,7 +820,9 @@ async def test_json_patch_collection_add(ctx, core_client, txn_client):
         request=MockRequest(headers={"content-type": "application/json-patch+json"}),
     )
 
-    updated_collection = await core_client.get_collection(collection_id, request=MockRequest)
+    updated_collection = await core_client.get_collection(
+        collection_id, request=MockRequest
+    )
 
     assert updated_collection["summaries"]["foo"] == "bar"
     assert updated_collection["summaries"]["gsd"] == [30, 100]
@@ -717,7 +833,9 @@ async def test_json_patch_collection_replace(ctx, core_client, txn_client):
     collection = ctx.collection
     collection_id = collection["id"]
     operations = [
-        PatchAddReplaceTest.model_validate({"op": "replace", "path": "/summaries/gsd", "value": [100]}),
+        PatchAddReplaceTest.model_validate(
+            {"op": "replace", "path": "/summaries/gsd", "value": [100]}
+        ),
     ]
 
     await txn_client.patch_collection(
@@ -726,7 +844,9 @@ async def test_json_patch_collection_replace(ctx, core_client, txn_client):
         request=MockRequest(headers={"content-type": "application/json-patch+json"}),
     )
 
-    updated_collection = await core_client.get_collection(collection_id, request=MockRequest)
+    updated_collection = await core_client.get_collection(
+        collection_id, request=MockRequest
+    )
 
     assert updated_collection["summaries"]["gsd"] == [100]
 
@@ -736,7 +856,9 @@ async def test_json_patch_collection_test(ctx, core_client, txn_client):
     collection = ctx.collection
     collection_id = collection["id"]
     operations = [
-        PatchAddReplaceTest.model_validate({"op": "test", "path": "/summaries/gsd", "value": [30]}),
+        PatchAddReplaceTest.model_validate(
+            {"op": "test", "path": "/summaries/gsd", "value": [30]}
+        ),
     ]
 
     await txn_client.patch_collection(
@@ -745,7 +867,9 @@ async def test_json_patch_collection_test(ctx, core_client, txn_client):
         request=MockRequest(headers={"content-type": "application/json-patch+json"}),
     )
 
-    updated_collection = await core_client.get_collection(collection_id, request=MockRequest)
+    updated_collection = await core_client.get_collection(
+        collection_id, request=MockRequest
+    )
 
     assert updated_collection["summaries"]["gsd"] == [30]
 
@@ -755,7 +879,9 @@ async def test_json_patch_collection_move(ctx, core_client, txn_client):
     collection = ctx.collection
     collection_id = collection["id"]
     operations = [
-        PatchMoveCopy.model_validate({"op": "move", "path": "/summaries/bar", "from": "/summaries/gsd"}),
+        PatchMoveCopy.model_validate(
+            {"op": "move", "path": "/summaries/bar", "from": "/summaries/gsd"}
+        ),
     ]
 
     await txn_client.patch_collection(
@@ -764,7 +890,9 @@ async def test_json_patch_collection_move(ctx, core_client, txn_client):
         request=MockRequest(headers={"content-type": "application/json-patch+json"}),
     )
 
-    updated_collection = await core_client.get_collection(collection_id, request=MockRequest)
+    updated_collection = await core_client.get_collection(
+        collection_id, request=MockRequest
+    )
 
     assert updated_collection["summaries"]["bar"] == [30]
     assert "gsd" not in updated_collection["summaries"]
@@ -775,7 +903,9 @@ async def test_json_patch_collection_copy(ctx, core_client, txn_client):
     collection = ctx.collection
     collection_id = collection["id"]
     operations = [
-        PatchMoveCopy.model_validate({"op": "copy", "path": "/summaries/foo", "from": "/summaries/gsd"}),
+        PatchMoveCopy.model_validate(
+            {"op": "copy", "path": "/summaries/foo", "from": "/summaries/gsd"}
+        ),
     ]
 
     await txn_client.patch_collection(
@@ -784,9 +914,13 @@ async def test_json_patch_collection_copy(ctx, core_client, txn_client):
         request=MockRequest(headers={"content-type": "application/json-patch+json"}),
     )
 
-    updated_collection = await core_client.get_collection(collection_id, request=MockRequest)
+    updated_collection = await core_client.get_collection(
+        collection_id, request=MockRequest
+    )
 
-    assert updated_collection["summaries"]["foo"] == updated_collection["summaries"]["gsd"]
+    assert (
+        updated_collection["summaries"]["foo"] == updated_collection["summaries"]["gsd"]
+    )
 
 
 @pytest.mark.asyncio
@@ -803,7 +937,9 @@ async def test_json_patch_collection_remove(ctx, core_client, txn_client):
         request=MockRequest(headers={"content-type": "application/json-patch+json"}),
     )
 
-    updated_collection = await core_client.get_collection(collection_id, request=MockRequest)
+    updated_collection = await core_client.get_collection(
+        collection_id, request=MockRequest
+    )
 
     assert "gsd" not in updated_collection["summaries"]
 
@@ -813,7 +949,9 @@ async def test_json_patch_collection_test_wrong_value(ctx, core_client, txn_clie
     collection = ctx.collection
     collection_id = collection["id"]
     operations = [
-        PatchAddReplaceTest.model_validate({"op": "test", "path": "/summaries/platform", "value": "landsat-9"}),
+        PatchAddReplaceTest.model_validate(
+            {"op": "test", "path": "/summaries/platform", "value": "landsat-9"}
+        ),
     ]
 
     with pytest.raises(HTTPException):
@@ -821,16 +959,22 @@ async def test_json_patch_collection_test_wrong_value(ctx, core_client, txn_clie
         await txn_client.patch_collection(
             collection_id=collection_id,
             patch=operations,
-            request=MockRequest(headers={"content-type": "application/json-patch+json"}),
+            request=MockRequest(
+                headers={"content-type": "application/json-patch+json"}
+            ),
         )
 
 
 @pytest.mark.asyncio
-async def test_json_patch_collection_replace_property_does_not_exists(ctx, core_client, txn_client):
+async def test_json_patch_collection_replace_property_does_not_exists(
+    ctx, core_client, txn_client
+):
     collection = ctx.collection
     collection_id = collection["id"]
     operations = [
-        PatchAddReplaceTest.model_validate({"op": "replace", "path": "/summaries/foo", "value": "landsat-9"}),
+        PatchAddReplaceTest.model_validate(
+            {"op": "replace", "path": "/summaries/foo", "value": "landsat-9"}
+        ),
     ]
 
     with pytest.raises(HTTPException):
@@ -838,12 +982,16 @@ async def test_json_patch_collection_replace_property_does_not_exists(ctx, core_
         await txn_client.patch_collection(
             collection_id=collection_id,
             patch=operations,
-            request=MockRequest(headers={"content-type": "application/json-patch+json"}),
+            request=MockRequest(
+                headers={"content-type": "application/json-patch+json"}
+            ),
         )
 
 
 @pytest.mark.asyncio
-async def test_json_patch_collection_remove_property_does_not_exists(ctx, core_client, txn_client):
+async def test_json_patch_collection_remove_property_does_not_exists(
+    ctx, core_client, txn_client
+):
     collection = ctx.collection
     collection_id = collection["id"]
     operations = [
@@ -855,16 +1003,22 @@ async def test_json_patch_collection_remove_property_does_not_exists(ctx, core_c
         await txn_client.patch_collection(
             collection_id=collection_id,
             patch=operations,
-            request=MockRequest(headers={"content-type": "application/json-patch+json"}),
+            request=MockRequest(
+                headers={"content-type": "application/json-patch+json"}
+            ),
         )
 
 
 @pytest.mark.asyncio
-async def test_json_patch_collection_move_property_does_not_exists(ctx, core_client, txn_client):
+async def test_json_patch_collection_move_property_does_not_exists(
+    ctx, core_client, txn_client
+):
     collection = ctx.collection
     collection_id = collection["id"]
     operations = [
-        PatchMoveCopy.model_validate({"op": "move", "path": "/summaries/bar", "from": "/summaries/foo"}),
+        PatchMoveCopy.model_validate(
+            {"op": "move", "path": "/summaries/bar", "from": "/summaries/foo"}
+        ),
     ]
 
     with pytest.raises(HTTPException):
@@ -872,16 +1026,22 @@ async def test_json_patch_collection_move_property_does_not_exists(ctx, core_cli
         await txn_client.patch_collection(
             collection_id=collection_id,
             patch=operations,
-            request=MockRequest(headers={"content-type": "application/json-patch+json"}),
+            request=MockRequest(
+                headers={"content-type": "application/json-patch+json"}
+            ),
         )
 
 
 @pytest.mark.asyncio
-async def test_json_patch_collection_copy_property_does_not_exists(ctx, core_client, txn_client):
+async def test_json_patch_collection_copy_property_does_not_exists(
+    ctx, core_client, txn_client
+):
     collection = ctx.collection
     collection_id = collection["id"]
     operations = [
-        PatchMoveCopy.model_validate({"op": "copy", "path": "/summaries/bar", "from": "/summaries/foo"}),
+        PatchMoveCopy.model_validate(
+            {"op": "copy", "path": "/summaries/bar", "from": "/summaries/foo"}
+        ),
     ]
 
     with pytest.raises(HTTPException):
@@ -889,5 +1049,7 @@ async def test_json_patch_collection_copy_property_does_not_exists(ctx, core_cli
         await txn_client.patch_collection(
             collection_id=collection_id,
             patch=operations,
-            request=MockRequest(headers={"content-type": "application/json-patch+json"}),
+            request=MockRequest(
+                headers={"content-type": "application/json-patch+json"}
+            ),
         )
