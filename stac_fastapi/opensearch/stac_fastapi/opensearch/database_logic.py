@@ -869,6 +869,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             item_id=item_id,
             operations=operations,
             base_url=base_url,
+            create_nest=True,
             refresh=refresh,
         )
 
@@ -878,6 +879,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         item_id: str,
         operations: List[PatchOperation],
         base_url: str,
+        create_nest: bool = False,
         refresh: bool = True,
     ) -> Item:
         """Database logic for json patching an item following RF6902.
@@ -912,7 +914,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             else:
                 script_operations.append(operation)
 
-        script = operations_to_script(script_operations)
+        script = operations_to_script(script_operations, create_nest=create_nest)
 
         try:
             search_response = await self.client.search(
@@ -1220,6 +1222,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             collection_id=collection_id,
             operations=operations,
             base_url=base_url,
+            create_nest=True,
             refresh=refresh,
         )
 
@@ -1228,6 +1231,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         collection_id: str,
         operations: List[PatchOperation],
         base_url: str,
+        create_nest: bool = False,
         refresh: bool = True,
     ) -> Collection:
         """Database logic for json patching a collection following RF6902.
@@ -1255,7 +1259,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             else:
                 script_operations.append(operation)
 
-        script = operations_to_script(script_operations)
+        script = operations_to_script(script_operations, create_nest=create_nest)
 
         try:
             await self.client.update(
