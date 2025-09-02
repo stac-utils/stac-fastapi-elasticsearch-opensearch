@@ -48,6 +48,7 @@ class BaseDatabaseLogic(abc.ABC):
         item_id: str,
         operations: List,
         base_url: str,
+        create_nest: bool = False,
         refresh: bool = True,
     ) -> Dict:
         """Patch a item in the database follows RF6902."""
@@ -94,6 +95,7 @@ class BaseDatabaseLogic(abc.ABC):
         collection_id: str,
         operations: List,
         base_url: str,
+        create_nest: bool = False,
         refresh: bool = True,
     ) -> Dict:
         """Patch a collection in the database follows RF6902."""
