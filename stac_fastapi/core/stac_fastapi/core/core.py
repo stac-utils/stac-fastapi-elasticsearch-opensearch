@@ -71,12 +71,16 @@ class CoreClient(AsyncBaseCoreClient):
     """
 
     database: BaseDatabaseLogic = attr.ib()
-    base_conformance_classes: List[str] = attr.ib(factory=lambda: BASE_CONFORMANCE_CLASSES)
+    base_conformance_classes: List[str] = attr.ib(
+        factory=lambda: BASE_CONFORMANCE_CLASSES
+    )
     extensions: List[ApiExtension] = attr.ib(default=attr.Factory(list))
 
     session: Session = attr.ib(default=attr.Factory(Session.create_from_env))
     item_serializer: Type[ItemSerializer] = attr.ib(default=ItemSerializer)
-    collection_serializer: Type[CollectionSerializer] = attr.ib(default=CollectionSerializer)
+    collection_serializer: Type[CollectionSerializer] = attr.ib(
+        default=CollectionSerializer
+    )
     post_request_model = attr.ib(default=BaseSearchPostRequest)
     stac_version: str = attr.ib(default=STAC_VERSION)
     landing_page_id: str = attr.ib(default="stac-fastapi")
@@ -200,7 +204,9 @@ class CoreClient(AsyncBaseCoreClient):
                 "rel": "service-desc",
                 "type": "application/vnd.oai.openapi+json;version=3.0",
                 "title": "OpenAPI service description",
-                "href": urljoin(str(request.base_url), request.app.openapi_url.lstrip("/")),
+                "href": urljoin(
+                    str(request.base_url), request.app.openapi_url.lstrip("/")
+                ),
             }
         )
 
@@ -210,7 +216,9 @@ class CoreClient(AsyncBaseCoreClient):
                 "rel": "service-doc",
                 "type": "text/html",
                 "title": "OpenAPI service documentation",
-                "href": urljoin(str(request.base_url), request.app.docs_url.lstrip("/")),
+                "href": urljoin(
+                    str(request.base_url), request.app.docs_url.lstrip("/")
+                ),
             }
         )
 
@@ -230,7 +238,9 @@ class CoreClient(AsyncBaseCoreClient):
         limit = int(request.query_params.get("limit", os.getenv("STAC_ITEM_LIMIT", 10)))
         token = request.query_params.get("token")
 
-        collections, next_token = await self.database.get_all_collections(token=token, limit=limit, request=request)
+        collections, next_token = await self.database.get_all_collections(
+            token=token, limit=limit, request=request
+        )
 
         links = [
             {"rel": Relations.root.value, "type": MimeTypes.json, "href": base_url},
@@ -248,7 +258,9 @@ class CoreClient(AsyncBaseCoreClient):
 
         return stac_types.Collections(collections=collections, links=links)
 
-    async def get_collection(self, collection_id: str, **kwargs) -> stac_types.Collection:
+    async def get_collection(
+        self, collection_id: str, **kwargs
+    ) -> stac_types.Collection:
         """Get a collection from the database by its id.
 
         Args:
@@ -301,16 +313,22 @@ class CoreClient(AsyncBaseCoreClient):
 
         base_url = str(request.base_url)
 
-        collection = await self.get_collection(collection_id=collection_id, request=request)
+        collection = await self.get_collection(
+            collection_id=collection_id, request=request
+        )
         collection_id = collection.get("id")
         if collection_id is None:
             raise HTTPException(status_code=404, detail="Collection not found")
 
         search = self.database.make_search()
-        search = self.database.apply_collections_filter(search=search, collection_ids=[collection_id])
+        search = self.database.apply_collections_filter(
+            search=search, collection_ids=[collection_id]
+        )
 
         try:
-            search, datetime_search = self.database.apply_datetime_filter(search=search, datetime=datetime)
+            search, datetime_search = self.database.apply_datetime_filter(
+                search=search, datetime=datetime
+            )
         except (ValueError, TypeError) as e:
             # Handle invalid interval formats if return_date fails
             msg = f"Invalid interval format: {datetime}, error: {e}"
@@ -334,7 +352,9 @@ class CoreClient(AsyncBaseCoreClient):
             datetime_search=datetime_search,
         )
 
-        items = [self.item_serializer.db_to_stac(item, base_url=base_url) for item in items]
+        items = [
+            self.item_serializer.db_to_stac(item, base_url=base_url) for item in items
+        ]
 
         links = await PagingLinks(request=request, next=next_token).get_links()
 
@@ -346,7 +366,9 @@ class CoreClient(AsyncBaseCoreClient):
             numMatched=maybe_count,
         )
 
-    async def get_item(self, item_id: str, collection_id: str, **kwargs) -> stac_types.Item:
+    async def get_item(
+        self, item_id: str, collection_id: str, **kwargs
+    ) -> stac_types.Item:
         """Get an item from the database based on its id and collection id.
 
         Args:
@@ -361,7 +383,9 @@ class CoreClient(AsyncBaseCoreClient):
             NotFoundError: If the item does not exist in the specified collection.
         """
         base_url = str(kwargs["request"].base_url)
-        item = await self.database.get_one_item(item_id=item_id, collection_id=collection_id)
+        item = await self.database.get_one_item(
+            item_id=item_id, collection_id=collection_id
+        )
         return self.item_serializer.db_to_stac(item, base_url)
 
     async def get_search(
@@ -423,13 +447,16 @@ class CoreClient(AsyncBaseCoreClient):
 
         if sortby:
             base_args["sortby"] = [
-                {"field": sort[1:], "direction": "desc" if sort[0] == "-" else "asc"} for sort in sortby
+                {"field": sort[1:], "direction": "desc" if sort[0] == "-" else "asc"}
+                for sort in sortby
             ]
 
         if filter_expr:
             base_args["filter_lang"] = "cql2-json"
             base_args["filter"] = orjson.loads(
-                unquote_plus(filter_expr) if filter_lang == "cql2-json" else to_cql2(parse_cql2_text(filter_expr))
+                unquote_plus(filter_expr)
+                if filter_lang == "cql2-json"
+                else to_cql2(parse_cql2_text(filter_expr))
             )
 
         if fields:
@@ -445,12 +472,16 @@ class CoreClient(AsyncBaseCoreClient):
         try:
             search_request = self.post_request_model(**base_args)
         except ValidationError as e:
-            raise HTTPException(status_code=400, detail=f"Invalid parameters provided: {e}")
+            raise HTTPException(
+                status_code=400, detail=f"Invalid parameters provided: {e}"
+            )
         resp = await self.post_search(search_request=search_request, request=request)
 
         return resp
 
-    async def post_search(self, search_request: BaseSearchPostRequest, request: Request) -> stac_types.ItemCollection:
+    async def post_search(
+        self, search_request: BaseSearchPostRequest, request: Request
+    ) -> stac_types.ItemCollection:
         """
         Perform a POST search on the catalog.
 
@@ -469,10 +500,14 @@ class CoreClient(AsyncBaseCoreClient):
         search = self.database.make_search()
 
         if search_request.ids:
-            search = self.database.apply_ids_filter(search=search, item_ids=search_request.ids)
+            search = self.database.apply_ids_filter(
+                search=search, item_ids=search_request.ids
+            )
 
         if search_request.collections:
-            search = self.database.apply_collections_filter(search=search, collection_ids=search_request.collections)
+            search = self.database.apply_collections_filter(
+                search=search, collection_ids=search_request.collections
+            )
 
         try:
             search, datetime_search = self.database.apply_datetime_filter(
@@ -492,7 +527,9 @@ class CoreClient(AsyncBaseCoreClient):
             search = self.database.apply_bbox_filter(search=search, bbox=bbox)
 
         if search_request.intersects:
-            search = self.database.apply_intersects_filter(search=search, intersects=search_request.intersects)
+            search = self.database.apply_intersects_filter(
+                search=search, intersects=search_request.intersects
+            )
 
         if search_request.query:
             for field_name, expr in search_request.query.items():
@@ -500,7 +537,9 @@ class CoreClient(AsyncBaseCoreClient):
                 for op, value in expr.items():
                     # Convert enum to string
                     operator = op.value if isinstance(op, Enum) else op
-                    search = self.database.apply_stacql_filter(search=search, op=operator, field=field, value=value)
+                    search = self.database.apply_stacql_filter(
+                        search=search, op=operator, field=field, value=value
+                    )
 
         # only cql2_json is supported here
         if hasattr(search_request, "filter_expr"):
@@ -508,14 +547,18 @@ class CoreClient(AsyncBaseCoreClient):
             try:
                 search = await self.database.apply_cql2_filter(search, cql2_filter)
             except Exception as e:
-                raise HTTPException(status_code=400, detail=f"Error with cql2_json filter: {e}")
+                raise HTTPException(
+                    status_code=400, detail=f"Error with cql2_json filter: {e}"
+                )
 
         if hasattr(search_request, "q"):
             free_text_queries = getattr(search_request, "q", None)
             try:
                 search = self.database.apply_free_text_filter(search, free_text_queries)
             except Exception as e:
-                raise HTTPException(status_code=400, detail=f"Error with free text query: {e}")
+                raise HTTPException(
+                    status_code=400, detail=f"Error with free text query: {e}"
+                )
 
         sort = None
         if search_request.sortby:
@@ -534,7 +577,11 @@ class CoreClient(AsyncBaseCoreClient):
             datetime_search=datetime_search,
         )
 
-        fields = getattr(search_request, "fields", None) if self.extension_is_enabled("FieldsExtension") else None
+        fields = (
+            getattr(search_request, "fields", None)
+            if self.extension_is_enabled("FieldsExtension")
+            else None
+        )
         include: Set[str] = fields.include if fields and fields.include else set()
         exclude: Set[str] = fields.exclude if fields and fields.exclude else set()
 
@@ -593,10 +640,15 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         # Handle FeatureCollection (bulk insert)
         if item_dict["type"] == "FeatureCollection":
-            bulk_client = BulkTransactionsClient(database=self.database, settings=self.settings)
+            bulk_client = BulkTransactionsClient(
+                database=self.database, settings=self.settings
+            )
             features = item_dict["features"]
             processed_items = [
-                bulk_client.preprocess_item(feature, base_url, BulkTransactionMethod.INSERT) for feature in features
+                bulk_client.preprocess_item(
+                    feature, base_url, BulkTransactionMethod.INSERT
+                )
+                for feature in features
             ]
             attempted = len(processed_items)
 
@@ -610,15 +662,21 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                     f"Bulk async operation encountered errors for collection {collection_id}: {errors} (attempted {attempted})"
                 )
             else:
-                logger.info(f"Bulk async operation succeeded with {success} actions for collection {collection_id}.")
+                logger.info(
+                    f"Bulk async operation succeeded with {success} actions for collection {collection_id}."
+                )
             return f"Successfully added {success} Items. {attempted - success} errors occurred."
 
         # Handle single item
-        await self.database.create_item(item_dict, base_url=base_url, exist_ok=False, **kwargs)
+        await self.database.create_item(
+            item_dict, base_url=base_url, exist_ok=False, **kwargs
+        )
         return ItemSerializer.db_to_stac(item_dict, base_url)
 
     @overrides
-    async def update_item(self, collection_id: str, item_id: str, item: Item, **kwargs) -> stac_types.Item:
+    async def update_item(
+        self, collection_id: str, item_id: str, item: Item, **kwargs
+    ) -> stac_types.Item:
         """Update an item in the collection.
 
         Args:
@@ -640,7 +698,9 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         now = datetime_type.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         item["properties"]["updated"] = now
 
-        await self.database.create_item(item, base_url=base_url, exist_ok=True, **kwargs)
+        await self.database.create_item(
+            item, base_url=base_url, exist_ok=True, **kwargs
+        )
 
         return ItemSerializer.db_to_stac(item, base_url)
 
@@ -697,7 +757,9 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         if item:
             return ItemSerializer.db_to_stac(item, base_url=base_url)
 
-        raise NotImplementedError(f"Content-Type: {content_type} and body: {patch} combination not implemented")
+        raise NotImplementedError(
+            f"Content-Type: {content_type} and body: {patch} combination not implemented"
+        )
 
     @overrides
     async def delete_item(self, item_id: str, collection_id: str, **kwargs) -> None:
@@ -710,11 +772,15 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         Returns:
             None: Returns 204 No Content on successful deletion
         """
-        await self.database.delete_item(item_id=item_id, collection_id=collection_id, **kwargs)
+        await self.database.delete_item(
+            item_id=item_id, collection_id=collection_id, **kwargs
+        )
         return None
 
     @overrides
-    async def create_collection(self, collection: Collection, **kwargs) -> stac_types.Collection:
+    async def create_collection(
+        self, collection: Collection, **kwargs
+    ) -> stac_types.Collection:
         """Create a new collection in the database.
 
         Args:
@@ -739,7 +805,9 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         )
 
     @overrides
-    async def update_collection(self, collection_id: str, collection: Collection, **kwargs) -> stac_types.Collection:
+    async def update_collection(
+        self, collection_id: str, collection: Collection, **kwargs
+    ) -> stac_types.Collection:
         """
         Update a collection.
 
@@ -764,7 +832,9 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         request = kwargs["request"]
 
         collection = self.database.collection_serializer.stac_to_db(collection, request)
-        await self.database.update_collection(collection_id=collection_id, collection=collection, **kwargs)
+        await self.database.update_collection(
+            collection_id=collection_id, collection=collection, **kwargs
+        )
 
         return CollectionSerializer.db_to_stac(
             collection,
@@ -821,7 +891,9 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 extensions=[type(ext).__name__ for ext in self.database.extensions],
             )
 
-        raise NotImplementedError(f"Content-Type: {content_type} and body: {patch} combination not implemented")
+        raise NotImplementedError(
+            f"Content-Type: {content_type} and body: {patch} combination not implemented"
+        )
 
     @overrides
     async def delete_collection(self, collection_id: str, **kwargs) -> None:
@@ -860,7 +932,9 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         """Create es engine."""
         self.client = self.settings.create_client
 
-    def preprocess_item(self, item: stac_types.Item, base_url, method: BulkTransactionMethod) -> stac_types.Item:
+    def preprocess_item(
+        self, item: stac_types.Item, base_url, method: BulkTransactionMethod
+    ) -> stac_types.Item:
         """Preprocess an item to match the data model.
 
         Args:
@@ -872,10 +946,14 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
             The preprocessed item.
         """
         exist_ok = method == BulkTransactionMethod.UPSERT
-        return self.database.bulk_sync_prep_create_item(item=item, base_url=base_url, exist_ok=exist_ok)
+        return self.database.bulk_sync_prep_create_item(
+            item=item, base_url=base_url, exist_ok=exist_ok
+        )
 
     @overrides
-    def bulk_item_insert(self, items: Items, chunk_size: Optional[int] = None, **kwargs) -> str:
+    def bulk_item_insert(
+        self, items: Items, chunk_size: Optional[int] = None, **kwargs
+    ) -> str:
         """Perform a bulk insertion of items into the database using Elasticsearch.
 
         Args:
@@ -896,7 +974,11 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         for item in items.items.values():
             try:
                 validated = Item(**item) if not isinstance(item, Item) else item
-                processed_items.append(self.preprocess_item(validated.model_dump(mode="json"), base_url, items.method))
+                processed_items.append(
+                    self.preprocess_item(
+                        validated.model_dump(mode="json"), base_url, items.method
+                    )
+                )
             except ValidationError:
                 # Immediately raise on the first invalid item (strict mode)
                 raise
