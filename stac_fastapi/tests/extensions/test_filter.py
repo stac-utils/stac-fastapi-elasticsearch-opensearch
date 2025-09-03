@@ -1,10 +1,13 @@
 import json
 import logging
 import os
+import uuid
 from os import listdir
 from os.path import isfile, join
+from typing import Callable, Dict
 
 import pytest
+from httpx import AsyncClient
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 
@@ -40,7 +43,6 @@ async def test_filter_extension_collection_link(app_client, load_test_data):
 
 @pytest.mark.asyncio
 async def test_search_filters_post(app_client, ctx):
-
     filters = []
     pwd = f"{THIS_DIR}/cql2"
     for fn in [fn for f in listdir(pwd) if isfile(fn := join(pwd, f))]:
@@ -163,7 +165,7 @@ async def test_search_filter_ext_and_get_cql2text_id(app_client, ctx):
 async def test_search_filter_ext_and_get_cql2text_cloud_cover(app_client, ctx):
     collection = ctx.item["collection"]
     cloud_cover = ctx.item["properties"]["eo:cloud_cover"]
-    filter = f"cloud_cover={cloud_cover} AND collection='{collection}'"
+    filter = f"eo:cloud_cover={cloud_cover} AND collection='{collection}'"
     resp = await app_client.get(f"/search?filter-lang=cql2-text&filter={filter}")
 
     assert resp.status_code == 200
@@ -176,7 +178,7 @@ async def test_search_filter_ext_and_get_cql2text_cloud_cover_no_results(
 ):
     collection = ctx.item["collection"]
     cloud_cover = ctx.item["properties"]["eo:cloud_cover"] + 1
-    filter = f"cloud_cover={cloud_cover} AND collection='{collection}'"
+    filter = f"eo:cloud_cover={cloud_cover} AND collection='{collection}'"
     resp = await app_client.get(f"/search?filter-lang=cql2-text&filter={filter}")
 
     assert resp.status_code == 200
@@ -481,3 +483,194 @@ async def test_search_filter_extension_isnull_get(app_client, ctx):
 
     assert resp.status_code == 200
     assert len(resp.json()["features"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_filter_extension_s_intersects_property(app_client, ctx):
+    intersecting_geom = {
+        "coordinates": [150.04, -33.14],
+        "type": "Point",
+    }
+    params = {
+        "filter": {
+            "op": "s_intersects",
+            "args": [
+                {"property": "geometry"},
+                intersecting_geom,
+            ],
+        },
+    }
+    resp = await app_client.post("/search", json=params)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["features"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_filter_extension_s_contains_property(app_client, ctx):
+    contains_geom = {
+        "coordinates": [150.04, -33.14],
+        "type": "Point",
+    }
+    params = {
+        "filter": {
+            "op": "s_contains",
+            "args": [
+                {"property": "geometry"},
+                contains_geom,
+            ],
+        },
+    }
+    resp = await app_client.post("/search", json=params)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["features"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_filter_extension_s_within_property(app_client, ctx):
+    within_geom = {
+        "coordinates": [
+            [
+                [148.5776607193635, -35.257132625788756],
+                [153.15052873427666, -35.257132625788756],
+                [153.15052873427666, -31.080816742218623],
+                [148.5776607193635, -31.080816742218623],
+                [148.5776607193635, -35.257132625788756],
+            ]
+        ],
+        "type": "Polygon",
+    }
+    params = {
+        "filter": {
+            "op": "s_within",
+            "args": [
+                {"property": "geometry"},
+                within_geom,
+            ],
+        },
+    }
+    resp = await app_client.post("/search", json=params)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["features"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_filter_extension_s_disjoint_property(app_client, ctx):
+    intersecting_geom = {
+        "coordinates": [0, 0],
+        "type": "Point",
+    }
+    params = {
+        "filter": {
+            "op": "s_disjoint",
+            "args": [
+                {"property": "geometry"},
+                intersecting_geom,
+            ],
+        },
+    }
+    resp = await app_client.post("/search", json=params)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["features"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_filter_extension_cql2text_s_intersects_property(app_client, ctx):
+    filter = 'S_INTERSECTS("geometry",POINT(150.04 -33.14))'
+    params = {
+        "filter": filter,
+        "filter_lang": "cql2-text",
+    }
+    resp = await app_client.get("/search", params=params)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["features"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_filter_extension_cql2text_s_contains_property(app_client, ctx):
+    filter = 'S_CONTAINS("geometry",POINT(150.04 -33.14))'
+    params = {
+        "filter": filter,
+        "filter_lang": "cql2-text",
+    }
+    resp = await app_client.get("/search", params=params)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["features"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_filter_extension_cql2text_s_within_property(app_client, ctx):
+    filter = 'S_WITHIN("geometry",POLYGON((148.5776607193635 -35.257132625788756, 153.15052873427666 -35.257132625788756, 153.15052873427666 -31.080816742218623, 148.5776607193635 -31.080816742218623, 148.5776607193635 -35.257132625788756)))'
+    params = {
+        "filter": filter,
+        "filter_lang": "cql2-text",
+    }
+    resp = await app_client.get("/search", params=params)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["features"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_filter_extension_cql2text_s_disjoint_property(app_client, ctx):
+    filter = 'S_DISJOINT("geometry",POINT(0 0))'
+    params = {
+        "filter": filter,
+        "filter_lang": "cql2-text",
+    }
+    resp = await app_client.get("/search", params=params)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["features"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_queryables_enum_platform(
+    app_client: AsyncClient,
+    load_test_data: Callable[[str], Dict],
+    monkeypatch: pytest.MonkeyPatch,
+):
+    # Arrange
+    # Enforce instant database refresh
+    # TODO: Is there a better way to do this?
+    monkeypatch.setenv("DATABASE_REFRESH", "true")
+
+    # Create collection
+    collection_data = load_test_data("test_collection.json")
+    collection_id = collection_data["id"] = f"enum-test-collection-{uuid.uuid4()}"
+    r = await app_client.post("/collections", json=collection_data)
+    r.raise_for_status()
+
+    # Create items with different platform values
+    NUM_ITEMS = 3
+    for i in range(1, NUM_ITEMS + 1):
+        item_data = load_test_data("test_item.json")
+        item_data["id"] = f"enum-test-item-{i}"
+        item_data["collection"] = collection_id
+        item_data["properties"]["platform"] = "landsat-8" if i % 2 else "sentinel-2"
+        r = await app_client.post(f"/collections/{collection_id}/items", json=item_data)
+        r.raise_for_status()
+
+    # Act
+    # Test queryables endpoint
+    queryables = (
+        (await app_client.get(f"/collections/{collection_data['id']}/queryables"))
+        .raise_for_status()
+        .json()
+    )
+
+    # Assert
+    # Verify distinct values (should only have 2 unique values despite 3 items)
+    properties = queryables["properties"]
+    platform_info = properties["platform"]
+    platform_values = platform_info["enum"]
+    assert set(platform_values) == {"landsat-8", "sentinel-2"}
+
+    # Clean up
+    r = await app_client.delete(f"/collections/{collection_id}")
+    r.raise_for_status()

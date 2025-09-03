@@ -21,33 +21,57 @@ nav:
   - Tips and Tricks: tips-and-tricks.md
   - API:
       - stac_fastapi.elasticsearch:
-          - app: api/stac_fastapi/elasticsearch/app.md
           - index: api/stac_fastapi/elasticsearch/index.md
+          - app: api/stac_fastapi/elasticsearch/app.md
           - config: api/stac_fastapi/elasticsearch/config.md
           - database_logic: api/stac_fastapi/elasticsearch/database_logic.md
-          - index: api/stac_fastapi/elasticsearch/index.md
           - version: api/stac_fastapi/elasticsearch/version.md
       - stac_fastapi.opensearch:
-          - app: api/stac_fastapi/opensearch/app.md
           - index: api/stac_fastapi/opensearch/index.md
+          - app: api/stac_fastapi/opensearch/app.md
           - config: api/stac_fastapi/opensearch/config.md
           - database_logic: api/stac_fastapi/opensearch/database_logic.md
-          - index: api/stac_fastapi/opensearch/index.md
           - version: api/stac_fastapi/opensearch/version.md
+      - sfeos_helpers:
+          - index: api/sfeos_helpers/index.md
+          - aggregation:
+            - module: api/sfeos_helpers/aggregation/index.md
+            - client: api/sfeos_helpers/aggregation/client.md
+            - format: api/sfeos_helpers/aggregation/format.md
+          - database:
+            - module: api/sfeos_helpers/database/index.md
+            - datetime: api/sfeos_helpers/database/datetime.md
+            - document: api/sfeos_helpers/database/document.md
+            - index: api/sfeos_helpers/database/index.md
+            - mapping: api/sfeos_helpers/database/mapping.md
+            - query: api/sfeos_helpers/database/query.md
+            - utils: api/sfeos_helpers/database/utils.md
+          - filter:
+            - module: api/sfeos_helpers/filter/index.md
+            - client: api/sfeos_helpers/filter/client.md
+            - cql2: api/sfeos_helpers/filter/cql2.md
+            - transform: api/sfeos_helpers/filter/transform.md
+          - mappings: api/sfeos_helpers/mappings.md
+          - version: api/sfeos_helpers/version.md
       - stac_fastapi.core:
           - index: api/stac_fastapi/core/index.md
           - base_database_logic: api/stac_fastapi/core/base_database_logic.md
           - base_settings: api/stac_fastapi/core/base_settings.md
+          - basic_auth: api/stac_fastapi/core/basic_auth.md
           - core: api/stac_fastapi/core/core.md
           - datetime_utils: api/stac_fastapi/core/datetime_utils.md
           - extensions:
             - module: api/stac_fastapi/core/extensions/index.md
+            - aggregation: api/stac_fastapi/core/extensions/aggregation.md
+            - fields: api/stac_fastapi/core/extensions/fields.md
             - filter: api/stac_fastapi/core/extensions/filter.md
             - query: api/stac_fastapi/core/extensions/query.md
           - models:
             - module: api/stac_fastapi/core/models/index.md
             - links: api/stac_fastapi/core/models/links.md
             - search: api/stac_fastapi/core/models/search.md
+          - rate_limit: api/stac_fastapi/core/rate_limit.md
+          - route_dependencies: api/stac_fastapi/core/route_dependencies.md
           - serializers: api/stac_fastapi/core/serializers.md
           - session: api/stac_fastapi/core/session.md
           - utilities: api/stac_fastapi/core/utilities.md

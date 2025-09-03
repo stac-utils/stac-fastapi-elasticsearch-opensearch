@@ -1,14 +1,23 @@
 {
   "id": "test-collection",
-  "stac_extensions": ["https://stac-extensions.github.io/eo/v1.0.0/schema.json"],
+  "stac_extensions": [
+    "https://stac-extensions.github.io/eo/v1.0.0/schema.json"
+  ],
   "type": "Collection",
   "description": "Landat 8 imagery radiometrically calibrated and orthorectified using gound points and Digital Elevation Model (DEM) data to correct relief displacement.",
   "stac_version": "1.0.0",
   "license": "PDDL-1.0",
   "summaries": {
-    "platform": ["landsat-8"],
-    "instruments": ["oli", "tirs"],
-    "gsd": [30]
+    "platform": [
+      "landsat-8"
+    ],
+    "instruments": [
+      "oli",
+      "tirs"
+    ],
+    "gsd": [
+      30
+    ]
   },
   "extent": {
     "spatial": {
@@ -24,7 +33,7 @@
     "temporal": {
       "interval": [
         [
-          "2013-06-01",
+          "2013-06-01T00:00:00Z",
           null
         ]
       ]
@@ -54,7 +63,7 @@
       "frequency_distribution_data_type": "numeric"
     },
     {
-      "name": "platform_frequency", 
+      "name": "platform_frequency",
       "data_type": "frequency_distribution",
       "frequency_distribution_data_type": "string"
     },
@@ -84,14 +93,14 @@
       "frequency_distribution_data_type": "string"
     },
     {
-        "name": "centroid_geohex_grid_frequency",
-        "data_type": "frequency_distribution",
-        "frequency_distribution_data_type": "string"
+      "name": "centroid_geohex_grid_frequency",
+      "data_type": "frequency_distribution",
+      "frequency_distribution_data_type": "string"
     },
     {
-        "name": "centroid_geotile_grid_frequency",
-        "data_type": "frequency_distribution",
-        "frequency_distribution_data_type": "string"
+      "name": "centroid_geotile_grid_frequency",
+      "data_type": "frequency_distribution",
+      "frequency_distribution_data_type": "string"
     },
     {
       "name": "geometry_geohash_grid_frequency",

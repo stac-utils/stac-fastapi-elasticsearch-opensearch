@@ -3,11 +3,56 @@
 This module contains functions for transforming geospatial coordinates,
 such as converting bounding boxes to polygon representations.
 """
+
+import logging
+import os
 from typing import Any, Dict, List, Optional, Set, Union
 
 from stac_fastapi.types.stac import Item
 
 MAX_LIMIT = 10000
+
+
+def get_bool_env(name: str, default: Union[bool, str] = False) -> bool:
+    """
+    Retrieve a boolean value from an environment variable.
+
+    Args:
+        name (str): The name of the environment variable.
+        default (Union[bool, str], optional): The default value to use if the variable is not set or unrecognized. Defaults to False.
+
+    Returns:
+        bool: The boolean value parsed from the environment variable.
+    """
+    true_values = ("true", "1", "yes", "y")
+    false_values = ("false", "0", "no", "n")
+
+    # Normalize the default value
+    if isinstance(default, bool):
+        default_str = "true" if default else "false"
+    elif isinstance(default, str):
+        default_str = default.lower()
+    else:
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            f"The `default` parameter must be a boolean or string, got {type(default).__name__}. "
+            f"Falling back to `False`."
+        )
+        default_str = "false"
+
+    # Retrieve and normalize the environment variable value
+    value = os.getenv(name, default_str)
+    if value.lower() in true_values:
+        return True
+    elif value.lower() in false_values:
+        return False
+    else:
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            f"Environment variable '{name}' has unrecognized value '{value}'. "
+            f"Expected one of {true_values + false_values}. Using default: {default_str}"
+        )
+        return default_str in true_values
 
 
 def bbox2polygon(b0: float, b1: float, b2: float, b3: float) -> List[List[List[float]]]:

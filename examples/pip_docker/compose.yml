@@ -1,5 +1,3 @@
-version: '3'
-
 services:
   app-elasticsearch:
     container_name: stac-fastapi-es
@@ -19,6 +17,7 @@ services:
       - ES_PORT=9200
       - ES_USE_SSL=false
       - ES_VERIFY_CERTS=false
+      - STAC_FASTAPI_LANDING_PAGE_ID=stac-fastapi-elasticsearch
     ports:
       - "8080:8080"
     volumes:

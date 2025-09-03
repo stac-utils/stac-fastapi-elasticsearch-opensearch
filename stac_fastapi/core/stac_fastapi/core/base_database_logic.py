@@ -1,7 +1,7 @@
 """Base database logic."""
 
 import abc
-from typing import Any, Dict, Iterable, Optional
+from typing import Any, Dict, Iterable, List, Optional
 
 
 class BaseDatabaseLogic(abc.ABC):
@@ -30,6 +30,31 @@ class BaseDatabaseLogic(abc.ABC):
         pass
 
     @abc.abstractmethod
+    async def merge_patch_item(
+        self,
+        collection_id: str,
+        item_id: str,
+        item: Dict,
+        base_url: str,
+        refresh: bool = True,
+    ) -> Dict:
+        """Patch a item in the database follows RF7396."""
+        pass
+
+    @abc.abstractmethod
+    async def json_patch_item(
+        self,
+        collection_id: str,
+        item_id: str,
+        operations: List,
+        base_url: str,
+        create_nest: bool = False,
+        refresh: bool = True,
+    ) -> Dict:
+        """Patch a item in the database follows RF6902."""
+        pass
+
+    @abc.abstractmethod
     async def delete_item(
         self, item_id: str, collection_id: str, refresh: bool = False
     ) -> None:
@@ -37,8 +62,43 @@ class BaseDatabaseLogic(abc.ABC):
         pass
 
     @abc.abstractmethod
+    async def get_items_mapping(self, collection_id: str) -> Dict[str, Dict[str, Any]]:
+        """Get the mapping for the items in the collection."""
+        pass
+
+    @abc.abstractmethod
+    async def get_items_unique_values(
+        self, collection_id: str, field_names: Iterable[str], *, limit: int = ...
+    ) -> Dict[str, List[str]]:
+        """Get the unique values for the given fields in the collection."""
+        pass
+
+    @abc.abstractmethod
     async def create_collection(self, collection: Dict, refresh: bool = False) -> None:
         """Create a collection in the database."""
+        pass
+
+    @abc.abstractmethod
+    async def merge_patch_collection(
+        self,
+        collection_id: str,
+        collection: Dict,
+        base_url: str,
+        refresh: bool = True,
+    ) -> Dict:
+        """Patch a collection in the database follows RF7396."""
+        pass
+
+    @abc.abstractmethod
+    async def json_patch_collection(
+        self,
+        collection_id: str,
+        operations: List,
+        base_url: str,
+        create_nest: bool = False,
+        refresh: bool = True,
+    ) -> Dict:
+        """Patch a collection in the database follows RF6902."""
         pass
 
     @abc.abstractmethod

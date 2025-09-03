@@ -4,7 +4,7 @@ FROM python:3.10-slim
 # update apt pkgs, and install build-essential for ciso8601
 RUN apt-get update && \
     apt-get -y upgrade && \
-    apt-get install -y build-essential git && \
+    apt-get -y install build-essential git && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
@@ -16,4 +16,5 @@ WORKDIR /app
 COPY . /app
 
 RUN pip install --no-cache-dir -e ./stac_fastapi/core
+RUN pip install --no-cache-dir -e ./stac_fastapi/sfeos_helpers
 RUN pip install --no-cache-dir -e ./stac_fastapi/elasticsearch[dev,server]

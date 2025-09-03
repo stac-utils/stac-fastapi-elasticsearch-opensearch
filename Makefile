@@ -3,14 +3,12 @@ APP_HOST ?= 0.0.0.0
 EXTERNAL_APP_PORT ?= 8080
 
 ES_APP_PORT ?= 8080
+OS_APP_PORT ?= 8082
+
 ES_HOST ?= docker.for.mac.localhost
 ES_PORT ?= 9200
 
-OS_APP_PORT ?= 8082
-OS_HOST ?= docker.for.mac.localhost
-OS_PORT ?= 9202
-
-run_es = docker-compose \
+run_es = docker compose \
 	run \
 	-p ${EXTERNAL_APP_PORT}:${ES_APP_PORT} \
 	-e PY_IGNORE_IMPORTMISMATCH=1 \
@@ -18,7 +16,7 @@ run_es = docker-compose \
 	-e APP_PORT=${ES_APP_PORT} \
 	app-elasticsearch
 
-run_os = docker-compose \
+run_os = docker compose \
 	run \
 	-p ${EXTERNAL_APP_PORT}:${OS_APP_PORT} \
 	-e PY_IGNORE_IMPORTMISMATCH=1 \
@@ -29,7 +27,7 @@ run_os = docker-compose \
 .PHONY: image-deploy-es
 image-deploy-es:
 	docker build -f dockerfiles/Dockerfile.dev.es -t stac-fastapi-elasticsearch:latest .
-	
+
 .PHONY: image-deploy-os
 image-deploy-os:
 	docker build -f dockerfiles/Dockerfile.dev.os -t stac-fastapi-opensearch:latest .
@@ -45,7 +43,7 @@ run-deploy-locally:
 
 .PHONY: image-dev
 image-dev:
-	docker-compose build
+	docker compose build
 
 .PHONY: docker-run-es
 docker-run-es: image-dev
@@ -66,28 +64,33 @@ docker-shell-os:
 .PHONY: test-elasticsearch
 test-elasticsearch:
 	-$(run_es) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd stac_fastapi/tests/ && pytest'
-	docker-compose down
+	docker compose down
 
 .PHONY: test-opensearch
 test-opensearch:
 	-$(run_os) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh opensearch:9202 && cd stac_fastapi/tests/ && pytest'
-	docker-compose down
+	docker compose down
+
+.PHONY: test-datetime-filtering-es
+test-datetime-filtering-es:
+	-$(run_es) /bin/bash -c 'export ENABLE_DATETIME_INDEX_FILTERING=true && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd stac_fastapi/tests/ && pytest -s --cov=stac_fastapi --cov-report=term-missing -m datetime_filtering'
+	docker compose down
+
+.PHONY: test-datetime-filtering-os
+test-datetime-filtering-os:
+	-$(run_os) /bin/bash -c 'export ENABLE_DATETIME_INDEX_FILTERING=true && ./scripts/wait-for-it-es.sh opensearch:9202 && cd stac_fastapi/tests/ && pytest -s --cov=stac_fastapi --cov-report=term-missing -m datetime_filtering'
+	docker compose down
 
 .PHONY: test
-test:
-	-$(run_es) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd stac_fastapi/tests/ && pytest'
-	docker-compose down
-
-	-$(run_os) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh opensearch:9202 && cd stac_fastapi/tests/ && pytest'
-	docker-compose down
+test: test-elasticsearch test-datetime-filtering-es test-opensearch test-datetime-filtering-os
 
 .PHONY: run-database-es
 run-database-es:
-	docker-compose run --rm elasticsearch
+	docker compose run --rm elasticsearch
 
 .PHONY: run-database-os
 run-database-os:
-	docker-compose run --rm opensearch
+	docker compose run --rm opensearch
 
 .PHONY: pybase-install
 pybase-install:
@@ -95,7 +98,8 @@ pybase-install:
 	pip install -e ./stac_fastapi/api[dev] && \
 	pip install -e ./stac_fastapi/types[dev] && \
 	pip install -e ./stac_fastapi/extensions[dev] && \
-	pip install -e ./stac_fastapi/core
+	pip install -e ./stac_fastapi/core && \
+	pip install -e ./stac_fastapi/sfeos_helpers
 
 .PHONY: install-es
 install-es: pybase-install
@@ -107,10 +111,10 @@ install-os: pybase-install
 
 .PHONY: docs-image
 docs-image:
-	docker-compose -f docker-compose.docs.yml \
+	docker compose -f compose.docs.yml \
 		build
 
 .PHONY: docs
 docs: docs-image
-	docker-compose -f docker-compose.docs.yml \
+	docker compose -f compose.docs.yml \
 		run docs

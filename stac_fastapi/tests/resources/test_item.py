@@ -1,9 +1,11 @@
 import json
+import logging
 import os
 import uuid
 from copy import deepcopy
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from random import randint
+from typing import Dict
 from urllib.parse import parse_qs, urlparse, urlsplit
 
 import ciso8601
@@ -15,7 +17,9 @@ from stac_fastapi.core.core import CoreClient
 from stac_fastapi.core.datetime_utils import datetime_to_str, now_to_rfc3339_str
 from stac_fastapi.types.core import LandingPageMixin
 
-from ..conftest import create_item, refresh_indices
+from ..conftest import create_collection, create_item, refresh_indices
+
+logger = logging.getLogger(__name__)
 
 if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
     from stac_fastapi.opensearch.database_logic import DatabaseLogic
@@ -110,8 +114,15 @@ async def test_create_uppercase_collection_with_item(
 async def test_update_item_already_exists(app_client, ctx, load_test_data):
     """Test updating an item which already exists (transactions extension)"""
     item = load_test_data("test_item.json")
+    item["id"] = str(uuid.uuid4())
     assert item["properties"]["gsd"] != 16
     item["properties"]["gsd"] = 16
+
+    response = await app_client.post(
+        f"/collections/{item['collection']}/items", json=item
+    )
+    assert response.status_code == 201
+
     await app_client.put(
         f"/collections/{item['collection']}/items/{item['id']}", json=item
     )
@@ -393,6 +404,25 @@ async def test_item_search_temporal_window_post(app_client, ctx, load_test_data)
 
 
 @pytest.mark.asyncio
+async def test_item_search_temporal_intersecting_window_post(app_client, ctx):
+    """Test POST search with two-tailed spatio-temporal query (core)"""
+    test_item = ctx.item
+
+    item_date = rfc3339_str_to_datetime(test_item["properties"]["datetime"])
+    item_date_before = item_date - timedelta(days=2)  # Changed from 10 to 2
+    item_date_after = item_date + timedelta(days=2)  # Changed from -2 to +2
+
+    params = {
+        "collections": [test_item["collection"]],
+        "intersects": test_item["geometry"],
+        "datetime": f"{datetime_to_str(item_date_before)}/{datetime_to_str(item_date_after)}",
+    }
+    resp = await app_client.post("/search", json=params)
+    resp_json = resp.json()
+    assert resp_json["features"][0]["id"] == test_item["id"]
+
+
+@pytest.mark.asyncio
 async def test_item_search_temporal_open_window(app_client, ctx):
     """Test POST search with open spatio-temporal query (core)"""
     test_item = ctx.item
@@ -478,13 +508,10 @@ async def test_item_search_temporal_window_timezone_get(
     app_client, ctx, load_test_data
 ):
     """Test GET search with spatio-temporal query ending with Zulu and pagination(core)"""
-    tzinfo = timezone(timedelta(hours=1))
     test_item = load_test_data("test_item.json")
     item_date = rfc3339_str_to_datetime(test_item["properties"]["datetime"])
     item_date_before = item_date - timedelta(seconds=1)
-    item_date_before = item_date_before.replace(tzinfo=tzinfo)
     item_date_after = item_date + timedelta(seconds=1)
-    item_date_after = item_date_after.replace(tzinfo=tzinfo)
 
     params = {
         "collections": test_item["collection"],
@@ -924,36 +951,186 @@ async def test_search_datetime_validation_errors(app_client):
         assert resp.status_code == 400
 
 
-# this test should probably pass but doesn't - stac-pydantic
-# https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/247
+@pytest.mark.asyncio
+async def test_item_custom_links(app_client, ctx, txn_client):
+    item = ctx.item
+    item_id = "test-item-custom-links"
+    item["id"] = item_id
+    item["links"].append(
+        {
+            "href": "https://maps.example.com/wms",
+            "rel": "wms",
+            "type": "image/png",
+            "title": "RGB composite visualized through a WMS",
+            "wms:layers": ["rgb"],
+            "wms:transparent": True,
+        }
+    )
+    await create_item(txn_client, item)
 
-# @pytest.mark.asyncio
-# async def test_item_custom_links(app_client, ctx, txn_client):
-#     item = ctx.item
-#     item_id = "test-item-custom-links"
-#     item["id"] = item_id
-#     item["links"].append(
-#         {
-#             "href": "https://maps.example.com/wms",
-#             "rel": "wms",
-#             "type": "image/png",
-#             "title": "RGB composite visualized through a WMS",
-#             "wms:layers": ["rgb"],
-#             "wms:transparent": True,
-#         }
-#     )
-#     await create_item(txn_client, item)
+    resp = await app_client.get("/search", params={"id": item_id})
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    links = resp_json["features"][0]["links"]
+    for link in links:
+        if link["rel"] == "wms":
+            assert link["href"] == "https://maps.example.com/wms"
+            assert link["type"] == "image/png"
+            assert link["title"] == "RGB composite visualized through a WMS"
+            assert link["wms:layers"] == ["rgb"]
+            assert link["wms:transparent"]
+            return True
+    assert False, resp_json
 
-#     resp = await app_client.get("/search", params={"id": item_id})
-#     assert resp.status_code == 200
-#     resp_json = resp.json()
-#     links = resp_json["features"][0]["links"]
-#     for link in links:
-#         if link["rel"] == "wms":
-#             assert link["href"] == "https://maps.example.com/wms"
-#             assert link["type"] == "image/png"
-#             assert link["title"] == "RGB composite visualized through a WMS"
-#             assert link["wms:layers"] == ["rgb"]
-#             assert link["wms:transparent"]
-#             return True
-#     assert False, resp_json
+
+async def _search_and_get_ids(
+    app_client,
+    endpoint: str = "/search",
+    method: str = "get",
+    params: Dict = None,
+    json: Dict = None,
+) -> set:
+    """Helper to send search request and extract feature IDs."""
+    if method == "get":
+        resp = await app_client.get(endpoint, params=params)
+    else:
+        resp = await app_client.post(endpoint, json=json)
+
+    assert resp.status_code == 200, f"Search failed: {resp.text}"
+    data = resp.json()
+    return {f["id"] for f in data.get("features", [])}
+
+
+@pytest.mark.asyncio
+async def test_search_datetime_with_null_datetime(
+    app_client, txn_client, load_test_data
+):
+    if os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip()
+
+    """Test datetime filtering when properties.datetime is null or set, ensuring start_datetime and end_datetime are set when datetime is null."""
+    # Setup: Create test collection
+    test_collection = load_test_data("test_collection.json")
+    try:
+        await create_collection(txn_client, collection=test_collection)
+    except Exception as e:
+        logger.error(f"Failed to create collection: {e}")
+        pytest.fail(f"Collection creation failed: {e}")
+
+    base_item = load_test_data("test_item.json")
+    collection_id = base_item["collection"]
+
+    # Item 1: Null datetime, valid start/end datetimes
+    null_dt_item = deepcopy(base_item)
+    null_dt_item["id"] = "null-datetime-item"
+    null_dt_item["properties"]["datetime"] = None
+    null_dt_item["properties"]["start_datetime"] = "2020-01-01T00:00:00Z"
+    null_dt_item["properties"]["end_datetime"] = "2020-01-02T00:00:00Z"
+
+    # Item 2: Valid datetime, no start/end datetimes
+    valid_dt_item = deepcopy(base_item)
+    valid_dt_item["id"] = "valid-datetime-item"
+    valid_dt_item["properties"]["datetime"] = "2020-01-01T11:00:00Z"
+    valid_dt_item["properties"]["start_datetime"] = None
+    valid_dt_item["properties"]["end_datetime"] = None
+
+    # Item 3: Valid datetime outside range, valid start/end datetimes
+    range_item = deepcopy(base_item)
+    range_item["id"] = "range-item"
+    range_item["properties"]["datetime"] = "2020-01-03T00:00:00Z"
+    range_item["properties"]["start_datetime"] = "2020-01-01T00:00:00Z"
+    range_item["properties"]["end_datetime"] = "2020-01-02T00:00:00Z"
+
+    # Create valid items
+    items = [null_dt_item, valid_dt_item, range_item]
+    for item in items:
+        try:
+            await create_item(txn_client, item)
+        except Exception as e:
+            logger.error(f"Failed to create item {item['id']}: {e}")
+            pytest.fail(f"Item creation failed: {e}")
+
+    # Refresh indices once
+    try:
+        await refresh_indices(txn_client)
+    except Exception as e:
+        logger.error(f"Failed to refresh indices: {e}")
+        pytest.fail(f"Index refresh failed: {e}")
+
+    # Refresh indices once
+    try:
+        await refresh_indices(txn_client)
+    except Exception as e:
+        logger.error(f"Failed to refresh indices: {e}")
+        pytest.fail(f"Index refresh failed: {e}")
+
+    # Test 1: Exact datetime matching valid-datetime-item and null-datetime-item
+    feature_ids = await _search_and_get_ids(
+        app_client,
+        params={
+            "datetime": "2020-01-01T11:00:00Z",
+            "collections": [collection_id],
+        },
+    )
+    assert feature_ids == {
+        "valid-datetime-item",  # Matches properties__datetime
+        "null-datetime-item",  # Matches start_datetime <= datetime <= end_datetime
+    }, "Exact datetime search failed"
+
+    # Test 2: Range including valid-datetime-item, null-datetime-item, and range-item
+    feature_ids = await _search_and_get_ids(
+        app_client,
+        params={
+            "datetime": "2020-01-01T00:00:00Z/2020-01-03T00:00:00Z",
+            "collections": [collection_id],
+        },
+    )
+    assert feature_ids == {
+        "valid-datetime-item",  # Matches properties__datetime in range
+        "null-datetime-item",  # Matches start_datetime <= lte, end_datetime >= gte
+        "range-item",  # Matches properties__datetime in range
+    }, "Range search failed"
+
+    # Test 3: POST request for range matching null-datetime-item and valid-datetime-item
+    feature_ids = await _search_and_get_ids(
+        app_client,
+        method="post",
+        json={
+            "datetime": "2020-01-01T00:00:00Z/2020-01-02T00:00:00Z",
+            "collections": [collection_id],
+        },
+    )
+    assert feature_ids == {
+        "null-datetime-item",  # Matches start_datetime <= lte, end_datetime >= gte
+        "valid-datetime-item",  # Matches properties__datetime in range
+    }, "POST range search failed"
+
+    # Test 4: Exact datetime matching only range-item's datetime
+    feature_ids = await _search_and_get_ids(
+        app_client,
+        params={
+            "datetime": "2020-01-03T00:00:00Z",
+            "collections": [collection_id],
+        },
+    )
+    assert feature_ids == {
+        "range-item",  # Matches properties__datetime
+    }, "Exact datetime for range-item failed"
+
+    # Test 5: Range matching null-datetime-item but not range-item's datetime
+    feature_ids = await _search_and_get_ids(
+        app_client,
+        params={
+            "datetime": "2020-01-01T12:00:00Z/2020-01-02T12:00:00Z",
+            "collections": [collection_id],
+        },
+    )
+    assert feature_ids == {
+        "null-datetime-item",  # Overlaps: search range [12:00-01-01 to 12:00-02-01] overlaps item range [00:00-01-01 to 00:00-02-01]
+    }, "Range search excluding range-item datetime failed"
+
+    # Cleanup
+    try:
+        await txn_client.delete_collection(test_collection["id"])
+    except Exception as e:
+        logger.warning(f"Failed to delete collection: {e}")

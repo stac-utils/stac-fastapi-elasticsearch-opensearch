@@ -4,22 +4,14 @@ import uuid
 import pytest
 from stac_pydantic import api
 
-from ..conftest import MockRequest, database
+from stac_fastapi.sfeos_helpers.database import index_alias_by_collection_id
+from stac_fastapi.sfeos_helpers.mappings import (
+    COLLECTIONS_INDEX,
+    ES_COLLECTIONS_MAPPINGS,
+    ES_ITEMS_MAPPINGS,
+)
 
-if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
-    from stac_fastapi.opensearch.database_logic import (
-        COLLECTIONS_INDEX,
-        ES_COLLECTIONS_MAPPINGS,
-        ES_ITEMS_MAPPINGS,
-        index_alias_by_collection_id,
-    )
-else:
-    from stac_fastapi.elasticsearch.database_logic import (
-        COLLECTIONS_INDEX,
-        ES_COLLECTIONS_MAPPINGS,
-        ES_ITEMS_MAPPINGS,
-        index_alias_by_collection_id,
-    )
+from ..conftest import MockRequest, database
 
 
 @pytest.mark.asyncio
@@ -36,6 +28,9 @@ async def test_index_mapping_collections(ctx):
 
 @pytest.mark.asyncio
 async def test_index_mapping_items(txn_client, load_test_data):
+    if os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip()
+
     collection = load_test_data("test_collection.json")
     collection["id"] = str(uuid.uuid4())
     await txn_client.create_collection(
