@@ -313,9 +313,11 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
             )
 
         if aggregate_request.datetime:
-            search = self.database.apply_datetime_filter(
-                search=search, interval=aggregate_request.datetime
+            search, datetime_search = self.database.apply_datetime_filter(
+                search=search, datetime=aggregate_request.datetime
             )
+        else:
+            datetime_search = {"gte": None, "lte": None}
 
         if aggregate_request.bbox:
             bbox = aggregate_request.bbox
@@ -414,6 +416,7 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
                 geometry_geohash_grid_precision,
                 geometry_geotile_grid_precision,
                 datetime_frequency_interval,
+                datetime_search,
             )
         except Exception as error:
             if not isinstance(error, IndexError):

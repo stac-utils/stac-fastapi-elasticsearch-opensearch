@@ -8,6 +8,56 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+### Changed
+
+- Changed assets serialization to prevent mapping explosion while allowing asset inforamtion to be indexed. [#341](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/341)
+
+### Fixed
+
+## [v6.2.1] - 2025-09-02
+
+### Added
+
+- Added `id` field as secondary sort to sort config to ensure unique pagination tokens. [#421](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/421)
+- Added default environment variable `STAC_ITEM_LIMIT` to SFEOS for result limiting of returned items and STAC collections [#419](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/419)
+
+### Changed
+
+- Simplified Patch class and updated patch script creation including adding nest creation for merge patch [#420](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/420)
+
+## [v6.2.0] - 2025-08-27
+
+### Added 
+
+- Added comprehensive index management system with dynamic selection and insertion strategies for improved performance and scalability [#405](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/405)
+- Added `ENABLE_DATETIME_INDEX_FILTERING` environment variable to enable datetime-based index selection using collection IDs. When enabled, the system creates indexes with UUID-based names and manages them through time-based aliases. Default is `false`. [#405](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/405)
+- Added `DATETIME_INDEX_MAX_SIZE_GB` environment variable to set maximum size limit in GB for datetime-based indexes. When an index exceeds this size, a new time-partitioned index will be created. Note: add +20% to target size due to ES/OS compression. Default is `25` GB. Only applies when `ENABLE_DATETIME_INDEX_FILTERING` is enabled. [#405](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/405)
+- Added index operations system with unified interface for both Elasticsearch and OpenSearch [#405](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/405):
+  - `IndexOperations` class with common index creation and management methods
+  - UUID-based physical index naming: `{prefix}_{collection-id}_{uuid4}`
+  - Alias management: main collection alias, temporal aliases, and closed index aliases
+  - Automatic alias updates when indexes reach size limits
+- Added datetime-based index selection strategies with caching support [#405](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/405):
+  - `DatetimeBasedIndexSelector` for temporal filtering with intelligent caching
+  - `IndexCacheManager` with configurable TTL-based cache expiration (default 1 hour)
+  - `IndexAliasLoader` for alias management and cache refresh
+  - `UnfilteredIndexSelector` as fallback for returning all available indexes
+- Added index insertion strategies with automatic partitioning [#405](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/405):
+  - Simple insertion strategy (`SimpleIndexInserter`) for traditional single-index-per-collection approach
+  - Datetime-based insertion strategy (`DatetimeIndexInserter`) with time-based partitioning
+  - Automatic index size monitoring and splitting when limits exceeded
+  - Handling of chronologically early data and bulk operations
+- Added index management utilities [#405](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/405):
+  - `IndexSizeManager` for size monitoring and overflow handling with compression awareness
+  - `DatetimeIndexManager` for datetime-based index operations and validation
+  - Factory patterns (`IndexInsertionFactory`, `IndexSelectorFactory`) for strategy creation based on configuration
+
+### Changed
+
+- Added the Datetime-Based Index Management section to the Table of Contents in the readme, updating heading sizes to match the rest of the document [#418](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/418)
+
 ## [v6.1.0] - 2025-07-24
 
 ### Added
@@ -442,7 +492,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.1.0...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.2.1...main
+[v6.2.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.2.0...v6.2.1
+[v6.2.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.1.0...v6.2.0
 [v6.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.0.0...v6.1.0
 [v6.0.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v5.0.0...v6.0.0
 [v5.0.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v4.2.0...v5.0.0
