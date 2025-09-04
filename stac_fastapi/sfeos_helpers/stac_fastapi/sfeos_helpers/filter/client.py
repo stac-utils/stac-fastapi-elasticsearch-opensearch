@@ -49,13 +49,11 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
         if not collection_id:
             return queryables
 
-        properties: Dict[str, Any] = queryables["properties"]
-        queryables.update(
-            {
-                "properties": properties,
-                "additionalProperties": False,
-            }
-        )
+        properties: Dict[str, Any] = queryables["properties"].copy()
+        queryables.update({
+            "properties": properties,
+            "additionalProperties": False,
+        })
 
         mapping_data = await self.database.get_items_mapping(collection_id)
         mapping_properties = next(iter(mapping_data.values()))["mappings"]["properties"]
