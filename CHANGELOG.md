@@ -12,9 +12,15 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 
-- Changed assets serialization to prevent mapping explosion while allowing asset inforamtion to be indexed. [#341](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/341)
-
 ### Fixed
+
+
+## [v6.2.2] - 2025-09-04
+
+### Changed
+
+- Changed assets serialization to prevent mapping explosion while allowing asset information to be indexed. [#341](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/341)
+
 
 ## [v6.2.1] - 2025-09-02
 
@@ -26,6 +32,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Changed
 
 - Simplified Patch class and updated patch script creation including adding nest creation for merge patch [#420](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/420)
+
 
 ## [v6.2.0] - 2025-08-27
 
@@ -57,6 +64,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Changed
 
 - Added the Datetime-Based Index Management section to the Table of Contents in the readme, updating heading sizes to match the rest of the document [#418](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/418)
+
 
 ## [v6.1.0] - 2025-07-24
 
@@ -492,7 +500,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.2.1...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.2.2...main
+[v6.2.2]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.2.1...v6.2.2
 [v6.2.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.2.0...v6.2.1
 [v6.2.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.1.0...v6.2.0
 [v6.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.0.0...v6.1.0
