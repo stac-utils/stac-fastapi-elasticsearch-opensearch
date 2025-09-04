@@ -6,7 +6,7 @@ with open("README.md") as f:
     desc = f.read()
 
 install_requires = [
-    "stac-fastapi.core==6.2.1",
+    "stac-fastapi.core==6.2.2",
 ]
 
 setup(
