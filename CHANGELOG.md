@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- Added missing relations in pagination for collections/{collection_id}/items, /search, /collections/{collection_id}/items, /collections. [[#432](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/432)]
+
 ## [v6.2.1] - 2025-09-02
 
 ### Added
