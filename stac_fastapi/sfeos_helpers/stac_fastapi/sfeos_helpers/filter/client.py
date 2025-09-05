@@ -21,7 +21,6 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
     async def get_queryables(
         self, collection_id: Optional[str] = None, **kwargs
     ) -> Dict[str, Any]:
-        request: Optional[Request] = kwargs.get("request").url
         """Get the queryables available for the given collection_id.
 
         If collection_id is None, returns the intersection of all
@@ -39,9 +38,11 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
         Returns:
             Dict[str, Any]: A dictionary containing the queryables for the given collection.
         """
+        request: Optional[Request] = kwargs.get("request")
+        url_str: Optional[str] = str(request.url) if request else ""
         queryables: Dict[str, Any] = {
-            "$schema": "https://json-schema.org/draft-07/schema#",
-            "$id": f"{request!s}",
+            "$schema": "https://json-schema.org/draft-07/schema",
+            "$id": f"{url_str}",
             "type": "object",
             "title": "Queryables for STAC API",
             "description": "Queryable names for the STAC API Item Search filter.",
