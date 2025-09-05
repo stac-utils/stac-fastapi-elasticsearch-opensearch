@@ -376,7 +376,9 @@ The system uses a precise naming convention:
 - **Parameters**:
   - `limit`: Controls the number of collections returned per page
   - `token`: Used to retrieve subsequent pages of results
-- **Response Structure**: The `links` field in the response contains a `next` link with the token for the next page of results.
+- **Response Structure**: The `links` field in the response contains the following relations:
+  - `next` link with token for the next page of results.
+  - `previous` link with token for the previous page of results.
 - **Example Usage**:
   ```shell
   curl -X "GET" "http://localhost:8080/collections?limit=1&token=example_token"
