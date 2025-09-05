@@ -360,7 +360,12 @@ class CoreClient(AsyncBaseCoreClient):
             self.item_serializer.db_to_stac(item, base_url=base_url) for item in items
         ]
 
-        links = await PagingLinks(request=request, next=next_token, prev=prev_token, collection_id=collection_id).get_links()
+        links = await PagingLinks(
+            request=request,
+            next=next_token,
+            prev=prev_token,
+            collection_id=collection_id,
+        ).get_links()
 
         return stac_types.ItemCollection(
             type="FeatureCollection",
@@ -597,7 +602,9 @@ class CoreClient(AsyncBaseCoreClient):
             )
             for item in items
         ]
-        links = await PagingLinks(request=request, next=next_token, prev=prev_token).get_links()
+        links = await PagingLinks(
+            request=request, next=next_token, prev=prev_token
+        ).get_links()
 
         return stac_types.ItemCollection(
             type="FeatureCollection",
