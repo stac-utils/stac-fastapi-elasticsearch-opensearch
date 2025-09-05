@@ -20,7 +20,9 @@ async def reindex():
         await client.options(ignore_status=400).indices.create(index=new_index)
 
         reindex_resp = await client.reindex(
-            dest={"index": new_index}, source={"index": [index]}, wait_for_completion=False
+            dest={"index": new_index},
+            source={"index": [index]},
+            wait_for_completion=False,
         )
 
         task_id = reindex_resp["task"]
