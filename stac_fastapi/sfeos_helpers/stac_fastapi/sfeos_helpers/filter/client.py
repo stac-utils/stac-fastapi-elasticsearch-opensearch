@@ -39,7 +39,7 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
             Dict[str, Any]: A dictionary containing the queryables for the given collection.
         """
         request: Optional[Request] = kwargs.get("request")
-        url_str: Optional[str] = str(request.url) if request else ""
+        url_str: str = str(request.url) if request else ""
         queryables: Dict[str, Any] = {
             "$schema": "https://json-schema.org/draft-07/schema",
             "$id": f"{url_str}",
