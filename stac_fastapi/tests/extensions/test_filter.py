@@ -674,3 +674,101 @@ async def test_queryables_enum_platform(
     # Clean up
     r = await app_client.delete(f"/collections/{collection_id}")
     r.raise_for_status()
+
+
+@pytest.mark.asyncio
+async def test_search_filter_ext_or_with_must_condition(
+    app_client,
+    load_test_data,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """
+    Test that OR conditions require at least one match when combined with MUST.
+    This test will fail if minimum_should_match=1 is not set in the ES/OS query.
+    """
+
+    # Arrange
+    # Enforce instant database refresh
+    # TODO: Is there a better way to do this?
+    monkeypatch.setenv("DATABASE_REFRESH", "true")
+
+    # Arrange: Create a unique collection for this test
+    collection_data = load_test_data("test_collection.json")
+    collection_id = collection_data["id"] = f"or-test-collection-{uuid.uuid4()}"
+    r = await app_client.post("/collections", json=collection_data)
+    r.raise_for_status()
+
+    # Add three items:
+    # 1. Matches both must and should
+    # 2. Matches must but not should
+    # 3. Matches neither
+    items = [
+        {
+            "eo:cloud_cover": 0,
+            "proj:epsg": 32756,
+        },  # Should be returned when should matches
+        {
+            "eo:cloud_cover": 5,
+            "proj:epsg": 88888,
+        },  # Should NOT be returned if min_should_match=1
+        {"eo:cloud_cover": -5, "proj:epsg": 99999},  # Should not be returned at all
+    ]
+    for idx, props in enumerate(items):
+        item_data = load_test_data("test_item.json")
+        item_data["id"] = f"or-test-item-{idx}"
+        item_data["collection"] = collection_id
+        item_data["properties"]["eo:cloud_cover"] = props["eo:cloud_cover"]
+        item_data["properties"]["proj:epsg"] = props["proj:epsg"]
+        r = await app_client.post(f"/collections/{collection_id}/items", json=item_data)
+        r.raise_for_status()
+
+    # Case 1: At least one OR condition matches (should return only the first item)
+    params = {
+        "filter": {
+            "op": "and",
+            "args": [
+                {"op": ">=", "args": [{"property": "eo:cloud_cover"}, 0]},
+                {
+                    "op": "or",
+                    "args": [
+                        {
+                            "op": "<",
+                            "args": [{"property": "eo:cloud_cover"}, 1],
+                        },  # Only first item matches
+                        {
+                            "op": "=",
+                            "args": [{"property": "proj:epsg"}, 32756],
+                        },  # Only first item matches
+                    ],
+                },
+            ],
+        }
+    }
+    resp = await app_client.post("/search", json=params)
+    assert resp.status_code == 200
+    features = resp.json()["features"]
+    assert any(
+        f["properties"].get("eo:cloud_cover") == 0 for f in features
+    ), "Should return the item where at least one OR condition matches"
+    assert all(
+        f["properties"].get("eo:cloud_cover") == 0 for f in features
+    ), "Should only return the item matching the should clause"
+
+    # Case 2: No OR conditions match (should NOT return the second item if minimum_should_match=1 is set)
+    params["filter"]["args"][1]["args"][0]["args"][
+        1
+    ] = -10  # cloud_cover < -10 (false for all)
+    params["filter"]["args"][1]["args"][1]["args"][
+        1
+    ] = 12345  # proj:epsg == 12345 (false for all)
+    resp = await app_client.post("/search", json=params)
+    assert resp.status_code == 200
+    features = resp.json()["features"]
+    assert len(features) == 0, (
+        "Should NOT return items that match only the must clause when no OR conditions match "
+        "(requires minimum_should_match=1)"
+    )
+
+    # Clean up
+    r = await app_client.delete(f"/collections/{collection_id}")
+    r.raise_for_status()
