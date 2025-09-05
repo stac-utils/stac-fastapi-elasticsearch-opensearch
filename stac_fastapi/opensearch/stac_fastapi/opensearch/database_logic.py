@@ -154,7 +154,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     async def get_all_collections(
         self, token: Optional[str], limit: int, request: Request
-    ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    ) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[str]]:
         """
         Retrieve a list of all collections from Opensearch, supporting pagination.
 
@@ -167,12 +167,16 @@ class DatabaseLogic(BaseDatabaseLogic):
         """
         search_body = {
             "sort": [{"id": {"order": "asc"}}],
-            "size": limit,
+            "size": limit + 1,
         }
 
-        # Only add search_after to the query if token is not None and not empty
+        search_after = None
         if token:
-            search_after = [token]
+            try:
+                search_after = orjson.loads(urlsafe_b64decode(token))
+            except (ValueError, TypeError, orjson.JSONDecodeError):
+                search_after = [token]
+        if search_after:
             search_body["search_after"] = search_after
 
         response = await self.client.search(
@@ -181,6 +185,9 @@ class DatabaseLogic(BaseDatabaseLogic):
         )
 
         hits = response["hits"]["hits"]
+        has_more = len(hits) > limit
+        if has_more:
+            hits = hits[:limit]
         collections = [
             self.collection_serializer.db_to_stac(
                 collection=hit["_source"], request=request, extensions=self.extensions
@@ -189,13 +196,21 @@ class DatabaseLogic(BaseDatabaseLogic):
         ]
 
         next_token = None
-        if len(hits) == limit:
+        if has_more and hits:
             # Ensure we have a valid sort value for next_token
             next_token_values = hits[-1].get("sort")
             if next_token_values:
-                next_token = next_token_values[0]
+                next_token = urlsafe_b64encode(orjson.dumps(next_token_values)).decode()
 
-        return collections, next_token
+        prev_token = None
+        if token and hits:
+            first_token_values = hits[0].get("sort")
+            if first_token_values:
+                prev_token = urlsafe_b64encode(
+                    orjson.dumps(first_token_values)
+                ).decode()
+
+        return collections, next_token, prev_token
 
     async def get_one_item(self, collection_id: str, item_id: str) -> Dict:
         """Retrieve a single item from the database.
@@ -495,7 +510,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         collection_ids: Optional[List[str]],
         datetime_search: Dict[str, Optional[str]],
         ignore_unavailable: bool = True,
-    ) -> Tuple[Iterable[Dict[str, Any]], Optional[int], Optional[str]]:
+    ) -> Tuple[Iterable[Dict[str, Any]], Optional[int], Optional[str], Optional[str]]:
         """Execute a search query with limit and other optional parameters.
 
         Args:
@@ -514,6 +529,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 - The total number of results (if the count could be computed), or None if the count could not be
                 computed.
                 - The token to be used to retrieve the next set of results, or None if there are no more results.
+                - The token to be used to retrieve the previous set of results, or None if this is the first page.
 
         Raises:
             NotFoundError: If the collections specified in `collection_ids` do not exist.
@@ -570,9 +586,14 @@ class DatabaseLogic(BaseDatabaseLogic):
         items = (hit["_source"] for hit in hits[:limit])
 
         next_token = None
+        prev_token = None
         if len(hits) > limit and limit < max_result_window:
             if hits and (sort_array := hits[limit - 1].get("sort")):
                 next_token = urlsafe_b64encode(orjson.dumps(sort_array)).decode()
+
+        if token and hits:
+            if hits and (first_item_sort := hits[0].get("sort")):
+                prev_token = urlsafe_b64encode(orjson.dumps(first_item_sort)).decode()
 
         matched = (
             es_response["hits"]["total"]["value"]
@@ -585,7 +606,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             except Exception as e:
                 logger.error(f"Count task failed: {e}")
 
-        return items, matched, next_token
+        return items, matched, next_token, prev_token
 
     """ AGGREGATE LOGIC """
 
@@ -869,7 +890,6 @@ class DatabaseLogic(BaseDatabaseLogic):
             item_id=item_id,
             operations=operations,
             base_url=base_url,
-            create_nest=True,
             refresh=refresh,
         )
 
