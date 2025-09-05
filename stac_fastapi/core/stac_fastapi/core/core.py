@@ -238,7 +238,7 @@ class CoreClient(AsyncBaseCoreClient):
         limit = int(request.query_params.get("limit", os.getenv("STAC_ITEM_LIMIT", 10)))
         token = request.query_params.get("token")
 
-        collections, next_token = await self.database.get_all_collections(
+        collections, next_token, prev_token = await self.database.get_all_collections(
             token=token, limit=limit, request=request
         )
 
@@ -255,6 +255,10 @@ class CoreClient(AsyncBaseCoreClient):
         if next_token:
             next_link = PagingLinks(next=next_token, request=request).link_next()
             links.append(next_link)
+
+        if prev_token:
+            prev_token = PagingLinks(prev=prev_token, request=request).link_previous()
+            links.append(prev_token)
 
         return stac_types.Collections(collections=collections, links=links)
 
@@ -343,7 +347,7 @@ class CoreClient(AsyncBaseCoreClient):
             search = self.database.apply_bbox_filter(search=search, bbox=bbox)
 
         limit = int(request.query_params.get("limit", os.getenv("STAC_ITEM_LIMIT", 10)))
-        items, maybe_count, next_token = await self.database.execute_search(
+        items, maybe_count, next_token, prev_token = await self.database.execute_search(
             search=search,
             limit=limit,
             sort=None,
@@ -356,7 +360,7 @@ class CoreClient(AsyncBaseCoreClient):
             self.item_serializer.db_to_stac(item, base_url=base_url) for item in items
         ]
 
-        links = await PagingLinks(request=request, next=next_token).get_links()
+        links = await PagingLinks(request=request, next=next_token, prev=prev_token, collection_id=collection_id).get_links()
 
         return stac_types.ItemCollection(
             type="FeatureCollection",
@@ -568,7 +572,7 @@ class CoreClient(AsyncBaseCoreClient):
         if search_request.limit:
             limit = search_request.limit
 
-        items, maybe_count, next_token = await self.database.execute_search(
+        items, maybe_count, next_token, prev_token = await self.database.execute_search(
             search=search,
             limit=limit,
             token=search_request.token,
@@ -593,7 +597,7 @@ class CoreClient(AsyncBaseCoreClient):
             )
             for item in items
         ]
-        links = await PagingLinks(request=request, next=next_token).get_links()
+        links = await PagingLinks(request=request, next=next_token, prev=prev_token).get_links()
 
         return stac_types.ItemCollection(
             type="FeatureCollection",

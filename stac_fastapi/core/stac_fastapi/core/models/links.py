@@ -179,6 +179,8 @@ class PagingLinks(BaseLinks):
     """Create links for paging."""
 
     next: Optional[str] = attr.ib(kw_only=True, default=None)
+    prev: Optional[str] = attr.ib(kw_only=True, default=None)
+    collection_id: Optional[str] = attr.ib(default=None)
 
     def link_next(self) -> Optional[Dict[str, Any]]:
         """Create link for next page."""
@@ -202,4 +204,49 @@ class PagingLinks(BaseLinks):
                     "body": {**self.request.postbody, "token": self.next},
                 }
 
+        return None
+
+    def link_previous(self) -> Optional[Dict[str, Any]]:
+        """Create link for previous page."""
+        if not self.prev:
+            return None
+
+        method = self.request.method
+        if method == "GET":
+            href = merge_params(self.url, {"token": self.prev})
+            link = dict(
+                rel=Relations.previous.value,
+                type=MimeTypes.json.value,
+                method=method,
+                href=href,
+            )
+            return link
+        if method == "POST":
+            return {
+                "rel": Relations.previous,
+                "type": MimeTypes.json.value,
+                "method": method,
+                "href": f"{self.request.url}",
+                "body": {**self.request.postbody, "token": self.prev},
+            }
+        return None
+
+    def link_parent(self) -> Optional[Dict[str, Any]]:
+        """Create the `parent` link if collection_id is provided."""
+        if self.collection_id:
+            return dict(
+                rel=Relations.parent.value,
+                type=MimeTypes.json.value,
+                href=urljoin(self.base_url, f"collections/{self.collection_id}"),
+            )
+        return None
+
+    def link_collection(self) -> Optional[Dict[str, Any]]:
+        """Create the `collection` link if collection_id is provided."""
+        if self.collection_id:
+            return dict(
+                rel=Relations.collection.value,
+                type=MimeTypes.json.value,
+                href=urljoin(self.base_url, f"collections/{self.collection_id}"),
+            )
         return None

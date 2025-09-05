@@ -171,7 +171,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     async def get_all_collections(
         self, token: Optional[str], limit: int, request: Request
-    ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    ) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[str]]:
         """Retrieve a list of all collections from Elasticsearch, supporting pagination.
 
         Args:
@@ -189,12 +189,17 @@ class DatabaseLogic(BaseDatabaseLogic):
             index=COLLECTIONS_INDEX,
             body={
                 "sort": [{"id": {"order": "asc"}}],
-                "size": limit,
+                "size": limit + 1,
                 **({"search_after": search_after} if search_after is not None else {}),
             },
         )
 
         hits = response["hits"]["hits"]
+
+        has_more = len(hits) > limit
+        if has_more:
+            hits = hits[:limit]
+
         collections = [
             self.collection_serializer.db_to_stac(
                 collection=hit["_source"], request=request, extensions=self.extensions
@@ -205,8 +210,12 @@ class DatabaseLogic(BaseDatabaseLogic):
         next_token = None
         if len(hits) == limit:
             next_token = hits[-1]["sort"][0]
+        
+        prev_token = None
+        if token:
+            prev_token = token
 
-        return collections, next_token
+        return collections, next_token, prev_token
 
     async def get_one_item(self, collection_id: str, item_id: str) -> Dict:
         """Retrieve a single item from the database.
@@ -506,7 +515,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         collection_ids: Optional[List[str]],
         datetime_search: Dict[str, Optional[str]],
         ignore_unavailable: bool = True,
-    ) -> Tuple[Iterable[Dict[str, Any]], Optional[int], Optional[str]]:
+    ) -> Tuple[Iterable[Dict[str, Any]], Optional[int], Optional[str], Optional[str]]:
         """Execute a search query with limit and other optional parameters.
 
         Args:
@@ -579,6 +588,10 @@ class DatabaseLogic(BaseDatabaseLogic):
             if hits and (sort_array := hits[limit - 1].get("sort")):
                 next_token = urlsafe_b64encode(orjson.dumps(sort_array)).decode()
 
+        prev_token = None
+        if token and hits:
+            if hits and (first_item_sort := hits[0].get("sort")):
+                prev_token = urlsafe_b64encode(orjson.dumps(first_item_sort)).decode()
         matched = (
             es_response["hits"]["total"]["value"]
             if es_response["hits"]["total"]["relation"] == "eq"
@@ -590,7 +603,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             except Exception as e:
                 logger.error(f"Count task failed: {e}")
 
-        return items, matched, next_token
+        return items, matched, next_token, prev_token
 
     """ AGGREGATE LOGIC """
 
