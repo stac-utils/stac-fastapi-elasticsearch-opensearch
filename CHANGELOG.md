@@ -8,11 +8,25 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+### Changed
+
+- Changed assets serialization to prevent mapping explosion while allowing asset inforamtion to be indexed. [#341](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/341)
+
+### Fixed
+
+## [v6.2.1] - 2025-09-02
+
+### Added
+
+- Added `id` field as secondary sort to sort config to ensure unique pagination tokens. [#421](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/421)
+- Added default environment variable `STAC_ITEM_LIMIT` to SFEOS for result limiting of returned items and STAC collections [#419](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/419)
+- Added the `ENV_MAX_LIMIT` environment variable to SFEOS, allowing overriding of the `MAX_LIMIT`, which controls the `?limit` parameter for returned items and STAC collections. [#434](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/434)
+
 ### Changed
 
 - Simplified Patch class and updated patch script creation including adding nest creation for merge patch [#420](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/420)
-- Added default environment variable `STAC_ITEM_LIMIT` to SFEOS for result limiting of returned items and STAC collections [#419](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/419)
-- Added the `ENV_MAX_LIMIT` environment variable to SFEOS, allowing overriding of the `MAX_LIMIT`, which controls the `?limit` parameter for returned items and STAC collections. [#434](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/434)
 
 ## [v6.2.0] - 2025-08-27
 
@@ -479,7 +493,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.2.0...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.2.1...main
+[v6.2.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.2.0...v6.2.1
 [v6.2.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.1.0...v6.2.0
 [v6.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.0.0...v6.1.0
 [v6.0.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v5.0.0...v6.0.0
