@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from enum import auto
 from types import DynamicClassAttribute
 from typing import Any, Callable, Dict, Optional
-import re
 
 from pydantic import BaseModel, model_validator
 from stac_pydantic.utils import AutoValueEnum

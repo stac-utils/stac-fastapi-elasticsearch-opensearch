@@ -4,15 +4,16 @@ This module provides functions for building and manipulating Elasticsearch/OpenS
 """
 
 from typing import Any, Dict, List, Optional
-from stac_fastapi.types.rfc3339 import rfc3339_str_to_datetime
-from stac_fastapi.core.datetime_utils import datetime_to_str
 
+from stac_fastapi.core.datetime_utils import datetime_to_str
 from stac_fastapi.sfeos_helpers.mappings import Geometry
+from stac_fastapi.types.rfc3339 import rfc3339_str_to_datetime
 
 ES_MAX_URL_LENGTH = 4096
 
 
 def is_numeric(val: str) -> bool:
+    """Check if an input string value is numeric."""
     try:
         float(val)
         return True
@@ -21,7 +22,7 @@ def is_numeric(val: str) -> bool:
 
 
 def process_ftq(q: str):
-    """Process a date, numeric, or text free-text query"""
+    """Process a date, numeric, or text free-text query."""
     q = q.strip()
     if not q:
         return
@@ -34,42 +35,6 @@ def process_ftq(q: str):
         return q
     else:
         return f"({q}* OR {q.lower()}* OR {q.upper()}*)"
-
-
-def apply_free_text_filter_shared(
-    search: Any,
-    free_text_queries: Optional[List[str]],
-    fields: Optional[List[str]] = [],
-) -> Any:
-    """Create a free text query for Elasticsearch/OpenSearch.
-
-    Args:
-        search (Any): The search object to apply the query to.
-        free_text_queries (Optional[List[str]]): A list of text strings to search for in the properties.
-        fields: Optional[List[str]]: A list of fields to return
-
-    Returns:
-        Any: The search object with the free text query applied, or the original search
-            object if no free_text_queries were provided.
-
-    Notes:
-        This function creates a query_string query that searches for the specified text strings
-        in the entire document. The query strings are joined with OR operators.
-    """
-
-    if free_text_queries:
-        processed_queries = [
-            process_ftq(q.strip()) for q in free_text_queries if q.strip()
-        ]
-
-        if processed_queries:
-            free_text_query_string = " AND ".join(processed_queries)
-
-            search = search.query(
-                "query_string", query=free_text_query_string, fields=fields
-            )
-
-    return search
 
 
 def apply_free_text_filter_shared(
@@ -87,13 +52,17 @@ def apply_free_text_filter_shared(
 
     Notes:
         This function creates a query_string query that searches for the specified text strings
-        in all properties of the documents. The query strings are joined with OR operators.
+        in the entire document. The query strings are joined with OR operators.
     """
-    if free_text_queries is not None:
-        free_text_query_string = '" OR properties.\\*:"'.join(free_text_queries)
-        search = search.query(
-            "query_string", query=f'properties.\\*:"{free_text_query_string}"'
-        )
+    if free_text_queries:
+        processed_queries = [
+            process_ftq(q.strip()) for q in free_text_queries if q.strip()
+        ]
+
+        if processed_queries:
+            free_text_query_string = " AND ".join(processed_queries)
+
+            search = search.query("query_string", query=free_text_query_string)
 
     return search
 
