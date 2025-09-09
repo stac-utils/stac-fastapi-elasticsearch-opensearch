@@ -134,7 +134,7 @@ ES_ITEMS_MAPPINGS = {
         "id": {"type": "keyword"},
         "collection": {"type": "keyword"},
         "geometry": {"type": "geo_shape"},
-        "assets": {"type": "object"},
+        "assets": {"type": "object", "enabled": False},
         "links": {"type": "object", "enabled": False},
         "properties": {
             "type": "object",
