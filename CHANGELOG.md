@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Changed
 
 - Changed assets serialization to prevent mapping explosion while allowing asset inforamtion to be indexed. [#341](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/341)
-- Blocked the /collections/{collection_id}/bulk_items endpoint when environmental variable ENABLE_DATETIME_INDEX_FILTERING is set to true.
+- Blocked the /collections/{collection_id}/bulk_items endpoint when environmental variable ENABLE_DATETIME_INDEX_FILTERING is set to true. [#438](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/438)
 
 ### Fixed
 
