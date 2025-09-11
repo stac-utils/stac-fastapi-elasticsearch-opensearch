@@ -310,7 +310,13 @@ class CoreClient(AsyncBaseCoreClient):
             Exception: If any error occurs while reading the items from the database.
         """
         request: Request = kwargs["request"]
+        # Ensure the collection exists; otherwise return 404 to match API contract
+        try:
+            await self.get_collection(collection_id=collection_id, request=request)
+        except Exception:
+            raise HTTPException(status_code=404, detail="Collection not found")
 
+        # Delegate directly to GET search for consistency
         return await self.get_search(
             request=request,
             collections=[collection_id],
@@ -481,13 +487,15 @@ class CoreClient(AsyncBaseCoreClient):
 
             search = self.database.apply_bbox_filter(search=search, bbox=bbox)
 
-        if search_request.intersects:
+        if hasattr(search_request, "intersects") and getattr(
+            search_request, "intersects"
+        ):
             search = self.database.apply_intersects_filter(
-                search=search, intersects=search_request.intersects
+                search=search, intersects=getattr(search_request, "intersects")
             )
 
-        if search_request.query:
-            for field_name, expr in search_request.query.items():
+        if hasattr(search_request, "query") and getattr(search_request, "query"):
+            for field_name, expr in getattr(search_request, "query").items():
                 field = "properties__" + field_name
                 for op, value in expr.items():
                     # Convert enum to string
@@ -516,8 +524,8 @@ class CoreClient(AsyncBaseCoreClient):
                 )
 
         sort = None
-        if search_request.sortby:
-            sort = self.database.populate_sort(search_request.sortby)
+        if hasattr(search_request, "sortby") and getattr(search_request, "sortby"):
+            sort = self.database.populate_sort(getattr(search_request, "sortby"))
 
         limit = 10
         if search_request.limit:
@@ -526,9 +534,9 @@ class CoreClient(AsyncBaseCoreClient):
         items, maybe_count, next_token = await self.database.execute_search(
             search=search,
             limit=limit,
-            token=search_request.token,
+            token=getattr(search_request, "token", None),
             sort=sort,
-            collection_ids=search_request.collections,
+            collection_ids=getattr(search_request, "collections", None),
             datetime_search=datetime_search,
         )
 
