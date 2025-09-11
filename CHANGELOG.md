@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
-- Added Fields Extension implementation for the `/collections/{collection_id}/aggregations` endpoint. 
+- Added Fields Extension implementation for the `/collections/{collection_id}/aggregations` endpoint. [#436](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/436)
 
 ### Changed
 
