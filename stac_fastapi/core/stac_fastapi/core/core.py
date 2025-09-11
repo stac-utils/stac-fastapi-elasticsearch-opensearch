@@ -390,12 +390,14 @@ class CoreClient(AsyncBaseCoreClient):
             HTTPException: If any error occurs while searching the catalog.
         """
         limit = int(request.query_params.get("limit", os.getenv("STAC_ITEM_LIMIT", 10)))
+        # Support pagination when called from item_collection by reading token from the query string
+        token_val = token or request.query_params.get("token")
         base_args = {
             "collections": collections,
             "ids": ids,
             "bbox": bbox,
             "limit": limit,
-            "token": token,
+            "token": token_val,
             "query": orjson.loads(query) if query else query,
             "q": q,
         }
@@ -531,10 +533,14 @@ class CoreClient(AsyncBaseCoreClient):
         if search_request.limit:
             limit = search_request.limit
 
+        # Use token from the request if the model doesn't define it
+        token_param = getattr(
+            search_request, "token", None
+        ) or request.query_params.get("token")
         items, maybe_count, next_token = await self.database.execute_search(
             search=search,
             limit=limit,
-            token=getattr(search_request, "token", None),
+            token=token_param,
             sort=sort,
             collection_ids=getattr(search_request, "collections", None),
             datetime_search=datetime_search,
