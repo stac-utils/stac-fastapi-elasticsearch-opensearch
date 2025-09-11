@@ -352,9 +352,29 @@ class CoreClient(AsyncBaseCoreClient):
             datetime_search=datetime_search,
         )
 
-        items = [
-            self.item_serializer.db_to_stac(item, base_url=base_url) for item in items
-        ]
+        fields = request.query_params.get("fields")
+        if fields and self.extension_is_enabled("FieldsExtension"):
+            fields = fields.split(",")
+            includes, excludes = set(), set()
+            for field in fields:
+                if field[0] == "-":
+                    excludes.add(field[1:])
+                else:
+                    includes.add(field[1:] if field[0] in "+ " else field)
+
+            items = [
+                filter_fields(
+                    self.item_serializer.db_to_stac(item, base_url=base_url),
+                    includes,
+                    excludes,
+                )
+                for item in items
+            ]
+        else:
+            items = [
+                self.item_serializer.db_to_stac(item, base_url=base_url)
+                for item in items
+            ]
 
         links = await PagingLinks(request=request, next=next_token).get_links()
 

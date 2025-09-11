@@ -32,6 +32,7 @@ from stac_fastapi.extensions.core import (
     TokenPaginationExtension,
     TransactionExtension,
 )
+from stac_fastapi.extensions.core.fields import FieldsConformanceClasses
 from stac_fastapi.extensions.core.filter import FilterConformanceClasses
 from stac_fastapi.extensions.third_party import BulkTransactionExtension
 from stac_fastapi.opensearch.config import OpensearchSettings
@@ -77,8 +78,11 @@ aggregation_extension = AggregationExtension(
 aggregation_extension.POST = EsAggregationExtensionPostRequest
 aggregation_extension.GET = EsAggregationExtensionGetRequest
 
+fields_extension = FieldsExtension()
+fields_extension.conformance_classes.append(FieldsConformanceClasses.ITEMS)
+
 search_extensions = [
-    FieldsExtension(),
+    fields_extension,
     QueryExtension(),
     SortExtension(),
     TokenPaginationExtension(),

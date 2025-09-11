@@ -229,6 +229,74 @@ async def test_app_fields_extension_return_all_properties(
 
 
 @pytest.mark.asyncio
+async def test_app_fields_extension_collection_items(app_client, ctx, txn_client):
+    resp = await app_client.get(
+        "/collections/test-collection/items",
+        params={"fields": "+properties.datetime"},
+    )
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert list(resp_json["features"][0]["properties"]) == ["datetime"]
+
+
+@pytest.mark.asyncio
+async def test_app_fields_extension_no_properties_get_collection_items(
+    app_client, ctx, txn_client
+):
+    resp = await app_client.get(
+        "/collections/test-collection/items", params={"fields": "-properties"}
+    )
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert "properties" not in resp_json["features"][0]
+
+
+@pytest.mark.asyncio
+async def test_app_fields_extension_no_null_fields_collection_items(
+    app_client, ctx, txn_client
+):
+    resp = await app_client.get("/collections/test-collection/items")
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    # check if no null fields: https://github.com/stac-utils/stac-fastapi-elasticsearch/issues/166
+    for feature in resp_json["features"]:
+        # assert "bbox" not in feature["geometry"]
+        for link in feature["links"]:
+            assert all(a not in link or link[a] is not None for a in ("title", "asset"))
+        for asset in feature["assets"]:
+            assert all(
+                a not in asset or asset[a] is not None
+                for a in ("start_datetime", "created")
+            )
+
+
+@pytest.mark.asyncio
+async def test_app_fields_extension_return_all_properties_collection_items(
+    app_client, ctx, txn_client, load_test_data
+):
+    item = load_test_data("test_item.json")
+    resp = await app_client.get(
+        "/collections/test-collection/items",
+        params={"collections": ["test-collection"], "fields": "properties"},
+    )
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    feature = resp_json["features"][0]
+    assert len(feature["properties"]) >= len(item["properties"])
+    for expected_prop, expected_value in item["properties"].items():
+        if expected_prop in (
+            "datetime",
+            "start_datetime",
+            "end_datetime",
+            "created",
+            "updated",
+        ):
+            assert feature["properties"][expected_prop][0:19] == expected_value[0:19]
+        else:
+            assert feature["properties"][expected_prop] == expected_value
+
+
+@pytest.mark.asyncio
 async def test_app_query_extension_gt(app_client, ctx):
     params = {"query": {"proj:epsg": {"gt": ctx.item["properties"]["proj:epsg"]}}}
     resp = await app_client.post("/search", json=params)
