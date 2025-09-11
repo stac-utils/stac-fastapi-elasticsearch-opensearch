@@ -5,7 +5,6 @@ import os
 from datetime import datetime as datetime_type
 from datetime import timezone
 from enum import Enum
-from types import SimpleNamespace
 from typing import List, Optional, Set, Type, Union
 from urllib.parse import unquote_plus, urljoin
 
@@ -311,71 +310,15 @@ class CoreClient(AsyncBaseCoreClient):
             Exception: If any error occurs while reading the items from the database.
         """
         request: Request = kwargs["request"]
-        token = request.query_params.get("token")
 
-        base_url = str(request.base_url)
-
-        es_sort = None
-        if sortby:
-            specs = []
-            for s in sortby:
-                field = s[1:]
-                direction = "desc" if s[0] == "-" else "asc"
-                specs.append(SimpleNamespace(field=field, direction=direction))
-            if specs:
-                es_sort = self.database.populate_sort(specs)
-
-        collection = await self.get_collection(
-            collection_id=collection_id, request=request
-        )
-        collection_id = collection.get("id")
-        if collection_id is None:
-            raise HTTPException(status_code=404, detail="Collection not found")
-
-        search = self.database.make_search()
-        search = self.database.apply_collections_filter(
-            search=search, collection_ids=[collection_id]
-        )
-
-        try:
-            search, datetime_search = self.database.apply_datetime_filter(
-                search=search, datetime=datetime
-            )
-        except (ValueError, TypeError) as e:
-            # Handle invalid interval formats if return_date fails
-            msg = f"Invalid interval format: {datetime}, error: {e}"
-            logger.error(msg)
-            raise HTTPException(status_code=400, detail=msg)
-
-        if bbox:
-            bbox = [float(x) for x in bbox]
-            if len(bbox) == 6:
-                bbox = [bbox[0], bbox[1], bbox[3], bbox[4]]
-
-            search = self.database.apply_bbox_filter(search=search, bbox=bbox)
-
-        limit = int(request.query_params.get("limit", os.getenv("STAC_ITEM_LIMIT", 10)))
-        items, maybe_count, next_token = await self.database.execute_search(
-            search=search,
+        return await self.get_search(
+            request=request,
+            collections=[collection_id],
+            bbox=bbox,
+            datetime=datetime,
             limit=limit,
-            sort=es_sort,
             token=token,
-            collection_ids=[collection_id],
-            datetime_search=datetime_search,
-        )
-
-        items = [
-            self.item_serializer.db_to_stac(item, base_url=base_url) for item in items
-        ]
-
-        links = await PagingLinks(request=request, next=next_token).get_links()
-
-        return stac_types.ItemCollection(
-            type="FeatureCollection",
-            features=items,
-            links=links,
-            numReturned=len(items),
-            numMatched=maybe_count,
+            sortby=sortby,
         )
 
     async def get_item(
