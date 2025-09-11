@@ -10,11 +10,15 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Sortby functionality to the item collection route.
+
 ### Changed
 
 - Changed assets serialization to prevent mapping explosion while allowing asset inforamtion to be indexed. [#341](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/341)
 
 ### Fixed
+
+- Fixed issue where sortby was not accepting the default sort where a + or - was not specified before the field value ie. localhost:8081/collections/{collection_id}/items?sortby=id.
 
 ## [v6.2.1] - 2025-09-02
 

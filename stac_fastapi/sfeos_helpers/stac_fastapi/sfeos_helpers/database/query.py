@@ -82,6 +82,7 @@ def populate_sort_shared(sortby: List) -> Optional[Dict[str, Dict[str, str]]]:
         directly used in search requests.
         Always includes 'id' as secondary sort to ensure unique pagination tokens.
     """
+    print("sortbx: ", sortby)
     if sortby:
         sort_config = {s.field: {"order": s.direction} for s in sortby}
         sort_config.setdefault("id", {"order": "asc"})

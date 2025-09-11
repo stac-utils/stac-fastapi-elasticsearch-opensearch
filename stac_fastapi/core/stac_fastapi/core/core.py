@@ -5,6 +5,7 @@ import os
 from datetime import datetime as datetime_type
 from datetime import timezone
 from enum import Enum
+from types import SimpleNamespace
 from typing import List, Optional, Set, Type, Union
 from urllib.parse import unquote_plus, urljoin
 
@@ -287,6 +288,7 @@ class CoreClient(AsyncBaseCoreClient):
         bbox: Optional[BBox] = None,
         datetime: Optional[str] = None,
         limit: Optional[int] = None,
+        sortby: Optional[str] = None,
         token: Optional[str] = None,
         **kwargs,
     ) -> stac_types.ItemCollection:
@@ -296,7 +298,7 @@ class CoreClient(AsyncBaseCoreClient):
             collection_id (str): The identifier of the collection to read items from.
             bbox (Optional[BBox]): The bounding box to filter items by.
             datetime (Optional[str]): The datetime range to filter items by.
-            limit (int): The maximum number of items to return.
+            sortby (Optional[str]]): Sort spec like "-datetime". Bare fields imply ascending.
             token (str): A token used for pagination.
             request (Request): The incoming request.
 
@@ -312,6 +314,16 @@ class CoreClient(AsyncBaseCoreClient):
         token = request.query_params.get("token")
 
         base_url = str(request.base_url)
+
+        es_sort = None
+        if sortby:
+            specs = []
+            for s in sortby:
+                field = s[1:]
+                direction = "desc" if s[0] == "-" else "asc"
+                specs.append(SimpleNamespace(field=field, direction=direction))
+            if specs:
+                es_sort = self.database.populate_sort(specs)
 
         collection = await self.get_collection(
             collection_id=collection_id, request=request
@@ -346,7 +358,7 @@ class CoreClient(AsyncBaseCoreClient):
         items, maybe_count, next_token = await self.database.execute_search(
             search=search,
             limit=limit,
-            sort=None,
+            sort=es_sort,
             token=token,
             collection_ids=[collection_id],
             datetime_search=datetime_search,
