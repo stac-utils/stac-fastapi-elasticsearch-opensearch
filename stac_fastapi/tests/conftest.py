@@ -25,6 +25,7 @@ from stac_fastapi.core.extensions.aggregation import (
 )
 from stac_fastapi.core.rate_limit import setup_rate_limit
 from stac_fastapi.core.utilities import get_bool_env
+from stac_fastapi.extensions.core.fields import FieldsConformanceClasses
 from stac_fastapi.sfeos_helpers.aggregation import EsAsyncBaseAggregationClient
 from stac_fastapi.sfeos_helpers.mappings import ITEMS_INDEX_PREFIX
 
@@ -361,9 +362,12 @@ def build_test_app():
     aggregation_extension.POST = EsAggregationExtensionPostRequest
     aggregation_extension.GET = EsAggregationExtensionGetRequest
 
+    fields_extension = FieldsExtension()
+    fields_extension.conformance_classes.append(FieldsConformanceClasses.ITEMS)
+
     search_extensions = [
+        fields_extension,
         SortExtension(),
-        FieldsExtension(),
         QueryExtension(),
         TokenPaginationExtension(),
         FilterExtension(),

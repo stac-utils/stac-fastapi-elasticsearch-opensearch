@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Added Fields Extension implementation for the `/collections/{collection_id}/aggregations` endpoint. 
+
 ### Changed
 
 - Changed assets serialization to prevent mapping explosion while allowing asset inforamtion to be indexed. [#341](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/341)
