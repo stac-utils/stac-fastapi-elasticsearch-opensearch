@@ -1540,3 +1540,59 @@ async def test_collection_items_limit_env_variable(
     assert resp.status_code == 200
     resp_json = resp.json()
     assert int(limit) == len(resp_json["features"])
+
+
+@pytest.mark.asyncio
+async def test_collection_items_sort_desc(app_client, txn_client, ctx):
+    """Verify GET /collections/{collectionId}/items honors descending sort on properties.datetime."""
+    first_item = ctx.item
+
+    # Create a second item in the same collection with an earlier datetime
+    second_item = dict(first_item)
+    second_item["id"] = "another-item-for-collection-sort-desc"
+    another_item_date = datetime.strptime(
+        first_item["properties"]["datetime"], "%Y-%m-%dT%H:%M:%SZ"
+    ) - timedelta(days=1)
+    second_item["properties"]["datetime"] = another_item_date.strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+
+    await create_item(txn_client, second_item)
+
+    # Descending sort: the original (newer) item should come first
+    resp = await app_client.get(
+        f"/collections/{first_item['collection']}/items",
+        params=[("sortby", "-properties.datetime")],
+    )
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert resp_json["features"][0]["id"] == first_item["id"]
+    assert resp_json["features"][1]["id"] == second_item["id"]
+
+
+@pytest.mark.asyncio
+async def test_collection_items_sort_asc(app_client, txn_client, ctx):
+    """Verify GET /collections/{collectionId}/items honors ascending sort on properties.datetime."""
+    first_item = ctx.item
+
+    # Create a second item in the same collection with an earlier datetime
+    second_item = dict(first_item)
+    second_item["id"] = "another-item-for-collection-sort-asc"
+    another_item_date = datetime.strptime(
+        first_item["properties"]["datetime"], "%Y-%m-%dT%H:%M:%SZ"
+    ) - timedelta(days=1)
+    second_item["properties"]["datetime"] = another_item_date.strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+
+    await create_item(txn_client, second_item)
+
+    # Ascending sort: the older item should come first
+    resp = await app_client.get(
+        f"/collections/{first_item['collection']}/items",
+        params=[("sortby", "+properties.datetime")],
+    )
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert resp_json["features"][0]["id"] == second_item["id"]
+    assert resp_json["features"][1]["id"] == first_item["id"]
