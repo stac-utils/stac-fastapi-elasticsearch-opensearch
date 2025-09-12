@@ -395,8 +395,7 @@ class CoreClient(AsyncBaseCoreClient):
             HTTPException: If any error occurs while searching the catalog.
         """
         limit = int(request.query_params.get("limit", os.getenv("STAC_ITEM_LIMIT", 10)))
-        # # Support pagination when called from item_collection by reading token from the query string
-        # token_val = token or request.query_params.get("token")
+
         base_args = {
             "collections": collections,
             "ids": ids,
