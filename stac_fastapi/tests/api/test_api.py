@@ -1596,3 +1596,13 @@ async def test_collection_items_sort_asc(app_client, txn_client, ctx):
     resp_json = resp.json()
     assert resp_json["features"][0]["id"] == second_item["id"]
     assert resp_json["features"][1]["id"] == first_item["id"]
+
+    # Also verify bare field (no +) sorts ascending by default
+    resp = await app_client.get(
+        f"/collections/{first_item['collection']}/items",
+        params=[("sortby", "properties.datetime")],
+    )
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert resp_json["features"][0]["id"] == second_item["id"]
+    assert resp_json["features"][1]["id"] == first_item["id"]
