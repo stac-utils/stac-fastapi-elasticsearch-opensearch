@@ -310,7 +310,7 @@ class CoreClient(AsyncBaseCoreClient):
             Exception: If any error occurs while reading the items from the database.
         """
         request: Request = kwargs["request"]
-        # Ensure the collection exists; otherwise return 404 to match API contract
+
         try:
             await self.get_collection(collection_id=collection_id, request=request)
         except Exception:
@@ -409,10 +409,18 @@ class CoreClient(AsyncBaseCoreClient):
             base_args["intersects"] = orjson.loads(unquote_plus(intersects))
 
         if sortby:
-            base_args["sortby"] = [
-                {"field": sort[1:], "direction": "desc" if sort[0] == "-" else "asc"}
-                for sort in sortby
-            ]
+            parsed_sort = []
+            for raw in sortby:
+                if not isinstance(raw, str):
+                    continue
+                s = raw.strip()
+                if not s:
+                    continue
+                direction = "desc" if s[0] == "-" else "asc"
+                field = s[1:] if s and s[0] in "+-" else s
+                parsed_sort.append({"field": field, "direction": direction})
+            if parsed_sort:
+                base_args["sortby"] = parsed_sort
 
         if filter_expr:
             base_args["filter_lang"] = "cql2-json"
