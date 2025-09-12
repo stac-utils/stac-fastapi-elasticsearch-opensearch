@@ -145,6 +145,9 @@ class CollectionSerializer(Serializer):
             collection["assets"] = [
                 {"es_key": k, **v} for k, v in collection.get("assets", {}).items()
             ]
+            collection["item_assets"] = [
+                {"es_key": k, **v} for k, v in collection.get("item_assets", {}).items()
+            ]
 
         return collection
 
@@ -196,9 +199,14 @@ class CollectionSerializer(Serializer):
             collection["assets"] = {
                 a.pop("es_key"): a for a in collection.get("assets", [])
             }
+            collection["item_assets"] = {
+                i.pop("es_key"): i for i in collection.get("item_assets", [])
+            }
 
         else:
             collection["assets"] = collection.get("assets", {})
+            if item_assets := collection.get("item_assets"):
+                collection["item_assets"] = item_assets
 
         # Return the stac_types.Collection object
         return stac_types.Collection(**collection)
