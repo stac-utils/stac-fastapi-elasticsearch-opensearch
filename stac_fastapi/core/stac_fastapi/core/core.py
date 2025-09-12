@@ -291,23 +291,28 @@ class CoreClient(AsyncBaseCoreClient):
         token: Optional[str] = None,
         **kwargs,
     ) -> stac_types.ItemCollection:
-        """Read items from a specific collection in the database.
+        """List items within a specific collection.
+
+        This endpoint delegates to ``get_search`` under the hood with
+        ``collections=[collection_id]`` so that filtering, sorting and pagination
+        behave identically to the Search endpoints.
 
         Args:
-            collection_id (str): The identifier of the collection to read items from.
-            bbox (Optional[BBox]): The bounding box to filter items by.
-            datetime (Optional[str]): The datetime range to filter items by.
-            sortby (Optional[str]]): Sort spec like "-datetime". Bare fields imply ascending.
-            token (str): A token used for pagination.
-            request (Request): The incoming request.
+            collection_id (str): ID of the collection to list items from.
+            bbox (Optional[BBox]): Optional bounding box filter.
+            datetime (Optional[str]): Optional datetime or interval filter.
+            limit (Optional[int]): Optional page size. Defaults to env ``STAC_ITEM_LIMIT`` when unset.
+            sortby (Optional[str]): Optional sort specification. Accepts repeated values
+                like ``sortby=-properties.datetime`` or ``sortby=+id``. Bare fields (e.g. ``sortby=id``)
+                imply ascending order.
+            token (Optional[str]): Optional pagination token.
+            **kwargs: Must include ``request`` (FastAPI Request).
 
         Returns:
-            ItemCollection: An `ItemCollection` object containing the items from the specified collection that meet
-                the filter criteria and links to various resources.
+            ItemCollection: Feature collection with items, paging links, and counts.
 
         Raises:
-            HTTPException: If the specified collection is not found.
-            Exception: If any error occurs while reading the items from the database.
+            HTTPException: 404 if the collection does not exist.
         """
         request: Request = kwargs["request"]
 
