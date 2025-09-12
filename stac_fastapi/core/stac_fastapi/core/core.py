@@ -289,6 +289,7 @@ class CoreClient(AsyncBaseCoreClient):
         limit: Optional[int] = None,
         sortby: Optional[str] = None,
         token: Optional[str] = None,
+        query: Optional[str] = None,
         **kwargs,
     ) -> stac_types.ItemCollection:
         """List items within a specific collection.
@@ -306,6 +307,7 @@ class CoreClient(AsyncBaseCoreClient):
                 like ``sortby=-properties.datetime`` or ``sortby=+id``. Bare fields (e.g. ``sortby=id``)
                 imply ascending order.
             token (Optional[str]): Optional pagination token.
+            query (Optional[str]): Optional query string.
             **kwargs: Must include ``request`` (FastAPI Request).
 
         Returns:
@@ -330,6 +332,7 @@ class CoreClient(AsyncBaseCoreClient):
             limit=limit,
             token=token,
             sortby=sortby,
+            query=query,
         )
 
     async def get_item(

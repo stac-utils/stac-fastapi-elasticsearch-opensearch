@@ -1606,3 +1606,31 @@ async def test_collection_items_sort_asc(app_client, txn_client, ctx):
     resp_json = resp.json()
     assert resp_json["features"][0]["id"] == second_item["id"]
     assert resp_json["features"][1]["id"] == first_item["id"]
+
+
+@pytest.mark.asyncio
+async def test_item_collection_query(app_client, txn_client, ctx):
+    """Simple query parameter test on the Item Collection route.
+
+    Creates an item with a unique property and ensures it can be retrieved
+    using the 'query' parameter on GET /collections/{collection_id}/items.
+    """
+    unique_val = str(uuid.uuid4())
+    test_item = deepcopy(ctx.item)
+    test_item["id"] = f"query-basic-{unique_val}"
+    # Add a property to filter on
+    test_item.setdefault("properties", {})["test_query_key"] = unique_val
+
+    await create_item(txn_client, test_item)
+
+    # Provide the query parameter as a JSON string without adding new imports
+    query_param = f'{{"test_query_key": {{"eq": "{unique_val}"}}}}'
+
+    resp = await app_client.get(
+        f"/collections/{test_item['collection']}/items",
+        params=[("query", query_param)],
+    )
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    ids = [f["id"] for f in resp_json["features"]]
+    assert test_item["id"] in ids

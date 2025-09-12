@@ -44,6 +44,7 @@ from stac_fastapi.extensions.core import (
     TransactionExtension,
 )
 from stac_fastapi.extensions.core.filter import FilterConformanceClasses
+from stac_fastapi.extensions.core.query import QueryConformanceClasses
 from stac_fastapi.extensions.core.sort import SortConformanceClasses
 from stac_fastapi.extensions.third_party import BulkTransactionExtension
 from stac_fastapi.sfeos_helpers.aggregation import EsAsyncBaseAggregationClient
@@ -127,7 +128,10 @@ items_get_request_model = create_request_model(
     extensions=[
         SortExtension(
             conformance_classes=[SortConformanceClasses.ITEMS],
-        )
+        ),
+        QueryExtension(
+            conformance_classes=[QueryConformanceClasses.ITEMS],
+        ),
     ],
     request_type="GET",
 )
