@@ -1699,7 +1699,7 @@ async def test_filter_by_nonexistent_id(app_client, ctx, txn_client):
         len(resp_json["features"]) == 0
     ), f"Expected no items with ID {non_existent_id}, but found {len(resp_json['features'])} matches"
 
-    
+
 async def test_search_max_item_limit(
     app_client, load_test_data, txn_client, monkeypatch
 ):

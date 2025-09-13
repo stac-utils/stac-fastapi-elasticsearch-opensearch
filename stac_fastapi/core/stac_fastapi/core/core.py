@@ -911,7 +911,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
 @attr.s
 class BulkTransactionsClient(BaseBulkTransactionsClient):
-    """A client for posting bulk transactions to a Postgres database.
+    """A client for posting bulk transactions.
 
     Attributes:
         session: An instance of `Session` to use for database connection.
