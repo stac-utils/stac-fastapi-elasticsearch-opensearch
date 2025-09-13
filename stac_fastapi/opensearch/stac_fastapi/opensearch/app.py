@@ -132,6 +132,7 @@ items_get_request_model = create_request_model(
         QueryExtension(
             conformance_classes=[QueryConformanceClasses.ITEMS],
         ),
+        filter_extension,
     ],
     request_type="GET",
 )
