@@ -10,14 +10,15 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
-- Sort extension and sortby functionality to the item collection route. [#437](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/437)
-- Query extension and query functionality to the item collection route. [#437](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/437)
-- Filter extension and filter functionality to the item collection route. [#437](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/437)
+- Added the `ENV_MAX_LIMIT` environment variable to SFEOS, allowing overriding of the `MAX_LIMIT`, which controls the `?limit` parameter for returned items and STAC collections. [#434](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/434)
+- Sort, Query, and Filter extension and functionality to the item collection route. [#437](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/437)
 
 ### Changed
 
 - Changed assets serialization to prevent mapping explosion while allowing asset information to be indexed. [#341](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/341)
 - Simplified the item_collection function in core.py, moving the request to the get_search function. [#437](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/437)
+- Updated the `format_datetime_range` function to support milliseconds. [#423](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/423)
+- Blocked the /collections/{collection_id}/bulk_items endpoint when environmental variable ENABLE_DATETIME_INDEX_FILTERING is set to true. [#438](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/438)
 
 ### Fixed
 
