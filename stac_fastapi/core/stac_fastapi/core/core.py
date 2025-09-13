@@ -284,10 +284,13 @@ class CoreClient(AsyncBaseCoreClient):
     async def item_collection(
         self,
         collection_id: str,
+        request: Request,
         bbox: Optional[BBox] = None,
         datetime: Optional[str] = None,
         limit: Optional[int] = None,
         sortby: Optional[str] = None,
+        filter_expr: Optional[str] = None,
+        filter_lang: Optional[str] = None,
         token: Optional[str] = None,
         query: Optional[str] = None,
         **kwargs,
@@ -300,6 +303,7 @@ class CoreClient(AsyncBaseCoreClient):
 
         Args:
             collection_id (str): ID of the collection to list items from.
+            request (Request): FastAPI Request object.
             bbox (Optional[BBox]): Optional bounding box filter.
             datetime (Optional[str]): Optional datetime or interval filter.
             limit (Optional[int]): Optional page size. Defaults to env ``STAC_ITEM_LIMIT`` when unset.
@@ -308,7 +312,8 @@ class CoreClient(AsyncBaseCoreClient):
                 imply ascending order.
             token (Optional[str]): Optional pagination token.
             query (Optional[str]): Optional query string.
-            **kwargs: Must include ``request`` (FastAPI Request).
+            filter_expr (Optional[str]): Optional filter expression.
+            filter_lang (Optional[str]): Optional filter language.
 
         Returns:
             ItemCollection: Feature collection with items, paging links, and counts.
@@ -316,8 +321,6 @@ class CoreClient(AsyncBaseCoreClient):
         Raises:
             HTTPException: 404 if the collection does not exist.
         """
-        request: Request = kwargs["request"]
-
         try:
             await self.get_collection(collection_id=collection_id, request=request)
         except Exception:
@@ -333,6 +336,8 @@ class CoreClient(AsyncBaseCoreClient):
             token=token,
             sortby=sortby,
             query=query,
+            filter_expr=filter_expr,
+            filter_lang=filter_lang,
         )
 
     async def get_item(
@@ -521,9 +526,14 @@ class CoreClient(AsyncBaseCoreClient):
                         search=search, op=operator, field=field, value=value
                     )
 
-        # only cql2_json is supported here
+        # Apply CQL2 filter (support both 'filter_expr' and canonical 'filter')
+        cql2_filter = None
         if hasattr(search_request, "filter_expr"):
             cql2_filter = getattr(search_request, "filter_expr", None)
+        if cql2_filter is None and hasattr(search_request, "filter"):
+            cql2_filter = getattr(search_request, "filter", None)
+
+        if cql2_filter is not None:
             try:
                 search = await self.database.apply_cql2_filter(search, cql2_filter)
             except Exception as e:

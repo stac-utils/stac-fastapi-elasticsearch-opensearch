@@ -10,7 +10,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
-- Sortby functionality to the item collection route. [#437](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/437)
+- Sort extension and sortby functionality to the item collection route. [#437](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/437)
+- Query extension and query functionality to the item collection route. [#437](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/437)
+- Filter extension and filter functionality to the item collection route. [#437](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/437)
 
 ### Changed
 
