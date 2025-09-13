@@ -15,7 +15,7 @@ from starlette.requests import Request
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
-from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon, get_bool_env
+from stac_fastapi.core.utilities import bbox2polygon, bbox2polygon, get_max_limit, get_bool_env
 from stac_fastapi.extensions.core.transaction.request import (
     PartialCollection,
     PartialItem,
@@ -575,7 +575,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         search_body["sort"] = sort if sort else DEFAULT_SORT
 
-        max_result_window = MAX_LIMIT
+        max_result_window = get_max_limit()
 
         size_limit = min(limit + 1, max_result_window)
 
