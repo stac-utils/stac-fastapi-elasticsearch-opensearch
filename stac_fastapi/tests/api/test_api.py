@@ -1667,15 +1667,21 @@ async def test_filter_by_id(app_client, ctx):
 
 
 @pytest.mark.asyncio
-async def test_filter_by_nonexistent_id(app_client, ctx):
+async def test_filter_by_nonexistent_id(app_client, ctx, txn_client):
     """Test filtering with a non-existent ID returns no results."""
-    collection_id = ctx.item["collection"]
+    # Get the test collection and item from context
+    collection_id = ctx.collection["id"]
+    item_id = ctx.item["id"]
 
-    # Create a filter with a non-existent ID
-    filter_body = {
-        "op": "=",
-        "args": [{"property": "id"}, "this-id-does-not-exist-12345"],
-    }
+    # First, verify the item exists
+    resp = await app_client.get(f"/collections/{collection_id}/items/{item_id}")
+    assert resp.status_code == 200
+
+    # Create a non-existent ID
+    non_existent_id = f"non-existent-{str(uuid.uuid4())}"
+
+    # Create a filter with the non-existent ID using CQL2-JSON syntax
+    filter_body = {"op": "=", "args": [{"property": "id"}, non_existent_id]}
 
     # Make the request with the filter
     params = [("filter", json.dumps(filter_body)), ("filter-lang", "cql2-json")]
@@ -1688,4 +1694,6 @@ async def test_filter_by_nonexistent_id(app_client, ctx):
     # Verify the response
     assert resp.status_code == 200
     resp_json = resp.json()
-    assert len(resp_json["features"]) == 0
+    assert (
+        len(resp_json["features"]) == 0
+    ), f"Expected no items with ID {non_existent_id}, but found {len(resp_json['features'])} matches"
