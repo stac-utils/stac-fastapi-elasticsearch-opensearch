@@ -4,6 +4,7 @@ from collections import deque
 from typing import Any, Dict, Optional, Tuple
 
 import attr
+from fastapi import Request
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.extensions.filter import ALL_QUERYABLES, DEFAULT_QUERYABLES
@@ -37,9 +38,11 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
         Returns:
             Dict[str, Any]: A dictionary containing the queryables for the given collection.
         """
+        request: Optional[Request] = kwargs.get("request")
+        url_str: str = str(request.url) if request else ""
         queryables: Dict[str, Any] = {
-            "$schema": "https://json-schema.org/draft/2019-09/schema",
-            "$id": "https://stac-api.example.com/queryables",
+            "$schema": "https://json-schema.org/draft-07/schema",
+            "$id": f"{url_str}",
             "type": "object",
             "title": "Queryables for STAC API",
             "description": "Queryable names for the STAC API Item Search filter.",
@@ -49,13 +52,11 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
         if not collection_id:
             return queryables
 
-        properties: Dict[str, Any] = queryables["properties"]
-        queryables.update(
-            {
-                "properties": properties,
-                "additionalProperties": False,
-            }
-        )
+        properties: Dict[str, Any] = queryables["properties"].copy()
+        queryables.update({
+            "properties": properties,
+            "additionalProperties": False,
+        })
 
         mapping_data = await self.database.get_items_mapping(collection_id)
         mapping_properties = next(iter(mapping_data.values()))["mappings"]["properties"]
