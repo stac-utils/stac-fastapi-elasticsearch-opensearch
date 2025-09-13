@@ -1665,6 +1665,26 @@ async def test_filter_by_id(app_client, ctx):
     assert resp_json["features"][0]["id"] == item_id
     assert resp_json["features"][0]["collection"] == collection_id
 
+    # Create a non-existent ID
+    non_existent_id = f"non-existent-{str(uuid.uuid4())}"
+
+    filter_body = {"op": "=", "args": [{"property": "id"}, non_existent_id]}
+
+    # Make the request with the filter
+    params = [("filter", json.dumps(filter_body)), ("filter-lang", "cql2-json")]
+
+    resp = await app_client.get(
+        f"/collections/{collection_id}/items",
+        params=params,
+    )
+
+    # Verify the response
+    assert resp.status_code == 200
+    resp_json = resp.json()
+
+    # Should find exactly one matching item
+    assert len(resp_json["features"]) == 0
+
 
 @pytest.mark.asyncio
 async def test_filter_by_nonexistent_id(app_client, ctx, txn_client):
@@ -1683,13 +1703,14 @@ async def test_filter_by_nonexistent_id(app_client, ctx, txn_client):
     # Create a filter with the non-existent ID using CQL2-JSON syntax
     filter_body = {"op": "=", "args": [{"property": "id"}, non_existent_id]}
 
-    # Make the request with the filter
-    params = [("filter", json.dumps(filter_body)), ("filter-lang", "cql2-json")]
+    # URL-encode the filter JSON
+    import urllib.parse
 
-    resp = await app_client.get(
-        f"/collections/{collection_id}/items",
-        params=params,
-    )
+    encoded_filter = urllib.parse.quote(json.dumps(filter_body))
+
+    # Make the request with URL-encoded filter in the query string
+    url = f"/collections/{collection_id}/items?filter-lang=cql2-json&filter={encoded_filter}"
+    resp = await app_client.get(url)
 
     # Verify the response
     assert resp.status_code == 200
