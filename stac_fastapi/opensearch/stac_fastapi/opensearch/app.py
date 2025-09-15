@@ -7,7 +7,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from stac_fastapi.api.app import StacApi
-from stac_fastapi.api.models import create_get_request_model, create_post_request_model
+from stac_fastapi.api.models import (
+    ItemCollectionUri,
+    create_get_request_model,
+    create_post_request_model,
+    create_request_model,
+)
 from stac_fastapi.core.core import (
     BulkTransactionsClient,
     CoreClient,
@@ -34,6 +39,8 @@ from stac_fastapi.extensions.core import (
 )
 from stac_fastapi.extensions.core.fields import FieldsConformanceClasses
 from stac_fastapi.extensions.core.filter import FilterConformanceClasses
+from stac_fastapi.extensions.core.query import QueryConformanceClasses
+from stac_fastapi.extensions.core.sort import SortConformanceClasses
 from stac_fastapi.extensions.third_party import BulkTransactionExtension
 from stac_fastapi.opensearch.config import OpensearchSettings
 from stac_fastapi.opensearch.database_logic import (
@@ -119,6 +126,21 @@ database_logic.extensions = [type(ext).__name__ for ext in extensions]
 
 post_request_model = create_post_request_model(search_extensions)
 
+items_get_request_model = create_request_model(
+    model_name="ItemCollectionUri",
+    base_model=ItemCollectionUri,
+    extensions=[
+        SortExtension(
+            conformance_classes=[SortConformanceClasses.ITEMS],
+        ),
+        QueryExtension(
+            conformance_classes=[QueryConformanceClasses.ITEMS],
+        ),
+        filter_extension,
+    ],
+    request_type="GET",
+)
+
 app_config = {
     "title": os.getenv("STAC_FASTAPI_TITLE", "stac-fastapi-opensearch"),
     "description": os.getenv("STAC_FASTAPI_DESCRIPTION", "stac-fastapi-opensearch"),
@@ -133,6 +155,7 @@ app_config = {
     ),
     "search_get_request_model": create_get_request_model(search_extensions),
     "search_post_request_model": post_request_model,
+    "items_get_request_model": items_get_request_model,
     "route_dependencies": get_route_dependencies(),
 }
 
