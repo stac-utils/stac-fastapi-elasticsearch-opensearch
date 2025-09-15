@@ -965,6 +965,13 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
             A string indicating the number of items successfully added.
         """
         request = kwargs.get("request")
+
+        if os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+            raise HTTPException(
+                status_code=400,
+                detail="The /collections/{collection_id}/bulk_items endpoint is invalid when ENABLE_DATETIME_INDEX_FILTERING is set to true. Try using the /collections/{collection_id}/items endpoint.",
+            )
+
         if request:
             base_url = str(request.base_url)
         else:
