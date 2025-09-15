@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+- Added `USE_DATETIME` environment variable behavior to set datetime filtering logic. [#443](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/443)
+
 ### Added
 
 - Added the `ENV_MAX_LIMIT` environment variable to SFEOS, allowing overriding of the `MAX_LIMIT`, which controls the `?limit` parameter for returned items and STAC collections. [#434](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/434)

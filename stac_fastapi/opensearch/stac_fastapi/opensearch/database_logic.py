@@ -316,7 +316,10 @@ class DatabaseLogic(BaseDatabaseLogic):
                         "bool",
                         filter=[
                             Q("exists", field="properties.datetime"),
-                            Q("term", **{"properties__datetime": datetime_search["eq"]}),
+                            Q(
+                                "term",
+                                **{"properties__datetime": datetime_search["eq"]},
+                            ),
                         ],
                     ),
                     Q(
@@ -327,7 +330,9 @@ class DatabaseLogic(BaseDatabaseLogic):
                             Q("exists", field="properties.end_datetime"),
                             Q(
                                 "range",
-                                properties__start_datetime={"lte": datetime_search["eq"]},
+                                properties__start_datetime={
+                                    "lte": datetime_search["eq"]
+                                },
                             ),
                             Q(
                                 "range",
@@ -362,11 +367,15 @@ class DatabaseLogic(BaseDatabaseLogic):
                             Q("exists", field="properties.end_datetime"),
                             Q(
                                 "range",
-                                properties__start_datetime={"lte": datetime_search["lte"]},
+                                properties__start_datetime={
+                                    "lte": datetime_search["lte"]
+                                },
                             ),
                             Q(
                                 "range",
-                                properties__end_datetime={"gte": datetime_search["gte"]},
+                                properties__end_datetime={
+                                    "gte": datetime_search["gte"]
+                                },
                             ),
                         ],
                     ),
