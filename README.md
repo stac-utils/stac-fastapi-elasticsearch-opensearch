@@ -66,26 +66,43 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
 
 ## Table of Contents
 
-- [Documentation & Resources](#documentation--resources)
-- [Package Structure](#package-structure)
-- [Examples](#examples)
-- [Performance](#performance)
-- [Quick Start](#quick-start)
-  - [Installation](#installation)
-  - [Running Locally](#running-locally)
-- [Configuration reference](#configuration-reference)
-- [Interacting with the API](#interacting-with-the-api)
-- [Configure the API](#configure-the-api)
-- [Collection pagination](#collection-pagination)
-- [Ingesting Sample Data CLI Tool](#ingesting-sample-data-cli-tool)
-- [Elasticsearch Mappings](#elasticsearch-mappings)
-- [Managing Elasticsearch Indices](#managing-elasticsearch-indices)
-  - [Snapshots](#snapshots)
-  - [Reindexing](#reindexing)
-- [Auth](#auth)
-- [Aggregation](#aggregation)
-- [Rate Limiting](#rate-limiting)
-- [Datetime-Based Index Management](#datetime-based-index-management)
+- [stac-fastapi-elasticsearch-opensearch](#stac-fastapi-elasticsearch-opensearch)
+  - [Sponsors \& Supporters](#sponsors--supporters)
+  - [Project Introduction - What is SFEOS?](#project-introduction---what-is-sfeos)
+  - [Common Deployment Patterns](#common-deployment-patterns)
+  - [Technologies](#technologies)
+  - [Table of Contents](#table-of-contents)
+  - [Documentation \& Resources](#documentation--resources)
+  - [Package Structure](#package-structure)
+  - [Examples](#examples)
+  - [Performance](#performance)
+    - [Direct Response Mode](#direct-response-mode)
+  - [Quick Start](#quick-start)
+    - [Installation](#installation)
+    - [Running Locally](#running-locally)
+      - [Using Pre-built Docker Images](#using-pre-built-docker-images)
+      - [Using Docker Compose](#using-docker-compose)
+  - [Configuration Reference](#configuration-reference)
+  - [Datetime-Based Index Management](#datetime-based-index-management)
+    - [Overview](#overview)
+    - [When to Use](#when-to-use)
+    - [Configuration](#configuration)
+      - [Enabling Datetime-Based Indexing](#enabling-datetime-based-indexing)
+    - [Related Configuration Variables](#related-configuration-variables)
+  - [How Datetime-Based Indexing Works](#how-datetime-based-indexing-works)
+    - [Index and Alias Naming Convention](#index-and-alias-naming-convention)
+    - [Index Size Management](#index-size-management)
+  - [Interacting with the API](#interacting-with-the-api)
+  - [Configure the API](#configure-the-api)
+  - [Collection Pagination](#collection-pagination)
+  - [Ingesting Sample Data CLI Tool](#ingesting-sample-data-cli-tool)
+  - [Elasticsearch Mappings](#elasticsearch-mappings)
+  - [Managing Elasticsearch Indices](#managing-elasticsearch-indices)
+    - [Snapshots](#snapshots)
+    - [Reindexing](#reindexing)
+  - [Auth](#auth)
+  - [Aggregation](#aggregation)
+  - [Rate Limiting](#rate-limiting)
 
 ## Documentation & Resources
 
@@ -228,6 +245,7 @@ You can customize additional settings in your `.env` file:
 | `DATABASE_REFRESH`           | Controls whether database operations refresh the index immediately after changes. If set to `true`, changes will be immediately searchable. If set to `false`, changes may not be immediately visible but can improve performance for bulk operations. If set to `wait_for`, changes will wait for the next refresh cycle to become visible. | `false` | Optional |
 | `ENABLE_TRANSACTIONS_EXTENSIONS` | Enables or disables the Transactions and Bulk Transactions API extensions. If set to `false`, the POST `/collections` route and related transaction endpoints (including bulk transaction operations) will be unavailable in the API. This is useful for deployments where mutating the catalog via the API should be prevented. | `true` | Optional |
 | `STAC_ITEM_LIMIT` | Sets the environment variable for result limiting to SFEOS for the number of returned items and STAC collections. | `10` | Optional |
+| `STAC_INDEX_ASSETS` | Controls if Assets are indexed when added to Elasticsearch/Opensearch. This allows asset fields to be included in search queries. | `false` | Optional |
 | `ENV_MAX_LIMIT` | Configures the environment variable in SFEOS to override the default `MAX_LIMIT`, which controls the limit parameter for returned items and STAC collections. | `10,000` | Optional |
 
 > [!NOTE]
