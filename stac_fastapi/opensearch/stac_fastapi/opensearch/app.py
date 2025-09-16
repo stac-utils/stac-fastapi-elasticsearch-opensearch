@@ -85,8 +85,11 @@ aggregation_extension = AggregationExtension(
 aggregation_extension.POST = EsAggregationExtensionPostRequest
 aggregation_extension.GET = EsAggregationExtensionGetRequest
 
+fields_extension = FieldsExtension()
+fields_extension.conformance_classes.append(FieldsConformanceClasses.ITEMS)
+
 search_extensions = [
-    FieldsExtension(),
+    fields_extension,
     QueryExtension(),
     SortExtension(),
     TokenPaginationExtension(),
