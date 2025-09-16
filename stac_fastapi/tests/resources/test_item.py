@@ -870,6 +870,35 @@ async def test_field_extension_exclude_default_includes(app_client, ctx):
 
 
 @pytest.mark.asyncio
+async def test_field_extension_get_includes_collection_items(app_client, ctx):
+    """Test GET collections/{collection_id}/items with included fields (fields extension)"""
+    test_item = ctx.item
+    params = {
+        "fields": "+properties.proj:epsg,+properties.gsd",
+    }
+    resp = await app_client.get(
+        f"/collections/{test_item['collection']}/items", params=params
+    )
+    feat_properties = resp.json()["features"][0]["properties"]
+    assert not set(feat_properties) - {"proj:epsg", "gsd", "datetime"}
+
+
+@pytest.mark.asyncio
+async def test_field_extension_get_excludes_collection_items(app_client, ctx):
+    """Test GET collections/{collection_id}/items with included fields (fields extension)"""
+    test_item = ctx.item
+    params = {
+        "fields": "-properties.proj:epsg,-properties.gsd",
+    }
+    resp = await app_client.get(
+        f"/collections/{test_item['collection']}/items", params=params
+    )
+    resp_json = resp.json()
+    assert "proj:epsg" not in resp_json["features"][0]["properties"].keys()
+    assert "gsd" not in resp_json["features"][0]["properties"].keys()
+
+
+@pytest.mark.asyncio
 async def test_search_intersects_and_bbox(app_client):
     """Test POST search intersects and bbox are mutually exclusive (core)"""
     bbox = [-118, 34, -117, 35]

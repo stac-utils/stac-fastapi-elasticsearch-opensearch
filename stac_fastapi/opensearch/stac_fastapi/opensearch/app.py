@@ -37,6 +37,7 @@ from stac_fastapi.extensions.core import (
     TokenPaginationExtension,
     TransactionExtension,
 )
+from stac_fastapi.extensions.core.fields import FieldsConformanceClasses
 from stac_fastapi.extensions.core.filter import FilterConformanceClasses
 from stac_fastapi.extensions.core.query import QueryConformanceClasses
 from stac_fastapi.extensions.core.sort import SortConformanceClasses
@@ -84,8 +85,11 @@ aggregation_extension = AggregationExtension(
 aggregation_extension.POST = EsAggregationExtensionPostRequest
 aggregation_extension.GET = EsAggregationExtensionGetRequest
 
+fields_extension = FieldsExtension()
+fields_extension.conformance_classes.append(FieldsConformanceClasses.ITEMS)
+
 search_extensions = [
-    FieldsExtension(),
+    fields_extension,
     QueryExtension(),
     SortExtension(),
     TokenPaginationExtension(),
@@ -133,6 +137,7 @@ items_get_request_model = create_request_model(
             conformance_classes=[QueryConformanceClasses.ITEMS],
         ),
         filter_extension,
+        FieldsExtension(conformance_classes=[FieldsConformanceClasses.ITEMS]),
     ],
     request_type="GET",
 )
