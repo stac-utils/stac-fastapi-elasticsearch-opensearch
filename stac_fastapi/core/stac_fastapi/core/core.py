@@ -293,6 +293,7 @@ class CoreClient(AsyncBaseCoreClient):
         filter_lang: Optional[str] = None,
         token: Optional[str] = None,
         query: Optional[str] = None,
+        fields: Optional[List[str]] = None,
         **kwargs,
     ) -> stac_types.ItemCollection:
         """List items within a specific collection.
@@ -314,6 +315,7 @@ class CoreClient(AsyncBaseCoreClient):
             query (Optional[str]): Optional query string.
             filter_expr (Optional[str]): Optional filter expression.
             filter_lang (Optional[str]): Optional filter language.
+            fields (Optional[List[str]]): Fields to include or exclude from the results.
 
         Returns:
             ItemCollection: Feature collection with items, paging links, and counts.
@@ -338,6 +340,7 @@ class CoreClient(AsyncBaseCoreClient):
             query=query,
             filter_expr=filter_expr,
             filter_lang=filter_lang,
+            fields=fields,
         )
 
     async def get_item(

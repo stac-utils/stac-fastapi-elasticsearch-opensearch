@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - `STAC_INDEX_ASSETS` environment variable to allow asset serialization to be configurable. [#433](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/433)
 - Added the `ENV_MAX_LIMIT` environment variable to SFEOS, allowing overriding of the `MAX_LIMIT`, which controls the `?limit` parameter for returned items and STAC collections. [#434](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/434)
 - Sort, Query, and Filter extension and functionality to the item collection route. [#437](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/437)
+- Added Fields Extension implementation for the `/collections/{collection_id}/items` endpoint. [#436](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/436)
 
 ### Changed
 
