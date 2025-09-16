@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+- `STAC_INDEX_ASSETS` environment variable to allow asset serialization to be configurable. [#433](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/433)
 - Added the `ENV_MAX_LIMIT` environment variable to SFEOS, allowing overriding of the `MAX_LIMIT`, which controls the `?limit` parameter for returned items and STAC collections. [#434](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/434)
 - Updated the `format_datetime_range` function to support milliseconds. [#423](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/423)
 
