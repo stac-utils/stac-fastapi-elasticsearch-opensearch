@@ -139,7 +139,7 @@ class CollectionLinks(BaseLinks):
         if "FilterExtension" in self.extensions:
             return dict(
                 rel="queryables",
-                type=MimeTypes.json.value,
+                type=MimeTypes.jsonschema.value,
                 href=urljoin(
                     self.base_url, f"collections/{self.collection_id}/queryables"
                 ),
