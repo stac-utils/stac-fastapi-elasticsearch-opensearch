@@ -596,8 +596,8 @@ class CoreClient(AsyncBaseCoreClient):
             type="FeatureCollection",
             features=items,
             links=links,
-            numReturned=len(items),
-            numMatched=maybe_count,
+            numberReturned=len(items),
+            numberMatched=maybe_count,
         )
 
 
