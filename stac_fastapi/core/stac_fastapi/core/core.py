@@ -310,7 +310,18 @@ class CoreClient(AsyncBaseCoreClient):
         """
         request: Request = kwargs["request"]
         token = request.query_params.get("token")
+        if not hasattr(self, '_prev_links'):
+            self._prev_links = {}
+        
+        session_id = request.cookies.get('stac_session', 'default_session')
+        current_self_link = str(request.url)
 
+        if session_id not in self._prev_links:
+            self._prev_links[session_id] = []
+        
+        history = self._prev_links[session_id]
+        if not history or current_self_link != history[-1]:
+            history.append(current_self_link)
         base_url = str(request.base_url)
 
         collection = await self.get_collection(
@@ -370,6 +381,14 @@ class CoreClient(AsyncBaseCoreClient):
         ]
 
         paging_links = await PagingLinks(request=request, next=next_token).get_links()
+        history = self._prev_links.get(session_id, [])
+        if len(history) > 1:
+            previous_self_link = history[-2]
+            paging_links.append({
+                "rel": "previous",
+                "type": "application/json",
+                "href": previous_self_link,
+            })        
         links = collection_links + paging_links
 
         return stac_types.ItemCollection(
