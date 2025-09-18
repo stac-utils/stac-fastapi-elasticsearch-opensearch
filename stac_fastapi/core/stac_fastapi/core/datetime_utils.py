@@ -1,4 +1,5 @@
 """Utility functions to handle datetime parsing."""
+
 from datetime import datetime, timezone
 
 from stac_fastapi.types.rfc3339 import rfc3339_str_to_datetime
@@ -16,17 +17,20 @@ def format_datetime_range(date_str: str) -> str:
     """
 
     def normalize(dt):
+        """Normalize datetime string and preserve millisecond precision."""
         dt = dt.strip()
         if not dt or dt == "..":
             return ".."
         dt_obj = rfc3339_str_to_datetime(dt)
         dt_utc = dt_obj.astimezone(timezone.utc)
-        return dt_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+        return dt_utc.isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
     if not isinstance(date_str, str):
         return "../.."
+
     if "/" not in date_str:
         return f"{normalize(date_str)}/{normalize(date_str)}"
+
     try:
         start, end = date_str.split("/", 1)
     except Exception:

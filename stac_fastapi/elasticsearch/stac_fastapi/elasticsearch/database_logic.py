@@ -4,7 +4,7 @@ import asyncio
 import logging
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from copy import deepcopy
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Type, Union
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Type
 
 import attr
 import elasticsearch.helpers as helpers
@@ -17,7 +17,7 @@ from starlette.requests import Request
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
-from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon
+from stac_fastapi.core.utilities import bbox2polygon, get_max_limit
 from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
 from stac_fastapi.elasticsearch.config import (
     ElasticsearchSettings as SyncElasticsearchSettings,
@@ -27,7 +27,7 @@ from stac_fastapi.extensions.core.transaction.request import (
     PartialItem,
     PatchOperation,
 )
-from stac_fastapi.sfeos_helpers import filter
+from stac_fastapi.sfeos_helpers import filter as filter_module
 from stac_fastapi.sfeos_helpers.database import (
     apply_free_text_filter_shared,
     apply_intersects_filter_shared,
@@ -36,12 +36,15 @@ from stac_fastapi.sfeos_helpers.database import (
     get_queryables_mapping_shared,
     index_alias_by_collection_id,
     index_by_collection_id,
-    indices,
     mk_actions,
     mk_item_id,
     populate_sort_shared,
     return_date,
     validate_refresh,
+)
+from stac_fastapi.sfeos_helpers.database.query import (
+    ES_MAX_URL_LENGTH,
+    add_collections_to_body,
 )
 from stac_fastapi.sfeos_helpers.database.utils import (
     merge_to_operations,
@@ -55,9 +58,14 @@ from stac_fastapi.sfeos_helpers.mappings import (
     ITEMS_INDEX_PREFIX,
     Geometry,
 )
+from stac_fastapi.sfeos_helpers.search_engine import (
+    BaseIndexInserter,
+    BaseIndexSelector,
+    IndexInsertionFactory,
+    IndexSelectorFactory,
+)
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.links import resolve_links
-from stac_fastapi.types.rfc3339 import DateTimeType
 from stac_fastapi.types.stac import Collection, Item
 
 logger = logging.getLogger(__name__)
@@ -135,6 +143,8 @@ class DatabaseLogic(BaseDatabaseLogic):
     sync_settings: SyncElasticsearchSettings = attr.ib(
         factory=SyncElasticsearchSettings
     )
+    async_index_selector: BaseIndexSelector = attr.ib(init=False)
+    async_index_inserter: BaseIndexInserter = attr.ib(init=False)
 
     client = attr.ib(init=False)
     sync_client = attr.ib(init=False)
@@ -143,6 +153,10 @@ class DatabaseLogic(BaseDatabaseLogic):
         """Initialize clients after the class is instantiated."""
         self.client = self.async_settings.create_client
         self.sync_client = self.sync_settings.create_client
+        self.async_index_inserter = IndexInsertionFactory.create_insertion_strategy(
+            self.client
+        )
+        self.async_index_selector = IndexSelectorFactory.create_selector(self.client)
 
     item_serializer: Type[ItemSerializer] = attr.ib(default=ItemSerializer)
     collection_serializer: Type[CollectionSerializer] = attr.ib(
@@ -212,15 +226,23 @@ class DatabaseLogic(BaseDatabaseLogic):
             with the index for the Collection as the target index and the combined `mk_item_id` as the document id.
         """
         try:
-            item = await self.client.get(
+            response = await self.client.search(
                 index=index_alias_by_collection_id(collection_id),
-                id=mk_item_id(item_id, collection_id),
+                body={
+                    "query": {"term": {"_id": mk_item_id(item_id, collection_id)}},
+                    "size": 1,
+                },
             )
+            if response["hits"]["total"]["value"] == 0:
+                raise NotFoundError(
+                    f"Item {item_id} does not exist inside Collection {collection_id}"
+                )
+
+            return response["hits"]["hits"][0]["_source"]
         except ESNotFoundError:
             raise NotFoundError(
                 f"Item {item_id} does not exist inside Collection {collection_id}"
             )
-        return item["_source"]
 
     async def get_queryables_mapping(self, collection_id: str = "*") -> dict:
         """Retrieve mapping of Queryables for search.
@@ -256,31 +278,21 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     @staticmethod
     def apply_datetime_filter(
-        search: Search, interval: Optional[Union[DateTimeType, str]]
-    ) -> Search:
+        search: Search, datetime: Optional[str]
+    ) -> Tuple[Search, Dict[str, Optional[str]]]:
         """Apply a filter to search on datetime, start_datetime, and end_datetime fields.
 
         Args:
             search: The search object to filter.
-            interval: Optional datetime interval to filter by. Can be:
-                - A single datetime string (e.g., "2023-01-01T12:00:00")
-                - A datetime range string (e.g., "2023-01-01/2023-12-31")
-                - A datetime object
-                - A tuple of (start_datetime, end_datetime)
+            datetime: Optional[str]
 
         Returns:
             The filtered search object.
         """
-        if not interval:
-            return search
+        datetime_search = return_date(datetime)
 
-        should = []
-        try:
-            datetime_search = return_date(interval)
-        except (ValueError, TypeError) as e:
-            # Handle invalid interval formats if return_date fails
-            logger.error(f"Invalid interval format: {interval}, error: {e}")
-            return search
+        if not datetime_search:
+            return search, datetime_search
 
         if "eq" in datetime_search:
             # For exact matches, include:
@@ -347,7 +359,10 @@ class DatabaseLogic(BaseDatabaseLogic):
                 ),
             ]
 
-        return search.query(Q("bool", should=should, minimum_should_match=1))
+        return (
+            search.query(Q("bool", should=should, minimum_should_match=1)),
+            datetime_search,
+        )
 
     @staticmethod
     def apply_bbox_filter(search: Search, bbox: List):
@@ -462,7 +477,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                     otherwise the original Search object.
         """
         if _filter is not None:
-            es_query = filter.to_es(await self.get_queryables_mapping(), _filter)
+            es_query = filter_module.to_es(await self.get_queryables_mapping(), _filter)
             search = search.query(es_query)
 
         return search
@@ -489,6 +504,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         token: Optional[str],
         sort: Optional[Dict[str, Dict[str, str]]],
         collection_ids: Optional[List[str]],
+        datetime_search: Dict[str, Optional[str]],
         ignore_unavailable: bool = True,
     ) -> Tuple[Iterable[Dict[str, Any]], Optional[int], Optional[str]]:
         """Execute a search query with limit and other optional parameters.
@@ -499,6 +515,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             token (Optional[str]): The token used to return the next set of results.
             sort (Optional[Dict[str, Dict[str, str]]]): Specifies how the results should be sorted.
             collection_ids (Optional[List[str]]): The collection ids to search.
+            datetime_search (Dict[str, Optional[str]]): Datetime range used for index selection.
             ignore_unavailable (bool, optional): Whether to ignore unavailable collections. Defaults to True.
 
         Returns:
@@ -519,9 +536,14 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         query = search.query.to_dict() if search.query else None
 
-        index_param = indices(collection_ids)
+        index_param = await self.async_index_selector.select_indexes(
+            collection_ids, datetime_search
+        )
+        if len(index_param) > ES_MAX_URL_LENGTH - 300:
+            index_param = ITEM_INDICES
+            query = add_collections_to_body(collection_ids, query)
 
-        max_result_window = MAX_LIMIT
+        max_result_window = get_max_limit()
 
         size_limit = min(limit + 1, max_result_window)
 
@@ -583,6 +605,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         geometry_geohash_grid_precision: int,
         geometry_geotile_grid_precision: int,
         datetime_frequency_interval: str,
+        datetime_search,
         ignore_unavailable: Optional[bool] = True,
     ):
         """Return aggregations of STAC Items."""
@@ -618,7 +641,10 @@ class DatabaseLogic(BaseDatabaseLogic):
             if k in aggregations
         }
 
-        index_param = indices(collection_ids)
+        index_param = await self.async_index_selector.select_indexes(
+            collection_ids, datetime_search
+        )
+
         search_task = asyncio.create_task(
             self.client.search(
                 index=index_param,
@@ -660,14 +686,21 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         """
         await self.check_collection_exists(collection_id=item["collection"])
+        alias = index_alias_by_collection_id(item["collection"])
+        doc_id = mk_item_id(item["id"], item["collection"])
 
-        if not exist_ok and await self.client.exists(
-            index=index_alias_by_collection_id(item["collection"]),
-            id=mk_item_id(item["id"], item["collection"]),
-        ):
-            raise ConflictError(
-                f"Item {item['id']} in collection {item['collection']} already exists"
-            )
+        if not exist_ok:
+            alias_exists = await self.client.indices.exists_alias(name=alias)
+
+            if alias_exists:
+                alias_info = await self.client.indices.get_alias(name=alias)
+                indices = list(alias_info.keys())
+
+                for index in indices:
+                    if await self.client.exists(index=index, id=doc_id):
+                        raise ConflictError(
+                            f"Item {item['id']} in collection {item['collection']} already exists"
+                        )
 
         return self.item_serializer.stac_to_db(item, base_url)
 
@@ -798,7 +831,6 @@ class DatabaseLogic(BaseDatabaseLogic):
         # Extract item and collection IDs
         item_id = item["id"]
         collection_id = item["collection"]
-
         # Ensure kwargs is a dictionary
         kwargs = kwargs or {}
 
@@ -816,9 +848,12 @@ class DatabaseLogic(BaseDatabaseLogic):
             item=item, base_url=base_url, exist_ok=exist_ok
         )
 
+        target_index = await self.async_index_inserter.get_target_index(
+            collection_id, item
+        )
         # Index the item in the database
         await self.client.index(
-            index=index_alias_by_collection_id(collection_id),
+            index=target_index,
             id=mk_item_id(item_id, collection_id),
             document=item,
             refresh=refresh,
@@ -851,6 +886,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             item_id=item_id,
             operations=operations,
             base_url=base_url,
+            create_nest=True,
             refresh=refresh,
         )
 
@@ -860,6 +896,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         item_id: str,
         operations: List[PatchOperation],
         base_url: str,
+        create_nest: bool = False,
         refresh: bool = True,
     ) -> Item:
         """Database logic for json patching an item following RF6902.
@@ -894,16 +931,31 @@ class DatabaseLogic(BaseDatabaseLogic):
             else:
                 script_operations.append(operation)
 
-        script = operations_to_script(script_operations)
+        script = operations_to_script(script_operations, create_nest=create_nest)
 
         try:
-            await self.client.update(
+            search_response = await self.client.search(
                 index=index_alias_by_collection_id(collection_id),
+                body={
+                    "query": {"term": {"_id": mk_item_id(item_id, collection_id)}},
+                    "size": 1,
+                },
+            )
+            if search_response["hits"]["total"]["value"] == 0:
+                raise NotFoundError(
+                    f"Item {item_id} does not exist inside Collection {collection_id}"
+                )
+            document_index = search_response["hits"]["hits"][0]["_index"]
+            await self.client.update(
+                index=document_index,
                 id=mk_item_id(item_id, collection_id),
                 script=script,
                 refresh=True,
             )
-
+        except ESNotFoundError:
+            raise NotFoundError(
+                f"Item {item_id} does not exist inside Collection {collection_id}"
+            )
         except BadRequestError as exc:
             raise HTTPException(
                 status_code=400, detail=exc.info["error"]["caused_by"]
@@ -914,7 +966,9 @@ class DatabaseLogic(BaseDatabaseLogic):
         if new_collection_id:
             await self.client.reindex(
                 body={
-                    "dest": {"index": f"{ITEMS_INDEX_PREFIX}{new_collection_id}"},
+                    "dest": {
+                        "index": f"{ITEMS_INDEX_PREFIX}{new_collection_id}"
+                    },  # # noqa
                     "source": {
                         "index": f"{ITEMS_INDEX_PREFIX}{collection_id}",
                         "query": {"term": {"id": {"value": item_id}}},
@@ -922,8 +976,8 @@ class DatabaseLogic(BaseDatabaseLogic):
                     "script": {
                         "lang": "painless",
                         "source": (
-                            f"""ctx._id = ctx._id.replace('{collection_id}', '{new_collection_id}');"""
-                            f"""ctx._source.collection = '{new_collection_id}';"""
+                            f"""ctx._id = ctx._id.replace('{collection_id}', '{new_collection_id}');"""  # noqa
+                            f"""ctx._source.collection = '{new_collection_id}';"""  # noqa
                         ),
                     },
                 },
@@ -983,9 +1037,9 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         try:
             # Perform the delete operation
-            await self.client.delete(
+            await self.client.delete_by_query(
                 index=index_alias_by_collection_id(collection_id),
-                id=mk_item_id(item_id, collection_id),
+                body={"query": {"term": {"_id": mk_item_id(item_id, collection_id)}}},
                 refresh=refresh,
             )
         except ESNotFoundError:
@@ -1085,8 +1139,10 @@ class DatabaseLogic(BaseDatabaseLogic):
             refresh=refresh,
         )
 
-        # Create the item index for the collection
-        await create_item_index(collection_id)
+        if self.async_index_inserter.should_create_collection_index():
+            await self.async_index_inserter.create_simple_index(
+                self.client, collection_id
+            )
 
     async def find_collection(self, collection_id: str) -> Collection:
         """Find and return a collection from the database.
@@ -1211,6 +1267,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             collection_id=collection_id,
             operations=operations,
             base_url=base_url,
+            create_nest=True,
             refresh=refresh,
         )
 
@@ -1219,6 +1276,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         collection_id: str,
         operations: List[PatchOperation],
         base_url: str,
+        create_nest: bool = False,
         refresh: bool = True,
     ) -> Collection:
         """Database logic for json patching a collection following RF6902.
@@ -1246,7 +1304,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             else:
                 script_operations.append(operation)
 
-        script = operations_to_script(script_operations)
+        script = operations_to_script(script_operations, create_nest=create_nest)
 
         try:
             await self.client.update(
@@ -1360,9 +1418,12 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         # Perform the bulk insert
         raise_on_error = self.async_settings.raise_on_bulk_error
+        actions = await self.async_index_inserter.prepare_bulk_actions(
+            collection_id, processed_items
+        )
         success, errors = await helpers.async_bulk(
             self.client,
-            mk_actions(collection_id, processed_items),
+            actions,
             refresh=refresh,
             raise_on_error=raise_on_error,
         )

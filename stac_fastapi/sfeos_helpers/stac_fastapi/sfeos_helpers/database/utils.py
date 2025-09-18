@@ -76,7 +76,7 @@ def merge_to_operations(data: Dict) -> List:
             nested_operations = merge_to_operations(value)
 
             for nested_operation in nested_operations:
-                nested_operation.path = f"{key}.{nested_operation.path}"
+                nested_operation.path = f"{key}/{nested_operation.path}"
                 operations.append(nested_operation)
 
         else:
@@ -90,6 +90,7 @@ def check_commands(
     op: str,
     path: ElasticPath,
     from_path: bool = False,
+    create_nest: bool = False,
 ) -> None:
     """Add Elasticsearch checks to operation.
 
@@ -101,25 +102,44 @@ def check_commands(
 
     """
     if path.nest:
-        commands.add(
-            f"if (!ctx._source.containsKey('{path.nest}'))"
-            f"{{Debug.explain('{path.nest} does not exist');}}"
-        )
+        part_nest = ""
+        for index, path_part in enumerate(path.parts):
 
-    if path.index or op in ["remove", "replace", "test"] or from_path:
-        commands.add(
-            f"if (!ctx._source{path.es_nest}.containsKey('{path.key}'))"
-            f"{{Debug.explain('{path.key}  does not exist in {path.nest}');}}"
-        )
+            # Create nested dictionaries if not present for merge operations
+            if create_nest and not from_path:
+                value = "[:]"
+                for sub_part in reversed(path.parts[index + 1 :]):
+                    value = f"['{sub_part}': {value}]"
 
-    if from_path and path.index is not None:
-        commands.add(
-            f"if ((ctx._source{path.es_location} instanceof ArrayList"
-            f" && ctx._source{path.es_location}.size() < {path.index})"
-            f" || (!(ctx._source{path.es_location} instanceof ArrayList)"
-            f" && !ctx._source{path.es_location}.containsKey('{path.index}')))"
-            f"{{Debug.explain('{path.path} does not exist');}}"
-        )
+                commands.add(
+                    f"if (!ctx._source{part_nest}.containsKey('{path_part}'))"
+                    f"{{ctx._source{part_nest}['{path_part}'] = {value};}}"
+                    f"{'' if index == len(path.parts) - 1 else' else '}"  # noqa: E275
+                )
+
+            else:
+                commands.add(
+                    f"if (!ctx._source{part_nest}.containsKey('{path_part}'))"
+                    f"{{Debug.explain('{path_part} in {path.path} does not exist');}}"
+                )
+
+            part_nest += f"['{path_part}']"
+
+    if from_path or op in ["remove", "replace", "test"]:
+
+        if isinstance(path.key, int):
+            commands.add(
+                f"if ((ctx._source{path.es_nest} instanceof ArrayList"
+                f" && ctx._source{path.es_nest}.size() < {abs(path.key)})"
+                f" || (!(ctx._source{path.es_nest} instanceof ArrayList)"
+                f" && !ctx._source{path.es_nest}.containsKey('{path.key}')))"
+                f"{{Debug.explain('{path.key} does not exist in {path.nest}');}}"  # noqa: E713
+            )
+        else:
+            commands.add(
+                f"if (!ctx._source{path.es_nest}.containsKey('{path.key}'))"
+                f"{{Debug.explain('{path.key} does not exist in {path.nest}');}}"  # noqa: E713
+            )
 
 
 def remove_commands(commands: ESCommandSet, path: ElasticPath) -> None:
@@ -130,15 +150,16 @@ def remove_commands(commands: ESCommandSet, path: ElasticPath) -> None:
         path (ElasticPath): Path to value to be removed
 
     """
-    if path.index is not None:
+    commands.add(f"def {path.variable_name};")
+    if isinstance(path.key, int):
         commands.add(
-            f"def {path.variable_name} = ctx._source{path.es_location}.remove({path.index});"
+            f"if (ctx._source{path.es_nest} instanceof ArrayList)"
+            f"{{{path.variable_name} = ctx._source{path.es_nest}.remove({path.es_key});}} else "
         )
 
-    else:
-        commands.add(
-            f"def {path.variable_name} = ctx._source{path.es_nest}.remove('{path.key}');"
-        )
+    commands.add(
+        f"{path.variable_name} = ctx._source{path.es_nest}.remove('{path.key}');"
+    )
 
 
 def add_commands(
@@ -160,21 +181,22 @@ def add_commands(
         value = (
             from_path.variable_name
             if operation.op == "move"
-            else f"ctx._source.{from_path.es_path}"
+            else f"ctx._source{from_path.es_path}"
         )
+
     else:
         value = f"params.{path.param_key}"
         params[path.param_key] = operation.value
 
-    if path.index is not None:
+    if isinstance(path.key, int):
         commands.add(
-            f"if (ctx._source{path.es_location} instanceof ArrayList)"
-            f"{{ctx._source{path.es_location}.{'add' if operation.op in ['add', 'move'] else 'set'}({path.index}, {value})}}"
-            f"else{{ctx._source.{path.es_path} = {value}}}"
+            f"if (ctx._source{path.es_nest} instanceof ArrayList)"
+            f"{{ctx._source{path.es_nest}.{'add' if operation.op in ['add', 'move'] else 'set'}({path.es_key}, {value});}}"
+            f" else ctx._source{path.es_nest}['{path.es_key}'] = {value};"
         )
 
     else:
-        commands.add(f"ctx._source.{path.es_path} = {value};")
+        commands.add(f"ctx._source{path.es_path} = {value};")
 
 
 def test_commands(
@@ -190,14 +212,23 @@ def test_commands(
     value = f"params.{path.param_key}"
     params[path.param_key] = operation.value
 
+    if isinstance(path.key, int):
+        commands.add(
+            f"if (ctx._source{path.es_nest} instanceof ArrayList)"
+            f"{{if (ctx._source{path.es_nest}[{path.es_key}] != {value})"
+            f"{{Debug.explain('Test failed `{path.path}`"
+            f" != ' + ctx._source{path.es_path});}}"
+            f"}} else "
+        )
+
     commands.add(
-        f"if (ctx._source.{path.es_path} != {value})"
-        f"{{Debug.explain('Test failed `{path.path}` | "
-        f"{operation.json_value} != ' + ctx._source.{path.es_path});}}"
+        f"if (ctx._source{path.es_path} != {value})"
+        f"{{Debug.explain('Test failed `{path.path}`"
+        f" != ' + ctx._source{path.es_path});}}"
     )
 
 
-def operations_to_script(operations: List) -> Dict:
+def operations_to_script(operations: List, create_nest: bool = False) -> Dict:
     """Convert list of operation to painless script.
 
     Args:
@@ -215,10 +246,16 @@ def operations_to_script(operations: List) -> Dict:
             ElasticPath(path=operation.from_) if hasattr(operation, "from_") else None
         )
 
-        check_commands(commands=commands, op=operation.op, path=path)
+        check_commands(
+            commands=commands, op=operation.op, path=path, create_nest=create_nest
+        )
         if from_path is not None:
             check_commands(
-                commands=commands, op=operation.op, path=from_path, from_path=True
+                commands=commands,
+                op=operation.op,
+                path=from_path,
+                from_path=True,
+                create_nest=create_nest,
             )
 
         if operation.op in ["remove", "move"]:

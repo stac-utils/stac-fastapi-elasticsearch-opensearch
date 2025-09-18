@@ -281,6 +281,26 @@ async def test_merge_patch_item_remove(ctx, core_client, txn_client):
 
 
 @pytest.mark.asyncio
+async def test_merge_patch_create_nest(ctx, core_client, txn_client):
+    item = ctx.item
+    collection_id = item["collection"]
+    item_id = item["id"]
+    await txn_client.patch_item(
+        collection_id=collection_id,
+        item_id=item_id,
+        patch={"properties": {"new": {"nest": "foo"}}},
+        request=MockRequest(headers={"content-type": "application/merge-patch+json"}),
+    )
+
+    updated_item = await core_client.get_item(
+        item_id, collection_id, request=MockRequest
+    )
+    assert "new" in updated_item["properties"]
+    assert "nest" in updated_item["properties"]["new"]
+    assert updated_item["properties"]["new"]["nest"] == "foo"
+
+
+@pytest.mark.asyncio
 async def test_json_patch_item_add(ctx, core_client, txn_client):
     item = ctx.item
     collection_id = item["collection"]
@@ -549,6 +569,29 @@ async def test_json_patch_item_remove(ctx, core_client, txn_client):
         == ctx.item["properties"]["eo:bands"][:1]
         + ctx.item["properties"]["eo:bands"][2:]
     )
+
+
+@pytest.mark.asyncio
+async def test_json_patch_add_with_bad_nest(ctx, core_client, txn_client):
+    item = ctx.item
+    collection_id = item["collection"]
+    item_id = item["id"]
+    operations = [
+        PatchAddReplaceTest.model_validate(
+            {"op": "add", "path": "/properties/bad/nest", "value": "foo"}
+        ),
+    ]
+
+    with pytest.raises(HTTPException):
+
+        await txn_client.patch_item(
+            collection_id=collection_id,
+            item_id=item_id,
+            patch=operations,
+            request=MockRequest(
+                headers={"content-type": "application/json-patch+json"}
+            ),
+        )
 
 
 @pytest.mark.asyncio

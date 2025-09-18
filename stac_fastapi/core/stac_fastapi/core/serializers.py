@@ -1,4 +1,5 @@
 """Serializers."""
+
 import abc
 from copy import deepcopy
 from typing import Any, List, Optional
@@ -8,6 +9,7 @@ from starlette.requests import Request
 
 from stac_fastapi.core.datetime_utils import now_to_rfc3339_str
 from stac_fastapi.core.models.links import CollectionLinks
+from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.links import ItemLinks, resolve_links
 
@@ -65,6 +67,11 @@ class ItemSerializer(Serializer):
         item_links = resolve_links(stac_data.get("links", []), base_url)
         stac_data["links"] = item_links
 
+        if get_bool_env("STAC_INDEX_ASSETS"):
+            stac_data["assets"] = [
+                {"es_key": k, **v} for k, v in stac_data.get("assets", {}).items()
+            ]
+
         now = now_to_rfc3339_str()
         if "created" not in stac_data["properties"]:
             stac_data["properties"]["created"] = now
@@ -92,6 +99,12 @@ class ItemSerializer(Serializer):
         if original_links:
             item_links += resolve_links(original_links, base_url)
 
+        if get_bool_env("STAC_INDEX_ASSETS"):
+            assets = {a.pop("es_key"): a for a in item.get("assets", [])}
+
+        else:
+            assets = item.get("assets", {})
+
         return stac_types.Item(
             type="Feature",
             stac_version=item.get("stac_version", ""),
@@ -102,7 +115,7 @@ class ItemSerializer(Serializer):
             bbox=item.get("bbox", []),
             properties=item.get("properties", {}),
             links=item_links,
-            assets=item.get("assets", {}),
+            assets=assets,
         )
 
 
@@ -127,6 +140,15 @@ class CollectionSerializer(Serializer):
         collection["links"] = resolve_links(
             collection.get("links", []), str(request.base_url)
         )
+
+        if get_bool_env("STAC_INDEX_ASSETS"):
+            collection["assets"] = [
+                {"es_key": k, **v} for k, v in collection.get("assets", {}).items()
+            ]
+            collection["item_assets"] = [
+                {"es_key": k, **v} for k, v in collection.get("item_assets", {}).items()
+            ]
+
         return collection
 
     @classmethod
@@ -172,6 +194,19 @@ class CollectionSerializer(Serializer):
         if original_links:
             collection_links += resolve_links(original_links, str(request.base_url))
         collection["links"] = collection_links
+
+        if get_bool_env("STAC_INDEX_ASSETS"):
+            collection["assets"] = {
+                a.pop("es_key"): a for a in collection.get("assets", [])
+            }
+            collection["item_assets"] = {
+                i.pop("es_key"): i for i in collection.get("item_assets", [])
+            }
+
+        else:
+            collection["assets"] = collection.get("assets", {})
+            if item_assets := collection.get("item_assets"):
+                collection["item_assets"] = item_assets
 
         # Return the stac_types.Collection object
         return stac_types.Collection(**collection)

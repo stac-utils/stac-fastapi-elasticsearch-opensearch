@@ -20,7 +20,8 @@ from stac_fastapi.core.core import (
 )
 from stac_fastapi.core.rate_limit import setup_rate_limit
 from stac_fastapi.core.utilities import get_bool_env
-from stac_fastapi.extensions.third_party import BulkTransactionExtension
+from stac_fastapi.sfeos_helpers.aggregation import EsAsyncBaseAggregationClient
+from stac_fastapi.sfeos_helpers.mappings import ITEMS_INDEX_PREFIX
 
 if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
     from stac_fastapi.opensearch.app import app_config
@@ -145,6 +146,8 @@ async def delete_collections_and_items(txn_client: TransactionsClient) -> None:
     await refresh_indices(txn_client)
     await txn_client.database.delete_items()
     await txn_client.database.delete_collections()
+    await txn_client.database.client.indices.delete(index=f"{ITEMS_INDEX_PREFIX}*")
+    await txn_client.database.async_index_selector.refresh_cache()
 
 
 async def refresh_indices(txn_client: TransactionsClient) -> None:
@@ -335,13 +338,24 @@ def build_test_app():
         "ENABLE_TRANSACTIONS_EXTENSIONS", default=True
     )
 
-    # First remove any existing transaction extensions
-    if "extensions" in test_config:
-        test_config["extensions"] = [
-            ext
-            for ext in test_config["extensions"]
-            if not isinstance(ext, (TransactionExtension, BulkTransactionExtension))
-        ]
+    # Configure extensions
+    settings = AsyncSettings()
+    aggregation_extension = AggregationExtension(
+        client=EsAsyncBaseAggregationClient(
+            database=database, session=None, settings=settings
+        )
+    )
+    aggregation_extension.POST = EsAggregationExtensionPostRequest
+    aggregation_extension.GET = EsAggregationExtensionGetRequest
+
+    search_extensions = [
+        FieldsExtension(),
+        SortExtension(),
+        QueryExtension(),
+        TokenPaginationExtension(),
+        FilterExtension(),
+        FreeTextExtension(),
+    ]
 
     # Add transaction extension if enabled
     if TRANSACTIONS_EXTENSIONS:

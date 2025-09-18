@@ -114,8 +114,15 @@ async def test_create_uppercase_collection_with_item(
 async def test_update_item_already_exists(app_client, ctx, load_test_data):
     """Test updating an item which already exists (transactions extension)"""
     item = load_test_data("test_item.json")
+    item["id"] = str(uuid.uuid4())
     assert item["properties"]["gsd"] != 16
     item["properties"]["gsd"] = 16
+
+    response = await app_client.post(
+        f"/collections/{item['collection']}/items", json=item
+    )
+    assert response.status_code == 201
+
     await app_client.put(
         f"/collections/{item['collection']}/items/{item['id']}", json=item
     )
@@ -219,7 +226,7 @@ async def test_get_item_collection(app_client, ctx, txn_client):
     assert resp.status_code == 200
 
     item_collection = resp.json()
-    if matched := item_collection.get("numMatched"):
+    if matched := item_collection.get("numberMatched"):
         assert matched == item_count + 1
 
 
@@ -287,13 +294,13 @@ async def test_pagination(app_client, load_test_data):
     )
     assert resp.status_code == 200
     first_page = resp.json()
-    assert first_page["numReturned"] == 3
+    assert first_page["numberReturned"] == 3
 
     url_components = urlsplit(first_page["links"][0]["href"])
     resp = await app_client.get(f"{url_components.path}?{url_components.query}")
     assert resp.status_code == 200
     second_page = resp.json()
-    assert second_page["numReturned"] == 3
+    assert second_page["numberReturned"] == 3
 
 
 @pytest.mark.skip(reason="created and updated fields not be added with stac fastapi 3?")
@@ -608,14 +615,14 @@ async def test_item_search_get_query_extension(app_client, ctx):
         ),
     }
     resp = await app_client.get("/search", params=params)
-    assert resp.json()["numReturned"] == 0
+    assert resp.json()["numberReturned"] == 0
 
     params["query"] = json.dumps(
         {"proj:epsg": {"eq": test_item["properties"]["proj:epsg"]}}
     )
     resp = await app_client.get("/search", params=params)
     resp_json = resp.json()
-    assert resp_json["numReturned"] == 1
+    assert resp_json["numberReturned"] == 1
     assert (
         resp_json["features"][0]["properties"]["proj:epsg"]
         == test_item["properties"]["proj:epsg"]
@@ -863,6 +870,35 @@ async def test_field_extension_exclude_default_includes(app_client, ctx):
 
 
 @pytest.mark.asyncio
+async def test_field_extension_get_includes_collection_items(app_client, ctx):
+    """Test GET collections/{collection_id}/items with included fields (fields extension)"""
+    test_item = ctx.item
+    params = {
+        "fields": "+properties.proj:epsg,+properties.gsd",
+    }
+    resp = await app_client.get(
+        f"/collections/{test_item['collection']}/items", params=params
+    )
+    feat_properties = resp.json()["features"][0]["properties"]
+    assert not set(feat_properties) - {"proj:epsg", "gsd", "datetime"}
+
+
+@pytest.mark.asyncio
+async def test_field_extension_get_excludes_collection_items(app_client, ctx):
+    """Test GET collections/{collection_id}/items with included fields (fields extension)"""
+    test_item = ctx.item
+    params = {
+        "fields": "-properties.proj:epsg,-properties.gsd",
+    }
+    resp = await app_client.get(
+        f"/collections/{test_item['collection']}/items", params=params
+    )
+    resp_json = resp.json()
+    assert "proj:epsg" not in resp_json["features"][0]["properties"].keys()
+    assert "gsd" not in resp_json["features"][0]["properties"].keys()
+
+
+@pytest.mark.asyncio
 async def test_search_intersects_and_bbox(app_client):
     """Test POST search intersects and bbox are mutually exclusive (core)"""
     bbox = [-118, 34, -117, 35]
@@ -998,6 +1034,9 @@ async def _search_and_get_ids(
 async def test_search_datetime_with_null_datetime(
     app_client, txn_client, load_test_data
 ):
+    if os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip()
+
     """Test datetime filtering when properties.datetime is null or set, ensuring start_datetime and end_datetime are set when datetime is null."""
     # Setup: Create test collection
     test_collection = load_test_data("test_collection.json")
