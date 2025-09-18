@@ -63,7 +63,7 @@ docker-shell-os:
 
 .PHONY: test-elasticsearch
 test-elasticsearch:
-	-$(run_es) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd stac_fastapi/tests/ && pytest'
+	-$(run_es) /bin/bash -c 'pip install redis==6.4.0 export && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd stac_fastapi/tests/ && pytest'
 	docker compose down
 
 .PHONY: test-opensearch

@@ -6,6 +6,7 @@ from typing import Any, Callable, Dict, Optional
 
 import pytest
 import pytest_asyncio
+import redis  # noqa: F401
 from fastapi import Depends, HTTPException, security, status
 from httpx import ASGITransport, AsyncClient
 from pydantic import ConfigDict
