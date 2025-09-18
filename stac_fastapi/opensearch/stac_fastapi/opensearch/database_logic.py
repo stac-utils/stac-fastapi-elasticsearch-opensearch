@@ -171,6 +171,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         Returns:
             A tuple of (collections, next pagination token if any).
         """
+        collections_default_sort = [{"id": {"order": "asc"}}]
         formatted_sort = []
         if sort:
             for item in sort:
@@ -182,7 +183,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             if not any("id" in item for item in formatted_sort):
                 formatted_sort.append({"id": {"order": "asc"}})
         else:
-            formatted_sort = [{"id": {"order": "asc"}}]
+            formatted_sort = collections_default_sort
 
         search_body = {
             "sort": formatted_sort,
