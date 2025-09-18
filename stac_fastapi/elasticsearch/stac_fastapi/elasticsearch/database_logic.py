@@ -170,13 +170,19 @@ class DatabaseLogic(BaseDatabaseLogic):
     """CORE LOGIC"""
 
     async def get_all_collections(
-        self, token: Optional[str], limit: int, request: Request
+        self,
+        token: Optional[str],
+        limit: int,
+        request: Request,
+        sort: Optional[List[Dict[str, Any]]] = None,
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
-        """Retrieve a list of all collections from Elasticsearch, supporting pagination.
+        """Retrieve a list of collections from Elasticsearch, supporting pagination.
 
         Args:
             token (Optional[str]): The pagination token.
             limit (int): The number of results to return.
+            request (Request): The FastAPI request object.
+            sort (Optional[List[Dict[str, Any]]]): Optional sort parameter from the request.
 
         Returns:
             A tuple of (collections, next pagination token if any).
@@ -185,10 +191,21 @@ class DatabaseLogic(BaseDatabaseLogic):
         if token:
             search_after = [token]
 
+        formatted_sort = None
+        if sort:
+            formatted_sort = {}
+            for item in sort:
+                field = item.get("field")
+                direction = item.get("direction", "asc")
+                if field:
+                    formatted_sort[field] = {"order": direction}
+            # Always include id as a secondary sort to ensure consistent pagination
+            formatted_sort.setdefault("id", {"order": "asc"})
+
         response = await self.client.search(
             index=COLLECTIONS_INDEX,
             body={
-                "sort": [{"id": {"order": "asc"}}],
+                "sort": formatted_sort or DEFAULT_SORT,
                 "size": limit,
                 **({"search_after": search_after} if search_after is not None else {}),
             },
