@@ -17,7 +17,7 @@ from starlette.requests import Request
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
-from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon
+from stac_fastapi.core.utilities import bbox2polygon, get_max_limit
 from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
 from stac_fastapi.elasticsearch.config import (
     ElasticsearchSettings as SyncElasticsearchSettings,
@@ -543,7 +543,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             index_param = ITEM_INDICES
             query = add_collections_to_body(collection_ids, query)
 
-        max_result_window = MAX_LIMIT
+        max_result_window = get_max_limit()
 
         size_limit = min(limit + 1, max_result_window)
 

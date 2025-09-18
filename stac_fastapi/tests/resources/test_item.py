@@ -226,7 +226,7 @@ async def test_get_item_collection(app_client, ctx, txn_client):
     assert resp.status_code == 200
 
     item_collection = resp.json()
-    if matched := item_collection.get("numMatched"):
+    if matched := item_collection.get("numberMatched"):
         assert matched == item_count + 1
 
 
@@ -294,13 +294,13 @@ async def test_pagination(app_client, load_test_data):
     )
     assert resp.status_code == 200
     first_page = resp.json()
-    assert first_page["numReturned"] == 3
+    assert first_page["numberReturned"] == 3
 
     url_components = urlsplit(first_page["links"][0]["href"])
     resp = await app_client.get(f"{url_components.path}?{url_components.query}")
     assert resp.status_code == 200
     second_page = resp.json()
-    assert second_page["numReturned"] == 3
+    assert second_page["numberReturned"] == 3
 
 
 @pytest.mark.skip(reason="created and updated fields not be added with stac fastapi 3?")
@@ -615,14 +615,14 @@ async def test_item_search_get_query_extension(app_client, ctx):
         ),
     }
     resp = await app_client.get("/search", params=params)
-    assert resp.json()["numReturned"] == 0
+    assert resp.json()["numberReturned"] == 0
 
     params["query"] = json.dumps(
         {"proj:epsg": {"eq": test_item["properties"]["proj:epsg"]}}
     )
     resp = await app_client.get("/search", params=params)
     resp_json = resp.json()
-    assert resp_json["numReturned"] == 1
+    assert resp_json["numberReturned"] == 1
     assert (
         resp_json["features"][0]["properties"]["proj:epsg"]
         == test_item["properties"]["proj:epsg"]
@@ -867,6 +867,35 @@ async def test_field_extension_exclude_default_includes(app_client, ctx):
     resp = await app_client.post("/search", json=body)
     resp_json = resp.json()
     assert "gsd" not in resp_json["features"][0]
+
+
+@pytest.mark.asyncio
+async def test_field_extension_get_includes_collection_items(app_client, ctx):
+    """Test GET collections/{collection_id}/items with included fields (fields extension)"""
+    test_item = ctx.item
+    params = {
+        "fields": "+properties.proj:epsg,+properties.gsd",
+    }
+    resp = await app_client.get(
+        f"/collections/{test_item['collection']}/items", params=params
+    )
+    feat_properties = resp.json()["features"][0]["properties"]
+    assert not set(feat_properties) - {"proj:epsg", "gsd", "datetime"}
+
+
+@pytest.mark.asyncio
+async def test_field_extension_get_excludes_collection_items(app_client, ctx):
+    """Test GET collections/{collection_id}/items with included fields (fields extension)"""
+    test_item = ctx.item
+    params = {
+        "fields": "-properties.proj:epsg,-properties.gsd",
+    }
+    resp = await app_client.get(
+        f"/collections/{test_item['collection']}/items", params=params
+    )
+    resp_json = resp.json()
+    assert "proj:epsg" not in resp_json["features"][0]["properties"].keys()
+    assert "gsd" not in resp_json["features"][0]["properties"].keys()
 
 
 @pytest.mark.asyncio

@@ -80,11 +80,14 @@ def populate_sort_shared(sortby: List) -> Optional[Dict[str, Dict[str, str]]]:
         This function transforms a list of sort specifications into the format required by
         Elasticsearch/OpenSearch for sorting query results. The returned dictionary can be
         directly used in search requests.
+        Always includes 'id' as secondary sort to ensure unique pagination tokens.
     """
     if sortby:
-        return {s.field: {"order": s.direction} for s in sortby}
+        sort_config = {s.field: {"order": s.direction} for s in sortby}
+        sort_config.setdefault("id", {"order": "asc"})
+        return sort_config
     else:
-        return None
+        return {"id": {"order": "asc"}}
 
 
 def add_collections_to_body(

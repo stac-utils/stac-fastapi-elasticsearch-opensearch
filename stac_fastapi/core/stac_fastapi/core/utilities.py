@@ -10,7 +10,15 @@ from typing import Any, Dict, List, Optional, Set, Union
 
 from stac_fastapi.types.stac import Item
 
-MAX_LIMIT = 10000
+
+def get_max_limit():
+    """
+    Retrieve a MAX_LIMIT value from an environment variable.
+
+    Returns:
+        int: The int value parsed from the environment variable.
+    """
+    return int(os.getenv("ENV_MAX_LIMIT", 10000))
 
 
 def get_bool_env(name: str, default: Union[bool, str] = False) -> bool:
