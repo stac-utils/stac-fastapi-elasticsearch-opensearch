@@ -41,24 +41,6 @@ DEFAULT_QUERYABLES: Dict[str, Dict[str, Any]] = {
         "description": "Creation Timestamp",
         "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/datetime.json#/properties/updated",
     },
-    "cloud_cover": {
-        "description": "Cloud Cover",
-        "$ref": "https://stac-extensions.github.io/eo/v1.0.0/schema.json#/definitions/fields/properties/eo:cloud_cover",
-    },
-    "cloud_shadow_percentage": {
-        "title": "Cloud Shadow Percentage",
-        "description": "Cloud Shadow Percentage",
-        "type": "number",
-        "minimum": 0,
-        "maximum": 100,
-    },
-    "nodata_pixel_percentage": {
-        "title": "No Data Pixel Percentage",
-        "description": "No Data Pixel Percentage",
-        "type": "number",
-        "minimum": 0,
-        "maximum": 100,
-    },
 }
 """Queryables that are present in all collections."""
 
