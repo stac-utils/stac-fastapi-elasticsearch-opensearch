@@ -22,6 +22,8 @@ services:
       - ES_VERIFY_CERTS=false
       - BACKEND=elasticsearch
       - DATABASE_REFRESH=true
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     ports:
       - "8080:8080"
     volumes:
@@ -30,6 +32,7 @@ services:
       - ./esdata:/usr/share/elasticsearch/data
     depends_on:
       - elasticsearch
+      - redis
     command:
       bash -c "./scripts/wait-for-it-es.sh es-container:9200 && python -m stac_fastapi.elasticsearch.app"
 
@@ -94,3 +97,10 @@ services:
       - ./opensearch/snapshots:/usr/share/opensearch/snapshots
     ports:
       - "9202:9202"
+
+  redis:
+    container_name: stac-redis
+    image: redis:7.2-alpine
+    restart: always
+    ports:
+      - "6379:6379"

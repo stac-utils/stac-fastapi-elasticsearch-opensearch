@@ -19,6 +19,7 @@ install_requires = [
     "pygeofilter~=0.3.1",
     "jsonschema~=4.0.0",
     "slowapi~=0.1.9",
+    "redis==6.4.0",
 ]
 
 setup(
