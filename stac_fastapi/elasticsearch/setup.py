@@ -11,6 +11,7 @@ install_requires = [
     "elasticsearch[async]~=8.18.0",
     "uvicorn~=0.23.0",
     "starlette>=0.35.0,<0.36.0",
+    "redis==6.4.0",
 ]
 
 extra_reqs = {
