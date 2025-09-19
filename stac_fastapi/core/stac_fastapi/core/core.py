@@ -227,6 +227,7 @@ class CoreClient(AsyncBaseCoreClient):
     async def all_collections(
         self,
         datetime: Optional[str] = None,
+        limit: Optional[int] = None,
         fields: Optional[List[str]] = None,
         sortby: Optional[str] = None,
         filter_expr: Optional[str] = None,
@@ -239,6 +240,7 @@ class CoreClient(AsyncBaseCoreClient):
 
         Args:
             datetime (Optional[str]): Filter collections by datetime range.
+            limit (Optional[int]): Maximum number of collections to return.
             fields (Optional[List[str]]): Fields to include or exclude from the results.
             sortby (Optional[str]): Sorting options for the results.
             filter_expr (Optional[str]): Structured filter expression in CQL2 JSON or CQL2-text format.
@@ -252,7 +254,9 @@ class CoreClient(AsyncBaseCoreClient):
         """
         request = kwargs["request"]
         base_url = str(request.base_url)
+
         limit = int(request.query_params.get("limit", os.getenv("STAC_ITEM_LIMIT", 10)))
+
         token = request.query_params.get("token")
 
         # Process fields parameter for filtering collection properties
