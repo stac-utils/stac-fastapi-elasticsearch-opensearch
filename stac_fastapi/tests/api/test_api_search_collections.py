@@ -439,6 +439,7 @@ async def test_collections_query_extension(app_client, txn_client, ctx):
     assert f"{test_prefix}-modis" in found_ids
 
 
+@pytest.mark.asyncio
 async def test_collections_datetime_filter(app_client, load_test_data, txn_client):
     """Test filtering collections by datetime."""
     # Create a test collection with a specific temporal extent
@@ -526,3 +527,74 @@ async def test_collections_datetime_filter(app_client, load_test_data, txn_clien
     found_collections = [c for c in resp_json["collections"] if c["id"] == test_collection_id]
     assert len(found_collections) == 1, f"Expected to find collection {test_collection_id} with open-ended past range to a date within its range"
     """
+
+
+@pytest.mark.asyncio
+async def test_collections_number_matched_returned(app_client, txn_client, ctx):
+    """Verify GET /collections returns correct numberMatched and numberReturned values."""
+    # Create multiple collections with different ids
+    base_collection = ctx.collection
+
+    # Create collections with ids in a specific order to test pagination
+    # Use unique prefixes to avoid conflicts between tests
+    test_prefix = f"count-{uuid.uuid4().hex[:8]}"
+    collection_ids = [f"{test_prefix}-{i}" for i in range(10)]
+
+    for i, coll_id in enumerate(collection_ids):
+        test_collection = base_collection.copy()
+        test_collection["id"] = coll_id
+        test_collection["title"] = f"Test Collection {i}"
+        await create_collection(txn_client, test_collection)
+
+    await refresh_indices(txn_client)
+
+    # Test with limit=5
+    resp = await app_client.get(
+        "/collections",
+        params=[("limit", "5")],
+    )
+    assert resp.status_code == 200
+    resp_json = resp.json()
+
+    # Filter collections to only include the ones we created for this test
+    test_collections = [
+        c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
+    ]
+
+    # Should return 5 collections
+    assert len(test_collections) == 5
+
+    # Check that numberReturned matches the number of collections returned
+    assert resp_json["numberReturned"] == len(resp_json["collections"])
+
+    # Check that numberMatched is greater than or equal to numberReturned
+    # (since there might be other collections in the database)
+    assert resp_json["numberMatched"] >= resp_json["numberReturned"]
+
+    # Check that numberMatched includes at least all our test collections
+    assert resp_json["numberMatched"] >= len(collection_ids)
+
+    # Now test with a query that should match only some collections
+    query = {"id": {"eq": f"{test_prefix}-1"}}
+    resp = await app_client.get(
+        "/collections",
+        params=[("query", json.dumps(query))],
+    )
+    assert resp.status_code == 200
+    resp_json = resp.json()
+
+    # Filter collections to only include the ones we created for this test
+    test_collections = [
+        c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
+    ]
+
+    # Should return only 1 collection
+    assert len(test_collections) == 1
+    assert test_collections[0]["id"] == f"{test_prefix}-1"
+
+    # Check that numberReturned matches the number of collections returned
+    assert resp_json["numberReturned"] == len(resp_json["collections"])
+
+    # Check that numberMatched matches the number of collections that match the query
+    # (should be 1 in this case)
+    assert resp_json["numberMatched"] >= 1

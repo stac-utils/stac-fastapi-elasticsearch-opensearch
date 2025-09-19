@@ -163,8 +163,9 @@ class DatabaseLogic(BaseDatabaseLogic):
         filter: Optional[Dict[str, Any]] = None,
         query: Optional[Dict[str, Dict[str, Any]]] = None,
         datetime: Optional[str] = None,
-    ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
-        """Retrieve a list of collections from OpenSearch, supporting pagination.
+    ) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[int]]:
+        """
+        Retrieve a list of collections from Opensearch, supporting pagination.
 
         Args:
             token (Optional[str]): The pagination token.
@@ -299,11 +300,29 @@ class DatabaseLogic(BaseDatabaseLogic):
                 else {"bool": {"must": query_parts}}
             )
 
-        # Execute the search
-        response = await self.client.search(
-            index=COLLECTIONS_INDEX,
-            body=body,
+        # Create a copy of the body for count query (without pagination and sorting)
+        count_body = body.copy()
+        if "search_after" in count_body:
+            del count_body["search_after"]
+        count_body["size"] = 0
+
+        # Create async tasks for both search and count
+        search_task = asyncio.create_task(
+            self.client.search(
+                index=COLLECTIONS_INDEX,
+                body=body,
+            )
         )
+
+        count_task = asyncio.create_task(
+            self.client.count(
+                index=COLLECTIONS_INDEX,
+                body={"query": body.get("query", {"match_all": {}})},
+            )
+        )
+
+        # Wait for search task to complete
+        response = await search_task
 
         hits = response["hits"]["hits"]
         collections = [
@@ -319,7 +338,22 @@ class DatabaseLogic(BaseDatabaseLogic):
             if next_token_values:
                 next_token = next_token_values[0]
 
-        return collections, next_token
+        # Get the total count of collections
+        matched = (
+            response["hits"]["total"]["value"]
+            if response["hits"]["total"]["relation"] == "eq"
+            else None
+        )
+
+        # If count task is done, use its result
+        if count_task.done():
+            try:
+                matched = count_task.result().get("count")
+            except Exception as e:
+                logger = logging.getLogger(__name__)
+                logger.error(f"Count task failed: {e}")
+
+        return collections, next_token, matched
 
     async def get_one_item(self, collection_id: str, item_id: str) -> Dict:
         """Retrieve a single item from the database.

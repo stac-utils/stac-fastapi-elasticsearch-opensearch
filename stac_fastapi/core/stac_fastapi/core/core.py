@@ -350,7 +350,7 @@ class CoreClient(AsyncBaseCoreClient):
         if datetime:
             parsed_datetime = format_datetime_range(date_str=datetime)
 
-        collections, next_token = await self.database.get_all_collections(
+        collections, next_token, maybe_count = await self.database.get_all_collections(
             token=token,
             limit=limit,
             request=request,
@@ -384,7 +384,12 @@ class CoreClient(AsyncBaseCoreClient):
             next_link = PagingLinks(next=next_token, request=request).link_next()
             links.append(next_link)
 
-        return stac_types.Collections(collections=filtered_collections, links=links)
+        return stac_types.Collections(
+            collections=filtered_collections,
+            links=links,
+            numberMatched=maybe_count,
+            numberReturned=len(filtered_collections),
+        )
 
     async def get_collection(
         self, collection_id: str, **kwargs
