@@ -229,6 +229,8 @@ class CoreClient(AsyncBaseCoreClient):
         fields: Optional[List[str]] = None,
         sortby: Optional[str] = None,
         filter_expr: Optional[str] = None,
+        query: Optional[str] = None,
+        filter_lang: Optional[str] = None,
         q: Optional[Union[str, List[str]]] = None,
         **kwargs,
     ) -> stac_types.Collections:
@@ -237,7 +239,9 @@ class CoreClient(AsyncBaseCoreClient):
         Args:
             fields (Optional[List[str]]): Fields to include or exclude from the results.
             sortby (Optional[str]): Sorting options for the results.
-            filter_expr (Optional[str]): Structured filter in CQL2 format.
+            filter_expr (Optional[str]): Structured filter expression in CQL2 JSON format.
+            query (Optional[str]): Legacy query parameter (deprecated).
+            filter_lang (Optional[str]): Must be 'cql2-json' if specified, other values will result in an error.
             q (Optional[Union[str, List[str]]]): Free text search terms.
             **kwargs: Keyword arguments from the request.
 
@@ -285,7 +289,16 @@ class CoreClient(AsyncBaseCoreClient):
             try:
                 import orjson
 
-                parsed_filter = orjson.loads(filter_expr)
+                # Check if filter_lang is specified and not cql2-json
+                if filter_lang is not None and filter_lang != "cql2-json":
+                    # Raise an error for unsupported filter languages
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Only 'cql2-json' filter language is supported for collections. Got '{filter_lang}'.",
+                    )
+
+                # For GET requests, we only handle cql2-json
+                parsed_filter = orjson.loads(unquote_plus(filter_expr))
             except Exception as e:
                 raise HTTPException(
                     status_code=400, detail=f"Invalid filter parameter: {e}"
