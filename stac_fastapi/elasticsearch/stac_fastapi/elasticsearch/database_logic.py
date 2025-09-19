@@ -294,7 +294,6 @@ class DatabaseLogic(BaseDatabaseLogic):
                             query_part = {
                                 "bool": {"must_not": [{"term": {field_name: value}}]}
                             }
-                            print(f"Adding neq query part: {query_part}")
                             query_parts.append(query_part)
                         elif op in ["lt", "lte", "gt", "gte"]:
                             # Range operators

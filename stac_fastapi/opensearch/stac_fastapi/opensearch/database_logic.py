@@ -161,8 +161,9 @@ class DatabaseLogic(BaseDatabaseLogic):
         sort: Optional[List[Dict[str, Any]]] = None,
         q: Optional[List[str]] = None,
         filter: Optional[Dict[str, Any]] = None,
+        query: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
-        """Retrieve a list of collections from Opensearch, supporting pagination.
+        """Retrieve a list of collections from Elasticsearch, supporting pagination.
 
         Args:
             token (Optional[str]): The pagination token.
@@ -170,7 +171,8 @@ class DatabaseLogic(BaseDatabaseLogic):
             request (Request): The FastAPI request object.
             sort (Optional[List[Dict[str, Any]]]): Optional sort parameter from the request.
             q (Optional[List[str]]): Free text search terms.
-            filter (Optional[Dict[str, Any]]): Structured query in CQL2 format.
+            filter (Optional[Dict[str, Any]]): Structured filter in CQL2 format.
+            query (Optional[Dict[str, Dict[str, Any]]]): Query extension parameters.
 
         Returns:
             A tuple of (collections, next pagination token if any).
@@ -193,7 +195,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                         raise HTTPException(
                             status_code=400,
                             detail=f"Field '{field}' is not sortable. Sortable fields are: {', '.join(sortable_fields)}. "
-                            + "Text fields are not sortable by default in Opensearch. "
+                            + "Text fields are not sortable by default in Elasticsearch. "
                             + "To make a field sortable, update the mapping to use 'keyword' type or add a '.keyword' subfield. ",
                         )
                     formatted_sort.append({field: {"order": direction}})
@@ -250,11 +252,53 @@ class DatabaseLogic(BaseDatabaseLogic):
             # Convert string filter to dict if needed
             if isinstance(filter, str):
                 filter = orjson.loads(filter)
-            # Convert the filter to an Opensearch query using the filter module
+            # Convert the filter to an Elasticsearch query using the filter module
             es_query = filter_module.to_es(await self.get_queryables_mapping(), filter)
             query_parts.append(es_query)
 
-        # Combine all query parts with AND logic
+        # Apply query extension if provided
+        if query:
+            try:
+                # Process each field and operator in the query
+                for field_name, expr in query.items():
+                    for op, value in expr.items():
+                        # Handle different operators
+                        if op == "eq":
+                            # Equality operator
+                            # Use different query types based on field name
+                            if field_name in ["title", "description"]:
+                                # For text fields, use match_phrase for exact phrase matching
+                                query_part = {"match_phrase": {field_name: value}}
+                            else:
+                                # For other fields, use term query for exact matching
+                                query_part = {"term": {field_name: value}}
+                            query_parts.append(query_part)
+                        elif op == "neq":
+                            # Not equal operator
+                            query_part = {
+                                "bool": {"must_not": [{"term": {field_name: value}}]}
+                            }
+                            query_parts.append(query_part)
+                        elif op in ["lt", "lte", "gt", "gte"]:
+                            # Range operators
+                            query_parts.append({"range": {field_name: {op: value}}})
+                        elif op == "in":
+                            # In operator (value should be a list)
+                            if isinstance(value, list):
+                                query_parts.append({"terms": {field_name: value}})
+                            else:
+                                query_parts.append({"term": {field_name: value}})
+                        elif op == "contains":
+                            # Contains operator for arrays
+                            query_parts.append({"term": {field_name: value}})
+            except Exception as e:
+                logger = logging.getLogger(__name__)
+                logger.error(f"Error converting query to Elasticsearch: {e}")
+                # If there's an error, add a query that matches nothing
+                query_parts.append({"bool": {"must_not": {"match_all": {}}}})
+                raise
+
+        # Combine all query parts with AND logic if there are multiple
         if query_parts:
             body["query"] = (
                 query_parts[0]
