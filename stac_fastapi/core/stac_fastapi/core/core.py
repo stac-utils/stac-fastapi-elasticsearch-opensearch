@@ -228,6 +228,7 @@ class CoreClient(AsyncBaseCoreClient):
         self,
         fields: Optional[List[str]] = None,
         sortby: Optional[str] = None,
+        filter_expr: Optional[str] = None,
         q: Optional[Union[str, List[str]]] = None,
         **kwargs,
     ) -> stac_types.Collections:
@@ -236,12 +237,14 @@ class CoreClient(AsyncBaseCoreClient):
         Args:
             fields (Optional[List[str]]): Fields to include or exclude from the results.
             sortby (Optional[str]): Sorting options for the results.
-            q (Optional[List[str]]): Free text search terms.
+            filter_expr (Optional[str]): Structured filter in CQL2 format.
+            q (Optional[Union[str, List[str]]]): Free text search terms.
             **kwargs: Keyword arguments from the request.
 
         Returns:
             A Collections object containing all the collections in the database and links to various resources.
         """
+        print("filter: ", filter_expr)
         request = kwargs["request"]
         base_url = str(request.base_url)
         limit = int(request.query_params.get("limit", os.getenv("STAC_ITEM_LIMIT", 10)))
@@ -276,8 +279,25 @@ class CoreClient(AsyncBaseCoreClient):
         if q is not None:
             q_list = [q] if isinstance(q, str) else q
 
+        # Parse the filter parameter if provided
+        parsed_filter = None
+        if filter_expr is not None:
+            try:
+                import orjson
+
+                parsed_filter = orjson.loads(filter_expr)
+            except Exception as e:
+                raise HTTPException(
+                    status_code=400, detail=f"Invalid filter parameter: {e}"
+                )
+
         collections, next_token = await self.database.get_all_collections(
-            token=token, limit=limit, request=request, sort=sort, q=q_list
+            token=token,
+            limit=limit,
+            request=request,
+            sort=sort,
+            q=q_list,
+            filter=parsed_filter,
         )
 
         # Apply field filtering if fields parameter was provided

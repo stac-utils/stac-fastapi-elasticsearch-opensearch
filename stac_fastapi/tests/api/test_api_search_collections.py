@@ -163,7 +163,7 @@ async def test_collections_free_text_search_get(app_client, txn_client, load_tes
     # Use unique prefixes to avoid conflicts between tests
     test_prefix = f"q-get-{uuid.uuid4().hex[:8]}"
 
-    # Create collections with different content to test free text search
+    # Create collections with different content to test structured filter
     test_collections = [
         {
             "id": f"{test_prefix}-sentinel",
@@ -226,3 +226,68 @@ async def test_collections_free_text_search_get(app_client, txn_client, load_tes
     # Should only find the landsat collection
     assert len(found_collections) == 1
     assert found_collections[0]["id"] == f"{test_prefix}-modis"
+
+
+@pytest.mark.asyncio
+async def test_collections_filter_search(app_client, txn_client, load_test_data):
+    """Verify GET /collections honors the filter parameter for structured search."""
+    # Create multiple collections with different content
+    base_collection = load_test_data("test_collection.json")
+
+    # Use unique prefixes to avoid conflicts between tests
+    test_prefix = f"filter-{uuid.uuid4().hex[:8]}"
+
+    # Create collections with different content to test structured filter
+    test_collections = [
+        {
+            "id": f"{test_prefix}-sentinel",
+            "title": "Sentinel-2 Collection",
+            "description": "Collection of Sentinel-2 data",
+            "summaries": {"platform": ["sentinel-2a", "sentinel-2b"]},
+        },
+        {
+            "id": f"{test_prefix}-landsat",
+            "title": "Landsat Collection",
+            "description": "Collection of Landsat data",
+            "summaries": {"platform": ["landsat-8", "landsat-9"]},
+        },
+        {
+            "id": f"{test_prefix}-modis",
+            "title": "MODIS Collection",
+            "description": "Collection of MODIS data",
+            "summaries": {"platform": ["terra", "aqua"]},
+        },
+    ]
+
+    for i, coll in enumerate(test_collections):
+        test_collection = base_collection.copy()
+        test_collection["id"] = coll["id"]
+        test_collection["title"] = coll["title"]
+        test_collection["description"] = coll["description"]
+        test_collection["summaries"] = coll["summaries"]
+        await create_collection(txn_client, test_collection)
+
+    # Test structured filter for collections with specific ID
+    import json
+
+    # Create a simple filter for exact ID match - similar to what works in Postman
+    filter_expr = {"op": "=", "args": [{"property": "id"}, f"{test_prefix}-sentinel"]}
+
+    # Convert to JSON string for URL parameter
+    filter_json = json.dumps(filter_expr)
+
+    # Use the exact format that works in Postman
+    resp = await app_client.get(
+        f"/collections?filter={filter_json}",
+    )
+    assert resp.status_code == 200
+    resp_json = resp.json()
+
+    # Filter collections to only include the ones we created for this test
+    found_collections = [
+        c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
+    ]
+
+    # Should only find the sentinel collection
+    assert len(found_collections) == 1
+    assert found_collections[0]["id"] == f"{test_prefix}-sentinel"

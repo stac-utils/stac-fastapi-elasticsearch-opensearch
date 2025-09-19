@@ -176,6 +176,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         request: Request,
         sort: Optional[List[Dict[str, Any]]] = None,
         q: Optional[List[str]] = None,
+        filter: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
         """Retrieve a list of collections from Elasticsearch, supporting pagination.
 
@@ -185,6 +186,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             request (Request): The FastAPI request object.
             sort (Optional[List[Dict[str, Any]]]): Optional sort parameter from the request.
             q (Optional[List[str]]): Free text search terms.
+            filter (Optional[Dict[str, Any]]): Structured query in CQL2 format.
 
         Returns:
             A tuple of (collections, next pagination token if any).
@@ -225,6 +227,9 @@ class DatabaseLogic(BaseDatabaseLogic):
         if token:
             body["search_after"] = [token]
 
+        # Build the query part of the body
+        query_parts = []
+
         # Apply free text query if provided
         if q:
             # For collections, we want to search across all relevant fields
@@ -251,10 +256,98 @@ class DatabaseLogic(BaseDatabaseLogic):
                         }
                     )
 
-            # Add the query to the body using bool query with should clauses
-            body["query"] = {
-                "bool": {"should": should_clauses, "minimum_should_match": 1}
-            }
+            # Add the free text query to the query parts
+            query_parts.append(
+                {"bool": {"should": should_clauses, "minimum_should_match": 1}}
+            )
+
+        # Apply structured filter if provided
+        if filter:
+            try:
+                # For simple direct query handling without using to_es
+                # This is a simplified approach that handles common filter patterns
+                if isinstance(filter, dict):
+                    # Check if this is a CQL2 filter with op and args
+                    if "op" in filter and "args" in filter:
+                        op = filter.get("op")
+                        args = filter.get("args")
+
+                        # Handle equality operator
+                        if (
+                            op == "="
+                            and len(args) == 2
+                            and isinstance(args[0], dict)
+                            and "property" in args[0]
+                        ):
+                            field = args[0]["property"]
+                            value = args[1]
+
+                            # Handle different field types
+                            if field == "id":
+                                # Direct match on ID field
+                                query_parts.append({"term": {"id": value}})
+                            elif field == "title":
+                                # Match on title field
+                                query_parts.append({"match": {"title": value}})
+                            elif field == "description":
+                                # Match on description field
+                                query_parts.append({"match": {"description": value}})
+                            else:
+                                # For other fields, try a multi-match query
+                                query_parts.append(
+                                    {
+                                        "multi_match": {
+                                            "query": value,
+                                            "fields": [field, f"{field}.*"],
+                                            "type": "best_fields",
+                                        }
+                                    }
+                                )
+
+                        # Handle regex operator
+                        elif (
+                            op == "=~"
+                            and len(args) == 2
+                            and isinstance(args[0], dict)
+                            and "property" in args[0]
+                        ):
+                            field = args[0]["property"]
+                            pattern = args[1].replace(".*", "*")
+
+                            # Use wildcard query for pattern matching
+                            query_parts.append(
+                                {
+                                    "wildcard": {
+                                        field: {
+                                            "value": pattern,
+                                            "case_insensitive": True,
+                                        }
+                                    }
+                                }
+                            )
+
+                        # For other operators, use a match_all query as fallback
+                        else:
+                            query_parts.append({"match_all": {}})
+                    else:
+                        # Not a valid CQL2 filter
+                        query_parts.append({"match_all": {}})
+                else:
+                    # Not a dictionary
+                    query_parts.append({"match_all": {}})
+            except Exception as e:
+                logger = logging.getLogger(__name__)
+                logger.error(f"Error converting filter to Elasticsearch: {e}")
+                # If there's an error, add a query that matches nothing
+                query_parts.append({"bool": {"must_not": {"match_all": {}}}})
+                raise
+
+        # Combine all query parts with AND logic if there are multiple
+        if query_parts:
+            if len(query_parts) == 1:
+                body["query"] = query_parts[0]
+            else:
+                body["query"] = {"bool": {"must": query_parts}}
 
         # Execute the search
         response = await self.client.search(
