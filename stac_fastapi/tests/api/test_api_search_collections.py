@@ -598,3 +598,68 @@ async def test_collections_number_matched_returned(app_client, txn_client, ctx):
     # Check that numberMatched matches the number of collections that match the query
     # (should be 1 in this case)
     assert resp_json["numberMatched"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_collections_search_post(app_client, txn_client, ctx):
+    """Verify POST /collections-search endpoint works."""
+    # Create multiple collections with different ids
+    base_collection = ctx.collection
+
+    # Create collections with ids in a specific order to test search
+    # Use unique prefixes to avoid conflicts between tests
+    test_prefix = f"post-{uuid.uuid4().hex[:8]}"
+    collection_ids = [f"{test_prefix}-{i}" for i in range(10)]
+
+    for i, coll_id in enumerate(collection_ids):
+        test_collection = base_collection.copy()
+        test_collection["id"] = coll_id
+        test_collection["title"] = f"Test Collection {i}"
+        await create_collection(txn_client, test_collection)
+
+    await refresh_indices(txn_client)
+
+    # Test basic POST search
+    resp = await app_client.post(
+        "/collections",
+        json={"limit": 5},
+    )
+    assert resp.status_code == 200
+    resp_json = resp.json()
+
+    # Filter collections to only include the ones we created for this test
+    test_collections = [
+        c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
+    ]
+
+    # Should return 5 collections
+    assert len(test_collections) == 5
+
+    # Check that numberReturned matches the number of collections returned
+    assert resp_json["numberReturned"] == len(resp_json["collections"])
+
+    # Check that numberMatched is greater than or equal to numberReturned
+    assert resp_json["numberMatched"] >= resp_json["numberReturned"]
+
+    # Test POST search with query
+    resp = await app_client.post(
+        "/collections",
+        json={"query": {"id": {"eq": f"{test_prefix}-1"}}},
+    )
+    assert resp.status_code == 200
+    resp_json = resp.json()
+
+    # Filter collections to only include the ones we created for this test
+    test_collections = [
+        c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
+    ]
+
+    # Should return only 1 collection
+    assert len(test_collections) == 1
+    assert test_collections[0]["id"] == f"{test_prefix}-1"
+
+    # Check that numberReturned matches the number of collections returned
+    assert resp_json["numberReturned"] == len(resp_json["collections"])
+
+    # Check that numberMatched matches the number of collections that match the query
+    assert resp_json["numberMatched"] >= 1

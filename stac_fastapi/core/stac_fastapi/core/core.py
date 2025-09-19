@@ -255,6 +255,8 @@ class CoreClient(AsyncBaseCoreClient):
         request = kwargs["request"]
         base_url = str(request.base_url)
 
+        print("fields get: ", fields)
+
         limit = int(request.query_params.get("limit", os.getenv("STAC_ITEM_LIMIT", 10)))
 
         token = request.query_params.get("token")
@@ -263,10 +265,18 @@ class CoreClient(AsyncBaseCoreClient):
         includes, excludes = set(), set()
         if fields:
             for field in fields:
+                print("Processing field:", field)
                 if field[0] == "-":
                     excludes.add(field[1:])
+                    print("Added to excludes:", field[1:])
                 else:
                     includes.add(field[1:] if field[0] in "+ " else field)
+                    print(
+                        "Added to includes:", field[1:] if field[0] in "+ " else field
+                    )
+            print("Final includes:", includes)
+            print("Final excludes:", excludes)
+        print("fields get: ", fields)
 
         sort = None
         if sortby:
@@ -389,6 +399,71 @@ class CoreClient(AsyncBaseCoreClient):
             links=links,
             numberMatched=maybe_count,
             numberReturned=len(filtered_collections),
+        )
+
+    async def post_all_collections(
+        self, search_request: BaseSearchPostRequest, request: Request, **kwargs
+    ) -> stac_types.Collections:
+        """Search collections with POST request.
+
+        Args:
+            search_request (BaseSearchPostRequest): The search request.
+            request (Request): The request.
+
+        Returns:
+            A Collections object containing all the collections in the database and links to various resources.
+        """
+        # Convert fields parameter from POST format to all_collections format
+        fields = None
+
+        if hasattr(search_request, "fields") and search_request.fields:
+            fields = []
+
+            # Handle include fields
+            if (
+                hasattr(search_request.fields, "include")
+                and search_request.fields.include
+            ):
+                for field in search_request.fields.include:
+                    fields.append(f"+{field}")
+
+            # Handle exclude fields
+            if (
+                hasattr(search_request.fields, "exclude")
+                and search_request.fields.exclude
+            ):
+                for field in search_request.fields.exclude:
+                    fields.append(f"-{field}")
+
+        # Convert sortby parameter from POST format to all_collections format
+        sortby = None
+        if hasattr(search_request, "sortby") and search_request.sortby:
+            sort_strings = []
+            for sort_item in search_request.sortby:
+                direction = sort_item.get("direction", "asc")
+                field = sort_item.get("field")
+                if field:
+                    prefix = "-" if direction.lower() == "desc" else "+"
+                    sort_strings.append(f"{prefix}{field}")
+            # Join the sort strings into a single string
+            if sort_strings:
+                sortby = ",".join(sort_strings)
+
+        # Pass all parameters from search_request to all_collections
+        return await self.all_collections(
+            limit=search_request.limit if hasattr(search_request, "limit") else None,
+            fields=fields,
+            sortby=sortby,
+            filter_expr=search_request.filter
+            if hasattr(search_request, "filter")
+            else None,
+            filter_lang=search_request.filter_lang
+            if hasattr(search_request, "filter_lang")
+            else None,
+            query=search_request.query if hasattr(search_request, "query") else None,
+            q=search_request.q if hasattr(search_request, "q") else None,
+            request=request,
+            **kwargs,
         )
 
     async def get_collection(
