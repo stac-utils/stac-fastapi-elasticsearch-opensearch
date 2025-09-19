@@ -225,13 +225,18 @@ class CoreClient(AsyncBaseCoreClient):
         return landing_page
 
     async def all_collections(
-        self, fields: Optional[List[str]] = None, sortby: Optional[str] = None, **kwargs
+        self,
+        fields: Optional[List[str]] = None,
+        sortby: Optional[str] = None,
+        q: Optional[List[str]] = None,
+        **kwargs,
     ) -> stac_types.Collections:
         """Read all collections from the database.
 
         Args:
             fields (Optional[List[str]]): Fields to include or exclude from the results.
             sortby (Optional[str]): Sorting options for the results.
+            q (Optional[List[str]]): Free text search terms.
             **kwargs: Keyword arguments from the request.
 
         Returns:
@@ -267,7 +272,7 @@ class CoreClient(AsyncBaseCoreClient):
                 sort = parsed_sort
 
         collections, next_token = await self.database.get_all_collections(
-            token=token, limit=limit, request=request, sort=sort
+            token=token, limit=limit, request=request, sort=sort, q=q
         )
 
         # Apply field filtering if fields parameter was provided
