@@ -152,3 +152,164 @@ async def test_collections_fields(app_client, txn_client, load_test_data):
         assert "title" in collection
         assert "description" not in collection
         assert "links" in collection
+
+
+@pytest.mark.asyncio
+async def test_collections_free_text_search_get(app_client, txn_client, load_test_data):
+    """Verify GET /collections honors the q parameter for free text search."""
+    # Create multiple collections with different content
+    base_collection = load_test_data("test_collection.json")
+
+    # Use unique prefixes to avoid conflicts between tests
+    test_prefix = f"q-get-{uuid.uuid4().hex[:8]}"
+
+    # Create collections with different content to test free text search
+    test_collections = [
+        {
+            "id": f"{test_prefix}-sentinel",
+            "title": "Sentinel-2 Collection",
+            "description": "Collection of Sentinel-2 data",
+            "summaries": {"platform": ["sentinel-2a", "sentinel-2b"]},
+        },
+        {
+            "id": f"{test_prefix}-landsat",
+            "title": "Landsat Collection",
+            "description": "Collection of Landsat data",
+            "summaries": {"platform": ["landsat-8", "landsat-9"]},
+        },
+        {
+            "id": f"{test_prefix}-modis",
+            "title": "MODIS Collection",
+            "description": "Collection of MODIS data",
+            "summaries": {"platform": ["terra", "aqua"]},
+        },
+    ]
+
+    for i, coll in enumerate(test_collections):
+        test_collection = base_collection.copy()
+        test_collection["id"] = coll["id"]
+        test_collection["title"] = coll["title"]
+        test_collection["description"] = coll["description"]
+        test_collection["summaries"] = coll["summaries"]
+        await create_collection(txn_client, test_collection)
+
+    # Test free text search for "sentinel"
+    resp = await app_client.get(
+        "/collections",
+        params=[("q", "sentinel")],
+    )
+    assert resp.status_code == 200
+    resp_json = resp.json()
+
+    # Filter collections to only include the ones we created for this test
+    found_collections = [
+        c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
+    ]
+
+    # Should only find the sentinel collection
+    assert len(found_collections) == 1
+    assert found_collections[0]["id"] == f"{test_prefix}-sentinel"
+
+    # Test free text search for "landsat"
+    resp = await app_client.get(
+        "/collections",
+        params=[("q", "modis")],
+    )
+    assert resp.status_code == 200
+    resp_json = resp.json()
+
+    # Filter collections to only include the ones we created for this test
+    found_collections = [
+        c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
+    ]
+
+    # Should only find the landsat collection
+    assert len(found_collections) == 1
+    assert found_collections[0]["id"] == f"{test_prefix}-modis"
+
+
+# @pytest.mark.asyncio
+# async def test_collections_free_text_search_post(app_client, txn_client, load_test_data):
+#     """Verify POST /collections-search honors the q parameter for free text search."""
+#     # Create multiple collections with different content
+#     base_collection = load_test_data("test_collection.json")
+
+#     # Use unique prefixes to avoid conflicts between tests
+#     test_prefix = f"q-post-{uuid.uuid4().hex[:8]}"
+
+#     # Create collections with different content to test free text search
+#     test_collections = [
+#         {
+#             "id": f"{test_prefix}-sentinel",
+#             "title": "Sentinel-2 Collection",
+#             "description": "Collection of Sentinel-2 data",
+#             "summaries": {"platform": ["sentinel-2a", "sentinel-2b"]}
+#         },
+#         {
+#             "id": f"{test_prefix}-landsat",
+#             "title": "Landsat Collection",
+#             "description": "Collection of Landsat data",
+#             "summaries": {"platform": ["landsat-8", "landsat-9"]}
+#         },
+#         {
+#             "id": f"{test_prefix}-modis",
+#             "title": "MODIS Collection",
+#             "description": "Collection of MODIS data",
+#             "summaries": {"platform": ["terra", "aqua"]}
+#         }
+#     ]
+
+#     for i, coll in enumerate(test_collections):
+#         test_collection = base_collection.copy()
+#         test_collection["id"] = coll["id"]
+#         test_collection["title"] = coll["title"]
+#         test_collection["description"] = coll["description"]
+#         test_collection["summaries"] = coll["summaries"]
+#         await create_collection(txn_client, test_collection)
+
+#     # Test free text search for "sentinel" via POST
+#     resp = await app_client.post(
+#         "/collections-search",
+#         json={"q": ["sentinel"]},
+#     )
+#     assert resp.status_code == 200
+#     resp_json = resp.json()
+
+#     # Filter collections to only include the ones we created for this test
+#     found_collections = [c for c in resp_json["collections"] if c["id"].startswith(test_prefix)]
+
+#     # Should only find the sentinel collection
+#     assert len(found_collections) == 1
+#     assert found_collections[0]["id"] == f"{test_prefix}-sentinel"
+
+#     # Test free text search for "landsat" via POST
+#     resp = await app_client.post(
+#         "/collections-search",
+#         json={"q": ["landsat"]},
+#     )
+#     assert resp.status_code == 200
+#     resp_json = resp.json()
+
+#     # Filter collections to only include the ones we created for this test
+#     found_collections = [c for c in resp_json["collections"] if c["id"].startswith(test_prefix)]
+
+#     # Should only find the landsat collection
+#     assert len(found_collections) == 1
+#     assert found_collections[0]["id"] == f"{test_prefix}-landsat"
+
+#     # Test free text search with multiple terms
+#     resp = await app_client.post(
+#         "/collections-search",
+#         json={"q": ["sentinel", "modis"]},
+#     )
+#     assert resp.status_code == 200
+#     resp_json = resp.json()
+
+#     # Filter collections to only include the ones we created for this test
+#     found_collections = [c for c in resp_json["collections"] if c["id"].startswith(test_prefix)]
+#     found_ids = [c["id"] for c in found_collections]
+
+#     # Should find both sentinel and modis collections
+#     assert len(found_collections) == 2
+#     assert f"{test_prefix}-sentinel" in found_ids
+#     assert f"{test_prefix}-modis" in found_ids

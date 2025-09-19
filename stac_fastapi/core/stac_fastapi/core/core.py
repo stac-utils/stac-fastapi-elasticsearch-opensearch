@@ -228,7 +228,7 @@ class CoreClient(AsyncBaseCoreClient):
         self,
         fields: Optional[List[str]] = None,
         sortby: Optional[str] = None,
-        q: Optional[List[str]] = None,
+        q: Optional[Union[str, List[str]]] = None,
         **kwargs,
     ) -> stac_types.Collections:
         """Read all collections from the database.
@@ -246,6 +246,8 @@ class CoreClient(AsyncBaseCoreClient):
         base_url = str(request.base_url)
         limit = int(request.query_params.get("limit", os.getenv("STAC_ITEM_LIMIT", 10)))
         token = request.query_params.get("token")
+
+        print("q: ", q)
 
         # Process fields parameter for filtering collection properties
         includes, excludes = set(), set()
@@ -271,8 +273,13 @@ class CoreClient(AsyncBaseCoreClient):
             if parsed_sort:
                 sort = parsed_sort
 
+        # Convert q to a list if it's a string
+        q_list = None
+        if q is not None:
+            q_list = [q] if isinstance(q, str) else q
+
         collections, next_token = await self.database.get_all_collections(
-            token=token, limit=limit, request=request, sort=sort, q=q
+            token=token, limit=limit, request=request, sort=sort, q=q_list
         )
 
         # Apply field filtering if fields parameter was provided
