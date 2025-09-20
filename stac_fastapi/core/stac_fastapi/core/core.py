@@ -283,7 +283,7 @@ class CoreClient(AsyncBaseCoreClient):
             if parsed_sort:
                 sort = parsed_sort
 
-        print("sort: ", sort)
+        # sort is now ready for use
         # Convert q to a list if it's a string
         q_list = None
         if q is not None:
@@ -404,11 +404,13 @@ class CoreClient(AsyncBaseCoreClient):
         Returns:
             A Collections object containing all the collections in the database and links to various resources.
         """
+        # Debug print
+        print("search_request: ", search_request)
         # Set the postbody attribute on the request object for PagingLinks
         request.postbody = search_request.model_dump(exclude_unset=True)
-        # Convert fields parameter from POST format to all_collections format
-        fields = None
 
+        fields = None
+        # Check for fields attribute (legacy format)
         if hasattr(search_request, "fields") and search_request.fields:
             fields = []
 
@@ -428,8 +430,29 @@ class CoreClient(AsyncBaseCoreClient):
                 for field in search_request.fields.exclude:
                     fields.append(f"-{field}")
 
+        # Check for field attribute (ExtendedSearch format)
+        if hasattr(search_request, "field") and search_request.field:
+            fields = []
+
+            # Handle include fields
+            if (
+                hasattr(search_request.field, "includes")
+                and search_request.field.includes
+            ):
+                for field in search_request.field.includes:
+                    fields.append(f"+{field}")
+
+            # Handle exclude fields
+            if (
+                hasattr(search_request.field, "excludes")
+                and search_request.field.excludes
+            ):
+                for field in search_request.field.excludes:
+                    fields.append(f"-{field}")
+
         # Convert sortby parameter from POST format to all_collections format
         sortby = None
+        # Check for sortby attribute
         if hasattr(search_request, "sortby") and search_request.sortby:
             # Create a list of sort strings in the format expected by all_collections
             sortby = []

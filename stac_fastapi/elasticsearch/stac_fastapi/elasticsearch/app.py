@@ -23,6 +23,9 @@ from stac_fastapi.core.extensions.aggregation import (
     EsAggregationExtensionGetRequest,
     EsAggregationExtensionPostRequest,
 )
+from stac_fastapi.core.extensions.collections_search import (
+    CollectionsSearchEndpointExtension,
+)
 from stac_fastapi.core.extensions.fields import FieldsExtension
 from stac_fastapi.core.rate_limit import setup_rate_limit
 from stac_fastapi.core.route_dependencies import get_route_dependencies
@@ -163,8 +166,31 @@ collection_search_post_ext = CollectionSearchPostExtension(
     ],
 )
 
+# Initialize collections-search endpoint extension
+collections_search_endpoint_ext = CollectionsSearchEndpointExtension(
+    client=CoreClient(
+        database=database_logic,
+        session=session,
+        post_request_model=collection_search_post_request_model,
+        landing_page_id=os.getenv("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"),
+    ),
+    settings=settings,
+    GET=collections_get_request_model,
+    POST=collection_search_post_request_model,
+    conformance_classes=[
+        "https://api.stacspec.org/v1.0.0-rc.1/collection-search",
+        "http://www.opengis.net/spec/ogcapi-common-2/1.0/conf/simple-query",
+        "https://api.stacspec.org/v1.0.0-rc.1/collection-search#filter",
+        "https://api.stacspec.org/v1.0.0-rc.1/collection-search#free-text",
+        "https://api.stacspec.org/v1.0.0-rc.1/collection-search#query",
+        "https://api.stacspec.org/v1.0.0-rc.1/collection-search#sort",
+        "https://api.stacspec.org/v1.0.0-rc.1/collection-search#fields",
+    ],
+)
+
 extensions.append(collection_search_ext)
 extensions.append(collection_search_post_ext)
+extensions.append(collections_search_endpoint_ext)
 
 database_logic.extensions = [type(ext).__name__ for ext in extensions]
 

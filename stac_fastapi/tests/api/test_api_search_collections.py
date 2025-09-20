@@ -601,13 +601,8 @@ async def test_collections_number_matched_returned(app_client, txn_client, ctx):
 
 
 @pytest.mark.asyncio
-async def test_collections_post(app_client, txn_client, ctx, monkeypatch):
-    """Verify POST /collections endpoint works."""
-    # Turn off the transaction extension to avoid conflict with collections POST endpoint
-    import os
-
-    original_value = os.environ.get("ENABLE_TRANSACTIONS_EXTENSIONS")
-    monkeypatch.setenv("ENABLE_TRANSACTIONS_EXTENSIONS", "False")
+async def test_collections_post(app_client, txn_client, ctx):
+    """Verify POST /collections-search endpoint works."""
 
     # Create multiple collections with different ids
     base_collection = ctx.collection
@@ -627,7 +622,7 @@ async def test_collections_post(app_client, txn_client, ctx, monkeypatch):
 
     # Test basic POST search
     resp = await app_client.post(
-        "/collections",
+        "/collections-search",
         json={"limit": 5},
     )
     assert resp.status_code == 200
@@ -649,7 +644,7 @@ async def test_collections_post(app_client, txn_client, ctx, monkeypatch):
 
     # Test POST search with sortby
     resp = await app_client.post(
-        "/collections",
+        "/collections-search",
         json={"sortby": [{"field": "id", "direction": "desc"}]},
     )
     assert resp.status_code == 200
@@ -669,7 +664,7 @@ async def test_collections_post(app_client, txn_client, ctx, monkeypatch):
 
     # Test POST search with fields
     resp = await app_client.post(
-        "/collections",
+        "/collections-search",
         json={"fields": {"exclude": ["stac_version"]}},
     )
     assert resp.status_code == 200
@@ -683,9 +678,3 @@ async def test_collections_post(app_client, txn_client, ctx, monkeypatch):
     # Check that stac_version is excluded from the collections
     for collection in test_collections:
         assert "stac_version" not in collection
-
-    # Restore the original environment variable value
-    if original_value is not None:
-        monkeypatch.setenv("ENABLE_TRANSACTIONS_EXTENSIONS", original_value)
-    else:
-        monkeypatch.delenv("ENABLE_TRANSACTIONS_EXTENSIONS", raising=False)
