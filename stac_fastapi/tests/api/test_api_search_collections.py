@@ -409,22 +409,12 @@ async def test_collections_query_extension(app_client, txn_client, ctx):
     # Test query extension with not-equal operator on ID
     query = {"id": {"neq": f"{test_prefix}-sentinel"}}
 
-    print(f"\nTesting neq query: {query}")
-    print(f"JSON query: {json.dumps(query)}")
-
     resp = await app_client.get(
         "/collections",
         params=[("query", json.dumps(query))],
     )
-    print(f"Response status: {resp.status_code}")
     assert resp.status_code == 200
     resp_json = resp.json()
-    print(f"Response JSON keys: {resp_json.keys()}")
-    print(f"Number of collections in response: {len(resp_json.get('collections', []))}")
-
-    # Print all collection IDs in the response
-    all_ids = [c["id"] for c in resp_json.get("collections", [])]
-    print(f"All collection IDs in response: {all_ids}")
 
     # Filter collections to only include the ones we created for this test
     found_collections = [
@@ -675,12 +665,6 @@ async def test_collections_post(app_client, txn_client, ctx):
         c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
     ]
 
-    # Debug print to see what's in the collections
-    print(
-        "Collection keys:",
-        test_collections[0].keys() if test_collections else "No collections found",
-    )
-
     # Check that stac_version is excluded from the collections
     for collection in test_collections:
         assert "stac_version" not in collection
@@ -706,9 +690,6 @@ async def test_collections_search_cql2_text(app_client, txn_client, ctx):
     assert resp.status_code == 200
     resp_json = resp.json()
 
-    # Debug print to see what's in the response
-    print("Collections in response:", [c["id"] for c in resp_json["collections"]])
-
     # Filter collections to only include the ones with our test prefix
     filtered_collections = [
         c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
@@ -726,11 +707,6 @@ async def test_collections_search_cql2_text(app_client, txn_client, ctx):
     assert resp.status_code == 200
     resp_json = resp.json()
 
-    # Debug print to see what's in the response
-    print(
-        "Collections in response (LIKE):", [c["id"] for c in resp_json["collections"]]
-    )
-
     # Filter collections to only include the ones with our test prefix
     filtered_collections = [
         c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
@@ -741,3 +717,81 @@ async def test_collections_search_cql2_text(app_client, txn_client, ctx):
         len(filtered_collections) == 1
     )  # We only created one collection with this prefix
     assert filtered_collections[0]["id"] == collection_id
+
+
+@pytest.mark.asyncio
+async def test_collections_search_free_text(app_client, txn_client, ctx):
+    """Test collections search with free text search (q parameter)."""
+    # Create a unique prefix for test collections
+    test_prefix = f"test-{uuid.uuid4()}"
+
+    # Create a collection with a simple, searchable title
+    searchable_term = "SEARCHABLETERM"
+    target_collection = ctx.collection.copy()
+    target_collection["id"] = f"{test_prefix}-target"
+    target_collection["title"] = f"Collection with {searchable_term} in the title"
+    target_collection["description"] = "This is the collection we want to find"
+    await create_collection(txn_client, target_collection)
+
+    # Collection 2: Similar but without the searchable term
+    decoy_collection = ctx.collection.copy()
+    decoy_collection["id"] = f"{test_prefix}-decoy"
+    decoy_collection["title"] = "Collection with similar words in the title"
+    decoy_collection["description"] = "This is a decoy collection"
+    await create_collection(txn_client, decoy_collection)
+
+    # Make sure to refresh indices and wait a moment
+    await refresh_indices(txn_client)
+
+    # First, verify that our collections are actually in the database
+    resp = await app_client.get("/collections")
+    assert resp.status_code == 200
+    resp_json = resp.json()
+
+    # Get all collections from the response
+    all_collections = resp_json["collections"]
+
+    # Check that our test collections are present
+    test_collections = [c for c in all_collections if c["id"].startswith(test_prefix)]
+    assert (
+        len(test_collections) >= 2
+    ), f"Expected at least 2 test collections, got {len(test_collections)}"
+
+    # Verify our target collection is present and has the searchable term
+    target_collections = [
+        c for c in test_collections if c["id"] == target_collection["id"]
+    ]
+    assert (
+        len(target_collections) == 1
+    ), f"Target collection not found: {target_collection['id']}"
+    assert searchable_term in target_collections[0]["title"]
+
+    # Now test the free text search
+    resp = await app_client.get(f"/collections-search?q={searchable_term}")
+    assert resp.status_code == 200
+    resp_json = resp.json()
+
+    # Get all collections with our test prefix
+    found_collections = [
+        c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
+    ]
+
+    # Verify that our target collection is returned
+    assert target_collection["id"] in [
+        c["id"] for c in found_collections
+    ], f"Target collection {target_collection['id']} not within search results"
+
+    # Test POST search with free text search
+    resp = await app_client.post("/collections-search", json={"q": searchable_term})
+    assert resp.status_code == 200
+    resp_json = resp.json()
+
+    # Get all collections with our test prefix
+    found_collections = [
+        c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
+    ]
+
+    # Verify that our target collection is returned
+    assert target_collection["id"] in [
+        c["id"] for c in found_collections
+    ], f"Target collection {target_collection['id']} not found within POST search results"
