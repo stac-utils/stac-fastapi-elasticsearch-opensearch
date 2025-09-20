@@ -675,6 +675,69 @@ async def test_collections_post(app_client, txn_client, ctx):
         c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
     ]
 
+    # Debug print to see what's in the collections
+    print(
+        "Collection keys:",
+        test_collections[0].keys() if test_collections else "No collections found",
+    )
+
     # Check that stac_version is excluded from the collections
     for collection in test_collections:
         assert "stac_version" not in collection
+
+
+@pytest.mark.asyncio
+async def test_collections_search_cql2_text(app_client, txn_client, ctx):
+    """Test collections search with CQL2-text filter."""
+    # Create a unique prefix for test collections
+    test_prefix = f"test-{uuid.uuid4()}"
+
+    # Create test collections
+    collection_data = ctx.collection.copy()
+    collection_data["id"] = f"{test_prefix}-collection"
+    await create_collection(txn_client, collection_data)
+    await refresh_indices(txn_client)
+
+    # Test GET search with CQL2-text filter
+    collection_id = collection_data["id"]
+    resp = await app_client.get(
+        f"/collections-search?filter-lang=cql2-text&filter=id='{collection_id}'"
+    )
+    assert resp.status_code == 200
+    resp_json = resp.json()
+
+    # Debug print to see what's in the response
+    print("Collections in response:", [c["id"] for c in resp_json["collections"]])
+
+    # Filter collections to only include the ones with our test prefix
+    filtered_collections = [
+        c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
+    ]
+
+    # Check that only the filtered collection is returned
+    assert len(filtered_collections) == 1
+    assert filtered_collections[0]["id"] == collection_id
+
+    # Test GET search with more complex CQL2-text filter (LIKE operator)
+    test_prefix_escaped = test_prefix.replace("-", "\\-")
+    resp = await app_client.get(
+        f"/collections-search?filter-lang=cql2-text&filter=id LIKE '{test_prefix_escaped}%'"
+    )
+    assert resp.status_code == 200
+    resp_json = resp.json()
+
+    # Debug print to see what's in the response
+    print(
+        "Collections in response (LIKE):", [c["id"] for c in resp_json["collections"]]
+    )
+
+    # Filter collections to only include the ones with our test prefix
+    filtered_collections = [
+        c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
+    ]
+
+    # Check that all test collections are returned
+    assert (
+        len(filtered_collections) == 1
+    )  # We only created one collection with this prefix
+    assert filtered_collections[0]["id"] == collection_id

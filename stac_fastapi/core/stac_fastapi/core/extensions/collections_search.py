@@ -151,6 +151,7 @@ class CollectionsSearchEndpointExtension(ApiExtension):
         collections = await self.client.post_all_collections(
             search_request=search_request, request=request
         )
+
         return collections
 
     @classmethod
