@@ -229,7 +229,7 @@ class CoreClient(AsyncBaseCoreClient):
         datetime: Optional[str] = None,
         limit: Optional[int] = None,
         fields: Optional[List[str]] = None,
-        sortby: Optional[str] = None,
+        sortby: Optional[Union[str, List[str]]] = None,
         filter_expr: Optional[str] = None,
         filter_lang: Optional[str] = None,
         q: Optional[Union[str, List[str]]] = None,
@@ -255,8 +255,6 @@ class CoreClient(AsyncBaseCoreClient):
         request = kwargs["request"]
         base_url = str(request.base_url)
 
-        print("fields get: ", fields)
-
         limit = int(request.query_params.get("limit", os.getenv("STAC_ITEM_LIMIT", 10)))
 
         token = request.query_params.get("token")
@@ -265,18 +263,10 @@ class CoreClient(AsyncBaseCoreClient):
         includes, excludes = set(), set()
         if fields:
             for field in fields:
-                print("Processing field:", field)
                 if field[0] == "-":
                     excludes.add(field[1:])
-                    print("Added to excludes:", field[1:])
                 else:
                     includes.add(field[1:] if field[0] in "+ " else field)
-                    print(
-                        "Added to includes:", field[1:] if field[0] in "+ " else field
-                    )
-            print("Final includes:", includes)
-            print("Final excludes:", excludes)
-        print("fields get: ", fields)
 
         sort = None
         if sortby:
@@ -293,6 +283,7 @@ class CoreClient(AsyncBaseCoreClient):
             if parsed_sort:
                 sort = parsed_sort
 
+        print("sort: ", sort)
         # Convert q to a list if it's a string
         q_list = None
         if q is not None:
@@ -413,6 +404,8 @@ class CoreClient(AsyncBaseCoreClient):
         Returns:
             A Collections object containing all the collections in the database and links to various resources.
         """
+        # Set the postbody attribute on the request object for PagingLinks
+        request.postbody = search_request.model_dump(exclude_unset=True)
         # Convert fields parameter from POST format to all_collections format
         fields = None
 
@@ -438,16 +431,27 @@ class CoreClient(AsyncBaseCoreClient):
         # Convert sortby parameter from POST format to all_collections format
         sortby = None
         if hasattr(search_request, "sortby") and search_request.sortby:
-            sort_strings = []
+            # Create a list of sort strings in the format expected by all_collections
+            sortby = []
             for sort_item in search_request.sortby:
-                direction = sort_item.get("direction", "asc")
-                field = sort_item.get("field")
+                # Handle different types of sort items
+                if hasattr(sort_item, "field") and hasattr(sort_item, "direction"):
+                    # This is a Pydantic model with field and direction attributes
+                    field = sort_item.field
+                    direction = sort_item.direction
+                elif isinstance(sort_item, dict):
+                    # This is a dictionary with field and direction keys
+                    field = sort_item.get("field")
+                    direction = sort_item.get("direction", "asc")
+                else:
+                    # Skip this item if we can't extract field and direction
+                    continue
+
                 if field:
-                    prefix = "-" if direction.lower() == "desc" else "+"
-                    sort_strings.append(f"{prefix}{field}")
-            # Join the sort strings into a single string
-            if sort_strings:
-                sortby = ",".join(sort_strings)
+                    # Create a sort string in the format expected by all_collections
+                    # e.g., "-id" for descending sort on id field
+                    prefix = "-" if direction.lower() == "desc" else ""
+                    sortby.append(f"{prefix}{field}")
 
         # Pass all parameters from search_request to all_collections
         return await self.all_collections(

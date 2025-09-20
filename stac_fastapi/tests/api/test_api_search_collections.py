@@ -601,8 +601,14 @@ async def test_collections_number_matched_returned(app_client, txn_client, ctx):
 
 
 @pytest.mark.asyncio
-async def test_collections_search_post(app_client, txn_client, ctx):
-    """Verify POST /collections-search endpoint works."""
+async def test_collections_post(app_client, txn_client, ctx, monkeypatch):
+    """Verify POST /collections endpoint works."""
+    # Turn off the transaction extension to avoid conflict with collections POST endpoint
+    import os
+
+    original_value = os.environ.get("ENABLE_TRANSACTIONS_EXTENSIONS")
+    monkeypatch.setenv("ENABLE_TRANSACTIONS_EXTENSIONS", "False")
+
     # Create multiple collections with different ids
     base_collection = ctx.collection
 
@@ -641,10 +647,10 @@ async def test_collections_search_post(app_client, txn_client, ctx):
     # Check that numberMatched is greater than or equal to numberReturned
     assert resp_json["numberMatched"] >= resp_json["numberReturned"]
 
-    # Test POST search with query
+    # Test POST search with sortby
     resp = await app_client.post(
         "/collections",
-        json={"query": {"id": {"eq": f"{test_prefix}-1"}}},
+        json={"sortby": [{"field": "id", "direction": "desc"}]},
     )
     assert resp.status_code == 200
     resp_json = resp.json()
@@ -654,12 +660,32 @@ async def test_collections_search_post(app_client, txn_client, ctx):
         c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
     ]
 
-    # Should return only 1 collection
-    assert len(test_collections) == 1
-    assert test_collections[0]["id"] == f"{test_prefix}-1"
+    # Check that collections are sorted by id in descending order
+    if len(test_collections) >= 2:
+        assert test_collections[0]["id"] > test_collections[1]["id"]
 
     # Check that numberReturned matches the number of collections returned
     assert resp_json["numberReturned"] == len(resp_json["collections"])
 
-    # Check that numberMatched matches the number of collections that match the query
-    assert resp_json["numberMatched"] >= 1
+    # Test POST search with fields
+    resp = await app_client.post(
+        "/collections",
+        json={"fields": {"exclude": ["stac_version"]}},
+    )
+    assert resp.status_code == 200
+    resp_json = resp.json()
+
+    # Filter collections to only include the ones we created for this test
+    test_collections = [
+        c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
+    ]
+
+    # Check that stac_version is excluded from the collections
+    for collection in test_collections:
+        assert "stac_version" not in collection
+
+    # Restore the original environment variable value
+    if original_value is not None:
+        monkeypatch.setenv("ENABLE_TRANSACTIONS_EXTENSIONS", original_value)
+    else:
+        monkeypatch.delenv("ENABLE_TRANSACTIONS_EXTENSIONS", raising=False)
