@@ -24,6 +24,13 @@ from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.datetime_utils import format_datetime_range
 from stac_fastapi.core.models.links import PagingLinks
+from stac_fastapi.core.redis_utils import (
+    add_previous_link,
+    cache_current_url,
+    cache_previous_url,
+    connect_redis_sentinel,
+    connect_redis,
+)
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.session import Session
 from stac_fastapi.core.utilities import filter_fields
@@ -237,6 +244,12 @@ class CoreClient(AsyncBaseCoreClient):
         base_url = str(request.base_url)
         limit = int(request.query_params.get("limit", os.getenv("STAC_ITEM_LIMIT", 10)))
         token = request.query_params.get("token")
+        current_url = str(request.url)
+        redis = None
+        try:
+            redis = await connect_redis()
+        except Exception as e:
+            redis = None
 
         collections, next_token = await self.database.get_all_collections(
             token=token, limit=limit, request=request
@@ -251,6 +264,12 @@ class CoreClient(AsyncBaseCoreClient):
                 "href": urljoin(base_url, "collections"),
             },
         ]
+
+        await add_previous_link(
+            redis, links, "collections", current_url, token
+        )
+        if redis:
+            await cache_previous_url(redis, current_url, "collections")
 
         if next_token:
             next_link = PagingLinks(next=next_token, request=request).link_next()
@@ -323,6 +342,31 @@ class CoreClient(AsyncBaseCoreClient):
         Raises:
             HTTPException: 404 if the collection does not exist.
         """
+        request: Request = kwargs["request"]
+        token = request.query_params.get("token")
+        base_url = str(request.base_url)
+
+        current_url = str(request.url)
+
+        try:
+            redis = await connect_redis()
+        except Exception as e:
+            redis = None
+
+        if redis:
+            await cache_current_url(redis, current_url, collection_id)
+
+        collection = await self.get_collection(
+            collection_id=collection_id, request=request
+        )
+        collection_id = collection.get("id")
+        if collection_id is None:
+            raise HTTPException(status_code=404, detail="Collection not found")
+
+        search = self.database.make_search()
+        search = self.database.apply_collections_filter(
+            search=search, collection_ids=[collection_id]
+        )
         try:
             await self.get_collection(collection_id=collection_id, request=request)
         except Exception:
@@ -336,6 +380,45 @@ class CoreClient(AsyncBaseCoreClient):
             datetime=datetime,
             limit=limit,
             token=token,
+            collection_ids=[collection_id],
+            datetime_search=datetime_search,
+        )
+
+        items = [
+            self.item_serializer.db_to_stac(item, base_url=base_url) for item in items
+        ]
+
+        collection_links = [
+            {
+                "rel": "collection",
+                "type": "application/json",
+                "href": urljoin(str(request.base_url), f"collections/{collection_id}"),
+            },
+            {
+                "rel": "parent",
+                "type": "application/json",
+                "href": urljoin(str(request.base_url), f"collections/{collection_id}"),
+            },
+        ]
+
+        paging_links = await PagingLinks(request=request, next=next_token).get_links()
+
+        if redis:
+            await add_previous_link(
+                redis, paging_links, collection_id, current_url, token
+            )
+
+        if redis:
+            await cache_previous_url(redis, current_url, collection_id)
+
+        links = collection_links + paging_links
+
+        return stac_types.ItemCollection(
+            type="FeatureCollection",
+            features=items,
+            links=links,
+            numReturned=len(items),
+            numMatched=maybe_count,
             sortby=sortby,
             query=query,
             filter_expr=filter_expr,
@@ -482,7 +565,14 @@ class CoreClient(AsyncBaseCoreClient):
             HTTPException: If there is an error with the cql2_json filter.
         """
         base_url = str(request.base_url)
+        current_url = str(request.url)
+        try:
+            redis = await connect_redis()
+        except Exception as e:
+            redis = None
 
+        if redis:
+            await cache_current_url(redis, current_url, "search_result")
         search = self.database.make_search()
 
         if search_request.ids:
@@ -591,6 +681,14 @@ class CoreClient(AsyncBaseCoreClient):
             for item in items
         ]
         links = await PagingLinks(request=request, next=next_token).get_links()
+
+        if redis:
+            await add_previous_link(
+                redis, links, "search_result", current_url, search_request.token
+            )
+
+        if redis:
+            await cache_previous_url(redis, current_url, "search_result")
 
         return stac_types.ItemCollection(
             type="FeatureCollection",
