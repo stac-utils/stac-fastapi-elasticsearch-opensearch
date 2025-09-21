@@ -28,6 +28,8 @@ Function Naming Conventions:
 import os
 from typing import Any, Dict, Literal, Protocol
 
+from stac_fastapi.core.utilities import get_bool_env
+
 
 # stac_pydantic classes extend _GeometryBase, which doesn't have a type field,
 # So create our own Protocol for typing
@@ -134,7 +136,7 @@ ES_ITEMS_MAPPINGS = {
         "id": {"type": "keyword"},
         "collection": {"type": "keyword"},
         "geometry": {"type": "geo_shape"},
-        "assets": {"type": "object", "enabled": False},
+        "assets": {"type": "object", "enabled": get_bool_env("STAC_INDEX_ASSETS")},
         "links": {"type": "object", "enabled": False},
         "properties": {
             "type": "object",
@@ -162,7 +164,7 @@ ES_COLLECTIONS_MAPPINGS = {
         "extent.temporal.interval": {"type": "date"},
         "providers": {"type": "object", "enabled": False},
         "links": {"type": "object", "enabled": False},
-        "item_assets": {"type": "object", "enabled": False},
+        "item_assets": {"type": "object", "enabled": get_bool_env("STAC_INDEX_ASSETS")},
     },
 }
 
