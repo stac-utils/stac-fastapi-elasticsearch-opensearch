@@ -121,6 +121,9 @@ if TRANSACTIONS_EXTENSIONS:
 
 extensions = [aggregation_extension] + search_extensions
 
+# Collection search related variables
+collections_get_request_model = None
+
 # Create collection search extensions if enabled
 if ENABLE_COLLECTIONS_SEARCH:
     # Create collection search extensions
@@ -140,57 +143,58 @@ if ENABLE_COLLECTIONS_SEARCH:
     )
     collections_get_request_model = collection_search_ext.GET
 
-# Create a post request model for collection search
-collection_search_post_request_model = create_post_request_model(
-    collection_search_extensions
-)
+    # Create a post request model for collection search
+    collection_search_post_request_model = create_post_request_model(
+        collection_search_extensions
+    )
 
-# Initialize collection search POST extension
-collection_search_post_ext = CollectionSearchPostExtension(
-    client=CoreClient(
-        database=database_logic,
-        session=session,
-        post_request_model=collection_search_post_request_model,
-        landing_page_id=os.getenv("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"),
-    ),
-    settings=settings,
-    POST=collection_search_post_request_model,
-    conformance_classes=[
-        "https://api.stacspec.org/v1.0.0-rc.1/collection-search",
-        "http://www.opengis.net/spec/ogcapi-common-2/1.0/conf/simple-query",
-        "https://api.stacspec.org/v1.0.0-rc.1/collection-search#filter",
-        "https://api.stacspec.org/v1.0.0-rc.1/collection-search#free-text",
-        "https://api.stacspec.org/v1.0.0-rc.1/collection-search#query",
-        "https://api.stacspec.org/v1.0.0-rc.1/collection-search#sort",
-        "https://api.stacspec.org/v1.0.0-rc.1/collection-search#fields",
-    ],
-)
+    # Initialize collection search POST extension
+    collection_search_post_ext = CollectionSearchPostExtension(
+        client=CoreClient(
+            database=database_logic,
+            session=session,
+            post_request_model=collection_search_post_request_model,
+            landing_page_id=os.getenv("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"),
+        ),
+        settings=settings,
+        POST=collection_search_post_request_model,
+        conformance_classes=[
+            "https://api.stacspec.org/v1.0.0-rc.1/collection-search",
+            QueryConformanceClasses.COLLECTIONS,
+            FilterConformanceClasses.COLLECTIONS,
+            FreeTextConformanceClasses.COLLECTIONS,
+            QueryConformanceClasses.COLLECTIONS,
+            SortConformanceClasses.COLLECTIONS,
+            FieldsConformanceClasses.COLLECTIONS,
+        ],
+    )
 
-# Initialize collections-search endpoint extension
-collections_search_endpoint_ext = CollectionsSearchEndpointExtension(
-    client=CoreClient(
-        database=database_logic,
-        session=session,
-        post_request_model=collection_search_post_request_model,
-        landing_page_id=os.getenv("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"),
-    ),
-    settings=settings,
-    GET=collections_get_request_model,
-    POST=collection_search_post_request_model,
-    conformance_classes=[
-        "https://api.stacspec.org/v1.0.0-rc.1/collection-search",
-        "http://www.opengis.net/spec/ogcapi-common-2/1.0/conf/simple-query",
-        "https://api.stacspec.org/v1.0.0-rc.1/collection-search#filter",
-        "https://api.stacspec.org/v1.0.0-rc.1/collection-search#free-text",
-        "https://api.stacspec.org/v1.0.0-rc.1/collection-search#query",
-        "https://api.stacspec.org/v1.0.0-rc.1/collection-search#sort",
-        "https://api.stacspec.org/v1.0.0-rc.1/collection-search#fields",
-    ],
-)
+    # Initialize collections-search endpoint extension
+    collections_search_endpoint_ext = CollectionsSearchEndpointExtension(
+        client=CoreClient(
+            database=database_logic,
+            session=session,
+            post_request_model=collection_search_post_request_model,
+            landing_page_id=os.getenv("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"),
+        ),
+        settings=settings,
+        GET=collections_get_request_model,
+        POST=collection_search_post_request_model,
+        conformance_classes=[
+            "https://api.stacspec.org/v1.0.0-rc.1/collection-search",
+            QueryConformanceClasses.COLLECTIONS,
+            FilterConformanceClasses.COLLECTIONS,
+            FreeTextConformanceClasses.COLLECTIONS,
+            QueryConformanceClasses.COLLECTIONS,
+            SortConformanceClasses.COLLECTIONS,
+            FieldsConformanceClasses.COLLECTIONS,
+        ],
+    )
 
-extensions.append(collection_search_ext)
-extensions.append(collection_search_post_ext)
-extensions.append(collections_search_endpoint_ext)
+    extensions.append(collection_search_ext)
+    extensions.append(collection_search_post_ext)
+    extensions.append(collections_search_endpoint_ext)
+
 
 database_logic.extensions = [type(ext).__name__ for ext in extensions]
 
@@ -231,8 +235,8 @@ app_config = {
     "route_dependencies": get_route_dependencies(),
 }
 
-# Add collections_get_request_model if collection search is enabled
-if ENABLE_COLLECTIONS_SEARCH:
+# Add collections_get_request_model if it was created
+if collections_get_request_model:
     app_config["collections_get_request_model"] = collections_get_request_model
 
 api = StacApi(**app_config)
