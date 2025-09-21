@@ -284,86 +284,63 @@ class CoreClient(AsyncBaseCoreClient):
     async def item_collection(
         self,
         collection_id: str,
+        request: Request,
         bbox: Optional[BBox] = None,
         datetime: Optional[str] = None,
         limit: Optional[int] = None,
+        sortby: Optional[str] = None,
+        filter_expr: Optional[str] = None,
+        filter_lang: Optional[str] = None,
         token: Optional[str] = None,
+        query: Optional[str] = None,
+        fields: Optional[List[str]] = None,
         **kwargs,
     ) -> stac_types.ItemCollection:
-        """Read items from a specific collection in the database.
+        """List items within a specific collection.
+
+        This endpoint delegates to ``get_search`` under the hood with
+        ``collections=[collection_id]`` so that filtering, sorting and pagination
+        behave identically to the Search endpoints.
 
         Args:
-            collection_id (str): The identifier of the collection to read items from.
-            bbox (Optional[BBox]): The bounding box to filter items by.
-            datetime (Optional[str]): The datetime range to filter items by.
-            limit (int): The maximum number of items to return.
-            token (str): A token used for pagination.
-            request (Request): The incoming request.
+            collection_id (str): ID of the collection to list items from.
+            request (Request): FastAPI Request object.
+            bbox (Optional[BBox]): Optional bounding box filter.
+            datetime (Optional[str]): Optional datetime or interval filter.
+            limit (Optional[int]): Optional page size. Defaults to env ``STAC_ITEM_LIMIT`` when unset.
+            sortby (Optional[str]): Optional sort specification. Accepts repeated values
+                like ``sortby=-properties.datetime`` or ``sortby=+id``. Bare fields (e.g. ``sortby=id``)
+                imply ascending order.
+            token (Optional[str]): Optional pagination token.
+            query (Optional[str]): Optional query string.
+            filter_expr (Optional[str]): Optional filter expression.
+            filter_lang (Optional[str]): Optional filter language.
+            fields (Optional[List[str]]): Fields to include or exclude from the results.
 
         Returns:
-            ItemCollection: An `ItemCollection` object containing the items from the specified collection that meet
-                the filter criteria and links to various resources.
+            ItemCollection: Feature collection with items, paging links, and counts.
 
         Raises:
-            HTTPException: If the specified collection is not found.
-            Exception: If any error occurs while reading the items from the database.
+            HTTPException: 404 if the collection does not exist.
         """
-        request: Request = kwargs["request"]
-        token = request.query_params.get("token")
-
-        base_url = str(request.base_url)
-
-        collection = await self.get_collection(
-            collection_id=collection_id, request=request
-        )
-        collection_id = collection.get("id")
-        if collection_id is None:
+        try:
+            await self.get_collection(collection_id=collection_id, request=request)
+        except Exception:
             raise HTTPException(status_code=404, detail="Collection not found")
 
-        search = self.database.make_search()
-        search = self.database.apply_collections_filter(
-            search=search, collection_ids=[collection_id]
-        )
-
-        try:
-            search, datetime_search = self.database.apply_datetime_filter(
-                search=search, datetime=datetime
-            )
-        except (ValueError, TypeError) as e:
-            # Handle invalid interval formats if return_date fails
-            msg = f"Invalid interval format: {datetime}, error: {e}"
-            logger.error(msg)
-            raise HTTPException(status_code=400, detail=msg)
-
-        if bbox:
-            bbox = [float(x) for x in bbox]
-            if len(bbox) == 6:
-                bbox = [bbox[0], bbox[1], bbox[3], bbox[4]]
-
-            search = self.database.apply_bbox_filter(search=search, bbox=bbox)
-
-        limit = int(request.query_params.get("limit", os.getenv("STAC_ITEM_LIMIT", 10)))
-        items, maybe_count, next_token = await self.database.execute_search(
-            search=search,
+        # Delegate directly to GET search for consistency
+        return await self.get_search(
+            request=request,
+            collections=[collection_id],
+            bbox=bbox,
+            datetime=datetime,
             limit=limit,
-            sort=None,
             token=token,
-            collection_ids=[collection_id],
-            datetime_search=datetime_search,
-        )
-
-        items = [
-            self.item_serializer.db_to_stac(item, base_url=base_url) for item in items
-        ]
-
-        links = await PagingLinks(request=request, next=next_token).get_links()
-
-        return stac_types.ItemCollection(
-            type="FeatureCollection",
-            features=items,
-            links=links,
-            numReturned=len(items),
-            numMatched=maybe_count,
+            sortby=sortby,
+            query=query,
+            filter_expr=filter_expr,
+            filter_lang=filter_lang,
+            fields=fields,
         )
 
     async def get_item(
@@ -429,6 +406,7 @@ class CoreClient(AsyncBaseCoreClient):
             HTTPException: If any error occurs while searching the catalog.
         """
         limit = int(request.query_params.get("limit", os.getenv("STAC_ITEM_LIMIT", 10)))
+
         base_args = {
             "collections": collections,
             "ids": ids,
@@ -446,10 +424,18 @@ class CoreClient(AsyncBaseCoreClient):
             base_args["intersects"] = orjson.loads(unquote_plus(intersects))
 
         if sortby:
-            base_args["sortby"] = [
-                {"field": sort[1:], "direction": "desc" if sort[0] == "-" else "asc"}
-                for sort in sortby
-            ]
+            parsed_sort = []
+            for raw in sortby:
+                if not isinstance(raw, str):
+                    continue
+                s = raw.strip()
+                if not s:
+                    continue
+                direction = "desc" if s[0] == "-" else "asc"
+                field = s[1:] if s and s[0] in "+-" else s
+                parsed_sort.append({"field": field, "direction": direction})
+            if parsed_sort:
+                base_args["sortby"] = parsed_sort
 
         if filter_expr:
             base_args["filter_lang"] = "cql2-json"
@@ -526,13 +512,15 @@ class CoreClient(AsyncBaseCoreClient):
 
             search = self.database.apply_bbox_filter(search=search, bbox=bbox)
 
-        if search_request.intersects:
+        if hasattr(search_request, "intersects") and getattr(
+            search_request, "intersects"
+        ):
             search = self.database.apply_intersects_filter(
-                search=search, intersects=search_request.intersects
+                search=search, intersects=getattr(search_request, "intersects")
             )
 
-        if search_request.query:
-            for field_name, expr in search_request.query.items():
+        if hasattr(search_request, "query") and getattr(search_request, "query"):
+            for field_name, expr in getattr(search_request, "query").items():
                 field = "properties__" + field_name
                 for op, value in expr.items():
                     # Convert enum to string
@@ -541,9 +529,14 @@ class CoreClient(AsyncBaseCoreClient):
                         search=search, op=operator, field=field, value=value
                     )
 
-        # only cql2_json is supported here
+        # Apply CQL2 filter (support both 'filter_expr' and canonical 'filter')
+        cql2_filter = None
         if hasattr(search_request, "filter_expr"):
             cql2_filter = getattr(search_request, "filter_expr", None)
+        if cql2_filter is None and hasattr(search_request, "filter"):
+            cql2_filter = getattr(search_request, "filter", None)
+
+        if cql2_filter is not None:
             try:
                 search = await self.database.apply_cql2_filter(search, cql2_filter)
             except Exception as e:
@@ -561,19 +554,23 @@ class CoreClient(AsyncBaseCoreClient):
                 )
 
         sort = None
-        if search_request.sortby:
-            sort = self.database.populate_sort(search_request.sortby)
+        if hasattr(search_request, "sortby") and getattr(search_request, "sortby"):
+            sort = self.database.populate_sort(getattr(search_request, "sortby"))
 
         limit = 10
         if search_request.limit:
             limit = search_request.limit
 
+        # Use token from the request if the model doesn't define it
+        token_param = getattr(
+            search_request, "token", None
+        ) or request.query_params.get("token")
         items, maybe_count, next_token = await self.database.execute_search(
             search=search,
             limit=limit,
-            token=search_request.token,
+            token=token_param,
             sort=sort,
-            collection_ids=search_request.collections,
+            collection_ids=getattr(search_request, "collections", None),
             datetime_search=datetime_search,
         )
 
@@ -599,8 +596,8 @@ class CoreClient(AsyncBaseCoreClient):
             type="FeatureCollection",
             features=items,
             links=links,
-            numReturned=len(items),
-            numMatched=maybe_count,
+            numberReturned=len(items),
+            numberMatched=maybe_count,
         )
 
 
@@ -917,7 +914,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
 @attr.s
 class BulkTransactionsClient(BaseBulkTransactionsClient):
-    """A client for posting bulk transactions to a Postgres database.
+    """A client for posting bulk transactions.
 
     Attributes:
         session: An instance of `Session` to use for database connection.
@@ -965,6 +962,13 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
             A string indicating the number of items successfully added.
         """
         request = kwargs.get("request")
+
+        if os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+            raise HTTPException(
+                status_code=400,
+                detail="The /collections/{collection_id}/bulk_items endpoint is invalid when ENABLE_DATETIME_INDEX_FILTERING is set to true. Try using the /collections/{collection_id}/items endpoint.",
+            )
+
         if request:
             base_url = str(request.base_url)
         else:
