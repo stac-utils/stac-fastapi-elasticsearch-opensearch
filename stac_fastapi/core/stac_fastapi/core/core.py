@@ -28,7 +28,6 @@ from stac_fastapi.core.redis_utils import (
     add_previous_link,
     cache_current_url,
     cache_previous_url,
-    connect_redis_sentinel,
     connect_redis,
 )
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
@@ -248,7 +247,7 @@ class CoreClient(AsyncBaseCoreClient):
         redis = None
         try:
             redis = await connect_redis()
-        except Exception as e:
+        except Exception:
             redis = None
 
         collections, next_token = await self.database.get_all_collections(
@@ -265,9 +264,7 @@ class CoreClient(AsyncBaseCoreClient):
             },
         ]
 
-        await add_previous_link(
-            redis, links, "collections", current_url, token
-        )
+        await add_previous_link(redis, links, "collections", current_url, token)
         if redis:
             await cache_previous_url(redis, current_url, "collections")
 
@@ -303,7 +300,6 @@ class CoreClient(AsyncBaseCoreClient):
     async def item_collection(
         self,
         collection_id: str,
-        request: Request,
         bbox: Optional[BBox] = None,
         datetime: Optional[str] = None,
         limit: Optional[int] = None,
@@ -350,7 +346,7 @@ class CoreClient(AsyncBaseCoreClient):
 
         try:
             redis = await connect_redis()
-        except Exception as e:
+        except Exception:
             redis = None
 
         if redis:
@@ -568,7 +564,7 @@ class CoreClient(AsyncBaseCoreClient):
         current_url = str(request.url)
         try:
             redis = await connect_redis()
-        except Exception as e:
+        except Exception:
             redis = None
 
         if redis:

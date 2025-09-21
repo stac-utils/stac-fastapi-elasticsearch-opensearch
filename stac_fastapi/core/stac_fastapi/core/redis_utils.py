@@ -91,7 +91,7 @@ async def connect_redis_sentinel(
 
             redis_pool = master
 
-        except:
+        except Exception:
             return None
 
     return redis_pool
