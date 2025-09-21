@@ -17,7 +17,7 @@ from starlette.requests import Request
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
-from stac_fastapi.core.utilities import bbox2polygon, get_max_limit
+from stac_fastapi.core.utilities import bbox2polygon, get_bool_env, get_max_limit
 from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
 from stac_fastapi.elasticsearch.config import (
     ElasticsearchSettings as SyncElasticsearchSettings,
@@ -294,21 +294,94 @@ class DatabaseLogic(BaseDatabaseLogic):
         if not datetime_search:
             return search, datetime_search
 
-        if "eq" in datetime_search:
-            # For exact matches, include:
-            # 1. Items with matching exact datetime
-            # 2. Items with datetime:null where the time falls within their range
-            should = [
-                Q(
+        # USE_DATETIME env var
+        # True: Search by datetime, if null search by start/end datetime
+        # False: Always search only by start/end datetime
+        USE_DATETIME = get_bool_env("USE_DATETIME", default=True)
+
+        if USE_DATETIME:
+            if "eq" in datetime_search:
+                # For exact matches, include:
+                # 1. Items with matching exact datetime
+                # 2. Items with datetime:null where the time falls within their range
+                should = [
+                    Q(
+                        "bool",
+                        filter=[
+                            Q("exists", field="properties.datetime"),
+                            Q(
+                                "term",
+                                **{"properties__datetime": datetime_search["eq"]},
+                            ),
+                        ],
+                    ),
+                    Q(
+                        "bool",
+                        must_not=[Q("exists", field="properties.datetime")],
+                        filter=[
+                            Q("exists", field="properties.start_datetime"),
+                            Q("exists", field="properties.end_datetime"),
+                            Q(
+                                "range",
+                                properties__start_datetime={
+                                    "lte": datetime_search["eq"]
+                                },
+                            ),
+                            Q(
+                                "range",
+                                properties__end_datetime={"gte": datetime_search["eq"]},
+                            ),
+                        ],
+                    ),
+                ]
+            else:
+                # For date ranges, include:
+                # 1. Items with datetime in the range
+                # 2. Items with datetime:null that overlap the search range
+                should = [
+                    Q(
+                        "bool",
+                        filter=[
+                            Q("exists", field="properties.datetime"),
+                            Q(
+                                "range",
+                                properties__datetime={
+                                    "gte": datetime_search["gte"],
+                                    "lte": datetime_search["lte"],
+                                },
+                            ),
+                        ],
+                    ),
+                    Q(
+                        "bool",
+                        must_not=[Q("exists", field="properties.datetime")],
+                        filter=[
+                            Q("exists", field="properties.start_datetime"),
+                            Q("exists", field="properties.end_datetime"),
+                            Q(
+                                "range",
+                                properties__start_datetime={
+                                    "lte": datetime_search["lte"]
+                                },
+                            ),
+                            Q(
+                                "range",
+                                properties__end_datetime={
+                                    "gte": datetime_search["gte"]
+                                },
+                            ),
+                        ],
+                    ),
+                ]
+
+            return (
+                search.query(Q("bool", should=should, minimum_should_match=1)),
+                datetime_search,
+            )
+        else:
+            if "eq" in datetime_search:
+                filter_query = Q(
                     "bool",
-                    filter=[
-                        Q("exists", field="properties.datetime"),
-                        Q("term", **{"properties__datetime": datetime_search["eq"]}),
-                    ],
-                ),
-                Q(
-                    "bool",
-                    must_not=[Q("exists", field="properties.datetime")],
                     filter=[
                         Q("exists", field="properties.start_datetime"),
                         Q("exists", field="properties.end_datetime"),
@@ -321,29 +394,10 @@ class DatabaseLogic(BaseDatabaseLogic):
                             properties__end_datetime={"gte": datetime_search["eq"]},
                         ),
                     ],
-                ),
-            ]
-        else:
-            # For date ranges, include:
-            # 1. Items with datetime in the range
-            # 2. Items with datetime:null that overlap the search range
-            should = [
-                Q(
+                )
+            else:
+                filter_query = Q(
                     "bool",
-                    filter=[
-                        Q("exists", field="properties.datetime"),
-                        Q(
-                            "range",
-                            properties__datetime={
-                                "gte": datetime_search["gte"],
-                                "lte": datetime_search["lte"],
-                            },
-                        ),
-                    ],
-                ),
-                Q(
-                    "bool",
-                    must_not=[Q("exists", field="properties.datetime")],
                     filter=[
                         Q("exists", field="properties.start_datetime"),
                         Q("exists", field="properties.end_datetime"),
@@ -356,13 +410,8 @@ class DatabaseLogic(BaseDatabaseLogic):
                             properties__end_datetime={"gte": datetime_search["gte"]},
                         ),
                     ],
-                ),
-            ]
-
-        return (
-            search.query(Q("bool", should=should, minimum_should_match=1)),
-            datetime_search,
-        )
+                )
+            return search.query(filter_query), datetime_search
 
     @staticmethod
     def apply_bbox_filter(search: Search, bbox: List):
