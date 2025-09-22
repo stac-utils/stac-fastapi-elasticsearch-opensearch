@@ -72,7 +72,15 @@ class CoreClient(AsyncBaseCoreClient):
 
     database: BaseDatabaseLogic = attr.ib()
     base_conformance_classes: List[str] = attr.ib(
-        factory=lambda: BASE_CONFORMANCE_CLASSES
+        factory=lambda: [
+            (
+                "http://www.opengis.net/spec/ogcapi-features-1/1.0/req/oas30"
+                if cls.value
+                == "http://www.opengis.net/spec/ogcapi-features-1/1.0/conf/oas30"
+                else cls.value
+            )
+            for cls in BASE_CONFORMANCE_CLASSES
+        ]
     )
     extensions: List[ApiExtension] = attr.ib(default=attr.Factory(list))
 

@@ -68,25 +68,54 @@ filter_extension = FilterExtension(
 filter_extension.conformance_classes.append(
     FilterConformanceClasses.ADVANCED_COMPARISON_OPERATORS
 )
+filter_extension.conformance_classes = [
+    "https://api.stacspec.org/v1.0.0-rc.1/item-search#filter"
+    if cls.value == "https://api.stacspec.org/v1.0.0-rc.2/item-search#filter"
+    else cls.value
+    for cls in filter_extension.conformance_classes
+]
 
 # Adding collection search extension for compatibility with stac-auth-proxy
 # (https://github.com/developmentseed/stac-auth-proxy)
 # The extension is not fully implemented yet but is required for collection filtering support
 collection_search_extension = CollectionSearchExtension()
-collection_search_extension.conformance_classes.append(
-    "https://api.stacspec.org/v1.0.0-rc.1/collection-search#filter"
-)
+
+collection_search_extension.conformance_classes = [
+    "http://www.opengis.net/spec/ogcapi-common-2/1.0/req/simple-query"
+    if cls == "http://www.opengis.net/spec/ogcapi-common-2/1.0/conf/simple-query"
+    else cls
+    for cls in collection_search_extension.conformance_classes
+]
+
+collection_search_extension.conformance_classes = [
+    cls
+    for cls in collection_search_extension.conformance_classes
+    if cls != "https://api.stacspec.org/v1.0.0-rc.1/collection-search"
+]
 
 aggregation_extension = AggregationExtension(
     client=EsAsyncBaseAggregationClient(
         database=database_logic, session=session, settings=settings
     )
 )
+
+aggregation_extension.conformance_classes = [
+    cls
+    for cls in aggregation_extension.conformance_classes
+    if cls != "https://api.stacspec.org/v0.3.0/aggregation"
+]
+
 aggregation_extension.POST = EsAggregationExtensionPostRequest
 aggregation_extension.GET = EsAggregationExtensionGetRequest
 
 fields_extension = FieldsExtension()
 fields_extension.conformance_classes.append(FieldsConformanceClasses.ITEMS)
+
+fields_extension.conformance_classes = [
+    cls
+    for cls in fields_extension.conformance_classes
+    if cls.value != "http://www.opengis.net/spec/ogcapi-common-2/1.0/conf/simple-query"
+]
 
 search_extensions = [
     fields_extension,
@@ -119,6 +148,30 @@ if TRANSACTIONS_EXTENSIONS:
             )
         ),
     )
+
+LINKS_TO_BE_REMOVED = {
+    "https://api.stacspec.org/v1.0.0/collections/extensions/transaction",
+    "https://api.stacspec.org/v1.0.0/ogcapi-features/extensions/transaction",
+    "https://api.stacspec.org/v1.0.0/item-search#query",
+    "https://api.stacspec.org/v1.0.0-rc.1/item-search#free-text",
+    "https://api.stacspec.org/v1.0.0/ogcapi-features#fields",
+}
+
+for extension in search_extensions:
+    extension.conformance_classes = [
+        cls for cls in extension.conformance_classes if cls not in LINKS_TO_BE_REMOVED
+    ]
+
+for extension in search_extensions:
+    extension.conformance_classes = [
+        "https://api.stacspec.org/v1.0.0-rc.1/item-search#fields"
+        if cls == "https://api.stacspec.org/v1.0.0/item-search#fields"
+        else "https://api.stacspec.org/v1.0.0-rc.1/item-search#sort"
+        if cls == "https://api.stacspec.org/v1.0.0/item-search#sort"
+        else cls
+        for cls in extension.conformance_classes
+    ]
+
 
 extensions = [aggregation_extension] + search_extensions
 
