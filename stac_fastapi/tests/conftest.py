@@ -362,8 +362,8 @@ def build_test_app():
     aggregation_extension.GET = EsAggregationExtensionGetRequest
 
     search_extensions = [
-        SortExtension(),
         FieldsExtension(),
+        SortExtension(),
         QueryExtension(),
         TokenPaginationExtension(),
         FilterExtension(),
