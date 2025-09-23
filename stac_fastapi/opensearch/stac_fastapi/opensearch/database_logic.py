@@ -154,31 +154,47 @@ class DatabaseLogic(BaseDatabaseLogic):
     """CORE LOGIC"""
 
     async def get_all_collections(
-        self, token: Optional[str], limit: int, request: Request
+        self,
+        token: Optional[str],
+        limit: int,
+        request: Request,
+        sort: Optional[List[Dict[str, Any]]] = None,
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
-        """
-        Retrieve a list of all collections from Opensearch, supporting pagination.
+        """Retrieve a list of collections from Elasticsearch, supporting pagination.
 
         Args:
             token (Optional[str]): The pagination token.
             limit (int): The number of results to return.
+            request (Request): The FastAPI request object.
+            sort (Optional[List[Dict[str, Any]]]): Optional sort parameter from the request.
 
         Returns:
             A tuple of (collections, next pagination token if any).
         """
-        search_body = {
-            "sort": [{"id": {"order": "asc"}}],
+        formatted_sort = []
+        if sort:
+            for item in sort:
+                field = item.get("field")
+                direction = item.get("direction", "asc")
+                if field:
+                    formatted_sort.append({field: {"order": direction}})
+            # Always include id as a secondary sort to ensure consistent pagination
+            if not any("id" in item for item in formatted_sort):
+                formatted_sort.append({"id": {"order": "asc"}})
+        else:
+            formatted_sort = [{"id": {"order": "asc"}}]
+
+        body = {
+            "sort": formatted_sort,
             "size": limit,
         }
 
-        # Only add search_after to the query if token is not None and not empty
         if token:
-            search_after = [token]
-            search_body["search_after"] = search_after
+            body["search_after"] = [token]
 
         response = await self.client.search(
             index=COLLECTIONS_INDEX,
-            body=search_body,
+            body=body,
         )
 
         hits = response["hits"]["hits"]

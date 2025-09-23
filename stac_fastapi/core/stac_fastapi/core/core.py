@@ -224,7 +224,9 @@ class CoreClient(AsyncBaseCoreClient):
 
         return landing_page
 
-    async def all_collections(self, **kwargs) -> stac_types.Collections:
+    async def all_collections(
+        self, sortby: Optional[str] = None, **kwargs
+    ) -> stac_types.Collections:
         """Read all collections from the database.
 
         Args:
@@ -238,8 +240,23 @@ class CoreClient(AsyncBaseCoreClient):
         limit = int(request.query_params.get("limit", os.getenv("STAC_ITEM_LIMIT", 10)))
         token = request.query_params.get("token")
 
+        sort = None
+        if sortby:
+            parsed_sort = []
+            for raw in sortby:
+                if not isinstance(raw, str):
+                    continue
+                s = raw.strip()
+                if not s:
+                    continue
+                direction = "desc" if s[0] == "-" else "asc"
+                field = s[1:] if s and s[0] in "+-" else s
+                parsed_sort.append({"field": field, "direction": direction})
+            if parsed_sort:
+                sort = parsed_sort
+
         collections, next_token = await self.database.get_all_collections(
-            token=token, limit=limit, request=request
+            token=token, limit=limit, request=request, sort=sort
         )
 
         links = [
