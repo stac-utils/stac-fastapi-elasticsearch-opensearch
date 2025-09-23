@@ -9,9 +9,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 
-- Fixed a bug where missing `copy()` caused default queryables to be incorrectly enriched by results from previous queries. [#427](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/449)
-- Removed non-generic attributes (`cloud_cover`, `cloud_shadow_percentage`, `nodata_pixel_percentage`) not applicable to all collections (e.g., SAR data).[#427](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/449)
-- Updated `async_prep_create_item` to support OS item loading with multiple indices.[#427](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/449)
+- Fixed a bug where missing `copy()` caused default queryables to be incorrectly enriched by results from previous queries. [#427](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/427)
+- Removed non-generic attributes (`cloud_cover`, `cloud_shadow_percentage`, `nodata_pixel_percentage`) not applicable to all collections (e.g., SAR data).[#427](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/427)
+- Updated `async_prep_create_item` to support OS item loading with multiple indices.[#427](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/427)
+- unified the type of queryables endpoint to `application/schema+json`. [#445](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/445)
 - updated `numReturned` & `numMatched` fields in itemCollection return to `numberReturned` & `numberMatched`. [#446](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/446)
 
 ## [v6.3.0] - 2025-09-16
