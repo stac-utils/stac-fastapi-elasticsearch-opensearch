@@ -187,7 +187,6 @@ class DatabaseLogic(BaseDatabaseLogic):
         Returns:
             A tuple of (collections, next pagination token if any).
         """
-        # Format the sort parameter
         formatted_sort = []
         if sort:
             for item in sort:
@@ -199,18 +198,15 @@ class DatabaseLogic(BaseDatabaseLogic):
             if not any("id" in item for item in formatted_sort):
                 formatted_sort.append({"id": {"order": "asc"}})
         else:
-            # Use a collections-specific default sort that doesn't rely on properties.datetime
             formatted_sort = [{"id": {"order": "asc"}}]
 
-        # Build the search body step by step to avoid type errors
         body = {
             "sort": formatted_sort,
             "size": limit,
         }
 
-        # Only add search_after if we have a token
         if token:
-            body["search_after"] = [token]  # search_after must be a list
+            body["search_after"] = [token]
 
         response = await self.client.search(
             index=COLLECTIONS_INDEX,
@@ -227,7 +223,6 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         next_token = None
         if len(hits) == limit:
-            # Ensure we have a valid sort value for next_token
             next_token_values = hits[-1].get("sort")
             if next_token_values:
                 next_token = next_token_values[0]
