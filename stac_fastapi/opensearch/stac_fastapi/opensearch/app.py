@@ -31,6 +31,7 @@ from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.extensions.core import (
     AggregationExtension,
     CollectionSearchExtension,
+    CollectionSearchFilterExtension,
     FilterExtension,
     FreeTextExtension,
     SortExtension,
@@ -39,6 +40,7 @@ from stac_fastapi.extensions.core import (
 )
 from stac_fastapi.extensions.core.fields import FieldsConformanceClasses
 from stac_fastapi.extensions.core.filter import FilterConformanceClasses
+from stac_fastapi.extensions.core.free_text import FreeTextConformanceClasses
 from stac_fastapi.extensions.core.query import QueryConformanceClasses
 from stac_fastapi.extensions.core.sort import SortConformanceClasses
 from stac_fastapi.extensions.third_party import BulkTransactionExtension
@@ -69,9 +71,6 @@ filter_extension.conformance_classes.append(
     FilterConformanceClasses.ADVANCED_COMPARISON_OPERATORS
 )
 
-# Adding collection search extension for compatibility with stac-auth-proxy
-# (https://github.com/developmentseed/stac-auth-proxy)
-# The extension is not fully implemented yet but is required for collection filtering support
 collection_search_extension = CollectionSearchExtension()
 collection_search_extension.conformance_classes.append(
     "https://api.stacspec.org/v1.0.0-rc.1/collection-search#filter"
@@ -122,6 +121,26 @@ if TRANSACTIONS_EXTENSIONS:
 
 extensions = [aggregation_extension] + search_extensions
 
+# Create collection search extensions
+# Only sort extension is enabled for now
+collection_search_extensions = [
+    QueryExtension(conformance_classes=[QueryConformanceClasses.COLLECTIONS]),
+    SortExtension(conformance_classes=[SortConformanceClasses.COLLECTIONS]),
+    FieldsExtension(conformance_classes=[FieldsConformanceClasses.COLLECTIONS]),
+    CollectionSearchFilterExtension(
+        conformance_classes=[FilterConformanceClasses.COLLECTIONS]
+    ),
+    FreeTextExtension(conformance_classes=[FreeTextConformanceClasses.COLLECTIONS]),
+]
+
+# Initialize collection search with its extensions
+collection_search_ext = CollectionSearchExtension.from_extensions(
+    collection_search_extensions
+)
+collections_get_request_model = collection_search_ext.GET
+
+extensions.append(collection_search_ext)
+
 database_logic.extensions = [type(ext).__name__ for ext in extensions]
 
 post_request_model = create_post_request_model(search_extensions)
@@ -154,6 +173,7 @@ app_config = {
         post_request_model=post_request_model,
         landing_page_id=os.getenv("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"),
     ),
+    "collections_get_request_model": collections_get_request_model,
     "search_get_request_model": create_get_request_model(search_extensions),
     "search_post_request_model": post_request_model,
     "items_get_request_model": items_get_request_model,
