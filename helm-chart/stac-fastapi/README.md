@@ -1,0 +1,402 @@
+# STAC FastAPI Helm Chart
+
+This Helm chart deploys the STAC FastAPI application with support for both Elasticsearch and OpenSearch backends.
+
+## Overview
+
+The chart provides a flexible deployment solution for STAC FastAPI with the following features:
+
+- **Dual Backend Support**: Choose between Elasticsearch or OpenSearch
+- **Bundled or External Database**: Deploy with bundled database or connect to external clusters
+- **Production Ready**: Includes monitoring, autoscaling, and security configurations
+- **High Availability**: Support for multi-replica deployments with proper disruption budgets
+- **Performance Optimized**: Configurable performance settings for large-scale deployments
+
+## Prerequisites
+
+- Kubernetes 1.16+
+- Helm 3.0+
+- Storage class for persistent volumes (if using bundled databases)
+
+## Quick Start
+
+### Deploy with Elasticsearch
+
+```bash
+# Add dependencies
+helm dependency update ./helm-chart/stac-fastapi
+
+# Install with Elasticsearch backend
+helm install my-stac-api ./helm-chart/stac-fastapi \
+  --set backend=elasticsearch \
+  --set elasticsearch.enabled=true \
+  --set opensearch.enabled=false
+```
+
+### Deploy with OpenSearch
+
+```bash
+# Add dependencies
+helm dependency update ./helm-chart/stac-fastapi
+
+# Install with OpenSearch backend
+helm install my-stac-api ./helm-chart/stac-fastapi \
+  --set backend=opensearch \
+  --set elasticsearch.enabled=false \
+  --set opensearch.enabled=true
+```
+
+### Deploy with External Database
+
+```bash
+# Create secret for API key (if needed)
+kubectl create secret generic elasticsearch-api-key \
+  --from-literal=api-key="your-api-key-here"
+
+# Install with external database
+helm install my-stac-api ./helm-chart/stac-fastapi \
+  --values ./helm-chart/stac-fastapi/values-external.yaml \
+  --set externalDatabase.host="your-database-host" \
+  --set externalDatabase.port=9200
+```
+
+## Configuration
+
+### Backend Selection
+
+The chart supports two backends:
+
+- `elasticsearch`: Uses Elasticsearch as the backend database
+- `opensearch`: Uses OpenSearch as the backend database
+
+Set the backend using:
+
+```yaml
+backend: elasticsearch  # or opensearch
+```
+
+### Application Configuration
+
+Key application settings:
+
+```yaml
+app:
+  replicaCount: 2
+  
+  image:
+    repository: ghcr.io/stac-utils/stac-fastapi
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  
+  env:
+    STAC_FASTAPI_TITLE: "STAC API"
+    STAC_FASTAPI_DESCRIPTION: "A STAC FastAPI implementation"
+    ENVIRONMENT: "production"
+    WEB_CONCURRENCY: "10"
+    ENABLE_DIRECT_RESPONSE: "false"
+    DATABASE_REFRESH: "false"
+    ENABLE_DATETIME_INDEX_FILTERING: "false"
+    STAC_FASTAPI_RATE_LIMIT: "200/minute"
+```
+
+### Database Configuration
+
+#### Bundled Elasticsearch
+
+```yaml
+elasticsearch:
+  enabled: true
+  clusterName: "stac-elasticsearch"
+  replicas: 3
+  minimumMasterNodes: 2
+  
+  resources:
+    requests:
+      cpu: "1000m"
+      memory: "4Gi"
+    limits:
+      cpu: "2000m"
+      memory: "4Gi"
+  
+  volumeClaimTemplate:
+    accessModes: ["ReadWriteOnce"]
+    resources:
+      requests:
+        storage: 100Gi
+```
+
+#### Bundled OpenSearch
+
+```yaml
+opensearch:
+  enabled: true
+  clusterName: "stac-opensearch"
+  replicas: 3
+  
+  resources:
+    requests:
+      cpu: "1000m"
+      memory: "4Gi"
+    limits:
+      cpu: "2000m"
+      memory: "4Gi"
+  
+  persistence:
+    enabled: true
+    size: 100Gi
+    storageClass: "fast-ssd"
+```
+
+#### External Database
+
+```yaml
+externalDatabase:
+  enabled: true
+  host: "elasticsearch.example.com"
+  port: 9200
+  ssl: true
+  verifyCerts: true
+  apiKeySecret: "elasticsearch-credentials"
+  apiKeySecretKey: "api-key"
+```
+
+### Ingress Configuration
+
+```yaml
+app:
+  ingress:
+    enabled: true
+    className: "nginx"
+    annotations:
+      nginx.ingress.kubernetes.io/rewrite-target: /
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    hosts:
+      - host: stac-api.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: stac-fastapi-tls
+        hosts:
+          - stac-api.example.com
+```
+
+### Autoscaling
+
+```yaml
+app:
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+```
+
+### Monitoring
+
+```yaml
+monitoring:
+  enabled: true
+  prometheus:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      interval: 30s
+      scrapeTimeout: 10s
+```
+
+## Performance Tuning
+
+### For Large Datasets
+
+Enable datetime-based index filtering for better performance with temporal queries:
+
+```yaml
+app:
+  env:
+    ENABLE_DATETIME_INDEX_FILTERING: "true"
+    DATETIME_INDEX_MAX_SIZE_GB: "50"
+```
+
+### For Maximum Performance
+
+Enable direct response mode (disables FastAPI dependencies):
+
+```yaml
+app:
+  env:
+    ENABLE_DIRECT_RESPONSE: "true"
+    DATABASE_REFRESH: "false"
+```
+
+### For High Throughput
+
+Increase worker processes and rate limits:
+
+```yaml
+app:
+  env:
+    WEB_CONCURRENCY: "8"
+    STAC_FASTAPI_RATE_LIMIT: "1000/minute"
+```
+
+## Security
+
+### Network Policies
+
+Enable network policies for additional security:
+
+```yaml
+networkPolicy:
+  enabled: true
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: nginx-ingress
+      ports:
+        - protocol: TCP
+          port: 8080
+```
+
+### Pod Security Context
+
+Configure security contexts:
+
+```yaml
+app:
+  podSecurityContext:
+    fsGroup: 2000
+  
+  securityContext:
+    capabilities:
+      drop:
+      - ALL
+    readOnlyRootFilesystem: true
+    runAsNonRoot: true
+    runAsUser: 1000
+```
+
+## High Availability
+
+### Pod Disruption Budget
+
+Ensure availability during maintenance:
+
+```yaml
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+```
+
+### Anti-Affinity
+
+Spread pods across nodes:
+
+```yaml
+app:
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+      - weight: 100
+        podAffinityTerm:
+          labelSelector:
+            matchExpressions:
+            - key: app.kubernetes.io/name
+              operator: In
+              values:
+              - stac-fastapi
+          topologyKey: kubernetes.io/hostname
+```
+
+## Examples
+
+The chart includes several example values files:
+
+- `values-elasticsearch.yaml`: Production-ready Elasticsearch deployment
+- `values-opensearch.yaml`: Production-ready OpenSearch deployment
+- `values-external.yaml`: External database configuration
+
+Use them as starting points:
+
+```bash
+helm install my-stac-api ./helm-chart/stac-fastapi \
+  --values ./helm-chart/stac-fastapi/values-elasticsearch.yaml
+```
+
+## Upgrading
+
+To upgrade an existing deployment:
+
+```bash
+helm upgrade my-stac-api ./helm-chart/stac-fastapi \
+  --values your-values.yaml
+```
+
+## Uninstalling
+
+To remove the deployment:
+
+```bash
+helm uninstall my-stac-api
+```
+
+**Note**: Persistent volumes for databases may need to be manually deleted.
+
+## Troubleshooting
+
+### Check Pod Status
+
+```bash
+kubectl get pods -l app.kubernetes.io/name=stac-fastapi
+```
+
+### View Logs
+
+```bash
+kubectl logs -l app.kubernetes.io/name=stac-fastapi
+```
+
+### Check Database Connectivity
+
+```bash
+kubectl exec -it deployment/my-stac-api -- curl http://elasticsearch:9200/_health
+```
+
+### Port Forward for Local Testing
+
+```bash
+kubectl port-forward service/my-stac-api 8080:80
+```
+
+Then visit http://localhost:8080
+
+## Configuration Reference
+
+| Parameter | Description | Default |
+|-----------|-------------|---------|
+| `backend` | Database backend (elasticsearch/opensearch) | `elasticsearch` |
+| `app.replicaCount` | Number of application replicas | `2` |
+| `app.image.repository` | Application image repository | `ghcr.io/stac-utils/stac-fastapi` |
+| `app.image.tag` | Application image tag | `""` (uses chart appVersion) |
+| `app.service.type` | Kubernetes service type | `ClusterIP` |
+| `app.service.port` | Service port | `80` |
+| `app.ingress.enabled` | Enable ingress | `false` |
+| `app.autoscaling.enabled` | Enable horizontal pod autoscaler | `false` |
+| `elasticsearch.enabled` | Deploy Elasticsearch | `true` |
+| `opensearch.enabled` | Deploy OpenSearch | `false` |
+| `externalDatabase.enabled` | Use external database | `false` |
+| `monitoring.enabled` | Enable monitoring | `false` |
+| `networkPolicy.enabled` | Enable network policies | `false` |
+| `podDisruptionBudget.enabled` | Enable pod disruption budget | `false` |
+
+For a complete list of configuration options, see the `values.yaml` file.
+
+## Contributing
+
+Contributions are welcome! Please ensure any changes maintain compatibility with both Elasticsearch and OpenSearch backends.
+
+## License
+
+This chart is released under the same license as the STAC FastAPI project.
