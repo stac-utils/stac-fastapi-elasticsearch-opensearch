@@ -187,31 +187,30 @@ class DatabaseLogic(BaseDatabaseLogic):
         Returns:
             A tuple of (collections, next pagination token if any).
         """
-        search_after = token
-
-        formatted_sort = None
+        # Format the sort parameter
+        formatted_sort = []
         if sort:
-            formatted_sort = {}
             for item in sort:
                 field = item.get("field")
                 direction = item.get("direction", "asc")
                 if field:
-                    formatted_sort[field] = {"order": direction}
+                    formatted_sort.append({field: {"order": direction}})
             # Always include id as a secondary sort to ensure consistent pagination
-            formatted_sort.setdefault("id", {"order": "asc"})
-
-        # Use a collections-specific default sort that doesn't rely on properties.datetime
-        collections_default_sort = {"id": {"order": "asc"}}
+            if not any("id" in item for item in formatted_sort):
+                formatted_sort.append({"id": {"order": "asc"}})
+        else:
+            # Use a collections-specific default sort that doesn't rely on properties.datetime
+            formatted_sort = [{"id": {"order": "asc"}}]
 
         # Build the search body step by step to avoid type errors
         body = {
-            "sort": formatted_sort or collections_default_sort,
+            "sort": formatted_sort,
             "size": limit,
         }
 
         # Only add search_after if we have a token
-        if search_after is not None:
-            body["search_after"] = search_after  # type: ignore
+        if token:
+            body["search_after"] = [token]  # search_after must be a list
 
         response = await self.client.search(
             index=COLLECTIONS_INDEX,
@@ -228,7 +227,10 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         next_token = None
         if len(hits) == limit:
-            next_token = hits[-1]["sort"][0]
+            # Ensure we have a valid sort value for next_token
+            next_token_values = hits[-1].get("sort")
+            if next_token_values:
+                next_token = next_token_values[0]
 
         return collections, next_token
 

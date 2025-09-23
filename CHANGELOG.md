@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- GET `/collections` collection search sort extension ex. `/collections?sortby=+id`. [#456](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/456)
+
 ### Changed
 
 - updated `numReturned` & `numMatched` fields in itemCollection return to `numberReturned` & `numberMatched`. [#446](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/446)

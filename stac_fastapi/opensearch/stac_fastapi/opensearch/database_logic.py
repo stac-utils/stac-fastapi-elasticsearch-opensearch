@@ -159,8 +159,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         request: Request,
         sort: Optional[List[Dict[str, Any]]] = None,
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
-        """
-        Retrieve a list of collections from Opensearch, supporting pagination.
+        """Retrieve a list of collections from Elasticsearch, supporting pagination.
 
         Args:
             token (Optional[str]): The pagination token.
@@ -171,7 +170,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         Returns:
             A tuple of (collections, next pagination token if any).
         """
-        collections_default_sort = [{"id": {"order": "asc"}}]
+        # Format the sort parameter
         formatted_sort = []
         if sort:
             for item in sort:
@@ -183,21 +182,22 @@ class DatabaseLogic(BaseDatabaseLogic):
             if not any("id" in item for item in formatted_sort):
                 formatted_sort.append({"id": {"order": "asc"}})
         else:
-            formatted_sort = collections_default_sort
+            # Use a collections-specific default sort that doesn't rely on properties.datetime
+            formatted_sort = [{"id": {"order": "asc"}}]
 
-        search_body = {
+        # Build the search body step by step to avoid type errors
+        body = {
             "sort": formatted_sort,
             "size": limit,
         }
 
-        # Only add search_after to the query if token is not None and not empty
+        # Only add search_after if we have a token
         if token:
-            search_after = [token]
-            search_body["search_after"] = search_after
+            body["search_after"] = [token]  # search_after must be a list
 
         response = await self.client.search(
             index=COLLECTIONS_INDEX,
-            body=search_body,
+            body=body,
         )
 
         hits = response["hits"]["hits"]
