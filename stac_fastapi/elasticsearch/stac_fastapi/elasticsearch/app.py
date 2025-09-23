@@ -34,10 +34,9 @@ from stac_fastapi.elasticsearch.database_logic import (
     create_collection_index,
     create_index_templates,
 )
-from stac_fastapi.extensions.core import (
+from stac_fastapi.extensions.core import (  # CollectionSearchFilterExtension,
     AggregationExtension,
     CollectionSearchExtension,
-    CollectionSearchFilterExtension,
     FilterExtension,
     FreeTextExtension,
     SortExtension,
@@ -46,7 +45,8 @@ from stac_fastapi.extensions.core import (
 )
 from stac_fastapi.extensions.core.fields import FieldsConformanceClasses
 from stac_fastapi.extensions.core.filter import FilterConformanceClasses
-from stac_fastapi.extensions.core.free_text import FreeTextConformanceClasses
+
+# from stac_fastapi.extensions.core.free_text import FreeTextConformanceClasses
 from stac_fastapi.extensions.core.query import QueryConformanceClasses
 from stac_fastapi.extensions.core.sort import SortConformanceClasses
 from stac_fastapi.extensions.third_party import BulkTransactionExtension
@@ -72,11 +72,6 @@ filter_extension.conformance_classes.append(
     FilterConformanceClasses.ADVANCED_COMPARISON_OPERATORS
 )
 
-collection_search_extension = CollectionSearchExtension()
-collection_search_extension.conformance_classes.append(
-    "https://api.stacspec.org/v1.0.0-rc.1/collection-search#filter"
-)
-
 aggregation_extension = AggregationExtension(
     client=EsAsyncBaseAggregationClient(
         database=database_logic, session=session, settings=settings
@@ -95,7 +90,6 @@ search_extensions = [
     TokenPaginationExtension(),
     filter_extension,
     FreeTextExtension(),
-    collection_search_extension,
 ]
 
 if TRANSACTIONS_EXTENSIONS:
@@ -124,13 +118,13 @@ extensions = [aggregation_extension] + search_extensions
 # Create collection search extensions
 # Only sort extension is enabled for now
 collection_search_extensions = [
-    QueryExtension(conformance_classes=[QueryConformanceClasses.COLLECTIONS]),
+    # QueryExtension(conformance_classes=[QueryConformanceClasses.COLLECTIONS]),
     SortExtension(conformance_classes=[SortConformanceClasses.COLLECTIONS]),
-    FieldsExtension(conformance_classes=[FieldsConformanceClasses.COLLECTIONS]),
-    CollectionSearchFilterExtension(
-        conformance_classes=[FilterConformanceClasses.COLLECTIONS]
-    ),
-    FreeTextExtension(conformance_classes=[FreeTextConformanceClasses.COLLECTIONS]),
+    # FieldsExtension(conformance_classes=[FieldsConformanceClasses.COLLECTIONS]),
+    # CollectionSearchFilterExtension(
+    #     conformance_classes=[FilterConformanceClasses.COLLECTIONS]
+    # ),
+    # FreeTextExtension(conformance_classes=[FreeTextConformanceClasses.COLLECTIONS]),
 ]
 
 # Initialize collection search with its extensions
