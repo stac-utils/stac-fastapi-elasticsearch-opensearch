@@ -3,8 +3,9 @@
 import asyncio
 import logging
 from base64 import urlsafe_b64decode, urlsafe_b64encode
+from collections.abc import Iterable
 from copy import deepcopy
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Type
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 import attr
 import orjson
@@ -679,14 +680,21 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         """
         await self.check_collection_exists(collection_id=item["collection"])
+        alias = index_alias_by_collection_id(item["collection"])
+        doc_id = mk_item_id(item["id"], item["collection"])
 
-        if not exist_ok and await self.client.exists(
-            index=index_alias_by_collection_id(item["collection"]),
-            id=mk_item_id(item["id"], item["collection"]),
-        ):
-            raise ConflictError(
-                f"Item {item['id']} in collection {item['collection']} already exists"
-            )
+        if not exist_ok:
+            alias_exists = await self.client.indices.exists_alias(name=alias)
+
+            if alias_exists:
+                alias_info = await self.client.indices.get_alias(name=alias)
+                indices = list(alias_info.keys())
+
+                for index in indices:
+                    if await self.client.exists(index=index, id=doc_id):
+                        raise ConflictError(
+                            f"Item {item['id']} in collection {item['collection']} already exists"
+                        )
 
         return self.item_serializer.stac_to_db(item, base_url)
 
@@ -903,7 +911,6 @@ class DatabaseLogic(BaseDatabaseLogic):
                 "add",
                 "replace",
             ]:
-
                 if operation.path == "collection" and collection_id != operation.value:
                     await self.check_collection_exists(collection_id=operation.value)
                     new_collection_id = operation.value
@@ -957,8 +964,8 @@ class DatabaseLogic(BaseDatabaseLogic):
                     "script": {
                         "lang": "painless",
                         "source": (
-                            f"""ctx._id = ctx._id.replace('{collection_id}', '{new_collection_id}');"""  # noqa: E702
-                            f"""ctx._source.collection = '{new_collection_id}';"""  # noqa: E702
+                            f"""ctx._id = ctx._id.replace('{collection_id}', '{new_collection_id}');"""
+                            f"""ctx._source.collection = '{new_collection_id}';"""
                         ),
                     },
                 },
@@ -1180,7 +1187,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                     "source": {"index": f"{ITEMS_INDEX_PREFIX}{collection_id}"},
                     "script": {
                         "lang": "painless",
-                        "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection["id"]}'); ctx._source.collection = '{collection["id"]}' ;""",  # noqa: E702
+                        "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection["id"]}'); ctx._source.collection = '{collection["id"]}' ;""",
                     },
                 },
                 wait_for_completion=True,
