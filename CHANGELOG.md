@@ -5,11 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
-
 ## [Unreleased]
 
 ### Changed
 
+- Fixed a bug where missing 'copy()'' caused default queryables to be incorrectly enriched by results from previous queries. [#427](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/449)
+- Removed non-generic attributes ('cloud_cover', 'cloud_shadow_percentage', 'nodata_pixel_percentage') not applicable to all collections (e.g., SAR data).[#427](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/449)
+- Updated 'async_prep_create_item' to support OS item loading with multiple indices.[#427](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/449)
 - updated `numReturned` & `numMatched` fields in itemCollection return to `numberReturned` & `numberMatched`. [#446](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/446)
 
 ## [v6.3.0] - 2025-09-16
@@ -45,7 +47,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [v6.2.0] - 2025-08-27
 
-### Added 
+### Added
 
 - Added comprehensive index management system with dynamic selection and insertion strategies for improved performance and scalability [#405](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/405)
 - Added `ENABLE_DATETIME_INDEX_FILTERING` environment variable to enable datetime-based index selection using collection IDs. When enabled, the system creates indexes with UUID-based names and manages them through time-based aliases. Default is `false`. [#405](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/405)
@@ -79,7 +81,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 
 - Added the ability to set timeout for Opensearch and Elasticsearch clients by setting the environmental variable `ES_TIMEOUT` [#408](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/408)
-- Added `collection-search#filter` conformance class to CollectionSearchExtension to enable compatibility with stac-auth-proxy collection filtering  [#411](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/411)
+- Added `collection-search#filter` conformance class to CollectionSearchExtension to enable compatibility with stac-auth-proxy collection filtering [#411](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/411)
 
 ### Changed
 
@@ -91,7 +93,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
-- Added support for PATCH update through  [RFC 6902](https://datatracker.ietf.org/doc/html/rfc6902) and [RFC 7396](https://datatracker.ietf.org/doc/html/rfc7396) [#291](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/291)
+- Added support for PATCH update through [RFC 6902](https://datatracker.ietf.org/doc/html/rfc6902) and [RFC 7396](https://datatracker.ietf.org/doc/html/rfc7396) [#291](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/291)
 
 ### Changed
 
@@ -132,7 +134,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Removed
 
 - Removed `requests` dev dependency [#395](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/395)
-
 
 ## [v4.2.0] - 2025-05-15
 
@@ -176,12 +177,14 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [v4.0.0] - 2025-04-23
 
 ### Added
+
 - Added support for dynamically-generated queryables based on Elasticsearch/OpenSearch mappings, with extensible metadata augmentation [#351](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/351)
 - Included default queryables configuration for seamless integration. [#351](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/351)
 - Added support for high-performance direct response mode for both Elasticsearch and Opensearch backends, controlled by the `ENABLE_DIRECT_RESPONSE` environment variable. When enabled (`ENABLE_DIRECT_RESPONSE=true`), endpoints return Starlette Response objects directly, bypassing FastAPI's jsonable_encoder and Pydantic serialization for significantly improved performance on large search responses. **Note:** In this mode, all FastAPI dependencies (including authentication, custom status codes, and validation) are disabled for all routes. Default is `false` for safety. A warning is logged at startup if enabled. See [issue #347](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/347) and [PR #359](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/359).
 - Added robust tests for the `ENABLE_DIRECT_RESPONSE` environment variable, covering both Elasticsearch and OpenSearch backends. Tests gracefully handle missing backends by attempting to import both configs and skipping if neither is available. [#359](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/359)
 
 ### Changed
+
 - Refactored database logic to reduce duplication [#351](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/351)
 - Replaced `fastapi-slim` with `fastapi` dependency [#351](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/351)
 - Changed minimum Python version to 3.9 [#354](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/354)
@@ -207,6 +210,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Refactored all boolean environment variable parsing in both Elasticsearch and OpenSearch backends to use the shared `get_bool_env` utility. This ensures robust and consistent handling of environment variables such as `ES_USE_SSL`, `ES_HTTP_COMPRESS`, and `ES_VERIFY_CERTS` across both backends. [#359](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/359)
 
 ### Fixed
+
 - Improved performance of `mk_actions` and `filter-links` methods [#351](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/351)
 - Fixed inheritance relating to BaseDatabaseSettings and ApiBaseSettings [#355](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/355)
 - Fixed delete_item and delete_collection methods return types [#355](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/355)
