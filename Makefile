@@ -63,22 +63,22 @@ docker-shell-os:
 
 .PHONY: test-elasticsearch
 test-elasticsearch:
-	-$(run_es) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd stac_fastapi/tests/ && pytest'
+	-$(run_es) /bin/bash -c 'pip install redis==6.4.0 export && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd stac_fastapi/tests/ && pytest'
 	docker compose down
 
 .PHONY: test-opensearch
 test-opensearch:
-	-$(run_os) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh opensearch:9202 && cd stac_fastapi/tests/ && pytest'
+	-$(run_os) /bin/bash -c 'pip install redis==6.4.0 export && ./scripts/wait-for-it-es.sh opensearch:9202 && cd stac_fastapi/tests/ && pytest'
 	docker compose down
 
 .PHONY: test-datetime-filtering-es
 test-datetime-filtering-es:
-	-$(run_es) /bin/bash -c 'export ENABLE_DATETIME_INDEX_FILTERING=true && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd stac_fastapi/tests/ && pytest -s --cov=stac_fastapi --cov-report=term-missing -m datetime_filtering'
+	-$(run_es) /bin/bash -c 'pip install redis==6.4.0 && export ENABLE_DATETIME_INDEX_FILTERING=true && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd stac_fastapi/tests/ && pytest -s --cov=stac_fastapi --cov-report=term-missing -m datetime_filtering'
 	docker compose down
 
 .PHONY: test-datetime-filtering-os
 test-datetime-filtering-os:
-	-$(run_os) /bin/bash -c 'export ENABLE_DATETIME_INDEX_FILTERING=true && ./scripts/wait-for-it-es.sh opensearch:9202 && cd stac_fastapi/tests/ && pytest -s --cov=stac_fastapi --cov-report=term-missing -m datetime_filtering'
+	-$(run_os) /bin/bash -c 'pip install redis==6.4.0 && export ENABLE_DATETIME_INDEX_FILTERING=true && ./scripts/wait-for-it-es.sh opensearch:9202 && cd stac_fastapi/tests/ && pytest -s --cov=stac_fastapi --cov-report=term-missing -m datetime_filtering'
 	docker compose down
 
 .PHONY: test
