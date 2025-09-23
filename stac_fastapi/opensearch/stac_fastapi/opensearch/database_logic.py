@@ -3,8 +3,9 @@
 import asyncio
 import logging
 from base64 import urlsafe_b64decode, urlsafe_b64encode
+from collections.abc import Iterable
 from copy import deepcopy
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Type
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 import attr
 import orjson
@@ -153,31 +154,47 @@ class DatabaseLogic(BaseDatabaseLogic):
     """CORE LOGIC"""
 
     async def get_all_collections(
-        self, token: Optional[str], limit: int, request: Request
+        self,
+        token: Optional[str],
+        limit: int,
+        request: Request,
+        sort: Optional[List[Dict[str, Any]]] = None,
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
-        """
-        Retrieve a list of all collections from Opensearch, supporting pagination.
+        """Retrieve a list of collections from Elasticsearch, supporting pagination.
 
         Args:
             token (Optional[str]): The pagination token.
             limit (int): The number of results to return.
+            request (Request): The FastAPI request object.
+            sort (Optional[List[Dict[str, Any]]]): Optional sort parameter from the request.
 
         Returns:
             A tuple of (collections, next pagination token if any).
         """
-        search_body = {
-            "sort": [{"id": {"order": "asc"}}],
+        formatted_sort = []
+        if sort:
+            for item in sort:
+                field = item.get("field")
+                direction = item.get("direction", "asc")
+                if field:
+                    formatted_sort.append({field: {"order": direction}})
+            # Always include id as a secondary sort to ensure consistent pagination
+            if not any("id" in item for item in formatted_sort):
+                formatted_sort.append({"id": {"order": "asc"}})
+        else:
+            formatted_sort = [{"id": {"order": "asc"}}]
+
+        body = {
+            "sort": formatted_sort,
             "size": limit,
         }
 
-        # Only add search_after to the query if token is not None and not empty
         if token:
-            search_after = [token]
-            search_body["search_after"] = search_after
+            body["search_after"] = [token]
 
         response = await self.client.search(
             index=COLLECTIONS_INDEX,
-            body=search_body,
+            body=body,
         )
 
         hits = response["hits"]["hits"]
@@ -728,14 +745,21 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         """
         await self.check_collection_exists(collection_id=item["collection"])
+        alias = index_alias_by_collection_id(item["collection"])
+        doc_id = mk_item_id(item["id"], item["collection"])
 
-        if not exist_ok and await self.client.exists(
-            index=index_alias_by_collection_id(item["collection"]),
-            id=mk_item_id(item["id"], item["collection"]),
-        ):
-            raise ConflictError(
-                f"Item {item['id']} in collection {item['collection']} already exists"
-            )
+        if not exist_ok:
+            alias_exists = await self.client.indices.exists_alias(name=alias)
+
+            if alias_exists:
+                alias_info = await self.client.indices.get_alias(name=alias)
+                indices = list(alias_info.keys())
+
+                for index in indices:
+                    if await self.client.exists(index=index, id=doc_id):
+                        raise ConflictError(
+                            f"Item {item['id']} in collection {item['collection']} already exists"
+                        )
 
         return self.item_serializer.stac_to_db(item, base_url)
 
@@ -952,7 +976,6 @@ class DatabaseLogic(BaseDatabaseLogic):
                 "add",
                 "replace",
             ]:
-
                 if operation.path == "collection" and collection_id != operation.value:
                     await self.check_collection_exists(collection_id=operation.value)
                     new_collection_id = operation.value
@@ -1006,8 +1029,8 @@ class DatabaseLogic(BaseDatabaseLogic):
                     "script": {
                         "lang": "painless",
                         "source": (
-                            f"""ctx._id = ctx._id.replace('{collection_id}', '{new_collection_id}');"""  # noqa: E702
-                            f"""ctx._source.collection = '{new_collection_id}';"""  # noqa: E702
+                            f"""ctx._id = ctx._id.replace('{collection_id}', '{new_collection_id}');"""
+                            f"""ctx._source.collection = '{new_collection_id}';"""
                         ),
                     },
                 },
@@ -1229,7 +1252,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                     "source": {"index": f"{ITEMS_INDEX_PREFIX}{collection_id}"},
                     "script": {
                         "lang": "painless",
-                        "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection["id"]}'); ctx._source.collection = '{collection["id"]}' ;""",  # noqa: E702
+                        "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection["id"]}'); ctx._source.collection = '{collection["id"]}' ;""",
                     },
                 },
                 wait_for_completion=True,
