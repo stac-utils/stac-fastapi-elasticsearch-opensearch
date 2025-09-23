@@ -131,7 +131,7 @@ These extensions make it easier to build user interfaces that display and naviga
 > - `id` (keyword field)
 > - `extent.temporal.interval` (date field)
 >
-> Text fields like `title` and `description` are not sortable by default as they use text analysis for better search capabilities. Attempting to sort on these fields will result in a `BadRequestError` with a message about fielddata being disabled.
+> Text fields like `title` and `description` are not sortable by default as they use text analysis for better search capabilities. Attempting to sort on these fields will result in a user-friendly error message explaining which fields are sortable and how to make additional fields sortable by updating the mappings.
 
 ## Package Structure
 
