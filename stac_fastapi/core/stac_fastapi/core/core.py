@@ -24,6 +24,11 @@ from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.datetime_utils import format_datetime_range
 from stac_fastapi.core.models.links import PagingLinks
+from stac_fastapi.core.redis_utils import (
+    connect_redis_sentinel,
+    get_prev_link,
+    save_self_link,
+)
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.session import Session
 from stac_fastapi.core.utilities import filter_fields
@@ -276,6 +281,13 @@ class CoreClient(AsyncBaseCoreClient):
         if q is not None:
             q_list = [q] if isinstance(q, str) else q
 
+        current_url = str(request.url)
+        redis = None
+        try:
+            redis = await connect_redis_sentinel()
+        except Exception:
+            redis = None
+
         collections, next_token = await self.database.get_all_collections(
             token=token, limit=limit, request=request, sort=sort, q=q_list
         )
@@ -298,6 +310,22 @@ class CoreClient(AsyncBaseCoreClient):
                 "href": urljoin(base_url, "collections"),
             },
         ]
+
+        if redis:
+            if next_token:
+                await save_self_link(redis, next_token, current_url)
+
+            prev_link = await get_prev_link(redis, token)
+            if prev_link:
+                links.insert(
+                    0,
+                    {
+                        "rel": "previous",
+                        "type": "application/json",
+                        "method": "GET",
+                        "href": prev_link,
+                    },
+                )
 
         if next_token:
             next_link = PagingLinks(next=next_token, request=request).link_next()
@@ -529,6 +557,10 @@ class CoreClient(AsyncBaseCoreClient):
             HTTPException: If there is an error with the cql2_json filter.
         """
         base_url = str(request.base_url)
+        try:
+            redis = await connect_redis_sentinel()
+        except Exception:
+            redis = None
 
         search = self.database.make_search()
 
@@ -638,6 +670,41 @@ class CoreClient(AsyncBaseCoreClient):
             for item in items
         ]
         links = await PagingLinks(request=request, next=next_token).get_links()
+
+        collection_links = []
+        if search_request.collections:
+            for collection_id in search_request.collections:
+                collection_links.extend(
+                    [
+                        {
+                            "rel": "collection",
+                            "type": "application/json",
+                            "href": urljoin(base_url, f"collections/{collection_id}"),
+                        },
+                        {
+                            "rel": "parent",
+                            "type": "application/json",
+                            "href": urljoin(base_url, f"collections/{collection_id}"),
+                        },
+                    ]
+                )
+        links.extend(collection_links)
+
+        if redis:
+            self_link = str(request.url)
+            await save_self_link(redis, next_token, self_link)
+
+            prev_link = await get_prev_link(redis, token_param)
+            if prev_link:
+                links.insert(
+                    0,
+                    {
+                        "rel": "previous",
+                        "type": "application/json",
+                        "method": "GET",
+                        "href": prev_link,
+                    },
+                )
 
         return stac_types.ItemCollection(
             type="FeatureCollection",
