@@ -13,6 +13,8 @@ from fastapi import HTTPException
 from opensearchpy import exceptions, helpers
 from opensearchpy.helpers.query import Q
 from opensearchpy.helpers.search import Search
+from starlette.requests import Request
+
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.utilities import bbox2polygon, get_max_limit
@@ -25,6 +27,7 @@ from stac_fastapi.opensearch.config import (
     AsyncOpensearchSettings as AsyncSearchSettings,
 )
 from stac_fastapi.opensearch.config import OpensearchSettings as SyncSearchSettings
+from stac_fastapi.sfeos_helpers import filter as filter_module
 from stac_fastapi.sfeos_helpers.database import (
     apply_free_text_filter_shared,
     apply_intersects_filter_shared,
@@ -64,9 +67,6 @@ from stac_fastapi.sfeos_helpers.search_engine import (
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.links import resolve_links
 from stac_fastapi.types.stac import Collection, Item
-from starlette.requests import Request
-
-from stac_fastapi.sfeos_helpers import filter as filter_module
 
 logger = logging.getLogger(__name__)
 
@@ -388,17 +388,19 @@ class DatabaseLogic(BaseDatabaseLogic):
             a geo_shape filter is added to the search object, set to intersect with the specified polygon.
         """
         return search.filter(
-            Q({
-                "geo_shape": {
-                    "geometry": {
-                        "shape": {
-                            "type": "polygon",
-                            "coordinates": bbox2polygon(*bbox),
-                        },
-                        "relation": "intersects",
+            Q(
+                {
+                    "geo_shape": {
+                        "geometry": {
+                            "shape": {
+                                "type": "polygon",
+                                "coordinates": bbox2polygon(*bbox),
+                            },
+                            "relation": "intersects",
+                        }
                     }
                 }
-            })
+            )
         )
 
     @staticmethod
