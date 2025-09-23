@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - unified the type of queryables endpoint to `application/schema+json`. [#445](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/445)
 - updated `numReturned` & `numMatched` fields in itemCollection return to `numberReturned` & `numberMatched`. [#446](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/446)
 
+### Fixed
+- Fix broken and outdated conformance links in conformsTo list. [#453](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/453)
+
 ## [v6.3.0] - 2025-09-16
 
 ### Added
