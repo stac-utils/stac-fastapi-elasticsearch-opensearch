@@ -138,3 +138,14 @@ venv
 /docs/src/api/*
 
 .DS_Store
+
+# Helm
+*.tgz
+charts/*/charts/
+charts/*/requirements.lock
+charts/*/Chart.lock
+helm-chart/stac-fastapi/charts/
+helm-chart/stac-fastapi/Chart.lock
+helm-chart/stac-fastapi/*.tgz
+helm-chart/test-results/
+helm-chart/tmp/

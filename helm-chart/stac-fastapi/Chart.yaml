@@ -3,7 +3,7 @@ name: stac-fastapi
 description: A Helm chart for STAC FastAPI with Elasticsearch and OpenSearch backends
 type: application
 version: 0.1.0
-appVersion: "6.0.0"
+appVersion: "6.3.0"
 
 keywords:
   - stac
@@ -23,10 +23,10 @@ maintainers:
 
 dependencies:
   - name: elasticsearch
-    version: 19.19.4
+    version: 8.5.1
     repository: https://helm.elastic.co
     condition: elasticsearch.enabled
   - name: opensearch
-    version: 2.18.0
+    version: 3.2.1
     repository: https://opensearch-project.github.io/helm-charts/
     condition: opensearch.enabled
