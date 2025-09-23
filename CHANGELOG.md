@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
+- Added `USE_DATETIME` environment variable to configure datetime search behavior in SFEOS. [#452](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/452)
+
 ### Changed
 
 - unified the type of queryables endpoint to `application/schema+json`. [#445](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/445)
