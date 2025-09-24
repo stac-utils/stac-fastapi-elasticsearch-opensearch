@@ -126,6 +126,11 @@ SFEOS implements extended capabilities for the `/collections` endpoint, allowing
   - Example: `/collections?fields=id,title,description`
   - This helps reduce payload size when only certain fields are needed
 
+- **Free Text Search**: Search across collection text fields using the `q` parameter
+  - Example: `/collections?q=landsat`
+  - Searches across multiple text fields including title, description, and keywords
+  - Supports partial word matching and relevance-based sorting
+
 These extensions make it easier to build user interfaces that display and navigate through collections efficiently.
 
 > **Configuration**: Collection search extensions can be disabled by setting the `ENABLE_COLLECTIONS_SEARCH` environment variable to `false`. By default, these extensions are enabled.
