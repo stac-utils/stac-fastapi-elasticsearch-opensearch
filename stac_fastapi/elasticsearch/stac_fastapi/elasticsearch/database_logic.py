@@ -17,7 +17,7 @@ from starlette.requests import Request
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
-from stac_fastapi.core.utilities import bbox2polygon, get_max_limit
+from stac_fastapi.core.utilities import bbox2polygon, get_bool_env, get_max_limit
 from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
 from stac_fastapi.elasticsearch.config import (
     ElasticsearchSettings as SyncElasticsearchSettings,
@@ -170,28 +170,96 @@ class DatabaseLogic(BaseDatabaseLogic):
     """CORE LOGIC"""
 
     async def get_all_collections(
-        self, token: Optional[str], limit: int, request: Request
+        self,
+        token: Optional[str],
+        limit: int,
+        request: Request,
+        sort: Optional[List[Dict[str, Any]]] = None,
+        q: Optional[List[str]] = None,
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
-        """Retrieve a list of all collections from Elasticsearch, supporting pagination.
+        """Retrieve a list of collections from Elasticsearch, supporting pagination.
 
         Args:
             token (Optional[str]): The pagination token.
             limit (int): The number of results to return.
+            request (Request): The FastAPI request object.
+            sort (Optional[List[Dict[str, Any]]]): Optional sort parameter from the request.
+            q (Optional[List[str]]): Free text search terms.
 
         Returns:
             A tuple of (collections, next pagination token if any).
-        """
-        search_after = None
-        if token:
-            search_after = [token]
 
+        Raises:
+            HTTPException: If sorting is requested on a field that is not sortable.
+        """
+        # Define sortable fields based on the ES_COLLECTIONS_MAPPINGS
+        sortable_fields = ["id", "extent.temporal.interval", "temporal"]
+
+        # Format the sort parameter
+        formatted_sort = []
+        if sort:
+            for item in sort:
+                field = item.get("field")
+                direction = item.get("direction", "asc")
+                if field:
+                    # Validate that the field is sortable
+                    if field not in sortable_fields:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Field '{field}' is not sortable. Sortable fields are: {', '.join(sortable_fields)}. "
+                            + "Text fields are not sortable by default in Elasticsearch. "
+                            + "To make a field sortable, update the mapping to use 'keyword' type or add a '.keyword' subfield. ",
+                        )
+                    formatted_sort.append({field: {"order": direction}})
+            # Always include id as a secondary sort to ensure consistent pagination
+            if not any("id" in item for item in formatted_sort):
+                formatted_sort.append({"id": {"order": "asc"}})
+        else:
+            formatted_sort = [{"id": {"order": "asc"}}]
+
+        body = {
+            "sort": formatted_sort,
+            "size": limit,
+        }
+
+        if token:
+            body["search_after"] = [token]
+
+        # Apply free text query if provided
+        if q:
+            # For collections, we want to search across all relevant fields
+            should_clauses = []
+
+            # For each search term
+            for term in q:
+                # Create a multi_match query for each term
+                for field in [
+                    "id",
+                    "title",
+                    "description",
+                    "keywords",
+                    "summaries.platform",
+                    "summaries.constellation",
+                    "providers.name",
+                    "providers.url",
+                ]:
+                    should_clauses.append(
+                        {
+                            "wildcard": {
+                                field: {"value": f"*{term}*", "case_insensitive": True}
+                            }
+                        }
+                    )
+
+            # Add the query to the body using bool query with should clauses
+            body["query"] = {
+                "bool": {"should": should_clauses, "minimum_should_match": 1}
+            }
+
+        # Execute the search
         response = await self.client.search(
             index=COLLECTIONS_INDEX,
-            body={
-                "sort": [{"id": {"order": "asc"}}],
-                "size": limit,
-                **({"search_after": search_after} if search_after is not None else {}),
-            },
+            body=body,
         )
 
         hits = response["hits"]["hits"]
@@ -204,7 +272,9 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         next_token = None
         if len(hits) == limit:
-            next_token = hits[-1]["sort"][0]
+            next_token_values = hits[-1].get("sort")
+            if next_token_values:
+                next_token = next_token_values[0]
 
         return collections, next_token
 
@@ -289,26 +359,99 @@ class DatabaseLogic(BaseDatabaseLogic):
         Returns:
             The filtered search object.
         """
+        # USE_DATETIME env var
+        # True: Search by datetime, if null search by start/end datetime
+        # False: Always search only by start/end datetime
+        USE_DATETIME = get_bool_env("USE_DATETIME", default=True)
+
         datetime_search = return_date(datetime)
 
         if not datetime_search:
             return search, datetime_search
 
-        if "eq" in datetime_search:
-            # For exact matches, include:
-            # 1. Items with matching exact datetime
-            # 2. Items with datetime:null where the time falls within their range
-            should = [
-                Q(
+        if USE_DATETIME:
+            if "eq" in datetime_search:
+                # For exact matches, include:
+                # 1. Items with matching exact datetime
+                # 2. Items with datetime:null where the time falls within their range
+                should = [
+                    Q(
+                        "bool",
+                        filter=[
+                            Q("exists", field="properties.datetime"),
+                            Q(
+                                "term",
+                                **{"properties__datetime": datetime_search["eq"]},
+                            ),
+                        ],
+                    ),
+                    Q(
+                        "bool",
+                        must_not=[Q("exists", field="properties.datetime")],
+                        filter=[
+                            Q("exists", field="properties.start_datetime"),
+                            Q("exists", field="properties.end_datetime"),
+                            Q(
+                                "range",
+                                properties__start_datetime={
+                                    "lte": datetime_search["eq"]
+                                },
+                            ),
+                            Q(
+                                "range",
+                                properties__end_datetime={"gte": datetime_search["eq"]},
+                            ),
+                        ],
+                    ),
+                ]
+            else:
+                # For date ranges, include:
+                # 1. Items with datetime in the range
+                # 2. Items with datetime:null that overlap the search range
+                should = [
+                    Q(
+                        "bool",
+                        filter=[
+                            Q("exists", field="properties.datetime"),
+                            Q(
+                                "range",
+                                properties__datetime={
+                                    "gte": datetime_search["gte"],
+                                    "lte": datetime_search["lte"],
+                                },
+                            ),
+                        ],
+                    ),
+                    Q(
+                        "bool",
+                        must_not=[Q("exists", field="properties.datetime")],
+                        filter=[
+                            Q("exists", field="properties.start_datetime"),
+                            Q("exists", field="properties.end_datetime"),
+                            Q(
+                                "range",
+                                properties__start_datetime={
+                                    "lte": datetime_search["lte"]
+                                },
+                            ),
+                            Q(
+                                "range",
+                                properties__end_datetime={
+                                    "gte": datetime_search["gte"]
+                                },
+                            ),
+                        ],
+                    ),
+                ]
+
+            return (
+                search.query(Q("bool", should=should, minimum_should_match=1)),
+                datetime_search,
+            )
+        else:
+            if "eq" in datetime_search:
+                filter_query = Q(
                     "bool",
-                    filter=[
-                        Q("exists", field="properties.datetime"),
-                        Q("term", **{"properties__datetime": datetime_search["eq"]}),
-                    ],
-                ),
-                Q(
-                    "bool",
-                    must_not=[Q("exists", field="properties.datetime")],
                     filter=[
                         Q("exists", field="properties.start_datetime"),
                         Q("exists", field="properties.end_datetime"),
@@ -321,29 +464,10 @@ class DatabaseLogic(BaseDatabaseLogic):
                             properties__end_datetime={"gte": datetime_search["eq"]},
                         ),
                     ],
-                ),
-            ]
-        else:
-            # For date ranges, include:
-            # 1. Items with datetime in the range
-            # 2. Items with datetime:null that overlap the search range
-            should = [
-                Q(
+                )
+            else:
+                filter_query = Q(
                     "bool",
-                    filter=[
-                        Q("exists", field="properties.datetime"),
-                        Q(
-                            "range",
-                            properties__datetime={
-                                "gte": datetime_search["gte"],
-                                "lte": datetime_search["lte"],
-                            },
-                        ),
-                    ],
-                ),
-                Q(
-                    "bool",
-                    must_not=[Q("exists", field="properties.datetime")],
                     filter=[
                         Q("exists", field="properties.start_datetime"),
                         Q("exists", field="properties.end_datetime"),
@@ -356,13 +480,8 @@ class DatabaseLogic(BaseDatabaseLogic):
                             properties__end_datetime={"gte": datetime_search["gte"]},
                         ),
                     ],
-                ),
-            ]
-
-        return (
-            search.query(Q("bool", should=should, minimum_should_match=1)),
-            datetime_search,
-        )
+                )
+            return search.query(filter_query), datetime_search
 
     @staticmethod
     def apply_bbox_filter(search: Search, bbox: List):

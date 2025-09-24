@@ -165,6 +165,8 @@ ES_COLLECTIONS_MAPPINGS = {
         "providers": {"type": "object", "enabled": False},
         "links": {"type": "object", "enabled": False},
         "item_assets": {"type": "object", "enabled": get_bool_env("STAC_INDEX_ASSETS")},
+        # Field alias to allow sorting on 'temporal' (points to extent.temporal.interval)
+        "temporal": {"type": "alias", "path": "extent.temporal.interval"},
     },
 }
 

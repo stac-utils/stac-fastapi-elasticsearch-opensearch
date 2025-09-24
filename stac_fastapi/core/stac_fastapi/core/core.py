@@ -230,10 +230,19 @@ class CoreClient(AsyncBaseCoreClient):
 
         return landing_page
 
-    async def all_collections(self, **kwargs) -> stac_types.Collections:
+    async def all_collections(
+        self,
+        fields: Optional[List[str]] = None,
+        sortby: Optional[str] = None,
+        q: Optional[Union[str, List[str]]] = None,
+        **kwargs,
+    ) -> stac_types.Collections:
         """Read all collections from the database.
 
         Args:
+            fields (Optional[List[str]]): Fields to include or exclude from the results.
+            sortby (Optional[str]): Sorting options for the results.
+            q (Optional[List[str]]): Free text search terms.
             **kwargs: Keyword arguments from the request.
 
         Returns:
@@ -250,9 +259,47 @@ class CoreClient(AsyncBaseCoreClient):
         except Exception:
             redis = None
 
+        # Process fields parameter for filtering collection properties
+        includes, excludes = set(), set()
+        if fields and self.extension_is_enabled("FieldsExtension"):
+            for field in fields:
+                if field[0] == "-":
+                    excludes.add(field[1:])
+                else:
+                    includes.add(field[1:] if field[0] in "+ " else field)
+
+        sort = None
+        if sortby:
+            parsed_sort = []
+            for raw in sortby:
+                if not isinstance(raw, str):
+                    continue
+                s = raw.strip()
+                if not s:
+                    continue
+                direction = "desc" if s[0] == "-" else "asc"
+                field = s[1:] if s and s[0] in "+-" else s
+                parsed_sort.append({"field": field, "direction": direction})
+            if parsed_sort:
+                sort = parsed_sort
+
+        # Convert q to a list if it's a string
+        q_list = None
+        if q is not None:
+            q_list = [q] if isinstance(q, str) else q
+
         collections, next_token = await self.database.get_all_collections(
-            token=token, limit=limit, request=request
+            token=token, limit=limit, request=request, sort=sort, q=q_list
         )
+
+        # Apply field filtering if fields parameter was provided
+        if fields and self.extension_is_enabled("FieldsExtension"):
+            filtered_collections = [
+                filter_fields(collection, includes, excludes)
+                for collection in collections
+            ]
+        else:
+            filtered_collections = collections
 
         links = [
             {"rel": Relations.root.value, "type": MimeTypes.json, "href": base_url},
@@ -272,7 +319,7 @@ class CoreClient(AsyncBaseCoreClient):
             next_link = PagingLinks(next=next_token, request=request).link_next()
             links.append(next_link)
 
-        return stac_types.Collections(collections=collections, links=links)
+        return stac_types.Collections(collections=filtered_collections, links=links)
 
     async def get_collection(
         self, collection_id: str, **kwargs

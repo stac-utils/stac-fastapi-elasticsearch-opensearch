@@ -3,8 +3,9 @@
 import asyncio
 import logging
 from base64 import urlsafe_b64decode, urlsafe_b64encode
+from collections.abc import Iterable
 from copy import deepcopy
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Type
+from typing import Any, Dict, List, Optional, Tuple, Type
 
 import attr
 import orjson
@@ -16,7 +17,7 @@ from starlette.requests import Request
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
-from stac_fastapi.core.utilities import bbox2polygon, get_max_limit
+from stac_fastapi.core.utilities import bbox2polygon, get_bool_env, get_max_limit
 from stac_fastapi.extensions.core.transaction.request import (
     PartialCollection,
     PartialItem,
@@ -153,31 +154,95 @@ class DatabaseLogic(BaseDatabaseLogic):
     """CORE LOGIC"""
 
     async def get_all_collections(
-        self, token: Optional[str], limit: int, request: Request
+        self,
+        token: Optional[str],
+        limit: int,
+        request: Request,
+        sort: Optional[List[Dict[str, Any]]] = None,
+        q: Optional[List[str]] = None,
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
-        """
-        Retrieve a list of all collections from Opensearch, supporting pagination.
+        """Retrieve a list of collections from Elasticsearch, supporting pagination.
 
         Args:
             token (Optional[str]): The pagination token.
             limit (int): The number of results to return.
+            request (Request): The FastAPI request object.
+            sort (Optional[List[Dict[str, Any]]]): Optional sort parameter from the request.
+            q (Optional[List[str]]): Free text search terms.
 
         Returns:
             A tuple of (collections, next pagination token if any).
+
+        Raises:
+            HTTPException: If sorting is requested on a field that is not sortable.
         """
-        search_body = {
-            "sort": [{"id": {"order": "asc"}}],
+        # Define sortable fields based on the ES_COLLECTIONS_MAPPINGS
+        sortable_fields = ["id", "extent.temporal.interval", "temporal"]
+
+        # Format the sort parameter
+        formatted_sort = []
+        if sort:
+            for item in sort:
+                field = item.get("field")
+                direction = item.get("direction", "asc")
+                if field:
+                    # Validate that the field is sortable
+                    if field not in sortable_fields:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Field '{field}' is not sortable. Sortable fields are: {', '.join(sortable_fields)}. "
+                            + "Text fields are not sortable by default in OpenSearch. "
+                            + "To make a field sortable, update the mapping to use 'keyword' type or add a '.keyword' subfield. ",
+                        )
+                    formatted_sort.append({field: {"order": direction}})
+            # Always include id as a secondary sort to ensure consistent pagination
+            if not any("id" in item for item in formatted_sort):
+                formatted_sort.append({"id": {"order": "asc"}})
+        else:
+            formatted_sort = [{"id": {"order": "asc"}}]
+
+        body = {
+            "sort": formatted_sort,
             "size": limit,
         }
 
-        # Only add search_after to the query if token is not None and not empty
         if token:
-            search_after = [token]
-            search_body["search_after"] = search_after
+            body["search_after"] = [token]
+
+        # Apply free text query if provided
+        if q:
+            # For collections, we want to search across all relevant fields
+            should_clauses = []
+
+            # For each search term
+            for term in q:
+                # Create a multi_match query for each term
+                for field in [
+                    "id",
+                    "title",
+                    "description",
+                    "keywords",
+                    "summaries.platform",
+                    "summaries.constellation",
+                    "providers.name",
+                    "providers.url",
+                ]:
+                    should_clauses.append(
+                        {
+                            "wildcard": {
+                                field: {"value": f"*{term}*", "case_insensitive": True}
+                            }
+                        }
+                    )
+
+            # Add the query to the body using bool query with should clauses
+            body["query"] = {
+                "bool": {"should": should_clauses, "minimum_should_match": 1}
+            }
 
         response = await self.client.search(
             index=COLLECTIONS_INDEX,
-            body=search_body,
+            body=body,
         )
 
         hits = response["hits"]["hits"]
@@ -301,21 +366,94 @@ class DatabaseLogic(BaseDatabaseLogic):
         if not datetime_search:
             return search, datetime_search
 
-        if "eq" in datetime_search:
-            # For exact matches, include:
-            # 1. Items with matching exact datetime
-            # 2. Items with datetime:null where the time falls within their range
-            should = [
-                Q(
+        # USE_DATETIME env var
+        # True: Search by datetime, if null search by start/end datetime
+        # False: Always search only by start/end datetime
+        USE_DATETIME = get_bool_env("USE_DATETIME", default=True)
+
+        if USE_DATETIME:
+            if "eq" in datetime_search:
+                # For exact matches, include:
+                # 1. Items with matching exact datetime
+                # 2. Items with datetime:null where the time falls within their range
+                should = [
+                    Q(
+                        "bool",
+                        filter=[
+                            Q("exists", field="properties.datetime"),
+                            Q(
+                                "term",
+                                **{"properties__datetime": datetime_search["eq"]},
+                            ),
+                        ],
+                    ),
+                    Q(
+                        "bool",
+                        must_not=[Q("exists", field="properties.datetime")],
+                        filter=[
+                            Q("exists", field="properties.start_datetime"),
+                            Q("exists", field="properties.end_datetime"),
+                            Q(
+                                "range",
+                                properties__start_datetime={
+                                    "lte": datetime_search["eq"]
+                                },
+                            ),
+                            Q(
+                                "range",
+                                properties__end_datetime={"gte": datetime_search["eq"]},
+                            ),
+                        ],
+                    ),
+                ]
+            else:
+                # For date ranges, include:
+                # 1. Items with datetime in the range
+                # 2. Items with datetime:null that overlap the search range
+                should = [
+                    Q(
+                        "bool",
+                        filter=[
+                            Q("exists", field="properties.datetime"),
+                            Q(
+                                "range",
+                                properties__datetime={
+                                    "gte": datetime_search["gte"],
+                                    "lte": datetime_search["lte"],
+                                },
+                            ),
+                        ],
+                    ),
+                    Q(
+                        "bool",
+                        must_not=[Q("exists", field="properties.datetime")],
+                        filter=[
+                            Q("exists", field="properties.start_datetime"),
+                            Q("exists", field="properties.end_datetime"),
+                            Q(
+                                "range",
+                                properties__start_datetime={
+                                    "lte": datetime_search["lte"]
+                                },
+                            ),
+                            Q(
+                                "range",
+                                properties__end_datetime={
+                                    "gte": datetime_search["gte"]
+                                },
+                            ),
+                        ],
+                    ),
+                ]
+
+            return (
+                search.query(Q("bool", should=should, minimum_should_match=1)),
+                datetime_search,
+            )
+        else:
+            if "eq" in datetime_search:
+                filter_query = Q(
                     "bool",
-                    filter=[
-                        Q("exists", field="properties.datetime"),
-                        Q("term", **{"properties__datetime": datetime_search["eq"]}),
-                    ],
-                ),
-                Q(
-                    "bool",
-                    must_not=[Q("exists", field="properties.datetime")],
                     filter=[
                         Q("exists", field="properties.start_datetime"),
                         Q("exists", field="properties.end_datetime"),
@@ -328,29 +466,10 @@ class DatabaseLogic(BaseDatabaseLogic):
                             properties__end_datetime={"gte": datetime_search["eq"]},
                         ),
                     ],
-                ),
-            ]
-        else:
-            # For date ranges, include:
-            # 1. Items with datetime in the range
-            # 2. Items with datetime:null that overlap the search range
-            should = [
-                Q(
+                )
+            else:
+                filter_query = Q(
                     "bool",
-                    filter=[
-                        Q("exists", field="properties.datetime"),
-                        Q(
-                            "range",
-                            properties__datetime={
-                                "gte": datetime_search["gte"],
-                                "lte": datetime_search["lte"],
-                            },
-                        ),
-                    ],
-                ),
-                Q(
-                    "bool",
-                    must_not=[Q("exists", field="properties.datetime")],
                     filter=[
                         Q("exists", field="properties.start_datetime"),
                         Q("exists", field="properties.end_datetime"),
@@ -363,13 +482,8 @@ class DatabaseLogic(BaseDatabaseLogic):
                             properties__end_datetime={"gte": datetime_search["gte"]},
                         ),
                     ],
-                ),
-            ]
-
-        return (
-            search.query(Q("bool", should=should, minimum_should_match=1)),
-            datetime_search,
-        )
+                )
+        return search.query(filter_query), datetime_search
 
     @staticmethod
     def apply_bbox_filter(search: Search, bbox: List):
@@ -679,14 +793,21 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         """
         await self.check_collection_exists(collection_id=item["collection"])
+        alias = index_alias_by_collection_id(item["collection"])
+        doc_id = mk_item_id(item["id"], item["collection"])
 
-        if not exist_ok and await self.client.exists(
-            index=index_alias_by_collection_id(item["collection"]),
-            id=mk_item_id(item["id"], item["collection"]),
-        ):
-            raise ConflictError(
-                f"Item {item['id']} in collection {item['collection']} already exists"
-            )
+        if not exist_ok:
+            alias_exists = await self.client.indices.exists_alias(name=alias)
+
+            if alias_exists:
+                alias_info = await self.client.indices.get_alias(name=alias)
+                indices = list(alias_info.keys())
+
+                for index in indices:
+                    if await self.client.exists(index=index, id=doc_id):
+                        raise ConflictError(
+                            f"Item {item['id']} in collection {item['collection']} already exists"
+                        )
 
         return self.item_serializer.stac_to_db(item, base_url)
 
@@ -903,7 +1024,6 @@ class DatabaseLogic(BaseDatabaseLogic):
                 "add",
                 "replace",
             ]:
-
                 if operation.path == "collection" and collection_id != operation.value:
                     await self.check_collection_exists(collection_id=operation.value)
                     new_collection_id = operation.value
@@ -957,8 +1077,8 @@ class DatabaseLogic(BaseDatabaseLogic):
                     "script": {
                         "lang": "painless",
                         "source": (
-                            f"""ctx._id = ctx._id.replace('{collection_id}', '{new_collection_id}');"""  # noqa: E702
-                            f"""ctx._source.collection = '{new_collection_id}';"""  # noqa: E702
+                            f"""ctx._id = ctx._id.replace('{collection_id}', '{new_collection_id}');"""
+                            f"""ctx._source.collection = '{new_collection_id}';"""
                         ),
                     },
                 },
@@ -1180,7 +1300,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                     "source": {"index": f"{ITEMS_INDEX_PREFIX}{collection_id}"},
                     "script": {
                         "lang": "painless",
-                        "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection["id"]}'); ctx._source.collection = '{collection["id"]}' ;""",  # noqa: E702
+                        "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection["id"]}'); ctx._source.collection = '{collection["id"]}' ;""",
                     },
                 },
                 wait_for_completion=True,

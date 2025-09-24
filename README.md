@@ -36,10 +36,9 @@ SFEOS (stac-fastapi-elasticsearch-opensearch) is a high-performance, scalable AP
 - **Scale to millions of geospatial assets** with fast search performance through optimized spatial indexing and query capabilities
 - **Support OGC-compliant filtering** including spatial operations (intersects, contains, etc.) and temporal queries
 - **Perform geospatial aggregations** to analyze data distribution across space and time
+- **Enhanced collection search capabilities** with support for sorting and field selection
 
 This implementation builds on the STAC-FastAPI framework, providing a production-ready solution specifically optimized for Elasticsearch and OpenSearch databases. It's ideal for organizations managing large geospatial data catalogs who need efficient discovery and access capabilities through standardized APIs.
-
-
 
 ## Common Deployment Patterns
 
@@ -72,6 +71,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
   - [Common Deployment Patterns](#common-deployment-patterns)
   - [Technologies](#technologies)
   - [Table of Contents](#table-of-contents)
+  - [Collection Search Extensions](#collection-search-extensions)
   - [Documentation \& Resources](#documentation--resources)
   - [Package Structure](#package-structure)
   - [Examples](#examples)
@@ -112,6 +112,37 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
 - **Community**:
   - [Gitter Chat](https://app.gitter.im/#/room/#stac-fastapi-elasticsearch_community:gitter.im) - For real-time discussions
   - [GitHub Discussions](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/discussions) - For longer-form questions and answers
+
+## Collection Search Extensions
+
+SFEOS implements extended capabilities for the `/collections` endpoint, allowing for more powerful collection discovery:
+
+- **Sorting**: Sort collections by sortable fields using the `sortby` parameter
+  - Example: `/collections?sortby=+id` (ascending sort by ID)
+  - Example: `/collections?sortby=-id` (descending sort by ID)
+  - Example: `/collections?sortby=-temporal` (descending sort by temporal extent)
+
+- **Field Selection**: Request only specific fields to be returned using the `fields` parameter
+  - Example: `/collections?fields=id,title,description`
+  - This helps reduce payload size when only certain fields are needed
+
+- **Free Text Search**: Search across collection text fields using the `q` parameter
+  - Example: `/collections?q=landsat`
+  - Searches across multiple text fields including title, description, and keywords
+  - Supports partial word matching and relevance-based sorting
+
+These extensions make it easier to build user interfaces that display and navigate through collections efficiently.
+
+> **Configuration**: Collection search extensions can be disabled by setting the `ENABLE_COLLECTIONS_SEARCH` environment variable to `false`. By default, these extensions are enabled.
+
+> **Note**: Sorting is only available on fields that are indexed for sorting in Elasticsearch/OpenSearch. With the default mappings, you can sort on:
+> - `id` (keyword field)
+> - `extent.temporal.interval` (date field)
+> - `temporal` (alias to extent.temporal.interval)
+>
+> Text fields like `title` and `description` are not sortable by default as they use text analysis for better search capabilities. Attempting to sort on these fields will result in a user-friendly error message explaining which fields are sortable and how to make additional fields sortable by updating the mappings.
+>
+> **Important**: Adding keyword fields to make text fields sortable can significantly increase the index size, especially for large text fields. Consider the storage implications when deciding which fields to make sortable.
 
 ## Package Structure
 
@@ -243,10 +274,12 @@ You can customize additional settings in your `.env` file:
 | `ENABLE_DIRECT_RESPONSE`     | Enable direct response for maximum performance (disables all FastAPI dependencies, including authentication, custom status codes, and validation) | `false`                  | Optional                       |
 | `RAISE_ON_BULK_ERROR`        | Controls whether bulk insert operations raise exceptions on errors. If set to `true`, the operation will stop and raise an exception when an error occurs. If set to `false`, errors will be logged, and the operation will continue. **Note:** STAC Item and ItemCollection validation errors will always raise, regardless of this flag. | `false` | Optional |
 | `DATABASE_REFRESH`           | Controls whether database operations refresh the index immediately after changes. If set to `true`, changes will be immediately searchable. If set to `false`, changes may not be immediately visible but can improve performance for bulk operations. If set to `wait_for`, changes will wait for the next refresh cycle to become visible. | `false` | Optional |
+| `ENABLE_COLLECTIONS_SEARCH`  | Enable collection search extensions (sort, fields).                                 | `true`                   | Optional                                                                                    |
 | `ENABLE_TRANSACTIONS_EXTENSIONS` | Enables or disables the Transactions and Bulk Transactions API extensions. If set to `false`, the POST `/collections` route and related transaction endpoints (including bulk transaction operations) will be unavailable in the API. This is useful for deployments where mutating the catalog via the API should be prevented. | `true` | Optional |
 | `STAC_ITEM_LIMIT` | Sets the environment variable for result limiting to SFEOS for the number of returned items and STAC collections. | `10` | Optional |
 | `STAC_INDEX_ASSETS` | Controls if Assets are indexed when added to Elasticsearch/Opensearch. This allows asset fields to be included in search queries. | `false` | Optional |
 | `ENV_MAX_LIMIT` | Configures the environment variable in SFEOS to override the default `MAX_LIMIT`, which controls the limit parameter for returned items and STAC collections. | `10,000` | Optional |
+| `USE_DATETIME` | Configures the datetime search behavior in SFEOS. When enabled, searches both datetime field and falls back to start_datetime/end_datetime range for items with null datetime. When disabled, searches only by start_datetime/end_datetime range. | True | Optional |
 
 > [!NOTE]
 > The variables `ES_HOST`, `ES_PORT`, `ES_USE_SSL`, `ES_VERIFY_CERTS` and `ES_TIMEOUT` apply to both Elasticsearch and OpenSearch backends, so there is no need to rename the key names to `OS_` even if you're using OpenSearch.
@@ -387,6 +420,10 @@ The system uses a precise naming convention:
 
 - **Root Path Configuration**: The application root path is the base URL by default.
   - For AWS Lambda with Gateway API: Set `STAC_FASTAPI_ROOT_PATH` to match the Gateway API stage name (e.g., `/v1`)
+
+- **Feature Configuration**: Control which features are enabled:
+  - `ENABLE_COLLECTIONS_SEARCH`: Set to `true` (default) to enable collection search extensions (sort, fields). Set to `false` to disable.
+  - `ENABLE_TRANSACTIONS_EXTENSIONS`: Set to `true` (default) to enable transaction extensions. Set to `false` to disable.
 
 
 ## Collection Pagination
