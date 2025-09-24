@@ -225,11 +225,13 @@ class CoreClient(AsyncBaseCoreClient):
         return landing_page
 
     async def all_collections(
-        self, sortby: Optional[str] = None, **kwargs
+        self, fields: Optional[List[str]] = None, sortby: Optional[str] = None, **kwargs
     ) -> stac_types.Collections:
         """Read all collections from the database.
 
         Args:
+            fields (Optional[List[str]]): Fields to include or exclude from the results.
+            sortby (Optional[str]): Sorting options for the results.
             **kwargs: Keyword arguments from the request.
 
         Returns:
@@ -239,6 +241,15 @@ class CoreClient(AsyncBaseCoreClient):
         base_url = str(request.base_url)
         limit = int(request.query_params.get("limit", os.getenv("STAC_ITEM_LIMIT", 10)))
         token = request.query_params.get("token")
+
+        # Process fields parameter for filtering collection properties
+        includes, excludes = set(), set()
+        if fields and self.extension_is_enabled("FieldsExtension"):
+            for field in fields:
+                if field[0] == "-":
+                    excludes.add(field[1:])
+                else:
+                    includes.add(field[1:] if field[0] in "+ " else field)
 
         sort = None
         if sortby:
@@ -259,6 +270,15 @@ class CoreClient(AsyncBaseCoreClient):
             token=token, limit=limit, request=request, sort=sort
         )
 
+        # Apply field filtering if fields parameter was provided
+        if fields and self.extension_is_enabled("FieldsExtension"):
+            filtered_collections = [
+                filter_fields(collection, includes, excludes)
+                for collection in collections
+            ]
+        else:
+            filtered_collections = collections
+
         links = [
             {"rel": Relations.root.value, "type": MimeTypes.json, "href": base_url},
             {"rel": Relations.parent.value, "type": MimeTypes.json, "href": base_url},
@@ -273,7 +293,7 @@ class CoreClient(AsyncBaseCoreClient):
             next_link = PagingLinks(next=next_token, request=request).link_next()
             links.append(next_link)
 
-        return stac_types.Collections(collections=collections, links=links)
+        return stac_types.Collections(collections=filtered_collections, links=links)
 
     async def get_collection(
         self, collection_id: str, **kwargs
