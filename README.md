@@ -133,8 +133,6 @@ SFEOS implements extended capabilities for the `/collections` endpoint, allowing
 
 These extensions make it easier to build user interfaces that display and navigate through collections efficiently.
 
-> **Configuration**: Collection search extensions (sorting, field selection, and free text search) can be disabled by setting the `ENABLE_COLLECTIONS_SEARCH` environment variable to `false`. By default, these extensions are enabled.
-
 > **Note**: Sorting is only available on fields that are indexed for sorting in Elasticsearch/OpenSearch. With the default mappings, you can sort on:
 > - `id` (keyword field)
 > - `extent.temporal.interval` (date field)

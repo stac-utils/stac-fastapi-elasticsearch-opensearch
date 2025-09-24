@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
-- GET `/collections` collection search free text extension ex. `/collections?q=sentinel`. [#466](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/466)
+- GET `/collections` collection search free text extension ex. `/collections?q=sentinel`. [#470](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/470)
 - Added `USE_DATETIME` environment variable to configure datetime search behavior in SFEOS. [#452](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/452)
 - GET `/collections` collection search sort extension ex. `/collections?sortby=+id`. [#456](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/456)
 - GET `/collections` collection search fields extension ex. `/collections?fields=id,title`. [#465](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/465)

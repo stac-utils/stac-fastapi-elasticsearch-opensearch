@@ -247,8 +247,6 @@ class CoreClient(AsyncBaseCoreClient):
         limit = int(request.query_params.get("limit", os.getenv("STAC_ITEM_LIMIT", 10)))
         token = request.query_params.get("token")
 
-        print("q: ", q)
-
         # Process fields parameter for filtering collection properties
         includes, excludes = set(), set()
         if fields and self.extension_is_enabled("FieldsExtension"):
