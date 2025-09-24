@@ -175,6 +175,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         limit: int,
         request: Request,
         sort: Optional[List[Dict[str, Any]]] = None,
+        q: Optional[List[str]] = None,
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
         """Retrieve a list of collections from Elasticsearch, supporting pagination.
 
@@ -183,16 +184,32 @@ class DatabaseLogic(BaseDatabaseLogic):
             limit (int): The number of results to return.
             request (Request): The FastAPI request object.
             sort (Optional[List[Dict[str, Any]]]): Optional sort parameter from the request.
+            q (Optional[List[str]]): Free text search terms.
 
         Returns:
             A tuple of (collections, next pagination token if any).
+
+        Raises:
+            HTTPException: If sorting is requested on a field that is not sortable.
         """
+        # Define sortable fields based on the ES_COLLECTIONS_MAPPINGS
+        sortable_fields = ["id", "extent.temporal.interval", "temporal"]
+
+        # Format the sort parameter
         formatted_sort = []
         if sort:
             for item in sort:
                 field = item.get("field")
                 direction = item.get("direction", "asc")
                 if field:
+                    # Validate that the field is sortable
+                    if field not in sortable_fields:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Field '{field}' is not sortable. Sortable fields are: {', '.join(sortable_fields)}. "
+                            + "Text fields are not sortable by default in Elasticsearch. "
+                            + "To make a field sortable, update the mapping to use 'keyword' type or add a '.keyword' subfield. ",
+                        )
                     formatted_sort.append({field: {"order": direction}})
             # Always include id as a secondary sort to ensure consistent pagination
             if not any("id" in item for item in formatted_sort):
@@ -208,6 +225,38 @@ class DatabaseLogic(BaseDatabaseLogic):
         if token:
             body["search_after"] = [token]
 
+        # Apply free text query if provided
+        if q:
+            # For collections, we want to search across all relevant fields
+            should_clauses = []
+
+            # For each search term
+            for term in q:
+                # Create a multi_match query for each term
+                for field in [
+                    "id",
+                    "title",
+                    "description",
+                    "keywords",
+                    "summaries.platform",
+                    "summaries.constellation",
+                    "providers.name",
+                    "providers.url",
+                ]:
+                    should_clauses.append(
+                        {
+                            "wildcard": {
+                                field: {"value": f"*{term}*", "case_insensitive": True}
+                            }
+                        }
+                    )
+
+            # Add the query to the body using bool query with should clauses
+            body["query"] = {
+                "bool": {"should": should_clauses, "minimum_should_match": 1}
+            }
+
+        # Execute the search
         response = await self.client.search(
             index=COLLECTIONS_INDEX,
             body=body,

@@ -15,7 +15,7 @@ class RedisSentinelSettings(BaseSettings):
     REDIS_SENTINEL_HOSTS: str = ""
     REDIS_SENTINEL_PORTS: str = "26379"
     REDIS_SENTINEL_MASTER_NAME: str = "master"
-    REDIS_DB: int = 15
+    REDIS_DB: int = 0
 
     REDIS_MAX_CONNECTIONS: int = 10
     REDIS_RETRY_TIMEOUT: bool = True
@@ -25,7 +25,7 @@ class RedisSentinelSettings(BaseSettings):
 
 
 class RedisSettings(BaseSettings):
-    """Configuration for connecting Redis Sentinel."""
+    """Configuration for connecting Redis."""
 
     REDIS_HOST: str = ""
     REDIS_PORT: int = 6379
@@ -42,8 +42,50 @@ class RedisSettings(BaseSettings):
 redis_settings: BaseSettings = RedisSentinelSettings()
 
 
+async def connect_redis_sentinel(
+    settings: Optional[RedisSentinelSettings] = None,
+) -> Optional[aioredis.Redis]:
+    """Return Redis Sentinel connection."""
+    global redis_pool
+    settings = settings or redis_settings
+
+    if (
+        not settings.REDIS_SENTINEL_HOSTS
+        or not settings.REDIS_SENTINEL_PORTS
+        or not settings.REDIS_SENTINEL_MASTER_NAME
+    ):
+        return None
+
+    hosts = [h.strip() for h in settings.REDIS_SENTINEL_HOSTS.split(",") if h.strip()]
+    ports = [
+        int(p.strip()) for p in settings.REDIS_SENTINEL_PORTS.split(",") if p.strip()
+    ]
+
+    if redis_pool is None:
+        try:
+            sentinel = Sentinel(
+                [(host, port) for host, port in zip(hosts, ports)],
+                decode_responses=settings.REDIS_DECODE_RESPONSES,
+            )
+            master = sentinel.master_for(
+                service_name=settings.REDIS_SENTINEL_MASTER_NAME,
+                db=settings.REDIS_DB,
+                decode_responses=settings.REDIS_DECODE_RESPONSES,
+                retry_on_timeout=settings.REDIS_RETRY_TIMEOUT,
+                client_name=settings.REDIS_CLIENT_NAME,
+                max_connections=settings.REDIS_MAX_CONNECTIONS,
+                health_check_interval=settings.REDIS_HEALTH_CHECK_INTERVAL,
+            )
+            redis_pool = master
+
+        except Exception:
+            return None
+
+    return redis_pool
+
+
 async def connect_redis(settings: Optional[RedisSettings] = None) -> aioredis.Redis:
-    """Return a Redis connection."""
+    """Return Redis connection."""
     global redis_pool
     settings = settings or redis_settings
 
@@ -66,59 +108,16 @@ async def connect_redis(settings: Optional[RedisSettings] = None) -> aioredis.Re
     return redis_pool
 
 
-async def connect_redis_sentinel(
-    settings: Optional[RedisSentinelSettings] = None,
-) -> Optional[aioredis.Redis]:
-    """Return a Redis Sentinel connection."""
-    global redis_pool
-
-    settings = settings or redis_settings
-
-    if (
-        not settings.REDIS_SENTINEL_HOSTS
-        or not settings.REDIS_SENTINEL_PORTS
-        or not settings.REDIS_SENTINEL_MASTER_NAME
-    ):
-        return None
-
-    hosts = [h.strip() for h in settings.REDIS_SENTINEL_HOSTS.split(",") if h.strip()]
-    ports = [
-        int(p.strip()) for p in settings.REDIS_SENTINEL_PORTS.split(",") if p.strip()
-    ]
-
-    if redis_pool is None:
-        try:
-            sentinel = Sentinel(
-                [(h, p) for h, p in zip(hosts, ports)],
-                decode_responses=settings.REDIS_DECODE_RESPONSES,
-            )
-            master = sentinel.master_for(
-                service_name=settings.REDIS_SENTINEL_MASTER_NAME,
-                db=settings.REDIS_DB,
-                decode_responses=settings.REDIS_DECODE_RESPONSES,
-                retry_on_timeout=settings.REDIS_RETRY_TIMEOUT,
-                client_name=settings.REDIS_CLIENT_NAME,
-                max_connections=settings.REDIS_MAX_CONNECTIONS,
-                health_check_interval=settings.REDIS_HEALTH_CHECK_INTERVAL,
-            )
-            redis_pool = master
-
-        except Exception:
-            return None
-
-    return redis_pool
-
-
 async def save_self_link(
     redis: aioredis.Redis, token: Optional[str], self_href: str
 ) -> None:
-    """Save the self link for the current token with 30 min TTL."""
+    """Add the self link for next page as prev link for the current token."""
     if token:
         await redis.setex(f"nav:self:{token}", 1800, self_href)
 
 
 async def get_prev_link(redis: aioredis.Redis, token: Optional[str]) -> Optional[str]:
-    """Get the previous page link for the current token (if exists)."""
+    """Pull the prev page link for the current token."""
     if not token:
         return None
     return await redis.get(f"nav:self:{token}")
