@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+### Changed
+
+### Fixed
+
+
+## [v6.4.0] - 2025-09-24
+
+### Added
+
 - Added `USE_DATETIME` environment variable to configure datetime search behavior in SFEOS. [#452](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/452)
 - GET `/collections` collection search sort extension ex. `/collections?sortby=+id`. [#456](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/456)
 - GET `/collections` collection search fields extension ex. `/collections?fields=id,title`. [#465](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/465)
@@ -521,7 +530,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.3.0...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.4.0...main
+[v6.4.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.3.0...v6.4.0
 [v6.3.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.2.1...v6.3.0
 [v6.2.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.2.0...v6.2.1
 [v6.2.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.1.0...v6.2.0
