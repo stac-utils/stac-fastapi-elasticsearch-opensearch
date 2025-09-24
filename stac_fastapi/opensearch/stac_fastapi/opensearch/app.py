@@ -120,7 +120,7 @@ extensions = [aggregation_extension] + search_extensions
 collection_search_extensions = [
     # QueryExtension(conformance_classes=[QueryConformanceClasses.COLLECTIONS]),
     SortExtension(conformance_classes=[SortConformanceClasses.COLLECTIONS]),
-    # FieldsExtension(conformance_classes=[FieldsConformanceClasses.COLLECTIONS]),
+    FieldsExtension(conformance_classes=[FieldsConformanceClasses.COLLECTIONS]),
     # CollectionSearchFilterExtension(
     #     conformance_classes=[FilterConformanceClasses.COLLECTIONS]
     # ),
