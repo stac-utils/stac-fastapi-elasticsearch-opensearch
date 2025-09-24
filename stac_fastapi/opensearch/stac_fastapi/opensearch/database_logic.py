@@ -175,7 +175,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             HTTPException: If sorting is requested on a field that is not sortable.
         """
         # Define sortable fields based on the ES_COLLECTIONS_MAPPINGS
-        sortable_fields = ["id", "extent.temporal.interval"]
+        sortable_fields = ["id", "extent.temporal.interval", "temporal"]
 
         # Format the sort parameter
         formatted_sort = []
@@ -190,15 +190,13 @@ class DatabaseLogic(BaseDatabaseLogic):
                             status_code=400,
                             detail=f"Field '{field}' is not sortable. Sortable fields are: {', '.join(sortable_fields)}. "
                             + "Text fields are not sortable by default in OpenSearch. "
-                            + "To make a field sortable, update the mapping to use 'keyword' type or add a '.keyword' subfield. "
-                            + "See the ES_COLLECTIONS_MAPPINGS in mappings.py for details.",
+                            + "To make a field sortable, update the mapping to use 'keyword' type or add a '.keyword' subfield. ",
                         )
                     formatted_sort.append({field: {"order": direction}})
             # Always include id as a secondary sort to ensure consistent pagination
             if not any("id" in item for item in formatted_sort):
                 formatted_sort.append({"id": {"order": "asc"}})
         else:
-            # Use a collections-specific default sort that doesn't rely on properties.datetime
             formatted_sort = [{"id": {"order": "asc"}}]
 
         body = {

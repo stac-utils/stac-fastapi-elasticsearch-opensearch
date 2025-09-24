@@ -120,6 +120,7 @@ SFEOS implements extended capabilities for the `/collections` endpoint, allowing
 - **Sorting**: Sort collections by sortable fields using the `sortby` parameter
   - Example: `/collections?sortby=+id` (ascending sort by ID)
   - Example: `/collections?sortby=-id` (descending sort by ID)
+  - Example: `/collections?sortby=-temporal` (descending sort by temporal extent)
 
 - **Field Selection**: Request only specific fields to be returned using the `fields` parameter
   - Example: `/collections?fields=id,title,description`
@@ -130,8 +131,11 @@ These extensions make it easier to build user interfaces that display and naviga
 > **Note**: Sorting is only available on fields that are indexed for sorting in Elasticsearch/OpenSearch. With the default mappings, you can sort on:
 > - `id` (keyword field)
 > - `extent.temporal.interval` (date field)
+> - `temporal` (alias to extent.temporal.interval)
 >
 > Text fields like `title` and `description` are not sortable by default as they use text analysis for better search capabilities. Attempting to sort on these fields will result in a user-friendly error message explaining which fields are sortable and how to make additional fields sortable by updating the mappings.
+>
+> **Important**: Adding keyword fields to make text fields sortable can significantly increase the index size, especially for large text fields. Consider the storage implications when deciding which fields to make sortable.
 
 ## Package Structure
 
