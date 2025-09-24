@@ -56,7 +56,9 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 TRANSACTIONS_EXTENSIONS = get_bool_env("ENABLE_TRANSACTIONS_EXTENSIONS", default=True)
+ENABLE_COLLECTIONS_SEARCH = get_bool_env("ENABLE_COLLECTIONS_SEARCH", default=True)
 logger.info("TRANSACTIONS_EXTENSIONS is set to %s", TRANSACTIONS_EXTENSIONS)
+logger.info("ENABLE_COLLECTIONS_SEARCH is set to %s", ENABLE_COLLECTIONS_SEARCH)
 
 settings = ElasticsearchSettings()
 session = Session.create_from_settings(settings)
@@ -114,25 +116,26 @@ if TRANSACTIONS_EXTENSIONS:
 
 extensions = [aggregation_extension] + search_extensions
 
-# Create collection search extensions
-# Only sort extension is enabled for now
-collection_search_extensions = [
-    # QueryExtension(conformance_classes=[QueryConformanceClasses.COLLECTIONS]),
-    SortExtension(conformance_classes=[SortConformanceClasses.COLLECTIONS]),
-    FieldsExtension(conformance_classes=[FieldsConformanceClasses.COLLECTIONS]),
-    # CollectionSearchFilterExtension(
-    #     conformance_classes=[FilterConformanceClasses.COLLECTIONS]
-    # ),
-    FreeTextExtension(conformance_classes=[FreeTextConformanceClasses.COLLECTIONS]),
-]
+# Create collection search extensions if enabled
+if ENABLE_COLLECTIONS_SEARCH:
+    # Create collection search extensions
+    collection_search_extensions = [
+        # QueryExtension(conformance_classes=[QueryConformanceClasses.COLLECTIONS]),
+        SortExtension(conformance_classes=[SortConformanceClasses.COLLECTIONS]),
+        FieldsExtension(conformance_classes=[FieldsConformanceClasses.COLLECTIONS]),
+        # CollectionSearchFilterExtension(
+        #     conformance_classes=[FilterConformanceClasses.COLLECTIONS]
+        # ),
+        FreeTextExtension(conformance_classes=[FreeTextConformanceClasses.COLLECTIONS]),
+    ]
 
-# Initialize collection search with its extensions
-collection_search_ext = CollectionSearchExtension.from_extensions(
-    collection_search_extensions
-)
-collections_get_request_model = collection_search_ext.GET
+    # Initialize collection search with its extensions
+    collection_search_ext = CollectionSearchExtension.from_extensions(
+        collection_search_extensions
+    )
+    collections_get_request_model = collection_search_ext.GET
 
-extensions.append(collection_search_ext)
+    extensions.append(collection_search_ext)
 
 database_logic.extensions = [type(ext).__name__ for ext in extensions]
 
@@ -169,9 +172,12 @@ app_config = {
     "search_get_request_model": create_get_request_model(search_extensions),
     "search_post_request_model": post_request_model,
     "items_get_request_model": items_get_request_model,
-    "collections_get_request_model": collections_get_request_model,
     "route_dependencies": get_route_dependencies(),
 }
+
+# Add collections_get_request_model if collection search is enabled
+if ENABLE_COLLECTIONS_SEARCH:
+    app_config["collections_get_request_model"] = collections_get_request_model
 
 api = StacApi(**app_config)
 
