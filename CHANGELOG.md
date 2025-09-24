@@ -10,9 +10,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 
 - Added `USE_DATETIME` environment variable to configure datetime search behavior in SFEOS. [#452](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/452)
-- GET `/collections` collection search sort extension ex. `/collections?sortby=+id`. Added field alias for `temporal` to enable sorting by temporal extent. [#456](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/456)
+- GET `/collections` collection search sort extension ex. `/collections?sortby=+id`. [#456](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/456)
 - GET `/collections` collection search fields extension ex. `/collections?fields=id,title`. [#465](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/465)
 - Improved error messages for sorting on unsortable fields in collection search, including guidance on how to make fields sortable. [#465](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/465)
+- Added field alias for `temporal` to enable easier sorting by temporal extent, alongside `extent.temporal.interval`. [#465](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/465)
 
 ### Changed
 
