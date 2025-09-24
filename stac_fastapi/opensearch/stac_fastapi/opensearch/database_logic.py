@@ -159,6 +159,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         limit: int,
         request: Request,
         sort: Optional[List[Dict[str, Any]]] = None,
+        q: Optional[List[str]] = None,
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
         """Retrieve a list of collections from Elasticsearch, supporting pagination.
 
@@ -167,6 +168,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             limit (int): The number of results to return.
             request (Request): The FastAPI request object.
             sort (Optional[List[Dict[str, Any]]]): Optional sort parameter from the request.
+            q (Optional[List[str]]): Free text search terms.
 
         Returns:
             A tuple of (collections, next pagination token if any).
@@ -206,6 +208,37 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         if token:
             body["search_after"] = [token]
+
+        # Apply free text query if provided
+        if q:
+            # For collections, we want to search across all relevant fields
+            should_clauses = []
+
+            # For each search term
+            for term in q:
+                # Create a multi_match query for each term
+                for field in [
+                    "id",
+                    "title",
+                    "description",
+                    "keywords",
+                    "summaries.platform",
+                    "summaries.constellation",
+                    "providers.name",
+                    "providers.url",
+                ]:
+                    should_clauses.append(
+                        {
+                            "wildcard": {
+                                field: {"value": f"*{term}*", "case_insensitive": True}
+                            }
+                        }
+                    )
+
+            # Add the query to the body using bool query with should clauses
+            body["query"] = {
+                "bool": {"should": should_clauses, "minimum_should_match": 1}
+            }
 
         response = await self.client.search(
             index=COLLECTIONS_INDEX,
