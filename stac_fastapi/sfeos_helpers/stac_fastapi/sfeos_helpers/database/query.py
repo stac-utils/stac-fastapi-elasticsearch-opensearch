@@ -5,9 +5,36 @@ This module provides functions for building and manipulating Elasticsearch/OpenS
 
 from typing import Any, Dict, List, Optional
 
+from stac_fastapi.core.datetime_utils import datetime_to_str
 from stac_fastapi.sfeos_helpers.mappings import Geometry
+from stac_fastapi.types.rfc3339 import rfc3339_str_to_datetime
 
 ES_MAX_URL_LENGTH = 4096
+
+
+def is_numeric(val: str) -> bool:
+    """Check if an input string value is numeric."""
+    try:
+        float(val)
+        return True
+    except ValueError:
+        return False
+
+
+def process_ftq(q: str):
+    """Process a date, numeric, or text free-text query."""
+    q = q.strip()
+    if not q:
+        return
+    try:
+        if d := rfc3339_str_to_datetime(q):
+            return datetime_to_str(d)
+    except ValueError:
+        pass
+    if is_numeric(q):
+        return q
+    else:
+        return f"({q}* OR {q.lower()}* OR {q.upper()}*)"
 
 
 def apply_free_text_filter_shared(
@@ -25,13 +52,17 @@ def apply_free_text_filter_shared(
 
     Notes:
         This function creates a query_string query that searches for the specified text strings
-        in all properties of the documents. The query strings are joined with OR operators.
+        in the entire document. The query strings are joined with OR operators.
     """
-    if free_text_queries is not None:
-        free_text_query_string = '" OR properties.\\*:"'.join(free_text_queries)
-        search = search.query(
-            "query_string", query=f'properties.\\*:"{free_text_query_string}"'
-        )
+    if free_text_queries:
+        processed_queries = [
+            process_ftq(q.strip()) for q in free_text_queries if q.strip()
+        ]
+
+        if processed_queries:
+            free_text_query_string = " AND ".join(processed_queries)
+
+            search = search.query("query_string", query=free_text_query_string)
 
     return search
 
