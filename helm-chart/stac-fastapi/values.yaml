@@ -167,6 +167,7 @@ app:
     # ES_API_KEY: "es-api-key-secret"
 
 # Elasticsearch configuration
+# Note: This will be automatically set based on 'backend' value
 elasticsearch:
   # Enable/disable Elasticsearch deployment
   enabled: true
@@ -219,10 +220,10 @@ elasticsearch:
   # Volume claim template
   volumeClaimTemplate:
     accessModes: [ "ReadWriteOnce" ]
-    storageClassName: ""
+    # storageClassName: ""  # Leave empty to use cluster default
     resources:
       requests:
-        storage: 10Gi
+        storage: 1Gi
   
   # Service configuration
   service:

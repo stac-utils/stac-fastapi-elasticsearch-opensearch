@@ -147,3 +147,25 @@ Create environment variables for the application
       key: {{ $key }}
 {{- end }}
 {{- end }}
+
+{{/*
+Determine if Elasticsearch should be enabled based on backend selection
+*/}}
+{{- define "stac-fastapi.elasticsearch.enabled" -}}
+{{- if eq .Values.backend "elasticsearch" }}
+{{- true }}
+{{- else }}
+{{- false }}
+{{- end }}
+{{- end }}
+
+{{/*
+Determine if OpenSearch should be enabled based on backend selection
+*/}}
+{{- define "stac-fastapi.opensearch.enabled" -}}
+{{- if eq .Values.backend "opensearch" }}
+{{- true }}
+{{- else }}
+{{- false }}
+{{- end }}
+{{- end }}

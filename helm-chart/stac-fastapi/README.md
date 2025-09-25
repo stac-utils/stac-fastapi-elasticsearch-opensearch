@@ -62,18 +62,43 @@ helm install my-stac-api ./helm-chart/stac-fastapi \
 
 ## Configuration
 
-### Backend Selection
+## Backend Selection
 
-The chart supports two backends:
+The chart supports both Elasticsearch and OpenSearch backends, but only deploys **one backend at a time** based on the `backend` configuration:
 
-- `elasticsearch`: Uses Elasticsearch as the backend database
-- `opensearch`: Uses OpenSearch as the backend database
-
-Set the backend using:
-
+### Elasticsearch Backend
 ```yaml
-backend: elasticsearch  # or opensearch
+backend: elasticsearch
+elasticsearch:
+  enabled: true
+opensearch:
+  enabled: false
 ```
+
+### OpenSearch Backend  
+```yaml
+backend: opensearch
+elasticsearch:
+  enabled: false
+opensearch:
+  enabled: true
+```
+
+### How It Works
+
+1. **Chart Dependencies**: Both Elasticsearch and OpenSearch charts are listed as dependencies with conditions
+2. **Conditional Deployment**: Only the backend specified by `backend` value is enabled
+3. **Resource Isolation**: When deploying with elasticsearch, no OpenSearch resources are created (and vice versa)
+4. **Automatic Configuration**: The application automatically connects to the correct backend service
+
+### Values Files
+
+Use the provided values files for easy backend selection:
+
+- **Elasticsearch**: `helm install stac-fastapi ./stac-fastapi -f values-elasticsearch.yaml`
+- **OpenSearch**: `helm install stac-fastapi ./stac-fastapi -f values-opensearch.yaml`
+
+This ensures efficient resource usage and prevents conflicts between backends.
 
 ### Application Configuration
 
