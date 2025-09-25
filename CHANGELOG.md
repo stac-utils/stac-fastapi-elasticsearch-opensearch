@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
-
+- Added Redis caching configuration for navigation pagination support, enabling proper `prev` and `next` links in paginated responses. [#466](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/466)
 - GET `/collections` collection search free text extension ex. `/collections?q=sentinel`. [#470](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/470)
 - Added `USE_DATETIME` environment variable to configure datetime search behavior in SFEOS. [#452](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/452)
 - GET `/collections` collection search sort extension ex. `/collections?sortby=+id`. [#456](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/456)
