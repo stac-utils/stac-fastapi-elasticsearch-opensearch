@@ -31,7 +31,8 @@ repos:
         ]
         additional_dependencies: [
           "types-attrs",
-          "types-requests"
+          "types-requests",
+          "types-redis"
         ]
   - repo: https://github.com/PyCQA/pydocstyle
     rev: 6.1.1
