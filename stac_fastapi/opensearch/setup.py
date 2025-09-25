@@ -12,6 +12,7 @@ install_requires = [
     "opensearch-py[async]~=2.8.0",
     "uvicorn~=0.23.0",
     "starlette>=0.35.0,<0.36.0",
+    "redis==6.4.0",
 ]
 
 extra_reqs = {
