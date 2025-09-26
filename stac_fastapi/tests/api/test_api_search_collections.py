@@ -1,8 +1,9 @@
+import json
 import uuid
 
 import pytest
 
-from ..conftest import create_collection
+from ..conftest import create_collection, refresh_indices
 
 
 @pytest.mark.asyncio
@@ -267,13 +268,7 @@ async def test_collections_filter_search(app_client, txn_client, load_test_data)
         test_collection["summaries"] = coll["summaries"]
         await create_collection(txn_client, test_collection)
 
-    # Ensure collections are searchable
-    from ..conftest import refresh_indices
-
     await refresh_indices(txn_client)
-
-    # Test 1: CQL2-JSON format - filter for one of our test collections
-    import json
 
     # Use the ID of the first test collection for the filter
     test_collection_id = test_collections[0]["id"]

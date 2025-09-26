@@ -229,7 +229,6 @@ class CoreClient(AsyncBaseCoreClient):
         fields: Optional[List[str]] = None,
         sortby: Optional[str] = None,
         filter_expr: Optional[str] = None,
-        query: Optional[str] = None,
         filter_lang: Optional[str] = None,
         q: Optional[Union[str, List[str]]] = None,
         **kwargs,
@@ -240,7 +239,6 @@ class CoreClient(AsyncBaseCoreClient):
             fields (Optional[List[str]]): Fields to include or exclude from the results.
             sortby (Optional[str]): Sorting options for the results.
             filter_expr (Optional[str]): Structured filter expression in CQL2 JSON format.
-            query (Optional[str]): Legacy query parameter (deprecated).
             filter_lang (Optional[str]): Must be 'cql2-json' if specified, other values will result in an error.
             q (Optional[Union[str, List[str]]]): Free text search terms.
             **kwargs: Keyword arguments from the request.
