@@ -162,7 +162,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         q: Optional[List[str]] = None,
         filter: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
-        """Retrieve a list of collections from Elasticsearch, supporting pagination.
+        """Retrieve a list of collections from Opensearch, supporting pagination.
 
         Args:
             token (Optional[str]): The pagination token.
@@ -193,7 +193,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                         raise HTTPException(
                             status_code=400,
                             detail=f"Field '{field}' is not sortable. Sortable fields are: {', '.join(sortable_fields)}. "
-                            + "Text fields are not sortable by default in Elasticsearch. "
+                            + "Text fields are not sortable by default in Opensearch. "
                             + "To make a field sortable, update the mapping to use 'keyword' type or add a '.keyword' subfield. ",
                         )
                     formatted_sort.append({field: {"order": direction}})
@@ -250,7 +250,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             # Convert string filter to dict if needed
             if isinstance(filter, str):
                 filter = orjson.loads(filter)
-            # Convert the filter to an Elasticsearch query using the filter module
+            # Convert the filter to an Opensearch query using the filter module
             es_query = filter_module.to_es(await self.get_queryables_mapping(), filter)
             query_parts.append(es_query)
 
@@ -298,7 +298,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             NotFoundError: If the specified Item does not exist in the Collection.
 
         Notes:
-            The Item is retrieved from the Elasticsearch database using the `client.get` method,
+            The Item is retrieved from the Opensearch database using the `client.get` method,
             with the index for the Collection as the target index and the combined `mk_item_id` as the document id.
         """
         try:
@@ -602,10 +602,6 @@ class DatabaseLogic(BaseDatabaseLogic):
                     otherwise the original Search object.
         """
         if _filter is not None:
-            if isinstance(_filter, str):
-                import json
-
-                _filter = json.loads(_filter)
             es_query = filter_module.to_es(await self.get_queryables_mapping(), _filter)
             search = search.filter(es_query)
 

@@ -164,7 +164,6 @@ async def test_collections_free_text_search_get(app_client, txn_client, load_tes
     # Use unique prefixes to avoid conflicts between tests
     test_prefix = f"q-get-{uuid.uuid4().hex[:8]}"
 
-    # Create collections with different content to test structured filter
     test_collections = [
         {
             "id": f"{test_prefix}-sentinel",
