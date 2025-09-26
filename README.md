@@ -131,9 +131,18 @@ SFEOS implements extended capabilities for the `/collections` endpoint, allowing
   - Searches across multiple text fields including title, description, and keywords
   - Supports partial word matching and relevance-based sorting
 
+- **Structured Filtering**: Filter collections using CQL2 expressions
+  - JSON format: `/collections?filter={"op":"=","args":[{"property":"id"},"sentinel-2"]}&filter-lang=cql2-json`
+  - Text format: `/collections?filter=id='sentinel-2'&filter-lang=cql2-text` (note: string values must be quoted)
+  - Advanced text format: `/collections?filter=id LIKE '%sentinel%'&filter-lang=cql2-text` (supports LIKE, BETWEEN, etc.)
+  - Supports both CQL2 JSON and CQL2 text formats with various operators
+  - Enables precise filtering on any collection property
+
+> **Note on HTTP Methods**: All collection search extensions (sorting, field selection, free text search, and structured filtering) currently only support GET requests. POST requests with these parameters in the request body are not yet supported.
+
 These extensions make it easier to build user interfaces that display and navigate through collections efficiently.
 
-> **Configuration**: Collection search extensions can be disabled by setting the `ENABLE_COLLECTIONS_SEARCH` environment variable to `false`. By default, these extensions are enabled.
+> **Configuration**: Collection search extensions (sorting, field selection, free text search, and structured filtering) can be disabled by setting the `ENABLE_COLLECTIONS_SEARCH` environment variable to `false`. By default, these extensions are enabled.
 
 > **Note**: Sorting is only available on fields that are indexed for sorting in Elasticsearch/OpenSearch. With the default mappings, you can sort on:
 > - `id` (keyword field)
@@ -156,7 +165,7 @@ This project is organized into several packages, each with a specific purpose:
   - Shared logic and utilities that improve code reuse between backends
 
 - **stac_fastapi_elasticsearch**: Complete implementation of the STAC API using Elasticsearch as the backend database. This package depends on both `stac_fastapi_core` and `sfeos_helpers`.
-- 
+
 - **stac_fastapi_opensearch**: Complete implementation of the STAC API using OpenSearch as the backend database. This package depends on both `stac_fastapi_core` and `sfeos_helpers`.
 
 ## Examples
