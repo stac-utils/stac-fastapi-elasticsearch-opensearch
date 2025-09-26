@@ -81,16 +81,10 @@ filter_extension.conformance_classes = [
 collection_search_extension = CollectionSearchExtension()
 
 collection_search_extension.conformance_classes = [
-    "http://www.opengis.net/spec/ogcapi-common-2/1.0/req/simple-query"
-    if cls == "http://www.opengis.net/spec/ogcapi-common-2/1.0/conf/simple-query"
-    else cls
-    for cls in collection_search_extension.conformance_classes
-]
-
-collection_search_extension.conformance_classes = [
     cls
     for cls in collection_search_extension.conformance_classes
     if cls != "https://api.stacspec.org/v1.0.0-rc.1/collection-search"
+    and cls != "http://www.opengis.net/spec/ogcapi-common-2/1.0/conf/simple-query"
 ]
 
 aggregation_extension = AggregationExtension(
