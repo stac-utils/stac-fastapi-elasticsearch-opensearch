@@ -3,10 +3,18 @@ import random
 import uuid
 from copy import deepcopy
 from datetime import datetime, timedelta
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from stac_fastapi.core.redis_utils import (
+    RedisSentinelSettings,
+    RedisSettings,
+    connect_redis,
+    connect_redis_sentinel,
+    get_prev_link,
+    save_self_link,
+)
 from stac_fastapi.types.errors import ConflictError
 
 from ..conftest import create_collection, create_item
@@ -1623,3 +1631,126 @@ async def test_use_datetime_false(app_client, load_test_data, txn_client, monkey
 
     assert "test-item-datetime-only" not in found_ids
     assert "test-item-start-end-only" in found_ids
+
+
+@pytest.mark.asyncio
+async def test_connect_redis():
+    from stac_fastapi.core import redis_utils
+
+    redis_utils.redis_pool = None
+
+    test_settings = RedisSettings(
+        REDIS_HOST="test-redis-host",
+        REDIS_PORT=6380,
+        REDIS_DB=5,
+        REDIS_MAX_CONNECTIONS=20,
+        REDIS_RETRY_TIMEOUT=False,
+        REDIS_DECODE_RESPONSES=False,
+        REDIS_CLIENT_NAME="custom-client",
+        REDIS_HEALTH_CHECK_INTERVAL=50,
+    )
+
+    with patch(
+        "stac_fastapi.core.redis_utils.aioredis.ConnectionPool"
+    ) as mock_pool_class, patch(
+        "stac_fastapi.core.redis_utils.aioredis.Redis"
+    ) as mock_redis_class:
+
+        mock_pool_instance = AsyncMock()
+        mock_redis_instance = AsyncMock()
+        mock_pool_class.return_value = mock_pool_instance
+        mock_redis_class.return_value = mock_redis_instance
+
+        result = await connect_redis(test_settings)
+
+        mock_pool_class.assert_called_once_with(
+            host="test-redis-host",
+            port=6380,
+            db=5,
+            max_connections=20,
+            decode_responses=False,
+            retry_on_timeout=False,
+            health_check_interval=50,
+        )
+
+        mock_redis_class.assert_called_once_with(
+            connection_pool=mock_pool_instance, client_name="custom-client"
+        )
+
+        assert result == mock_redis_instance
+
+
+@pytest.mark.asyncio
+async def test_connect_redis_sentinel(monkeypatch):
+    from stac_fastapi.core import redis_utils
+
+    redis_utils.redis_pool = None
+
+    master_mock = AsyncMock()
+
+    sentinel_mock = MagicMock()
+    sentinel_mock.master_for.return_value = master_mock
+
+    with patch("stac_fastapi.core.redis_utils.Sentinel") as mock_sentinel_class:
+        mock_sentinel_class.return_value = sentinel_mock
+
+        settings = RedisSentinelSettings(
+            REDIS_SENTINEL_HOSTS="test-redis-sentinel-host",
+            REDIS_SENTINEL_PORTS="26379",
+            REDIS_SENTINEL_MASTER_NAME="master",
+            REDIS_DB=15,
+            REDIS_MAX_CONNECTIONS=20,
+            REDIS_RETRY_TIMEOUT=False,
+            REDIS_DECODE_RESPONSES=False,
+            REDIS_CLIENT_NAME="custom-client",
+            REDIS_HEALTH_CHECK_INTERVAL=50,
+        )
+
+        redis = await connect_redis_sentinel(settings)
+
+        mock_sentinel_class.assert_called_once_with(
+            [("test-redis-sentinel-host", 26379)],
+            decode_responses=False,
+        )
+
+        sentinel_mock.master_for.assert_called_once_with(
+            service_name="master",
+            db=15,
+            decode_responses=False,
+            retry_on_timeout=False,
+            client_name="custom-client",
+            max_connections=20,
+            health_check_interval=50,
+        )
+
+        assert redis is master_mock
+        assert redis_utils.redis_pool is master_mock
+
+
+@pytest.mark.asyncio
+async def test_save_and_get_prev_link():
+    mock_redis = AsyncMock()
+
+    await save_self_link(mock_redis, "dummy_token", "http://mywebsite.com/page1")
+    mock_redis.setex.assert_awaited_once_with(
+        "nav:self:dummy_token", 1800, "http://mywebsite.com/page1"
+    )
+
+    mock_redis.reset_mock()
+    mock_redis.get.return_value = "http://mywebsite.com/page1"
+
+    result = await get_prev_link(mock_redis, "dummy_token")
+    assert result == "http://mywebsite.com/page1"
+    mock_redis.get.assert_awaited_once_with("nav:self:dummy_token")
+
+    mock_redis.reset_mock()
+    result_none = await get_prev_link(mock_redis, None)
+    assert result_none is None
+    mock_redis.get.assert_not_called()
+
+    mock_redis.reset_mock()
+    mock_redis.get.return_value = None
+
+    result_missing = await get_prev_link(mock_redis, "dummy_token_2")
+    assert result_missing is None
+    mock_redis.get.assert_awaited_once_with("nav:self:dummy_token_2")

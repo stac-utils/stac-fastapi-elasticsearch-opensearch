@@ -18,3 +18,4 @@ COPY . /app
 RUN pip install --no-cache-dir -e ./stac_fastapi/core
 RUN pip install --no-cache-dir -e ./stac_fastapi/sfeos_helpers
 RUN pip install --no-cache-dir -e ./stac_fastapi/elasticsearch[dev,server]
+RUN pip install --no-cache-dir redis types-redis
