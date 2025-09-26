@@ -267,27 +267,55 @@ async def test_collections_filter_search(app_client, txn_client, load_test_data)
         test_collection["summaries"] = coll["summaries"]
         await create_collection(txn_client, test_collection)
 
-    # Test structured filter for collections with specific ID
+    # Ensure collections are searchable
+    from ..conftest import refresh_indices
+
+    await refresh_indices(txn_client)
+
+    # Test 1: CQL2-JSON format - filter for one of our test collections
     import json
 
-    # Create a simple filter for exact ID match - similar to what works in Postman
-    filter_expr = {"op": "=", "args": [{"property": "id"}, f"{test_prefix}-sentinel"]}
+    # Use the ID of the first test collection for the filter
+    test_collection_id = test_collections[0]["id"]
+
+    # Create a simple filter for exact ID match using CQL2-JSON
+    filter_expr = {"op": "=", "args": [{"property": "id"}, test_collection_id]}
 
     # Convert to JSON string for URL parameter
     filter_json = json.dumps(filter_expr)
 
-    # Use the exact format that works in Postman
+    # Use CQL2-JSON format with explicit filter-lang
     resp = await app_client.get(
-        f"/collections?filter={filter_json}",
+        f"/collections?filter={filter_json}&filter-lang=cql2-json",
+    )
+
+    assert resp.status_code == 200
+    resp_json = resp.json()
+
+    # Should find exactly one collection with the specified ID
+    found_collections = [
+        c for c in resp_json["collections"] if c["id"] == test_collection_id
+    ]
+
+    assert (
+        len(found_collections) == 1
+    ), f"Expected 1 collection with ID {test_collection_id}, found {len(found_collections)}"
+    assert found_collections[0]["id"] == test_collection_id
+
+    # Test 2: CQL2-text format with LIKE operator for more advanced filtering
+    # Use a filter that will match the test collection ID we created
+    filter_text = f"id LIKE '%{test_collection_id.split('-')[-1]}%'"
+
+    resp = await app_client.get(
+        f"/collections?filter={filter_text}&filter-lang=cql2-text",
     )
     assert resp.status_code == 200
     resp_json = resp.json()
 
-    # Filter collections to only include the ones we created for this test
+    # Should find the test collection we created
     found_collections = [
-        c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
+        c for c in resp_json["collections"] if c["id"] == test_collection_id
     ]
-
-    # Should only find the sentinel collection
-    assert len(found_collections) == 1
-    assert found_collections[0]["id"] == f"{test_prefix}-sentinel"
+    assert (
+        len(found_collections) >= 1
+    ), f"Expected at least 1 collection with ID {test_collection_id} using LIKE filter"

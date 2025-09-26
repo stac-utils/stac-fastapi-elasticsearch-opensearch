@@ -248,7 +248,6 @@ class CoreClient(AsyncBaseCoreClient):
         Returns:
             A Collections object containing all the collections in the database and links to various resources.
         """
-        print("filter: ", filter_expr)
         request = kwargs["request"]
         base_url = str(request.base_url)
         limit = int(request.query_params.get("limit", os.getenv("STAC_ITEM_LIMIT", 10)))
@@ -287,18 +286,45 @@ class CoreClient(AsyncBaseCoreClient):
         parsed_filter = None
         if filter_expr is not None:
             try:
-                import orjson
-
-                # Check if filter_lang is specified and not cql2-json
-                if filter_lang is not None and filter_lang != "cql2-json":
+                # Check if filter_lang is specified and not one of the supported formats
+                if filter_lang is not None and filter_lang not in [
+                    "cql2-json",
+                    "cql2-text",
+                ]:
                     # Raise an error for unsupported filter languages
                     raise HTTPException(
                         status_code=400,
-                        detail=f"Only 'cql2-json' filter language is supported for collections. Got '{filter_lang}'.",
+                        detail=f"Input should be 'cql2-json' or 'cql2-text' for collections. Got '{filter_lang}'.",
                     )
 
-                # For GET requests, we only handle cql2-json
-                parsed_filter = orjson.loads(unquote_plus(filter_expr))
+                # Handle different filter formats
+                try:
+                    if filter_lang == "cql2-text" or filter_lang is None:
+                        # For cql2-text or when no filter_lang is specified, try both formats
+                        try:
+                            # First try to parse as JSON
+                            parsed_filter = orjson.loads(unquote_plus(filter_expr))
+                        except Exception:
+                            # If that fails, use pygeofilter to convert CQL2-text to CQL2-JSON
+                            try:
+                                # Parse CQL2-text and convert to CQL2-JSON
+                                text_filter = unquote_plus(filter_expr)
+                                parsed_ast = parse_cql2_text(text_filter)
+                                parsed_filter = to_cql2(parsed_ast)
+                            except Exception as e:
+                                # If parsing fails, provide a helpful error message
+                                raise HTTPException(
+                                    status_code=400,
+                                    detail=f"Invalid CQL2-text filter: {e}. Please check your syntax.",
+                                )
+                    else:
+                        # For explicit cql2-json, parse as JSON
+                        parsed_filter = orjson.loads(unquote_plus(filter_expr))
+                except Exception as e:
+                    # Catch any other parsing errors
+                    raise HTTPException(
+                        status_code=400, detail=f"Error parsing filter: {e}"
+                    )
             except Exception as e:
                 raise HTTPException(
                     status_code=400, detail=f"Invalid filter parameter: {e}"

@@ -160,6 +160,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         request: Request,
         sort: Optional[List[Dict[str, Any]]] = None,
         q: Optional[List[str]] = None,
+        filter: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
         """Retrieve a list of collections from Elasticsearch, supporting pagination.
 
@@ -169,6 +170,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             request (Request): The FastAPI request object.
             sort (Optional[List[Dict[str, Any]]]): Optional sort parameter from the request.
             q (Optional[List[str]]): Free text search terms.
+            filter (Optional[Dict[str, Any]]): Structured query in CQL2 format.
 
         Returns:
             A tuple of (collections, next pagination token if any).
@@ -191,7 +193,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                         raise HTTPException(
                             status_code=400,
                             detail=f"Field '{field}' is not sortable. Sortable fields are: {', '.join(sortable_fields)}. "
-                            + "Text fields are not sortable by default in OpenSearch. "
+                            + "Text fields are not sortable by default in Elasticsearch. "
                             + "To make a field sortable, update the mapping to use 'keyword' type or add a '.keyword' subfield. ",
                         )
                     formatted_sort.append({field: {"order": direction}})
@@ -208,6 +210,9 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         if token:
             body["search_after"] = [token]
+
+        # Build the query part of the body
+        query_parts = []
 
         # Apply free text query if provided
         if q:
@@ -235,11 +240,29 @@ class DatabaseLogic(BaseDatabaseLogic):
                         }
                     )
 
-            # Add the query to the body using bool query with should clauses
-            body["query"] = {
-                "bool": {"should": should_clauses, "minimum_should_match": 1}
-            }
+            # Add the free text query to the query parts
+            query_parts.append(
+                {"bool": {"should": should_clauses, "minimum_should_match": 1}}
+            )
 
+        # Apply structured filter if provided
+        if filter:
+            # Convert string filter to dict if needed
+            if isinstance(filter, str):
+                filter = orjson.loads(filter)
+            # Convert the filter to an Elasticsearch query using the filter module
+            es_query = filter_module.to_es(await self.get_queryables_mapping(), filter)
+            query_parts.append(es_query)
+
+        # Combine all query parts with AND logic
+        if query_parts:
+            body["query"] = (
+                query_parts[0]
+                if len(query_parts) == 1
+                else {"bool": {"must": query_parts}}
+            )
+
+        # Execute the search
         response = await self.client.search(
             index=COLLECTIONS_INDEX,
             body=body,
@@ -255,7 +278,6 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         next_token = None
         if len(hits) == limit:
-            # Ensure we have a valid sort value for next_token
             next_token_values = hits[-1].get("sort")
             if next_token_values:
                 next_token = next_token_values[0]
@@ -580,6 +602,10 @@ class DatabaseLogic(BaseDatabaseLogic):
                     otherwise the original Search object.
         """
         if _filter is not None:
+            if isinstance(_filter, str):
+                import json
+
+                _filter = json.loads(_filter)
             es_query = filter_module.to_es(await self.get_queryables_mapping(), _filter)
             search = search.filter(es_query)
 
