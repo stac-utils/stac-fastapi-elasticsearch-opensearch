@@ -28,9 +28,10 @@ from stac_fastapi.core.rate_limit import setup_rate_limit
 from stac_fastapi.core.route_dependencies import get_route_dependencies
 from stac_fastapi.core.session import Session
 from stac_fastapi.core.utilities import get_bool_env
-from stac_fastapi.extensions.core import (  # CollectionSearchFilterExtension,
+from stac_fastapi.extensions.core import (
     AggregationExtension,
     CollectionSearchExtension,
+    CollectionSearchFilterExtension,
     FilterExtension,
     FreeTextExtension,
     SortExtension,
@@ -123,9 +124,9 @@ if ENABLE_COLLECTIONS_SEARCH:
         # QueryExtension(conformance_classes=[QueryConformanceClasses.COLLECTIONS]),
         SortExtension(conformance_classes=[SortConformanceClasses.COLLECTIONS]),
         FieldsExtension(conformance_classes=[FieldsConformanceClasses.COLLECTIONS]),
-        # CollectionSearchFilterExtension(
-        #     conformance_classes=[FilterConformanceClasses.COLLECTIONS]
-        # ),
+        CollectionSearchFilterExtension(
+            conformance_classes=[FilterConformanceClasses.COLLECTIONS]
+        ),
         FreeTextExtension(conformance_classes=[FreeTextConformanceClasses.COLLECTIONS]),
     ]
 
