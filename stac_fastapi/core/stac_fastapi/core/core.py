@@ -672,22 +672,22 @@ class CoreClient(AsyncBaseCoreClient):
         links = await PagingLinks(request=request, next=next_token).get_links()
 
         collection_links = []
-        if search_request.collections:
-            for collection_id in search_request.collections:
-                collection_links.extend(
-                    [
-                        {
-                            "rel": "collection",
-                            "type": "application/json",
-                            "href": urljoin(base_url, f"collections/{collection_id}"),
-                        },
-                        {
-                            "rel": "parent",
-                            "type": "application/json",
-                            "href": urljoin(base_url, f"collections/{collection_id}"),
-                        },
-                    ]
-                )
+        if items and search_request.collections and len(search_request.collections) == 1:
+            collection_id = search_request.collections[0]
+            collection_links.extend(
+                [
+                    {
+                        "rel": "collection",
+                        "type": "application/json",
+                        "href": urljoin(base_url, f"collections/{collection_id}"),
+                    },
+                    {
+                        "rel": "parent",
+                        "type": "application/json",
+                        "href": urljoin(base_url, f"collections/{collection_id}"),
+                    },
+                ]
+            )
         links.extend(collection_links)
 
         if redis:
@@ -696,12 +696,20 @@ class CoreClient(AsyncBaseCoreClient):
 
             prev_link = await get_prev_link(redis, token_param)
             if prev_link:
+                method = "GET"
+                for link in links:
+                    if link.get("rel") == "next" and "method" in link:
+                        method = link["method"]
+                        break
+                else:
+                    method = request.method
+
                 links.insert(
                     0,
                     {
                         "rel": "previous",
                         "type": "application/json",
-                        "method": "GET",
+                        "method": method,
                         "href": prev_link,
                     },
                 )
