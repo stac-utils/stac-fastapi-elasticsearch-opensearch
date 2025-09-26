@@ -135,6 +135,9 @@ dmypy.json
 # Virtualenv
 venv
 
+# VSCode folder
+.vscode
+
 /docs/src/api/*
 
 .DS_Store

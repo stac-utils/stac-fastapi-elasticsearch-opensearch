@@ -72,7 +72,9 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
             field_properties = field_def.get("properties")
             if field_properties:
                 stack.extend(
-                    (f"{field_fqn}.{k}", v) for k, v in field_properties.items()
+                    (f"{field_fqn}.{k}", v)
+                    for k, v in field_properties.items()
+                    if v.get("enabled", True)
                 )
 
             # Skip non-indexed or disabled fields
