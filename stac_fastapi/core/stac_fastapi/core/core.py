@@ -232,6 +232,7 @@ class CoreClient(AsyncBaseCoreClient):
         filter_expr: Optional[str] = None,
         filter_lang: Optional[str] = None,
         q: Optional[Union[str, List[str]]] = None,
+        query: Optional[str] = None,
         **kwargs,
     ) -> stac_types.Collections:
         """Read all collections from the database.
@@ -241,6 +242,7 @@ class CoreClient(AsyncBaseCoreClient):
             fields (Optional[List[str]]): Fields to include or exclude from the results.
             sortby (Optional[str]): Sorting options for the results.
             filter_expr (Optional[str]): Structured filter expression in CQL2 JSON or CQL2-text format.
+            query (Optional[str]): Legacy query parameter (deprecated).
             filter_lang (Optional[str]): Must be 'cql2-json' or 'cql2-text' if specified, other values will result in an error.
             q (Optional[Union[str, List[str]]]): Free text search terms.
             **kwargs: Keyword arguments from the request.
@@ -255,7 +257,7 @@ class CoreClient(AsyncBaseCoreClient):
 
         # Process fields parameter for filtering collection properties
         includes, excludes = set(), set()
-        if fields and self.extension_is_enabled("FieldsExtension"):
+        if fields:
             for field in fields:
                 if field[0] == "-":
                     excludes.add(field[1:])
@@ -282,11 +284,21 @@ class CoreClient(AsyncBaseCoreClient):
         if q is not None:
             q_list = [q] if isinstance(q, str) else q
 
+        # Parse the query parameter if provided
+        parsed_query = None
+        if query is not None:
+            try:
+                parsed_query = orjson.loads(query)
+            except Exception as e:
+                raise HTTPException(
+                    status_code=400, detail=f"Invalid query parameter: {e}"
+                )
+
         # Parse the filter parameter if provided
         parsed_filter = None
         if filter_expr is not None:
             try:
-                # Check if filter_lang is specified and not one of the supported formats
+                # Only raise an error for explicitly unsupported filter languages
                 if filter_lang is not None and filter_lang not in [
                     "cql2-json",
                     "cql2-text",
@@ -294,7 +306,7 @@ class CoreClient(AsyncBaseCoreClient):
                     # Raise an error for unsupported filter languages
                     raise HTTPException(
                         status_code=400,
-                        detail=f"Input should be 'cql2-json' or 'cql2-text' for collections. Got '{filter_lang}'.",
+                        detail=f"Only 'cql2-json' and 'cql2-text' filter languages are supported for collections. Got '{filter_lang}'.",
                     )
 
                 # Handle different filter formats
@@ -341,11 +353,12 @@ class CoreClient(AsyncBaseCoreClient):
             sort=sort,
             q=q_list,
             filter=parsed_filter,
+            query=parsed_query,
             datetime=parsed_datetime,
         )
 
         # Apply field filtering if fields parameter was provided
-        if fields and self.extension_is_enabled("FieldsExtension"):
+        if fields:
             filtered_collections = [
                 filter_fields(collection, includes, excludes)
                 for collection in collections
@@ -685,11 +698,7 @@ class CoreClient(AsyncBaseCoreClient):
             datetime_search=datetime_search,
         )
 
-        fields = (
-            getattr(search_request, "fields", None)
-            if self.extension_is_enabled("FieldsExtension")
-            else None
-        )
+        fields = getattr(search_request, "fields", None)
         include: Set[str] = fields.include if fields and fields.include else set()
         exclude: Set[str] = fields.exclude if fields and fields.exclude else set()
 

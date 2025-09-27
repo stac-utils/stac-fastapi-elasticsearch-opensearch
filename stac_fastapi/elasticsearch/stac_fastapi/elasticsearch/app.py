@@ -121,7 +121,7 @@ extensions = [aggregation_extension] + search_extensions
 if ENABLE_COLLECTIONS_SEARCH:
     # Create collection search extensions
     collection_search_extensions = [
-        # QueryExtension(conformance_classes=[QueryConformanceClasses.COLLECTIONS]),
+        QueryExtension(conformance_classes=[QueryConformanceClasses.COLLECTIONS]),
         SortExtension(conformance_classes=[SortConformanceClasses.COLLECTIONS]),
         FieldsExtension(conformance_classes=[FieldsConformanceClasses.COLLECTIONS]),
         CollectionSearchFilterExtension(

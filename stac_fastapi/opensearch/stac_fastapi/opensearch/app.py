@@ -121,7 +121,7 @@ extensions = [aggregation_extension] + search_extensions
 if ENABLE_COLLECTIONS_SEARCH:
     # Create collection search extensions
     collection_search_extensions = [
-        # QueryExtension(conformance_classes=[QueryConformanceClasses.COLLECTIONS]),
+        QueryExtension(conformance_classes=[QueryConformanceClasses.COLLECTIONS]),
         SortExtension(conformance_classes=[SortConformanceClasses.COLLECTIONS]),
         FieldsExtension(conformance_classes=[FieldsConformanceClasses.COLLECTIONS]),
         CollectionSearchFilterExtension(
@@ -170,6 +170,7 @@ app_config = {
         post_request_model=post_request_model,
         landing_page_id=os.getenv("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"),
     ),
+    "collections_get_request_model": collections_get_request_model,
     "search_get_request_model": create_get_request_model(search_extensions),
     "search_post_request_model": post_request_model,
     "items_get_request_model": items_get_request_model,

@@ -7,10 +7,10 @@ from ..conftest import create_collection, refresh_indices
 
 
 @pytest.mark.asyncio
-async def test_collections_sort_id_asc(app_client, txn_client, load_test_data):
+async def test_collections_sort_id_asc(app_client, txn_client, ctx):
     """Verify GET /collections honors ascending sort on id."""
     # Create multiple collections with different ids
-    base_collection = load_test_data("test_collection.json")
+    base_collection = ctx.collection
 
     # Create collections with ids in a specific order to test sorting
     # Use unique prefixes to avoid conflicts between tests
@@ -22,6 +22,8 @@ async def test_collections_sort_id_asc(app_client, txn_client, load_test_data):
         test_collection["id"] = coll_id
         test_collection["title"] = f"Test Collection {i}"
         await create_collection(txn_client, test_collection)
+
+    await refresh_indices(txn_client)
 
     # Test ascending sort by id
     resp = await app_client.get(
@@ -44,10 +46,10 @@ async def test_collections_sort_id_asc(app_client, txn_client, load_test_data):
 
 
 @pytest.mark.asyncio
-async def test_collections_sort_id_desc(app_client, txn_client, load_test_data):
+async def test_collections_sort_id_desc(app_client, txn_client, ctx):
     """Verify GET /collections honors descending sort on id."""
     # Create multiple collections with different ids
-    base_collection = load_test_data("test_collection.json")
+    base_collection = ctx.collection
 
     # Create collections with ids in a specific order to test sorting
     # Use unique prefixes to avoid conflicts between tests
@@ -59,6 +61,8 @@ async def test_collections_sort_id_desc(app_client, txn_client, load_test_data):
         test_collection["id"] = coll_id
         test_collection["title"] = f"Test Collection {i}"
         await create_collection(txn_client, test_collection)
+
+    await refresh_indices(txn_client)
 
     # Test descending sort by id
     resp = await app_client.get(
@@ -81,10 +85,10 @@ async def test_collections_sort_id_desc(app_client, txn_client, load_test_data):
 
 
 @pytest.mark.asyncio
-async def test_collections_fields(app_client, txn_client, load_test_data):
+async def test_collections_fields(app_client, txn_client, ctx):
     """Verify GET /collections honors the fields parameter."""
     # Create multiple collections with different ids
-    base_collection = load_test_data("test_collection.json")
+    base_collection = ctx.collection
 
     # Create collections with ids in a specific order to test fields
     # Use unique prefixes to avoid conflicts between tests
@@ -97,6 +101,8 @@ async def test_collections_fields(app_client, txn_client, load_test_data):
         test_collection["title"] = f"Test Collection {i}"
         test_collection["description"] = f"Description for collection {i}"
         await create_collection(txn_client, test_collection)
+
+    await refresh_indices(txn_client)
 
     # Test include fields parameter
     resp = await app_client.get(
@@ -156,10 +162,10 @@ async def test_collections_fields(app_client, txn_client, load_test_data):
 
 
 @pytest.mark.asyncio
-async def test_collections_free_text_search_get(app_client, txn_client, load_test_data):
+async def test_collections_free_text_search_get(app_client, txn_client, ctx):
     """Verify GET /collections honors the q parameter for free text search."""
     # Create multiple collections with different content
-    base_collection = load_test_data("test_collection.json")
+    base_collection = ctx.collection
 
     # Use unique prefixes to avoid conflicts between tests
     test_prefix = f"q-get-{uuid.uuid4().hex[:8]}"
@@ -192,6 +198,8 @@ async def test_collections_free_text_search_get(app_client, txn_client, load_tes
         test_collection["description"] = coll["description"]
         test_collection["summaries"] = coll["summaries"]
         await create_collection(txn_client, test_collection)
+
+    await refresh_indices(txn_client)
 
     # Test free text search for "sentinel"
     resp = await app_client.get(
@@ -229,10 +237,10 @@ async def test_collections_free_text_search_get(app_client, txn_client, load_tes
 
 
 @pytest.mark.asyncio
-async def test_collections_filter_search(app_client, txn_client, load_test_data):
+async def test_collections_filter_search(app_client, txn_client, ctx):
     """Verify GET /collections honors the filter parameter for structured search."""
     # Create multiple collections with different content
-    base_collection = load_test_data("test_collection.json")
+    base_collection = ctx.collection
 
     # Use unique prefixes to avoid conflicts between tests
     test_prefix = f"filter-{uuid.uuid4().hex[:8]}"
@@ -316,6 +324,121 @@ async def test_collections_filter_search(app_client, txn_client, load_test_data)
 
 
 @pytest.mark.asyncio
+async def test_collections_query_extension(app_client, txn_client, ctx):
+    """Verify GET /collections honors the query extension."""
+    # Create multiple collections with different content
+    base_collection = ctx.collection
+    # Use unique prefixes to avoid conflicts between tests
+    test_prefix = f"query-ext-{uuid.uuid4().hex[:8]}"
+
+    # Create collections with different content to test query extension
+    test_collections = [
+        {
+            "id": f"{test_prefix}-sentinel",
+            "title": "Sentinel-2 Collection",
+            "description": "Collection of Sentinel-2 data",
+            "summaries": {"platform": ["sentinel-2a", "sentinel-2b"]},
+        },
+        {
+            "id": f"{test_prefix}-landsat",
+            "title": "Landsat Collection",
+            "description": "Collection of Landsat data",
+            "summaries": {"platform": ["landsat-8", "landsat-9"]},
+        },
+        {
+            "id": f"{test_prefix}-modis",
+            "title": "MODIS Collection",
+            "description": "Collection of MODIS data",
+            "summaries": {"platform": ["terra", "aqua"]},
+        },
+    ]
+
+    for i, coll in enumerate(test_collections):
+        test_collection = base_collection.copy()
+        test_collection["id"] = coll["id"]
+        test_collection["title"] = coll["title"]
+        test_collection["description"] = coll["description"]
+        test_collection["summaries"] = coll["summaries"]
+        await create_collection(txn_client, test_collection)
+
+    await refresh_indices(txn_client)
+
+    # Use the exact ID that was created
+    sentinel_id = f"{test_prefix}-sentinel"
+
+    query = {"id": {"eq": sentinel_id}}
+
+    resp = await app_client.get(
+        "/collections",
+        params=[("query", json.dumps(query))],
+    )
+    assert resp.status_code == 200
+    resp_json = resp.json()
+
+    # Filter collections to only include the ones we created for this test
+    found_collections = [
+        c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
+    ]
+
+    # Should only find the sentinel collection
+    assert len(found_collections) == 1
+    assert found_collections[0]["id"] == f"{test_prefix}-sentinel"
+
+    # Test query extension with equal operator on ID
+    query = {"id": {"eq": f"{test_prefix}-sentinel"}}
+
+    resp = await app_client.get(
+        "/collections",
+        params=[("query", json.dumps(query))],
+    )
+    assert resp.status_code == 200
+    resp_json = resp.json()
+
+    # Filter collections to only include the ones we created for this test
+    found_collections = [
+        c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
+    ]
+    found_ids = [c["id"] for c in found_collections]
+
+    # Should find landsat and modis collections but not sentinel
+    assert len(found_collections) == 1
+    assert f"{test_prefix}-sentinel" in found_ids
+    assert f"{test_prefix}-landsat" not in found_ids
+    assert f"{test_prefix}-modis" not in found_ids
+
+    # Test query extension with not-equal operator on ID
+    query = {"id": {"neq": f"{test_prefix}-sentinel"}}
+
+    print(f"\nTesting neq query: {query}")
+    print(f"JSON query: {json.dumps(query)}")
+
+    resp = await app_client.get(
+        "/collections",
+        params=[("query", json.dumps(query))],
+    )
+    print(f"Response status: {resp.status_code}")
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    print(f"Response JSON keys: {resp_json.keys()}")
+    print(f"Number of collections in response: {len(resp_json.get('collections', []))}")
+
+    # Print all collection IDs in the response
+    all_ids = [c["id"] for c in resp_json.get("collections", [])]
+    print(f"All collection IDs in response: {all_ids}")
+
+    # Filter collections to only include the ones we created for this test
+    found_collections = [
+        c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
+    ]
+    found_ids = [c["id"] for c in found_collections]
+
+    # Should find landsat and modis collections but not sentinel
+    assert len(found_collections) == 2
+    assert f"{test_prefix}-sentinel" not in found_ids
+    assert f"{test_prefix}-landsat" in found_ids
+    assert f"{test_prefix}-modis" in found_ids
+
+
 async def test_collections_datetime_filter(app_client, load_test_data, txn_client):
     """Test filtering collections by datetime."""
     # Create a test collection with a specific temporal extent

@@ -161,9 +161,10 @@ class DatabaseLogic(BaseDatabaseLogic):
         sort: Optional[List[Dict[str, Any]]] = None,
         q: Optional[List[str]] = None,
         filter: Optional[Dict[str, Any]] = None,
+        query: Optional[Dict[str, Dict[str, Any]]] = None,
         datetime: Optional[str] = None,
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
-        """Retrieve a list of collections from Opensearch, supporting pagination.
+        """Retrieve a list of collections from OpenSearch, supporting pagination.
 
         Args:
             token (Optional[str]): The pagination token.
@@ -171,7 +172,8 @@ class DatabaseLogic(BaseDatabaseLogic):
             request (Request): The FastAPI request object.
             sort (Optional[List[Dict[str, Any]]]): Optional sort parameter from the request.
             q (Optional[List[str]]): Free text search terms.
-            filter (Optional[Dict[str, Any]]): Structured query in CQL2 format.
+            filter (Optional[Dict[str, Any]]): Structured filter in CQL2 format.
+            query (Optional[Dict[str, Dict[str, Any]]]): Query extension parameters.
             datetime (Optional[str]): Temporal filter.
 
         Returns:
@@ -195,7 +197,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                         raise HTTPException(
                             status_code=400,
                             detail=f"Field '{field}' is not sortable. Sortable fields are: {', '.join(sortable_fields)}. "
-                            + "Text fields are not sortable by default in Opensearch. "
+                            + "Text fields are not sortable by default in OpenSearch. "
                             + "To make a field sortable, update the mapping to use 'keyword' type or add a '.keyword' subfield. ",
                         )
                     formatted_sort.append({field: {"order": direction}})
@@ -252,9 +254,36 @@ class DatabaseLogic(BaseDatabaseLogic):
             # Convert string filter to dict if needed
             if isinstance(filter, str):
                 filter = orjson.loads(filter)
-            # Convert the filter to an Opensearch query using the filter module
+            # Convert the filter to an OpenSearch query using the filter module
             es_query = filter_module.to_es(await self.get_queryables_mapping(), filter)
             query_parts.append(es_query)
+
+        # Apply query extension if provided
+        if query:
+            try:
+                # First create a search object to apply filters
+                search = Search(index=COLLECTIONS_INDEX)
+
+                # Process each field and operator in the query
+                for field_name, expr in query.items():
+                    for op, value in expr.items():
+                        # For collections, we don't need to prefix with 'properties__'
+                        field = field_name
+                        # Apply the filter using apply_stacql_filter
+                        search = self.apply_stacql_filter(
+                            search=search, op=op, field=field, value=value
+                        )
+
+                # Convert the search object to a query dict and add it to query_parts
+                search_dict = search.to_dict()
+                if "query" in search_dict:
+                    query_parts.append(search_dict["query"])
+            except Exception as e:
+                logger = logging.getLogger(__name__)
+                logger.error(f"Error converting query to OpenSearch: {e}")
+                # If there's an error, add a query that matches nothing
+                query_parts.append({"bool": {"must_not": {"match_all": {}}}})
+                raise
 
         datetime_filter = None
         if datetime:
@@ -607,18 +636,31 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         Args:
             search (Search): The search object to apply the filter to.
-            op (str): The comparison operator to use. Can be 'eq' (equal), 'gt' (greater than), 'gte' (greater than or equal),
-                'lt' (less than), or 'lte' (less than or equal).
+            op (str): The comparison operator to use. Can be 'eq' (equal), 'ne'/'neq' (not equal), 'gt' (greater than),
+                'gte' (greater than or equal), 'lt' (less than), or 'lte' (less than or equal).
             field (str): The field to perform the comparison on.
             value (float): The value to compare the field against.
 
         Returns:
             search (Search): The search object with the specified filter applied.
         """
-        if op != "eq":
-            key_filter = {field: {f"{op}": value}}
+        if op == "eq":
+            search = search.filter("term", **{field: value})
+        elif op == "ne" or op == "neq":
+            # For not equal, use a bool query with must_not
+            search = search.exclude("term", **{field: value})
+        elif op in ["gt", "gte", "lt", "lte"]:
+            # For range operators
+            key_filter = {field: {op: value}}
             search = search.filter(Q("range", **key_filter))
-        else:
+        elif op == "in":
+            # For in operator (value should be a list)
+            if isinstance(value, list):
+                search = search.filter("terms", **{field: value})
+            else:
+                search = search.filter("term", **{field: value})
+        elif op == "contains":
+            # For contains operator (for arrays)
             search = search.filter("term", **{field: value})
 
         return search
