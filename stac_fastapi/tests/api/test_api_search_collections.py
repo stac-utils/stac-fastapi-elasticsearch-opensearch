@@ -437,7 +437,7 @@ async def test_collections_query_extension(app_client, txn_client, ctx):
     assert f"{test_prefix}-sentinel" not in found_ids
     assert f"{test_prefix}-landsat" in found_ids
     assert f"{test_prefix}-modis" in found_ids
-    
+
 
 async def test_collections_datetime_filter(app_client, load_test_data, txn_client):
     """Test filtering collections by datetime."""
