@@ -238,8 +238,8 @@ class CoreClient(AsyncBaseCoreClient):
         Args:
             fields (Optional[List[str]]): Fields to include or exclude from the results.
             sortby (Optional[str]): Sorting options for the results.
-            filter_expr (Optional[str]): Structured filter expression in CQL2 JSON format.
-            filter_lang (Optional[str]): Must be 'cql2-json' if specified, other values will result in an error.
+            filter_expr (Optional[str]): Structured filter expression in CQL2 JSON or CQL2-text format.
+            filter_lang (Optional[str]): Must be 'cql2-json' or 'cql2-text' if specified, other values will result in an error.
             q (Optional[Union[str, List[str]]]): Free text search terms.
             **kwargs: Keyword arguments from the request.
 
