@@ -307,6 +307,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                         elif op == "contains":
                             # Contains operator for arrays
                             query_parts.append({"term": {field_name: value}})
+
             except Exception as e:
                 logger = logging.getLogger(__name__)
                 logger.error(f"Error converting query to Elasticsearch: {e}")

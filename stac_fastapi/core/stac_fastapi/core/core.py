@@ -286,8 +286,6 @@ class CoreClient(AsyncBaseCoreClient):
         parsed_query = None
         if query is not None:
             try:
-                import orjson
-
                 parsed_query = orjson.loads(query)
             except Exception as e:
                 raise HTTPException(
@@ -299,7 +297,6 @@ class CoreClient(AsyncBaseCoreClient):
         if filter_expr is not None:
             try:
                 # Only raise an error for explicitly unsupported filter languages
-                # Allow None, cql2-json, and cql2-text (we'll treat it as JSON)
                 if filter_lang is not None and filter_lang not in [
                     "cql2-json",
                     "cql2-text",
