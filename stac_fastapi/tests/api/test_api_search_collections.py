@@ -316,28 +316,18 @@ async def test_collections_filter_search(app_client, txn_client, load_test_data)
 
 
 @pytest.mark.asyncio
-async def test_collections_datetime_filter(app_client, load_test_data):
+async def test_collections_datetime_filter(app_client, load_test_data, txn_client):
     """Test filtering collections by datetime."""
     # Create a test collection with a specific temporal extent
-    test_collection_id = "test-collection-datetime"
-    test_collection = {
-        "id": test_collection_id,
-        "type": "Collection",
-        "stac_version": "1.0.0",
-        "description": "Test collection for datetime filtering",
-        "links": [],
-        "extent": {
-            "spatial": {"bbox": [[-180, -90, 180, 90]]},
-            "temporal": {
-                "interval": [["2020-01-01T00:00:00Z", "2020-12-31T23:59:59Z"]]
-            },
-        },
-        "license": "proprietary",
-    }
 
-    # Create the test collection
-    resp = await app_client.post("/collections", json=test_collection)
-    assert resp.status_code == 201
+    base_collection = load_test_data("test_collection.json")
+    base_collection["extent"]["temporal"]["interval"] = [
+        ["2020-01-01T00:00:00Z", "2020-12-31T23:59:59Z"]
+    ]
+    test_collection_id = base_collection["id"]
+
+    await create_collection(txn_client, base_collection)
+    await refresh_indices(txn_client)
 
     # Test 1: Datetime range that overlaps with collection's temporal extent
     resp = await app_client.get(
@@ -413,7 +403,3 @@ async def test_collections_datetime_filter(app_client, load_test_data):
     found_collections = [c for c in resp_json["collections"] if c["id"] == test_collection_id]
     assert len(found_collections) == 1, f"Expected to find collection {test_collection_id} with open-ended past range to a date within its range"
     """
-
-    # Clean up - delete the test collection
-    resp = await app_client.delete(f"/collections/{test_collection_id}")
-    assert resp.status_code == 204

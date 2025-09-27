@@ -138,11 +138,19 @@ SFEOS implements extended capabilities for the `/collections` endpoint, allowing
   - Supports both CQL2 JSON and CQL2 text formats with various operators
   - Enables precise filtering on any collection property
 
-> **Note on HTTP Methods**: All collection search extensions (sorting, field selection, free text search, and structured filtering) currently only support GET requests. POST requests with these parameters in the request body are not yet supported.
+- **Datetime Filtering**: Filter collections by their temporal extent using the `datetime` parameter
+  - Example: `/collections?datetime=2020-01-01T00:00:00Z/2020-12-31T23:59:59Z` (finds collections with temporal extents that overlap this range)
+  - Example: `/collections?datetime=2020-06-15T12:00:00Z` (finds collections whose temporal extent includes this specific time)
+  - Example: `/collections?datetime=2020-01-01T00:00:00Z/..` (finds collections with temporal extents that extend to or beyond January 1, 2020)
+  - Example: `/collections?datetime=../2020-12-31T23:59:59Z` (finds collections with temporal extents that begin on or before December 31, 2020)
+  - Collections are matched if their temporal extent overlaps with the provided datetime parameter
+  - This allows for efficient discovery of collections based on time periods
+
+> **Note on HTTP Methods**: All collection search extensions (sorting, field selection, free text search, structured filtering, and datetime filtering) currently only support GET requests. POST requests with these parameters in the request body are not yet supported.
 
 These extensions make it easier to build user interfaces that display and navigate through collections efficiently.
 
-> **Configuration**: Collection search extensions (sorting, field selection, free text search, and structured filtering) can be disabled by setting the `ENABLE_COLLECTIONS_SEARCH` environment variable to `false`. By default, these extensions are enabled.
+> **Configuration**: Collection search extensions (sorting, field selection, free text search, structured filtering, and datetime filtering) can be disabled by setting the `ENABLE_COLLECTIONS_SEARCH` environment variable to `false`. By default, these extensions are enabled.
 
 > **Note**: Sorting is only available on fields that are indexed for sorting in Elasticsearch/OpenSearch. With the default mappings, you can sort on:
 > - `id` (keyword field)
@@ -283,12 +291,12 @@ You can customize additional settings in your `.env` file:
 | `ENABLE_DIRECT_RESPONSE`     | Enable direct response for maximum performance (disables all FastAPI dependencies, including authentication, custom status codes, and validation) | `false`                  | Optional                       |
 | `RAISE_ON_BULK_ERROR`        | Controls whether bulk insert operations raise exceptions on errors. If set to `true`, the operation will stop and raise an exception when an error occurs. If set to `false`, errors will be logged, and the operation will continue. **Note:** STAC Item and ItemCollection validation errors will always raise, regardless of this flag. | `false` | Optional |
 | `DATABASE_REFRESH`           | Controls whether database operations refresh the index immediately after changes. If set to `true`, changes will be immediately searchable. If set to `false`, changes may not be immediately visible but can improve performance for bulk operations. If set to `wait_for`, changes will wait for the next refresh cycle to become visible. | `false` | Optional |
-| `ENABLE_COLLECTIONS_SEARCH`  | Enable collection search extensions (sort, fields).                                 | `true`                   | Optional                                                                                    |
+| `ENABLE_COLLECTIONS_SEARCH`  | Enable collection search extensions (sort, fields, free text search, structured filtering, and datetime filtering).                                 | `true`                   | Optional                                                                                    |
 | `ENABLE_TRANSACTIONS_EXTENSIONS` | Enables or disables the Transactions and Bulk Transactions API extensions. If set to `false`, the POST `/collections` route and related transaction endpoints (including bulk transaction operations) will be unavailable in the API. This is useful for deployments where mutating the catalog via the API should be prevented. | `true` | Optional |
 | `STAC_ITEM_LIMIT` | Sets the environment variable for result limiting to SFEOS for the number of returned items and STAC collections. | `10` | Optional |
 | `STAC_INDEX_ASSETS` | Controls if Assets are indexed when added to Elasticsearch/Opensearch. This allows asset fields to be included in search queries. | `false` | Optional |
 | `ENV_MAX_LIMIT` | Configures the environment variable in SFEOS to override the default `MAX_LIMIT`, which controls the limit parameter for returned items and STAC collections. | `10,000` | Optional |
-| `USE_DATETIME` | Configures the datetime search behavior in SFEOS. When enabled, searches both datetime field and falls back to start_datetime/end_datetime range for items with null datetime. When disabled, searches only by start_datetime/end_datetime range. | True | Optional |
+| `USE_DATETIME` | Configures the datetime search behavior in SFEOS. When enabled, searches both datetime field and falls back to start_datetime/end_datetime range for items with null datetime. When disabled, searches only by start_datetime/end_datetime range. This applies to both item searches and collection searches. | `true` | Optional |
 
 > [!NOTE]
 > The variables `ES_HOST`, `ES_PORT`, `ES_USE_SSL`, `ES_VERIFY_CERTS` and `ES_TIMEOUT` apply to both Elasticsearch and OpenSearch backends, so there is no need to rename the key names to `OS_` even if you're using OpenSearch.

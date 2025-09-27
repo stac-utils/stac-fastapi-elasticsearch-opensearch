@@ -188,6 +188,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             sort (Optional[List[Dict[str, Any]]]): Optional sort parameter from the request.
             q (Optional[List[str]]): Free text search terms.
             filter (Optional[Dict[str, Any]]): Structured query in CQL2 format.
+            datetime (Optional[str]): Temporal filter.
 
         Returns:
             A tuple of (collections, next pagination token if any).
@@ -271,15 +272,11 @@ class DatabaseLogic(BaseDatabaseLogic):
             es_query = filter_module.to_es(await self.get_queryables_mapping(), filter)
             query_parts.append(es_query)
 
-        print("datetime: ", datetime)
-        print("type datetime, ", type(datetime))
         datetime_filter = None
         if datetime:
             datetime_filter = self._apply_collection_datetime_filter(datetime)
             if datetime_filter:
                 query_parts.append(datetime_filter)
-
-        print("datetime filter: ", datetime_filter)
 
         # Combine all query parts with AND logic
         if query_parts:
@@ -333,18 +330,6 @@ class DatabaseLogic(BaseDatabaseLogic):
             # If it's just a single date, use it for both start and end
             start = end = datetime_str
 
-        # For a collection with temporal extent [start_date, end_date],
-        # a datetime query should match if the datetime falls within the range.
-        # For a date range query, it should match if the ranges overlap.
-
-        # For collections, we need a different approach because the temporal extent
-        # is stored as an array of dates, not as a range field.
-        # We need to check if:
-        # 1. The collection's start date is before or equal to the query end date
-        # 2. The collection's end date is after or equal to the query start date
-
-        # This is a bit tricky with Elasticsearch's flattened arrays, but we can use
-        # a bool query to check both conditions
         return {
             "bool": {
                 "must": [
