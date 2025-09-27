@@ -44,25 +44,6 @@ async def test_collections_sort_id_asc(app_client, txn_client, ctx):
     for i, expected_id in enumerate(sorted_ids):
         assert test_collections[i]["id"] == expected_id
 
-    # Test descending sort by id
-    resp = await app_client.get(
-        "/collections",
-        params=[("sortby", "-id")],
-    )
-    assert resp.status_code == 200
-    resp_json = resp.json()
-
-    # Filter collections to only include the ones we created for this test
-    test_collections = [
-        c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
-    ]
-
-    # Collections should be sorted in reverse alphabetical order by id
-    sorted_ids = sorted(collection_ids, reverse=True)
-    assert len(test_collections) == len(collection_ids)
-    for i, expected_id in enumerate(sorted_ids):
-        assert test_collections[i]["id"] == expected_id
-
 
 @pytest.mark.asyncio
 async def test_collections_sort_id_desc(app_client, txn_client, ctx):
@@ -382,12 +363,8 @@ async def test_collections_query_extension(app_client, txn_client, ctx):
 
     await refresh_indices(txn_client)
 
-    # Test query extension for exact ID match
-    import json
-
     # Use the exact ID that was created
     sentinel_id = f"{test_prefix}-sentinel"
-    print(f"Searching for ID: {sentinel_id}")
 
     query = {"id": {"eq": sentinel_id}}
 
