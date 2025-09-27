@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- support of disabled nested attributes in the properties dictionary. [#474](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/474)
 
 ## [v6.4.0] - 2025-09-24
 
