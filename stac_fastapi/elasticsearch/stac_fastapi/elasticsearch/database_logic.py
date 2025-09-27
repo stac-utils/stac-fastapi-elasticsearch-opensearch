@@ -275,38 +275,23 @@ class DatabaseLogic(BaseDatabaseLogic):
         # Apply query extension if provided
         if query:
             try:
+                # First create a search object to apply filters
+                search = Search(index=COLLECTIONS_INDEX)
+
                 # Process each field and operator in the query
                 for field_name, expr in query.items():
                     for op, value in expr.items():
-                        # Handle different operators
-                        if op == "eq":
-                            # Equality operator
-                            # Use different query types based on field name
-                            if field_name in ["title", "description"]:
-                                # For text fields, use match_phrase for exact phrase matching
-                                query_part = {"match_phrase": {field_name: value}}
-                            else:
-                                # For other fields, use term query for exact matching
-                                query_part = {"term": {field_name: value}}
-                            query_parts.append(query_part)
-                        elif op == "neq":
-                            # Not equal operator
-                            query_part = {
-                                "bool": {"must_not": [{"term": {field_name: value}}]}
-                            }
-                            query_parts.append(query_part)
-                        elif op in ["lt", "lte", "gt", "gte"]:
-                            # Range operators
-                            query_parts.append({"range": {field_name: {op: value}}})
-                        elif op == "in":
-                            # In operator (value should be a list)
-                            if isinstance(value, list):
-                                query_parts.append({"terms": {field_name: value}})
-                            else:
-                                query_parts.append({"term": {field_name: value}})
-                        elif op == "contains":
-                            # Contains operator for arrays
-                            query_parts.append({"term": {field_name: value}})
+                        # For collections, we don't need to prefix with 'properties__'
+                        field = field_name
+                        # Apply the filter using apply_stacql_filter
+                        search = self.apply_stacql_filter(
+                            search=search, op=op, field=field, value=value
+                        )
+
+                # Convert the search object to a query dict and add it to query_parts
+                search_dict = search.to_dict()
+                if "query" in search_dict:
+                    query_parts.append(search_dict["query"])
 
             except Exception as e:
                 logger = logging.getLogger(__name__)
@@ -607,18 +592,31 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         Args:
             search (Search): The search object to apply the filter to.
-            op (str): The comparison operator to use. Can be 'eq' (equal), 'gt' (greater than), 'gte' (greater than or equal),
-                'lt' (less than), or 'lte' (less than or equal).
+            op (str): The comparison operator to use. Can be 'eq' (equal), 'ne'/'neq' (not equal), 'gt' (greater than),
+                'gte' (greater than or equal), 'lt' (less than), or 'lte' (less than or equal).
             field (str): The field to perform the comparison on.
             value (float): The value to compare the field against.
 
         Returns:
             search (Search): The search object with the specified filter applied.
         """
-        if op != "eq":
+        if op == "eq":
+            search = search.filter("term", **{field: value})
+        elif op == "ne" or op == "neq":
+            # For not equal, use a bool query with must_not
+            search = search.exclude("term", **{field: value})
+        elif op in ["gt", "gte", "lt", "lte"]:
+            # For range operators
             key_filter = {field: {op: value}}
             search = search.filter(Q("range", **key_filter))
-        else:
+        elif op == "in":
+            # For in operator (value should be a list)
+            if isinstance(value, list):
+                search = search.filter("terms", **{field: value})
+            else:
+                search = search.filter("term", **{field: value})
+        elif op == "contains":
+            # For contains operator (for arrays)
             search = search.filter("term", **{field: value})
 
         return search
