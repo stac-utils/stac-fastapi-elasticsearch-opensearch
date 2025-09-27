@@ -226,6 +226,7 @@ class CoreClient(AsyncBaseCoreClient):
 
     async def all_collections(
         self,
+        datetime: Optional[str] = None,
         fields: Optional[List[str]] = None,
         sortby: Optional[str] = None,
         filter_expr: Optional[str] = None,
@@ -236,6 +237,7 @@ class CoreClient(AsyncBaseCoreClient):
         """Read all collections from the database.
 
         Args:
+            datetime (Optional[str]): Filter collections by datetime range.
             fields (Optional[List[str]]): Fields to include or exclude from the results.
             sortby (Optional[str]): Sorting options for the results.
             filter_expr (Optional[str]): Structured filter expression in CQL2 JSON or CQL2-text format.
@@ -328,6 +330,10 @@ class CoreClient(AsyncBaseCoreClient):
                     status_code=400, detail=f"Invalid filter parameter: {e}"
                 )
 
+        parsed_datetime = None
+        if datetime:
+            parsed_datetime = format_datetime_range(date_str=datetime)
+
         collections, next_token = await self.database.get_all_collections(
             token=token,
             limit=limit,
@@ -335,6 +341,7 @@ class CoreClient(AsyncBaseCoreClient):
             sort=sort,
             q=q_list,
             filter=parsed_filter,
+            datetime=parsed_datetime,
         )
 
         # Apply field filtering if fields parameter was provided

@@ -161,7 +161,10 @@ ES_COLLECTIONS_MAPPINGS = {
     "properties": {
         "id": {"type": "keyword"},
         "extent.spatial.bbox": {"type": "long"},
-        "extent.temporal.interval": {"type": "date"},
+        "extent.temporal.interval": {
+            "type": "date",
+            "format": "strict_date_optional_time||epoch_millis",
+        },
         "providers": {"type": "object", "enabled": False},
         "links": {"type": "object", "enabled": False},
         "item_assets": {"type": "object", "enabled": get_bool_env("STAC_INDEX_ASSETS")},

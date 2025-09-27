@@ -177,6 +177,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         sort: Optional[List[Dict[str, Any]]] = None,
         q: Optional[List[str]] = None,
         filter: Optional[Dict[str, Any]] = None,
+        datetime: Optional[str] = None,
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
         """Retrieve a list of collections from Elasticsearch, supporting pagination.
 
@@ -270,6 +271,16 @@ class DatabaseLogic(BaseDatabaseLogic):
             es_query = filter_module.to_es(await self.get_queryables_mapping(), filter)
             query_parts.append(es_query)
 
+        print("datetime: ", datetime)
+        print("type datetime, ", type(datetime))
+        datetime_filter = None
+        if datetime:
+            datetime_filter = self._apply_collection_datetime_filter(datetime)
+            if datetime_filter:
+                query_parts.append(datetime_filter)
+
+        print("datetime filter: ", datetime_filter)
+
         # Combine all query parts with AND logic
         if query_parts:
             body["query"] = (
@@ -299,6 +310,53 @@ class DatabaseLogic(BaseDatabaseLogic):
                 next_token = next_token_values[0]
 
         return collections, next_token
+
+    @staticmethod
+    def _apply_collection_datetime_filter(
+        datetime_str: Optional[str],
+    ) -> Optional[Dict[str, Any]]:
+        """Create a temporal filter for collections based on their extent."""
+        if not datetime_str:
+            return None
+
+        # Parse the datetime string into start and end
+        if "/" in datetime_str:
+            start, end = datetime_str.split("/")
+            # Replace open-ended ranges with concrete dates
+            if start == "..":
+                # For open-ended start, use a very early date
+                start = "1800-01-01T00:00:00Z"
+            if end == "..":
+                # For open-ended end, use a far future date
+                end = "2999-12-31T23:59:59Z"
+        else:
+            # If it's just a single date, use it for both start and end
+            start = end = datetime_str
+
+        # For a collection with temporal extent [start_date, end_date],
+        # a datetime query should match if the datetime falls within the range.
+        # For a date range query, it should match if the ranges overlap.
+
+        # For collections, we need a different approach because the temporal extent
+        # is stored as an array of dates, not as a range field.
+        # We need to check if:
+        # 1. The collection's start date is before or equal to the query end date
+        # 2. The collection's end date is after or equal to the query start date
+
+        # This is a bit tricky with Elasticsearch's flattened arrays, but we can use
+        # a bool query to check both conditions
+        return {
+            "bool": {
+                "must": [
+                    # Check if any date in the array is less than or equal to the query end date
+                    # This will match if the collection's start date is before or equal to the query end date
+                    {"range": {"extent.temporal.interval": {"lte": end}}},
+                    # Check if any date in the array is greater than or equal to the query start date
+                    # This will match if the collection's end date is after or equal to the query start date
+                    {"range": {"extent.temporal.interval": {"gte": start}}},
+                ]
+            }
+        }
 
     async def get_one_item(self, collection_id: str, item_id: str) -> Dict:
         """Retrieve a single item from the database.
