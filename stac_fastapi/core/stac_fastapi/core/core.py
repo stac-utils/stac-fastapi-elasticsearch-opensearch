@@ -255,7 +255,7 @@ class CoreClient(AsyncBaseCoreClient):
 
         # Process fields parameter for filtering collection properties
         includes, excludes = set(), set()
-        if fields and self.extension_is_enabled("FieldsExtension"):
+        if fields:
             for field in fields:
                 if field[0] == "-":
                     excludes.add(field[1:])
@@ -351,7 +351,7 @@ class CoreClient(AsyncBaseCoreClient):
         )
 
         # Apply field filtering if fields parameter was provided
-        if fields and self.extension_is_enabled("FieldsExtension"):
+        if fields:
             filtered_collections = [
                 filter_fields(collection, includes, excludes)
                 for collection in collections
@@ -691,11 +691,7 @@ class CoreClient(AsyncBaseCoreClient):
             datetime_search=datetime_search,
         )
 
-        fields = (
-            getattr(search_request, "fields", None)
-            if self.extension_is_enabled("FieldsExtension")
-            else None
-        )
+        fields = getattr(search_request, "fields", None)
         include: Set[str] = fields.include if fields and fields.include else set()
         exclude: Set[str] = fields.exclude if fields and fields.exclude else set()
 
