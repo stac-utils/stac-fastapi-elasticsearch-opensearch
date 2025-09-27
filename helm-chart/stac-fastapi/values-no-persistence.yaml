@@ -1,0 +1,128 @@
+# No-persistence values for STAC FastAPI
+# This configuration completely disables persistent storage
+# Data will be lost when pods restart - USE ONLY FOR TESTING
+
+# Set backend to elasticsearch by default
+backend: elasticsearch
+
+# STAC FastAPI application configuration  
+app:
+  replicaCount: 1
+  
+  image:
+    repository: ghcr.io/stac-utils/stac-fastapi
+    tag: "latest"
+    pullPolicy: IfNotPresent
+
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 8080
+
+  ingress:
+    enabled: false
+
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "512Mi"
+    limits:
+      cpu: "500m"
+      memory: "1Gi"
+
+  autoscaling:
+    enabled: false
+
+  env:
+    STAC_FASTAPI_TITLE: "Test STAC API (No Persistence)"
+    STAC_FASTAPI_DESCRIPTION: "STAC API for testing - data not persisted"
+    ENVIRONMENT: "test"
+    WEB_CONCURRENCY: "2"
+    RELOAD: "true"
+    DATABASE_REFRESH: "true"
+    ENABLE_TRANSACTIONS_EXTENSIONS: "true"
+    ENABLE_DIRECT_RESPONSE: "false"
+    STAC_FASTAPI_RATE_LIMIT: "1000/minute"
+
+# Elasticsearch with NO persistent storage
+elasticsearch:
+  enabled: true
+  
+  clusterName: "stac-elasticsearch-test"
+  replicas: 1
+  minimumMasterNodes: 1
+  
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "1Gi"
+    limits:
+      cpu: "1000m"
+      memory: "2Gi"
+  
+  esJavaOpts: "-Xmx512m -Xms512m"
+  
+  esConfig:
+    elasticsearch.yml: |
+      cluster.name: "stac-elasticsearch-test"
+      network.host: 0.0.0.0
+      discovery.type: single-node
+      action.destructive_requires_name: false
+      xpack.security.enabled: false
+      xpack.security.transport.ssl.enabled: false
+      xpack.security.http.ssl.enabled: false
+      cluster.routing.allocation.disk.threshold_enabled: false
+      indices.memory.index_buffer_size: 10%
+  
+  # COMPLETELY DISABLE PERSISTENT STORAGE
+  # The official chart requires volumeClaimTemplate but we can make it very small
+  # and override with emptyDir in extraVolumes
+  volumeClaimTemplate:
+    accessModes: ["ReadWriteOnce"]
+    resources:
+      requests:
+        storage: 1Gi
+    # Use emptyDir storage class to prevent actual PVC creation
+    storageClassName: ""
+  
+  # Override the data volume with emptyDir
+  extraVolumes:
+    - name: elasticsearch-data-override
+      emptyDir:
+        sizeLimit: 2Gi
+  
+  extraVolumeMounts:
+    - name: elasticsearch-data-override
+      mountPath: /usr/share/elasticsearch/data-override
+  
+  # Alternative approach: Use extraInitContainers to symlink data directory
+  extraInitContainers:
+    - name: setup-data-dir
+      image: "busybox:1.35"
+      command:
+        - /bin/sh
+        - -c
+        - |
+          # Remove the PVC mounted directory and create symlink to emptyDir
+          rm -rf /usr/share/elasticsearch/data/*
+          ln -sfn /usr/share/elasticsearch/data-override/* /usr/share/elasticsearch/data/ || true
+      volumeMounts:
+        - name: stac-elasticsearch-master
+          mountPath: /usr/share/elasticsearch/data
+        - name: elasticsearch-data-override
+          mountPath: /usr/share/elasticsearch/data-override
+
+opensearch:
+  enabled: false
+
+externalDatabase:
+  enabled: false
+
+monitoring:
+  enabled: false
+
+podDisruptionBudget:
+  enabled: false
+
+networkPolicy:
+  enabled: false

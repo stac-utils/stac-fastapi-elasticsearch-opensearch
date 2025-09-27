@@ -1,0 +1,28 @@
+{{- if .Values.app.autoscaling.enabled }}
+apiVersion: autoscaling/v2beta1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "stac-fastapi.fullname" . }}
+  labels:
+    {{- include "stac-fastapi.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "stac-fastapi.fullname" . }}
+  minReplicas: {{ .Values.app.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.app.autoscaling.maxReplicas }}
+  metrics:
+    {{- if .Values.app.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        targetAverageUtilization: {{ .Values.app.autoscaling.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- if .Values.app.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        targetAverageUtilization: {{ .Values.app.autoscaling.targetMemoryUtilizationPercentage }}
+    {{- end }}
+{{- end }}

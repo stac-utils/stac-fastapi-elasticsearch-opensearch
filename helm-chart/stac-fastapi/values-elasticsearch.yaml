@@ -1,0 +1,155 @@
+# Example values for deploying STAC FastAPI with Elasticsearch backend
+# Override the default values.yaml with these settings
+
+# Set backend to elasticsearch
+backend: elasticsearch
+
+# STAC FastAPI application configuration
+app:
+  replicaCount: 2
+  
+  image:
+    repository: ghcr.io/stac-utils/stac-fastapi
+    tag: "latest"
+    pullPolicy: IfNotPresent
+
+  # Service configuration
+  service:
+    type: LoadBalancer
+    port: 80
+    targetPort: 8080
+
+  # Ingress configuration
+  ingress:
+    enabled: true
+    className: "nginx"
+    annotations:
+      nginx.ingress.kubernetes.io/rewrite-target: /
+      cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    hosts:
+      - host: stac-api.example.com
+        paths:
+          - path: /
+            pathType: Prefix
+    tls:
+      - secretName: stac-fastapi-tls
+        hosts:
+          - stac-api.example.com
+
+  # Resource limits
+  resources:
+    limits:
+      cpu: 1000m
+      memory: 2Gi
+    requests:
+      cpu: 500m
+      memory: 1Gi
+
+  # Autoscaling
+  autoscaling:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 10
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+
+  # Environment variables
+  env:
+    STAC_FASTAPI_TITLE: "Production STAC API with Elasticsearch"
+    STAC_FASTAPI_DESCRIPTION: "High-performance STAC API for geospatial data discovery"
+    ENVIRONMENT: "production"
+    WEB_CONCURRENCY: "4"
+    ENABLE_DIRECT_RESPONSE: "true"  # Enable for maximum performance
+    DATABASE_REFRESH: "false"  # Better performance for bulk operations
+    ENABLE_DATETIME_INDEX_FILTERING: "true"  # Enable for large datasets
+    DATETIME_INDEX_MAX_SIZE_GB: "50"
+    STAC_FASTAPI_RATE_LIMIT: "1000/minute"
+
+# Elasticsearch configuration
+elasticsearch:
+  enabled: true
+  
+  # Cluster configuration
+  clusterName: "stac-elasticsearch-prod"
+  replicas: 3
+  minimumMasterNodes: 2
+  
+  # Resource configuration for production
+  resources:
+    requests:
+      cpu: "1000m"
+      memory: "4Gi"
+    limits:
+      cpu: "2000m"
+      memory: "4Gi"
+  
+  # JVM heap size (should be 50% of memory limit)
+  esJavaOpts: "-Xmx2g -Xms2g"
+  
+  # Production-ready Elasticsearch configuration
+  esConfig:
+    elasticsearch.yml: |
+      cluster.name: "stac-elasticsearch-prod"
+      network.host: 0.0.0.0
+      discovery.seed_hosts: ["stac-elasticsearch-prod-master-headless"]
+      cluster.initial_master_nodes: ["stac-elasticsearch-prod-master-0", "stac-elasticsearch-prod-master-1", "stac-elasticsearch-prod-master-2"]
+      action.destructive_requires_name: true
+      xpack.security.enabled: false
+      xpack.security.transport.ssl.enabled: false
+      xpack.security.http.ssl.enabled: false
+      indices.memory.index_buffer_size: 20%
+      thread_pool.write.queue_size: 1000
+      thread_pool.search.queue_size: 1000
+  
+  # Persistent storage
+  volumeClaimTemplate:
+    accessModes: ["ReadWriteOnce"]
+    storageClassName: "fast-ssd"  # Use high-performance storage class
+    resources:
+      requests:
+        storage: 100Gi
+
+# Disable OpenSearch since we're using Elasticsearch
+opensearch:
+  enabled: false
+
+# External database disabled since we're using bundled Elasticsearch
+externalDatabase:
+  enabled: false
+
+# Monitoring configuration
+monitoring:
+  enabled: true
+  prometheus:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      interval: 30s
+      scrapeTimeout: 10s
+      labels:
+        monitoring: "prometheus"
+
+# Pod disruption budget for high availability
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1
+
+# Network policies for security
+networkPolicy:
+  enabled: true
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: nginx-ingress
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app: stac-elasticsearch-prod-master
+      ports:
+        - protocol: TCP
+          port: 9200

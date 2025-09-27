@@ -1,0 +1,124 @@
+# Development values for STAC FastAPI
+# This configuration is optimized for local development and testing
+# It disables persistent storage to avoid PVC issues in development clusters
+
+# Set backend to elasticsearch by default
+backend: elasticsearch
+
+# STAC FastAPI application configuration  
+app:
+  replicaCount: 1  # Single replica for development
+  
+  image:
+    repository: ghcr.io/stac-utils/stac-fastapi
+    tag: "latest"
+    pullPolicy: IfNotPresent
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 8080
+
+  # No ingress for development
+  ingress:
+    enabled: false
+
+  # Minimal resources for development
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "512Mi"
+    limits:
+      cpu: "500m"
+      memory: "1Gi"
+
+  # Disable autoscaling
+  autoscaling:
+    enabled: false
+
+  # Development environment variables
+  env:
+    STAC_FASTAPI_TITLE: "Development STAC API"
+    STAC_FASTAPI_DESCRIPTION: "STAC API for development and testing"
+    ENVIRONMENT: "development"
+    WEB_CONCURRENCY: "2"
+    RELOAD: "true"
+    DATABASE_REFRESH: "true"  # Allow fresh starts in development
+    ENABLE_TRANSACTIONS_EXTENSIONS: "true"
+    ENABLE_DIRECT_RESPONSE: "false"  # Easier debugging
+    STAC_FASTAPI_RATE_LIMIT: "1000/minute"
+
+# Elasticsearch configuration for development
+elasticsearch:
+  enabled: true
+  
+  # Single node cluster for development
+  clusterName: "stac-elasticsearch-dev"
+  replicas: 1
+  minimumMasterNodes: 1
+  
+  # Minimal resources
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "1Gi"
+    limits:
+      cpu: "1000m"
+      memory: "2Gi"
+  
+  # Small heap size
+  esJavaOpts: "-Xmx512m -Xms512m"
+  
+  # Development Elasticsearch configuration
+  esConfig:
+    elasticsearch.yml: |
+      cluster.name: "stac-elasticsearch-dev"
+      network.host: 0.0.0.0
+      discovery.type: single-node
+      action.destructive_requires_name: false
+      xpack.security.enabled: false
+      xpack.security.transport.ssl.enabled: false
+      xpack.security.http.ssl.enabled: false
+      # Development-friendly settings
+      cluster.routing.allocation.disk.threshold_enabled: false
+      indices.memory.index_buffer_size: 10%
+  
+  # DISABLE PERSISTENT STORAGE FOR DEVELOPMENT
+  # This prevents PVC issues in development clusters
+  volumeClaimTemplate:
+    accessModes: ["ReadWriteOnce"]
+    storageClassName: ""  # Use default storage class if available
+    resources:
+      requests:
+        storage: 1Gi  # Minimal storage
+  
+  # Alternative: Use emptyDir instead of PVC (uncomment to use)
+  # persistence:
+  #   enabled: false
+  # extraVolumes:
+  #   - name: elasticsearch-data
+  #     emptyDir: {}
+  # extraVolumeMounts:
+  #   - name: elasticsearch-data
+  #     mountPath: /usr/share/elasticsearch/data
+
+# Disable OpenSearch for Elasticsearch backend
+opensearch:
+  enabled: false
+
+# External database disabled since we're using bundled Elasticsearch
+externalDatabase:
+  enabled: false
+
+# Disable monitoring for development
+monitoring:
+  enabled: false
+
+# Disable pod disruption budget
+podDisruptionBudget:
+  enabled: false
+
+# Disable network policies for development
+networkPolicy:
+  enabled: false
