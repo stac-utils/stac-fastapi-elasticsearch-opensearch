@@ -228,6 +228,8 @@ class CoreClient(AsyncBaseCoreClient):
         self,
         fields: Optional[List[str]] = None,
         sortby: Optional[str] = None,
+        filter_expr: Optional[str] = None,
+        filter_lang: Optional[str] = None,
         q: Optional[Union[str, List[str]]] = None,
         **kwargs,
     ) -> stac_types.Collections:
@@ -236,7 +238,9 @@ class CoreClient(AsyncBaseCoreClient):
         Args:
             fields (Optional[List[str]]): Fields to include or exclude from the results.
             sortby (Optional[str]): Sorting options for the results.
-            q (Optional[List[str]]): Free text search terms.
+            filter_expr (Optional[str]): Structured filter expression in CQL2 JSON or CQL2-text format.
+            filter_lang (Optional[str]): Must be 'cql2-json' or 'cql2-text' if specified, other values will result in an error.
+            q (Optional[Union[str, List[str]]]): Free text search terms.
             **kwargs: Keyword arguments from the request.
 
         Returns:
@@ -276,8 +280,61 @@ class CoreClient(AsyncBaseCoreClient):
         if q is not None:
             q_list = [q] if isinstance(q, str) else q
 
+        # Parse the filter parameter if provided
+        parsed_filter = None
+        if filter_expr is not None:
+            try:
+                # Check if filter_lang is specified and not one of the supported formats
+                if filter_lang is not None and filter_lang not in [
+                    "cql2-json",
+                    "cql2-text",
+                ]:
+                    # Raise an error for unsupported filter languages
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Input should be 'cql2-json' or 'cql2-text' for collections. Got '{filter_lang}'.",
+                    )
+
+                # Handle different filter formats
+                try:
+                    if filter_lang == "cql2-text" or filter_lang is None:
+                        # For cql2-text or when no filter_lang is specified, try both formats
+                        try:
+                            # First try to parse as JSON
+                            parsed_filter = orjson.loads(unquote_plus(filter_expr))
+                        except Exception:
+                            # If that fails, use pygeofilter to convert CQL2-text to CQL2-JSON
+                            try:
+                                # Parse CQL2-text and convert to CQL2-JSON
+                                text_filter = unquote_plus(filter_expr)
+                                parsed_ast = parse_cql2_text(text_filter)
+                                parsed_filter = to_cql2(parsed_ast)
+                            except Exception as e:
+                                # If parsing fails, provide a helpful error message
+                                raise HTTPException(
+                                    status_code=400,
+                                    detail=f"Invalid CQL2-text filter: {e}. Please check your syntax.",
+                                )
+                    else:
+                        # For explicit cql2-json, parse as JSON
+                        parsed_filter = orjson.loads(unquote_plus(filter_expr))
+                except Exception as e:
+                    # Catch any other parsing errors
+                    raise HTTPException(
+                        status_code=400, detail=f"Error parsing filter: {e}"
+                    )
+            except Exception as e:
+                raise HTTPException(
+                    status_code=400, detail=f"Invalid filter parameter: {e}"
+                )
+
         collections, next_token = await self.database.get_all_collections(
-            token=token, limit=limit, request=request, sort=sort, q=q_list
+            token=token,
+            limit=limit,
+            request=request,
+            sort=sort,
+            q=q_list,
+            filter=parsed_filter,
         )
 
         # Apply field filtering if fields parameter was provided

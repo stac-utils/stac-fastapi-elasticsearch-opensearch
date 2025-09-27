@@ -176,6 +176,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         request: Request,
         sort: Optional[List[Dict[str, Any]]] = None,
         q: Optional[List[str]] = None,
+        filter: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
         """Retrieve a list of collections from Elasticsearch, supporting pagination.
 
@@ -185,6 +186,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             request (Request): The FastAPI request object.
             sort (Optional[List[Dict[str, Any]]]): Optional sort parameter from the request.
             q (Optional[List[str]]): Free text search terms.
+            filter (Optional[Dict[str, Any]]): Structured query in CQL2 format.
 
         Returns:
             A tuple of (collections, next pagination token if any).
@@ -225,6 +227,9 @@ class DatabaseLogic(BaseDatabaseLogic):
         if token:
             body["search_after"] = [token]
 
+        # Build the query part of the body
+        query_parts = []
+
         # Apply free text query if provided
         if q:
             # For collections, we want to search across all relevant fields
@@ -251,10 +256,27 @@ class DatabaseLogic(BaseDatabaseLogic):
                         }
                     )
 
-            # Add the query to the body using bool query with should clauses
-            body["query"] = {
-                "bool": {"should": should_clauses, "minimum_should_match": 1}
-            }
+            # Add the free text query to the query parts
+            query_parts.append(
+                {"bool": {"should": should_clauses, "minimum_should_match": 1}}
+            )
+
+        # Apply structured filter if provided
+        if filter:
+            # Convert string filter to dict if needed
+            if isinstance(filter, str):
+                filter = orjson.loads(filter)
+            # Convert the filter to an Elasticsearch query using the filter module
+            es_query = filter_module.to_es(await self.get_queryables_mapping(), filter)
+            query_parts.append(es_query)
+
+        # Combine all query parts with AND logic
+        if query_parts:
+            body["query"] = (
+                query_parts[0]
+                if len(query_parts) == 1
+                else {"bool": {"must": query_parts}}
+            )
 
         # Execute the search
         response = await self.client.search(
