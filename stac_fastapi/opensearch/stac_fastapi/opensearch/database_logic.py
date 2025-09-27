@@ -163,7 +163,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         filter: Optional[Dict[str, Any]] = None,
         query: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
-        """Retrieve a list of collections from Elasticsearch, supporting pagination.
+        """Retrieve a list of collections from OpenSearch, supporting pagination.
 
         Args:
             token (Optional[str]): The pagination token.
@@ -195,7 +195,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                         raise HTTPException(
                             status_code=400,
                             detail=f"Field '{field}' is not sortable. Sortable fields are: {', '.join(sortable_fields)}. "
-                            + "Text fields are not sortable by default in Elasticsearch. "
+                            + "Text fields are not sortable by default in OpenSearch. "
                             + "To make a field sortable, update the mapping to use 'keyword' type or add a '.keyword' subfield. ",
                         )
                     formatted_sort.append({field: {"order": direction}})
@@ -252,7 +252,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             # Convert string filter to dict if needed
             if isinstance(filter, str):
                 filter = orjson.loads(filter)
-            # Convert the filter to an Elasticsearch query using the filter module
+            # Convert the filter to an OpenSearch query using the filter module
             es_query = filter_module.to_es(await self.get_queryables_mapping(), filter)
             query_parts.append(es_query)
 
@@ -278,7 +278,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                     query_parts.append(search_dict["query"])
             except Exception as e:
                 logger = logging.getLogger(__name__)
-                logger.error(f"Error converting query to Elasticsearch: {e}")
+                logger.error(f"Error converting query to OpenSearch: {e}")
                 # If there's an error, add a query that matches nothing
                 query_parts.append({"bool": {"must_not": {"match_all": {}}}})
                 raise
