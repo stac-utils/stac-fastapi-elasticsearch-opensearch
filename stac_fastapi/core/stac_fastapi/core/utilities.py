@@ -92,13 +92,7 @@ def filter_fields(  # noqa: C901
     This will not perform a deep copy; values of the original item will be referenced
     in the return item.
     """
-    print("filter_fields called with:")
-    print("  item:", item.keys() if hasattr(item, "keys") else item)
-    print("  include:", include)
-    print("  exclude:", exclude)
-
     if not include and not exclude:
-        print("  No include or exclude, returning original item")
         return item
 
     # Build a shallow copy of included fields on an item, or a sub-tree of an item
