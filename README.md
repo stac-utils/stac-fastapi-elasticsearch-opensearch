@@ -66,13 +66,13 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
 ## Table of Contents
 
 - [stac-fastapi-elasticsearch-opensearch](#stac-fastapi-elasticsearch-opensearch)
-  - [Sponsors \& Supporters](#sponsors--supporters)
+  - [Sponsors & Supporters](#sponsors--supporters)
   - [Project Introduction - What is SFEOS?](#project-introduction---what-is-sfeos)
   - [Common Deployment Patterns](#common-deployment-patterns)
   - [Technologies](#technologies)
   - [Table of Contents](#table-of-contents)
   - [Collection Search Extensions](#collection-search-extensions)
-  - [Documentation \& Resources](#documentation--resources)
+  - [Documentation & Resources](#documentation--resources)
   - [Package Structure](#package-structure)
   - [Examples](#examples)
   - [Performance](#performance)
@@ -115,7 +115,11 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
 
 ## Collection Search Extensions
 
-SFEOS implements extended capabilities for the `/collections` endpoint, allowing for more powerful collection discovery:
+SFEOS provides enhanced collection search capabilities through two primary routes:
+- **GET/POST `/collections`**: The standard STAC endpoint with extended query parameters
+- **GET/POST `/collections-search`**: A custom endpoint that supports the same parameters, created to avoid conflicts with the STAC Transactions extension if enabled (which uses POST `/collections` for collection creation)
+
+These endpoints support advanced collection discovery features including:
 
 - **Sorting**: Sort collections by sortable fields using the `sortby` parameter
   - Example: `/collections?sortby=+id` (ascending sort by ID)
@@ -146,8 +150,6 @@ SFEOS implements extended capabilities for the `/collections` endpoint, allowing
   - Collections are matched if their temporal extent overlaps with the provided datetime parameter
   - This allows for efficient discovery of collections based on time periods
 
-> **Note on HTTP Methods**: All collection search extensions (sorting, field selection, free text search, structured filtering, and datetime filtering) currently only support GET requests. POST requests with these parameters in the request body are not yet supported.
-
 These extensions make it easier to build user interfaces that display and navigate through collections efficiently.
 
 > **Configuration**: Collection search extensions (sorting, field selection, free text search, structured filtering, and datetime filtering) can be disabled by setting the `ENABLE_COLLECTIONS_SEARCH` environment variable to `false`. By default, these extensions are enabled.
@@ -160,6 +162,7 @@ These extensions make it easier to build user interfaces that display and naviga
 > Text fields like `title` and `description` are not sortable by default as they use text analysis for better search capabilities. Attempting to sort on these fields will result in a user-friendly error message explaining which fields are sortable and how to make additional fields sortable by updating the mappings.
 >
 > **Important**: Adding keyword fields to make text fields sortable can significantly increase the index size, especially for large text fields. Consider the storage implications when deciding which fields to make sortable.
+
 
 ## Package Structure
 
@@ -441,7 +444,6 @@ The system uses a precise naming convention:
 - **Feature Configuration**: Control which features are enabled:
   - `ENABLE_COLLECTIONS_SEARCH`: Set to `true` (default) to enable collection search extensions (sort, fields). Set to `false` to disable.
   - `ENABLE_TRANSACTIONS_EXTENSIONS`: Set to `true` (default) to enable transaction extensions. Set to `false` to disable.
-
 
 ## Collection Pagination
 
