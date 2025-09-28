@@ -162,78 +162,58 @@ async def test_collections_fields(app_client, txn_client, ctx):
 
 
 @pytest.mark.asyncio
-async def test_collections_free_text_search_get(app_client, txn_client, ctx):
-    """Verify GET /collections honors the q parameter for free text search."""
-    # Create multiple collections with different content
+async def test_collections_free_text_all_endpoints(app_client, txn_client, ctx):
+    """Test free text search across all collection endpoints."""
+    # Create test data
+    test_prefix = f"free-text-{uuid.uuid4().hex[:8]}"
     base_collection = ctx.collection
+    search_term = "SEARCHABLETERM"
 
-    # Use unique prefixes to avoid conflicts between tests
-    test_prefix = f"q-get-{uuid.uuid4().hex[:8]}"
+    # Create test collections
+    target_collection = base_collection.copy()
+    target_collection["id"] = f"{test_prefix}-target"
+    target_collection["title"] = f"Collection with {search_term} in title"
+    await create_collection(txn_client, target_collection)
 
-    test_collections = [
-        {
-            "id": f"{test_prefix}-sentinel",
-            "title": "Sentinel-2 Collection",
-            "description": "Collection of Sentinel-2 data",
-            "summaries": {"platform": ["sentinel-2a", "sentinel-2b"]},
-        },
-        {
-            "id": f"{test_prefix}-landsat",
-            "title": "Landsat Collection",
-            "description": "Collection of Landsat data",
-            "summaries": {"platform": ["landsat-8", "landsat-9"]},
-        },
-        {
-            "id": f"{test_prefix}-modis",
-            "title": "MODIS Collection",
-            "description": "Collection of MODIS data",
-            "summaries": {"platform": ["terra", "aqua"]},
-        },
-    ]
-
-    for i, coll in enumerate(test_collections):
-        test_collection = base_collection.copy()
-        test_collection["id"] = coll["id"]
-        test_collection["title"] = coll["title"]
-        test_collection["description"] = coll["description"]
-        test_collection["summaries"] = coll["summaries"]
-        await create_collection(txn_client, test_collection)
+    decoy_collection = base_collection.copy()
+    decoy_collection["id"] = f"{test_prefix}-decoy"
+    decoy_collection["title"] = "Collection without the term"
+    await create_collection(txn_client, decoy_collection)
 
     await refresh_indices(txn_client)
 
-    # Test free text search for "sentinel"
-    resp = await app_client.get(
-        "/collections",
-        params=[("q", "sentinel")],
-    )
-    assert resp.status_code == 200
-    resp_json = resp.json()
-
-    # Filter collections to only include the ones we created for this test
-    found_collections = [
-        c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
+    # Define endpoints to test
+    endpoints = [
+        {"method": "GET", "path": "/collections", "param": "q"},
+        {"method": "GET", "path": "/collections-search", "param": "q"},
+        {"method": "POST", "path": "/collections-search", "body_key": "q"},
     ]
 
-    # Should only find the sentinel collection
-    assert len(found_collections) == 1
-    assert found_collections[0]["id"] == f"{test_prefix}-sentinel"
+    for endpoint in endpoints:
+        print(f"Testing free text search on {endpoint['method']} {endpoint['path']}")
 
-    # Test free text search for "landsat"
-    resp = await app_client.get(
-        "/collections",
-        params=[("q", "modis")],
-    )
-    assert resp.status_code == 200
-    resp_json = resp.json()
+        if endpoint["method"] == "GET":
+            params = [(endpoint["param"], search_term)]
+            resp = await app_client.get(endpoint["path"], params=params)
+        else:  # POST
+            body = {endpoint["body_key"]: search_term}
+            resp = await app_client.post(endpoint["path"], json=body)
 
-    # Filter collections to only include the ones we created for this test
-    found_collections = [
-        c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
-    ]
+        assert (
+            resp.status_code == 200
+        ), f"Failed for {endpoint['method']} {endpoint['path']} with status {resp.status_code}"
+        resp_json = resp.json()
 
-    # Should only find the landsat collection
-    assert len(found_collections) == 1
-    assert found_collections[0]["id"] == f"{test_prefix}-modis"
+        collections = resp_json["collections"]
+
+        # Filter to our test collections
+        found = [c for c in collections if c["id"].startswith(test_prefix)]
+        assert (
+            len(found) == 1
+        ), f"Expected 1 collection, found {len(found)} for {endpoint['method']} {endpoint['path']}"
+        assert (
+            found[0]["id"] == target_collection["id"]
+        ), f"Expected {target_collection['id']}, found {found[0]['id']} for {endpoint['method']} {endpoint['path']}"
 
 
 @pytest.mark.asyncio
@@ -717,84 +697,6 @@ async def test_collections_search_cql2_text(app_client, txn_client, ctx):
         len(filtered_collections) == 1
     )  # We only created one collection with this prefix
     assert filtered_collections[0]["id"] == collection_id
-
-
-@pytest.mark.asyncio
-async def test_collections_search_free_text(app_client, txn_client, ctx):
-    """Test collections search with free text search (q parameter)."""
-    # Create a unique prefix for test collections
-    test_prefix = f"test-{uuid.uuid4()}"
-
-    # Create a collection with a simple, searchable title
-    searchable_term = "SEARCHABLETERM"
-    target_collection = ctx.collection.copy()
-    target_collection["id"] = f"{test_prefix}-target"
-    target_collection["title"] = f"Collection with {searchable_term} in the title"
-    target_collection["description"] = "This is the collection we want to find"
-    await create_collection(txn_client, target_collection)
-
-    # Collection 2: Similar but without the searchable term
-    decoy_collection = ctx.collection.copy()
-    decoy_collection["id"] = f"{test_prefix}-decoy"
-    decoy_collection["title"] = "Collection with similar words in the title"
-    decoy_collection["description"] = "This is a decoy collection"
-    await create_collection(txn_client, decoy_collection)
-
-    # Make sure to refresh indices and wait a moment
-    await refresh_indices(txn_client)
-
-    # First, verify that our collections are actually in the database
-    resp = await app_client.get("/collections")
-    assert resp.status_code == 200
-    resp_json = resp.json()
-
-    # Get all collections from the response
-    all_collections = resp_json["collections"]
-
-    # Check that our test collections are present
-    test_collections = [c for c in all_collections if c["id"].startswith(test_prefix)]
-    assert (
-        len(test_collections) >= 2
-    ), f"Expected at least 2 test collections, got {len(test_collections)}"
-
-    # Verify our target collection is present and has the searchable term
-    target_collections = [
-        c for c in test_collections if c["id"] == target_collection["id"]
-    ]
-    assert (
-        len(target_collections) == 1
-    ), f"Target collection not found: {target_collection['id']}"
-    assert searchable_term in target_collections[0]["title"]
-
-    # Now test the free text search
-    resp = await app_client.get(f"/collections-search?q={searchable_term}")
-    assert resp.status_code == 200
-    resp_json = resp.json()
-
-    # Get all collections with our test prefix
-    found_collections = [
-        c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
-    ]
-
-    # Verify that our target collection is returned
-    assert target_collection["id"] in [
-        c["id"] for c in found_collections
-    ], f"Target collection {target_collection['id']} not within search results"
-
-    # Test POST search with free text search
-    resp = await app_client.post("/collections-search", json={"q": searchable_term})
-    assert resp.status_code == 200
-    resp_json = resp.json()
-
-    # Get all collections with our test prefix
-    found_collections = [
-        c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
-    ]
-
-    # Verify that our target collection is returned
-    assert target_collection["id"] in [
-        c["id"] for c in found_collections
-    ], f"Target collection {target_collection['id']} not found within POST search results"
 
 
 @pytest.mark.asyncio
