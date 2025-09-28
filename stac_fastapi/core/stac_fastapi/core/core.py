@@ -136,6 +136,20 @@ class CoreClient(AsyncBaseCoreClient):
                     "href": urljoin(base_url, "search"),
                     "method": "POST",
                 },
+                {
+                    "rel": "collections-search",
+                    "type": "application/json",
+                    "title": "Collections Search",
+                    "href": urljoin(base_url, "collections-search"),
+                    "method": "GET",
+                },
+                {
+                    "rel": "collections-search",
+                    "type": "application/json",
+                    "title": "Collections Search",
+                    "href": urljoin(base_url, "collections-search"),
+                    "method": "POST",
+                },
             ],
             stac_extensions=extension_schemas,
         )
@@ -311,7 +325,6 @@ class CoreClient(AsyncBaseCoreClient):
             if parsed_sort:
                 sort = parsed_sort
 
-        # sort is now ready for use
         # Convert q to a list if it's a string
         q_list = None
         if q is not None:
@@ -371,12 +384,6 @@ class CoreClient(AsyncBaseCoreClient):
                         status_code=400, detail=f"Error parsing filter: {e}"
                     )
 
-                # # Handle both cql2-json and cql2-text
-                # parsed_filter = orjson.loads(
-                #     unquote_plus(filter_expr)
-                #     if filter_lang == "cql2-json" or filter_lang is None
-                #     else to_cql2(parse_cql2_text(filter_expr))
-                # )
             except Exception as e:
                 raise HTTPException(
                     status_code=400, detail=f"Invalid filter parameter: {e}"
