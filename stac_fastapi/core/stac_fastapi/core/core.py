@@ -255,7 +255,34 @@ class CoreClient(AsyncBaseCoreClient):
         request = kwargs["request"]
         base_url = str(request.base_url)
 
-        limit = int(request.query_params.get("limit", os.getenv("STAC_ITEM_LIMIT", 10)))
+        # Get the global limit from environment variable
+        global_limit = None
+        env_limit = os.getenv("STAC_ITEM_LIMIT")
+        if env_limit:
+            try:
+                global_limit = int(env_limit)
+            except ValueError:
+                # Handle invalid integer in environment variable
+                pass
+
+        # Apply global limit if it exists
+        if global_limit is not None:
+            # If a limit was provided, use the smaller of the two
+            if limit is not None:
+                limit = min(limit, global_limit)
+            else:
+                limit = global_limit
+        else:
+            # No global limit, use provided limit or default
+            if limit is None:
+                query_limit = request.query_params.get("limit")
+                if query_limit:
+                    try:
+                        limit = int(query_limit)
+                    except ValueError:
+                        limit = 10
+                else:
+                    limit = 10
 
         token = request.query_params.get("token")
 
