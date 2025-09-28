@@ -672,7 +672,11 @@ class CoreClient(AsyncBaseCoreClient):
         links = await PagingLinks(request=request, next=next_token).get_links()
 
         collection_links = []
-        if items and search_request.collections and len(search_request.collections) == 1:
+        if (
+            items
+            and search_request.collections
+            and len(search_request.collections) == 1
+        ):
             collection_id = search_request.collections[0]
             collection_links.extend(
                 [
@@ -697,22 +701,29 @@ class CoreClient(AsyncBaseCoreClient):
             prev_link = await get_prev_link(redis, token_param)
             if prev_link:
                 method = "GET"
+                body = None
                 for link in links:
-                    if link.get("rel") == "next" and "method" in link:
-                        method = link["method"]
+                    if link.get("rel") == "next":
+                        if "method" in link:
+                            method = link["method"]
+                        if "body" in link:
+                            body = {**link["body"]}
+                            body.pop("token", None)
                         break
                 else:
                     method = request.method
 
-                links.insert(
-                    0,
-                    {
-                        "rel": "previous",
-                        "type": "application/json",
-                        "method": method,
-                        "href": prev_link,
-                    },
-                )
+                prev_link_data = {
+                    "rel": "previous",
+                    "type": "application/json",
+                    "method": method,
+                    "href": prev_link,
+                }
+
+                if body:
+                    prev_link_data["body"] = body
+
+                links.insert(0, prev_link_data)
 
         return stac_types.ItemCollection(
             type="FeatureCollection",
