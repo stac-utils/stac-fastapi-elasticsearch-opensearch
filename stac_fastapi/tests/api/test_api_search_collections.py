@@ -795,3 +795,136 @@ async def test_collections_search_free_text(app_client, txn_client, ctx):
     assert target_collection["id"] in [
         c["id"] for c in found_collections
     ], f"Target collection {target_collection['id']} not found within POST search results"
+
+
+@pytest.mark.asyncio
+async def test_collections_pagination_all_endpoints(app_client, txn_client, ctx):
+    """Test pagination works correctly across all collection endpoints."""
+    # Create test data
+    test_prefix = f"pagination-{uuid.uuid4().hex[:8]}"
+    base_collection = ctx.collection
+
+    # Create 10 test collections with predictable IDs for sorting
+    test_collections = []
+    for i in range(10):
+        test_coll = base_collection.copy()
+        test_coll["id"] = f"{test_prefix}-{i:02d}"
+        test_coll["title"] = f"Test Collection {i}"
+        test_collections.append(test_coll)
+        await create_collection(txn_client, test_coll)
+
+    await refresh_indices(txn_client)
+
+    # Define endpoints to test
+    endpoints = [
+        {"method": "GET", "path": "/collections", "param": "limit"},
+        {"method": "GET", "path": "/collections-search", "param": "limit"},
+        {"method": "POST", "path": "/collections-search", "body_key": "limit"},
+    ]
+
+    # Test pagination for each endpoint
+    for endpoint in endpoints:
+        # Test first page with limit=3
+        limit = 3
+
+        # Make the request
+        if endpoint["method"] == "GET":
+            params = [(endpoint["param"], str(limit))]
+            resp = await app_client.get(endpoint["path"], params=params)
+        else:  # POST
+            body = {endpoint["body_key"]: limit}
+            resp = await app_client.post(endpoint["path"], json=body)
+
+        assert (
+            resp.status_code == 200
+        ), f"Failed for {endpoint['method']} {endpoint['path']}"
+        resp_json = resp.json()
+
+        # # Filter to our test collections
+        # if endpoint["path"] == "/collections":
+        #     found_collections = resp_json
+        # else:  # For collection-search endpoints
+        found_collections = resp_json["collections"]
+
+        test_found = [c for c in found_collections if c["id"].startswith(test_prefix)]
+
+        # Should return exactly limit collections
+        assert (
+            len(test_found) == limit
+        ), f"Expected {limit} collections, got {len(test_found)}"
+
+        # Verify collections are in correct order (ascending by ID)
+        expected_ids = [f"{test_prefix}-{i:02d}" for i in range(limit)]
+        for i, expected_id in enumerate(expected_ids):
+            assert test_found[i]["id"] == expected_id
+
+        # Test second page using the token from the first page
+        if "token" in resp_json and resp_json["token"]:
+            token = resp_json["token"]
+
+            # Make the request with token
+            if endpoint["method"] == "GET":
+                params = [(endpoint["param"], str(limit)), ("token", token)]
+                resp = await app_client.get(endpoint["path"], params=params)
+            else:  # POST
+                body = {endpoint["body_key"]: limit, "token": token}
+                resp = await app_client.post(endpoint["path"], json=body)
+
+            assert (
+                resp.status_code == 200
+            ), f"Failed for {endpoint['method']} {endpoint['path']} with token"
+            resp_json = resp.json()
+
+            # Filter to our test collections
+            if endpoint["path"] == "/collections":
+                found_collections = resp_json
+            else:  # For collection-search endpoints
+                found_collections = resp_json["collections"]
+
+            test_found = [
+                c for c in found_collections if c["id"].startswith(test_prefix)
+            ]
+
+            # Should return next set of collections
+            expected_ids = [f"{test_prefix}-{i:02d}" for i in range(limit, limit * 2)]
+            assert len(test_found) == min(
+                limit, len(expected_ids)
+            ), f"Expected {min(limit, len(expected_ids))} collections, got {len(test_found)}"
+
+            # Verify collections are in correct order
+            for i, expected_id in enumerate(expected_ids[: len(test_found)]):
+                assert test_found[i]["id"] == expected_id
+
+        # Test with sortby parameter to ensure token works with sorting
+        if endpoint["method"] == "GET":
+            params = [("sortby", "-id"), (endpoint["param"], str(limit))]
+            resp = await app_client.get(endpoint["path"], params=params)
+        else:  # POST
+            body = {
+                "sortby": [{"field": "id", "direction": "desc"}],
+                endpoint["body_key"]: limit,
+            }
+            resp = await app_client.post(endpoint["path"], json=body)
+
+        assert (
+            resp.status_code == 200
+        ), f"Failed for {endpoint['method']} {endpoint['path']} with sortby"
+        resp_json = resp.json()
+
+        found_collections = resp_json["collections"]
+
+        test_found = [c for c in found_collections if c["id"].startswith(test_prefix)]
+
+        # Verify collections are sorted in descending order
+        # We expect the highest IDs first (09, 08, 07, etc.)
+        expected_ids = sorted(
+            [f"{test_prefix}-{i:02d}" for i in range(10)], reverse=True
+        )[:limit]
+
+        # Filter expected_ids to only include collections that actually exist in the response
+        expected_ids = [
+            id for id in expected_ids if any(c["id"] == id for c in found_collections)
+        ]
+
+        for i, expected_id in enumerate(expected_ids):
+            assert test_found[i]["id"] == expected_id
