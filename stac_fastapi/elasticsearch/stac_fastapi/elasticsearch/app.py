@@ -62,8 +62,14 @@ logger = logging.getLogger(__name__)
 
 TRANSACTIONS_EXTENSIONS = get_bool_env("ENABLE_TRANSACTIONS_EXTENSIONS", default=True)
 ENABLE_COLLECTIONS_SEARCH = get_bool_env("ENABLE_COLLECTIONS_SEARCH", default=True)
+ENABLE_COLLECTIONS_SEARCH_ROUTE = get_bool_env(
+    "ENABLE_COLLECTIONS_SEARCH_ROUTE", default=True
+)
 logger.info("TRANSACTIONS_EXTENSIONS is set to %s", TRANSACTIONS_EXTENSIONS)
 logger.info("ENABLE_COLLECTIONS_SEARCH is set to %s", ENABLE_COLLECTIONS_SEARCH)
+logger.info(
+    "ENABLE_COLLECTIONS_SEARCH_ROUTE is set to %s", ENABLE_COLLECTIONS_SEARCH_ROUTE
+)
 
 settings = ElasticsearchSettings()
 session = Session.create_from_settings(settings)
@@ -124,8 +130,7 @@ extensions = [aggregation_extension] + search_extensions
 # Collection search related variables
 collections_get_request_model = None
 
-# Create collection search extensions if enabled
-if ENABLE_COLLECTIONS_SEARCH:
+if ENABLE_COLLECTIONS_SEARCH or ENABLE_COLLECTIONS_SEARCH_ROUTE:
     # Create collection search extensions
     collection_search_extensions = [
         QueryExtension(conformance_classes=[QueryConformanceClasses.COLLECTIONS]),
@@ -148,6 +153,8 @@ if ENABLE_COLLECTIONS_SEARCH:
         collection_search_extensions
     )
 
+# Create collection search extensions if enabled
+if ENABLE_COLLECTIONS_SEARCH:
     # Initialize collection search POST extension
     collection_search_post_ext = CollectionSearchPostExtension(
         client=CoreClient(
@@ -167,7 +174,10 @@ if ENABLE_COLLECTIONS_SEARCH:
             FieldsConformanceClasses.COLLECTIONS,
         ],
     )
+    extensions.append(collection_search_ext)
+    extensions.append(collection_search_post_ext)
 
+if ENABLE_COLLECTIONS_SEARCH_ROUTE:
     # Initialize collections-search endpoint extension
     collections_search_endpoint_ext = CollectionsSearchEndpointExtension(
         client=CoreClient(
@@ -188,9 +198,6 @@ if ENABLE_COLLECTIONS_SEARCH:
             FieldsConformanceClasses.COLLECTIONS,
         ],
     )
-
-    extensions.append(collection_search_ext)
-    extensions.append(collection_search_post_ext)
     extensions.append(collections_search_endpoint_ext)
 
 
@@ -250,6 +257,7 @@ async def lifespan(app: FastAPI):
 app = api.app
 app.router.lifespan_context = lifespan
 app.root_path = os.getenv("STAC_FASTAPI_ROOT_PATH", "")
+
 # Add rate limit
 setup_rate_limit(app, rate_limit=os.getenv("STAC_FASTAPI_RATE_LIMIT"))
 

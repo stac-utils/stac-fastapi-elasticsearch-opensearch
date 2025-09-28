@@ -8,13 +8,14 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- Environment variable `ENABLE_COLLECTIONS_SEARCH_ROUTE` to turn on/off the `/collections-search` endpoint. [#478](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/478)
 - POST and GET `/collections-search` endpoint for collections search queries, needed because POST /collections will not work when the Transactions Extension is enabled. [#478](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/478)
 - GET `/collections` collection search structured filter extension with support for both cql2-json and cql2-text formats. [#475](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/475)
 - GET `/collections` collection search query extension. [#477](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/477)
 - GET `/collections` collections search datetime filtering support. [#476](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/476)
 
 ### Changed
-- Refactored collection search implementation to support both GET and POST methods. [#478](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/478)
+- Refactored `/collections` endpoint implementation to support both GET and POST methods. [#478](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/478)
 
 ### Fixed
 - support of disabled nested attributes in the properties dictionary. [#474](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/474)
