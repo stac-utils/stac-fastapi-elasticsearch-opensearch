@@ -228,8 +228,21 @@ class DatabaseLogic(BaseDatabaseLogic):
             "size": limit,
         }
 
+        # Handle search_after token - split by '|' to get all sort values
+        search_after = None
         if token:
-            body["search_after"] = [token]
+            try:
+                # The token should be a pipe-separated string of sort values
+                # e.g., "2023-01-01T00:00:00Z|collection-1"
+                search_after = token.split("|")
+                # If the number of sort fields doesn't match token parts, ignore the token
+                if len(search_after) != len(formatted_sort):
+                    search_after = None
+            except Exception:
+                search_after = None
+
+            if search_after is not None:
+                body["search_after"] = search_after
 
         # Build the query part of the body
         query_parts = []
@@ -353,7 +366,8 @@ class DatabaseLogic(BaseDatabaseLogic):
         if len(hits) == limit:
             next_token_values = hits[-1].get("sort")
             if next_token_values:
-                next_token = next_token_values[0]
+                # Join all sort values with '|' to create the token
+                next_token = "|".join(str(val) for val in next_token_values)
 
         # Get the total count of collections
         matched = (
