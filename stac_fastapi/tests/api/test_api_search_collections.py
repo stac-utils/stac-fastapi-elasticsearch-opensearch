@@ -85,8 +85,8 @@ async def test_collections_sort_id_desc(app_client, txn_client, ctx):
 
 
 @pytest.mark.asyncio
-async def test_collections_fields(app_client, txn_client, ctx):
-    """Verify GET /collections honors the fields parameter."""
+async def test_collections_fields_all_endpoints(app_client, txn_client, ctx):
+    """Verify GET /collections, GET /collections-search, and POST /collections-search honor the fields parameter."""
     # Create multiple collections with different ids
     base_collection = ctx.collection
 
@@ -104,61 +104,84 @@ async def test_collections_fields(app_client, txn_client, ctx):
 
     await refresh_indices(txn_client)
 
-    # Test include fields parameter
-    resp = await app_client.get(
-        "/collections",
-        params=[("fields", "id"), ("fields", "title")],
-    )
-    assert resp.status_code == 200
-    resp_json = resp.json()
+    # Define endpoints to test
+    endpoints = [
+        {"method": "GET", "path": "/collections", "params": [("fields", "id,title")]},
+        {
+            "method": "GET",
+            "path": "/collections-search",
+            "params": [("fields", "id,title")],
+        },
+        {
+            "method": "POST",
+            "path": "/collections-search",
+            "body": {"fields": {"include": ["id", "title"]}},
+        },
+    ]
 
-    # Check if collections exist in the response
-    assert "collections" in resp_json, "No collections in response"
+    for endpoint in endpoints:
+        if endpoint["method"] == "GET":
+            resp = await app_client.get(endpoint["path"], params=endpoint["params"])
+        else:  # POST
+            resp = await app_client.post(endpoint["path"], json=endpoint["body"])
 
-    # Filter collections to only include the ones we created for this test
-    test_collections = []
-    for c in resp_json["collections"]:
-        if "id" in c and c["id"].startswith(test_prefix):
-            test_collections.append(c)
+        assert resp.status_code == 200
+        resp_json = resp.json()
 
-    # Filter collections to only include the ones we created for this test
-    test_collections = []
-    for c in resp_json["collections"]:
-        if "id" in c and c["id"].startswith(test_prefix):
-            test_collections.append(c)
+        collections_list = resp_json["collections"]
 
-    # Collections should only have id and title fields
-    for collection in test_collections:
-        assert "id" in collection
-        assert "title" in collection
-        assert "description" not in collection
-        assert "links" in collection  # links are always included
+        # Filter collections to only include the ones we created for this test
+        test_collections = [
+            c for c in collections_list if c["id"].startswith(test_prefix)
+        ]
+
+        # Collections should only have id and title fields
+        for collection in test_collections:
+            assert "id" in collection
+            assert "title" in collection
+            assert "description" not in collection
 
     # Test exclude fields parameter
-    resp = await app_client.get(
-        "/collections",
-        params=[("fields", "-description")],
-    )
-    assert resp.status_code == 200
-    resp_json = resp.json()
+    endpoints = [
+        {
+            "method": "GET",
+            "path": "/collections",
+            "params": [("fields", "-description")],
+        },
+        {
+            "method": "GET",
+            "path": "/collections-search",
+            "params": [("fields", "-description")],
+        },
+        {
+            "method": "POST",
+            "path": "/collections-search",
+            "body": {"fields": {"exclude": ["description"]}},
+        },
+    ]
 
-    # Check if collections exist in the response
-    assert (
-        "collections" in resp_json
-    ), "No collections in response for exclude fields test"
+    for endpoint in endpoints:
+        if endpoint["method"] == "GET":
+            resp = await app_client.get(endpoint["path"], params=endpoint["params"])
+        else:  # POST
+            resp = await app_client.post(endpoint["path"], json=endpoint["body"])
 
-    # Filter collections to only include the ones we created for this test
-    test_collections = []
-    for c in resp_json["collections"]:
-        if "id" in c and c["id"].startswith(test_prefix):
-            test_collections.append(c)
+        assert resp.status_code == 200
+        resp_json = resp.json()
 
-    # Collections should have all fields except description
-    for collection in test_collections:
-        assert "id" in collection
-        assert "title" in collection
-        assert "description" not in collection
-        assert "links" in collection
+        collections_list = resp_json["collections"]
+
+        # Filter collections to only include the ones we created for this test
+        test_collections = [
+            c for c in collections_list if c["id"].startswith(test_prefix)
+        ]
+
+        # Collections should have all fields except description
+        for collection in test_collections:
+            assert "id" in collection
+            assert "title" in collection
+            assert "description" not in collection
+            assert "links" in collection  # links are always included
 
 
 @pytest.mark.asyncio
