@@ -8,15 +8,15 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
-
+- POST and GET `/collections-search` endpoint for collections search queries, needed because POST /collections will not work when the Transactions Extension is enabled. [#478](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/478)
 - GET `/collections` collection search structured filter extension with support for both cql2-json and cql2-text formats. [#475](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/475)
 - GET `/collections` collection search query extension. [#477](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/477)
 - GET `/collections` collections search datetime filtering support. [#476](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/476)
 
 ### Changed
+- Refactored collection search implementation to support both GET and POST methods. [#478](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/478)
 
 ### Fixed
-
 - support of disabled nested attributes in the properties dictionary. [#474](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/474)
 
 ## [v6.4.0] - 2025-09-24
@@ -450,7 +450,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 
 - Advanced comparison (LIKE, IN, BETWEEN) operators to the Filter extension [#178](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/178)
-- Collection update endpoint no longer delete all sub items [#177](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/177)
+- Added collection update endpoint no longer delete all sub items [#177](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/177)
 - OpenSearch 2.11.1 support [#188](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/188)
 
 ### Changed
@@ -471,7 +471,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Collection-level Assets to the CollectionSerializer [#148](https://github.com/stac-utils/stac-fastapi-elasticsearch/issues/148)
 - Pagination for /collections - GET all collections - route [#164](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/164)
 - Examples folder with example docker setup for running sfes from pip [#147](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/147)
-- GET /search filter extension queries [#163](https://github.com/stac-utils/stac-fastapi-elasticsearch/pull/163)
+- GET /search filter extension queries [#163](https://github.com/stac-fastapi-elasticsearch/pull/163)
 - Added support for GET /search intersection queries [#158](https://github.com/stac-utils/stac-fastapi-elasticsearch/issues/158)
 
 ### Changed
