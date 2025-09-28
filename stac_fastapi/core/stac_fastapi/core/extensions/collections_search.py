@@ -5,12 +5,19 @@ from typing import List, Optional, Type, Union
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from stac_pydantic.api.search import ExtendedSearch
 from starlette.responses import Response
 
 from stac_fastapi.api.models import APIRequest
 from stac_fastapi.types.core import BaseCoreClient
 from stac_fastapi.types.extension import ApiExtension
 from stac_fastapi.types.stac import Collections
+
+
+class CollectionsSearchRequest(ExtendedSearch):
+    """Extended search model for collections with free text search support."""
+
+    q: Optional[Union[str, List[str]]] = None
 
 
 class CollectionsSearchEndpointExtension(ApiExtension):
@@ -128,10 +135,8 @@ class CollectionsSearchEndpointExtension(ApiExtension):
         Returns:
             Collections: Collections object.
         """
-        from stac_pydantic.api.search import ExtendedSearch
-
         # Convert the dict to an ExtendedSearch model
-        search_request = ExtendedSearch.model_validate(body)
+        search_request = CollectionsSearchRequest.model_validate(body)
 
         # Check if fields are present in the body
         if "fields" in body:
