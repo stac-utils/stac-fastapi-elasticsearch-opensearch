@@ -56,6 +56,8 @@ ROUTES = {
     "GET /collections/{collection_id}/aggregate",
     "POST /collections/{collection_id}/aggregations",
     "POST /collections/{collection_id}/aggregate",
+    "GET /collections-search",
+    "POST /collections-search",
 }
 
 

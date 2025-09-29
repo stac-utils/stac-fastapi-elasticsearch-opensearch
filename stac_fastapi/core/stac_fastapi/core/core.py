@@ -141,6 +141,20 @@ class CoreClient(AsyncBaseCoreClient):
                     "href": urljoin(base_url, "search"),
                     "method": "POST",
                 },
+                {
+                    "rel": "collections-search",
+                    "type": "application/json",
+                    "title": "Collections Search",
+                    "href": urljoin(base_url, "collections-search"),
+                    "method": "GET",
+                },
+                {
+                    "rel": "collections-search",
+                    "type": "application/json",
+                    "title": "Collections Search",
+                    "href": urljoin(base_url, "collections-search"),
+                    "method": "POST",
+                },
             ],
             stac_extensions=extension_schemas,
         )
@@ -231,17 +245,27 @@ class CoreClient(AsyncBaseCoreClient):
 
     async def all_collections(
         self,
+        datetime: Optional[str] = None,
+        limit: Optional[int] = None,
         fields: Optional[List[str]] = None,
-        sortby: Optional[str] = None,
+        sortby: Optional[Union[str, List[str]]] = None,
+        filter_expr: Optional[str] = None,
+        filter_lang: Optional[str] = None,
         q: Optional[Union[str, List[str]]] = None,
+        query: Optional[str] = None,
         **kwargs,
     ) -> stac_types.Collections:
         """Read all collections from the database.
 
         Args:
+            datetime (Optional[str]): Filter collections by datetime range.
+            limit (Optional[int]): Maximum number of collections to return.
             fields (Optional[List[str]]): Fields to include or exclude from the results.
             sortby (Optional[str]): Sorting options for the results.
-            q (Optional[List[str]]): Free text search terms.
+            filter_expr (Optional[str]): Structured filter expression in CQL2 JSON or CQL2-text format.
+            query (Optional[str]): Legacy query parameter (deprecated).
+            filter_lang (Optional[str]): Must be 'cql2-json' or 'cql2-text' if specified, other values will result in an error.
+            q (Optional[Union[str, List[str]]]): Free text search terms.
             **kwargs: Keyword arguments from the request.
 
         Returns:
@@ -249,17 +273,47 @@ class CoreClient(AsyncBaseCoreClient):
         """
         request = kwargs["request"]
         base_url = str(request.base_url)
-        limit = int(request.query_params.get("limit", os.getenv("STAC_ITEM_LIMIT", 10)))
+
+        # Get the global limit from environment variable
+        global_limit = None
+        env_limit = os.getenv("STAC_ITEM_LIMIT")
+        if env_limit:
+            try:
+                global_limit = int(env_limit)
+            except ValueError:
+                # Handle invalid integer in environment variable
+                pass
+
+        # Apply global limit if it exists
+        if global_limit is not None:
+            # If a limit was provided, use the smaller of the two
+            if limit is not None:
+                limit = min(limit, global_limit)
+            else:
+                limit = global_limit
+        else:
+            # No global limit, use provided limit or default
+            if limit is None:
+                query_limit = request.query_params.get("limit")
+                if query_limit:
+                    try:
+                        limit = int(query_limit)
+                    except ValueError:
+                        limit = 10
+                else:
+                    limit = 10
+
         token = request.query_params.get("token")
 
         # Process fields parameter for filtering collection properties
         includes, excludes = set(), set()
-        if fields and self.extension_is_enabled("FieldsExtension"):
+        if fields:
             for field in fields:
                 if field[0] == "-":
                     excludes.add(field[1:])
                 else:
-                    includes.add(field[1:] if field[0] in "+ " else field)
+                    include_field = field[1:] if field[0] in "+ " else field
+                    includes.add(include_field)
 
         sort = None
         if sortby:
@@ -288,12 +342,82 @@ class CoreClient(AsyncBaseCoreClient):
         except Exception:
             redis = None
 
-        collections, next_token = await self.database.get_all_collections(
-            token=token, limit=limit, request=request, sort=sort, q=q_list
+        # Parse the query parameter if provided
+        parsed_query = None
+        if query is not None:
+            try:
+                parsed_query = orjson.loads(query)
+            except Exception as e:
+                raise HTTPException(
+                    status_code=400, detail=f"Invalid query parameter: {e}"
+                )
+
+        # Parse the filter parameter if provided
+        parsed_filter = None
+        if filter_expr is not None:
+            try:
+                # Only raise an error for explicitly unsupported filter languages
+                if filter_lang is not None and filter_lang not in [
+                    "cql2-json",
+                    "cql2-text",
+                ]:
+                    # Raise an error for unsupported filter languages
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Only 'cql2-json' and 'cql2-text' filter languages are supported for collections. Got '{filter_lang}'.",
+                    )
+
+                # Handle different filter formats
+                try:
+                    if filter_lang == "cql2-text" or filter_lang is None:
+                        # For cql2-text or when no filter_lang is specified, try both formats
+                        try:
+                            # First try to parse as JSON
+                            parsed_filter = orjson.loads(unquote_plus(filter_expr))
+                        except Exception:
+                            # If that fails, use pygeofilter to convert CQL2-text to CQL2-JSON
+                            try:
+                                # Parse CQL2-text and convert to CQL2-JSON
+                                text_filter = unquote_plus(filter_expr)
+                                parsed_ast = parse_cql2_text(text_filter)
+                                parsed_filter = to_cql2(parsed_ast)
+                            except Exception as e:
+                                # If parsing fails, provide a helpful error message
+                                raise HTTPException(
+                                    status_code=400,
+                                    detail=f"Invalid CQL2-text filter: {e}. Please check your syntax.",
+                                )
+                    else:
+                        # For explicit cql2-json, parse as JSON
+                        parsed_filter = orjson.loads(unquote_plus(filter_expr))
+                except Exception as e:
+                    # Catch any other parsing errors
+                    raise HTTPException(
+                        status_code=400, detail=f"Error parsing filter: {e}"
+                    )
+
+            except Exception as e:
+                raise HTTPException(
+                    status_code=400, detail=f"Invalid filter parameter: {e}"
+                )
+
+        parsed_datetime = None
+        if datetime:
+            parsed_datetime = format_datetime_range(date_str=datetime)
+
+        collections, next_token, maybe_count = await self.database.get_all_collections(
+            token=token,
+            limit=limit,
+            request=request,
+            sort=sort,
+            q=q_list,
+            filter=parsed_filter,
+            query=parsed_query,
+            datetime=parsed_datetime,
         )
 
         # Apply field filtering if fields parameter was provided
-        if fields and self.extension_is_enabled("FieldsExtension"):
+        if fields:
             filtered_collections = [
                 filter_fields(collection, includes, excludes)
                 for collection in collections
@@ -331,7 +455,91 @@ class CoreClient(AsyncBaseCoreClient):
             next_link = PagingLinks(next=next_token, request=request).link_next()
             links.append(next_link)
 
-        return stac_types.Collections(collections=filtered_collections, links=links)
+        return stac_types.Collections(
+            collections=filtered_collections,
+            links=links,
+            numberMatched=maybe_count,
+            numberReturned=len(filtered_collections),
+        )
+
+    async def post_all_collections(
+        self, search_request: BaseSearchPostRequest, request: Request, **kwargs
+    ) -> stac_types.Collections:
+        """Search collections with POST request.
+
+        Args:
+            search_request (BaseSearchPostRequest): The search request.
+            request (Request): The request.
+
+        Returns:
+            A Collections object containing all the collections in the database and links to various resources.
+        """
+        request.postbody = search_request.model_dump(exclude_unset=True)
+
+        fields = None
+
+        # Check for field attribute (ExtendedSearch format)
+        if hasattr(search_request, "field") and search_request.field:
+            fields = []
+
+            # Handle include fields
+            if (
+                hasattr(search_request.field, "includes")
+                and search_request.field.includes
+            ):
+                for field in search_request.field.includes:
+                    fields.append(f"+{field}")
+
+            # Handle exclude fields
+            if (
+                hasattr(search_request.field, "excludes")
+                and search_request.field.excludes
+            ):
+                for field in search_request.field.excludes:
+                    fields.append(f"-{field}")
+
+        # Convert sortby parameter from POST format to all_collections format
+        sortby = None
+        # Check for sortby attribute
+        if hasattr(search_request, "sortby") and search_request.sortby:
+            # Create a list of sort strings in the format expected by all_collections
+            sortby = []
+            for sort_item in search_request.sortby:
+                # Handle different types of sort items
+                if hasattr(sort_item, "field") and hasattr(sort_item, "direction"):
+                    # This is a Pydantic model with field and direction attributes
+                    field = sort_item.field
+                    direction = sort_item.direction
+                elif isinstance(sort_item, dict):
+                    # This is a dictionary with field and direction keys
+                    field = sort_item.get("field")
+                    direction = sort_item.get("direction", "asc")
+                else:
+                    # Skip this item if we can't extract field and direction
+                    continue
+
+                if field:
+                    # Create a sort string in the format expected by all_collections
+                    # e.g., "-id" for descending sort on id field
+                    prefix = "-" if direction.lower() == "desc" else ""
+                    sortby.append(f"{prefix}{field}")
+
+        # Pass all parameters from search_request to all_collections
+        return await self.all_collections(
+            limit=search_request.limit if hasattr(search_request, "limit") else None,
+            fields=fields,
+            sortby=sortby,
+            filter_expr=search_request.filter
+            if hasattr(search_request, "filter")
+            else None,
+            filter_lang=search_request.filter_lang
+            if hasattr(search_request, "filter_lang")
+            else None,
+            query=search_request.query if hasattr(search_request, "query") else None,
+            q=search_request.q if hasattr(search_request, "q") else None,
+            request=request,
+            **kwargs,
+        )
 
     async def get_collection(
         self, collection_id: str, **kwargs
@@ -653,11 +861,7 @@ class CoreClient(AsyncBaseCoreClient):
             datetime_search=datetime_search,
         )
 
-        fields = (
-            getattr(search_request, "fields", None)
-            if self.extension_is_enabled("FieldsExtension")
-            else None
-        )
+        fields = getattr(search_request, "fields", None)
         include: Set[str] = fields.include if fields and fields.include else set()
         exclude: Set[str] = fields.exclude if fields and fields.exclude else set()
 

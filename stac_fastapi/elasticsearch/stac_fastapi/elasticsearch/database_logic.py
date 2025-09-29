@@ -176,7 +176,10 @@ class DatabaseLogic(BaseDatabaseLogic):
         request: Request,
         sort: Optional[List[Dict[str, Any]]] = None,
         q: Optional[List[str]] = None,
-    ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+        filter: Optional[Dict[str, Any]] = None,
+        query: Optional[Dict[str, Dict[str, Any]]] = None,
+        datetime: Optional[str] = None,
+    ) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[int]]:
         """Retrieve a list of collections from Elasticsearch, supporting pagination.
 
         Args:
@@ -185,6 +188,9 @@ class DatabaseLogic(BaseDatabaseLogic):
             request (Request): The FastAPI request object.
             sort (Optional[List[Dict[str, Any]]]): Optional sort parameter from the request.
             q (Optional[List[str]]): Free text search terms.
+            query (Optional[Dict[str, Dict[str, Any]]]): Query extension parameters.
+            filter (Optional[Dict[str, Any]]): Structured query in CQL2 format.
+            datetime (Optional[str]): Temporal filter.
 
         Returns:
             A tuple of (collections, next pagination token if any).
@@ -222,8 +228,24 @@ class DatabaseLogic(BaseDatabaseLogic):
             "size": limit,
         }
 
+        # Handle search_after token - split by '|' to get all sort values
+        search_after = None
         if token:
-            body["search_after"] = [token]
+            try:
+                # The token should be a pipe-separated string of sort values
+                # e.g., "2023-01-01T00:00:00Z|collection-1"
+                search_after = token.split("|")
+                # If the number of sort fields doesn't match token parts, ignore the token
+                if len(search_after) != len(formatted_sort):
+                    search_after = None
+            except Exception:
+                search_after = None
+
+            if search_after is not None:
+                body["search_after"] = search_after
+
+        # Build the query part of the body
+        query_parts = []
 
         # Apply free text query if provided
         if q:
@@ -251,16 +273,86 @@ class DatabaseLogic(BaseDatabaseLogic):
                         }
                     )
 
-            # Add the query to the body using bool query with should clauses
-            body["query"] = {
-                "bool": {"should": should_clauses, "minimum_should_match": 1}
-            }
+            # Add the free text query to the query parts
+            query_parts.append(
+                {"bool": {"should": should_clauses, "minimum_should_match": 1}}
+            )
 
-        # Execute the search
-        response = await self.client.search(
-            index=COLLECTIONS_INDEX,
-            body=body,
+        # Apply structured filter if provided
+        if filter:
+            # Convert string filter to dict if needed
+            if isinstance(filter, str):
+                filter = orjson.loads(filter)
+            # Convert the filter to an Elasticsearch query using the filter module
+            es_query = filter_module.to_es(await self.get_queryables_mapping(), filter)
+            query_parts.append(es_query)
+
+        # Apply query extension if provided
+        if query:
+            try:
+                # First create a search object to apply filters
+                search = Search(index=COLLECTIONS_INDEX)
+
+                # Process each field and operator in the query
+                for field_name, expr in query.items():
+                    for op, value in expr.items():
+                        # For collections, we don't need to prefix with 'properties__'
+                        field = field_name
+                        # Apply the filter using apply_stacql_filter
+                        search = self.apply_stacql_filter(
+                            search=search, op=op, field=field, value=value
+                        )
+
+                # Convert the search object to a query dict and add it to query_parts
+                search_dict = search.to_dict()
+                if "query" in search_dict:
+                    query_parts.append(search_dict["query"])
+
+            except Exception as e:
+                logger = logging.getLogger(__name__)
+                logger.error(f"Error converting query to Elasticsearch: {e}")
+                # If there's an error, add a query that matches nothing
+                query_parts.append({"bool": {"must_not": {"match_all": {}}}})
+                raise
+
+        # Combine all query parts with AND logic if there are multiple
+        datetime_filter = None
+        if datetime:
+            datetime_filter = self._apply_collection_datetime_filter(datetime)
+            if datetime_filter:
+                query_parts.append(datetime_filter)
+
+        # Combine all query parts with AND logic
+        if query_parts:
+            body["query"] = (
+                query_parts[0]
+                if len(query_parts) == 1
+                else {"bool": {"must": query_parts}}
+            )
+
+        # Create a copy of the body for count query (without pagination and sorting)
+        count_body = body.copy()
+        if "search_after" in count_body:
+            del count_body["search_after"]
+        count_body["size"] = 0
+
+        # Create async tasks for both search and count
+        search_task = asyncio.create_task(
+            self.client.search(
+                index=COLLECTIONS_INDEX,
+                body=body,
+            )
         )
+
+        count_task = asyncio.create_task(
+            self.client.count(
+                index=COLLECTIONS_INDEX,
+                body={"query": body.get("query", {"match_all": {}})},
+            )
+        )
+
+        # Wait for search task to complete
+        response = await search_task
 
         hits = response["hits"]["hits"]
         collections = [
@@ -274,9 +366,60 @@ class DatabaseLogic(BaseDatabaseLogic):
         if len(hits) == limit:
             next_token_values = hits[-1].get("sort")
             if next_token_values:
-                next_token = next_token_values[0]
+                # Join all sort values with '|' to create the token
+                next_token = "|".join(str(val) for val in next_token_values)
 
-        return collections, next_token
+        # Get the total count of collections
+        matched = (
+            response["hits"]["total"]["value"]
+            if response["hits"]["total"]["relation"] == "eq"
+            else None
+        )
+
+        # If count task is done, use its result
+        if count_task.done():
+            try:
+                matched = count_task.result().get("count")
+            except Exception as e:
+                logger = logging.getLogger(__name__)
+                logger.error(f"Count task failed: {e}")
+
+        return collections, next_token, matched
+
+    @staticmethod
+    def _apply_collection_datetime_filter(
+        datetime_str: Optional[str],
+    ) -> Optional[Dict[str, Any]]:
+        """Create a temporal filter for collections based on their extent."""
+        if not datetime_str:
+            return None
+
+        # Parse the datetime string into start and end
+        if "/" in datetime_str:
+            start, end = datetime_str.split("/")
+            # Replace open-ended ranges with concrete dates
+            if start == "..":
+                # For open-ended start, use a very early date
+                start = "1800-01-01T00:00:00Z"
+            if end == "..":
+                # For open-ended end, use a far future date
+                end = "2999-12-31T23:59:59Z"
+        else:
+            # If it's just a single date, use it for both start and end
+            start = end = datetime_str
+
+        return {
+            "bool": {
+                "must": [
+                    # Check if any date in the array is less than or equal to the query end date
+                    # This will match if the collection's start date is before or equal to the query end date
+                    {"range": {"extent.temporal.interval": {"lte": end}}},
+                    # Check if any date in the array is greater than or equal to the query start date
+                    # This will match if the collection's end date is after or equal to the query start date
+                    {"range": {"extent.temporal.interval": {"gte": start}}},
+                ]
+            }
+        }
 
     async def get_one_item(self, collection_id: str, item_id: str) -> Dict:
         """Retrieve a single item from the database.
@@ -540,18 +683,31 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         Args:
             search (Search): The search object to apply the filter to.
-            op (str): The comparison operator to use. Can be 'eq' (equal), 'gt' (greater than), 'gte' (greater than or equal),
-                'lt' (less than), or 'lte' (less than or equal).
+            op (str): The comparison operator to use. Can be 'eq' (equal), 'ne'/'neq' (not equal), 'gt' (greater than),
+                'gte' (greater than or equal), 'lt' (less than), or 'lte' (less than or equal).
             field (str): The field to perform the comparison on.
             value (float): The value to compare the field against.
 
         Returns:
             search (Search): The search object with the specified filter applied.
         """
-        if op != "eq":
+        if op == "eq":
+            search = search.filter("term", **{field: value})
+        elif op == "ne" or op == "neq":
+            # For not equal, use a bool query with must_not
+            search = search.exclude("term", **{field: value})
+        elif op in ["gt", "gte", "lt", "lte"]:
+            # For range operators
             key_filter = {field: {op: value}}
             search = search.filter(Q("range", **key_filter))
-        else:
+        elif op == "in":
+            # For in operator (value should be a list)
+            if isinstance(value, list):
+                search = search.filter("terms", **{field: value})
+            else:
+                search = search.filter("term", **{field: value})
+        elif op == "contains":
+            # For contains operator (for arrays)
             search = search.filter("term", **{field: value})
 
         return search
