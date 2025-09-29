@@ -269,34 +269,31 @@ class CoreClient(AsyncBaseCoreClient):
         request = kwargs["request"]
         base_url = str(request.base_url)
 
-        # Get the global limit from environment variable
-        global_limit = None
-        env_limit = os.getenv("STAC_ITEM_LIMIT")
-        if env_limit:
-            try:
-                global_limit = int(env_limit)
-            except ValueError:
-                # Handle invalid integer in environment variable
-                pass
+        global_max_limit = (
+            int(os.getenv("STAC_GLOBAL_COLLECTION_MAX_LIMIT"))
+            if os.getenv("STAC_GLOBAL_COLLECTION_MAX_LIMIT")
+            else None
+        )
+        default_limit = int(os.getenv("STAC_DEFAULT_COLLECTION_LIMIT", 300))
+        query_limit = request.query_params.get("limit")
 
-        # Apply global limit if it exists
-        if global_limit is not None:
-            # If a limit was provided, use the smaller of the two
-            if limit is not None:
-                limit = min(limit, global_limit)
-            else:
-                limit = global_limit
+        body_limit = None
+        try:
+            if request.method == "POST" and request.body():
+                body_data = await request.json()
+                body_limit = body_data.get("limit")
+        except Exception:
+            pass
+
+        if body_limit is not None:
+            limit = int(body_limit)
+        elif query_limit:
+            limit = int(query_limit)
         else:
-            # No global limit, use provided limit or default
-            if limit is None:
-                query_limit = request.query_params.get("limit")
-                if query_limit:
-                    try:
-                        limit = int(query_limit)
-                    except ValueError:
-                        limit = 10
-                else:
-                    limit = 10
+            limit = default_limit
+
+        if global_max_limit is not None:
+            limit = min(limit, global_max_limit)
 
         token = request.query_params.get("token")
 
@@ -562,7 +559,7 @@ class CoreClient(AsyncBaseCoreClient):
             request (Request): FastAPI Request object.
             bbox (Optional[BBox]): Optional bounding box filter.
             datetime (Optional[str]): Optional datetime or interval filter.
-            limit (Optional[int]): Optional page size. Defaults to env ``STAC_ITEM_LIMIT`` when unset.
+            limit (Optional[int]): Optional page size. Defaults to env `STAC_DEFAULT_ITEM_LIMIT` when unset.
             sortby (Optional[str]): Optional sort specification. Accepts repeated values
                 like ``sortby=-properties.datetime`` or ``sortby=+id``. Bare fields (e.g. ``sortby=id``)
                 imply ascending order.
@@ -653,15 +650,12 @@ class CoreClient(AsyncBaseCoreClient):
             q (Optional[List[str]]): Free text query to filter the results.
             intersects (Optional[str]): GeoJSON geometry to search in.
             kwargs: Additional parameters to be passed to the API.
-
         Returns:
             ItemCollection: Collection of `Item` objects representing the search results.
 
         Raises:
             HTTPException: If any error occurs while searching the catalog.
         """
-        limit = int(request.query_params.get("limit", os.getenv("STAC_ITEM_LIMIT", 10)))
-
         base_args = {
             "collections": collections,
             "ids": ids,
@@ -736,6 +730,25 @@ class CoreClient(AsyncBaseCoreClient):
         Raises:
             HTTPException: If there is an error with the cql2_json filter.
         """
+        global_max_limit = (
+            int(os.getenv("STAC_GLOBAL_ITEM_MAX_LIMIT"))
+            if os.getenv("STAC_GLOBAL_ITEM_MAX_LIMIT")
+            else None
+        )
+        default_limit = int(os.getenv("STAC_DEFAULT_ITEM_LIMIT", 10))
+
+        requested_limit = getattr(search_request, "limit", None)
+
+        if requested_limit is None:
+            limit = default_limit
+        else:
+            limit = requested_limit
+
+        if global_max_limit:
+            limit = min(limit, global_max_limit)
+
+        search_request.limit = limit
+
         base_url = str(request.base_url)
 
         search = self.database.make_search()
@@ -812,7 +825,6 @@ class CoreClient(AsyncBaseCoreClient):
         if hasattr(search_request, "sortby") and getattr(search_request, "sortby"):
             sort = self.database.populate_sort(getattr(search_request, "sortby"))
 
-        limit = 10
         if search_request.limit:
             limit = search_request.limit
 

@@ -299,9 +299,11 @@ You can customize additional settings in your `.env` file:
 | `ENABLE_COLLECTIONS_SEARCH`  | Enable collection search extensions (sort, fields, free text search, structured filtering, and datetime filtering) on the core `/collections` endpoint. | `true`                   | Optional                                                                                    |
 | `ENABLE_COLLECTIONS_SEARCH_ROUTE` | Enable the custom `/collections-search` endpoint (both GET and POST methods). When disabled, the custom endpoint will not be available, but collection search extensions will still be available on the core `/collections` endpoint if `ENABLE_COLLECTIONS_SEARCH` is true. | `false` | Optional |
 | `ENABLE_TRANSACTIONS_EXTENSIONS` | Enables or disables the Transactions and Bulk Transactions API extensions. This is useful for deployments where mutating the catalog via the API should be prevented. If set to `true`, the POST `/collections` route for search will be unavailable in the API. | `true` | Optional |
-| `STAC_ITEM_LIMIT` | Sets the environment variable for result limiting to SFEOS for the number of returned items and STAC collections. | `10` | Optional |
+| `STAC_GLOBAL_COLLECTION_MAX_LIMIT` | Configures the maximum number of STAC collections that can be returned in a single search request. | N/A | Optional |
+| `STAC_DEFAULT_COLLECTION_LIMIT` | Configures the default number of STAC collections returned when no limit parameter is specified in the request. | `300` | Optional |
+| `STAC_GLOBAL_ITEM_MAX_LIMIT` | Configures the maximum number of STAC items that can be returned in a single search request. | N/A | Optional |
+| `STAC_DEFAULT_ITEM_LIMIT` | Configures the default number of STAC items returned when no limit parameter is specified in the request. | `10` | Optional |
 | `STAC_INDEX_ASSETS` | Controls if Assets are indexed when added to Elasticsearch/Opensearch. This allows asset fields to be included in search queries. | `false` | Optional |
-| `ENV_MAX_LIMIT` | Configures the environment variable in SFEOS to override the default `MAX_LIMIT`, which controls the limit parameter for returned items and STAC collections. | `10,000` | Optional |
 | `USE_DATETIME` | Configures the datetime search behavior in SFEOS. When enabled, searches both datetime field and falls back to start_datetime/end_datetime range for items with null datetime. When disabled, searches only by start_datetime/end_datetime range. | `true` | Optional |
 
 > [!NOTE]
