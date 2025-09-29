@@ -163,7 +163,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         filter: Optional[Dict[str, Any]] = None,
         query: Optional[Dict[str, Dict[str, Any]]] = None,
         datetime: Optional[str] = None,
-    ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+    ) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[int]]:
         """Retrieve a list of collections from OpenSearch, supporting pagination.
 
         Args:
@@ -172,8 +172,8 @@ class DatabaseLogic(BaseDatabaseLogic):
             request (Request): The FastAPI request object.
             sort (Optional[List[Dict[str, Any]]]): Optional sort parameter from the request.
             q (Optional[List[str]]): Free text search terms.
-            filter (Optional[Dict[str, Any]]): Structured filter in CQL2 format.
             query (Optional[Dict[str, Dict[str, Any]]]): Query extension parameters.
+            filter (Optional[Dict[str, Any]]): Structured query in CQL2 format.
             datetime (Optional[str]): Temporal filter.
 
         Returns:
@@ -212,8 +212,21 @@ class DatabaseLogic(BaseDatabaseLogic):
             "size": limit,
         }
 
+        # Handle search_after token - split by '|' to get all sort values
+        search_after = None
         if token:
-            body["search_after"] = [token]
+            try:
+                # The token should be a pipe-separated string of sort values
+                # e.g., "2023-01-01T00:00:00Z|collection-1"
+                search_after = token.split("|")
+                # If the number of sort fields doesn't match token parts, ignore the token
+                if len(search_after) != len(formatted_sort):
+                    search_after = None
+            except Exception:
+                search_after = None
+
+            if search_after is not None:
+                body["search_after"] = search_after
 
         # Build the query part of the body
         query_parts = []
@@ -278,6 +291,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 search_dict = search.to_dict()
                 if "query" in search_dict:
                     query_parts.append(search_dict["query"])
+
             except Exception as e:
                 logger = logging.getLogger(__name__)
                 logger.error(f"Error converting query to OpenSearch: {e}")
@@ -285,6 +299,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 query_parts.append({"bool": {"must_not": {"match_all": {}}}})
                 raise
 
+        # Combine all query parts with AND logic if there are multiple
         datetime_filter = None
         if datetime:
             datetime_filter = self._apply_collection_datetime_filter(datetime)
@@ -299,11 +314,29 @@ class DatabaseLogic(BaseDatabaseLogic):
                 else {"bool": {"must": query_parts}}
             )
 
-        # Execute the search
-        response = await self.client.search(
-            index=COLLECTIONS_INDEX,
-            body=body,
+        # Create a copy of the body for count query (without pagination and sorting)
+        count_body = body.copy()
+        if "search_after" in count_body:
+            del count_body["search_after"]
+        count_body["size"] = 0
+
+        # Create async tasks for both search and count
+        search_task = asyncio.create_task(
+            self.client.search(
+                index=COLLECTIONS_INDEX,
+                body=body,
+            )
         )
+
+        count_task = asyncio.create_task(
+            self.client.count(
+                index=COLLECTIONS_INDEX,
+                body={"query": body.get("query", {"match_all": {}})},
+            )
+        )
+
+        # Wait for search task to complete
+        response = await search_task
 
         hits = response["hits"]["hits"]
         collections = [
@@ -317,9 +350,25 @@ class DatabaseLogic(BaseDatabaseLogic):
         if len(hits) == limit:
             next_token_values = hits[-1].get("sort")
             if next_token_values:
-                next_token = next_token_values[0]
+                # Join all sort values with '|' to create the token
+                next_token = "|".join(str(val) for val in next_token_values)
 
-        return collections, next_token
+        # Get the total count of collections
+        matched = (
+            response["hits"]["total"]["value"]
+            if response["hits"]["total"]["relation"] == "eq"
+            else None
+        )
+
+        # If count task is done, use its result
+        if count_task.done():
+            try:
+                matched = count_task.result().get("count")
+            except Exception as e:
+                logger = logging.getLogger(__name__)
+                logger.error(f"Count task failed: {e}")
+
+        return collections, next_token, matched
 
     async def get_one_item(self, collection_id: str, item_id: str) -> Dict:
         """Retrieve a single item from the database.
