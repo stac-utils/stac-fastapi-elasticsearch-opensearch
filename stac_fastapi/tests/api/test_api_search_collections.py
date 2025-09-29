@@ -185,12 +185,16 @@ async def test_collections_fields_all_endpoints(app_client, txn_client, ctx):
 
 
 @pytest.mark.asyncio
-async def test_collections_free_text_all_endpoints(app_client, txn_client, ctx):
+async def test_collections_free_text_all_endpoints(
+    app_client, txn_client, ctx, monkeypatch
+):
     """Test free text search across all collection endpoints."""
     # Create test data
     test_prefix = f"free-text-{uuid.uuid4().hex[:8]}"
     base_collection = ctx.collection
     search_term = "SEARCHABLETERM"
+
+    monkeypatch.setenv("ENABLE_COLLECTIONS_SEARCH_ROUTE", "true")
 
     # Create test collections
     target_collection = base_collection.copy()
