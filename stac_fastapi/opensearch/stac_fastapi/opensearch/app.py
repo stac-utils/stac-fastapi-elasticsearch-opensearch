@@ -130,9 +130,6 @@ extensions = [aggregation_extension] + search_extensions
 # Collection search related variables
 collections_get_request_model = None
 
-# Collection search related variables
-collections_get_request_model = None
-
 if ENABLE_COLLECTIONS_SEARCH or ENABLE_COLLECTIONS_SEARCH_ROUTE:
     # Create collection search extensions
     collection_search_extensions = [

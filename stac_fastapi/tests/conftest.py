@@ -316,10 +316,10 @@ def must_be_bob(
 async def route_dependencies_app():
     """Fixture to get the FastAPI app with custom route dependencies."""
 
+    os.environ["ENABLE_COLLECTIONS_SEARCH_ROUTE"] = "true"
+
     # Create a copy of the app config
     test_config = app_config.copy()
-
-    os.environ["ENABLE_COLLECTIONS_SEARCH_ROUTE"] = "true"
 
     # Define route dependencies
     test_config["route_dependencies"] = [
