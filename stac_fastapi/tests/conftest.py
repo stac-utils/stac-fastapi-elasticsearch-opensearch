@@ -25,8 +25,20 @@ from stac_fastapi.core.extensions.aggregation import (
 )
 from stac_fastapi.core.rate_limit import setup_rate_limit
 from stac_fastapi.core.utilities import get_bool_env
+from stac_fastapi.extensions.core import (
+    AggregationExtension,
+    FieldsExtension,
+    FilterExtension,
+    FreeTextExtension,
+    SortExtension,
+    TokenPaginationExtension,
+    TransactionExtension,
+)
 from stac_fastapi.sfeos_helpers.aggregation import EsAsyncBaseAggregationClient
 from stac_fastapi.sfeos_helpers.mappings import ITEMS_INDEX_PREFIX
+from stac_fastapi.types.config import Settings
+
+os.environ.setdefault("ENABLE_COLLECTIONS_SEARCH_ROUTE", "true")
 
 if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
     from stac_fastapi.opensearch.app import app_config
@@ -50,17 +62,6 @@ else:
         create_collection_index,
         create_index_templates,
     )
-
-from stac_fastapi.extensions.core import (
-    AggregationExtension,
-    FieldsExtension,
-    FilterExtension,
-    FreeTextExtension,
-    SortExtension,
-    TokenPaginationExtension,
-    TransactionExtension,
-)
-from stac_fastapi.types.config import Settings
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 
@@ -204,7 +205,6 @@ def bulk_txn_client():
 
 @pytest_asyncio.fixture(scope="session")
 async def app():
-    os.environ["ENABLE_COLLECTIONS_SEARCH_ROUTE"] = "true"
     return StacApi(**app_config).app
 
 
