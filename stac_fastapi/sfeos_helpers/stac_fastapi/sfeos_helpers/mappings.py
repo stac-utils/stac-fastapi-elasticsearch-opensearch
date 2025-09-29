@@ -160,7 +160,9 @@ ES_COLLECTIONS_MAPPINGS = {
     "dynamic_templates": ES_MAPPINGS_DYNAMIC_TEMPLATES,
     "properties": {
         "id": {"type": "keyword"},
-        "extent.spatial.bbox": {"type": "long"},
+        "title": {"type": "text"},
+        "description": {"type": "text"},
+        "bbox_shape": {"type": "geo_shape"},
         "extent.temporal.interval": {
             "type": "date",
             "format": "strict_date_optional_time||epoch_millis",
