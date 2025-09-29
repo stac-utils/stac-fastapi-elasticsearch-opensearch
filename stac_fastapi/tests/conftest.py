@@ -319,6 +319,8 @@ async def route_dependencies_app():
     # Create a copy of the app config
     test_config = app_config.copy()
 
+    os.environ["ENABLE_COLLECTIONS_SEARCH_ROUTE"] = "true"
+
     # Define route dependencies
     test_config["route_dependencies"] = [
         ([{"method": "GET", "path": "/collections"}], [Depends(must_be_bob)])

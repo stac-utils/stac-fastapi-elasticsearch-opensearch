@@ -154,7 +154,7 @@ These extensions make it easier to build user interfaces that display and naviga
 
 > **Configuration**: Collection search extensions (sorting, field selection, free text search, structured filtering, and datetime filtering) for the `/collections` endpoint can be disabled by setting the `ENABLE_COLLECTIONS_SEARCH` environment variable to `false`. By default, these extensions are enabled.
 > 
-> **Configuration**: The custom `/collections-search` endpoint can be disabled by setting the `ENABLE_COLLECTIONS_SEARCH_ROUTE` environment variable to `false`. By default, this endpoint is enabled.
+> **Configuration**: The custom `/collections-search` endpoint can be enabled by setting the `ENABLE_COLLECTIONS_SEARCH_ROUTE` environment variable to `true`. By default, this endpoint is **disabled**.
 
 > **Note**: Sorting is only available on fields that are indexed for sorting in Elasticsearch/OpenSearch. With the default mappings, you can sort on:
 > - `id` (keyword field)
@@ -297,7 +297,7 @@ You can customize additional settings in your `.env` file:
 | `RAISE_ON_BULK_ERROR`        | Controls whether bulk insert operations raise exceptions on errors. If set to `true`, the operation will stop and raise an exception when an error occurs. If set to `false`, errors will be logged, and the operation will continue. **Note:** STAC Item and ItemCollection validation errors will always raise, regardless of this flag. | `false` | Optional |
 | `DATABASE_REFRESH`           | Controls whether database operations refresh the index immediately after changes. If set to `true`, changes will be immediately searchable. If set to `false`, changes may not be immediately visible but can improve performance for bulk operations. If set to `wait_for`, changes will wait for the next refresh cycle to become visible. | `false` | Optional |
 | `ENABLE_COLLECTIONS_SEARCH`  | Enable collection search extensions (sort, fields, free text search, structured filtering, and datetime filtering) on the core `/collections` endpoint. | `true`                   | Optional                                                                                    |
-| `ENABLE_COLLECTIONS_SEARCH_ROUTE` | Enable the custom `/collections-search` endpoint (both GET and POST methods). When disabled, the custom endpoint will not be available, but collection search extensions will still be available on the core `/collections` endpoint if `ENABLE_COLLECTIONS_SEARCH` is true. | `true` | Optional |
+| `ENABLE_COLLECTIONS_SEARCH_ROUTE` | Enable the custom `/collections-search` endpoint (both GET and POST methods). When disabled, the custom endpoint will not be available, but collection search extensions will still be available on the core `/collections` endpoint if `ENABLE_COLLECTIONS_SEARCH` is true. | `false` | Optional |
 | `ENABLE_TRANSACTIONS_EXTENSIONS` | Enables or disables the Transactions and Bulk Transactions API extensions. This is useful for deployments where mutating the catalog via the API should be prevented. If set to `true`, the POST `/collections` route for search will be unavailable in the API. | `true` | Optional |
 | `STAC_ITEM_LIMIT` | Sets the environment variable for result limiting to SFEOS for the number of returned items and STAC collections. | `10` | Optional |
 | `STAC_INDEX_ASSETS` | Controls if Assets are indexed when added to Elasticsearch/Opensearch. This allows asset fields to be included in search queries. | `false` | Optional |
