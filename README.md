@@ -66,13 +66,13 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
 ## Table of Contents
 
 - [stac-fastapi-elasticsearch-opensearch](#stac-fastapi-elasticsearch-opensearch)
-  - [Sponsors \& Supporters](#sponsors--supporters)
+  - [Sponsors & Supporters](#sponsors--supporters)
   - [Project Introduction - What is SFEOS?](#project-introduction---what-is-sfeos)
   - [Common Deployment Patterns](#common-deployment-patterns)
   - [Technologies](#technologies)
   - [Table of Contents](#table-of-contents)
   - [Collection Search Extensions](#collection-search-extensions)
-  - [Documentation \& Resources](#documentation--resources)
+  - [Documentation & Resources](#documentation--resources)
   - [Package Structure](#package-structure)
   - [Examples](#examples)
   - [Performance](#performance)
@@ -115,7 +115,11 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
 
 ## Collection Search Extensions
 
-SFEOS implements extended capabilities for the `/collections` endpoint, allowing for more powerful collection discovery:
+SFEOS provides enhanced collection search capabilities through two primary routes:
+- **GET/POST `/collections`**: The standard STAC endpoint with extended query parameters
+- **GET/POST `/collections-search`**: A custom endpoint that supports the same parameters, created to avoid conflicts with the STAC Transactions extension if enabled (which uses POST `/collections` for collection creation)
+
+These endpoints support advanced collection discovery features including:
 
 - **Sorting**: Sort collections by sortable fields using the `sortby` parameter
   - Example: `/collections?sortby=+id` (ascending sort by ID)
@@ -146,11 +150,11 @@ SFEOS implements extended capabilities for the `/collections` endpoint, allowing
   - Collections are matched if their temporal extent overlaps with the provided datetime parameter
   - This allows for efficient discovery of collections based on time periods
 
-> **Note on HTTP Methods**: All collection search extensions (sorting, field selection, free text search, structured filtering, and datetime filtering) currently only support GET requests. POST requests with these parameters in the request body are not yet supported.
-
 These extensions make it easier to build user interfaces that display and navigate through collections efficiently.
 
-> **Configuration**: Collection search extensions (sorting, field selection, free text search, structured filtering, and datetime filtering) can be disabled by setting the `ENABLE_COLLECTIONS_SEARCH` environment variable to `false`. By default, these extensions are enabled.
+> **Configuration**: Collection search extensions (sorting, field selection, free text search, structured filtering, and datetime filtering) for the `/collections` endpoint can be disabled by setting the `ENABLE_COLLECTIONS_SEARCH` environment variable to `false`. By default, these extensions are enabled.
+> 
+> **Configuration**: The custom `/collections-search` endpoint can be enabled by setting the `ENABLE_COLLECTIONS_SEARCH_ROUTE` environment variable to `true`. By default, this endpoint is **disabled**.
 
 > **Note**: Sorting is only available on fields that are indexed for sorting in Elasticsearch/OpenSearch. With the default mappings, you can sort on:
 > - `id` (keyword field)
@@ -160,6 +164,7 @@ These extensions make it easier to build user interfaces that display and naviga
 > Text fields like `title` and `description` are not sortable by default as they use text analysis for better search capabilities. Attempting to sort on these fields will result in a user-friendly error message explaining which fields are sortable and how to make additional fields sortable by updating the mappings.
 >
 > **Important**: Adding keyword fields to make text fields sortable can significantly increase the index size, especially for large text fields. Consider the storage implications when deciding which fields to make sortable.
+
 
 ## Package Structure
 
@@ -291,8 +296,9 @@ You can customize additional settings in your `.env` file:
 | `ENABLE_DIRECT_RESPONSE`     | Enable direct response for maximum performance (disables all FastAPI dependencies, including authentication, custom status codes, and validation) | `false`                  | Optional                       |
 | `RAISE_ON_BULK_ERROR`        | Controls whether bulk insert operations raise exceptions on errors. If set to `true`, the operation will stop and raise an exception when an error occurs. If set to `false`, errors will be logged, and the operation will continue. **Note:** STAC Item and ItemCollection validation errors will always raise, regardless of this flag. | `false` | Optional |
 | `DATABASE_REFRESH`           | Controls whether database operations refresh the index immediately after changes. If set to `true`, changes will be immediately searchable. If set to `false`, changes may not be immediately visible but can improve performance for bulk operations. If set to `wait_for`, changes will wait for the next refresh cycle to become visible. | `false` | Optional |
-| `ENABLE_COLLECTIONS_SEARCH`  | Enable collection search extensions (sort, fields, free text search, structured filtering, and datetime filtering).                                 | `true`                   | Optional                                                                                    |
-| `ENABLE_TRANSACTIONS_EXTENSIONS` | Enables or disables the Transactions and Bulk Transactions API extensions. If set to `false`, the POST `/collections` route and related transaction endpoints (including bulk transaction operations) will be unavailable in the API. This is useful for deployments where mutating the catalog via the API should be prevented. | `true` | Optional |
+| `ENABLE_COLLECTIONS_SEARCH`  | Enable collection search extensions (sort, fields, free text search, structured filtering, and datetime filtering) on the core `/collections` endpoint. | `true`                   | Optional                                                                                    |
+| `ENABLE_COLLECTIONS_SEARCH_ROUTE` | Enable the custom `/collections-search` endpoint (both GET and POST methods). When disabled, the custom endpoint will not be available, but collection search extensions will still be available on the core `/collections` endpoint if `ENABLE_COLLECTIONS_SEARCH` is true. | `false` | Optional |
+| `ENABLE_TRANSACTIONS_EXTENSIONS` | Enables or disables the Transactions and Bulk Transactions API extensions. This is useful for deployments where mutating the catalog via the API should be prevented. If set to `true`, the POST `/collections` route for search will be unavailable in the API. | `true` | Optional |
 | `STAC_ITEM_LIMIT` | Sets the environment variable for result limiting to SFEOS for the number of returned items and STAC collections. | `10` | Optional |
 | `STAC_INDEX_ASSETS` | Controls if Assets are indexed when added to Elasticsearch/Opensearch. This allows asset fields to be included in search queries. | `false` | Optional |
 | `ENV_MAX_LIMIT` | Configures the environment variable in SFEOS to override the default `MAX_LIMIT`, which controls the limit parameter for returned items and STAC collections. | `10,000` | Optional |
@@ -441,7 +447,6 @@ The system uses a precise naming convention:
 - **Feature Configuration**: Control which features are enabled:
   - `ENABLE_COLLECTIONS_SEARCH`: Set to `true` (default) to enable collection search extensions (sort, fields). Set to `false` to disable.
   - `ENABLE_TRANSACTIONS_EXTENSIONS`: Set to `true` (default) to enable transaction extensions. Set to `false` to disable.
-
 
 ## Collection Pagination
 
