@@ -204,6 +204,7 @@ def bulk_txn_client():
 
 @pytest_asyncio.fixture(scope="session")
 async def app():
+    os.environ["ENABLE_COLLECTIONS_SEARCH_ROUTE"] = "true"
     return StacApi(**app_config).app
 
 
@@ -315,9 +316,6 @@ def must_be_bob(
 @pytest_asyncio.fixture(scope="session")
 async def route_dependencies_app():
     """Fixture to get the FastAPI app with custom route dependencies."""
-
-    os.environ["ENABLE_COLLECTIONS_SEARCH_ROUTE"] = "true"
-
     # Create a copy of the app config
     test_config = app_config.copy()
 
