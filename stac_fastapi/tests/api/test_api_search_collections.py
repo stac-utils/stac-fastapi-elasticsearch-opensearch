@@ -787,17 +787,35 @@ async def test_collections_pagination_all_endpoints(app_client, txn_client, ctx)
         for i, expected_id in enumerate(expected_ids):
             assert test_found[i]["id"] == expected_id
 
-        # Test second page using the token from the first page
-        if "token" in resp_json and resp_json["token"]:
-            token = resp_json["token"]
+        # Test second page using the token from the next link
+        next_link = None
+        for link in resp_json.get("links", []):
+            if link.get("rel") == "next":
+                next_link = link
+                break
 
-            # Make the request with token
+        if next_link:
+            # Extract token based on method
             if endpoint["method"] == "GET":
-                params = [(endpoint["param"], str(limit)), ("token", token)]
-                resp = await app_client.get(endpoint["path"], params=params)
+                # For GET, token is in the URL query params
+                from urllib.parse import parse_qs, urlparse
+
+                parsed_url = urlparse(next_link["href"])
+                query_params = parse_qs(parsed_url.query)
+                token = query_params.get("token", [None])[0]
+
+                if token:
+                    params = [(endpoint["param"], str(limit)), ("token", token)]
+                    resp = await app_client.get(endpoint["path"], params=params)
+                else:
+                    continue  # Skip if no token found
             else:  # POST
-                body = {endpoint["body_key"]: limit, "token": token}
-                resp = await app_client.post(endpoint["path"], json=body)
+                # For POST, token is in the body
+                body = next_link.get("body", {})
+                if "token" in body:
+                    resp = await app_client.post(endpoint["path"], json=body)
+                else:
+                    continue  # Skip if no token found
 
             assert (
                 resp.status_code == 200
@@ -805,10 +823,7 @@ async def test_collections_pagination_all_endpoints(app_client, txn_client, ctx)
             resp_json = resp.json()
 
             # Filter to our test collections
-            if endpoint["path"] == "/collections":
-                found_collections = resp_json
-            else:  # For collection-search endpoints
-                found_collections = resp_json["collections"]
+            found_collections = resp_json["collections"]
 
             test_found = [
                 c for c in found_collections if c["id"].startswith(test_prefix)
