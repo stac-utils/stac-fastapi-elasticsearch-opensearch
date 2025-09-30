@@ -16,8 +16,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
-- Issue where token was not being passed from request to POST collections search logic
+- Issue where token, query param was not being passed to POST collections search logic
 - Issue where datetime param was not being passed from POST collections search logic to Elasticsearch
+- Collections search tests to ensure both GET /collections and POST /collections-search endpoints are tested
 
 [v6.5.0] - 2025-09-29
 

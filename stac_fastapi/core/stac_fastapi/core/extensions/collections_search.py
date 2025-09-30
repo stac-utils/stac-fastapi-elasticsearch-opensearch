@@ -19,6 +19,9 @@ class CollectionsSearchRequest(ExtendedSearch):
 
     q: Optional[Union[str, List[str]]] = None
     token: Optional[str] = None
+    query: Optional[
+        str
+    ] = None  # Legacy query extension (deprecated but still supported)
 
 
 class CollectionsSearchEndpointExtension(ApiExtension):
