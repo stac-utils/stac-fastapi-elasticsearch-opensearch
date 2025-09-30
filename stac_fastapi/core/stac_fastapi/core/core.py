@@ -241,7 +241,6 @@ class CoreClient(AsyncBaseCoreClient):
     async def all_collections(
         self,
         limit: Optional[int] = None,
-        bbox: Optional[BBox] = None,
         datetime: Optional[str] = None,
         fields: Optional[List[str]] = None,
         sortby: Optional[Union[str, List[str]]] = None,
@@ -402,7 +401,6 @@ class CoreClient(AsyncBaseCoreClient):
             limit=limit,
             request=request,
             sort=sort,
-            bbox=bbox,
             q=q_list,
             filter=parsed_filter,
             query=parsed_query,
@@ -504,7 +502,6 @@ class CoreClient(AsyncBaseCoreClient):
         # Pass all parameters from search_request to all_collections
         return await self.all_collections(
             limit=search_request.limit if hasattr(search_request, "limit") else None,
-            bbox=search_request.bbox if hasattr(search_request, "bbox") else None,
             datetime=search_request.datetime
             if hasattr(search_request, "datetime")
             else None,

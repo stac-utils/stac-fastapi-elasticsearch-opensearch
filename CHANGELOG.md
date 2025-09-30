@@ -9,10 +9,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
-- Spatial search support for collections via `bbox` parameter on `/collections` endpoint. Collections are now indexed with a `bbox_shape` field (GeoJSON polygon) derived from their spatial extent for efficient geospatial queries.
-- Migration scripts (`update_collections_mapping.py` and `recreate_collections_index.py`) to help add `bbox_shape` field to existing deployments.
-
 ### Changed
+
+### Fixed
+
+[v6.5.1] - 2025-09-30
 
 ### Fixed
 
@@ -554,7 +555,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.5.0...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.5.1...main
+[v6.5.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.5.0...v6.5.1
 [v6.5.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.4.0...v6.5.0
 [v6.4.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.3.0...v6.4.0
 [v6.3.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.2.1...v6.3.0

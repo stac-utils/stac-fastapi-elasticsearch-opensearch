@@ -10,7 +10,7 @@ from starlette.requests import Request
 
 from stac_fastapi.core.datetime_utils import now_to_rfc3339_str
 from stac_fastapi.core.models.links import CollectionLinks
-from stac_fastapi.core.utilities import bbox2polygon, get_bool_env
+from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.links import ItemLinks, resolve_links
 
@@ -144,53 +144,6 @@ class CollectionSerializer(Serializer):
             collection.get("links", []), str(request.base_url)
         )
 
-        # Convert bbox to bbox_shape for geospatial queries
-        if "extent" in collection and "spatial" in collection["extent"]:
-            spatial_extent = collection["extent"]["spatial"]
-            if "bbox" in spatial_extent and spatial_extent["bbox"]:
-                # Get the first bbox (collections can have multiple bboxes, but we use the first one)
-                bbox = (
-                    spatial_extent["bbox"][0]
-                    if isinstance(spatial_extent["bbox"][0], list)
-                    else spatial_extent["bbox"]
-                )
-                collection_id = collection.get("id", "unknown")
-                logger.debug(
-                    f"Converting bbox to bbox_shape for collection '{collection_id}': bbox={bbox}"
-                )
-
-                if len(bbox) >= 4:
-                    # Extract 2D coordinates (bbox can be 2D [minx, miny, maxx, maxy] or 3D [minx, miny, minz, maxx, maxy, maxz])
-                    # For 2D polygon, we only need the x,y coordinates and discard altitude (z) values
-                    minx, miny = bbox[0], bbox[1]
-                    if len(bbox) == 4:
-                        # 2D bbox: [minx, miny, maxx, maxy]
-                        maxx, maxy = bbox[2], bbox[3]
-                        logger.debug(
-                            f"Collection '{collection_id}': Processing 2D bbox"
-                        )
-                    else:
-                        # 3D bbox: [minx, miny, minz, maxx, maxy, maxz]
-                        # Extract indices 3,4 for maxx,maxy - discarding altitude at indices 2 (minz) and 5 (maxz)
-                        maxx, maxy = bbox[3], bbox[4]
-                        logger.debug(
-                            f"Collection '{collection_id}': Processing 3D bbox, discarding altitude values at indices 2 and 5"
-                        )
-
-                    # Convert bbox to GeoJSON polygon
-                    bbox_polygon_coords = bbox2polygon(minx, miny, maxx, maxy)
-                    collection["bbox_shape"] = {
-                        "type": "Polygon",
-                        "coordinates": bbox_polygon_coords,
-                    }
-                    logger.info(
-                        f"Collection '{collection_id}': Created bbox_shape from bbox [{minx}, {miny}, {maxx}, {maxy}]"
-                    )
-                else:
-                    logger.warning(
-                        f"Collection '{collection_id}': bbox has insufficient coordinates (length={len(bbox)}), expected at least 4"
-                    )
-
         if get_bool_env("STAC_INDEX_ASSETS"):
             collection["assets"] = [
                 {"es_key": k, **v} for k, v in collection.get("assets", {}).items()
@@ -217,9 +170,6 @@ class CollectionSerializer(Serializer):
         """
         # Avoid modifying the input dict in-place ... doing so breaks some tests
         collection = deepcopy(collection)
-
-        # Remove internal bbox_shape field (not part of STAC spec)
-        collection.pop("bbox_shape", None)
 
         # Set defaults
         collection_id = collection.get("id")

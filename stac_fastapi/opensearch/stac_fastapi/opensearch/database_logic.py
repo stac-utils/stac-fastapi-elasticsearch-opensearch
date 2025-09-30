@@ -159,7 +159,6 @@ class DatabaseLogic(BaseDatabaseLogic):
         limit: int,
         request: Request,
         sort: Optional[List[Dict[str, Any]]] = None,
-        bbox: Optional[List[float]] = None,
         q: Optional[List[str]] = None,
         filter: Optional[Dict[str, Any]] = None,
         query: Optional[Dict[str, Dict[str, Any]]] = None,
@@ -172,7 +171,6 @@ class DatabaseLogic(BaseDatabaseLogic):
             limit (int): The number of results to return.
             request (Request): The FastAPI request object.
             sort (Optional[List[Dict[str, Any]]]): Optional sort parameter from the request.
-            bbox (Optional[List[float]]): Bounding box to filter collections by spatial extent.
             q (Optional[List[str]]): Free text search terms.
             query (Optional[Dict[str, Dict[str, Any]]]): Query extension parameters.
             filter (Optional[Dict[str, Any]]): Structured query in CQL2 format.
@@ -299,44 +297,6 @@ class DatabaseLogic(BaseDatabaseLogic):
                 # If there's an error, add a query that matches nothing
                 query_parts.append({"bool": {"must_not": {"match_all": {}}}})
                 raise
-
-        # Apply bbox filter if provided
-        if bbox:
-            # Parse bbox if it's a string (from GET requests)
-            if isinstance(bbox, str):
-                try:
-                    bbox = [float(x.strip()) for x in bbox.split(",")]
-                except (ValueError, AttributeError) as e:
-                    logger.error(f"Invalid bbox format: {bbox}, error: {e}")
-                    bbox = None
-
-            if bbox and len(bbox) >= 4:
-                # Extract 2D coordinates (bbox can be 2D [minx, miny, maxx, maxy] or 3D [minx, miny, minz, maxx, maxy, maxz])
-                # For geospatial queries, we discard altitude (z) values
-                minx, miny = bbox[0], bbox[1]
-                if len(bbox) == 4:
-                    # 2D bbox
-                    maxx, maxy = bbox[2], bbox[3]
-                else:
-                    # 3D bbox - extract indices 3,4 for maxx,maxy, discarding altitude at indices 2 (minz) and 5 (maxz)
-                    maxx, maxy = bbox[3], bbox[4]
-
-                # Convert bbox to a polygon for geo_shape query
-                bbox_polygon = {
-                    "type": "Polygon",
-                    "coordinates": bbox2polygon(minx, miny, maxx, maxy),
-                }
-                # Add geo_shape query to filter collections by bbox_shape field
-                query_parts.append(
-                    {
-                        "geo_shape": {
-                            "bbox_shape": {
-                                "shape": bbox_polygon,
-                                "relation": "intersects",
-                            }
-                        }
-                    }
-                )
 
         # Combine all query parts with AND logic if there are multiple
         datetime_filter = None
