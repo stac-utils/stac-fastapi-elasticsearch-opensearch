@@ -16,9 +16,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
-- Issue where token, query param was not being passed to POST collections search logic
-- Issue where datetime param was not being passed from POST collections search logic to Elasticsearch
-- Collections search tests to ensure both GET /collections and POST /collections-search endpoints are tested
+- Issue where token, query param was not being passed to POST collections search logic [#483](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/483)
+- Issue where datetime param was not being passed from POST collections search logic to Elasticsearch [#483](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/483)
+- Collections search tests to ensure both GET /collections and GET/POST /collections-search endpoints are tested [#483](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/483)
 
 [v6.5.0] - 2025-09-29
 
@@ -554,7 +554,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.5.0...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.5.1...main
+[v6.5.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.5.0...v6.5.1
 [v6.5.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.4.0...v6.5.0
 [v6.4.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.3.0...v6.4.0
 [v6.3.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.2.1...v6.3.0
