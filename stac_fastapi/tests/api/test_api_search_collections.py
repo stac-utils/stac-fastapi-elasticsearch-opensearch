@@ -8,7 +8,7 @@ from ..conftest import create_collection, refresh_indices
 
 @pytest.mark.asyncio
 async def test_collections_sort_id_asc(app_client, txn_client, ctx):
-    """Verify GET /collections honors ascending sort on id."""
+    """Verify GET /collections, GET /collections-search, and POST /collections-search honor ascending sort on id."""
     # Create multiple collections with different ids
     base_collection = ctx.collection
 
@@ -25,29 +25,48 @@ async def test_collections_sort_id_asc(app_client, txn_client, ctx):
 
     await refresh_indices(txn_client)
 
-    # Test ascending sort by id
-    resp = await app_client.get(
-        "/collections",
-        params=[("sortby", "+id")],
-    )
-    assert resp.status_code == 200
-    resp_json = resp.json()
-
-    # Filter collections to only include the ones we created for this test
-    test_collections = [
-        c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
+    # Define endpoints to test
+    endpoints = [
+        {"method": "GET", "path": "/collections", "params": [("sortby", "+id")]},
+        {
+            "method": "GET",
+            "path": "/collections-search",
+            "params": [("sortby", "+id")],
+        },
+        {
+            "method": "POST",
+            "path": "/collections-search",
+            "body": {"sortby": [{"field": "id", "direction": "asc"}]},
+        },
     ]
 
-    # Collections should be sorted alphabetically by id
-    sorted_ids = sorted(collection_ids)
-    assert len(test_collections) == len(collection_ids)
-    for i, expected_id in enumerate(sorted_ids):
-        assert test_collections[i]["id"] == expected_id
+    for endpoint in endpoints:
+        # Test ascending sort by id
+        if endpoint["method"] == "GET":
+            resp = await app_client.get(endpoint["path"], params=endpoint["params"])
+        else:  # POST
+            resp = await app_client.post(endpoint["path"], json=endpoint["body"])
+
+        assert (
+            resp.status_code == 200
+        ), f"Failed for {endpoint['method']} {endpoint['path']}"
+        resp_json = resp.json()
+
+        # Filter collections to only include the ones we created for this test
+        test_collections = [
+            c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
+        ]
+
+        # Collections should be sorted alphabetically by id
+        sorted_ids = sorted(collection_ids)
+        assert len(test_collections) == len(collection_ids)
+        for i, expected_id in enumerate(sorted_ids):
+            assert test_collections[i]["id"] == expected_id
 
 
 @pytest.mark.asyncio
 async def test_collections_sort_id_desc(app_client, txn_client, ctx):
-    """Verify GET /collections honors descending sort on id."""
+    """Verify GET /collections, GET /collections-search, and POST /collections-search honor descending sort on id."""
     # Create multiple collections with different ids
     base_collection = ctx.collection
 
@@ -64,24 +83,43 @@ async def test_collections_sort_id_desc(app_client, txn_client, ctx):
 
     await refresh_indices(txn_client)
 
-    # Test descending sort by id
-    resp = await app_client.get(
-        "/collections",
-        params=[("sortby", "-id")],
-    )
-    assert resp.status_code == 200
-    resp_json = resp.json()
-
-    # Filter collections to only include the ones we created for this test
-    test_collections = [
-        c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
+    # Define endpoints to test
+    endpoints = [
+        {"method": "GET", "path": "/collections", "params": [("sortby", "-id")]},
+        {
+            "method": "GET",
+            "path": "/collections-search",
+            "params": [("sortby", "-id")],
+        },
+        {
+            "method": "POST",
+            "path": "/collections-search",
+            "body": {"sortby": [{"field": "id", "direction": "desc"}]},
+        },
     ]
 
-    # Collections should be sorted in reverse alphabetical order by id
-    sorted_ids = sorted(collection_ids, reverse=True)
-    assert len(test_collections) == len(collection_ids)
-    for i, expected_id in enumerate(sorted_ids):
-        assert test_collections[i]["id"] == expected_id
+    for endpoint in endpoints:
+        # Test descending sort by id
+        if endpoint["method"] == "GET":
+            resp = await app_client.get(endpoint["path"], params=endpoint["params"])
+        else:  # POST
+            resp = await app_client.post(endpoint["path"], json=endpoint["body"])
+
+        assert (
+            resp.status_code == 200
+        ), f"Failed for {endpoint['method']} {endpoint['path']}"
+        resp_json = resp.json()
+
+        # Filter collections to only include the ones we created for this test
+        test_collections = [
+            c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
+        ]
+
+        # Collections should be sorted in reverse alphabetical order by id
+        sorted_ids = sorted(collection_ids, reverse=True)
+        assert len(test_collections) == len(collection_ids)
+        for i, expected_id in enumerate(sorted_ids):
+            assert test_collections[i]["id"] == expected_id
 
 
 @pytest.mark.asyncio
@@ -245,7 +283,7 @@ async def test_collections_free_text_all_endpoints(
 
 @pytest.mark.asyncio
 async def test_collections_filter_search(app_client, txn_client, ctx):
-    """Verify GET /collections honors the filter parameter for structured search."""
+    """Verify GET /collections, GET /collections-search, and POST /collections-search honor the filter parameter for structured search."""
     # Create multiple collections with different content
     base_collection = ctx.collection
 
@@ -287,52 +325,97 @@ async def test_collections_filter_search(app_client, txn_client, ctx):
     # Use the ID of the first test collection for the filter
     test_collection_id = test_collections[0]["id"]
 
+    # Test 1: CQL2-JSON format
     # Create a simple filter for exact ID match using CQL2-JSON
     filter_expr = {"op": "=", "args": [{"property": "id"}, test_collection_id]}
 
     # Convert to JSON string for URL parameter
     filter_json = json.dumps(filter_expr)
 
-    # Use CQL2-JSON format with explicit filter-lang
-    resp = await app_client.get(
-        f"/collections?filter={filter_json}&filter-lang=cql2-json",
-    )
-
-    assert resp.status_code == 200
-    resp_json = resp.json()
-
-    # Should find exactly one collection with the specified ID
-    found_collections = [
-        c for c in resp_json["collections"] if c["id"] == test_collection_id
+    # Define endpoints to test
+    endpoints = [
+        {
+            "method": "GET",
+            "path": "/collections",
+            "params": [("filter", filter_json), ("filter-lang", "cql2-json")],
+        },
+        {
+            "method": "GET",
+            "path": "/collections-search",
+            "params": [("filter", filter_json), ("filter-lang", "cql2-json")],
+        },
+        {
+            "method": "POST",
+            "path": "/collections-search",
+            "body": {"filter": filter_expr, "filter-lang": "cql2-json"},
+        },
     ]
 
-    assert (
-        len(found_collections) == 1
-    ), f"Expected 1 collection with ID {test_collection_id}, found {len(found_collections)}"
-    assert found_collections[0]["id"] == test_collection_id
+    for endpoint in endpoints:
+        if endpoint["method"] == "GET":
+            resp = await app_client.get(endpoint["path"], params=endpoint["params"])
+        else:  # POST
+            resp = await app_client.post(endpoint["path"], json=endpoint["body"])
 
-    # Test 2: CQL2-text format with LIKE operator for more advanced filtering
-    # Use a filter that will match the test collection ID we created
+        assert (
+            resp.status_code == 200
+        ), f"Failed for {endpoint['method']} {endpoint['path']}"
+        resp_json = resp.json()
+
+        # Should find exactly one collection with the specified ID
+        found_collections = [
+            c for c in resp_json["collections"] if c["id"] == test_collection_id
+        ]
+
+        assert (
+            len(found_collections) == 1
+        ), f"Expected 1 collection with ID {test_collection_id}, found {len(found_collections)} for {endpoint['method']} {endpoint['path']}"
+        assert found_collections[0]["id"] == test_collection_id
+
+    # Test 2: CQL2-text format with LIKE operator
     filter_text = f"id LIKE '%{test_collection_id.split('-')[-1]}%'"
 
-    resp = await app_client.get(
-        f"/collections?filter={filter_text}&filter-lang=cql2-text",
-    )
-    assert resp.status_code == 200
-    resp_json = resp.json()
-
-    # Should find the test collection we created
-    found_collections = [
-        c for c in resp_json["collections"] if c["id"] == test_collection_id
+    endpoints = [
+        {
+            "method": "GET",
+            "path": "/collections",
+            "params": [("filter", filter_text), ("filter-lang", "cql2-text")],
+        },
+        {
+            "method": "GET",
+            "path": "/collections-search",
+            "params": [("filter", filter_text), ("filter-lang", "cql2-text")],
+        },
+        {
+            "method": "POST",
+            "path": "/collections-search",
+            "body": {"filter": filter_text, "filter-lang": "cql2-text"},
+        },
     ]
-    assert (
-        len(found_collections) >= 1
-    ), f"Expected at least 1 collection with ID {test_collection_id} using LIKE filter"
+
+    for endpoint in endpoints:
+        if endpoint["method"] == "GET":
+            resp = await app_client.get(endpoint["path"], params=endpoint["params"])
+        else:  # POST
+            resp = await app_client.post(endpoint["path"], json=endpoint["body"])
+
+        assert (
+            resp.status_code == 200
+        ), f"Failed for {endpoint['method']} {endpoint['path']}"
+        resp_json = resp.json()
+
+        # Should find the test collection we created
+        found_collections = [
+            c for c in resp_json["collections"] if c["id"] == test_collection_id
+        ]
+        assert (
+            len(found_collections) >= 1
+        ), f"Expected at least 1 collection with ID {test_collection_id} using LIKE filter for {endpoint['method']} {endpoint['path']}"
 
 
 @pytest.mark.asyncio
 async def test_collections_query_extension(app_client, txn_client, ctx):
-    """Verify GET /collections honors the query extension."""
+    """Verify GET /collections, GET /collections-search, and POST /collections-search honor the query extension."""
     # Create multiple collections with different content
     base_collection = ctx.collection
     # Use unique prefixes to avoid conflicts between tests
@@ -370,75 +453,100 @@ async def test_collections_query_extension(app_client, txn_client, ctx):
 
     await refresh_indices(txn_client)
 
-    # Use the exact ID that was created
+    # Test 1: Query with equal operator
     sentinel_id = f"{test_prefix}-sentinel"
-
     query = {"id": {"eq": sentinel_id}}
 
-    resp = await app_client.get(
-        "/collections",
-        params=[("query", json.dumps(query))],
-    )
-    assert resp.status_code == 200
-    resp_json = resp.json()
-
-    # Filter collections to only include the ones we created for this test
-    found_collections = [
-        c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
+    endpoints = [
+        {
+            "method": "GET",
+            "path": "/collections",
+            "params": [("query", json.dumps(query))],
+        },
+        {
+            "method": "GET",
+            "path": "/collections-search",
+            "params": [("query", json.dumps(query))],
+        },
+        {
+            "method": "POST",
+            "path": "/collections-search",
+            "body": {"query": json.dumps(query)},
+        },
     ]
 
-    # Should only find the sentinel collection
-    assert len(found_collections) == 1
-    assert found_collections[0]["id"] == f"{test_prefix}-sentinel"
+    for endpoint in endpoints:
+        if endpoint["method"] == "GET":
+            resp = await app_client.get(endpoint["path"], params=endpoint["params"])
+        else:  # POST
+            resp = await app_client.post(endpoint["path"], json=endpoint["body"])
 
-    # Test query extension with equal operator on ID
-    query = {"id": {"eq": f"{test_prefix}-sentinel"}}
+        assert (
+            resp.status_code == 200
+        ), f"Failed for {endpoint['method']} {endpoint['path']}"
+        resp_json = resp.json()
 
-    resp = await app_client.get(
-        "/collections",
-        params=[("query", json.dumps(query))],
-    )
-    assert resp.status_code == 200
-    resp_json = resp.json()
+        # Filter collections to only include the ones we created for this test
+        found_collections = [
+            c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
+        ]
 
-    # Filter collections to only include the ones we created for this test
-    found_collections = [
-        c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
-    ]
-    found_ids = [c["id"] for c in found_collections]
+        # Should only find the sentinel collection
+        assert (
+            len(found_collections) == 1
+        ), f"Expected 1 collection for {endpoint['method']} {endpoint['path']}"
+        assert found_collections[0]["id"] == sentinel_id
 
-    # Should find landsat and modis collections but not sentinel
-    assert len(found_collections) == 1
-    assert f"{test_prefix}-sentinel" in found_ids
-    assert f"{test_prefix}-landsat" not in found_ids
-    assert f"{test_prefix}-modis" not in found_ids
-
-    # Test query extension with not-equal operator on ID
+    # Test 2: Query with not-equal operator
     query = {"id": {"neq": f"{test_prefix}-sentinel"}}
 
-    resp = await app_client.get(
-        "/collections",
-        params=[("query", json.dumps(query))],
-    )
-    assert resp.status_code == 200
-    resp_json = resp.json()
-
-    # Filter collections to only include the ones we created for this test
-    found_collections = [
-        c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
+    endpoints = [
+        {
+            "method": "GET",
+            "path": "/collections",
+            "params": [("query", json.dumps(query))],
+        },
+        {
+            "method": "GET",
+            "path": "/collections-search",
+            "params": [("query", json.dumps(query))],
+        },
+        {
+            "method": "POST",
+            "path": "/collections-search",
+            "body": {"query": json.dumps(query)},
+        },
     ]
-    found_ids = [c["id"] for c in found_collections]
 
-    # Should find landsat and modis collections but not sentinel
-    assert len(found_collections) == 2
-    assert f"{test_prefix}-sentinel" not in found_ids
-    assert f"{test_prefix}-landsat" in found_ids
-    assert f"{test_prefix}-modis" in found_ids
+    for endpoint in endpoints:
+        if endpoint["method"] == "GET":
+            resp = await app_client.get(endpoint["path"], params=endpoint["params"])
+        else:  # POST
+            resp = await app_client.post(endpoint["path"], json=endpoint["body"])
+
+        assert (
+            resp.status_code == 200
+        ), f"Failed for {endpoint['method']} {endpoint['path']}"
+        resp_json = resp.json()
+
+        # Filter collections to only include the ones we created for this test
+        found_collections = [
+            c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
+        ]
+        found_ids = [c["id"] for c in found_collections]
+
+        # Should find landsat and modis collections but not sentinel
+        assert (
+            len(found_collections) == 2
+        ), f"Expected 2 collections for {endpoint['method']} {endpoint['path']}"
+        assert f"{test_prefix}-sentinel" not in found_ids
+        assert f"{test_prefix}-landsat" in found_ids
+        assert f"{test_prefix}-modis" in found_ids
 
 
 @pytest.mark.asyncio
 async def test_collections_datetime_filter(app_client, load_test_data, txn_client):
-    """Test filtering collections by datetime."""
+    """Test filtering collections by datetime across all endpoints."""
     # Create a test collection with a specific temporal extent
 
     base_collection = load_test_data("test_collection.json")
@@ -450,66 +558,71 @@ async def test_collections_datetime_filter(app_client, load_test_data, txn_clien
     await create_collection(txn_client, base_collection)
     await refresh_indices(txn_client)
 
-    # Test 1: Datetime range that overlaps with collection's temporal extent
-    resp = await app_client.get(
-        "/collections?datetime=2020-06-01T00:00:00Z/2021-01-01T00:00:00Z"
-    )
-    assert resp.status_code == 200
-    resp_json = resp.json()
-    found_collections = [
-        c for c in resp_json["collections"] if c["id"] == test_collection_id
+    # Test scenarios with different datetime ranges
+    test_scenarios = [
+        {
+            "name": "overlapping range",
+            "datetime": "2020-06-01T00:00:00Z/2021-01-01T00:00:00Z",
+            "expected_count": 1,
+        },
+        {
+            "name": "before range",
+            "datetime": "2019-01-01T00:00:00Z/2019-12-31T23:59:59Z",
+            "expected_count": 0,
+        },
+        {
+            "name": "after range",
+            "datetime": "2021-01-01T00:00:00Z/2021-12-31T23:59:59Z",
+            "expected_count": 0,
+        },
+        {
+            "name": "single datetime within range",
+            "datetime": "2020-06-15T12:00:00Z",
+            "expected_count": 1,
+        },
+        {
+            "name": "open-ended future range",
+            "datetime": "2020-06-01T00:00:00Z/..",
+            "expected_count": 1,
+        },
     ]
-    assert (
-        len(found_collections) == 1
-    ), f"Expected to find collection {test_collection_id} with overlapping datetime range"
 
-    # Test 2: Datetime range that is completely before collection's temporal extent
-    resp = await app_client.get(
-        "/collections?datetime=2019-01-01T00:00:00Z/2019-12-31T23:59:59Z"
-    )
-    assert resp.status_code == 200
-    resp_json = resp.json()
-    found_collections = [
-        c for c in resp_json["collections"] if c["id"] == test_collection_id
-    ]
-    assert (
-        len(found_collections) == 0
-    ), f"Expected not to find collection {test_collection_id} with non-overlapping datetime range"
+    for scenario in test_scenarios:
+        endpoints = [
+            {
+                "method": "GET",
+                "path": "/collections",
+                "params": [("datetime", scenario["datetime"])],
+            },
+            {
+                "method": "GET",
+                "path": "/collections-search",
+                "params": [("datetime", scenario["datetime"])],
+            },
+            {
+                "method": "POST",
+                "path": "/collections-search",
+                "body": {"datetime": scenario["datetime"]},
+            },
+        ]
 
-    # Test 3: Datetime range that is completely after collection's temporal extent
-    resp = await app_client.get(
-        "/collections?datetime=2021-01-01T00:00:00Z/2021-12-31T23:59:59Z"
-    )
-    assert resp.status_code == 200
-    resp_json = resp.json()
-    found_collections = [
-        c for c in resp_json["collections"] if c["id"] == test_collection_id
-    ]
-    assert (
-        len(found_collections) == 0
-    ), f"Expected not to find collection {test_collection_id} with non-overlapping datetime range"
+        for endpoint in endpoints:
+            if endpoint["method"] == "GET":
+                resp = await app_client.get(endpoint["path"], params=endpoint["params"])
+            else:  # POST
+                resp = await app_client.post(endpoint["path"], json=endpoint["body"])
 
-    # Test 4: Single datetime that falls within collection's temporal extent
-    resp = await app_client.get("/collections?datetime=2020-06-15T12:00:00Z")
-    assert resp.status_code == 200
-    resp_json = resp.json()
-    found_collections = [
-        c for c in resp_json["collections"] if c["id"] == test_collection_id
-    ]
-    assert (
-        len(found_collections) == 1
-    ), f"Expected to find collection {test_collection_id} with datetime point within range"
-
-    # Test 5: Open-ended range (from a specific date to the future)
-    resp = await app_client.get("/collections?datetime=2020-06-01T00:00:00Z/..")
-    assert resp.status_code == 200
-    resp_json = resp.json()
-    found_collections = [
-        c for c in resp_json["collections"] if c["id"] == test_collection_id
-    ]
-    assert (
-        len(found_collections) == 1
-    ), f"Expected to find collection {test_collection_id} with open-ended future range"
+            assert (
+                resp.status_code == 200
+            ), f"Failed for {endpoint['method']} {endpoint['path']} with {scenario['name']}"
+            resp_json = resp.json()
+            found_collections = [
+                c for c in resp_json["collections"] if c["id"] == test_collection_id
+            ]
+            assert len(found_collections) == scenario["expected_count"], (
+                f"Expected {scenario['expected_count']} collection(s) for {scenario['name']} "
+                f"on {endpoint['method']} {endpoint['path']}, found {len(found_collections)}"
+            )
 
     # Test 6: Open-ended range (from the past to a date within the collection's range)
     # TODO: This test is currently skipped due to an unresolved issue with open-ended past range queries.
@@ -528,7 +641,7 @@ async def test_collections_datetime_filter(app_client, load_test_data, txn_clien
 
 @pytest.mark.asyncio
 async def test_collections_number_matched_returned(app_client, txn_client, ctx):
-    """Verify GET /collections returns correct numberMatched and numberReturned values."""
+    """Verify GET /collections, GET /collections-search, and POST /collections-search return correct numberMatched and numberReturned values."""
     # Create multiple collections with different ids
     base_collection = ctx.collection
 
@@ -545,56 +658,91 @@ async def test_collections_number_matched_returned(app_client, txn_client, ctx):
 
     await refresh_indices(txn_client)
 
-    # Test with limit=5
-    resp = await app_client.get(
-        "/collections",
-        params=[("limit", "5")],
-    )
-    assert resp.status_code == 200
-    resp_json = resp.json()
-
-    # Filter collections to only include the ones we created for this test
-    test_collections = [
-        c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
+    # Test 1: With limit=5
+    endpoints = [
+        {"method": "GET", "path": "/collections", "params": [("limit", "5")]},
+        {"method": "GET", "path": "/collections-search", "params": [("limit", "5")]},
+        {"method": "POST", "path": "/collections-search", "body": {"limit": 5}},
     ]
 
-    # Should return 5 collections
-    assert len(test_collections) == 5
+    for endpoint in endpoints:
+        if endpoint["method"] == "GET":
+            resp = await app_client.get(endpoint["path"], params=endpoint["params"])
+        else:  # POST
+            resp = await app_client.post(endpoint["path"], json=endpoint["body"])
 
-    # Check that numberReturned matches the number of collections returned
-    assert resp_json["numberReturned"] == len(resp_json["collections"])
+        assert (
+            resp.status_code == 200
+        ), f"Failed for {endpoint['method']} {endpoint['path']}"
+        resp_json = resp.json()
 
-    # Check that numberMatched is greater than or equal to numberReturned
-    # (since there might be other collections in the database)
-    assert resp_json["numberMatched"] >= resp_json["numberReturned"]
+        # Filter collections to only include the ones we created for this test
+        test_collections = [
+            c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
+        ]
 
-    # Check that numberMatched includes at least all our test collections
-    assert resp_json["numberMatched"] >= len(collection_ids)
+        # Should return 5 collections
+        assert (
+            len(test_collections) == 5
+        ), f"Expected 5 test collections for {endpoint['method']} {endpoint['path']}"
 
-    # Now test with a query that should match only some collections
+        # Check that numberReturned matches the number of collections returned
+        assert resp_json["numberReturned"] == len(resp_json["collections"])
+
+        # Check that numberMatched is greater than or equal to numberReturned
+        assert resp_json["numberMatched"] >= resp_json["numberReturned"]
+
+        # Check that numberMatched includes at least all our test collections
+        assert resp_json["numberMatched"] >= len(collection_ids)
+
+    # Test 2: With a query that should match only one collection
     query = {"id": {"eq": f"{test_prefix}-1"}}
-    resp = await app_client.get(
-        "/collections",
-        params=[("query", json.dumps(query))],
-    )
-    assert resp.status_code == 200
-    resp_json = resp.json()
 
-    # Filter collections to only include the ones we created for this test
-    test_collections = [
-        c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
+    endpoints = [
+        {
+            "method": "GET",
+            "path": "/collections",
+            "params": [("query", json.dumps(query))],
+        },
+        {
+            "method": "GET",
+            "path": "/collections-search",
+            "params": [("query", json.dumps(query))],
+        },
+        {
+            "method": "POST",
+            "path": "/collections-search",
+            "body": {"query": json.dumps(query)},
+        },
     ]
 
-    # Should return only 1 collection
-    assert len(test_collections) == 1
-    assert test_collections[0]["id"] == f"{test_prefix}-1"
+    for endpoint in endpoints:
+        if endpoint["method"] == "GET":
+            resp = await app_client.get(endpoint["path"], params=endpoint["params"])
+        else:  # POST
+            resp = await app_client.post(endpoint["path"], json=endpoint["body"])
 
-    # Check that numberReturned matches the number of collections returned
-    assert resp_json["numberReturned"] == len(resp_json["collections"])
+        assert (
+            resp.status_code == 200
+        ), f"Failed for {endpoint['method']} {endpoint['path']}"
+        resp_json = resp.json()
 
-    # Check that numberMatched matches the number of collections that match the query
-    # (should be 1 in this case)
-    assert resp_json["numberMatched"] >= 1
+        # Filter collections to only include the ones we created for this test
+        test_collections = [
+            c for c in resp_json["collections"] if c["id"].startswith(test_prefix)
+        ]
+
+        # Should return only 1 collection
+        assert (
+            len(test_collections) == 1
+        ), f"Expected 1 test collection for {endpoint['method']} {endpoint['path']}"
+        assert test_collections[0]["id"] == f"{test_prefix}-1"
+
+        # Check that numberReturned matches the number of collections returned
+        assert resp_json["numberReturned"] == len(resp_json["collections"])
+
+        # Check that numberMatched matches the number of collections that match the query
+        assert resp_json["numberMatched"] >= 1
 
 
 @pytest.mark.asyncio
@@ -787,17 +935,35 @@ async def test_collections_pagination_all_endpoints(app_client, txn_client, ctx)
         for i, expected_id in enumerate(expected_ids):
             assert test_found[i]["id"] == expected_id
 
-        # Test second page using the token from the first page
-        if "token" in resp_json and resp_json["token"]:
-            token = resp_json["token"]
+        # Test second page using the token from the next link
+        next_link = None
+        for link in resp_json.get("links", []):
+            if link.get("rel") == "next":
+                next_link = link
+                break
 
-            # Make the request with token
+        if next_link:
+            # Extract token based on method
             if endpoint["method"] == "GET":
-                params = [(endpoint["param"], str(limit)), ("token", token)]
-                resp = await app_client.get(endpoint["path"], params=params)
+                # For GET, token is in the URL query params
+                from urllib.parse import parse_qs, urlparse
+
+                parsed_url = urlparse(next_link["href"])
+                query_params = parse_qs(parsed_url.query)
+                token = query_params.get("token", [None])[0]
+
+                if token:
+                    params = [(endpoint["param"], str(limit)), ("token", token)]
+                    resp = await app_client.get(endpoint["path"], params=params)
+                else:
+                    continue  # Skip if no token found
             else:  # POST
-                body = {endpoint["body_key"]: limit, "token": token}
-                resp = await app_client.post(endpoint["path"], json=body)
+                # For POST, token is in the body
+                body = next_link.get("body", {})
+                if "token" in body:
+                    resp = await app_client.post(endpoint["path"], json=body)
+                else:
+                    continue  # Skip if no token found
 
             assert (
                 resp.status_code == 200
@@ -805,10 +971,7 @@ async def test_collections_pagination_all_endpoints(app_client, txn_client, ctx)
             resp_json = resp.json()
 
             # Filter to our test collections
-            if endpoint["path"] == "/collections":
-                found_collections = resp_json
-            else:  # For collection-search endpoints
-                found_collections = resp_json["collections"]
+            found_collections = resp_json["collections"]
 
             test_found = [
                 c for c in found_collections if c["id"].startswith(test_prefix)
