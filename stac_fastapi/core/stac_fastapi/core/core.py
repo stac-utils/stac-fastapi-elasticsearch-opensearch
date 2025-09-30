@@ -240,14 +240,16 @@ class CoreClient(AsyncBaseCoreClient):
 
     async def all_collections(
         self,
-        datetime: Optional[str] = None,
         limit: Optional[int] = None,
+        datetime: Optional[str] = None,
         fields: Optional[List[str]] = None,
         sortby: Optional[Union[str, List[str]]] = None,
         filter_expr: Optional[str] = None,
         filter_lang: Optional[str] = None,
         q: Optional[Union[str, List[str]]] = None,
         query: Optional[str] = None,
+        request: Request = None,
+        token: Optional[str] = None,
         **kwargs,
     ) -> stac_types.Collections:
         """Read all collections from the database.
@@ -266,7 +268,6 @@ class CoreClient(AsyncBaseCoreClient):
         Returns:
             A Collections object containing all the collections in the database and links to various resources.
         """
-        request = kwargs["request"]
         base_url = str(request.base_url)
 
         global_max_limit = (
@@ -295,7 +296,9 @@ class CoreClient(AsyncBaseCoreClient):
         if global_max_limit is not None:
             limit = min(limit, global_max_limit)
 
-        token = request.query_params.get("token")
+        # Get token from query params only if not already provided (for GET requests)
+        if token is None:
+            token = request.query_params.get("token")
 
         # Process fields parameter for filtering collection properties
         includes, excludes = set(), set()
@@ -496,6 +499,10 @@ class CoreClient(AsyncBaseCoreClient):
         # Pass all parameters from search_request to all_collections
         return await self.all_collections(
             limit=search_request.limit if hasattr(search_request, "limit") else None,
+            datetime=search_request.datetime
+            if hasattr(search_request, "datetime")
+            else None,
+            token=search_request.token if hasattr(search_request, "token") else None,
             fields=fields,
             sortby=sortby,
             filter_expr=search_request.filter
