@@ -17,9 +17,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
-- Issue where token, query param was not being passed to POST collections search logic
-- Issue where datetime param was not being passed from POST collections search logic to Elasticsearch
-- Collections search tests to ensure both GET /collections and POST /collections-search endpoints are tested
+- Issue where token, query param was not being passed to POST collections search logic [#483](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/483)
+- Issue where datetime param was not being passed from POST collections search logic to Elasticsearch [#483](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/483)
+- Collections search tests to ensure both GET /collections and GET/POST /collections-search endpoints are tested [#483](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/483)
 
 [v6.5.0] - 2025-09-29
 

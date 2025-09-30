@@ -1,7 +1,6 @@
 """Serializers."""
 
 import abc
-import logging
 from copy import deepcopy
 from typing import Any, List, Optional
 
@@ -13,8 +12,6 @@ from stac_fastapi.core.models.links import CollectionLinks
 from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.links import ItemLinks, resolve_links
-
-logger = logging.getLogger(__name__)
 
 
 @attr.s
