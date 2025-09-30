@@ -300,7 +300,9 @@ class CoreClient(AsyncBaseCoreClient):
                 else:
                     limit = 10
 
-        token = request.query_params.get("token")
+        # Get token from query params only if not already provided (for GET requests)
+        if token is None:
+            token = request.query_params.get("token")
 
         # Process fields parameter for filtering collection properties
         includes, excludes = set(), set()
@@ -400,6 +402,7 @@ class CoreClient(AsyncBaseCoreClient):
             limit=limit,
             request=request,
             sort=sort,
+            bbox=bbox,
             q=q_list,
             filter=parsed_filter,
             query=parsed_query,
@@ -501,6 +504,11 @@ class CoreClient(AsyncBaseCoreClient):
         # Pass all parameters from search_request to all_collections
         return await self.all_collections(
             limit=search_request.limit if hasattr(search_request, "limit") else None,
+            bbox=search_request.bbox if hasattr(search_request, "bbox") else None,
+            datetime=search_request.datetime
+            if hasattr(search_request, "datetime")
+            else None,
+            token=search_request.token if hasattr(search_request, "token") else None,
             fields=fields,
             sortby=sortby,
             filter_expr=search_request.filter

@@ -3,6 +3,8 @@
 import abc
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
+from stac_pydantic.shared import BBox
+
 
 class BaseDatabaseLogic(abc.ABC):
     """
@@ -19,6 +21,7 @@ class BaseDatabaseLogic(abc.ABC):
         limit: int,
         request: Any = None,
         sort: Optional[List[Dict[str, Any]]] = None,
+        bbox: Optional[BBox] = None,
     ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
         """Retrieve a list of collections from the database, supporting pagination.
 
@@ -27,6 +30,7 @@ class BaseDatabaseLogic(abc.ABC):
             limit (int): The number of results to return.
             request (Any, optional): The FastAPI request object. Defaults to None.
             sort (Optional[List[Dict[str, Any]]], optional): Optional sort parameter. Defaults to None.
+            bbox (Optional[BBox], optional): Bounding box to filter collections by spatial extent. Defaults to None.
 
         Returns:
             A tuple of (collections, next pagination token if any).

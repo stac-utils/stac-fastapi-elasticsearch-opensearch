@@ -18,6 +18,7 @@ class CollectionsSearchRequest(ExtendedSearch):
     """Extended search model for collections with free text search support."""
 
     q: Optional[Union[str, List[str]]] = None
+    token: Optional[str] = None
 
 
 class CollectionsSearchEndpointExtension(ApiExtension):
