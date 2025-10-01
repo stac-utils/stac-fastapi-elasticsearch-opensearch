@@ -7,7 +7,7 @@ with open("README.md") as f:
 
 install_requires = [
     "redis==6.4.0",
-    "stac-fastapi.core==6.5.0",
+    "stac-fastapi.core==6.5.1",
 ]
 setup(
     name="sfeos_helpers",

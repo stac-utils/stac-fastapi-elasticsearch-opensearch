@@ -293,7 +293,6 @@ class DatabaseLogic(BaseDatabaseLogic):
                     query_parts.append(search_dict["query"])
 
             except Exception as e:
-                logger = logging.getLogger(__name__)
                 logger.error(f"Error converting query to OpenSearch: {e}")
                 # If there's an error, add a query that matches nothing
                 query_parts.append({"bool": {"must_not": {"match_all": {}}}})
@@ -365,7 +364,6 @@ class DatabaseLogic(BaseDatabaseLogic):
             try:
                 matched = count_task.result().get("count")
             except Exception as e:
-                logger = logging.getLogger(__name__)
                 logger.error(f"Count task failed: {e}")
 
         return collections, next_token, matched

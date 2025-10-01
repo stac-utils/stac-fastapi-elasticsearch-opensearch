@@ -22,6 +22,7 @@ services:
       - ES_VERIFY_CERTS=false
       - BACKEND=elasticsearch
       - DATABASE_REFRESH=true
+      - ENABLE_COLLECTIONS_SEARCH_ROUTE=true
     ports:
       - "8080:8080"
     volumes:
@@ -56,6 +57,7 @@ services:
       - ES_VERIFY_CERTS=false
       - BACKEND=opensearch
       - STAC_FASTAPI_RATE_LIMIT=200/minute
+      - ENABLE_COLLECTIONS_SEARCH_ROUTE=true
     ports:
       - "8082:8082"
     volumes:
