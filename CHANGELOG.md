@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+- CloudFerro logo to sponsors and supporters list [#485](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/485)
+- Latest news section to README [#485](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/485)
+
 ### Changed
 
 ### Fixed
