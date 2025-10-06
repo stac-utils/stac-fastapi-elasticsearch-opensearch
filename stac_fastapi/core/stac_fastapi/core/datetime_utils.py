@@ -13,17 +13,26 @@ def format_datetime_range(date_str: str) -> str:
         date_str (str): A string containing two datetime values separated by a '/'.
 
     Returns:
-        str: A string formatted as 'YYYY-MM-DDTHH:MM:SSZ/YYYY-MM-DDTHH:MM:SSZ', with '..' used if any element is None.
+        str: A string formatted as 'YYYY-MM-DDTHH:MM:SS.ssssssZ/YYYY-MM-DDTHH:MM:SS.ssssssZ'.
+             Each datetime is converted to UTC and preserves microsecond precision.
+             If a value is infinite '..', it is replaced with the maximum supported
+             UTC datetime ('2262-04-11T23:47:16.854775Z').
     """
 
     def normalize(dt):
-        """Normalize datetime string and preserve millisecond precision."""
+        """Normalize datetime string and preserve microsecond precision."""
         dt = dt.strip()
+
+        max_es_date = datetime(2262, 4, 11, 23, 47, 16, 854775, tzinfo=timezone.utc)
         if not dt or dt == "..":
-            return ".."
+            return max_es_date.isoformat(timespec="microseconds").replace("+00:00", "Z")
+
         dt_obj = rfc3339_str_to_datetime(dt)
+        if dt_obj > max_es_date:
+            dt_obj = max_es_date
+
         dt_utc = dt_obj.astimezone(timezone.utc)
-        return dt_utc.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        return dt_utc.isoformat(timespec="microseconds").replace("+00:00", "Z")
 
     if not isinstance(date_str, str):
         return "../.."

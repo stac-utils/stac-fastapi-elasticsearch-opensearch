@@ -142,7 +142,10 @@ ES_ITEMS_MAPPINGS = {
             "type": "object",
             "properties": {
                 # Common https://github.com/radiantearth/stac-spec/blob/master/item-spec/common-metadata.md
-                "datetime": {"type": "date"},
+                "datetime": {
+                    "type": "date",
+                    "format": "strict_date_optional_time_nanos",
+                },
                 "start_datetime": {"type": "date"},
                 "end_datetime": {"type": "date"},
                 "created": {"type": "date"},
