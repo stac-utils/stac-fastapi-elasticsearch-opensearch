@@ -39,7 +39,7 @@ class RedisSettings(BaseSettings):
 
 
 # Select the Redis or Redis Sentinel configuration
-redis_settings: BaseSettings = RedisSentinelSettings()
+redis_settings: BaseSettings = RedisSettings()
 
 
 async def connect_redis(settings: Optional[RedisSettings] = None) -> aioredis.Redis:

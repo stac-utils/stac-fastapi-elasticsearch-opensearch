@@ -63,13 +63,15 @@ docker-shell-os:
 
 .PHONY: test-elasticsearch
 test-elasticsearch:
-	-$(run_es) /bin/bash -c 'pip install redis==6.4.0 export && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd stac_fastapi/tests/ && pytest'
-	docker compose down
+	docker compose -f compose-redis.yml up -d
+	-$(run_es) /bin/bash -c 'export REDIS_ENABLE=true REDIS_HOST=redis REDIS_PORT=6379 && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd stac_fastapi/tests/ && pytest'
+	docker compose -f compose-redis.yml down
 
-.PHONY: test-opensearch
+.PHONY: test-opensearch  
 test-opensearch:
-	-$(run_os) /bin/bash -c 'pip install redis==6.4.0 export && ./scripts/wait-for-it-es.sh opensearch:9202 && cd stac_fastapi/tests/ && pytest'
-	docker compose down
+	docker compose -f compose-redis.yml up -d
+	-$(run_os) /bin/bash -c 'export REDIS_ENABLE=true REDIS_HOST=redis REDIS_PORT=6379 && ./scripts/wait-for-it-es.sh opensearch:9202 && cd stac_fastapi/tests/ && pytest'
+	docker compose -f compose-redis.yml down
 
 .PHONY: test-datetime-filtering-es
 test-datetime-filtering-es:
@@ -82,7 +84,7 @@ test-datetime-filtering-os:
 	docker compose down
 
 .PHONY: test
-test: test-elasticsearch test-datetime-filtering-es test-opensearch test-datetime-filtering-os
+test: test-elasticsearch test-datetime-filtering-es test-opensearch test-datetime-filtering-os test-redis-es test-redis-os
 
 .PHONY: run-database-es
 run-database-es:
@@ -118,3 +120,15 @@ docs-image:
 docs: docs-image
 	docker compose -f compose.docs.yml \
 		run docs
+
+.PHONY: test-redis-es
+test-redis-es:
+	docker compose -f compose-redis.yml up -d
+	-$(run_es) /bin/bash -c 'export REDIS_ENABLE=true REDIS_HOST=redis REDIS_PORT=6379 && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd stac_fastapi/tests/ && pytest redis/ -v'
+	docker compose -f compose-redis.yml down
+
+.PHONY: test-redis-os
+test-redis-os:
+	docker compose -f compose-redis.yml up -d
+	-$(run_os) /bin/bash -c 'export REDIS_ENABLE=true REDIS_HOST=redis REDIS_PORT=6379 && ./scripts/wait-for-it-es.sh opensearch:9202 && cd stac_fastapi/tests/ && pytest redis/ -v'
+	docker compose -f compose-redis.yml down

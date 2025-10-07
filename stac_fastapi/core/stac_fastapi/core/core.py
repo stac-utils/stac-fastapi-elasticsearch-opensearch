@@ -24,14 +24,10 @@ from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.datetime_utils import format_datetime_range
 from stac_fastapi.core.models.links import PagingLinks
-from stac_fastapi.core.redis_utils import (
-    connect_redis_sentinel,
-    get_prev_link,
-    save_self_link,
-)
+from stac_fastapi.core.redis_utils import connect_redis, get_prev_link, save_self_link
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.session import Session
-from stac_fastapi.core.utilities import filter_fields
+from stac_fastapi.core.utilities import filter_fields, get_bool_env
 from stac_fastapi.extensions.core.transaction import AsyncBaseTransactionsClient
 from stac_fastapi.extensions.core.transaction.request import (
     PartialCollection,
@@ -277,11 +273,13 @@ class CoreClient(AsyncBaseCoreClient):
                 sort = parsed_sort
 
         current_url = str(request.url)
-        redis = None
-        try:
-            redis = await connect_redis_sentinel()
-        except Exception:
-            redis = None
+        redis_enable = get_bool_env("REDIS_ENABLE", default=False)
+
+        if redis_enable:
+            try:
+                redis = await connect_redis()
+            except Exception:
+                redis = None
 
         # Convert q to a list if it's a string
         q_list = None
@@ -311,7 +309,7 @@ class CoreClient(AsyncBaseCoreClient):
             },
         ]
 
-        if redis:
+        if redis_enable and redis:
             if next_token:
                 await save_self_link(redis, next_token, current_url)
 
@@ -557,10 +555,14 @@ class CoreClient(AsyncBaseCoreClient):
             HTTPException: If there is an error with the cql2_json filter.
         """
         base_url = str(request.base_url)
-        try:
-            redis = await connect_redis_sentinel()
-        except Exception:
-            redis = None
+        redis_enable = get_bool_env("REDIS_ENABLE", default=False)
+
+        redis = None
+        if redis_enable:
+            try:
+                redis = await connect_redis()
+            except Exception:
+                redis = None
 
         search = self.database.make_search()
 
@@ -690,7 +692,7 @@ class CoreClient(AsyncBaseCoreClient):
                 )
         links.extend(collection_links)
 
-        if redis:
+        if redis_enable and redis:
             self_link = str(request.url)
             await save_self_link(redis, next_token, self_link)
 
