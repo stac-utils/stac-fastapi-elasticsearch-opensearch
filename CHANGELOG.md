@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 
+- Changed datetime format to `strict_date_optional_time_nanos` for microsecond precision and updated normalization to replace infinite ("..") or overflow datetimes with the maximum supported Elasticsearch date 2262-04-11T23:47:16.854775Z.
+
 ### Fixed
 
 [v6.5.1] - 2025-09-30
