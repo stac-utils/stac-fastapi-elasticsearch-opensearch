@@ -169,7 +169,6 @@ opensearch:
   persistence:
     enabled: true
     size: 100Gi
-    storageClass: "fast-ssd"
 ```
 
 #### External Database

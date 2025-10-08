@@ -69,13 +69,29 @@ Create the database host based on backend selection
 {{- .Values.externalDatabase.host }}
 {{- else if eq .Values.backend "elasticsearch" }}
 {{- if .Values.elasticsearch.enabled }}
+{{- if .Values.elasticsearch.masterService }}
+{{- .Values.elasticsearch.masterService }}
+{{- else if .Values.elasticsearch.fullnameOverride }}
+{{- printf "%s-master" .Values.elasticsearch.fullnameOverride }}
+{{- else if .Values.elasticsearch.clusterName }}
+{{- printf "%s-master" .Values.elasticsearch.clusterName }}
+{{- else }}
 {{- printf "%s-%s" .Release.Name "elasticsearch-master" }}
+{{- end }}
 {{- else }}
 {{- fail "Elasticsearch is not enabled but backend is set to elasticsearch" }}
 {{- end }}
 {{- else if eq .Values.backend "opensearch" }}
 {{- if .Values.opensearch.enabled }}
+{{- if .Values.opensearch.masterService }}
+{{- .Values.opensearch.masterService }}
+{{- else if .Values.opensearch.fullnameOverride }}
+{{- printf "%s-master" .Values.opensearch.fullnameOverride }}
+{{- else if .Values.opensearch.clusterName }}
+{{- printf "%s-master" .Values.opensearch.clusterName }}
+{{- else }}
 {{- printf "%s-%s" .Release.Name "opensearch-cluster-master" }}
+{{- end }}
 {{- else }}
 {{- fail "OpenSearch is not enabled but backend is set to opensearch" }}
 {{- end }}
@@ -167,5 +183,29 @@ Determine if OpenSearch should be enabled based on backend selection
 {{- true }}
 {{- else }}
 {{- false }}
+{{- end }}
+{{- end }}
+
+{{/*
+Determine PodDisruptionBudget apiVersion based on cluster capabilities
+*/}}
+{{- define "stac-fastapi.pdb.apiVersion" -}}
+{{- if semverCompare ">=1.21-0" .Capabilities.KubeVersion.GitVersion }}
+policy/v1
+{{- else }}
+policy/v1beta1
+{{- end }}
+{{- end }}
+
+{{/*
+Determine HorizontalPodAutoscaler apiVersion based on cluster capabilities
+*/}}
+{{- define "stac-fastapi.hpa.apiVersion" -}}
+{{- if .Capabilities.APIVersions.Has "autoscaling/v2" }}
+autoscaling/v2
+{{- else if .Capabilities.APIVersions.Has "autoscaling/v2beta2" }}
+autoscaling/v2beta2
+{{- else }}
+autoscaling/v2beta1
 {{- end }}
 {{- end }}

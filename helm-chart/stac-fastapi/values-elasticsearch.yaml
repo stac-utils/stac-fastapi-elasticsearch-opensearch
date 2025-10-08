@@ -104,7 +104,7 @@ elasticsearch:
   # Persistent storage
   volumeClaimTemplate:
     accessModes: ["ReadWriteOnce"]
-    storageClassName: "fast-ssd"  # Use high-performance storage class
+    # storageClassName: "fast-ssd"  # Use high-performance storage class
     resources:
       requests:
         storage: 100Gi

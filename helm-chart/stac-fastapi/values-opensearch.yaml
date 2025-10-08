@@ -75,6 +75,7 @@ opensearch:
   
   # Cluster configuration
   clusterName: "stac-opensearch-prod"
+  masterService: "opensearch-cluster-master"
   replicas: 3
   
   # OpenSearch roles for each node
@@ -116,7 +117,7 @@ opensearch:
   # Persistent storage
   persistence:
     enabled: true
-    storageClass: "fast-ssd"  # Use high-performance storage class
+    # storageClass: "fast-ssd"  # Use high-performance storage class
     accessModes:
       - ReadWriteOnce
     size: 100Gi

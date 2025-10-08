@@ -1,5 +1,6 @@
 {{- if .Values.podDisruptionBudget.enabled }}
-apiVersion: policy/v1beta1
+{{- $pdbApiVersion := (include "stac-fastapi.pdb.apiVersion" . | trim) }}
+apiVersion: {{ $pdbApiVersion }}
 kind: PodDisruptionBudget
 metadata:
   name: {{ include "stac-fastapi.fullname" . }}

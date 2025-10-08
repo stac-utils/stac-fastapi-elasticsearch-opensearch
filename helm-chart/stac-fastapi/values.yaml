@@ -81,13 +81,13 @@ app:
     #      - stac-fastapi.local
 
   # Resource limits and requests
-  resources: {}
-    # limits:
-    #   cpu: 100m
-    #   memory: 128Mi
-    # requests:
-    #   cpu: 100m
-    #   memory: 128Mi
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
 
   # Horizontal Pod Autoscaler
   autoscaling:
@@ -244,6 +244,9 @@ opensearch:
   
   # OpenSearch cluster name
   clusterName: "stac-opensearch"
+  
+  # Service name used to expose the master nodes
+  masterService: "opensearch-cluster-master"
   
   # Node group configuration
   nodeGroup: "master"
