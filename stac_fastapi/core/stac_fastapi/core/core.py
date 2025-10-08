@@ -24,9 +24,10 @@ from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.datetime_utils import format_datetime_range
 from stac_fastapi.core.models.links import PagingLinks
+from stac_fastapi.core.redis_utils import connect_redis, get_prev_link, save_self_link
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.session import Session
-from stac_fastapi.core.utilities import filter_fields
+from stac_fastapi.core.utilities import filter_fields, get_bool_env
 from stac_fastapi.extensions.core.transaction import AsyncBaseTransactionsClient
 from stac_fastapi.extensions.core.transaction.request import (
     PartialCollection,
@@ -328,6 +329,20 @@ class CoreClient(AsyncBaseCoreClient):
             if parsed_sort:
                 sort = parsed_sort
 
+        current_url = str(request.url)
+        redis_enable = get_bool_env("REDIS_ENABLE", default=False)
+
+        redis = None
+        if redis_enable:
+            try:
+                redis = await connect_redis()
+                logger.info("Redis connection established successfully")
+            except Exception as e:
+                redis = None
+                logger.warning(
+                    f"Redis connection failed, continuing without Redis: {e}"
+                )
+
         # Convert q to a list if it's a string
         q_list = None
         if q is not None:
@@ -425,6 +440,22 @@ class CoreClient(AsyncBaseCoreClient):
                 "href": urljoin(base_url, "collections"),
             },
         ]
+
+        if redis_enable and redis:
+            if next_token:
+                await save_self_link(redis, next_token, current_url)
+
+            prev_link = await get_prev_link(redis, token)
+            if prev_link:
+                links.insert(
+                    0,
+                    {
+                        "rel": "prev",
+                        "type": "application/json",
+                        "method": "GET",
+                        "href": prev_link,
+                    },
+                )
 
         if next_token:
             next_link = PagingLinks(next=next_token, request=request).link_next()
@@ -744,6 +775,7 @@ class CoreClient(AsyncBaseCoreClient):
             HTTPException: If there is an error with the cql2_json filter.
         """
         base_url = str(request.base_url)
+        redis_enable = get_bool_env("REDIS_ENABLE", default=False)
 
         search = self.database.make_search()
 
@@ -849,6 +881,49 @@ class CoreClient(AsyncBaseCoreClient):
             for item in items
         ]
         links = await PagingLinks(request=request, next=next_token).get_links()
+
+        collection_links = []
+        if search_request.collections:
+            for collection_id in search_request.collections:
+                collection_links.extend(
+                    [
+                        {
+                            "rel": "collection",
+                            "type": "application/json",
+                            "href": urljoin(base_url, f"collections/{collection_id}"),
+                        },
+                        {
+                            "rel": "parent",
+                            "type": "application/json",
+                            "href": urljoin(base_url, f"collections/{collection_id}"),
+                        },
+                    ]
+                )
+        links.extend(collection_links)
+
+        if redis_enable:
+            redis = None
+            try:
+                redis = await connect_redis()
+                logger.info("Redis connection established successfully")
+                self_link = str(request.url)
+                await save_self_link(redis, next_token, self_link)
+
+                prev_link = await get_prev_link(redis, token_param)
+                if prev_link:
+                    links.insert(
+                        0,
+                        {
+                            "rel": "prev",
+                            "type": "application/json",
+                            "method": "GET",
+                            "href": prev_link,
+                        },
+                    )
+            except Exception as e:
+                logger.warning(
+                    f"Redis connection failed, continuing without Redis: {e}"
+                )
 
         return stac_types.ItemCollection(
             type="FeatureCollection",
