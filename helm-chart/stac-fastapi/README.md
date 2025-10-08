@@ -308,6 +308,8 @@ Enable network policies for additional security:
 ```yaml
 networkPolicy:
   enabled: true
+  allowNamespaceCommunication: true   # allow pods in the release namespace to talk to each other
+  allowDNS: true                      # keep kube-dns reachable for service discovery
   ingress:
     - from:
         - namespaceSelector:
@@ -316,6 +318,14 @@ networkPolicy:
       ports:
         - protocol: TCP
           port: 8080
+  egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: opensearch
+      ports:
+        - protocol: TCP
+          port: 9200
 ```
 
 ### Pod Security Context
@@ -447,6 +457,8 @@ Then visit <http://localhost:8080>
 | `externalDatabase.enabled` | Use external database | `false` |
 | `monitoring.enabled` | Enable monitoring | `false` |
 | `networkPolicy.enabled` | Enable network policies | `false` |
+| `networkPolicy.allowNamespaceCommunication` | Allow ingress/egress within the release namespace | `true` |
+| `networkPolicy.allowDNS` | Allow egress to kube-dns for service discovery | `true` |
 | `podDisruptionBudget.enabled` | Enable pod disruption budget | `false` |
 
 For a complete list of configuration options, see the `values.yaml` file.

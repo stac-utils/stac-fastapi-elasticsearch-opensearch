@@ -159,6 +159,8 @@ podDisruptionBudget:
 # Network policies for security
 networkPolicy:
   enabled: true
+  allowNamespaceCommunication: true
+  allowDNS: true
   ingress:
     - from:
         - namespaceSelector:
