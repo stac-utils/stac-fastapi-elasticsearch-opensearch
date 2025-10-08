@@ -62,41 +62,53 @@ Create the name of the service account to use
 {{- end }}
 
 {{/*
+Create the bundled database service name based on backend selection
+*/}}
+{{- define "stac-fastapi.databaseServiceName" -}}
+{{- if eq .Values.backend "elasticsearch" }}
+  {{- if .Values.elasticsearch.enabled }}
+    {{- if .Values.elasticsearch.masterService }}
+      {{- .Values.elasticsearch.masterService }}
+    {{- else if .Values.elasticsearch.fullnameOverride }}
+      {{- printf "%s-master" .Values.elasticsearch.fullnameOverride }}
+    {{- else if .Values.elasticsearch.clusterName }}
+      {{- printf "%s-master" .Values.elasticsearch.clusterName }}
+    {{- else }}
+      {{- printf "%s-%s" .Release.Name "elasticsearch-master" }}
+    {{- end }}
+  {{- else }}
+    {{- fail "Elasticsearch is not enabled but backend is set to elasticsearch" }}
+  {{- end }}
+{{- else if eq .Values.backend "opensearch" }}
+  {{- if .Values.opensearch.enabled }}
+    {{- if .Values.opensearch.masterService }}
+      {{- .Values.opensearch.masterService }}
+    {{- else if .Values.opensearch.fullnameOverride }}
+      {{- printf "%s-master" .Values.opensearch.fullnameOverride }}
+    {{- else if .Values.opensearch.clusterName }}
+      {{- printf "%s-master" .Values.opensearch.clusterName }}
+    {{- else }}
+      {{- printf "%s-%s" .Release.Name "opensearch-cluster-master" }}
+    {{- end }}
+  {{- else }}
+    {{- fail "OpenSearch is not enabled but backend is set to opensearch" }}
+  {{- end }}
+{{- else }}
+  {{- fail "Invalid backend specified. Must be 'elasticsearch' or 'opensearch'" }}
+{{- end }}
+{{- end }}
+
+{{/*
 Create the database host based on backend selection
 */}}
 {{- define "stac-fastapi.databaseHost" -}}
 {{- if .Values.externalDatabase.enabled }}
-{{- .Values.externalDatabase.host }}
-{{- else if eq .Values.backend "elasticsearch" }}
-{{- if .Values.elasticsearch.enabled }}
-{{- if .Values.elasticsearch.masterService }}
-{{- .Values.elasticsearch.masterService }}
-{{- else if .Values.elasticsearch.fullnameOverride }}
-{{- printf "%s-master" .Values.elasticsearch.fullnameOverride }}
-{{- else if .Values.elasticsearch.clusterName }}
-{{- printf "%s-master" .Values.elasticsearch.clusterName }}
+  {{- .Values.externalDatabase.host }}
 {{- else }}
-{{- printf "%s-%s" .Release.Name "elasticsearch-master" }}
-{{- end }}
-{{- else }}
-{{- fail "Elasticsearch is not enabled but backend is set to elasticsearch" }}
-{{- end }}
-{{- else if eq .Values.backend "opensearch" }}
-{{- if .Values.opensearch.enabled }}
-{{- if .Values.opensearch.masterService }}
-{{- .Values.opensearch.masterService }}
-{{- else if .Values.opensearch.fullnameOverride }}
-{{- printf "%s-master" .Values.opensearch.fullnameOverride }}
-{{- else if .Values.opensearch.clusterName }}
-{{- printf "%s-master" .Values.opensearch.clusterName }}
-{{- else }}
-{{- printf "%s-%s" .Release.Name "opensearch-cluster-master" }}
-{{- end }}
-{{- else }}
-{{- fail "OpenSearch is not enabled but backend is set to opensearch" }}
-{{- end }}
-{{- else }}
-{{- fail "Invalid backend specified. Must be 'elasticsearch' or 'opensearch'" }}
+  {{- $service := include "stac-fastapi.databaseServiceName" . | trim }}
+  {{- $namespace := .Release.Namespace | default "default" }}
+  {{- $clusterDomain := default "cluster.local" .Values.global.clusterDomain }}
+  {{- printf "%s.%s.svc.%s" $service $namespace $clusterDomain }}
 {{- end }}
 {{- end }}
 
@@ -130,12 +142,42 @@ Create the image repository with tag
 Create environment variables for the application
 */}}
 {{- define "stac-fastapi.environment" -}}
+{{- $env := default (dict) .Values.app.env -}}
+{{- $envFromSecret := default (dict) .Values.app.envFromSecret -}}
+{{- $dbAuth := default (dict) .Values.app.databaseAuth -}}
 - name: BACKEND
   value: {{ .Values.backend | quote }}
 - name: ES_HOST
   value: {{ include "stac-fastapi.databaseHost" . | quote }}
 - name: ES_PORT
   value: {{ include "stac-fastapi.databasePort" . | quote }}
+{{- if $dbAuth.existingSecret }}
+{{- $usernameKey := default "username" $dbAuth.usernameKey }}
+{{- $passwordKey := default "password" $dbAuth.passwordKey }}
+{{- if not (hasKey $env "ES_USER") }}
+- name: ES_USER
+  valueFrom:
+    secretKeyRef:
+      name: {{ $dbAuth.existingSecret }}
+      key: {{ $usernameKey }}
+{{- end }}
+{{- if not (hasKey $env "ES_PASS") }}
+- name: ES_PASS
+  valueFrom:
+    secretKeyRef:
+      name: {{ $dbAuth.existingSecret }}
+      key: {{ $passwordKey }}
+{{- end }}
+{{- else }}
+{{- if and (not (hasKey $env "ES_USER")) $dbAuth.username }}
+- name: ES_USER
+  value: {{ $dbAuth.username | quote }}
+{{- end }}
+{{- if and (not (hasKey $env "ES_PASS")) $dbAuth.password }}
+- name: ES_PASS
+  value: {{ $dbAuth.password | quote }}
+{{- end }}
+{{- end }}
 {{- if .Values.externalDatabase.enabled }}
 - name: ES_USE_SSL
   value: {{ .Values.externalDatabase.ssl | quote }}
@@ -151,11 +193,11 @@ Create environment variables for the application
       key: {{ .Values.externalDatabase.apiKeySecretKey }}
 {{- end }}
 {{- end }}
-{{- range $key, $value := .Values.app.env }}
+{{- range $key, $value := $env }}
 - name: {{ $key }}
   value: {{ $value | quote }}
 {{- end }}
-{{- range $key, $secretName := .Values.app.envFromSecret }}
+{{- range $key, $secretName := $envFromSecret }}
 - name: {{ $key }}
   valueFrom:
     secretKeyRef:

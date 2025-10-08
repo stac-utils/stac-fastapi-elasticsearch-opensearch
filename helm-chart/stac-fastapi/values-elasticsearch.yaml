@@ -19,6 +19,11 @@ app:
     port: 80
     targetPort: 8080
 
+  waitForDatabase:
+    enabled: true
+    intervalSeconds: 2
+    maxAttempts: 180
+
   # Ingress configuration
   ingress:
     enabled: true

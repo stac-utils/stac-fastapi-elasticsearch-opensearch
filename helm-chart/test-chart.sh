@@ -199,7 +199,7 @@ install_chart() {
     local values_file=""
     case $BACKEND in
         elasticsearch)
-            values_file="values-minimal-storage.yaml"
+            values_file="values-elasticsearch.yaml"
             ;;
         opensearch)
             values_file="values-opensearch.yaml"
@@ -239,7 +239,7 @@ upgrade_chart() {
     local values_file=""
     case $BACKEND in
         elasticsearch)
-            values_file="values-minimal-storage.yaml"
+            values_file="values-elasticsearch.yaml"
             ;;
         opensearch)
             values_file="values-opensearch.yaml"

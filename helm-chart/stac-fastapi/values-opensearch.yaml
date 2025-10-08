@@ -19,6 +19,11 @@ app:
     port: 80
     targetPort: 8080
 
+  waitForDatabase:
+    enabled: true
+    intervalSeconds: 2
+    maxAttempts: 180
+
   # Ingress configuration
   ingress:
     enabled: true
@@ -64,6 +69,13 @@ app:
     ENABLE_DATETIME_INDEX_FILTERING: "true"  # Enable for large datasets
     DATETIME_INDEX_MAX_SIZE_GB: "50"
     STAC_FASTAPI_RATE_LIMIT: "1000/minute"
+
+  # Optional: pull connection credentials from a secret managed by the
+  # OpenSearch chart (or provide plain values via username/password).
+  databaseAuth:
+    existingSecret: ""
+    usernameKey: "username"
+    passwordKey: "password"
 
 # Disable Elasticsearch since we're using OpenSearch
 elasticsearch:

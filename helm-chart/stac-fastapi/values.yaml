@@ -9,6 +9,7 @@ backend: elasticsearch
 global:
   imageRegistry: ""
   storageClass: ""
+  clusterDomain: "cluster.local"
 
 # STAC FastAPI application configuration
 app:
@@ -62,6 +63,15 @@ app:
     type: ClusterIP
     port: 80
     targetPort: 8080
+
+  # Wait for bundled database before starting the app (similar to docker-compose setup)
+  waitForDatabase:
+    enabled: true
+    image: busybox:1.36.1
+    pullPolicy: IfNotPresent
+    intervalSeconds: 2
+    maxAttempts: 120
+    resources: {}
 
   # Ingress configuration
   ingress:
@@ -165,6 +175,21 @@ app:
   # Additional environment variables from secrets
   envFromSecret: {}
     # ES_API_KEY: "es-api-key-secret"
+
+  # Database authentication configuration for bundled backends
+  databaseAuth:
+    # Plain username to connect to Elasticsearch/OpenSearch. Leave empty to skip.
+    username: ""
+    # Plain password to connect to Elasticsearch/OpenSearch. Leave empty to skip.
+    password: ""
+    # Reference an existing secret containing credentials. When set, the
+    # username/password keys below will be looked up from this secret instead of
+    # using the plain values above.
+    existingSecret: ""
+    # Secret key that stores the username. Defaults to "username" when empty.
+    usernameKey: "username"
+    # Secret key that stores the password. Defaults to "password" when empty.
+    passwordKey: "password"
 
 # Elasticsearch configuration
 # Note: This will be automatically set based on 'backend' value

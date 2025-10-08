@@ -62,11 +62,23 @@ helm install my-stac-api ./helm-chart/stac-fastapi \
 
 ## Configuration
 
+### Global Options
+
+```yaml
+global:
+  imageRegistry: ""
+  storageClass: ""
+  clusterDomain: "cluster.local"
+```
+
+The chart builds fully qualified service endpoints for bundled databases using the Kubernetes cluster domain. Adjust `clusterDomain` if your cluster doesn't use the default `cluster.local` suffix.
+
 ## Backend Selection
 
 The chart supports both Elasticsearch and OpenSearch backends, but only deploys **one backend at a time** based on the `backend` configuration:
 
 ### Elasticsearch Backend
+
 ```yaml
 backend: elasticsearch
 elasticsearch:
@@ -76,6 +88,7 @@ opensearch:
 ```
 
 ### OpenSearch Backend  
+
 ```yaml
 backend: opensearch
 elasticsearch:
@@ -113,6 +126,11 @@ app:
     tag: "latest"
     pullPolicy: IfNotPresent
   
+  waitForDatabase:
+    enabled: true
+    intervalSeconds: 2
+    maxAttempts: 120
+  
   env:
     STAC_FASTAPI_TITLE: "STAC API"
     STAC_FASTAPI_DESCRIPTION: "A STAC FastAPI implementation"
@@ -124,7 +142,23 @@ app:
     STAC_FASTAPI_RATE_LIMIT: "200/minute"
 ```
 
+The optional `waitForDatabase` block adds a lightweight init container that blocks STAC FastAPI startup until the backing Elasticsearch/OpenSearch service is reachable—mirroring the docker-compose `wait-for-it` helper. Disable it by setting `app.waitForDatabase.enabled=false` if you prefer the application to start immediately and rely on internal retries instead.
+
 ### Database Configuration
+
+#### Application Credentials
+
+If your Elasticsearch or OpenSearch cluster requires authentication, provide credentials to the application with the `app.databaseAuth` block. You can reference an existing secret or supply literal values:
+
+```yaml
+app:
+  databaseAuth:
+    existingSecret: "stac-opensearch-admin"  # Optional. When set, keys are read from this secret.
+    usernameKey: "username"                  # Secret key that stores the username (defaults to "username").
+    passwordKey: "password"                  # Secret key that stores the password (defaults to "password").
+    # username: "admin"                      # Optional literal username when not using a secret.
+    # password: "changeme"                   # Optional literal password when not using a secret.
+```
 
 #### Bundled Elasticsearch
 
@@ -394,7 +428,7 @@ kubectl exec -it deployment/my-stac-api -- curl http://elasticsearch:9200/_healt
 kubectl port-forward service/my-stac-api 8080:80
 ```
 
-Then visit http://localhost:8080
+Then visit <http://localhost:8080>
 
 ## Configuration Reference
 

@@ -20,6 +20,39 @@ spec:
       labels:
         {{- include "stac-fastapi.selectorLabels" . | nindent 8 }}
     spec:
+      {{- if .Values.app.waitForDatabase.enabled }}
+      initContainers:
+        - name: wait-for-database
+          image: {{ .Values.app.waitForDatabase.image | default "busybox:1.36.1" }}
+          imagePullPolicy: {{ .Values.app.waitForDatabase.pullPolicy | default "IfNotPresent" }}
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              HOST="{{ include "stac-fastapi.databaseHost" . | trim }}"
+              PORT="{{ include "stac-fastapi.databasePort" . | trim }}"
+              ATTEMPTS={{ .Values.app.waitForDatabase.maxAttempts | default 120 }}
+              INTERVAL={{ .Values.app.waitForDatabase.intervalSeconds | default 2 }}
+              COUNT=0
+              echo "Waiting for ${HOST}:${PORT} before starting STAC FastAPI..."
+              while true; do
+                if nc -z "$HOST" "$PORT"; then
+                  echo "${HOST}:${PORT} is reachable."
+                  exit 0
+                fi
+                COUNT=$((COUNT + 1))
+                if [ "$COUNT" -ge "$ATTEMPTS" ]; then
+                  echo "Timed out waiting for ${HOST}:${PORT} after ${COUNT} attempts." >&2
+                  exit 1
+                fi
+                sleep "$INTERVAL"
+              done
+          {{- with .Values.app.waitForDatabase.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- end }}
       {{- with .Values.app.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
