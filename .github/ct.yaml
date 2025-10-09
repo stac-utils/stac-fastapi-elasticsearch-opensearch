@@ -10,10 +10,8 @@ target-branch: main
 
 # Chart repositories to add
 chart-repos:
-  - name: elasticsearch
-    url: https://helm.elastic.co
-  - name: opensearch
-    url: https://opensearch-project.github.io/helm-charts/
+  - elasticsearch=https://helm.elastic.co
+  - opensearch=https://opensearch-project.github.io/helm-charts/
 
 # Helm version to use
 helm-version: v3.13.0

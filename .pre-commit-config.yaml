@@ -42,3 +42,19 @@ repos:
         # Don't require docstrings for tests
         #'--match=(?!test|alembic|scripts).*\.py',
         #]
+  - repo: local
+    hooks:
+      - id: helm-chart-lint
+        name: Helm chart lint
+        language: docker_image
+        entry: quay.io/helmpack/chart-testing:v3.7.1
+        args:
+          - bash
+          - -c
+          - >-
+            export HELM_CONFIG_HOME=/tmp/helm &&
+            export HELM_DATA_HOME=/tmp/helm &&
+            export HELM_CACHE_HOME=/tmp/helm &&
+            ct lint --config /src/.github/ct.yaml
+        pass_filenames: false
+        files: ^helm-chart/

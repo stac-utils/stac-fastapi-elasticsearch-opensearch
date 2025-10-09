@@ -148,7 +148,7 @@ app:
     ENVIRONMENT: "production"
     WEB_CONCURRENCY: "10"
     RELOAD: "false"
-    
+
     # Database configuration
     DATABASE_REFRESH: "false"
     ENABLE_TRANSACTIONS_EXTENSIONS: "true"
@@ -156,18 +156,18 @@ app:
     ENV_MAX_LIMIT: "10000"
     STAC_INDEX_ASSETS: "false"
     RAISE_ON_BULK_ERROR: "false"
-    
+
     # Performance configuration
     ENABLE_DIRECT_RESPONSE: "false"
-    
+
     # Rate limiting
     STAC_FASTAPI_RATE_LIMIT: "200/minute"
-    
+
     # Datetime index filtering
     ENABLE_DATETIME_INDEX_FILTERING: "false"
     DATETIME_INDEX_MAX_SIZE_GB: "25"
     STAC_ITEMS_INDEX_PREFIX: "items_"
-    
+
     # SSL configuration
     ES_USE_SSL: "false"
     ES_VERIFY_CERTS: "false"
@@ -206,29 +206,29 @@ opensearchSecurity:
 elasticsearch:
   # Enable/disable Elasticsearch deployment
   enabled: true
-  
+
   # Elasticsearch cluster name
   clusterName: "stac-elasticsearch"
-  
+
   # Node group configuration
   nodeGroup: "master"
-  
+
   # Number of masters eligible nodes
   masterService: "stac-elasticsearch-master"
-  
+
   # Elasticsearch roles
   roles:
     - master
     - ingest
     - data
     - remote_cluster_client
-  
+
   # Number of replicas
   replicas: 1
-  
+
   # Minimum master nodes
   minimumMasterNodes: 1
-  
+
   # Elasticsearch configuration
   esConfig:
     elasticsearch.yml: |
@@ -239,10 +239,10 @@ elasticsearch:
       xpack.security.enabled: false
       xpack.security.transport.ssl.enabled: false
       xpack.security.http.ssl.enabled: false
-  
+
   # JVM configuration
   esJavaOpts: "-Xmx1g -Xms1g"
-  
+
   # Resource configuration
   resources:
     requests:
@@ -251,15 +251,15 @@ elasticsearch:
     limits:
       cpu: "1000m"
       memory: "2Gi"
-  
+
   # Volume claim template
   volumeClaimTemplate:
-    accessModes: [ "ReadWriteOnce" ]
+    accessModes: ["ReadWriteOnce"]
     # storageClassName: ""  # Leave empty to use cluster default
     resources:
       requests:
         storage: 1Gi
-  
+
   # Service configuration
   service:
     type: ClusterIP
@@ -276,29 +276,29 @@ elasticsearch:
 opensearch:
   # Enable/disable OpenSearch deployment
   enabled: false
-  
+
   # OpenSearch cluster name
   clusterName: "stac-opensearch"
-  
+
   # Service name used to expose the master nodes
   masterService: "opensearch-cluster-master"
-  
+
   # Node group configuration
   nodeGroup: "master"
-  
+
   # OpenSearch roles
   roles:
     - master
     - ingest
     - data
     - remote_cluster_client
-  
+
   # Number of replicas
   replicas: 1
-  
+
   # Minimum master nodes
   majorVersion: ""
-  
+
   # OpenSearch configuration
   config:
     opensearch.yml: |
@@ -307,10 +307,10 @@ opensearch:
       discovery.type: single-node
       plugins.security.disabled: true
       action.destructive_requires_name: false
-  
+
   # JVM configuration
   opensearchJavaOpts: "-Xmx1g -Xms1g"
-  
+
   # Resource configuration
   resources:
     requests:
@@ -319,7 +319,7 @@ opensearch:
     limits:
       cpu: "1000m"
       memory: "2Gi"
-  
+
   # Persistence configuration
   persistence:
     enabled: true
@@ -328,7 +328,7 @@ opensearch:
       - ReadWriteOnce
     size: 10Gi
     annotations: {}
-  
+
   # Service configuration
   service:
     type: ClusterIP
@@ -363,7 +363,7 @@ externalDatabase:
 monitoring:
   # Enable monitoring
   enabled: false
-  
+
   # Prometheus monitoring
   prometheus:
     enabled: false
@@ -372,7 +372,7 @@ monitoring:
       interval: 30s
       scrapeTimeout: 10s
       labels: {}
-  
+
   # Grafana dashboards
   grafana:
     enabled: false
