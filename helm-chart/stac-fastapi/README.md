@@ -328,6 +328,27 @@ networkPolicy:
           port: 9200
 ```
 
+### OpenSearch Admin Credentials
+
+When deploying with the OpenSearch backend you can instruct the chart to generate
+an initial admin password and store it in a Kubernetes secret. Enable this by
+setting `opensearchSecurity.generateAdminPassword=true` (already enabled in
+`values-opensearch.yaml`). The chart will create a secret named
+`<release>-stac-fastapi-opensearch-admin` by default and automatically wires it to
+the STAC FastAPI deployment through environment variables.
+
+Retrieve the generated credentials with:
+
+```bash
+kubectl get secret <release>-stac-fastapi-opensearch-admin \
+  -o jsonpath='{.data.username}' | base64 --decode
+kubectl get secret <release>-stac-fastapi-opensearch-admin \
+  -o jsonpath='{.data.password}' | base64 --decode
+```
+
+You can provide your own secret name, username key, or password key through the
+`opensearchSecurity` values block if you already manage credentials externally.
+
 ### Pod Security Context
 
 Configure security contexts:
@@ -455,6 +476,8 @@ Then visit <http://localhost:8080>
 | `elasticsearch.enabled` | Deploy Elasticsearch | `true` |
 | `opensearch.enabled` | Deploy OpenSearch | `false` |
 | `externalDatabase.enabled` | Use external database | `false` |
+| `opensearchSecurity.generateAdminPassword` | Generate random OpenSearch admin password | `false` |
+| `opensearchSecurity.secretName` | Override name of generated OpenSearch admin secret | `""` |
 | `monitoring.enabled` | Enable monitoring | `false` |
 | `networkPolicy.enabled` | Enable network policies | `false` |
 | `networkPolicy.allowNamespaceCommunication` | Allow ingress/egress within the release namespace | `true` |

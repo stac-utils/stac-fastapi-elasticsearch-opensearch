@@ -191,6 +191,16 @@ app:
     # Secret key that stores the password. Defaults to "password" when empty.
     passwordKey: "password"
 
+# OpenSearch security helper
+opensearchSecurity:
+  generateAdminPassword: false
+  username: "admin"
+  usernameKey: "username"
+  passwordKey: "password"
+  passwordLength: 32
+  secretName: ""
+  annotations: {}
+
 # Elasticsearch configuration
 # Note: This will be automatically set based on 'backend' value
 elasticsearch:

@@ -77,6 +77,14 @@ app:
     usernameKey: "username"
     passwordKey: "password"
 
+# Enable automatic OpenSearch admin password generation
+opensearchSecurity:
+  generateAdminPassword: true
+  # Use a deterministic name so the generated secret can be referenced below
+  secretName: stac-opensearch-admin
+  usernameKey: username
+  passwordKey: password
+
 # Disable Elasticsearch since we're using OpenSearch
 elasticsearch:
   enabled: false
@@ -114,9 +122,8 @@ opensearch:
     opensearch.yml: |
       cluster.name: stac-opensearch-prod
       network.host: 0.0.0.0
-      discovery.seed_hosts: ["stac-opensearch-prod-cluster-master-headless"]
-      cluster.initial_cluster_manager_nodes: ["stac-opensearch-prod-cluster-master-0", "stac-opensearch-prod-cluster-master-1", "stac-opensearch-prod-cluster-master-2"]
-      plugins.security.disabled: true
+      discovery.seed_hosts: ["opensearch-cluster-master-headless"]
+      cluster.initial_cluster_manager_nodes: ["stac-opensearch-prod-master-0", "stac-opensearch-prod-master-1", "stac-opensearch-prod-master-2"]
       action.destructive_requires_name: true
       indices.memory.index_buffer_size: 20%
       thread_pool.write.queue_size: 1000
@@ -125,6 +132,23 @@ opensearch:
       cluster.routing.allocation.disk.watermark.low: 85%
       cluster.routing.allocation.disk.watermark.high: 90%
       cluster.routing.allocation.disk.watermark.flood_stage: 95%
+  
+  # Extra environment variables
+  extraEnvs:
+    - name: "DISABLE_INSTALL_DEMO_CONFIG"
+      value: "false"
+    - name: "DISABLE_SECURITY_PLUGIN"
+      value: "false"
+    - name: "OPENSEARCH_INITIAL_ADMIN_USERNAME"
+      valueFrom:
+        secretKeyRef:
+          name: stac-opensearch-admin
+          key: username
+    - name: "OPENSEARCH_INITIAL_ADMIN_PASSWORD"
+      valueFrom:
+        secretKeyRef:
+          name: stac-opensearch-admin
+          key: password
   
   # Persistent storage
   persistence:
