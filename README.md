@@ -25,7 +25,16 @@ The following organizations have contributed time and/or funding to support the 
   <a href="https://healy-hyperspatial.github.io/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/hh-logo-blue.png" alt="Healy Hyperspatial" height="100" hspace="20"></a>
   <a href="https://atomicmaps.io/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/am-logo-black.png" alt="Atomic Maps" height="100" hspace="20"></a>
   <a href="https://remotesensing.vito.be/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/VITO.png" alt="VITO Remote Sensing" height="100" hspace="20"></a>
+  <a href="https://cloudferro.com/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/cloudferro-logo.png" alt="CloudFerro" height="105" hspace="20"></a>
 </p>
+
+## Latest News
+
+<div style="max-height: 200px; overflow-y: auto; padding: 10px; border: 1px solid #eaecef; border-radius: 6px; margin-bottom: 16px;">
+
+- 10/04/2025: The [CloudFerro](https://cloudferro.com/) logo has been added to the sponsors and supporters list above. Their sponsorship of the ongoing collections search extension work has been invaluable. This is in addition to the many other important changes and updates their developers have added to the project.
+
+</div>
 
 ## Project Introduction - What is SFEOS?
 
@@ -67,6 +76,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
 
 - [stac-fastapi-elasticsearch-opensearch](#stac-fastapi-elasticsearch-opensearch)
   - [Sponsors & Supporters](#sponsors--supporters)
+  - [Latest News](#latest-news)
   - [Project Introduction - What is SFEOS?](#project-introduction---what-is-sfeos)
   - [Common Deployment Patterns](#common-deployment-patterns)
   - [Technologies](#technologies)
