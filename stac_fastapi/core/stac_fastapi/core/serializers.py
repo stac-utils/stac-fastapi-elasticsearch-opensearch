@@ -155,9 +155,6 @@ class CollectionSerializer(Serializer):
                     else spatial_extent["bbox"]
                 )
                 collection_id = collection.get("id", "unknown")
-                logger.debug(
-                    f"Converting bbox to bbox_shape for collection '{collection_id}': bbox={bbox}"
-                )
 
                 if len(bbox) >= 4:
                     # Extract 2D coordinates (bbox can be 2D [minx, miny, maxx, maxy] or 3D [minx, miny, minz, maxx, maxy, maxz])
@@ -166,16 +163,10 @@ class CollectionSerializer(Serializer):
                     if len(bbox) == 4:
                         # 2D bbox: [minx, miny, maxx, maxy]
                         maxx, maxy = bbox[2], bbox[3]
-                        logger.debug(
-                            f"Collection '{collection_id}': Processing 2D bbox"
-                        )
                     else:
                         # 3D bbox: [minx, miny, minz, maxx, maxy, maxz]
                         # Extract indices 3,4 for maxx,maxy - discarding altitude at indices 2 (minz) and 5 (maxz)
                         maxx, maxy = bbox[3], bbox[4]
-                        logger.debug(
-                            f"Collection '{collection_id}': Processing 3D bbox, discarding altitude values at indices 2 and 5"
-                        )
 
                     # Convert bbox to GeoJSON polygon
                     bbox_polygon_coords = bbox2polygon(minx, miny, maxx, maxy)
@@ -183,9 +174,6 @@ class CollectionSerializer(Serializer):
                         "type": "Polygon",
                         "coordinates": bbox_polygon_coords,
                     }
-                    logger.info(
-                        f"Collection '{collection_id}': Created bbox_shape from bbox [{minx}, {miny}, {maxx}, {maxy}]"
-                    )
                 else:
                     logger.warning(
                         f"Collection '{collection_id}': bbox has insufficient coordinates (length={len(bbox)}), expected at least 4"
