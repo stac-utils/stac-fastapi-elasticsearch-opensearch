@@ -1475,70 +1475,102 @@ async def test_put_item_for_datetime_index(app_client, load_test_data, txn_clien
 
 
 @pytest.mark.asyncio
-async def test_collections_limit_env_variable(app_client, txn_client, load_test_data):
-    limit = "5"
-    os.environ["STAC_ITEM_LIMIT"] = limit
-    item = load_test_data("test_collection.json")
+async def test_global_collection_max_limit_set(app_client, txn_client, load_test_data):
+    """Test with global collection max limit set, expect cap the limit"""
+    os.environ["STAC_GLOBAL_COLLECTION_MAX_LIMIT"] = "5"
 
     for i in range(10):
-        test_collection = item.copy()
-        test_collection["id"] = f"test-collection-env-{i}"
-        test_collection["title"] = f"Test Collection Env {i}"
+        test_collection = load_test_data("test_collection.json")
+        test_collection_id = f"test-collection-global-{i}"
+        test_collection["id"] = test_collection_id
+        await create_collection(txn_client, test_collection)
+
+    resp = await app_client.get("/collections?limit=10")
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["collections"]) == 5
+
+    del os.environ["STAC_GLOBAL_COLLECTION_MAX_LIMIT"]
+
+
+@pytest.mark.asyncio
+async def test_default_collection_limit(app_client, txn_client, load_test_data):
+    """Test default collection limit set, should use default when no limit provided"""
+    os.environ["STAC_DEFAULT_COLLECTION_LIMIT"] = "5"
+
+    for i in range(10):
+        test_collection = load_test_data("test_collection.json")
+        test_collection_id = f"test-collection-default-{i}"
+        test_collection["id"] = test_collection_id
         await create_collection(txn_client, test_collection)
 
     resp = await app_client.get("/collections")
     assert resp.status_code == 200
     resp_json = resp.json()
-    assert int(limit) == len(resp_json["collections"])
+    assert len(resp_json["collections"]) == 5
+
+    del os.environ["STAC_DEFAULT_COLLECTION_LIMIT"]
 
 
 @pytest.mark.asyncio
-async def test_search_collection_limit_env_variable(
-    app_client, txn_client, load_test_data
-):
-    limit = "5"
-    os.environ["STAC_ITEM_LIMIT"] = limit
+async def test_no_global_item_max_limit_set(app_client, txn_client, load_test_data):
+    """Test with no global max limit set for items"""
+
+    if "STAC_GLOBAL_ITEM_MAX_LIMIT" in os.environ:
+        del os.environ["STAC_GLOBAL_ITEM_MAX_LIMIT"]
 
     test_collection = load_test_data("test_collection.json")
-    test_collection_id = "test-collection-search-limit"
+    test_collection_id = "test-collection-no-global-limit"
     test_collection["id"] = test_collection_id
     await create_collection(txn_client, test_collection)
 
     item = load_test_data("test_item.json")
     item["collection"] = test_collection_id
 
-    for i in range(10):
-        test_item = item.copy()
-        test_item["id"] = f"test-item-search-{i}"
-        await create_item(txn_client, test_item)
-
-    resp = await app_client.get("/search", params={"collections": [test_collection_id]})
-    assert resp.status_code == 200
-    resp_json = resp.json()
-    assert int(limit) == len(resp_json["features"])
-
-
-async def test_search_max_item_limit(
-    app_client, load_test_data, txn_client, monkeypatch
-):
-    limit = "10"
-    monkeypatch.setenv("ENV_MAX_LIMIT", limit)
-
-    test_collection = load_test_data("test_collection.json")
-    await create_collection(txn_client, test_collection)
-
-    item = load_test_data("test_item.json")
-
     for i in range(20):
         test_item = item.copy()
-        test_item["id"] = f"test-item-collection-{i}"
+        test_item["id"] = f"test-item-{i}"
         await create_item(txn_client, test_item)
 
-    resp = await app_client.get("/search", params={"limit": 20})
-
+    resp = await app_client.get(f"/collections/{test_collection_id}/items?limit=20")
     assert resp.status_code == 200
     resp_json = resp.json()
-    assert int(limit) == len(resp_json["features"])
+    assert len(resp_json["features"]) == 20
+
+    resp = await app_client.get(f"/search?collections={test_collection_id}&limit=20")
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["features"]) == 20
+
+    resp = await app_client.post(
+        "/search", json={"collections": [test_collection_id], "limit": 20}
+    )
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["features"]) == 20
+
+
+@pytest.mark.asyncio
+async def test_no_global_collection_max_limit_set(
+    app_client, txn_client, load_test_data
+):
+    """Test with no global max limit set for collections"""
+
+    if "STAC_GLOBAL_COLLECTION_MAX_LIMIT" in os.environ:
+        del os.environ["STAC_GLOBAL_COLLECTION_MAX_LIMIT"]
+
+    test_collections = []
+    for i in range(20):
+        test_collection = load_test_data("test_collection.json")
+        test_collection_id = f"test-collection-no-global-limit-{i}"
+        test_collection["id"] = test_collection_id
+        await create_collection(txn_client, test_collection)
+        test_collections.append(test_collection_id)
+
+    resp = await app_client.get("/collections?limit=20")
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["collections"]) == 20
 
 
 @pytest.mark.asyncio
