@@ -3,8 +3,10 @@
 This module provides functions for building and manipulating Elasticsearch/OpenSearch queries.
 """
 
-from typing import Any, Dict, List, Optional
+import logging
+from typing import Any, Dict, List, Optional, Union
 
+from stac_fastapi.core.utilities import bbox2polygon
 from stac_fastapi.sfeos_helpers.mappings import Geometry
 
 ES_MAX_URL_LENGTH = 4096
@@ -60,6 +62,78 @@ def apply_intersects_filter_shared(
                     "type": intersects.type.lower(),
                     "coordinates": intersects.coordinates,
                 },
+                "relation": "intersects",
+            }
+        }
+    }
+
+
+def apply_collections_bbox_filter_shared(
+    bbox: Union[str, List[float], None]
+) -> Optional[Dict[str, Dict]]:
+    """Create a geo_shape filter for collections bbox search.
+
+    This function handles bbox parsing from both GET requests (string format) and POST requests
+    (list format), and constructs a geo_shape query for filtering collections by their bbox_shape field.
+
+    Args:
+        bbox: The bounding box parameter. Can be:
+            - A string of comma-separated coordinates (from GET requests)
+            - A list of floats [minx, miny, maxx, maxy] for 2D bbox
+            - None if no bbox filter is provided
+
+    Returns:
+        Optional[Dict[str, Dict]]: A dictionary containing the geo_shape filter configuration
+            that can be used with Elasticsearch/OpenSearch queries, or None if bbox is invalid.
+            Example return value:
+            {
+                "geo_shape": {
+                    "bbox_shape": {
+                        "shape": {
+                            "type": "Polygon",
+                            "coordinates": [[[minx, miny], [maxx, miny], [maxx, maxy], [minx, maxy], [minx, miny]]]
+                        },
+                        "relation": "intersects"
+                    }
+                }
+            }
+
+    Notes:
+        - This function is specifically for filtering collections by their spatial extent
+        - It queries the bbox_shape field (not the geometry field used for items)
+        - The bbox is expected to be 2D (4 values) after any 3D to 2D conversion in the API layer
+    """
+    logger = logging.getLogger(__name__)
+
+    if not bbox:
+        return None
+
+    # Parse bbox if it's a string (from GET requests)
+    if isinstance(bbox, str):
+        try:
+            bbox = [float(x.strip()) for x in bbox.split(",")]
+        except (ValueError, AttributeError) as e:
+            logger.error(f"Invalid bbox format: {bbox}, error: {e}")
+            return None
+
+    if not bbox or len(bbox) != 4:
+        if bbox:
+            logger.warning(
+                f"bbox has incorrect number of coordinates (length={len(bbox)}), expected 4 (2D bbox)"
+            )
+        return None
+
+    # Convert bbox to a polygon for geo_shape query
+    bbox_polygon = {
+        "type": "Polygon",
+        "coordinates": bbox2polygon(bbox[0], bbox[1], bbox[2], bbox[3]),
+    }
+
+    # Return geo_shape query for bbox_shape field
+    return {
+        "geo_shape": {
+            "bbox_shape": {
+                "shape": bbox_polygon,
                 "relation": "intersects",
             }
         }

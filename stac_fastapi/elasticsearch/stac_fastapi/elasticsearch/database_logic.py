@@ -29,6 +29,7 @@ from stac_fastapi.extensions.core.transaction.request import (
 )
 from stac_fastapi.sfeos_helpers import filter as filter_module
 from stac_fastapi.sfeos_helpers.database import (
+    apply_collections_bbox_filter_shared,
     apply_free_text_filter_shared,
     apply_intersects_filter_shared,
     create_index_templates_shared,
@@ -317,42 +318,9 @@ class DatabaseLogic(BaseDatabaseLogic):
                 raise
 
         # Apply bbox filter if provided
-        if bbox:
-            # Parse bbox if it's a string (from GET requests)
-            if isinstance(bbox, str):
-                try:
-                    bbox = [float(x.strip()) for x in bbox.split(",")]
-                except (ValueError, AttributeError) as e:
-                    logger.error(f"Invalid bbox format: {bbox}, error: {e}")
-                    bbox = None
-
-            if bbox and len(bbox) >= 4:
-                # Extract 2D coordinates (bbox can be 2D [minx, miny, maxx, maxy] or 3D [minx, miny, minz, maxx, maxy, maxz])
-                # For geospatial queries, we discard altitude (z) values
-                minx, miny = bbox[0], bbox[1]
-                if len(bbox) == 4:
-                    # 2D bbox
-                    maxx, maxy = bbox[2], bbox[3]
-                else:
-                    # 3D bbox - extract indices 3,4 for maxx,maxy, discarding altitude at indices 2 (minz) and 5 (maxz)
-                    maxx, maxy = bbox[3], bbox[4]
-
-                # Convert bbox to a polygon for geo_shape query
-                bbox_polygon = {
-                    "type": "Polygon",
-                    "coordinates": bbox2polygon(minx, miny, maxx, maxy),
-                }
-                # Add geo_shape query to filter collections by bbox_shape field
-                query_parts.append(
-                    {
-                        "geo_shape": {
-                            "bbox_shape": {
-                                "shape": bbox_polygon,
-                                "relation": "intersects",
-                            }
-                        }
-                    }
-                )
+        bbox_filter = apply_collections_bbox_filter_shared(bbox)
+        if bbox_filter:
+            query_parts.append(bbox_filter)
 
         # Combine all query parts with AND logic if there are multiple
         datetime_filter = None
