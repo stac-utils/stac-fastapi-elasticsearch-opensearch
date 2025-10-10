@@ -24,7 +24,7 @@ from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.datetime_utils import format_datetime_range
 from stac_fastapi.core.models.links import PagingLinks
-from stac_fastapi.core.redis_utils import connect_redis, get_prev_link, save_self_link
+from stac_fastapi.core.redis_utils import _handle_pagination_via_redis
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.session import Session
 from stac_fastapi.core.utilities import filter_fields, get_bool_env
@@ -329,19 +329,7 @@ class CoreClient(AsyncBaseCoreClient):
             if parsed_sort:
                 sort = parsed_sort
 
-        current_url = str(request.url)
         redis_enable = get_bool_env("REDIS_ENABLE", default=False)
-
-        redis = None
-        if redis_enable:
-            try:
-                redis = await connect_redis()
-                logger.info("Redis connection established successfully")
-            except Exception as e:
-                redis = None
-                logger.warning(
-                    f"Redis connection failed, continuing without Redis: {e}"
-                )
 
         # Convert q to a list if it's a string
         q_list = None
@@ -441,21 +429,7 @@ class CoreClient(AsyncBaseCoreClient):
             },
         ]
 
-        if redis_enable and redis:
-            if next_token:
-                await save_self_link(redis, next_token, current_url)
-
-            prev_link = await get_prev_link(redis, token)
-            if prev_link:
-                links.insert(
-                    0,
-                    {
-                        "rel": "prev",
-                        "type": "application/json",
-                        "method": "GET",
-                        "href": prev_link,
-                    },
-                )
+        _handle_pagination_via_redis(redis_enable, next_token, token, request, links)
 
         if next_token:
             next_link = PagingLinks(next=next_token, request=request).link_next()
@@ -901,29 +875,9 @@ class CoreClient(AsyncBaseCoreClient):
                 )
         links.extend(collection_links)
 
-        if redis_enable:
-            redis = None
-            try:
-                redis = await connect_redis()
-                logger.info("Redis connection established successfully")
-                self_link = str(request.url)
-                await save_self_link(redis, next_token, self_link)
-
-                prev_link = await get_prev_link(redis, token_param)
-                if prev_link:
-                    links.insert(
-                        0,
-                        {
-                            "rel": "prev",
-                            "type": "application/json",
-                            "method": "GET",
-                            "href": prev_link,
-                        },
-                    )
-            except Exception as e:
-                logger.warning(
-                    f"Redis connection failed, continuing without Redis: {e}"
-                )
+        _handle_pagination_via_redis(
+            redis_enable, next_token, token_param, request, links
+        )
 
         return stac_types.ItemCollection(
             type="FeatureCollection",

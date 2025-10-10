@@ -1,10 +1,14 @@
 """Utilities for connecting to and managing Redis connections."""
 
-from typing import Optional
+import logging
+from typing import Dict, List, Optional
 
+from fastapi import Request
 from pydantic_settings import BaseSettings
 from redis import asyncio as aioredis
 from redis.asyncio.sentinel import Sentinel
+
+logger = logging.getLogger(__name__)
 
 redis_pool: Optional[aioredis.Redis] = None
 
@@ -122,3 +126,38 @@ async def get_prev_link(redis: aioredis.Redis, token: Optional[str]) -> Optional
     if not token:
         return None
     return await redis.get(f"nav:self:{token}")
+
+
+async def _handle_pagination_via_redis(
+    redis_enable: bool,
+    next_token: Optional[str],
+    token_param: Optional[str],
+    request: Request,
+    links: List[Dict],
+) -> None:
+    """Handle Redis connection and operations for pagination links."""
+    if not redis_enable:
+        return
+
+    redis = None
+    try:
+        redis = await connect_redis()
+        logger.info("Redis connection established successfully")
+
+        if redis and next_token:
+            self_link = str(request.url)
+            await save_self_link(redis, next_token, self_link)
+
+            prev_link = await get_prev_link(redis, token_param)
+            if prev_link:
+                links.insert(
+                    0,
+                    {
+                        "rel": "prev",
+                        "type": "application/json",
+                        "method": "GET",
+                        "href": prev_link,
+                    },
+                )
+    except Exception as e:
+        logger.warning(f"Redis connection failed, continuing without Redis: {e}")
