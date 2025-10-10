@@ -22,6 +22,7 @@ extra_reqs = {
         "pre-commit~=3.0.0",
         "ciso8601~=2.3.0",
         "httpx>=0.24.0,<0.28.0",
+        "redis==6.4.0",
     ],
     "docs": ["mkdocs~=1.4.0", "mkdocs-material~=9.0.0", "pdocs~=1.2.0"],
     "server": ["uvicorn[standard]~=0.23.0"],

@@ -24,9 +24,10 @@ from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.datetime_utils import format_datetime_range
 from stac_fastapi.core.models.links import PagingLinks
+from stac_fastapi.core.redis_utils import _handle_pagination_via_redis
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.session import Session
-from stac_fastapi.core.utilities import filter_fields
+from stac_fastapi.core.utilities import filter_fields, get_bool_env
 from stac_fastapi.extensions.core.transaction import AsyncBaseTransactionsClient
 from stac_fastapi.extensions.core.transaction.request import (
     PartialCollection,
@@ -328,6 +329,8 @@ class CoreClient(AsyncBaseCoreClient):
             if parsed_sort:
                 sort = parsed_sort
 
+        redis_enable = get_bool_env("REDIS_ENABLE", default=False)
+
         # Convert q to a list if it's a string
         q_list = None
         if q is not None:
@@ -425,6 +428,8 @@ class CoreClient(AsyncBaseCoreClient):
                 "href": urljoin(base_url, "collections"),
             },
         ]
+
+        _handle_pagination_via_redis(redis_enable, next_token, token, request, links)
 
         if next_token:
             next_link = PagingLinks(next=next_token, request=request).link_next()
@@ -744,6 +749,7 @@ class CoreClient(AsyncBaseCoreClient):
             HTTPException: If there is an error with the cql2_json filter.
         """
         base_url = str(request.base_url)
+        redis_enable = get_bool_env("REDIS_ENABLE", default=False)
 
         search = self.database.make_search()
 
@@ -849,6 +855,29 @@ class CoreClient(AsyncBaseCoreClient):
             for item in items
         ]
         links = await PagingLinks(request=request, next=next_token).get_links()
+
+        collection_links = []
+        if search_request.collections:
+            for collection_id in search_request.collections:
+                collection_links.extend(
+                    [
+                        {
+                            "rel": "collection",
+                            "type": "application/json",
+                            "href": urljoin(base_url, f"collections/{collection_id}"),
+                        },
+                        {
+                            "rel": "parent",
+                            "type": "application/json",
+                            "href": urljoin(base_url, f"collections/{collection_id}"),
+                        },
+                    ]
+                )
+        links.extend(collection_links)
+
+        _handle_pagination_via_redis(
+            redis_enable, next_token, token_param, request, links
+        )
 
         return stac_types.ItemCollection(
             type="FeatureCollection",

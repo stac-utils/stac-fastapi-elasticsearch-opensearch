@@ -66,6 +66,16 @@ jobs:
         ports:
           - 9202:9202
 
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
     strategy:
       matrix:
         python-version: [ "3.9", "3.10", "3.11", "3.12", "3.13"]
@@ -126,3 +136,6 @@ jobs:
           DATABASE_REFRESH: true
           ES_VERIFY_CERTS: false
           BACKEND: ${{ matrix.backend == 'elasticsearch7' && 'elasticsearch' || matrix.backend == 'elasticsearch8' && 'elasticsearch' || 'opensearch' }}
+          REDIS_ENABLE: true
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
