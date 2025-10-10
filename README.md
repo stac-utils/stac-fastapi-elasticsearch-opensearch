@@ -105,6 +105,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
   - [Interacting with the API](#interacting-with-the-api)
   - [Configure the API](#configure-the-api)
   - [Collection Pagination](#collection-pagination)
+  - [SFEOS Tools CLI](#sfeos-tools-cli)
   - [Ingesting Sample Data CLI Tool](#ingesting-sample-data-cli-tool)
   - [Elasticsearch Mappings](#elasticsearch-mappings)
   - [Managing Elasticsearch Indices](#managing-elasticsearch-indices)
@@ -160,9 +161,21 @@ These endpoints support advanced collection discovery features including:
   - Collections are matched if their temporal extent overlaps with the provided datetime parameter
   - This allows for efficient discovery of collections based on time periods
 
+- **Spatial Filtering**: Filter collections by their spatial extent using the `bbox` parameter
+  - Example: `/collections?bbox=-10,35,40,70` (finds collections whose spatial extent intersects with this bounding box)
+  - Example: `/collections?bbox=-180,-90,180,90` (finds all collections with global coverage)
+  - Supports both 2D bounding boxes `[minx, miny, maxx, maxy]` and 3D bounding boxes `[minx, miny, minz, maxx, maxy, maxz]` (altitude values are ignored for spatial queries)
+  - Collections are matched if their spatial extent (stored in the `extent.spatial.bbox` field) intersects with the provided bbox parameter
+  - **Implementation Note**: When collections are created or updated, a `bbox_shape` field is automatically generated from the collection's spatial extent and indexed as a GeoJSON polygon for efficient geospatial queries
+  - **Migrating Legacy Collections**: Collections created before this feature was added will not be discoverable via bbox search until they have the `bbox_shape` field added. You can either:
+    - Update each collection via the API (PUT `/collections/{collection_id}` with the existing collection data)
+    - Run the migration tool (see [SFEOS Tools CLI](#sfeos-tools-cli) for installation and connection options):
+      - `sfeos-tools add-bbox-shape --backend elasticsearch --no-ssl`
+      - `sfeos-tools add-bbox-shape --backend opensearch --host db.example.com --no-ssl`
+
 These extensions make it easier to build user interfaces that display and navigate through collections efficiently.
 
-> **Configuration**: Collection search extensions (sorting, field selection, free text search, structured filtering, and datetime filtering) for the `/collections` endpoint can be disabled by setting the `ENABLE_COLLECTIONS_SEARCH` environment variable to `false`. By default, these extensions are enabled.
+> **Configuration**: Collection search extensions (sorting, field selection, free text search, structured filtering, datetime filtering, and spatial filtering) for the `/collections` endpoint can be disabled by setting the `ENABLE_COLLECTIONS_SEARCH` environment variable to `false`. By default, these extensions are enabled.
 > 
 > **Configuration**: The custom `/collections-search` endpoint can be enabled by setting the `ENABLE_COLLECTIONS_SEARCH_ROUTE` environment variable to `true`. By default, this endpoint is **disabled**.
 
@@ -469,6 +482,64 @@ The system uses a precise naming convention:
   ```shell
   curl -X "GET" "http://localhost:8080/collections?limit=1&token=example_token"
   ```
+
+## SFEOS Tools CLI
+
+- **Overview**: SFEOS Tools is an installable CLI package for managing and maintaining SFEOS deployments.
+
+- **Installation**:
+  ```shell
+  # For Elasticsearch (from PyPI)
+  pip install sfeos-tools[elasticsearch]
+  
+  # For OpenSearch (from PyPI)
+  pip install sfeos-tools[opensearch]
+  
+  # For local development
+  pip install -e sfeos_tools[elasticsearch]
+  # or
+  pip install -e sfeos_tools[opensearch]
+  ```
+
+- **Available Commands**:
+  - `add-bbox-shape`: Add bbox_shape field to existing collections for spatial search support
+
+- **Basic Usage**:
+  ```shell
+  sfeos-tools add-bbox-shape --backend elasticsearch
+  sfeos-tools add-bbox-shape --backend opensearch
+  ```
+
+- **Connection Options**: Configure database connection via CLI flags or environment variables:
+  - `--host`: Database host (default: `localhost` or `ES_HOST` env var)
+  - `--port`: Database port (default: `9200` or `ES_PORT` env var)
+  - `--use-ssl` / `--no-ssl`: Use SSL connection (default: `true` or `ES_USE_SSL` env var)
+  - `--user`: Database username (default: `ES_USER` env var)
+  - `--password`: Database password (default: `ES_PASS` env var)
+
+- **Examples**:
+  ```shell
+  # Local Docker Compose (no SSL)
+  sfeos-tools add-bbox-shape --backend elasticsearch --no-ssl
+  
+  # Remote server with SSL
+  sfeos-tools add-bbox-shape \
+    --backend elasticsearch \
+    --host db.example.com \
+    --port 9200 \
+    --user admin \
+    --password secret
+  
+  # Cloud deployment with environment variables
+  ES_HOST=my-es-cluster.cloud.com ES_PORT=9243 ES_USER=elastic ES_PASS=changeme \
+    sfeos-tools add-bbox-shape --backend elasticsearch
+  
+  # Using --help for more information
+  sfeos-tools --help
+  sfeos-tools add-bbox-shape --help
+  ```
+
+For more details, see the [SFEOS Tools README](./sfeos_tools/README.md).
 
 ## Ingesting Sample Data CLI Tool
 

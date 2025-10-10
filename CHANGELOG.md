@@ -9,14 +9,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
-- Spatial search support for collections via `bbox` parameter on `/collections` endpoint. Collections are now indexed with a `bbox_shape` field (GeoJSON polygon) derived from their spatial extent for efficient geospatial queries. [#481](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/481)
+- Spatial search support for collections via `bbox` parameter on `/collections` endpoint. Collections are now indexed with a `bbox_shape` field (GeoJSON polygon) derived from their spatial extent for efficient geospatial queries when created or updated. [#481](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/481)
+- Introduced SFEOS Tools (`sfeos_tools/`) - An installable Click-based CLI package for managing SFEOS deployments. Initial command `add-bbox-shape` adds the `bbox_shape` field to existing collections for spatial search compatibility. Install with `pip install sfeos-tools[elasticsearch]` or `pip install sfeos-tools[opensearch]`. [#481](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/481)
 
 ### Changed
-- Migration scripts (`update_collections_mapping.py` and `recreate_collections_index.py`) to help add `bbox_shape` field to existing deployments. [#481](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/481)
+
 - CloudFerro logo to sponsors and supporters list [#485](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/485)
 - Latest news section to README [#485](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/485)
-
-### Changed
 
 ### Fixed
 
