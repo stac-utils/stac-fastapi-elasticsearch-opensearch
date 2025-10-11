@@ -11,7 +11,7 @@ setup(
     description="CLI tools for managing stac-fastapi-elasticsearch-opensearch deployments",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    author="Jonathan Healy",
+    author="Jonathan Healy, CloudFerro S.A.",
     license="MIT",
     url="https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch",
     packages=find_packages(),
