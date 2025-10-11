@@ -256,14 +256,17 @@ class CoreClient(AsyncBaseCoreClient):
         """Read all collections from the database.
 
         Args:
-            datetime (Optional[str]): Filter collections by datetime range.
             limit (Optional[int]): Maximum number of collections to return.
+            bbox (Optional[BBox]): Bounding box to filter collections by spatial extent.
+            datetime (Optional[str]): Filter collections by datetime range.
             fields (Optional[List[str]]): Fields to include or exclude from the results.
-            sortby (Optional[str]): Sorting options for the results.
+            sortby (Optional[Union[str, List[str]]]): Sorting options for the results.
             filter_expr (Optional[str]): Structured filter expression in CQL2 JSON or CQL2-text format.
-            query (Optional[str]): Legacy query parameter (deprecated).
             filter_lang (Optional[str]): Must be 'cql2-json' or 'cql2-text' if specified, other values will result in an error.
             q (Optional[Union[str, List[str]]]): Free text search terms.
+            query (Optional[str]): Legacy query parameter (deprecated).
+            request (Request): FastAPI Request object.
+            token (Optional[str]): Pagination token for retrieving the next page of results.
             **kwargs: Keyword arguments from the request.
 
         Returns:
