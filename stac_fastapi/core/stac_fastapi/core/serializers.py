@@ -1,6 +1,7 @@
 """Serializers."""
 
 import abc
+import logging
 from copy import deepcopy
 from typing import Any, List, Optional
 
@@ -12,6 +13,8 @@ from stac_fastapi.core.models.links import CollectionLinks
 from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.links import ItemLinks, resolve_links
+
+logger = logging.getLogger(__name__)
 
 
 @attr.s
@@ -136,10 +139,15 @@ class CollectionSerializer(Serializer):
         Returns:
             stac_types.Collection: The database-ready STAC Collection object.
         """
+        from stac_fastapi.sfeos_helpers.database import add_bbox_shape_to_collection
+
         collection = deepcopy(collection)
         collection["links"] = resolve_links(
             collection.get("links", []), str(request.base_url)
         )
+
+        # Convert bbox to bbox_shape for geospatial queries (ES/OS specific)
+        add_bbox_shape_to_collection(collection)
 
         if get_bool_env("STAC_INDEX_ASSETS"):
             collection["assets"] = [
@@ -167,6 +175,9 @@ class CollectionSerializer(Serializer):
         """
         # Avoid modifying the input dict in-place ... doing so breaks some tests
         collection = deepcopy(collection)
+
+        # Remove internal bbox_shape field (not part of STAC spec)
+        collection.pop("bbox_shape", None)
 
         # Set defaults
         collection_id = collection.get("id")

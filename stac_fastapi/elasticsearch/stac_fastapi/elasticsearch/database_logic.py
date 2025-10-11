@@ -29,13 +29,14 @@ from stac_fastapi.extensions.core.transaction.request import (
 )
 from stac_fastapi.sfeos_helpers import filter as filter_module
 from stac_fastapi.sfeos_helpers.database import (
+    apply_collections_bbox_filter_shared,
+    apply_collections_datetime_filter_shared,
     apply_free_text_filter_shared,
     apply_intersects_filter_shared,
     create_index_templates_shared,
     delete_item_index_shared,
     get_queryables_mapping_shared,
     index_alias_by_collection_id,
-    index_by_collection_id,
     mk_actions,
     mk_item_id,
     populate_sort_shared,
@@ -99,26 +100,6 @@ async def create_collection_index() -> None:
     await client.close()
 
 
-async def create_item_index(collection_id: str):
-    """
-    Create the index for Items. The settings of the index template will be used implicitly.
-
-    Args:
-        collection_id (str): Collection identifier.
-
-    Returns:
-        None
-
-    """
-    client = AsyncElasticsearchSettings().create_client
-
-    await client.options(ignore_status=400).indices.create(
-        index=f"{index_by_collection_id(collection_id)}-000001",
-        body={"aliases": {index_alias_by_collection_id(collection_id): {}}},
-    )
-    await client.close()
-
-
 async def delete_item_index(collection_id: str):
     """Delete the index for items in a collection.
 
@@ -175,6 +156,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         limit: int,
         request: Request,
         sort: Optional[List[Dict[str, Any]]] = None,
+        bbox: Optional[List[float]] = None,
         q: Optional[List[str]] = None,
         filter: Optional[Dict[str, Any]] = None,
         query: Optional[Dict[str, Dict[str, Any]]] = None,
@@ -187,6 +169,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             limit (int): The number of results to return.
             request (Request): The FastAPI request object.
             sort (Optional[List[Dict[str, Any]]]): Optional sort parameter from the request.
+            bbox (Optional[List[float]]): Bounding box to filter collections by spatial extent.
             q (Optional[List[str]]): Free text search terms.
             query (Optional[Dict[str, Dict[str, Any]]]): Query extension parameters.
             filter (Optional[Dict[str, Any]]): Structured query in CQL2 format.
@@ -314,12 +297,15 @@ class DatabaseLogic(BaseDatabaseLogic):
                 query_parts.append({"bool": {"must_not": {"match_all": {}}}})
                 raise
 
-        # Combine all query parts with AND logic if there are multiple
-        datetime_filter = None
-        if datetime:
-            datetime_filter = self._apply_collection_datetime_filter(datetime)
-            if datetime_filter:
-                query_parts.append(datetime_filter)
+        # Apply bbox filter if provided
+        bbox_filter = apply_collections_bbox_filter_shared(bbox)
+        if bbox_filter:
+            query_parts.append(bbox_filter)
+
+        # Apply datetime filter if provided
+        datetime_filter = apply_collections_datetime_filter_shared(datetime)
+        if datetime_filter:
+            query_parts.append(datetime_filter)
 
         # Combine all query parts with AND logic
         if query_parts:
@@ -328,12 +314,6 @@ class DatabaseLogic(BaseDatabaseLogic):
                 if len(query_parts) == 1
                 else {"bool": {"must": query_parts}}
             )
-
-        # Create a copy of the body for count query (without pagination and sorting)
-        count_body = body.copy()
-        if "search_after" in count_body:
-            del count_body["search_after"]
-        count_body["size"] = 0
 
         # Create async tasks for both search and count
         search_task = asyncio.create_task(
@@ -383,41 +363,6 @@ class DatabaseLogic(BaseDatabaseLogic):
                 logger.error(f"Count task failed: {e}")
 
         return collections, next_token, matched
-
-    @staticmethod
-    def _apply_collection_datetime_filter(
-        datetime_str: Optional[str],
-    ) -> Optional[Dict[str, Any]]:
-        """Create a temporal filter for collections based on their extent."""
-        if not datetime_str:
-            return None
-
-        # Parse the datetime string into start and end
-        if "/" in datetime_str:
-            start, end = datetime_str.split("/")
-            # Replace open-ended ranges with concrete dates
-            if start == "..":
-                # For open-ended start, use a very early date
-                start = "1800-01-01T00:00:00Z"
-            if end == "..":
-                # For open-ended end, use a far future date
-                end = "2999-12-31T23:59:59Z"
-        else:
-            # If it's just a single date, use it for both start and end
-            start = end = datetime_str
-
-        return {
-            "bool": {
-                "must": [
-                    # Check if any date in the array is less than or equal to the query end date
-                    # This will match if the collection's start date is before or equal to the query end date
-                    {"range": {"extent.temporal.interval": {"lte": end}}},
-                    # Check if any date in the array is greater than or equal to the query start date
-                    # This will match if the collection's end date is after or equal to the query start date
-                    {"range": {"extent.temporal.interval": {"gte": start}}},
-                ]
-            }
-        }
 
     async def get_one_item(self, collection_id: str, item_id: str) -> Dict:
         """Retrieve a single item from the database.
@@ -1386,7 +1331,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             None
 
         Notes:
-            A new index is created for the items in the Collection using the `create_item_index` function.
+            A new index is created for the items in the Collection if the index insertion strategy requires it.
         """
         collection_id = collection["id"]
 

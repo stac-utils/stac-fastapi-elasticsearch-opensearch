@@ -5,15 +5,93 @@ in Elasticsearch/OpenSearch, such as parameter validation.
 """
 
 import logging
-from typing import Dict, List, Union
+from typing import Any, Dict, List, Union
 
-from stac_fastapi.core.utilities import get_bool_env
+from stac_fastapi.core.utilities import bbox2polygon, get_bool_env
 from stac_fastapi.extensions.core.transaction.request import (
     PatchAddReplaceTest,
     PatchOperation,
     PatchRemove,
 )
 from stac_fastapi.sfeos_helpers.models.patch import ElasticPath, ESCommandSet
+
+logger = logging.getLogger(__name__)
+
+
+def add_bbox_shape_to_collection(collection: Dict[str, Any]) -> bool:
+    """Add bbox_shape field to a collection document for spatial queries.
+
+    This function extracts the bounding box from a collection's spatial extent
+    and converts it to a GeoJSON polygon shape that can be used for geospatial
+    queries in Elasticsearch/OpenSearch.
+
+    Args:
+        collection: Collection document dictionary to modify in-place.
+
+    Returns:
+        bool: True if bbox_shape was added, False if it was skipped (already exists,
+            no spatial extent, or invalid bbox).
+
+    Notes:
+        - Modifies the collection dictionary in-place by adding a 'bbox_shape' field
+        - Handles both 2D [minx, miny, maxx, maxy] and 3D [minx, miny, minz, maxx, maxy, maxz] bboxes
+        - Uses the first bbox if multiple are present in the collection
+        - Logs warnings for collections with invalid or missing bbox data
+    """
+    collection_id = collection.get("id", "unknown")
+
+    # Check if bbox_shape already exists
+    if "bbox_shape" in collection:
+        logger.debug(
+            f"Collection '{collection_id}' already has bbox_shape field, skipping"
+        )
+        return False
+
+    # Check if collection has spatial extent
+    if "extent" not in collection or "spatial" not in collection["extent"]:
+        logger.warning(f"Collection '{collection_id}' has no spatial extent, skipping")
+        return False
+
+    spatial_extent = collection["extent"]["spatial"]
+    if "bbox" not in spatial_extent or not spatial_extent["bbox"]:
+        logger.warning(
+            f"Collection '{collection_id}' has no bbox in spatial extent, skipping"
+        )
+        return False
+
+    # Get the first bbox (collections can have multiple bboxes, but we use the first one)
+    bbox = (
+        spatial_extent["bbox"][0]
+        if isinstance(spatial_extent["bbox"][0], list)
+        else spatial_extent["bbox"]
+    )
+
+    if len(bbox) < 4:
+        logger.warning(
+            f"Collection '{collection_id}': bbox has insufficient coordinates (length={len(bbox)}), expected at least 4"
+        )
+        return False
+
+    # Extract 2D coordinates (bbox can be 2D [minx, miny, maxx, maxy] or 3D [minx, miny, minz, maxx, maxy, maxz])
+    # For 2D polygon, we only need the x,y coordinates and discard altitude (z) values
+    minx, miny = bbox[0], bbox[1]
+    if len(bbox) == 4:
+        # 2D bbox: [minx, miny, maxx, maxy]
+        maxx, maxy = bbox[2], bbox[3]
+    else:
+        # 3D bbox: [minx, miny, minz, maxx, maxy, maxz]
+        # Extract indices 3,4 for maxx,maxy - discarding altitude at indices 2 (minz) and 5 (maxz)
+        maxx, maxy = bbox[3], bbox[4]
+
+    # Convert bbox to GeoJSON polygon
+    bbox_polygon_coords = bbox2polygon(minx, miny, maxx, maxy)
+    collection["bbox_shape"] = {
+        "type": "Polygon",
+        "coordinates": bbox_polygon_coords,
+    }
+
+    logger.debug(f"Collection '{collection_id}': Added bbox_shape field")
+    return True
 
 
 def validate_refresh(value: Union[str, bool]) -> str:

@@ -1020,3 +1020,232 @@ async def test_collections_pagination_all_endpoints(app_client, txn_client, ctx)
 
         for i, expected_id in enumerate(expected_ids):
             assert test_found[i]["id"] == expected_id
+
+
+@pytest.mark.asyncio
+async def test_collections_bbox_all_endpoints(app_client, txn_client, ctx):
+    """Verify GET /collections, GET /collections-search, and POST /collections-search honor the bbox parameter."""
+    # Create multiple collections with different spatial extents
+    base_collection = ctx.collection
+
+    # Use unique prefixes to avoid conflicts between tests
+    test_prefix = f"bbox-{uuid.uuid4().hex[:8]}"
+
+    # Create collections with different bboxes
+    # Collection 1: Europe bbox
+    collection_europe = base_collection.copy()
+    collection_europe["id"] = f"{test_prefix}-europe"
+    collection_europe["title"] = "Europe Collection"
+    collection_europe["extent"] = {
+        "spatial": {"bbox": [[-10.0, 35.0, 40.0, 70.0]]},
+        "temporal": {"interval": [[None, None]]},
+    }
+    await create_collection(txn_client, collection_europe)
+
+    # Collection 2: North America bbox
+    collection_na = base_collection.copy()
+    collection_na["id"] = f"{test_prefix}-north-america"
+    collection_na["title"] = "North America Collection"
+    collection_na["extent"] = {
+        "spatial": {"bbox": [[-170.0, 15.0, -50.0, 75.0]]},
+        "temporal": {"interval": [[None, None]]},
+    }
+    await create_collection(txn_client, collection_na)
+
+    # Collection 3: Asia bbox
+    collection_asia = base_collection.copy()
+    collection_asia["id"] = f"{test_prefix}-asia"
+    collection_asia["title"] = "Asia Collection"
+    collection_asia["extent"] = {
+        "spatial": {"bbox": [[60.0, -10.0, 150.0, 55.0]]},
+        "temporal": {"interval": [[None, None]]},
+    }
+    await create_collection(txn_client, collection_asia)
+
+    # Collection 4: Global bbox (should match any query)
+    collection_global = base_collection.copy()
+    collection_global["id"] = f"{test_prefix}-global"
+    collection_global["title"] = "Global Collection"
+    collection_global["extent"] = {
+        "spatial": {"bbox": [[-180.0, -90.0, 180.0, 90.0]]},
+        "temporal": {"interval": [[None, None]]},
+    }
+    await create_collection(txn_client, collection_global)
+
+    # Collection 5: 3D bbox (with altitude) - should still work for 2D queries
+    collection_3d = base_collection.copy()
+    collection_3d["id"] = f"{test_prefix}-3d-europe"
+    collection_3d["title"] = "3D Europe Collection"
+    collection_3d["extent"] = {
+        "spatial": {"bbox": [[-10.0, 35.0, 0.0, 40.0, 70.0, 5000.0]]},  # 3D bbox
+        "temporal": {"interval": [[None, None]]},
+    }
+    await create_collection(txn_client, collection_3d)
+
+    await refresh_indices(txn_client)
+
+    # Test 1: Query for Europe region - should match Europe, Global, and 3D Europe collections
+    europe_bbox = [0.0, 40.0, 20.0, 60.0]  # Central Europe
+
+    endpoints = [
+        {
+            "method": "GET",
+            "path": "/collections",
+            "params": [("bbox", ",".join(map(str, europe_bbox)))],
+        },
+        {
+            "method": "GET",
+            "path": "/collections-search",
+            "params": [("bbox", ",".join(map(str, europe_bbox)))],
+        },
+        {
+            "method": "POST",
+            "path": "/collections-search",
+            "body": {"bbox": europe_bbox},
+        },
+    ]
+
+    for endpoint in endpoints:
+        if endpoint["method"] == "GET":
+            resp = await app_client.get(endpoint["path"], params=endpoint["params"])
+        else:  # POST
+            resp = await app_client.post(endpoint["path"], json=endpoint["body"])
+
+        assert (
+            resp.status_code == 200
+        ), f"Failed for {endpoint['method']} {endpoint['path']}: {resp.text}"
+        resp_json = resp.json()
+
+        collections_list = resp_json["collections"]
+
+        # Filter collections to only include the ones we created for this test
+        test_collections = [
+            c for c in collections_list if c["id"].startswith(test_prefix)
+        ]
+
+        # Should find Europe, Global, and 3D Europe collections
+        found_ids = {c["id"] for c in test_collections}
+        assert (
+            f"{test_prefix}-europe" in found_ids
+        ), f"Europe collection not found {endpoint['method']} {endpoint['path']}"
+        assert (
+            f"{test_prefix}-global" in found_ids
+        ), f"Global collection not found {endpoint['method']} {endpoint['path']}"
+        assert (
+            f"{test_prefix}-3d-europe" in found_ids
+        ), f"3D Europe collection not found {endpoint['method']} {endpoint['path']}"
+        # Should NOT find North America or Asia
+        assert (
+            f"{test_prefix}-north-america" not in found_ids
+        ), f"North America should not match Europe bbox in {endpoint['method']} {endpoint['path']}"
+        assert (
+            f"{test_prefix}-asia" not in found_ids
+        ), f"Asia should not match Europe bbox in {endpoint['method']} {endpoint['path']}"
+
+    # Test 2: Query for North America region - should match North America and Global collections
+    na_bbox = [-120.0, 30.0, -80.0, 50.0]  # Central North America
+
+    endpoints = [
+        {
+            "method": "GET",
+            "path": "/collections",
+            "params": [("bbox", ",".join(map(str, na_bbox)))],
+        },
+        {
+            "method": "GET",
+            "path": "/collections-search",
+            "params": [("bbox", ",".join(map(str, na_bbox)))],
+        },
+        {"method": "POST", "path": "/collections-search", "body": {"bbox": na_bbox}},
+    ]
+
+    for endpoint in endpoints:
+        if endpoint["method"] == "GET":
+            resp = await app_client.get(endpoint["path"], params=endpoint["params"])
+        else:  # POST
+            resp = await app_client.post(endpoint["path"], json=endpoint["body"])
+
+        assert (
+            resp.status_code == 200
+        ), f"Failed for {endpoint['method']} {endpoint['path']}: {resp.text}"
+        resp_json = resp.json()
+
+        collections_list = resp_json["collections"]
+
+        # Filter collections to only include the ones we created for this test
+        test_collections = [
+            c for c in collections_list if c["id"].startswith(test_prefix)
+        ]
+
+        # Should find North America and Global collections
+        found_ids = {c["id"] for c in test_collections}
+        assert (
+            f"{test_prefix}-north-america" in found_ids
+        ), f"North America collection not found {endpoint['method']} {endpoint['path']}"
+        assert (
+            f"{test_prefix}-global" in found_ids
+        ), f"Global collection not found {endpoint['method']} {endpoint['path']}"
+        # Should NOT find Europe, Asia, or 3D Europe
+        assert (
+            f"{test_prefix}-europe" not in found_ids
+        ), f"Europe should not match North America bbox in {endpoint['method']} {endpoint['path']}"
+        assert (
+            f"{test_prefix}-asia" not in found_ids
+        ), f"Asia should not match North America bbox in {endpoint['method']} {endpoint['path']}"
+        assert (
+            f"{test_prefix}-3d-europe" not in found_ids
+        ), f"3D Europe should not match North America bbox in {endpoint['method']} {endpoint['path']}"
+
+    # Test 3: Query for Asia region - should match Asia and Global collections
+    asia_bbox = [100.0, 20.0, 130.0, 45.0]  # East Asia
+
+    endpoints = [
+        {
+            "method": "GET",
+            "path": "/collections",
+            "params": [("bbox", ",".join(map(str, asia_bbox)))],
+        },
+        {
+            "method": "GET",
+            "path": "/collections-search",
+            "params": [("bbox", ",".join(map(str, asia_bbox)))],
+        },
+        {"method": "POST", "path": "/collections-search", "body": {"bbox": asia_bbox}},
+    ]
+
+    for endpoint in endpoints:
+        if endpoint["method"] == "GET":
+            resp = await app_client.get(endpoint["path"], params=endpoint["params"])
+        else:  # POST
+            resp = await app_client.post(endpoint["path"], json=endpoint["body"])
+
+        assert (
+            resp.status_code == 200
+        ), f"Failed for {endpoint['method']} {endpoint['path']}: {resp.text}"
+        resp_json = resp.json()
+
+        collections_list = resp_json["collections"]
+
+        # Filter collections to only include the ones we created for this test
+        test_collections = [
+            c for c in collections_list if c["id"].startswith(test_prefix)
+        ]
+
+        # Should find Asia and Global collections
+        found_ids = {c["id"] for c in test_collections}
+        assert (
+            f"{test_prefix}-asia" in found_ids
+        ), f"Asia collection not found {endpoint['method']} {endpoint['path']}"
+        assert (
+            f"{test_prefix}-global" in found_ids
+        ), f"Global collection not found {endpoint['method']} {endpoint['path']}"
+        # Should NOT find Europe, North America, or 3D Europe
+        assert (
+            f"{test_prefix}-europe" not in found_ids
+        ), f"Europe should not match Asia bbox in {endpoint['method']} {endpoint['path']}"
+        assert (
+            f"{test_prefix}-north-america" not in found_ids
+        ), f"North America should not match Asia bbox in {endpoint['method']} {endpoint['path']}"
+        assert (
+            f"{test_prefix}-3d-europe" not in found_ids
+        ), f"3D Europe should not match Asia bbox in {endpoint['method']} {endpoint['path']}"
