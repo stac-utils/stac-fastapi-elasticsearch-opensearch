@@ -43,6 +43,7 @@ from .index import (
 from .mapping import get_queryables_mapping_shared
 from .query import (
     apply_collections_bbox_filter_shared,
+    apply_collections_datetime_filter_shared,
     apply_free_text_filter_shared,
     apply_intersects_filter_shared,
     populate_sort_shared,
@@ -61,6 +62,7 @@ __all__ = [
     "apply_free_text_filter_shared",
     "apply_intersects_filter_shared",
     "apply_collections_bbox_filter_shared",
+    "apply_collections_datetime_filter_shared",
     "populate_sort_shared",
     # Mapping operations
     "get_queryables_mapping_shared",

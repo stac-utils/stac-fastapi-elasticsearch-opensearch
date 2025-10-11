@@ -30,6 +30,7 @@ from stac_fastapi.opensearch.config import OpensearchSettings as SyncSearchSetti
 from stac_fastapi.sfeos_helpers import filter as filter_module
 from stac_fastapi.sfeos_helpers.database import (
     apply_collections_bbox_filter_shared,
+    apply_collections_datetime_filter_shared,
     apply_free_text_filter_shared,
     apply_intersects_filter_shared,
     create_index_templates_shared,
@@ -306,12 +307,10 @@ class DatabaseLogic(BaseDatabaseLogic):
         if bbox_filter:
             query_parts.append(bbox_filter)
 
-        # Combine all query parts with AND logic if there are multiple
-        datetime_filter = None
-        if datetime:
-            datetime_filter = self._apply_collection_datetime_filter(datetime)
-            if datetime_filter:
-                query_parts.append(datetime_filter)
+        # Apply datetime filter if provided
+        datetime_filter = apply_collections_datetime_filter_shared(datetime)
+        if datetime_filter:
+            query_parts.append(datetime_filter)
 
         # Combine all query parts with AND logic
         if query_parts:
@@ -455,41 +454,6 @@ class DatabaseLogic(BaseDatabaseLogic):
         return apply_free_text_filter_shared(
             search=search, free_text_queries=free_text_queries
         )
-
-    @staticmethod
-    def _apply_collection_datetime_filter(
-        datetime_str: Optional[str],
-    ) -> Optional[Dict[str, Any]]:
-        """Create a temporal filter for collections based on their extent."""
-        if not datetime_str:
-            return None
-
-        # Parse the datetime string into start and end
-        if "/" in datetime_str:
-            start, end = datetime_str.split("/")
-            # Replace open-ended ranges with concrete dates
-            if start == "..":
-                # For open-ended start, use a very early date
-                start = "1800-01-01T00:00:00Z"
-            if end == "..":
-                # For open-ended end, use a far future date
-                end = "2999-12-31T23:59:59Z"
-        else:
-            # If it's just a single date, use it for both start and end
-            start = end = datetime_str
-
-        return {
-            "bool": {
-                "must": [
-                    # Check if any date in the array is less than or equal to the query end date
-                    # This will match if the collection's start date is before or equal to the query end date
-                    {"range": {"extent.temporal.interval": {"lte": end}}},
-                    # Check if any date in the array is greater than or equal to the query start date
-                    # This will match if the collection's end date is after or equal to the query start date
-                    {"range": {"extent.temporal.interval": {"gte": start}}},
-                ]
-            }
-        }
 
     @staticmethod
     def apply_datetime_filter(
@@ -1358,7 +1322,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             ConflictError: If a Collection with the same id already exists in the database.
 
         Notes:
-            A new index is created for the items in the Collection using the `create_item_index` function.
+            A new index is created for the items in the Collection if the index insertion strategy requires it.
         """
         collection_id = collection["id"]
 
