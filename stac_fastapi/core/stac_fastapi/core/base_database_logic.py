@@ -22,7 +22,11 @@ class BaseDatabaseLogic(abc.ABC):
         request: Any = None,
         sort: Optional[List[Dict[str, Any]]] = None,
         bbox: Optional[BBox] = None,
-    ) -> Tuple[List[Dict[str, Any]], Optional[str]]:
+        q: Optional[List[str]] = None,
+        filter: Optional[Dict[str, Any]] = None,
+        query: Optional[Dict[str, Dict[str, Any]]] = None,
+        datetime: Optional[str] = None,
+    ) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[int]]:
         """Retrieve a list of collections from the database, supporting pagination.
 
         Args:
@@ -31,9 +35,13 @@ class BaseDatabaseLogic(abc.ABC):
             request (Any, optional): The FastAPI request object. Defaults to None.
             sort (Optional[List[Dict[str, Any]]], optional): Optional sort parameter. Defaults to None.
             bbox (Optional[BBox], optional): Bounding box to filter collections by spatial extent. Defaults to None.
+            q (Optional[List[str]], optional): Free text search terms. Defaults to None.
+            filter (Optional[Dict[str, Any]], optional): Structured query in CQL2 format. Defaults to None.
+            query (Optional[Dict[str, Dict[str, Any]]], optional): Query extension parameters. Defaults to None.
+            datetime (Optional[str], optional): Temporal filter. Defaults to None.
 
         Returns:
-            A tuple of (collections, next pagination token if any).
+            A tuple of (collections, next pagination token if any, optional count).
         """
         pass
 
