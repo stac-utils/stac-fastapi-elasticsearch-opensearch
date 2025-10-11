@@ -337,12 +337,6 @@ class DatabaseLogic(BaseDatabaseLogic):
                 else {"bool": {"must": query_parts}}
             )
 
-        # Create a copy of the body for count query (without pagination and sorting)
-        count_body = body.copy()
-        if "search_after" in count_body:
-            del count_body["search_after"]
-        count_body["size"] = 0
-
         # Create async tasks for both search and count
         search_task = asyncio.create_task(
             self.client.search(
