@@ -30,12 +30,16 @@ The following organizations have contributed time and/or funding to support the 
 
 ## Latest News
 
-<div style="max-height: 200px; overflow-y: auto; padding: 10px; border: 1px solid #eaecef; border-radius: 6px; margin-bottom: 16px;">
-
 - **10/12/2025:** Collections search **bbox** functionality added! The collections search extension now supports bbox queries. Collections will need to be updated via the API or with the new **[SFEOS-tools](#sfeos-tools-cli)** CLI package to support geospatial discoverability. Thanks again to **CloudFerro** for their sponsorship of this work!
 - **10/04/2025:** The **[CloudFerro](https://cloudferro.com/)** logo has been added to the sponsors and supporters list above. Their sponsorship of the ongoing collections search extension work has been invaluable. This is in addition to the many other important changes and updates their developers have added to the project.
 
-</div>
+<details style="border: 1px solid #eaecef; border-radius: 6px; padding: 10px; margin-bottom: 16px; background-color: #f9f9f9;">
+<summary style="cursor: pointer; font-weight: bold; margin: -10px -10px 0; padding: 10px; background-color: #f0f0f0; border-bottom: 1px solid #eaecef; border-top-left-radius: 6px; border-top-right-radius: 6px;">View Older News (Click to Expand)</summary>
+
+- **09/25/2025:** v6.5.0 adds a new GET/POST /collections-search endpoint (disabled by default via ENABLE_COLLECTIONS_SEARCH_ROUTE) to avoid conflicts with Transactions, and enhances GET /collections with structured filtering (CQL2 JSON/text), query, and datetime filtering. These changes make collection discovery more powerful and configurable while preserving compatibility with transaction-enabled deployments. Thanks to **CloudFerro** for their sponsorship of this work!
+<!-- Add more older news items here in Markdown format; GitHub will parse them thanks to the blank line implicit in this structure -->
+
+</details>
 
 ## Project Introduction - What is SFEOS?
 
