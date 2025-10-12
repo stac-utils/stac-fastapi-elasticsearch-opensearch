@@ -241,6 +241,7 @@ class CoreClient(AsyncBaseCoreClient):
     async def all_collections(
         self,
         limit: Optional[int] = None,
+        bbox: Optional[BBox] = None,
         datetime: Optional[str] = None,
         fields: Optional[List[str]] = None,
         sortby: Optional[Union[str, List[str]]] = None,
@@ -255,14 +256,17 @@ class CoreClient(AsyncBaseCoreClient):
         """Read all collections from the database.
 
         Args:
-            datetime (Optional[str]): Filter collections by datetime range.
             limit (Optional[int]): Maximum number of collections to return.
+            bbox (Optional[BBox]): Bounding box to filter collections by spatial extent.
+            datetime (Optional[str]): Filter collections by datetime range.
             fields (Optional[List[str]]): Fields to include or exclude from the results.
-            sortby (Optional[str]): Sorting options for the results.
+            sortby (Optional[Union[str, List[str]]]): Sorting options for the results.
             filter_expr (Optional[str]): Structured filter expression in CQL2 JSON or CQL2-text format.
-            query (Optional[str]): Legacy query parameter (deprecated).
             filter_lang (Optional[str]): Must be 'cql2-json' or 'cql2-text' if specified, other values will result in an error.
             q (Optional[Union[str, List[str]]]): Free text search terms.
+            query (Optional[str]): Legacy query parameter (deprecated).
+            request (Request): FastAPI Request object.
+            token (Optional[str]): Pagination token for retrieving the next page of results.
             **kwargs: Keyword arguments from the request.
 
         Returns:
@@ -401,6 +405,7 @@ class CoreClient(AsyncBaseCoreClient):
             limit=limit,
             request=request,
             sort=sort,
+            bbox=bbox,
             q=q_list,
             filter=parsed_filter,
             query=parsed_query,
@@ -502,6 +507,7 @@ class CoreClient(AsyncBaseCoreClient):
         # Pass all parameters from search_request to all_collections
         return await self.all_collections(
             limit=search_request.limit if hasattr(search_request, "limit") else None,
+            bbox=search_request.bbox if hasattr(search_request, "bbox") else None,
             datetime=search_request.datetime
             if hasattr(search_request, "datetime")
             else None,
