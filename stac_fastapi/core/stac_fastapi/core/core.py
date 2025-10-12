@@ -275,8 +275,8 @@ class CoreClient(AsyncBaseCoreClient):
             if os.getenv("STAC_GLOBAL_COLLECTION_MAX_LIMIT")
             else None
         )
-        default_limit = int(os.getenv("STAC_DEFAULT_COLLECTION_LIMIT", 300))
         query_limit = request.query_params.get("limit")
+        default_limit = int(os.getenv("STAC_DEFAULT_COLLECTION_LIMIT", 300))
 
         body_limit = None
         try:
@@ -742,14 +742,23 @@ class CoreClient(AsyncBaseCoreClient):
             if os.getenv("STAC_GLOBAL_ITEM_MAX_LIMIT")
             else None
         )
+        query_limit = request.query_params.get("limit")
         default_limit = int(os.getenv("STAC_DEFAULT_ITEM_LIMIT", 10))
 
-        requested_limit = getattr(search_request, "limit", None)
+        body_limit = None
+        try:
+            if request.method == "POST" and request.body():
+                body_data = await request.json()
+                body_limit = body_data.get("limit")
+        except Exception:
+            pass
 
-        if requested_limit is None:
-            limit = default_limit
+        if body_limit is not None:
+            limit = int(body_limit)
+        elif query_limit:
+            limit = int(query_limit)
         else:
-            limit = requested_limit
+            limit = default_limit
 
         if global_max_limit:
             limit = min(limit, global_max_limit)
