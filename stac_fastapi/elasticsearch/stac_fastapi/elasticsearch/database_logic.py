@@ -29,6 +29,7 @@ from stac_fastapi.extensions.core.transaction.request import (
 )
 from stac_fastapi.sfeos_helpers import filter as filter_module
 from stac_fastapi.sfeos_helpers.database import (
+    add_bbox_shape_to_collection,
     apply_collections_bbox_filter_shared,
     apply_collections_datetime_filter_shared,
     apply_free_text_filter_shared,
@@ -1349,6 +1350,12 @@ class DatabaseLogic(BaseDatabaseLogic):
         if await self.client.exists(index=COLLECTIONS_INDEX, id=collection_id):
             raise ConflictError(f"Collection {collection_id} already exists")
 
+        if get_bool_env("ENABLE_COLLECTIONS_SEARCH") or get_bool_env(
+            "ENABLE_COLLECTIONS_SEARCH_ROUTE"
+        ):
+            # Convert bbox to bbox_shape for geospatial queries (ES/OS specific)
+            add_bbox_shape_to_collection(collection)
+
         # Index the collection in the database
         await self.client.index(
             index=COLLECTIONS_INDEX,
@@ -1452,6 +1459,12 @@ class DatabaseLogic(BaseDatabaseLogic):
             await self.delete_collection(collection_id)
 
         else:
+            if get_bool_env("ENABLE_COLLECTIONS_SEARCH") or get_bool_env(
+                "ENABLE_COLLECTIONS_SEARCH_ROUTE"
+            ):
+                # Convert bbox to bbox_shape for geospatial queries (ES/OS specific)
+                add_bbox_shape_to_collection(collection)
+
             # Update the existing collection
             await self.client.index(
                 index=COLLECTIONS_INDEX,

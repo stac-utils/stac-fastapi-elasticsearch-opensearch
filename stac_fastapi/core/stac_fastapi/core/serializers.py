@@ -139,15 +139,10 @@ class CollectionSerializer(Serializer):
         Returns:
             stac_types.Collection: The database-ready STAC Collection object.
         """
-        from stac_fastapi.sfeos_helpers.database import add_bbox_shape_to_collection
-
         collection = deepcopy(collection)
         collection["links"] = resolve_links(
             collection.get("links", []), str(request.base_url)
         )
-
-        # Convert bbox to bbox_shape for geospatial queries (ES/OS specific)
-        add_bbox_shape_to_collection(collection)
 
         if get_bool_env("STAC_INDEX_ASSETS"):
             collection["assets"] = [
