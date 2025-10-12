@@ -509,11 +509,17 @@ The system uses a precise naming convention:
 
 - **Available Commands**:
   - `add-bbox-shape`: Add bbox_shape field to existing collections for spatial search support
+  - `reindex`: Reindex all STAC indices (collections and per-collection items) to new versioned indices and update aliases; supports both Elasticsearch and OpenSearch backends
 
 - **Basic Usage**:
   ```shell
+  # Add bbox_shape to collections
   sfeos-tools add-bbox-shape --backend elasticsearch
   sfeos-tools add-bbox-shape --backend opensearch
+  
+  # Reindex all STAC data
+  sfeos-tools reindex --backend elasticsearch --yes
+  sfeos-tools reindex --backend opensearch --yes
   ```
 
 - **Connection Options**: Configure database connection via CLI flags or environment variables:
@@ -543,6 +549,13 @@ The system uses a precise naming convention:
   # Using --help for more information
   sfeos-tools --help
   sfeos-tools add-bbox-shape --help
+  sfeos-tools reindex --help
+  
+  # Reindex with custom batch size and concurrency
+  sfeos-tools reindex --backend elasticsearch --batch-size 500 --concurrency 4 --yes
+  
+  # Reindex with progress updates every 1000 items
+  sfeos-tools reindex --backend opensearch --progress 1000 --yes
   ```
 
 For more details, see the [SFEOS Tools README](./sfeos_tools/README.md).

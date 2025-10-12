@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 
+- Unified elasticsearch and opensearch reindex scripts and added functionality to the new SFEOS-tools CLI package. [#490](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/490)
+
 ### Fixed
 
 ## [v6.5.1] - 2025-09-30
