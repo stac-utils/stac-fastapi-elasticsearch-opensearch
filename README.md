@@ -32,8 +32,8 @@ The following organizations have contributed time and/or funding to support the 
 
 <div style="max-height: 200px; overflow-y: auto; padding: 10px; border: 1px solid #eaecef; border-radius: 6px; margin-bottom: 16px;">
 
-- **10/12/2025:** Collections search bbox functionality added! The collections search extension now supports bbox queries. Collections will need to be updated via the API or with the new [`SFEOS-tools`](#sfeos-tools-cli) CLI package to support geospatial discoverability. Thanks again to CloudFerro for their sponsorship of this work!
-- **10/04/2025:** The [CloudFerro](https://cloudferro.com/) logo has been added to the sponsors and supporters list above. Their sponsorship of the ongoing collections search extension work has been invaluable. This is in addition to the many other important changes and updates their developers have added to the project.
+- **10/12/2025:** Collections search **bbox** functionality added! The collections search extension now supports bbox queries. Collections will need to be updated via the API or with the new **[SFEOS-tools](#sfeos-tools-cli)** CLI package to support geospatial discoverability. Thanks again to **CloudFerro** for their sponsorship of this work!
+- **10/04/2025:** The **[CloudFerro](https://cloudferro.com/)** logo has been added to the sponsors and supporters list above. Their sponsorship of the ongoing collections search extension work has been invaluable. This is in addition to the many other important changes and updates their developers have added to the project.
 
 </div>
 
