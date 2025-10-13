@@ -32,7 +32,6 @@ async def test_search_pagination_uses_redis_cache(
     )
     next_token = next_link["body"]["token"]
 
-    # Expect the previous link on the second page to be retrieved from Redis cache
     resp2 = await app_client.post(
         "/search",
         json={"collections": [collection_id], "limit": 1, "token": next_token},
@@ -67,7 +66,6 @@ async def test_collections_pagination_uses_redis_cache(
     )
     next_token = next_link["href"].split("token=")[1]
 
-    # Expect the previous link on the second page to be retrieved from Redis cache
     resp2 = await app_client.get(
         "/collections", params={"limit": 1, "token": next_token}
     )

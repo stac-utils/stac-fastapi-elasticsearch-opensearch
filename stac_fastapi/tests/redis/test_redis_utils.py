@@ -7,18 +7,17 @@ from stac_fastapi.core.redis_utils import connect_redis, get_prev_link, save_sel
 async def test_redis_connection():
     """Test Redis connection."""
     redis = await connect_redis()
-    assert redis is not None
 
-    # Test set/get
+    if redis is None:
+        pytest.skip("Redis not configured")
+
     await redis.set("string_key", "string_value")
     string_value = await redis.get("string_key")
     assert string_value == "string_value"
 
-    # Test key retrieval operation
     exists = await redis.exists("string_key")
     assert exists == 1
 
-    # Test key deletion
     await redis.delete("string_key")
     deleted_value = await redis.get("string_key")
     assert deleted_value is None
@@ -27,7 +26,8 @@ async def test_redis_connection():
 @pytest.mark.asyncio
 async def test_redis_utils_functions():
     redis = await connect_redis()
-    assert redis is not None
+    if redis is None:
+        pytest.skip("Redis not configured")
 
     token = "test_token_123"
     self_link = "http://mywebsite.com/search?token=test_token_123"

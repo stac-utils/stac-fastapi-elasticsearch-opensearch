@@ -1,124 +1,179 @@
 """Utilities for connecting to and managing Redis connections."""
 
-from typing import Optional
+import json
+import logging
+from typing import List, Optional, Tuple
 
 from pydantic_settings import BaseSettings
 from redis import asyncio as aioredis
 from redis.asyncio.sentinel import Sentinel
 
-redis_pool: Optional[aioredis.Redis] = None
+logger = logging.getLogger(__name__)
 
 
 class RedisSentinelSettings(BaseSettings):
-    """Configuration for connecting to Redis Sentinel."""
+    """Configuration settings for connecting to Redis Sentinel."""
 
     REDIS_SENTINEL_HOSTS: str = ""
     REDIS_SENTINEL_PORTS: str = "26379"
     REDIS_SENTINEL_MASTER_NAME: str = "master"
-    REDIS_DB: int = 15
+    REDIS_DB: int = 0
 
     REDIS_MAX_CONNECTIONS: int = 10
-    REDIS_RETRY_TIMEOUT: bool = True
     REDIS_DECODE_RESPONSES: bool = True
     REDIS_CLIENT_NAME: str = "stac-fastapi-app"
     REDIS_HEALTH_CHECK_INTERVAL: int = 30
+    REDIS_SELF_LINK_TTL: int = 1800
+
+    def get_sentinel_nodes(self) -> List[Tuple[str, int]]:
+        """Return list of (host, port) tuples."""
+        try:
+            hosts = json.loads(self.REDIS_SENTINEL_HOSTS)
+            ports = json.loads(self.REDIS_SENTINEL_PORTS)
+        except json.JSONDecodeError:
+            hosts = [
+                h.strip() for h in self.REDIS_SENTINEL_HOSTS.split(",") if h.strip()
+            ]
+            ports = [
+                int(p.strip())
+                for p in self.REDIS_SENTINEL_PORTS.split(",")
+                if p.strip()
+            ]
+
+        if len(ports) == 1 and len(hosts) > 1:
+            ports = ports * len(hosts)
+
+        return list(zip(hosts, ports))
 
 
 class RedisSettings(BaseSettings):
-    """Configuration for connecting Redis Sentinel."""
+    """Configuration settings for connecting to a standalone Redis instance."""
 
     REDIS_HOST: str = ""
     REDIS_PORT: int = 6379
     REDIS_DB: int = 0
 
     REDIS_MAX_CONNECTIONS: int = 10
-    REDIS_RETRY_TIMEOUT: bool = True
     REDIS_DECODE_RESPONSES: bool = True
     REDIS_CLIENT_NAME: str = "stac-fastapi-app"
     REDIS_HEALTH_CHECK_INTERVAL: int = 30
+    REDIS_SELF_LINK_TTL: int = 1800
 
 
-# Select the Redis or Redis Sentinel configuration
-redis_settings: BaseSettings = RedisSettings()
+sentinel_settings = RedisSentinelSettings()
+standalone_settings = RedisSettings()
+
+redis: Optional[aioredis.Redis] = None
 
 
-async def connect_redis(settings: Optional[RedisSettings] = None) -> aioredis.Redis:
-    """Return a Redis connection."""
-    global redis_pool
-    settings = settings or redis_settings
+async def connect_redis() -> Optional[aioredis.Redis]:
+    """Initialize global Redis connection (Sentinel or Standalone)."""
+    global redis
+    if redis:
+        return redis
 
-    if not settings.REDIS_HOST or not settings.REDIS_PORT:
-        return None
-
-    if redis_pool is None:
-        pool = aioredis.ConnectionPool(
-            host=settings.REDIS_HOST,
-            port=settings.REDIS_PORT,
-            db=settings.REDIS_DB,
-            max_connections=settings.REDIS_MAX_CONNECTIONS,
-            decode_responses=settings.REDIS_DECODE_RESPONSES,
-            retry_on_timeout=settings.REDIS_RETRY_TIMEOUT,
-            health_check_interval=settings.REDIS_HEALTH_CHECK_INTERVAL,
-        )
-        redis_pool = aioredis.Redis(
-            connection_pool=pool, client_name=settings.REDIS_CLIENT_NAME
-        )
-    return redis_pool
-
-
-async def connect_redis_sentinel(
-    settings: Optional[RedisSentinelSettings] = None,
-) -> Optional[aioredis.Redis]:
-    """Return a Redis Sentinel connection."""
-    global redis_pool
-
-    settings = settings or redis_settings
-
-    if (
-        not settings.REDIS_SENTINEL_HOSTS
-        or not settings.REDIS_SENTINEL_PORTS
-        or not settings.REDIS_SENTINEL_MASTER_NAME
-    ):
-        return None
-
-    hosts = [h.strip() for h in settings.REDIS_SENTINEL_HOSTS.split(",") if h.strip()]
-    ports = [
-        int(p.strip()) for p in settings.REDIS_SENTINEL_PORTS.split(",") if p.strip()
-    ]
-
-    if redis_pool is None:
-        try:
+    try:
+        # Prefer Sentinel if configured
+        if sentinel_settings.REDIS_SENTINEL_HOSTS.strip():
+            sentinel_nodes = sentinel_settings.get_sentinel_nodes()
             sentinel = Sentinel(
-                [(h, p) for h, p in zip(hosts, ports)],
-                decode_responses=settings.REDIS_DECODE_RESPONSES,
+                sentinel_nodes,
+                decode_responses=True,
             )
-            master = sentinel.master_for(
-                service_name=settings.REDIS_SENTINEL_MASTER_NAME,
-                db=settings.REDIS_DB,
-                decode_responses=settings.REDIS_DECODE_RESPONSES,
-                retry_on_timeout=settings.REDIS_RETRY_TIMEOUT,
-                client_name=settings.REDIS_CLIENT_NAME,
-                max_connections=settings.REDIS_MAX_CONNECTIONS,
-                health_check_interval=settings.REDIS_HEALTH_CHECK_INTERVAL,
+            redis = sentinel.master_for(
+                service_name=sentinel_settings.REDIS_SENTINEL_MASTER_NAME,
+                db=sentinel_settings.REDIS_DB,
+                decode_responses=True,
+                client_name=sentinel_settings.REDIS_CLIENT_NAME,
+                max_connections=sentinel_settings.REDIS_MAX_CONNECTIONS,
+                health_check_interval=sentinel_settings.REDIS_HEALTH_CHECK_INTERVAL,
             )
-            redis_pool = master
+            await redis.ping()
+            logger.info("✅ Connected to Redis Sentinel")
+            return redis
 
-        except Exception:
-            return None
+        # Fallback to standalone
+        if standalone_settings.REDIS_HOST.strip():
+            redis = aioredis.Redis(
+                host=standalone_settings.REDIS_HOST,
+                port=standalone_settings.REDIS_PORT,
+                db=standalone_settings.REDIS_DB,
+                decode_responses=True,
+                client_name=standalone_settings.REDIS_CLIENT_NAME,
+                health_check_interval=standalone_settings.REDIS_HEALTH_CHECK_INTERVAL,
+            )
+            await redis.ping()
+            logger.info("✅ Connected to standalone Redis")
+            return redis
 
-    return redis_pool
+        logger.warning("⚠️ No Redis configuration found — skipping connection.")
+        return None
+
+    except Exception as e:
+        logger.error(f"❌ Failed to connect to Redis: {e}")
+        redis = None
+        return None
+
+
+async def close_redis():
+    """Close global Redis connection."""
+    global redis
+    if redis:
+        await redis.close()
+        redis = None
+        logger.info("Redis connection closed.")
 
 
 async def save_self_link(
     redis: aioredis.Redis, token: Optional[str], self_href: str
 ) -> None:
-    """Save the self link for the current token with 30 min TTL."""
-    if token:
-        await redis.setex(f"nav:self:{token}", 1800, self_href)
+    """Save current self link for token."""
+    if not token:
+        return
+
+    ttl = (
+        sentinel_settings.REDIS_SELF_LINK_TTL
+        if sentinel_settings.REDIS_SENTINEL_HOSTS.strip()
+        else standalone_settings.REDIS_SELF_LINK_TTL
+    )
+
+    await redis.setex(f"nav:self:{token}", ttl, self_href)
 
 
 async def get_prev_link(redis: aioredis.Redis, token: Optional[str]) -> Optional[str]:
-    """Get the previous page link for the current token (if exists)."""
+    """Return previous page link for token."""
     if not token:
         return None
     return await redis.get(f"nav:self:{token}")
+
+
+async def redis_pagination_links(
+    current_url: str,
+    token: str,
+    next_token: str,
+    links: list,
+    redis_conn: Optional[aioredis.Redis] = None,
+) -> None:
+    """Manage pagination links stored in Redis."""
+    redis_conn = redis_conn or await connect_redis()
+    if not redis_conn:
+        logger.warning("Redis not available for pagination.")
+        return
+
+    try:
+        if next_token:
+            await save_self_link(redis_conn, next_token, current_url)
+
+        prev_link = await get_prev_link(redis_conn, token)
+        if prev_link:
+            links.insert(
+                0,
+                {
+                    "rel": "prev",
+                    "type": "application/json",
+                    "method": "GET",
+                    "href": prev_link,
+                },
+            )
+    except Exception as e:
+        logger.warning(f"Redis pagination failed: {e}")
