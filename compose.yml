@@ -23,6 +23,9 @@ services:
       - BACKEND=elasticsearch
       - DATABASE_REFRESH=true
       - ENABLE_COLLECTIONS_SEARCH_ROUTE=true
+      - REDIS_ENABLE=true
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     ports:
       - "8080:8080"
     volumes:
@@ -31,6 +34,7 @@ services:
       - ./esdata:/usr/share/elasticsearch/data
     depends_on:
       - elasticsearch
+      - redis
     command:
       bash -c "./scripts/wait-for-it-es.sh es-container:9200 && python -m stac_fastapi.elasticsearch.app"
 
@@ -58,6 +62,9 @@ services:
       - BACKEND=opensearch
       - STAC_FASTAPI_RATE_LIMIT=200/minute
       - ENABLE_COLLECTIONS_SEARCH_ROUTE=true
+      - REDIS_ENABLE=true
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
     ports:
       - "8082:8082"
     volumes:
@@ -66,6 +73,7 @@ services:
       - ./osdata:/usr/share/opensearch/data
     depends_on:
       - opensearch
+      - redis
     command:
       bash -c "./scripts/wait-for-it-es.sh os-container:9202 && python -m stac_fastapi.opensearch.app"
 
@@ -96,3 +104,14 @@ services:
       - ./opensearch/snapshots:/usr/share/opensearch/snapshots
     ports:
       - "9202:9202"
+
+  redis:
+    image: redis:7-alpine
+    hostname: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_test_data:/data
+    command: redis-server
+volumes:
+  redis_test_data:
