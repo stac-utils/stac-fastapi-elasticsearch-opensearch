@@ -81,7 +81,7 @@ jobs:
 
       - name: Upload test reports
         if: always()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: test-report-${{ matrix.backend }}-k8s-${{ matrix.kubernetes-version }}
           path: test-report-*.json
@@ -186,10 +186,7 @@ jobs:
 
       - name: Setup Helm repositories
         uses: ./.github/actions/setup-helm-repos
-
-      - name: Run chart-testing (list)
-        run: ct list --config .github/ct.yaml
-
+        
       - name: Run chart-testing (lint)
         run: ct lint --config .github/ct.yaml
 
