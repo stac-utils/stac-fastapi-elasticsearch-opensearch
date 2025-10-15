@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 
+- Removed ENV_MAX_LIMIT environment variable; maximum limits are now handled by the default global limit environment variable. [#482](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/482)
+- Changed the default and maximum pagination limits for collections/items endpoints. [#482](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/482)
+
 ### Fixed
 
 ## [v6.5.1] - 2025-09-30
