@@ -494,7 +494,7 @@ The system uses a precise naming convention:
 
 ## SFEOS Tools CLI
 
-- **Overview**: SFEOS Tools is now maintained as a separate project at [Healy-Hyperspatial/sfeos-tools](https://github.com/Healy-Hyperspatial/sfeos-tools). This CLI package provides utilities for managing and maintaining SFEOS deployments.
+- **Overview**: [SFEOS Tools](https://github.com/Healy-Hyperspatial/sfeos-tools) is an installable CLI package for managing and maintaining SFEOS deployments. This CLI package provides utilities for managing and maintaining SFEOS deployments.
 
 - **Installation**:
   ```shell
