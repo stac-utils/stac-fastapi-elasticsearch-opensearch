@@ -30,12 +30,20 @@ The following organizations have contributed time and/or funding to support the 
 
 ## Latest News
 
-<div style="max-height: 200px; overflow-y: auto; padding: 10px; border: 1px solid #eaecef; border-radius: 6px; margin-bottom: 16px;">
-
-- **10/12/2025:** Collections search **bbox** functionality added! The collections search extension now supports bbox queries. Collections will need to be updated via the API or with the new **[SFEOS-tools](#sfeos-tools-cli)** CLI package to support geospatial discoverability. Thanks again to **CloudFerro** for their sponsorship of this work!
+- **10/15/2025:** 🚀 SFEOS Tools v0.1.0 Released! - The new `sfeos-tools` CLI is now available on [PyPI](https://pypi.org/project/sfeos-tools/)
+- **10/15/2025:** Added `reindex` command to **[SFEOS-tools](https://github.com/Healy-Hyperspatial/sfeos-tools)** for zero-downtime index updates when changing mappings or settings. The new `reindex` command makes it easy to apply mapping changes, update index settings, or migrate to new index structures without any service interruption, ensuring high availability of your STAC API during maintenance operations.
+- **10/12/2025:** Collections search **bbox** functionality added! The collections search extension now supports bbox queries. Collections will need to be updated via the API or with the new **[SFEOS-tools](https://github.com/Healy-Hyperspatial/sfeos-tools)** CLI package to support geospatial discoverability. 🙏 Thanks again to **CloudFerro** for their sponsorship of this work!
 - **10/04/2025:** The **[CloudFerro](https://cloudferro.com/)** logo has been added to the sponsors and supporters list above. Their sponsorship of the ongoing collections search extension work has been invaluable. This is in addition to the many other important changes and updates their developers have added to the project.
 
-</div>
+<details style="border: 1px solid #eaecef; border-radius: 6px; padding: 10px; margin-bottom: 16px; background-color: #f9f9f9;">
+<summary style="cursor: pointer; font-weight: bold; margin: -10px -10px 0; padding: 10px; background-color: #f0f0f0; border-bottom: 1px solid #eaecef; border-top-left-radius: 6px; border-top-right-radius: 6px;">View Older News (Click to Expand)</summary>
+
+-------------
+- **09/25/2025:** v6.5.0 adds a new GET/POST /collections-search endpoint (disabled by default via ENABLE_COLLECTIONS_SEARCH_ROUTE) to avoid conflicts with the Transactions Extension, and enhances collections search with structured filtering (CQL2 JSON/text), query, and datetime filtering. These changes make collection discovery more powerful and configurable while preserving compatibility with transaction-enabled deployments.
+<!-- Add more older news items here in Markdown format; GitHub will parse them thanks to the blank line implicit in this structure -->
+
+</details>
+
 
 ## Project Introduction - What is SFEOS?
 
@@ -170,7 +178,7 @@ These endpoints support advanced collection discovery features including:
   - **Implementation Note**: When collections are created or updated, a `bbox_shape` field is automatically generated from the collection's spatial extent and indexed as a GeoJSON polygon for efficient geospatial queries
   - **Migrating Legacy Collections**: Collections created before this feature was added will not be discoverable via bbox search until they have the `bbox_shape` field added. You can either:
     - Update each collection via the API (PUT `/collections/{collection_id}` with the existing collection data)
-    - Run the migration tool (see [SFEOS Tools CLI](#sfeos-tools-cli) for installation and connection options):
+    - Use the [SFEOS Tools CLI](https://github.com/Healy-Hyperspatial/sfeos-tools) (install with `pip install sfeos-tools[elasticsearch]` or `pip install sfeos-tools[opensearch]`):
       - `sfeos-tools add-bbox-shape --backend elasticsearch --no-ssl`
       - `sfeos-tools add-bbox-shape --backend opensearch --host db.example.com --no-ssl`
 
@@ -488,7 +496,7 @@ The system uses a precise naming convention:
 
 ## SFEOS Tools CLI
 
-- **Overview**: SFEOS Tools is an installable CLI package for managing and maintaining SFEOS deployments.
+- **Overview**: [SFEOS Tools](https://github.com/Healy-Hyperspatial/sfeos-tools) is an installable CLI package for managing and maintaining SFEOS deployments. This CLI package provides utilities for managing and maintaining SFEOS deployments.
 
 - **Installation**:
   ```shell
@@ -498,14 +506,11 @@ The system uses a precise naming convention:
   # For OpenSearch (from PyPI)
   pip install sfeos-tools[opensearch]
   
-  # For local development
-  pip install -e sfeos_tools[elasticsearch]
-  # or
-  pip install -e sfeos_tools[opensearch]
   ```
 
 - **Available Commands**:
   - `add-bbox-shape`: Add bbox_shape field to existing collections for spatial search support
+  - `reindex`: Reindex all STAC indices (collections and per-collection items) to new versioned indices and update aliases; supports both Elasticsearch and OpenSearch backends. Use this when you need to apply mapping changes, update index settings, or migrate to a new index structure. The command handles the entire process including creating new indices, reindexing data, and atomically updating aliases with zero downtime.
 
 - **Basic Usage**:
   ```shell
@@ -540,9 +545,15 @@ The system uses a precise naming convention:
   # Using --help for more information
   sfeos-tools --help
   sfeos-tools add-bbox-shape --help
+  sfeos-tools reindex --help
+
   ```
 
-For more details, see the [SFEOS Tools README](./sfeos_tools/README.md).
+- **Documentation**:
+  For complete documentation, examples, and advanced usage, please visit the [SFEOS Tools GitHub repository](https://github.com/Healy-Hyperspatial/sfeos-tools).
+
+- **Contributing**:
+  Contributions, bug reports, and feature requests are welcome! Please file them on the [SFEOS Tools issue tracker](https://github.com/Healy-Hyperspatial/sfeos-tools/issues).
 
 ## Ingesting Sample Data CLI Tool
 
