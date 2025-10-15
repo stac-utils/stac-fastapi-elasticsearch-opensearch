@@ -23,7 +23,8 @@ def format_datetime_range(date_str: str) -> str:
             return ".."
         dt_obj = rfc3339_str_to_datetime(dt)
         dt_utc = dt_obj.astimezone(timezone.utc)
-        return dt_utc.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        rounded_dt = dt_utc.replace(microsecond=round(dt_utc.microsecond / 1000) * 1000)
+        return rounded_dt.isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
     if not isinstance(date_str, str):
         return "../.."

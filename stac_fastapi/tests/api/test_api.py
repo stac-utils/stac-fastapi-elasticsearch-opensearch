@@ -1625,3 +1625,70 @@ async def test_use_datetime_false(app_client, load_test_data, txn_client, monkey
 
     assert "test-item-datetime-only" not in found_ids
     assert "test-item-start-end-only" in found_ids
+
+
+@pytest.mark.asyncio
+async def test_format_datetime_range_microsecond_rounding(
+    app_client, txn_client, load_test_data
+):
+    """Test that microseconds are rounded to milliseconds"""
+
+    test_collection = load_test_data("test_collection.json")
+    test_collection_id = "test-collection-microseconds"
+    test_collection["id"] = test_collection_id
+    await create_collection(txn_client, test_collection)
+
+    item = load_test_data("test_item.json")
+    item["id"] = "test-item-1"
+    item["collection"] = test_collection_id
+    item["properties"]["datetime"] = "2020-01-01T12:00:00.123Z"
+    await create_item(txn_client, item)
+
+    test_cases = [
+        ("2020-01-01T12:00:00.123678Z", False),
+        ("2020-01-01T12:00:00.123499Z", True),
+        ("2020-01-01T12:00:00.123500Z", False),
+    ]
+
+    for datetime_input, should_match in test_cases:
+        # Test GET /collections/{id}/items
+        resp = await app_client.get(
+            f"/collections/{test_collection_id}/items",
+            params={"datetime": datetime_input},
+        )
+        assert resp.status_code == 200
+        resp_json = resp.json()
+
+        if should_match:
+            assert len(resp_json["features"]) == 1
+            assert resp_json["features"][0]["id"] == "test-item-1"
+        else:
+            assert len(resp_json["features"]) == 0
+
+        # Test GET /search
+        resp = await app_client.get(
+            "/search",
+            params={"collections": test_collection_id, "datetime": datetime_input},
+        )
+        assert resp.status_code == 200
+        resp_json = resp.json()
+
+        if should_match:
+            assert len(resp_json["features"]) == 1
+            assert resp_json["features"][0]["id"] == "test-item-1"
+        else:
+            assert len(resp_json["features"]) == 0
+
+        # Test POST /search
+        resp = await app_client.post(
+            "/search",
+            json={"collections": [test_collection_id], "datetime": datetime_input},
+        )
+        assert resp.status_code == 200
+        resp_json = resp.json()
+
+        if should_match:
+            assert len(resp_json["features"]) == 1
+            assert resp_json["features"][0]["id"] == "test-item-1"
+        else:
+            assert len(resp_json["features"]) == 0

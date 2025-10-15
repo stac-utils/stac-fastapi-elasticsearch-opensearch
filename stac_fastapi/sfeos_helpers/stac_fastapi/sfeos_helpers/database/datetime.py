@@ -8,9 +8,10 @@ import logging
 import re
 from datetime import date
 from datetime import datetime as datetime_type
+from datetime import timezone
 from typing import Dict, Optional, Union
 
-from stac_fastapi.types.rfc3339 import DateTimeType
+from stac_fastapi.types.rfc3339 import DateTimeType, rfc3339_str_to_datetime
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +37,16 @@ def return_date(
         dict: A dictionary representing the date interval for use in filtering search results,
             always containing 'gte' and 'lte' keys.
     """
+
+    def normalize_datetime(dt_str):
+        """Normalize datetime string and preserve millisecond precision."""
+        if not dt_str or dt_str == "..":
+            return dt_str
+        dt_obj = rfc3339_str_to_datetime(dt_str)
+        dt_utc = dt_obj.astimezone(timezone.utc)
+        rounded_dt = dt_utc.replace(microsecond=round(dt_utc.microsecond / 1000) * 1000)
+        return rounded_dt.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
     result: Dict[str, Optional[str]] = {"gte": None, "lte": None}
 
     if interval is None:
@@ -44,29 +55,53 @@ def return_date(
     if isinstance(interval, str):
         if "/" in interval:
             parts = interval.split("/")
-            result["gte"] = (
+            gte_value = (
                 parts[0] if parts[0] != ".." else datetime_type.min.isoformat() + "Z"
             )
-            result["lte"] = (
+            lte_value = (
                 parts[1]
                 if len(parts) > 1 and parts[1] != ".."
                 else datetime_type.max.isoformat() + "Z"
             )
+
+            result["gte"] = (
+                normalize_datetime(gte_value)
+                if gte_value != datetime_type.min.isoformat() + "Z"
+                else gte_value
+            )
+            result["lte"] = (
+                normalize_datetime(lte_value)
+                if lte_value != datetime_type.max.isoformat() + "Z"
+                else lte_value
+            )
         else:
-            converted_time = interval if interval != ".." else None
+            converted_time = normalize_datetime(interval) if interval != ".." else ".."
             result["gte"] = result["lte"] = converted_time
         return result
 
     if isinstance(interval, datetime_type):
-        datetime_iso = interval.isoformat()
-        result["gte"] = result["lte"] = datetime_iso
+        datetime_str = interval.isoformat()
+        normalized_datetime = normalize_datetime(datetime_str)
+        result["gte"] = result["lte"] = normalized_datetime
     elif isinstance(interval, tuple):
         start, end = interval
         # Ensure datetimes are converted to UTC and formatted with 'Z'
         if start:
-            result["gte"] = start.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+            dt_utc = start.astimezone(timezone.utc)
+            rounded_dt = dt_utc.replace(
+                microsecond=round(dt_utc.microsecond / 1000) * 1000
+            )
+            result["gte"] = rounded_dt.isoformat(timespec="milliseconds").replace(
+                "+00:00", "Z"
+            )
         if end:
-            result["lte"] = end.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+            dt_utc = end.astimezone(timezone.utc)
+            rounded_dt = dt_utc.replace(
+                microsecond=round(dt_utc.microsecond / 1000) * 1000
+            )
+            result["lte"] = rounded_dt.isoformat(timespec="milliseconds").replace(
+                "+00:00", "Z"
+            )
 
     return result
 
