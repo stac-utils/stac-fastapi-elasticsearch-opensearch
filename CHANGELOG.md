@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Changed
 
 - Unified elasticsearch and opensearch reindex scripts and added functionality to the new SFEOS-tools CLI package. [#490](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/490)
+- Removed ENV_MAX_LIMIT environment variable; maximum limits are now handled by the default global limit environment variable. [#482](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/482)
+- Changed the default and maximum pagination limits for collections/items endpoints. [#482](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/482)
 
 ### Fixed
 
