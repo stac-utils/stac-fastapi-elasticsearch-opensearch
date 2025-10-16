@@ -1,7 +1,8 @@
 """Filter client implementation for Elasticsearch/OpenSearch."""
 
+import os
 from collections import deque
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import attr
 from fastapi import Request
@@ -18,9 +19,27 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
 
     database: BaseDatabaseLogic = attr.ib()
 
+    @staticmethod
+    def _get_excluded_from_queryables() -> set[str]:
+        """Get fields to exclude from queryables endpoint and filtering.
+
+        Reads from EXCLUDED_FROM_QUERYABLES environment variable.
+        Supports comma-separated list of field names.
+
+        Example:
+            EXCLUDED_FROM_QUERYABLES="auth:schemes,storage:schemes"
+
+        Returns:
+            Set[str]: Set of field names to exclude from queryables
+        """
+        excluded = os.getenv("EXCLUDED_FROM_QUERYABLES", "")
+        if not excluded:
+            return set()
+        return {field.strip() for field in excluded.split(",") if field.strip()}
+
     async def get_queryables(
-        self, collection_id: Optional[str] = None, **kwargs
-    ) -> Dict[str, Any]:
+        self, collection_id: str | None = None, **kwargs
+    ) -> dict[str, Any]:
         """Get the queryables available for the given collection_id.
 
         If collection_id is None, returns the intersection of all
@@ -38,21 +57,23 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
         Returns:
             Dict[str, Any]: A dictionary containing the queryables for the given collection.
         """
-        request: Optional[Request] = kwargs.get("request")
-        url_str: str = str(request.url) if request else ""
-        queryables: Dict[str, Any] = {
+        request: Request | None = kwargs.get("request")
+        url_str = str(request.url) if request else ""
+
+        queryables: dict[str, Any] = {
             "$schema": "https://json-schema.org/draft-07/schema",
-            "$id": f"{url_str}",
+            "$id": url_str,
             "type": "object",
             "title": "Queryables for STAC API",
             "description": "Queryable names for the STAC API Item Search filter.",
             "properties": DEFAULT_QUERYABLES,
             "additionalProperties": True,
         }
+
         if not collection_id:
             return queryables
 
-        properties: Dict[str, Any] = queryables["properties"].copy()
+        properties = queryables["properties"].copy()
         queryables.update(
             {
                 "properties": properties,
@@ -62,8 +83,9 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
 
         mapping_data = await self.database.get_items_mapping(collection_id)
         mapping_properties = next(iter(mapping_data.values()))["mappings"]["properties"]
-        stack: deque[Tuple[str, Dict[str, Any]]] = deque(mapping_properties.items())
-        enum_fields: Dict[str, Dict[str, Any]] = {}
+        stack: deque[tuple[str, dict[str, Any]]] = deque(mapping_properties.items())
+        enum_fields: dict[str, dict[str, Any]] = {}
+        excluded_fields = self._get_excluded_from_queryables()
 
         while stack:
             field_fqn, field_def = stack.popleft()
@@ -75,11 +97,16 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
                     (f"{field_fqn}.{k}", v)
                     for k, v in field_properties.items()
                     if v.get("enabled", True)
+                    and f"{field_fqn}.{k}" not in excluded_fields
                 )
 
             # Skip non-indexed or disabled fields
             field_type = field_def.get("type")
-            if not field_type or not field_def.get("enabled", True):
+            if (
+                not field_type
+                or not field_def.get("enabled", True)
+                or field_fqn in excluded_fields
+            ):
                 continue
 
             # Fields in Item Properties should be exposed with their un-prefixed names,
@@ -88,7 +115,7 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
             field_name = field_fqn.removeprefix("properties.")
 
             # Generate field properties
-            field_result = ALL_QUERYABLES.get(field_name, {})
+            field_result = ALL_QUERYABLES.get(field_name, {}).copy()
             properties[field_name] = field_result
 
             field_name_human = field_name.replace("_", " ").title()
@@ -104,9 +131,10 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
                 enum_fields[field_fqn] = field_result
 
         if enum_fields:
-            for field_fqn, unique_values in (
-                await self.database.get_items_unique_values(collection_id, enum_fields)
-            ).items():
-                enum_fields[field_fqn]["enum"] = unique_values
+            unique_values = await self.database.get_items_unique_values(
+                collection_id, enum_fields
+            )
+            for field_fqn, values in unique_values.items():
+                enum_fields[field_fqn]["enum"] = values
 
         return queryables
