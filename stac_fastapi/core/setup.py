@@ -20,6 +20,7 @@ install_requires = [
     "jsonschema~=4.0.0",
     "slowapi~=0.1.9",
 ]
+extra_reqs = {"redis": ["redis~=6.4.0"]}
 
 setup(
     name="stac_fastapi_core",
@@ -43,4 +44,5 @@ setup(
     packages=find_namespace_packages(),
     zip_safe=False,
     install_requires=install_requires,
+    extras_require=extra_reqs,
 )
