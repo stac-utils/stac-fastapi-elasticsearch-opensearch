@@ -1,0 +1,92 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "stac-fastapi.fullname" . }}
+  labels:
+    {{- include "stac-fastapi.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.app.autoscaling.enabled }}
+  replicas: {{ .Values.app.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "stac-fastapi.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      {{- with .Values.app.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "stac-fastapi.selectorLabels" . | nindent 8 }}
+    spec:
+      {{- if .Values.app.waitForDatabase.enabled }}
+      initContainers:
+        - name: wait-for-database
+          image: {{ .Values.app.waitForDatabase.image | default "busybox:1.36.1" }}
+          imagePullPolicy: {{ .Values.app.waitForDatabase.pullPolicy | default "IfNotPresent" }}
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              HOST="{{ include "stac-fastapi.databaseHost" . | trim }}"
+              PORT="{{ include "stac-fastapi.databasePort" . | trim }}"
+              ATTEMPTS={{ .Values.app.waitForDatabase.maxAttempts | default 120 }}
+              INTERVAL={{ .Values.app.waitForDatabase.intervalSeconds | default 2 }}
+              COUNT=0
+              echo "Waiting for ${HOST}:${PORT} before starting STAC FastAPI..."
+              while true; do
+                if nc -z "$HOST" "$PORT"; then
+                  echo "${HOST}:${PORT} is reachable."
+                  exit 0
+                fi
+                COUNT=$((COUNT + 1))
+                if [ "$COUNT" -ge "$ATTEMPTS" ]; then
+                  echo "Timed out waiting for ${HOST}:${PORT} after ${COUNT} attempts." >&2
+                  exit 1
+                fi
+                sleep "$INTERVAL"
+              done
+          {{- with .Values.app.waitForDatabase.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- end }}
+      {{- with .Values.app.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "stac-fastapi.serviceAccountName" . }}
+      securityContext:
+        {{- toYaml .Values.app.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ .Chart.Name }}
+          securityContext:
+            {{- toYaml .Values.app.securityContext | nindent 12 }}
+          image: {{ include "stac-fastapi.image" . }}
+          imagePullPolicy: {{ .Values.app.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.app.service.targetPort }}
+              protocol: TCP
+          livenessProbe:
+            {{- toYaml .Values.app.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.app.readinessProbe | nindent 12 }}
+          env:
+            {{- include "stac-fastapi.environment" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.app.resources | nindent 12 }}
+      {{- with .Values.app.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.app.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.app.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
