@@ -201,17 +201,6 @@ class CoreClient(AsyncBaseCoreClient):
                 ]
             )
 
-        collections = await self.all_collections(request=kwargs["request"])
-        for collection in collections["collections"]:
-            landing_page["links"].append(
-                {
-                    "rel": Relations.child.value,
-                    "type": MimeTypes.json.value,
-                    "title": collection.get("title") or collection.get("id"),
-                    "href": urljoin(base_url, f"collections/{collection['id']}"),
-                }
-            )
-
         # Add OpenAPI URL
         landing_page["links"].append(
             {
