@@ -1,6 +1,7 @@
 """Serializers."""
 
 import abc
+import logging
 from copy import deepcopy
 from typing import Any, List, Optional
 
@@ -12,6 +13,8 @@ from stac_fastapi.core.models.links import CollectionLinks
 from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.links import ItemLinks, resolve_links
+
+logger = logging.getLogger(__name__)
 
 
 @attr.s
@@ -167,6 +170,9 @@ class CollectionSerializer(Serializer):
         """
         # Avoid modifying the input dict in-place ... doing so breaks some tests
         collection = deepcopy(collection)
+
+        # Remove internal bbox_shape field (not part of STAC spec)
+        collection.pop("bbox_shape", None)
 
         # Set defaults
         collection_id = collection.get("id")
