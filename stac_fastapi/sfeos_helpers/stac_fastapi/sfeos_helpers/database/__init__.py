@@ -42,11 +42,13 @@ from .index import (
 )
 from .mapping import get_queryables_mapping_shared
 from .query import (
+    apply_collections_bbox_filter_shared,
+    apply_collections_datetime_filter_shared,
     apply_free_text_filter_shared,
     apply_intersects_filter_shared,
     populate_sort_shared,
 )
-from .utils import get_bool_env, validate_refresh
+from .utils import add_bbox_shape_to_collection, get_bool_env, validate_refresh
 
 __all__ = [
     # Index operations
@@ -59,6 +61,8 @@ __all__ = [
     # Query operations
     "apply_free_text_filter_shared",
     "apply_intersects_filter_shared",
+    "apply_collections_bbox_filter_shared",
+    "apply_collections_datetime_filter_shared",
     "populate_sort_shared",
     # Mapping operations
     "get_queryables_mapping_shared",
@@ -68,6 +72,7 @@ __all__ = [
     # Utility functions
     "validate_refresh",
     "get_bool_env",
+    "add_bbox_shape_to_collection",
     # Datetime utilities
     "return_date",
     "extract_date",
