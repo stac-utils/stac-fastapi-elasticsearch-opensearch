@@ -9,15 +9,21 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Spatial search support for collections via `bbox` parameter on `/collections` endpoint. Collections are now indexed with a `bbox_shape` field (GeoJSON polygon) derived from their spatial extent for efficient geospatial queries when created or updated. [#481](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/481)
+- Introduced SFEOS Tools (`sfeos_tools/`) - An installable Click-based CLI package for managing SFEOS deployments. Initial command `add-bbox-shape` adds the `bbox_shape` field to existing collections for spatial search compatibility. Install with `pip install sfeos-tools[elasticsearch]` or `pip install sfeos-tools[opensearch]`. [#481](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/481)
+- Moved SFEOS Tools to its own repository at [Healy-Hyperspatial/sfeos-tools](https://github.com/Healy-Hyperspatial/sfeos-tools). The CLI package is now maintained separately. [#PR_NUMBER]
 - CloudFerro logo to sponsors and supporters list [#485](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/485)
 - Latest news section to README [#485](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/485)
 - Added Redis caching configuration for navigation pagination support, enabling proper `prev` and `next` links in paginated responses. [#488](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/488)
 
 ### Changed
 
+- Removed ENV_MAX_LIMIT environment variable; maximum limits are now handled by the default global limit environment variable. [#482](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/482)
+- Changed the default and maximum pagination limits for collections/items endpoints. [#482](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/482)
+
 ### Fixed
 
-[v6.5.1] - 2025-09-30
+## [v6.5.1] - 2025-09-30
 
 ### Fixed
 
@@ -25,7 +31,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Issue where datetime param was not being passed from POST collections search logic to Elasticsearch [#483](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/483)
 - Collections search tests to ensure both GET /collections and GET/POST /collections-search endpoints are tested [#483](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/483)
 
-[v6.5.0] - 2025-09-29
+## [v6.5.0] - 2025-09-29
 
 ### Added
 
