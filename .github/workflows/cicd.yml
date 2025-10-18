@@ -98,28 +98,34 @@ jobs:
         run: |
           pip install pytest-timeout
 
-      - name: Wait for OpenSearch to be ready
+      - name: Wait for Search Service to be ready
         run: |
           set -e
-          host="${{ env.OPENSEARCH_HOST:-localhost }}"
-          port="${{ env.OPENSEARCH_PORT:-9202 }}"
+          host="localhost"
+          port="${{ matrix.backend == 'elasticsearch8' && '9200' || '9202' }}"
           url="http://$host:$port/_cluster/health"
-          echo "Waiting for OpenSearch at $url"
-          for i in $(seq 1 60); do
-            if curl -sS "$url" | grep -E '"status":"(yellow|green)"' >/dev/null 2>&1; then
-              echo "OpenSearch is ready"
+          echo "Waiting for ${{ matrix.backend }} at $url"
+          
+          # Add initial delay
+          echo "Waiting 10s for service to start..."
+          sleep 10
+          
+          for i in $(seq 1 10); do  # 10 retries * 5s = 50s max wait
+            if curl -sS --fail --show-error --max-time 5 "$url" 2>/dev/null | grep -E '"status":"(yellow|green)"' >/dev/null; then
+              echo "${{ matrix.backend }} is ready"
               curl -sS "http://$host:$port" || true
-              break
+              exit 0
             fi
-            echo "OpenSearch not ready yet ($i/60) — sleeping 5s"
+            echo "${{ matrix.backend }} not ready yet ($((i*5))s/50s) - waiting 5s"
             sleep 5
           done
-          # Final check: fail the job if still not ready
-          if ! curl -sS "$url" | grep -E '"status":"(yellow|green)"' >/dev/null 2>&1; then
-            echo "OpenSearch failed to become ready within timeout"
-            curl -sS "http://$host:$port" || true
-            exit 1
-          fi
+          
+          echo "${{ matrix.backend }} failed to become ready within timeout"
+          curl -sS -v "http://$host:$port/_cluster/health" || true
+          echo "Container logs:"
+          docker ps -a
+          docker logs $(docker ps -q --filter "ancestor=${{ matrix.backend == 'elasticsearch8' && 'docker.elastic.co/elasticsearch/elasticsearch:8.19.5' || 'opensearchproject/opensearch:2.12.0' }}" | head -1) || true
+          exit 1
 
       - name: Debug OpenSearch/Elasticsearch status
         run: |
