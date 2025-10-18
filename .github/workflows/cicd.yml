@@ -98,6 +98,20 @@ jobs:
         run: |
           pip install pytest-timeout
 
+      - name: Debug OpenSearch/Elasticsearch status
+        run: |
+          echo "Root response:"
+          curl -sS -D - http://localhost:$ES_PORT/ || true
+          echo; echo "Cluster health:"
+          curl -sS http://localhost:$ES_PORT/_cluster/health || true
+          echo; echo "List opensearch/elasticsearch containers:"
+          docker ps --format "table {{.ID}}\t{{.Image}}\t{{.Names}}" || true
+          echo; echo "Container logs (first match):"
+          cid=$(docker ps -q --filter "ancestor=opensearchproject/opensearch" | head -n1 || true)
+          if [ -n "$cid" ]; then docker logs --tail 200 $cid || true; else echo "no opensearch container found"; fi
+        env:
+          ES_PORT: ${{ matrix.backend == 'elasticsearch8' && '9200' || '9202' }}
+
       - name: Run test suite
         run: |
           pipenv run pytest -svvv --timeout=300
