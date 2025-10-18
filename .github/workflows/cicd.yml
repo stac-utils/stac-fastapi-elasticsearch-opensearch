@@ -50,13 +50,13 @@ jobs:
           action.destructive_requires_name: false
         ports:
           - 9202:9202
-
-        healthcheck:
-          test: ["CMD-SHELL", "curl -f http://localhost:9202 || exit 1"]
-          interval: 10s
-          timeout: 5s
-          retries: 10
-          start-period: 30s
+        options: >-
+          --health-cmd="curl -f http://localhost:9202/_cluster/health || exit 1"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+          --ulimit nofile=65536:65536
+          --ulimit memlock=-1:-1
 
     strategy:
       matrix:
