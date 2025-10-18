@@ -42,15 +42,6 @@ jobs:
           discovery.type: single-node
           http.port: 9202
           http.cors.enabled: true
-          # Only set security settings in one place to avoid conflicts
-          plugins.security.disabled: 'true'
-          # Disable all security features
-          plugins.security.ssl.http.enabled: 'false'
-          plugins.security.ssl.transport.enabled: 'false'
-          plugins.security.authcz.admin_dn:
-            - ""
-          plugins.security.nodes_dn:
-            - ""
           OPENSEARCH_JAVA_OPTS: >-
             -Xms512m
             -Xmx512m
