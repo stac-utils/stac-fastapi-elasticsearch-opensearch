@@ -44,8 +44,6 @@ jobs:
           http.cors.enabled: true
           DISABLE_SECURITY_PLUGIN: true
           DISABLE_INSTALL_DEMO_CONFIG: true
-          plugins.security.disabled: true
-          plugins.security.ssl.http.enabled: false
           OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
           action.destructive_requires_name: false
         ports:
