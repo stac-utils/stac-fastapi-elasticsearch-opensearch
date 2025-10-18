@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
-- Spatial search support for collections via `bbox` parameter on `/collections` endpoint. Collections are now indexed with a `bbox_shape` field (GeoJSON polygon) derived from their spatial extent for efficient geospatial queries when created or updated. [#481](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/481)
+- Spatial search support for collections via `bbox` parameter on `/collections` endpoint. Collections are now indexed with a `bbox_shape` field (GeoJSON polygon) derived from their spatial extent for efficient geospatial queries when created or updated. [#481](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/481
 - Introduced SFEOS Tools (`sfeos_tools/`) - An installable Click-based CLI package for managing SFEOS deployments. Initial command `add-bbox-shape` adds the `bbox_shape` field to existing collections for spatial search compatibility. Install with `pip install sfeos-tools[elasticsearch]` or `pip install sfeos-tools[opensearch]`. [#481](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/481)
 - Moved SFEOS Tools to its own repository at [Healy-Hyperspatial/sfeos-tools](https://github.com/Healy-Hyperspatial/sfeos-tools). The CLI package is now maintained separately. [#PR_NUMBER]
 - CloudFerro logo to sponsors and supporters list [#485](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/485)
@@ -21,6 +21,14 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Changed the default and maximum pagination limits for collections/items endpoints. [#482](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/482)
 
 ### Fixed
+
+### Removed
+
+- Removed Elasticsearch 7 from CI/CD test matrix. The project now only tests against Elasticsearch 8 and OpenSearch. 
+
+### Updated
+
+- Updated Elasticsearch version to 8.19.5 in CI/CD test matrix. 
 
 ## [v6.5.1] - 2025-09-30
 

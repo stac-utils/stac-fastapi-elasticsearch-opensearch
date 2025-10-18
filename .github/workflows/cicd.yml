@@ -16,7 +16,7 @@ jobs:
 
     services:
       elasticsearch_8_svc:
-        image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+        image: docker.elastic.co/elasticsearch/elasticsearch:8.19.5
         env:
           cluster.name: stac-cluster
           node.name: es01
@@ -32,24 +32,7 @@ jobs:
         ports:
           - 9200:9200
 
-      elasticsearch_7_svc:
-        image: docker.elastic.co/elasticsearch/elasticsearch:7.17.1
-        env:
-          cluster.name: stac-cluster
-          node.name: es01
-          network.host: 0.0.0.0
-          transport.host: 0.0.0.0
-          discovery.type: single-node
-          http.port: 9400
-          xpack.license.self_generated.type: basic
-          xpack.security.enabled: false
-          xpack.security.transport.ssl.enabled: false
-          ES_JAVA_OPTS: -Xms512m -Xmx1g
-          action.destructive_requires_name: false
-        ports:
-          - 9400:9400
-
-      opensearch_2_11:
+opensearch_2_11:
         image: opensearchproject/opensearch:2.11.1
         env:
           cluster.name: stac-cluster
@@ -69,7 +52,7 @@ jobs:
     strategy:
       matrix:
         python-version: [ "3.9", "3.10", "3.11", "3.12", "3.13"]
-        backend: [ "elasticsearch7", "elasticsearch8", "opensearch"]
+        backend: ["elasticsearch8", "opensearch"]
 
     name: Python ${{ matrix.python-version }} testing with ${{ matrix.backend }}
 
