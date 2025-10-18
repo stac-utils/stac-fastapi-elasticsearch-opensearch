@@ -24,11 +24,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Removed
 
-- Removed Elasticsearch 7 from CI/CD test matrix. The project now only tests against Elasticsearch 8 and OpenSearch. 
+- Removed Elasticsearch 7 from CI/CD test matrix. The project now only tests against Elasticsearch 8 and OpenSearch. [#497](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/497)
 
 ### Updated
 
-- Updated Elasticsearch version to 8.19.5 in CI/CD test matrix. 
+- Updated Elasticsearch version to 8.19.5 in CI/CD test matrix and compose.yml. [#497](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/497)
 
 ## [v6.5.1] - 2025-09-30
 
