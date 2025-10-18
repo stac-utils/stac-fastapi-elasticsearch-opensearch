@@ -33,7 +33,7 @@ jobs:
           - 9200:9200
 
       opensearch_2_11:
-        image: opensearchproject/opensearch:2.11.1
+        image: opensearchproject/opensearch:2.19.3
         env:
           cluster.name: stac-cluster
           node.name: os01
