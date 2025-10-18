@@ -16,7 +16,7 @@ jobs:
 
     services:
       elasticsearch_8_svc:
-        image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+        image: docker.elastic.co/elasticsearch/elasticsearch:8.19.5
         env:
           cluster.name: stac-cluster
           node.name: es01
