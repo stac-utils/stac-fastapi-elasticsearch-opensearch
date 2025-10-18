@@ -16,7 +16,7 @@ jobs:
 
     services:
       elasticsearch_8_svc:
-        image: docker.elastic.co/elasticsearch/elasticsearch:8.18.0
+        image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
         env:
           cluster.name: stac-cluster
           node.name: es01
@@ -32,7 +32,7 @@ jobs:
         ports:
           - 9200:9200
 
-opensearch_2_11:
+      opensearch_2_11:
         image: opensearchproject/opensearch:2.11.1
         env:
           cluster.name: stac-cluster
@@ -51,8 +51,8 @@ opensearch_2_11:
 
     strategy:
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
-        backend: ["elasticsearch8", "opensearch"]
+        python-version: [ "3.9", "3.10", "3.11", "3.12", "3.13"]
+        backend: [ "elasticsearch8", "opensearch"]
 
     name: Python ${{ matrix.python-version }} testing with ${{ matrix.backend }}
 
@@ -103,9 +103,9 @@ opensearch_2_11:
           pipenv run pytest -svvv --timeout=300
         env:
           ENVIRONMENT: testing
-          ES_PORT: ${{ matrix.backend == 'elasticsearch7' && '9400' || matrix.backend == 'elasticsearch8' && '9200' || '9202' }}
+          ES_PORT: ${{ matrix.backend == 'elasticsearch8' && '9200' || '9202' }}
           ES_HOST: 172.17.0.1
           ES_USE_SSL: false
           DATABASE_REFRESH: true
           ES_VERIFY_CERTS: false
-          BACKEND: ${{ matrix.backend == 'elasticsearch7' && 'elasticsearch' || matrix.backend == 'elasticsearch8' && 'elasticsearch' || 'opensearch' }}
+          BACKEND: ${{ matrix.backend == 'elasticsearch8' && 'elasticsearch' || 'opensearch' }}
