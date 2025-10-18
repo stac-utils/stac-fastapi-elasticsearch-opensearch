@@ -43,11 +43,21 @@ jobs:
           http.port: 9202
           http.cors.enabled: true
           plugins.security.disabled: true
-          plugins.security.ssl.http.enabled: true
-          OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
+          plugins.security.ssl.http.enabled: false
+          OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m -Dopensearch.transport.cname_in_publish_address=true
           action.destructive_requires_name: false
+          bootstrap.memory_lock: 'false'
+          DISABLE_SECURITY_PLUGIN: 'true'
+          DISABLE_INSTALL_DEMO_CONFIG: 'true'
         ports:
           - 9202:9202
+        options: >-
+          --health-cmd="curl -f http://localhost:9202/_cluster/health || exit 1"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+          --ulimit nofile=65536:65536
+          --ulimit memlock=-1:-1
 
     strategy:
       matrix:
@@ -128,16 +138,52 @@ jobs:
           exit 1
 
       - name: Debug OpenSearch/Elasticsearch status
+        if: always()
         run: |
-          echo "Root response:"
-          curl -sS -D - http://localhost:$ES_PORT/ || true
-          echo; echo "Cluster health:"
-          curl -sS http://localhost:$ES_PORT/_cluster/health || true
-          echo; echo "List opensearch/elasticsearch containers:"
-          docker ps --format "table {{.ID}}\t{{.Image}}\t{{.Names}}" || true
-          echo; echo "Container logs (first match):"
-          cid=$(docker ps -q --filter "ancestor=opensearchproject/opensearch" | head -n1 || true)
-          if [ -n "$cid" ]; then docker logs --tail 200 $cid || true; else echo "no opensearch container found"; fi
+          echo "=== System Information ==="
+          echo "Hostname: $(hostname)"
+          echo "IP Addresses: $(hostname -I || true)"
+          echo "Docker version: $(docker --version || true)"
+          echo "Docker info:"
+          docker info || true
+          
+          echo "\n=== Container Status ==="
+          docker ps -a || true
+          
+          echo "\n=== Network Information ==="
+          docker network inspect bridge || true
+          
+          echo "\n=== OpenSearch Container Logs ==="
+          OPENSEARCH_ID=$(docker ps -a --filter "ancestor=opensearchproject/opensearch:2.12.0" -q | head -1 || true)
+          if [ -n "$OPENSEARCH_ID" ]; then
+            echo "Container logs for $OPENSEARCH_ID:"
+            docker logs --tail 500 $OPENSEARCH_ID || true
+            echo "\nContainer inspect:"
+            docker inspect $OPENSEARCH_ID || true
+            echo "\nContainer environment:"
+            docker exec $OPENSEARCH_ID env || true
+          else
+            echo "No OpenSearch container found"
+          fi
+          
+          echo "\n=== Elasticsearch Container Logs ==="
+          ES_ID=$(docker ps -a --filter "ancestor=docker.elastic.co/elasticsearch/elasticsearch:8.19.5" -q | head -1 || true)
+          if [ -n "$ES_ID" ]; then
+            echo "Container logs for $ES_ID:"
+            docker logs --tail 500 $ES_ID || true
+          else
+            echo "No Elasticsearch container found"
+          fi
+          
+          echo "\n=== Port Check ==="
+          echo "Port 9200 (Elasticsearch): $(nc -zv localhost 9200 2>&1 || true)"
+          echo "Port 9202 (OpenSearch): $(nc -zv localhost 9202 2>&1 || true)"
+          
+          echo "\n=== Disk Space ==="
+          df -h || true
+          
+          echo "\n=== Memory Info ==="
+          free -h || true
         env:
           ES_PORT: ${{ matrix.backend == 'elasticsearch8' && '9200' || '9202' }}
 
