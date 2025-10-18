@@ -32,8 +32,8 @@ jobs:
         ports:
           - 9200:9200
 
-      opensearch_2_11:
-        image: opensearchproject/opensearch:2.19.3
+      opensearch_2_13:
+        image: opensearchproject/opensearch:2.13.0
         env:
           cluster.name: stac-cluster
           node.name: os01
