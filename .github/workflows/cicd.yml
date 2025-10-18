@@ -42,6 +42,15 @@ jobs:
           discovery.type: single-node
           http.port: 9202
           http.cors.enabled: true
+          plugins.security.disabled: 'false'
+          OPENSEARCH_INITIAL_ADMIN_PASSWORD: 'admin'
+          DISABLE_SECURITY_DEMO_CONFIG: 'true'
+          plugins.security.ssl.http.enabled: 'false'
+          plugins.security.ssl.transport.enabled: 'false'
+          plugins.security.authcz.admin_dn:
+            - ""
+          plugins.security.nodes_dn:
+            - ""
           OPENSEARCH_JAVA_OPTS: >-
             -Xms512m
             -Xmx512m
@@ -199,3 +208,6 @@ jobs:
           DATABASE_REFRESH: true
           ES_VERIFY_CERTS: false
           BACKEND: ${{ matrix.backend == 'elasticsearch8' && 'elasticsearch' || 'opensearch' }}
+          OPENSEARCH_USER: admin
+          OPENSEARCH_PASSWORD: admin
+          OPENSEARCH_USE_SSL: 'false'
