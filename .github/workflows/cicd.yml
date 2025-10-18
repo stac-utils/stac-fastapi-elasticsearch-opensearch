@@ -32,8 +32,8 @@ jobs:
         ports:
           - 9200:9200
 
-      opensearch_2_11:
-        image: opensearchproject/opensearch:2.11.1
+      opensearch_2_12:
+        image: opensearchproject/opensearch:2.12.0  # Your upgrade target
         env:
           cluster.name: stac-cluster
           node.name: os01
@@ -42,12 +42,22 @@ jobs:
           discovery.type: single-node
           http.port: 9202
           http.cors.enabled: true
+          # Fully disable security plugin and its SSL
+          DISABLE_SECURITY_PLUGIN: true  # New: Explicitly skips security init
+          DISABLE_INSTALL_DEMO_CONFIG: true  # New: Skips demo certs/password setup
           plugins.security.disabled: true
-          plugins.security.ssl.http.enabled: true
+          plugins.security.ssl.http.enabled: false  # Fix: Disable HTTP SSL
           OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
           action.destructive_requires_name: false
         ports:
           - 9202:9202
+        # Optional: Add healthcheck for reliable startup (see below)
+        healthcheck:
+          test: ["CMD-SHELL", "curl -f http://localhost:9202 || exit 1"]  # Plain HTTP test
+          interval: 10s
+          timeout: 5s
+          retries: 10
+          start-period: 30s  # Gives 30s grace for JVM boot
 
     strategy:
       matrix:
