@@ -42,13 +42,23 @@ jobs:
           discovery.type: single-node
           http.port: 9202
           http.cors.enabled: true
-          plugins.security.disabled: true
-          plugins.security.ssl.http.enabled: false
-          OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m -Dopensearch.transport.cname_in_publish_address=true
-          action.destructive_requires_name: false
+          # Only set security settings in one place to avoid conflicts
+          plugins.security.disabled: 'true'
+          # Disable all security features
+          plugins.security.ssl.http.enabled: 'false'
+          plugins.security.ssl.transport.enabled: 'false'
+          plugins.security.authcz.admin_dn:
+            - ""
+          plugins.security.nodes_dn:
+            - ""
+          OPENSEARCH_JAVA_OPTS: >-
+            -Xms512m
+            -Xmx512m
+            -Dopensearch.transport.cname_in_publish_address=true
+            -Dopensearch.cgroups.hierarchy.override=/
+            -Djava.security.manager=allow
+          action.destructive_requires_name: 'false'
           bootstrap.memory_lock: 'false'
-          DISABLE_SECURITY_PLUGIN: 'true'
-          DISABLE_INSTALL_DEMO_CONFIG: 'true'
         ports:
           - 9202:9202
         options: >-
