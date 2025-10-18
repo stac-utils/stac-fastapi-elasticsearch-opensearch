@@ -98,6 +98,29 @@ jobs:
         run: |
           pip install pytest-timeout
 
+      - name: Wait for OpenSearch to be ready
+        run: |
+          set -e
+          host="${{ env.OPENSEARCH_HOST:-localhost }}"
+          port="${{ env.OPENSEARCH_PORT:-9202 }}"
+          url="http://$host:$port/_cluster/health"
+          echo "Waiting for OpenSearch at $url"
+          for i in $(seq 1 60); do
+            if curl -sS "$url" | grep -E '"status":"(yellow|green)"' >/dev/null 2>&1; then
+              echo "OpenSearch is ready"
+              curl -sS "http://$host:$port" || true
+              break
+            fi
+            echo "OpenSearch not ready yet ($i/60) — sleeping 5s"
+            sleep 5
+          done
+          # Final check: fail the job if still not ready
+          if ! curl -sS "$url" | grep -E '"status":"(yellow|green)"' >/dev/null 2>&1; then
+            echo "OpenSearch failed to become ready within timeout"
+            curl -sS "http://$host:$port" || true
+            exit 1
+          fi
+
       - name: Debug OpenSearch/Elasticsearch status
         run: |
           echo "Root response:"
