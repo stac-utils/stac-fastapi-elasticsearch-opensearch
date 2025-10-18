@@ -32,8 +32,8 @@ jobs:
         ports:
           - 9200:9200
 
-      opensearch_2_11:
-        image: opensearchproject/opensearch:2.11.1
+      opensearch_2_19:
+        image: opensearchproject/opensearch:2.19.3
         env:
           cluster.name: stac-cluster
           node.name: os01
@@ -42,12 +42,19 @@ jobs:
           discovery.type: single-node
           http.port: 9202
           http.cors.enabled: true
-          plugins.security.disabled: true
-          plugins.security.ssl.http.enabled: true
+          DISABLE_SECURITY_PLUGIN: true
+          DISABLE_INSTALL_DEMO_CONFIG: true
           OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
           action.destructive_requires_name: false
         ports:
           - 9202:9202
+        options: >-
+          --health-cmd="curl -f http://localhost:9202/_cluster/health || exit 1"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+          --ulimit nofile=65536:65536
+          --ulimit memlock=-1:-1
 
     strategy:
       matrix:

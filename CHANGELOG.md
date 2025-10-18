@@ -30,6 +30,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Updated
 
 - Updated Elasticsearch version to 8.19.5 in CI/CD test matrix and compose.yml. [#497](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/497)
+- Updated OpenSearch version to 2.19.3 in CI/CD test matrix and compose.yml. [#499](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/499)
+- Updated elasticsearh python library to 8.19.1 in setup.py. [#499](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/499)
 
 ## [v6.5.1] - 2025-09-30
 
