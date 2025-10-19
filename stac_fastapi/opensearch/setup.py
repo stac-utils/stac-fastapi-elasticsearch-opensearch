@@ -16,7 +16,7 @@ install_requires = [
 
 extra_reqs = {
     "dev": [
-        "pytest~=7.0.0",
+        "pytest~=8.0",
         "pytest-cov~=4.0.0",
         "pytest-asyncio~=0.21.0",
         "pre-commit~=3.0.0",
