@@ -116,6 +116,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
   - [Collection Pagination](#collection-pagination)
   - [SFEOS Tools CLI](#sfeos-tools-cli)
   - [Ingesting Sample Data CLI Tool](#ingesting-sample-data-cli-tool)
+  - [Redis for navigation](#redis-for-navigation)
   - [Elasticsearch Mappings](#elasticsearch-mappings)
   - [Managing Elasticsearch Indices](#managing-elasticsearch-indices)
     - [Snapshots](#snapshots)
@@ -341,12 +342,11 @@ You can customize additional settings in your `.env` file:
 > [!NOTE]
 > The variables `ES_HOST`, `ES_PORT`, `ES_USE_SSL`, `ES_VERIFY_CERTS` and `ES_TIMEOUT` apply to both Elasticsearch and OpenSearch backends, so there is no need to rename the key names to `OS_` even if you're using OpenSearch.
 
-## Redis for Navigation:
+## Redis for Navigation environment variables:
 These Redis configuration variables to enable proper navigation functionality in STAC FastAPI.
 
 | Variable                      | Description                                                                                  | Default                  | Required                                                                                     |
 |-------------------------------|----------------------------------------------------------------------------------------------|--------------------------|---------------------------------------------------------------------------------------------|
-| **General**                   |                                                                                              |                          |                                                                                             |
 | `REDIS_ENABLE`                | Enables or disables Redis caching for navigation. Set to `true` to use Redis, or `false` to disable. | `false`                  | **Required** (determines whether Redis is used at all)                                      |
 | **Redis Sentinel**            |                                                                                              |                          |                                                                                             |
 | `REDIS_SENTINEL_HOSTS`        | Comma-separated list of Redis Sentinel hostnames/IP addresses.                               | `""`                     | Conditional (required if using Sentinel)                                                    |
@@ -621,8 +621,12 @@ The Redis cache stores navigation state for paginated results, allowing the syst
 
 Steps to configure:
 1. Ensure that a Redis instance is available, either a standalone server or a Sentinel-managed cluster.
-2. Establish a connection between STAC FastAPI and Redis instance by setting the appropriate [**environment variables**](#redis-for-navigation)These define the Redis host, port, authentication, and optional Sentinel settings.
+2. Establish a connection between STAC FastAPI and Redis instance by setting the appropriate [**environment variables**](#redis-for-navigation-environment-variables). These define the Redis host, port, authentication, and optional Sentinel settings.
 3. Control whether Redis caching is activated using the `REDIS_ENABLE` environment variable to `True` or `False`.
+4. Ensure the appropriate version of `Redis` is installed:
+```
+pip install stac-fastapi-elasticsearch[redis]
+```
 
 ## Elasticsearch Mappings
 

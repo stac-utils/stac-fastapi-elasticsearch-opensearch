@@ -255,7 +255,7 @@ async def redis_pagination_links(
             links.insert(
                 0,
                 {
-                    "rel": "prev",
+                    "rel": "previous",
                     "type": "application/json",
                     "method": "GET",
                     "href": prev_link,

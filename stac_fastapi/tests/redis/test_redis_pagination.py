@@ -39,7 +39,7 @@ async def test_search_pagination_uses_redis_cache(
     resp2_json = resp2.json()
 
     prev_link = next(
-        (link for link in resp2_json["links"] if link["rel"] == "prev"), None
+        (link for link in resp2_json["links"] if link["rel"] == "previous"), None
     )
     assert prev_link is not None
 
@@ -73,6 +73,6 @@ async def test_collections_pagination_uses_redis_cache(
     resp2_json = resp2.json()
 
     prev_link = next(
-        (link for link in resp2_json["links"] if link["rel"] == "prev"), None
+        (link for link in resp2_json["links"] if link["rel"] == "previous"), None
     )
     assert prev_link is not None

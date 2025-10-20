@@ -16,7 +16,7 @@ jobs:
 
     services:
       elasticsearch_8_svc:
-        image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+        image: docker.elastic.co/elasticsearch/elasticsearch:8.19.5
         env:
           cluster.name: stac-cluster
           node.name: es01
@@ -32,25 +32,8 @@ jobs:
         ports:
           - 9200:9200
 
-      elasticsearch_7_svc:
-        image: docker.elastic.co/elasticsearch/elasticsearch:7.17.1
-        env:
-          cluster.name: stac-cluster
-          node.name: es01
-          network.host: 0.0.0.0
-          transport.host: 0.0.0.0
-          discovery.type: single-node
-          http.port: 9400
-          xpack.license.self_generated.type: basic
-          xpack.security.enabled: false
-          xpack.security.transport.ssl.enabled: false
-          ES_JAVA_OPTS: -Xms512m -Xmx1g
-          action.destructive_requires_name: false
-        ports:
-          - 9400:9400
-
-      opensearch_2_11:
-        image: opensearchproject/opensearch:2.11.1
+      opensearch_2_19:
+        image: opensearchproject/opensearch:2.19.3
         env:
           cluster.name: stac-cluster
           node.name: os01
@@ -59,12 +42,19 @@ jobs:
           discovery.type: single-node
           http.port: 9202
           http.cors.enabled: true
-          plugins.security.disabled: true
-          plugins.security.ssl.http.enabled: true
+          DISABLE_SECURITY_PLUGIN: true
+          DISABLE_INSTALL_DEMO_CONFIG: true
           OPENSEARCH_JAVA_OPTS: -Xms512m -Xmx512m
           action.destructive_requires_name: false
         ports:
           - 9202:9202
+        options: >-
+          --health-cmd="curl -f http://localhost:9202/_cluster/health || exit 1"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+          --ulimit nofile=65536:65536
+          --ulimit memlock=-1:-1
 
       redis:
         image: redis:7-alpine
@@ -78,8 +68,8 @@ jobs:
 
     strategy:
       matrix:
-        python-version: [ "3.9", "3.10", "3.11", "3.12", "3.13"]
-        backend: [ "elasticsearch7", "elasticsearch8", "opensearch"]
+        python-version: [ "3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+        backend: [ "elasticsearch8", "opensearch"]
 
     name: Python ${{ matrix.python-version }} testing with ${{ matrix.backend }}
 
@@ -130,12 +120,12 @@ jobs:
           pipenv run pytest -svvv --timeout=300
         env:
           ENVIRONMENT: testing
-          ES_PORT: ${{ matrix.backend == 'elasticsearch7' && '9400' || matrix.backend == 'elasticsearch8' && '9200' || '9202' }}
+          ES_PORT: ${{ matrix.backend == 'elasticsearch8' && '9200' || '9202' }}
           ES_HOST: 172.17.0.1
           ES_USE_SSL: false
           DATABASE_REFRESH: true
           ES_VERIFY_CERTS: false
-          BACKEND: ${{ matrix.backend == 'elasticsearch7' && 'elasticsearch' || matrix.backend == 'elasticsearch8' && 'elasticsearch' || 'opensearch' }}
           REDIS_ENABLE: true
           REDIS_HOST: localhost
           REDIS_PORT: 6379
+          BACKEND: ${{ matrix.backend == 'elasticsearch8' && 'elasticsearch' || 'opensearch' }}

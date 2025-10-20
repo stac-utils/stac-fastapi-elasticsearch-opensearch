@@ -202,17 +202,6 @@ class CoreClient(AsyncBaseCoreClient):
                 ]
             )
 
-        collections = await self.all_collections(request=kwargs["request"])
-        for collection in collections["collections"]:
-            landing_page["links"].append(
-                {
-                    "rel": Relations.child.value,
-                    "type": MimeTypes.json.value,
-                    "title": collection.get("title") or collection.get("id"),
-                    "href": urljoin(base_url, f"collections/{collection['id']}"),
-                }
-            )
-
         # Add OpenAPI URL
         landing_page["links"].append(
             {
@@ -888,7 +877,8 @@ class CoreClient(AsyncBaseCoreClient):
         links = await PagingLinks(request=request, next=next_token).get_links()
 
         collection_links = []
-        if search_request.collections:
+        # Add "collection" and "parent" rels only for /collections/{collection_id}/items
+        if search_request.collections and "/items" in str(request.url):
             for collection_id in search_request.collections:
                 collection_links.extend(
                     [

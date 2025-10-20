@@ -8,14 +8,14 @@ with open("README.md") as f:
 install_requires = [
     "stac-fastapi-core==6.5.1",
     "sfeos-helpers==6.5.1",
-    "elasticsearch[async]~=8.18.0",
+    "elasticsearch[async]~=8.19.1",
     "uvicorn~=0.23.0",
     "starlette>=0.35.0,<0.36.0",
 ]
 
 extra_reqs = {
     "dev": [
-        "pytest~=7.0.0",
+        "pytest~=8.0",
         "pytest-cov~=4.0.0",
         "pytest-asyncio~=0.21.0",
         "pre-commit~=3.0.0",
@@ -43,6 +43,7 @@ setup(
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
         "Programming Language :: Python :: 3.13",
+        "Programming Language :: Python :: 3.14",
         "License :: OSI Approved :: MIT License",
     ],
     url="https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch",
