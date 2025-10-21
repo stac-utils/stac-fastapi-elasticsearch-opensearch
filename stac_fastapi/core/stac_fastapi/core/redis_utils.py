@@ -3,6 +3,7 @@
 import json
 import logging
 from typing import List, Optional, Tuple
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings
@@ -108,7 +109,7 @@ class RedisSettings(BaseSettings):
 
     REDIS_HOST: str = ""
     REDIS_PORT: int = 6379
-    REDIS_DB: int = 0
+    REDIS_DB: int = 15
 
     REDIS_MAX_CONNECTIONS: int = 10
     REDIS_RETRY_TIMEOUT: bool = True
@@ -218,23 +219,54 @@ async def connect_redis() -> Optional[aioredis.Redis]:
         return None
 
 
-async def save_self_link(
-    redis: aioredis.Redis, token: Optional[str], self_href: str
+def get_redis_key(url: str, token: str) -> str:
+    """Create Redis key using URL path and token."""
+    parsed = urlparse(url)
+    return f"nav:{parsed.path}:{token}"
+
+
+def build_url_with_token(base_url: str, token: str) -> str:
+    """Build URL with token parameter."""
+    parsed = urlparse(base_url)
+    query_params = parse_qs(parsed.query)
+
+    query_params["token"] = [token]
+
+    new_query = urlencode(query_params, doseq=True)
+
+    return urlunparse(
+        (
+            parsed.scheme,
+            parsed.netloc,
+            parsed.path,
+            parsed.params,
+            new_query,
+            parsed.fragment,
+        )
+    )
+
+
+async def save_prev_link(
+    redis: aioredis.Redis, next_url: str, current_url: str, next_token: str
 ) -> None:
-    """Save the self link for the current token."""
-    if token:
+    """Save the current page as the previous link for the next URL."""
+    if next_url and next_token:
         if sentinel_settings.REDIS_SENTINEL_HOSTS:
             ttl_seconds = sentinel_settings.REDIS_SELF_LINK_TTL
         elif standalone_settings.REDIS_HOST:
             ttl_seconds = standalone_settings.REDIS_SELF_LINK_TTL
-        await redis.setex(f"nav:self:{token}", ttl_seconds, self_href)
+        key = get_redis_key(next_url, next_token)
+        await redis.setex(key, ttl_seconds, current_url)
 
 
-async def get_prev_link(redis: aioredis.Redis, token: Optional[str]) -> Optional[str]:
+async def get_prev_link(
+    redis: aioredis.Redis, current_url: str, current_token: str
+) -> Optional[str]:
     """Get the previous page link for the current token."""
-    if not token:
+    if not current_url or not current_token:
         return None
-    return await redis.get(f"nav:self:{token}")
+    key = get_redis_key(current_url, current_token)
+    return await redis.get(key)
 
 
 async def redis_pagination_links(
@@ -248,19 +280,21 @@ async def redis_pagination_links(
 
     try:
         if next_token:
-            await save_self_link(redis, next_token, current_url)
+            next_url = build_url_with_token(current_url, next_token)
+            await save_prev_link(redis, next_url, current_url, next_token)
 
-        prev_link = await get_prev_link(redis, token)
-        if prev_link:
-            links.insert(
-                0,
-                {
-                    "rel": "previous",
-                    "type": "application/json",
-                    "method": "GET",
-                    "href": prev_link,
-                },
-            )
+        if token:
+            prev_link = await get_prev_link(redis, current_url, token)
+            if prev_link:
+                links.insert(
+                    0,
+                    {
+                        "rel": "previous",
+                        "type": "application/json",
+                        "method": "GET",
+                        "href": prev_link,
+                    },
+                )
     except Exception as e:
         logger.warning(f"Redis pagination operation failed: {e}")
     finally:

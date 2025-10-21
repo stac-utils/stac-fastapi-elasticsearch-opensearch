@@ -1,0 +1,72 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "stac_fastapi_opensearch"
+description = "An implementation of STAC API based on the FastAPI framework with Opensearch."
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "MIT"}
+authors = []
+classifiers = [
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "License :: OSI Approved :: MIT License",
+]
+keywords = [
+    "STAC",
+    "STAC-API",
+    "FastAPI",
+    "Opensearch",
+    "stac-fastapi",
+]
+dynamic = ["version"]
+dependencies = [
+    "stac-fastapi-core==6.6.0",
+    "sfeos-helpers==6.6.0",
+    "opensearch-py~=2.8.0",
+    "opensearch-py[async]~=2.8.0",
+    "uvicorn~=0.23.0",
+    "starlette>=0.35.0,<0.36.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch"
+
+[project.optional-dependencies]
+dev = [
+    "pytest~=8.0",
+    "pytest-cov~=4.0.0",
+    "pytest-asyncio~=0.21.0",
+    "pre-commit~=3.0.0",
+    "ciso8601~=2.3.0",
+    "httpx>=0.24.0,<0.28.0",
+]
+docs = [
+    "mkdocs~=1.4.0",
+    "mkdocs-material~=9.0.0",
+    "pdocs~=1.2.0",
+]
+server = [
+    "uvicorn[standard]~=0.23.0",
+]
+
+[project.scripts]
+stac-fastapi-opensearch = "stac_fastapi.opensearch.app:run"
+
+[tool.hatch.version]
+path = "stac_fastapi/opensearch/version.py"
+
+[tool.hatch.build.targets.sdist]
+exclude = ["alembic", "tests", "scripts"]
+
+[tool.hatch.build.targets.wheel]
+only-include = ["stac_fastapi"]

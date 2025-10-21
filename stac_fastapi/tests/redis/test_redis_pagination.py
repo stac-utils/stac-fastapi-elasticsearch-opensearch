@@ -22,20 +22,13 @@ async def test_search_pagination_uses_redis_cache(
         item["collection"] = collection_id
         await create_item(txn_client, item)
 
-    resp = await app_client.post(
-        "/search", json={"collections": [collection_id], "limit": 1}
-    )
+    resp = await app_client.get(f"/collections/{collection_id}/items?limit=1")
     resp_json = resp.json()
 
-    next_link = next(
-        (link for link in resp_json["links"] if link["rel"] == "next"), None
-    )
-    next_token = next_link["body"]["token"]
+    next_link = next(link for link in resp_json["links"] if link["rel"] == "next")
+    next_url = next_link["href"]
 
-    resp2 = await app_client.post(
-        "/search",
-        json={"collections": [collection_id], "limit": 1, "token": next_token},
-    )
+    resp2 = await app_client.get(next_url)
     resp2_json = resp2.json()
 
     prev_link = next(
