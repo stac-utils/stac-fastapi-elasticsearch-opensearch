@@ -39,7 +39,7 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
 
     async def get_queryables(
         self,
-        collection_id: str | None = None,
+        collection_id: Optional[str] = None,  # noqa: UP045
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Get the queryables available for the given collection_id.
