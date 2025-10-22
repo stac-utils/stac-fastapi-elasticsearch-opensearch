@@ -9,15 +9,48 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
-- CloudFerro logo to sponsors and supporters list [#485](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/485)
-- Latest news section to README [#485](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/485)
-- Environment variable `EXCLUDED_FROM_QUERYABLES` to exclude specific fields from queryables endpoint and filtering. Supports comma-separated list of fully qualified field names (e.g., `properties.auth:schemes,properties.storage:schemes`)
+- Environment variable `EXCLUDED_FROM_QUERYABLES` to exclude specific fields from queryables endpoint and filtering. Supports comma-separated list of fully qualified field names (e.g., `properties.auth:schemes,properties.storage:schemes`) [#489](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/489)
 
 ### Changed
 
 ### Fixed
 
-[v6.5.1] - 2025-09-30
+### Removed
+
+### Updated
+
+
+## [v6.6.0] - 2025-10-21
+
+### Added
+
+- Spatial search support for collections via `bbox` parameter on `/collections` endpoint. Collections are now indexed with a `bbox_shape` field (GeoJSON polygon) derived from their spatial extent for efficient geospatial queries when created or updated. [#481](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/481
+- Introduced SFEOS Tools (`sfeos_tools/`) - An installable Click-based CLI package for managing SFEOS deployments. Initial command `add-bbox-shape` adds the `bbox_shape` field to existing collections for spatial search compatibility. Install with `pip install sfeos-tools[elasticsearch]` or `pip install sfeos-tools[opensearch]`. [#481](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/481)
+- Moved SFEOS Tools to its own repository at [Healy-Hyperspatial/sfeos-tools](https://github.com/Healy-Hyperspatial/sfeos-tools). The CLI package is now maintained separately. [#PR_NUMBER]
+- CloudFerro logo to sponsors and supporters list [#485](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/485)
+- Latest news section to README [#485](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/485)
+- Python 3.14 support [#500](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/500)
+
+### Changed
+
+- Removed ENV_MAX_LIMIT environment variable; maximum limits are now handled by the default global limit environment variable. [#482](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/482)
+- Changed the default and maximum pagination limits for collections/items endpoints. [#482](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/482)
+- Removed the `rel=child` links to the collections from the landing page, as the listing was incomplete due to pagination. [#496](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/496)
+- Changed to pyproject.toml file from setup.py [#505](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/505)
+
+### Fixed
+
+### Removed
+
+- Removed Elasticsearch 7 from CI/CD test matrix. The project now only tests against Elasticsearch 8 and OpenSearch. [#497](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/497)
+
+### Updated
+
+- Updated Elasticsearch version to 8.19.5 in CI/CD test matrix and compose.yml. [#497](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/497)
+- Updated OpenSearch version to 2.19.3 in CI/CD test matrix and compose.yml. [#499](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/499)
+- Updated elasticsearh python library to 8.19.1 in setup.py. [#499](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/499)
+
+## [v6.5.1] - 2025-09-30
 
 ### Fixed
 
@@ -25,7 +58,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Issue where datetime param was not being passed from POST collections search logic to Elasticsearch [#483](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/483)
 - Collections search tests to ensure both GET /collections and GET/POST /collections-search endpoints are tested [#483](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/483)
 
-[v6.5.0] - 2025-09-29
+## [v6.5.0] - 2025-09-29
 
 ### Added
 
@@ -559,7 +592,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.5.1...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.6.0...main
+[v6.6.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.5.1...v6.6.0
 [v6.5.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.5.0...v6.5.1
 [v6.5.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.4.0...v6.5.0
 [v6.4.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.3.0...v6.4.0
