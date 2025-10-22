@@ -674,3 +674,53 @@ async def test_queryables_enum_platform(
     # Clean up
     r = await app_client.delete(f"/collections/{collection_id}")
     r.raise_for_status()
+
+
+@pytest.mark.asyncio
+async def test_queryables_excluded_fields(
+    app_client: AsyncClient,
+    load_test_data: Callable[[str], Dict],
+    monkeypatch: pytest.MonkeyPatch,
+):
+    """Test that fields can be excluded from queryables using EXCLUDED_FROM_QUERYABLES."""
+    # Arrange
+    monkeypatch.setenv("DATABASE_REFRESH", "true")
+    monkeypatch.setenv(
+        "EXCLUDED_FROM_QUERYABLES", "properties.platform,properties.instrument"
+    )
+
+    # Create collection
+    collection_data = load_test_data("test_collection.json")
+    collection_id = collection_data["id"] = f"exclude-test-collection-{uuid.uuid4()}"
+    r = await app_client.post("/collections", json=collection_data)
+    r.raise_for_status()
+
+    # Create an item
+    item_data = load_test_data("test_item.json")
+    item_data["id"] = "exclude-test-item"
+    item_data["collection"] = collection_id
+    item_data["properties"]["platform"] = "landsat-8"
+    item_data["properties"]["instrument"] = "OLI_TIRS"
+    r = await app_client.post(f"/collections/{collection_id}/items", json=item_data)
+    r.raise_for_status()
+
+    # Act
+    queryables = (
+        (await app_client.get(f"/collections/{collection_id}/queryables"))
+        .raise_for_status()
+        .json()
+    )
+
+    # Assert
+    # Excluded fields should NOT be in queryables
+    properties = queryables["properties"]
+    assert "platform" not in properties
+    assert "instrument" not in properties
+
+    # Other fields should still be present
+    assert "datetime" in properties
+    assert "gsd" in properties
+
+    # Clean up
+    r = await app_client.delete(f"/collections/{collection_id}")
+    r.raise_for_status()
