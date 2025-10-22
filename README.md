@@ -102,6 +102,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
       - [Using Pre-built Docker Images](#using-pre-built-docker-images)
       - [Using Docker Compose](#using-docker-compose)
   - [Configuration Reference](#configuration-reference)
+  - [Excluding Fields from Queryables](#excluding-fields-from-queryables)
   - [Datetime-Based Index Management](#datetime-based-index-management)
     - [Overview](#overview)
     - [When to Use](#when-to-use)
@@ -341,6 +342,30 @@ You can customize additional settings in your `.env` file:
 
 > [!NOTE]
 > The variables `ES_HOST`, `ES_PORT`, `ES_USE_SSL`, `ES_VERIFY_CERTS` and `ES_TIMEOUT` apply to both Elasticsearch and OpenSearch backends, so there is no need to rename the key names to `OS_` even if you're using OpenSearch.
+
+## Excluding Fields from Queryables
+
+You can exclude specific fields from being exposed in the queryables endpoint and from filtering by setting the `EXCLUDED_FROM_QUERYABLES` environment variable. This is useful for hiding sensitive or internal fields that should not be queryable by API users.
+
+**Environment Variable:**
+
+```bash
+EXCLUDED_FROM_QUERYABLES="properties.auth:schemes,properties.storage:schemes,properties.internal:metadata"
+```
+
+**Format:**
+
+- Comma-separated list of fully qualified field names
+- Use the full path including the `properties.` prefix for item properties
+- Example field names:
+  - `properties.auth:schemes`
+  - `properties.storage:schemes`
+
+**Behavior:**
+
+- Excluded fields will not appear in the queryables response
+- Excluded fields and their nested children will be skipped during field traversal
+- Both the field itself and any nested properties will be excluded
 
 ## Datetime-Based Index Management
 
