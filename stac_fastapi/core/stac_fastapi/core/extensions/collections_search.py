@@ -28,6 +28,7 @@ def build_get_collections_search_doc(original_endpoint):
     """Return a documented GET endpoint wrapper for /collections-search."""
 
     async def documented_endpoint(
+        request: Request,
         q: Optional[str] = Query(
             None,
             description="Free text search query",
@@ -76,16 +77,8 @@ def build_get_collections_search_doc(original_endpoint):
             alias="fields[]",
         ),
     ):
-        return await original_endpoint(
-            q=q,
-            query=query,
-            limit=limit,
-            token=token,
-            bbox=bbox,
-            datetime=datetime,
-            sortby=sortby,
-            fields=fields,
-        )
+        # Delegate to original endpoint which reads from request.query_params
+        return await original_endpoint(request)
 
     documented_endpoint.__name__ = original_endpoint.__name__
     return documented_endpoint
