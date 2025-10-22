@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 
+- Improved OpenAPI docs for `/collections-search` GET and POST endpoints.
+
 ### Fixed
 
 ### Removed

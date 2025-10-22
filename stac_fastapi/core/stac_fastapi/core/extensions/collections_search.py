@@ -1,8 +1,8 @@
 """Collections search extension."""
 
-from typing import List, Optional, Type, Union
+from typing import Any, Dict, List, Optional, Type, Union
 
-from fastapi import APIRouter, FastAPI, Request
+from fastapi import APIRouter, Body, FastAPI, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from stac_pydantic.api.search import ExtendedSearch
@@ -22,6 +22,112 @@ class CollectionsSearchRequest(ExtendedSearch):
     query: Optional[
         str
     ] = None  # Legacy query extension (deprecated but still supported)
+
+
+def build_get_collections_search_doc(original_endpoint):
+    """Return a documented GET endpoint wrapper for /collections-search."""
+
+    async def documented_endpoint(
+        q: Optional[str] = Query(
+            None,
+            description="Free text search query",
+        ),
+        query: Optional[str] = Query(
+            None,
+            description="Additional filtering expressed as a string (legacy support)",
+            example="platform=landsat AND collection_category=level2",
+        ),
+        limit: int = Query(
+            10,
+            ge=1,
+            description=(
+                "The maximum number of collections to return (page size). Defaults to 10."
+            ),
+        ),
+        token: Optional[str] = Query(
+            None,
+            description="Pagination token for the next page of results",
+        ),
+        bbox: Optional[str] = Query(
+            None,
+            description=(
+                "Bounding box for spatial filtering in format 'minx,miny,maxx,maxy' "
+                "or 'minx,miny,minz,maxx,maxy,maxz'"
+            ),
+        ),
+        datetime: Optional[str] = Query(
+            None,
+            description=(
+                "Temporal filter in ISO 8601 format (e.g., "
+                "'2020-01-01T00:00:00Z/2021-01-01T00:00:00Z')"
+            ),
+        ),
+        sortby: Optional[str] = Query(
+            None,
+            description=(
+                "Sorting criteria in the format 'field' or '-field' for descending order"
+            ),
+        ),
+        fields: Optional[List[str]] = Query(
+            None,
+            description=(
+                "Comma-separated list of fields to include or exclude (use -field to exclude)"
+            ),
+            alias="fields[]",
+        ),
+    ):
+        return await original_endpoint(
+            q=q,
+            query=query,
+            limit=limit,
+            token=token,
+            bbox=bbox,
+            datetime=datetime,
+            sortby=sortby,
+            fields=fields,
+        )
+
+    documented_endpoint.__name__ = original_endpoint.__name__
+    return documented_endpoint
+
+
+def build_post_collections_search_doc(original_post_endpoint):
+    """Return a documented POST endpoint wrapper for /collections-search."""
+
+    async def documented_post_endpoint(
+        request: Request,
+        body: Dict[str, Any] = Body(
+            ...,
+            description=(
+                "Search parameters for collections.\n\n"
+                "- `q`: Free text search query (string or list of strings)\n"
+                "- `query`: Additional filtering expressed as a string (legacy support)\n"
+                "- `limit`: Maximum number of results to return (default: 10)\n"
+                "- `token`: Pagination token for the next page of results\n"
+                "- `bbox`: Bounding box [minx, miny, maxx, maxy] or [minx, miny, minz, maxx, maxy, maxz]\n"
+                "- `datetime`: Temporal filter in ISO 8601 (e.g., '2020-01-01T00:00:00Z/2021-01-01T12:31:12Z')\n"
+                "- `sortby`: List of sort criteria objects with 'field' and 'direction' (asc/desc)\n"
+                "- `fields`: Object with 'include' and 'exclude' arrays for field selection"
+            ),
+            example={
+                "q": "landsat",
+                "query": "platform=landsat AND collection_category=level2",
+                "limit": 10,
+                "token": "next-page-token",
+                "bbox": [-180, -90, 180, 90],
+                "datetime": "2020-01-01T00:00:00Z/2021-01-01T12:31:12Z",
+                "sortby": [{"field": "id", "direction": "asc"}],
+                "fields": {
+                    "include": ["id", "title", "description"],
+                    "exclude": ["properties"],
+                },
+            },
+        ),
+    ) -> Union[Collections, Response]:
+        return await original_post_endpoint(request, body)
+
+    documented_post_endpoint.__name__ = original_post_endpoint.__name__
+    return documented_post_endpoint
 
 
 class CollectionsSearchEndpointExtension(ApiExtension):
@@ -54,7 +160,6 @@ class CollectionsSearchEndpointExtension(ApiExtension):
         self.POST = POST
         self.conformance_classes = conformance_classes or []
         self.router = APIRouter()
-        self.create_endpoints()
 
     def register(self, app: FastAPI) -> None:
         """Register the extension with a FastAPI application.
@@ -65,31 +170,52 @@ class CollectionsSearchEndpointExtension(ApiExtension):
         Returns:
             None
         """
-        app.include_router(self.router)
+        # Remove any existing routes to avoid duplicates
+        self.router.routes = []
 
-    def create_endpoints(self) -> None:
-        """Create endpoints for the extension."""
+        # Recreate endpoints with proper OpenAPI documentation
         if self.GET:
+            original_endpoint = self.collections_search_get_endpoint
+            documented_endpoint = build_get_collections_search_doc(original_endpoint)
+
             self.router.add_api_route(
-                name="Get Collections Search",
                 path="/collections-search",
+                endpoint=documented_endpoint,
                 response_model=None,
                 response_class=JSONResponse,
                 methods=["GET"],
-                endpoint=self.collections_search_get_endpoint,
+                summary="Search collections",
+                description=(
+                    "Search for collections using query parameters. "
+                    "Supports filtering, sorting, and field selection."
+                ),
+                response_description="A list of collections matching the search criteria",
+                tags=["Collections Search Extension"],
                 **(self.settings if isinstance(self.settings, dict) else {}),
             )
 
         if self.POST:
+            original_post_endpoint = self.collections_search_post_endpoint
+            documented_post_endpoint = build_post_collections_search_doc(
+                original_post_endpoint
+            )
+
             self.router.add_api_route(
-                name="Post Collections Search",
                 path="/collections-search",
+                endpoint=documented_post_endpoint,
                 response_model=None,
                 response_class=JSONResponse,
                 methods=["POST"],
-                endpoint=self.collections_search_post_endpoint,
+                summary="Search collections",
+                description=(
+                    "Search for collections using a JSON request body. "
+                    "Supports filtering, sorting, field selection, and pagination."
+                ),
+                tags=["Collections Search Extension"],
                 **(self.settings if isinstance(self.settings, dict) else {}),
             )
+
+        app.include_router(self.router)
 
     async def collections_search_get_endpoint(
         self, request: Request
