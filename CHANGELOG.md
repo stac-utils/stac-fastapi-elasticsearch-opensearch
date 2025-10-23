@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 
 - Environment variable `EXCLUDED_FROM_QUERYABLES` to exclude specific fields from queryables endpoint and filtering. Supports comma-separated list of fully qualified field names (e.g., `properties.auth:schemes,properties.storage:schemes`) [#489](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/489)
+- Added Redis caching configuration for navigation pagination support, enabling proper `prev` and `next` links in paginated responses. [#488](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/488)
 
 ### Changed
 

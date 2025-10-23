@@ -56,6 +56,16 @@ jobs:
           --ulimit nofile=65536:65536
           --ulimit memlock=-1:-1
 
+      redis:
+        image: redis:7-alpine
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 6379:6379
+
     strategy:
       matrix:
         python-version: [ "3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
@@ -115,4 +125,7 @@ jobs:
           ES_USE_SSL: false
           DATABASE_REFRESH: true
           ES_VERIFY_CERTS: false
+          REDIS_ENABLE: true
+          REDIS_HOST: localhost
+          REDIS_PORT: 6379
           BACKEND: ${{ matrix.backend == 'elasticsearch8' && 'elasticsearch' || 'opensearch' }}

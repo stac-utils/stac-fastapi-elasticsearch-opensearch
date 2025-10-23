@@ -118,6 +118,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
   - [Collection Pagination](#collection-pagination)
   - [SFEOS Tools CLI](#sfeos-tools-cli)
   - [Ingesting Sample Data CLI Tool](#ingesting-sample-data-cli-tool)
+  - [Redis for navigation](#redis-for-navigation)
   - [Elasticsearch Mappings](#elasticsearch-mappings)
   - [Managing Elasticsearch Indices](#managing-elasticsearch-indices)
     - [Snapshots](#snapshots)
@@ -343,6 +344,32 @@ You can customize additional settings in your `.env` file:
 
 > [!NOTE]
 > The variables `ES_HOST`, `ES_PORT`, `ES_USE_SSL`, `ES_VERIFY_CERTS` and `ES_TIMEOUT` apply to both Elasticsearch and OpenSearch backends, so there is no need to rename the key names to `OS_` even if you're using OpenSearch.
+
+## Redis for Navigation environment variables:
+These Redis configuration variables to enable proper navigation functionality in STAC FastAPI.
+
+| Variable                      | Description                                                                                  | Default                  | Required                                                                                     |
+|-------------------------------|----------------------------------------------------------------------------------------------|--------------------------|---------------------------------------------------------------------------------------------|
+| `REDIS_ENABLE`                | Enables or disables Redis caching for navigation. Set to `true` to use Redis, or `false` to disable. | `false`                  | **Required** (determines whether Redis is used at all)                                      |
+| **Redis Sentinel**            |                                                                                              |                          |                                                                                             |
+| `REDIS_SENTINEL_HOSTS`        | Comma-separated list of Redis Sentinel hostnames/IP addresses.                               | `""`                     | Conditional (required if using Sentinel)                                                    |
+| `REDIS_SENTINEL_PORTS`        | Comma-separated list of Redis Sentinel ports (must match order).                             | `"26379"`                | Conditional (required if using Sentinel)                                                    |
+| `REDIS_SENTINEL_MASTER_NAME`  | Name of the Redis master node in Sentinel configuration.                                     | `"master"`               | Conditional (required if using Sentinel)                                                    |
+| **Redis**                     |                                                                                              |                          |                                                                                             |
+| `REDIS_HOST`                  | Redis server hostname or IP address for Redis configuration.                                 | `""`                     | Conditional (required for standalone Redis)                                                 |
+| `REDIS_PORT`                  | Redis server port for Redis configuration.                                                   | `6379`                   | Conditional (required for standalone Redis)                                                 |
+| **Both**                      |                                                                                              |                          |                                                                                             |
+| `REDIS_DB`                    | Redis database number to use for caching.                                                    | `0` (Sentinel) / `15` (Standalone) | Optional                                                                                    |
+| `REDIS_MAX_CONNECTIONS`       | Maximum number of connections in the Redis connection pool.                                  | `10`                     | Optional                                                                                    |
+| `REDIS_RETRY_TIMEOUT`         | Enable retry on timeout for Redis operations.                                                | `true`                   | Optional                                                                                    |
+| `REDIS_DECODE_RESPONSES`      | Automatically decode Redis responses to strings.                                             | `true`                   | Optional                                                                                    |
+| `REDIS_CLIENT_NAME`           | Client name identifier for Redis connections.                                                | `"stac-fastapi-app"`     | Optional                                                                                    |
+| `REDIS_HEALTH_CHECK_INTERVAL` | Interval in seconds for Redis health checks.                                                 | `30`                     | Optional                                                                                    |
+| `REDIS_SELF_LINK_TTL` | Time-to-live (TTL) in seconds for storing self-links in Redis, used for pagination caching. | 1800 | Optional |
+
+
+> [!NOTE]
+> Use either the Sentinel configuration (`REDIS_SENTINEL_HOSTS`, `REDIS_SENTINEL_PORTS`, `REDIS_SENTINEL_MASTER_NAME`) OR the Redis configuration (`REDIS_HOST`, `REDIS_PORT`), but not both.
 
 ## Excluding Fields from Queryables
 
@@ -614,6 +641,19 @@ The system uses a precise naming convention:
     ```shell
     python3 data_loader.py --base-url http://localhost:8080 --use-bulk
     ```
+
+## Redis for Navigation
+
+The Redis cache stores navigation state for paginated results, allowing the system to maintain previous page links using tokens. The configuration supports both Redis Sentinel and standalone Redis setups.
+
+Steps to configure:
+1. Ensure that a Redis instance is available, either a standalone server or a Sentinel-managed cluster.
+2. Establish a connection between STAC FastAPI and Redis instance by setting the appropriate [**environment variables**](#redis-for-navigation-environment-variables). These define the Redis host, port, authentication, and optional Sentinel settings.
+3. Control whether Redis caching is activated using the `REDIS_ENABLE` environment variable to `True` or `False`.
+4. Ensure the appropriate version of `Redis` is installed:
+```
+pip install stac-fastapi-elasticsearch[redis]
+```
 
 ## Elasticsearch Mappings
 

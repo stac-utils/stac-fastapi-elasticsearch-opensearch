@@ -24,9 +24,10 @@ from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.datetime_utils import format_datetime_range
 from stac_fastapi.core.models.links import PagingLinks
+from stac_fastapi.core.redis_utils import redis_pagination_links
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.session import Session
-from stac_fastapi.core.utilities import filter_fields
+from stac_fastapi.core.utilities import filter_fields, get_bool_env
 from stac_fastapi.extensions.core.transaction import AsyncBaseTransactionsClient
 from stac_fastapi.extensions.core.transaction.request import (
     PartialCollection,
@@ -262,6 +263,7 @@ class CoreClient(AsyncBaseCoreClient):
             A Collections object containing all the collections in the database and links to various resources.
         """
         base_url = str(request.base_url)
+        redis_enable = get_bool_env("REDIS_ENABLE", default=False)
 
         global_max_limit = (
             int(os.getenv("STAC_GLOBAL_COLLECTION_MAX_LIMIT"))
@@ -416,6 +418,14 @@ class CoreClient(AsyncBaseCoreClient):
                 "href": urljoin(base_url, "collections"),
             },
         ]
+
+        if redis_enable:
+            await redis_pagination_links(
+                current_url=str(request.url),
+                token=token,
+                next_token=next_token,
+                links=links,
+            )
 
         if next_token:
             next_link = PagingLinks(next=next_token, request=request).link_next()
@@ -761,8 +771,8 @@ class CoreClient(AsyncBaseCoreClient):
         search_request.limit = limit
 
         base_url = str(request.base_url)
-
         search = self.database.make_search()
+        redis_enable = get_bool_env("REDIS_ENABLE", default=False)
 
         if search_request.ids:
             search = self.database.apply_ids_filter(
@@ -865,6 +875,34 @@ class CoreClient(AsyncBaseCoreClient):
             for item in items
         ]
         links = await PagingLinks(request=request, next=next_token).get_links()
+
+        collection_links = []
+        # Add "collection" and "parent" rels only for /collections/{collection_id}/items
+        if search_request.collections and "/items" in str(request.url):
+            for collection_id in search_request.collections:
+                collection_links.extend(
+                    [
+                        {
+                            "rel": "collection",
+                            "type": "application/json",
+                            "href": urljoin(base_url, f"collections/{collection_id}"),
+                        },
+                        {
+                            "rel": "parent",
+                            "type": "application/json",
+                            "href": urljoin(base_url, f"collections/{collection_id}"),
+                        },
+                    ]
+                )
+        links.extend(collection_links)
+
+        if redis_enable:
+            await redis_pagination_links(
+                current_url=str(request.url),
+                token=token_param,
+                next_token=next_token,
+                links=links,
+            )
 
         return stac_types.ItemCollection(
             type="FeatureCollection",
