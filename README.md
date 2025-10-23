@@ -30,7 +30,7 @@ The following organizations have contributed time and/or funding to support the 
 
 ## Latest News
 
-- **10/23/2025:** Added `EXCLUDED_FROM_QUERYABLES` to exclude fields from `queryables` and filtering (e.g., `properties.auth:schemes`). See [docs](#excluding-fields-from-queryables).
+- **10/23/2025:** The **EXCLUDED_FROM_QUERYABLES** environment variable was added to exclude fields from the `queryables` endpoint (e.g., `properties.auth:schemes`). See [docs](#excluding-fields-from-queryables).
 - **10/15/2025:** 🚀 SFEOS Tools v0.1.0 Released! - The new `sfeos-tools` CLI is now available on [PyPI](https://pypi.org/project/sfeos-tools/)
 - **10/15/2025:** Added `reindex` command to **[SFEOS-tools](https://github.com/Healy-Hyperspatial/sfeos-tools)** for zero-downtime index updates when changing mappings or settings. The new `reindex` command makes it easy to apply mapping changes, update index settings, or migrate to new index structures without any service interruption, ensuring high availability of your STAC API during maintenance operations.
 - **10/12/2025:** Collections search **bbox** functionality added! The collections search extension now supports bbox queries. Collections will need to be updated via the API or with the new **[SFEOS-tools](https://github.com/Healy-Hyperspatial/sfeos-tools)** CLI package to support geospatial discoverability. 🙏 Thanks again to **CloudFerro** for their sponsorship of this work!
