@@ -9,13 +9,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
-- CloudFerro logo to sponsors and supporters list [#485](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/485)
-- Latest news section to README [#485](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/485)
 - Environment variable `EXCLUDED_FROM_QUERYABLES` to exclude specific fields from queryables endpoint and filtering. Supports comma-separated list of fully qualified field names (e.g., `properties.auth:schemes,properties.storage:schemes`) [#489](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/489)
 
 ### Changed
-
-- Improved OpenAPI docs for `/collections-search` GET and POST endpoints. [#508](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/508)
 
 ### Fixed
 
@@ -23,6 +19,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Updated
 
+- Improved OpenAPI docs for `/collections-search` GET and POST endpoints. [#508](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/508)
 
 ## [v6.6.0] - 2025-10-21
 
