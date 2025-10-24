@@ -30,6 +30,7 @@ The following organizations have contributed time and/or funding to support the 
 
 ## Latest News
 
+- **10/24/2025:** Added `previous_token` pagination using Redis for efficient navigation. This feature allows users to navigate backwards through large result sets by storing pagination state in Redis. To use this feature, ensure Redis is configured (see [Redis for navigation](#redis-for-navigation)) and set `REDIS_ENABLE=true` in your environment.
 - **10/23/2025:** The `EXCLUDED_FROM_QUERYABLES` environment variable was added to exclude fields from the `queryables` endpoint. See [docs](#excluding-fields-from-queryables).
 - **10/15/2025:** 🚀 SFEOS Tools v0.1.0 Released! - The new `sfeos-tools` CLI is now available on [PyPI](https://pypi.org/project/sfeos-tools/)
 - **10/15/2025:** Added `reindex` command to **[SFEOS-tools](https://github.com/Healy-Hyperspatial/sfeos-tools)** for zero-downtime index updates when changing mappings or settings. The new `reindex` command makes it easy to apply mapping changes, update index settings, or migrate to new index structures without any service interruption, ensuring high availability of your STAC API during maintenance operations.
@@ -475,7 +476,7 @@ The system uses a precise naming convention:
 - **Creating a Collection**:
   ```shell
   curl -X "POST" "http://localhost:8080/collections" \
-       -H 'Content-Type: application/json; charset=utf-8' \
+       -H 'Content-Type: application/json' \
        -d $'{
     "id": "my_collection"
   }'
@@ -484,14 +485,14 @@ The system uses a precise naming convention:
 - **Adding an Item to a Collection**:
   ```shell
   curl -X "POST" "http://localhost:8080/collections/my_collection/items" \
-       -H 'Content-Type: application/json; charset=utf-8' \
+       -H 'Content-Type: application/json' \
        -d @item.json
   ```
 
 - **Searching for Items**:
   ```shell
   curl -X "GET" "http://localhost:8080/search" \
-       -H 'Content-Type: application/json; charset=utf-8' \
+       -H 'Content-Type: application/json' \
        -d $'{
     "collections": ["my_collection"],
     "limit": 10
@@ -501,7 +502,7 @@ The system uses a precise naming convention:
 - **Filtering by Bbox**:
   ```shell
   curl -X "GET" "http://localhost:8080/search" \
-       -H 'Content-Type: application/json; charset=utf-8' \
+       -H 'Content-Type: application/json' \
        -d $'{
     "collections": ["my_collection"],
     "bbox": [-180, -90, 180, 90]
@@ -511,7 +512,7 @@ The system uses a precise naming convention:
 - **Filtering by Datetime**:
   ```shell
   curl -X "GET" "http://localhost:8080/search" \
-       -H 'Content-Type: application/json; charset=utf-8' \
+       -H 'Content-Type: application/json' \
        -d $'{
     "collections": ["my_collection"],
     "datetime": "2020-01-01T00:00:00Z/2020-12-31T23:59:59Z"
