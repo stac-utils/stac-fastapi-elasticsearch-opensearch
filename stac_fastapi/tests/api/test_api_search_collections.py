@@ -829,7 +829,7 @@ async def test_collections_post(app_client, txn_client, ctx):
 async def test_collections_search_cql2_text(app_client, txn_client, ctx):
     """Test collections search with CQL2-text filter."""
     # Create a unique prefix for test collections
-    test_prefix = f"test-{uuid.uuid4()}"
+    test_prefix = f"test-{uuid.uuid4().hex[:8]}"
 
     # Create test collections
     collection_data = ctx.collection.copy()
