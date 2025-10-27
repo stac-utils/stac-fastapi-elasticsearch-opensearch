@@ -2,7 +2,7 @@
 
 import re
 
-cql2_like_patterns = re.compile(r"\\.|[%_]|\\$")
+cql2_like_patterns = re.compile(r"\\\\|\\%|\\_|[%_]")
 valid_like_substitutions = {
     "\\\\": "\\",
     "\\%": "%",
