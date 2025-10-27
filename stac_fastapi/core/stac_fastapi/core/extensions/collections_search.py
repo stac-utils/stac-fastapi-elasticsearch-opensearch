@@ -93,9 +93,9 @@ def build_get_collections_search_doc(original_endpoint):
             example="cql2-json",
         ),
     ):
-        # Delegate to original endpoint which reads from request.query_params
-        # But first, ensure the q parameter is properly handled as a list
-        # since FastAPI extracts it from the URL when it's defined as a function parameter
+        # Delegate to original endpoint with parameters
+        # Since FastAPI extracts parameters from the URL when they're defined as function parameters,
+        # we need to create a request wrapper that provides our modified query_params
 
         # Create a mutable copy of query_params
         if hasattr(request, "_query_params"):
@@ -113,15 +113,28 @@ def build_get_collections_search_doc(original_endpoint):
                 # Already a list, use as-is
                 query_params["q"] = q
 
-        # Temporarily replace request.query_params
-        original_query_params = request.query_params
-        request.query_params = query_params
+        # Add filter parameters back to query_params if they were provided
+        if filter is not None:
+            query_params["filter"] = filter
+        if filter_lang is not None:
+            query_params["filter-lang"] = filter_lang
 
-        try:
-            return await original_endpoint(request)
-        finally:
-            # Restore original query_params
-            request.query_params = original_query_params
+        # Create a request wrapper that provides our modified query_params
+        class RequestWrapper:
+            def __init__(self, original_request, modified_query_params):
+                self._original = original_request
+                self._query_params = modified_query_params
+
+            @property
+            def query_params(self):
+                return self._query_params
+
+            def __getattr__(self, name):
+                # Delegate all other attributes to the original request
+                return getattr(self._original, name)
+
+        wrapped_request = RequestWrapper(request, query_params)
+        return await original_endpoint(wrapped_request)
 
     documented_endpoint.__name__ = original_endpoint.__name__
     return documented_endpoint
