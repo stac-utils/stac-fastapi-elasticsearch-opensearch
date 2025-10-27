@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- Fixed filter parameter handling for GET `/collections-search` endpoint. Filter parameters (`filter` and `filter-lang`) are now properly passed through and processed.
+- Fixed `q` parameter in GET `/collections-search` endpoint to be converted to a list format, matching the behavior of the `/collections` endpoint for consistency.
+
 ### Removed
 
 ### Updated
