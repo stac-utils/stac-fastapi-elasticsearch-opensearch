@@ -229,3 +229,36 @@ async def test_links_collection(app_client, ctx, txn_client):
         len([link for link in response.json()["links"] if link["rel"] == "license"])
         == 1
     )
+
+
+@pytest.mark.asyncio
+async def test_private_fields_excluded_from_collection(
+    app_client, txn_client, load_test_data, monkeypatch
+):
+    """Test that private fields are excluded from collection API responses."""
+    monkeypatch.setattr(
+        "stac_fastapi.core.serializers.PRIVATE_FIELDS", ["test_field", "internal_data"]
+    )
+
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = "test-private-fields-collection"
+
+    test_collection["test_field"] = "this should be hidden in collection"
+    test_collection["internal_data"] = {"secret": "confidential collection info"}
+    test_collection["description"] = "This should be visible"
+
+    await create_collection(txn_client, test_collection)
+    await refresh_indices(txn_client)
+
+    resp = await app_client.get(f"/collections/{test_collection['id']}")
+    assert resp.status_code == 200
+
+    collection_data = resp.json()
+
+    assert "test_field" not in collection_data
+    assert "internal_data" not in collection_data
+
+    assert "description" in collection_data
+    assert collection_data["description"] == "This should be visible"
+    assert "id" in collection_data
+    assert "title" in collection_data

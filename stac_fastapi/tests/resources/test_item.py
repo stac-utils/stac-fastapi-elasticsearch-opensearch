@@ -1163,3 +1163,39 @@ async def test_search_datetime_with_null_datetime(
         await txn_client.delete_collection(test_collection["id"])
     except Exception as e:
         logger.warning(f"Failed to delete collection: {e}")
+
+
+@pytest.mark.asyncio
+async def test_private_fields_excluded_from_item(
+    app_client, txn_client, load_test_data, monkeypatch
+):
+    """Test that private fields are excluded from item API responses."""
+    monkeypatch.setattr(
+        "stac_fastapi.core.serializers.PRIVATE_FIELDS", ["test_field", "internal_data"]
+    )
+
+    test_collection = load_test_data("test_collection.json")
+    test_item = load_test_data("test_item.json")
+
+    test_collection["id"] = "test-private-fields-collection"
+    test_item["collection"] = test_collection["id"]
+    test_item["id"] = "test-private-fields-item"
+
+    test_item["test_field"] = "test field to be hidden"
+    test_item["internal_data"] = {"secret": "confidential"}
+
+    await create_collection(txn_client, test_collection)
+
+    await create_item(txn_client, test_item)
+    await refresh_indices(txn_client)
+
+    resp = await app_client.get(
+        f"/collections/{test_item['collection']}/items/{test_item['id']}"
+    )
+    item_data = resp.json()
+
+    assert "test_field" not in item_data
+    assert "internal_data" not in item_data
+
+    assert "id" in item_data
+    assert item_data["id"] == "test-private-fields-item"

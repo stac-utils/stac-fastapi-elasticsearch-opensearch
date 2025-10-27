@@ -14,7 +14,28 @@ from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.links import ItemLinks, resolve_links
 
+from .private_fields_config import PRIVATE_FIELDS
+
 logger = logging.getLogger(__name__)
+
+
+def filter_private_fields(data: dict) -> dict:
+    """Remove private fields from data dictionary."""
+    if not PRIVATE_FIELDS:
+        return data
+
+    filtered_data = deepcopy(data)
+
+    for field in PRIVATE_FIELDS:
+        if field in filtered_data:
+            del filtered_data[field]
+
+    if "properties" in filtered_data and isinstance(filtered_data["properties"], dict):
+        for field in PRIVATE_FIELDS:
+            if field in filtered_data["properties"]:
+                del filtered_data["properties"][field]
+
+    return filtered_data
 
 
 @attr.s
@@ -92,6 +113,7 @@ class ItemSerializer(Serializer):
         Returns:
             stac_types.Item: The STAC item object.
         """
+        item = filter_private_fields(item)
         item_id = item["id"]
         collection_id = item["collection"]
         item_links = ItemLinks(
@@ -168,6 +190,7 @@ class CollectionSerializer(Serializer):
         Returns:
             stac_types.Collection: The STAC collection object.
         """
+        collection = filter_private_fields(collection)
         # Avoid modifying the input dict in-place ... doing so breaks some tests
         collection = deepcopy(collection)
 
