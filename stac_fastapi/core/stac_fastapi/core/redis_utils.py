@@ -5,7 +5,7 @@ import logging
 from typing import List, Optional, Tuple
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 from redis import asyncio as aioredis
 from redis.asyncio.sentinel import Sentinel
@@ -21,11 +21,11 @@ class RedisSentinelSettings(BaseSettings):
     REDIS_SENTINEL_MASTER_NAME: str = "master"
     REDIS_DB: int = 15
 
-    REDIS_MAX_CONNECTIONS: int = 10
+    REDIS_MAX_CONNECTIONS: Optional[int] = None
     REDIS_RETRY_TIMEOUT: bool = True
     REDIS_DECODE_RESPONSES: bool = True
     REDIS_CLIENT_NAME: str = "stac-fastapi-app"
-    REDIS_HEALTH_CHECK_INTERVAL: int = 30
+    REDIS_HEALTH_CHECK_INTERVAL: int = Field(default=30, gt=0)
     REDIS_SELF_LINK_TTL: int = 1800
 
     @field_validator("REDIS_DB")
@@ -34,22 +34,6 @@ class RedisSentinelSettings(BaseSettings):
         """Validate REDIS_DB is not negative integer."""
         if v < 0:
             raise ValueError("REDIS_DB must be a positive integer")
-        return v
-
-    @field_validator("REDIS_MAX_CONNECTIONS")
-    @classmethod
-    def validate_max_connections_sentinel(cls, v: int) -> int:
-        """Validate REDIS_MAX_CONNECTIONS is at least 1."""
-        if v < 1:
-            raise ValueError("REDIS_MAX_CONNECTIONS must be at least 1")
-        return v
-
-    @field_validator("REDIS_HEALTH_CHECK_INTERVAL")
-    @classmethod
-    def validate_health_check_interval_sentinel(cls, v: int) -> int:
-        """Validate REDIS_HEALTH_CHECK_INTERVAL is not negative integer."""
-        if v < 0:
-            raise ValueError("REDIS_HEALTH_CHECK_INTERVAL must be a positive integer")
         return v
 
     @field_validator("REDIS_SELF_LINK_TTL")
@@ -111,11 +95,11 @@ class RedisSettings(BaseSettings):
     REDIS_PORT: int = 6379
     REDIS_DB: int = 15
 
-    REDIS_MAX_CONNECTIONS: int = 10
+    REDIS_MAX_CONNECTIONS: Optional[int] = None
     REDIS_RETRY_TIMEOUT: bool = True
     REDIS_DECODE_RESPONSES: bool = True
     REDIS_CLIENT_NAME: str = "stac-fastapi-app"
-    REDIS_HEALTH_CHECK_INTERVAL: int = 30
+    REDIS_HEALTH_CHECK_INTERVAL: int = Field(default=30, gt=0)
     REDIS_SELF_LINK_TTL: int = 1800
 
     @field_validator("REDIS_PORT")
@@ -132,22 +116,6 @@ class RedisSettings(BaseSettings):
         """Validate REDIS_DB is not a negative integer."""
         if v < 0:
             raise ValueError("REDIS_DB must be a positive integer")
-        return v
-
-    @field_validator("REDIS_MAX_CONNECTIONS")
-    @classmethod
-    def validate_max_connections_standalone(cls, v: int) -> int:
-        """Validate REDIS_MAX_CONNECTIONS is at least 1."""
-        if v < 1:
-            raise ValueError("REDIS_MAX_CONNECTIONS must be at least 1")
-        return v
-
-    @field_validator("REDIS_HEALTH_CHECK_INTERVAL")
-    @classmethod
-    def validate_health_check_interval_standalone(cls, v: int) -> int:
-        """Validate REDIS_HEALTH_CHECK_INTERVAL is not a negative."""
-        if v < 0:
-            raise ValueError("REDIS_HEALTH_CHECK_INTERVAL must be a positive integer")
         return v
 
     @field_validator("REDIS_SELF_LINK_TTL")
