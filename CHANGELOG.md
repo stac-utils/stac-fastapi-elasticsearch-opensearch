@@ -9,12 +9,27 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Removed
+
+### Updated
+
+## [v6.7.0] - 2025-10-27
+
+### Added
+
 - Environment variable `EXCLUDED_FROM_QUERYABLES` to exclude specific fields from queryables endpoint and filtering. Supports comma-separated list of fully qualified field names (e.g., `properties.auth:schemes,properties.storage:schemes`) [#489](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/489)
 - Added Redis caching configuration for navigation pagination support, enabling proper `prev` and `next` links in paginated responses. [#488](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/488)
 
 ### Changed
 
 ### Fixed
+
+- Fixed filter parameter handling for GET `/collections-search` endpoint. Filter parameters (`filter` and `filter-lang`) are now properly passed through and processed. [#511](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/511)
+- Fixed `q` parameter in GET `/collections-search` endpoint to be converted to a list format, matching the behavior of the `/collections` endpoint for consistency. [#511](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/511)
 
 ### Removed
 
@@ -594,7 +609,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.6.0...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.0...main
+[v6.7.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.6.0...v6.7.0
 [v6.6.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.5.1...v6.6.0
 [v6.5.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.5.0...v6.5.1
 [v6.5.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.4.0...v6.5.0

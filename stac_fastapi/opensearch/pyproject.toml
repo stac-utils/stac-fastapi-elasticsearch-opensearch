@@ -30,8 +30,8 @@ keywords = [
 ]
 dynamic = ["version"]
 dependencies = [
-    "stac-fastapi-core==6.6.0",
-    "sfeos-helpers==6.6.0",
+    "stac-fastapi-core==6.7.0",
+    "sfeos-helpers==6.7.0",
     "opensearch-py~=2.8.0",
     "opensearch-py[async]~=2.8.0",
     "uvicorn~=0.23.0",
