@@ -22,6 +22,8 @@ class CollectionsSearchRequest(ExtendedSearch):
     query: Optional[
         str
     ] = None  # Legacy query extension (deprecated but still supported)
+    filter_expr: Optional[str] = None
+    filter_lang: Optional[str] = None
 
 
 def build_get_collections_search_doc(original_endpoint):
@@ -29,7 +31,7 @@ def build_get_collections_search_doc(original_endpoint):
 
     async def documented_endpoint(
         request: Request,
-        q: Optional[str] = Query(
+        q: Optional[Union[str, List[str]]] = Query(
             None,
             description="Free text search query",
         ),
@@ -76,9 +78,63 @@ def build_get_collections_search_doc(original_endpoint):
             ),
             alias="fields[]",
         ),
+        filter: Optional[str] = Query(
+            None,
+            description=(
+                "Structured filter expression in CQL2 JSON or CQL2-text format"
+            ),
+            example='{"op": "=", "args": [{"property": "properties.category"}, "level2"]}',
+        ),
+        filter_lang: Optional[str] = Query(
+            None,
+            description=(
+                "Filter language. Must be 'cql2-json' or 'cql2-text' if specified"
+            ),
+            example="cql2-json",
+        ),
     ):
-        # Delegate to original endpoint which reads from request.query_params
-        return await original_endpoint(request)
+        # Delegate to original endpoint with parameters
+        # Since FastAPI extracts parameters from the URL when they're defined as function parameters,
+        # we need to create a request wrapper that provides our modified query_params
+
+        # Create a mutable copy of query_params
+        if hasattr(request, "_query_params"):
+            query_params = dict(request._query_params)
+        else:
+            query_params = dict(request.query_params)
+
+        # Add q parameter back to query_params if it was provided
+        # Convert to list format to match /collections behavior
+        if q is not None:
+            if isinstance(q, str):
+                # Single string should become a list with one element
+                query_params["q"] = [q]
+            elif isinstance(q, list):
+                # Already a list, use as-is
+                query_params["q"] = q
+
+        # Add filter parameters back to query_params if they were provided
+        if filter is not None:
+            query_params["filter"] = filter
+        if filter_lang is not None:
+            query_params["filter-lang"] = filter_lang
+
+        # Create a request wrapper that provides our modified query_params
+        class RequestWrapper:
+            def __init__(self, original_request, modified_query_params):
+                self._original = original_request
+                self._query_params = modified_query_params
+
+            @property
+            def query_params(self):
+                return self._query_params
+
+            def __getattr__(self, name):
+                # Delegate all other attributes to the original request
+                return getattr(self._original, name)
+
+        wrapped_request = RequestWrapper(request, query_params)
+        return await original_endpoint(wrapped_request)
 
     documented_endpoint.__name__ = original_endpoint.__name__
     return documented_endpoint
@@ -95,6 +151,8 @@ def build_post_collections_search_doc(original_post_endpoint):
                 "Search parameters for collections.\n\n"
                 "- `q`: Free text search query (string or list of strings)\n"
                 "- `query`: Additional filtering expressed as a string (legacy support)\n"
+                "- `filter`: Structured filter expression in CQL2 JSON or CQL2-text format\n"
+                "- `filter_lang`: Filter language. Must be 'cql2-json' or 'cql2-text' if specified\n"
                 "- `limit`: Maximum number of results to return (default: 10)\n"
                 "- `token`: Pagination token for the next page of results\n"
                 "- `bbox`: Bounding box [minx, miny, maxx, maxy] or [minx, miny, minz, maxx, maxy, maxz]\n"
@@ -105,6 +163,11 @@ def build_post_collections_search_doc(original_post_endpoint):
             example={
                 "q": "landsat",
                 "query": "platform=landsat AND collection_category=level2",
+                "filter": {
+                    "op": "=",
+                    "args": [{"property": "properties.category"}, "level2"],
+                },
+                "filter_lang": "cql2-json",
                 "limit": 10,
                 "token": "next-page-token",
                 "bbox": [-180, -90, 180, 90],
@@ -242,6 +305,14 @@ class CollectionsSearchEndpointExtension(ApiExtension):
             sortby_str = params.pop("sortby")
             sortby = sortby_str.split(",")
             params["sortby"] = sortby
+
+        # Handle filter parameter mapping (fixed for collections-search)
+        if "filter" in params:
+            params["filter_expr"] = params.pop("filter")
+
+        # Handle filter-lang parameter mapping (fixed for collections-search)
+        if "filter-lang" in params:
+            params["filter_lang"] = params.pop("filter-lang")
 
         collections = await self.client.all_collections(request=request, **params)
         return collections
