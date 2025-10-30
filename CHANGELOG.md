@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- Ensure `REDIS_MAX_CONNECTION` can accept `None` and integer value for default number of connection. [#515](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/515)
+
 ### Removed
 
 ### Updated
