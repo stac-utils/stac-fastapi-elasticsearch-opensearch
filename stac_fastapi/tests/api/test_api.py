@@ -1657,3 +1657,56 @@ async def test_use_datetime_false(app_client, load_test_data, txn_client, monkey
 
     assert "test-item-datetime-only" not in found_ids
     assert "test-item-start-end-only" in found_ids
+
+
+@pytest.mark.asyncio
+async def test_hide_private_data_from_item(app_client, txn_client, load_test_data):
+    os.environ["EXCLUDED_FROM_ITEMS"] = "private_data,properties.private_data"
+
+    test_collection = load_test_data("test_collection.json")
+    test_collection_id = "test-collection-private-data"
+    test_collection["id"] = test_collection_id
+    await create_collection(txn_client, test_collection)
+
+    test_item = load_test_data("test_item.json")
+    test_item_id = "test-item-private-data"
+    test_item["id"] = test_item_id
+    test_item["collection"] = test_collection_id
+    test_item["private_data"] = {"secret": "sensitive_info"}
+    test_item["properties"]["private_data"] = {"secret": "sensitive_info"}
+    await create_item(txn_client, test_item)
+
+    # Test /collections/{collection_id}/items
+    resp = await app_client.get(f"/collections/{test_collection_id}/items")
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    item = resp_json["features"][0]
+    assert "private_data" not in item
+    assert "private_data" not in item["properties"]
+
+    # Test /collections/{collection_id}/items/{item_id}
+    resp = await app_client.get(
+        f"/collections/{test_collection_id}/items/{test_item_id}"
+    )
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert "private_data" not in resp_json
+    assert "private_data" not in resp_json["properties"]
+
+    # Test GET /search
+    resp = await app_client.get(f"/search?collections={test_collection_id}")
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    item = resp_json["features"][0]
+    assert "private_data" not in item
+    assert "private_data" not in item["properties"]
+
+    # Test POST /search
+    resp = await app_client.post("/search", json={"collections": [test_collection_id]})
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    item = resp_json["features"][0]
+    assert "private_data" not in item
+    assert "private_data" not in item["properties"]
+
+    del os.environ["EXCLUDED_FROM_ITEMS"]
