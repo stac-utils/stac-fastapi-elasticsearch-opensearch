@@ -79,6 +79,7 @@ class ItemSerializer(Serializer):
         if "created" not in stac_data["properties"]:
             stac_data["properties"]["created"] = now
         stac_data["properties"]["updated"] = now
+        stac_data.pop("private_data", None)
         return stac_data
 
     @classmethod
@@ -108,7 +109,7 @@ class ItemSerializer(Serializer):
         else:
             assets = item.get("assets", {})
 
-        return stac_types.Item(
+        stac_item = stac_types.Item(
             type="Feature",
             stac_version=item.get("stac_version", ""),
             stac_extensions=item.get("stac_extensions", []),
@@ -121,6 +122,10 @@ class ItemSerializer(Serializer):
             assets=assets,
         )
 
+        if get_bool_env("HIDE_PRIVATE_DATA"):
+            stac_item["private_data"] = True
+        
+        return stac_item
 
 class CollectionSerializer(Serializer):
     """Serialization methods for STAC collections."""
