@@ -36,6 +36,14 @@ class RedisSentinelSettings(BaseSettings):
             raise ValueError("REDIS_DB must be a positive integer")
         return v
 
+    @field_validator("REDIS_MAX_CONNECTIONS", mode="before")
+    @classmethod
+    def validate_max_connections(cls, v):
+        """Handle empty/None values for REDIS_MAX_CONNECTIONS."""
+        if v in ["", "null", "Null", "NULL", "none", "None", "NONE", None]:
+            return None
+        return v
+
     @field_validator("REDIS_SELF_LINK_TTL")
     @classmethod
     def validate_self_link_ttl_sentinel(cls, v: int) -> int:
@@ -116,6 +124,14 @@ class RedisSettings(BaseSettings):
         """Validate REDIS_DB is not a negative integer."""
         if v < 0:
             raise ValueError("REDIS_DB must be a positive integer")
+        return v
+
+    @field_validator("REDIS_MAX_CONNECTIONS", mode="before")
+    @classmethod
+    def validate_max_connections(cls, v):
+        """Handle empty/None values for REDIS_MAX_CONNECTIONS."""
+        if v in ["", "null", "Null", "NULL", "none", "None", "NONE", None]:
+            return None
         return v
 
     @field_validator("REDIS_SELF_LINK_TTL")
