@@ -1631,7 +1631,7 @@ async def test_use_datetime_false(app_client, load_test_data, txn_client, monkey
 async def test_format_datetime_range_microsecond_rounding(
     app_client, txn_client, load_test_data
 ):
-    """Test that microseconds are rounded to milliseconds"""
+    """Test that microseconds are rounded in format_datetime_range"""
 
     test_collection = load_test_data("test_collection.json")
     test_collection_id = "test-collection-microseconds"

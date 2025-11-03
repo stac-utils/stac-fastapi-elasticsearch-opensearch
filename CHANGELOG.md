@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- Ensure datetime filter rounds microseconds using standard rounding instead of truncation. [#492](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/492)
+
 ## [v6.5.1] - 2025-09-30
 
 ### Fixed
