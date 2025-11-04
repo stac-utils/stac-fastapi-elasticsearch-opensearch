@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- Fixed "list index out of range" error when using BETWEEN operator in CQL2-text filters. [#521](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/521)
+
 ### Removed
 
 ### Updated
