@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Added validator for `REDIS_MAX_CONNECTIONS` to handle empty or null-like values ("", "null", None) and return None instead. [#519](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/519)
+
 ### Changed
 
 ### Fixed
