@@ -30,8 +30,8 @@ keywords = [
 ]
 dynamic = ["version"]
 dependencies = [
-    "stac-fastapi-core==6.7.1",
-    "sfeos-helpers==6.7.1",
+    "stac-fastapi-core==6.7.2",
+    "sfeos-helpers==6.7.2",
     "elasticsearch[async]~=8.19.1",
     "uvicorn~=0.23.0",
     "starlette>=0.35.0,<0.36.0",
