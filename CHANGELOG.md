@@ -9,16 +9,77 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
-- Spatial search support for collections via `bbox` parameter on `/collections` endpoint. Collections are now indexed with a `bbox_shape` field (GeoJSON polygon) derived from their spatial extent for efficient geospatial queries when created or updated. [#481](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/481)
-- Introduced SFEOS Tools (`sfeos_tools/`) - An installable Click-based CLI package for managing SFEOS deployments. Initial command `add-bbox-shape` adds the `bbox_shape` field to existing collections for spatial search compatibility. Install with `pip install sfeos-tools[elasticsearch]` or `pip install sfeos-tools[opensearch]`. [#481](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/481)
-- CloudFerro logo to sponsors and supporters list [#485](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/485)
-- Latest news section to README [#485](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/485)
-
 ### Changed
 
 ### Fixed
 
 - Ensure datetime filter rounds microseconds using standard rounding instead of truncation. [#492](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/492)
+
+### Removed
+
+### Updated
+
+## [v6.7.2] - 2025-11-04
+
+### Fixed
+
+- Fixed "list index out of range" error when using BETWEEN operator in CQL2-text filters. [#521](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/521)
+
+## [v6.7.1] - 2025-10-31
+
+### Fixed
+
+- Ensure `REDIS_MAX_CONNECTION` can accept `None` and integer value for default number of connection. [#515](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/515)
+
+## [v6.7.0] - 2025-10-27
+
+### Added
+
+- Environment variable `EXCLUDED_FROM_QUERYABLES` to exclude specific fields from queryables endpoint and filtering. Supports comma-separated list of fully qualified field names (e.g., `properties.auth:schemes,properties.storage:schemes`) [#489](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/489)
+- Added Redis caching configuration for navigation pagination support, enabling proper `prev` and `next` links in paginated responses. [#488](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/488)
+
+### Changed
+
+### Fixed
+
+- Fixed filter parameter handling for GET `/collections-search` endpoint. Filter parameters (`filter` and `filter-lang`) are now properly passed through and processed. [#511](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/511)
+- Fixed `q` parameter in GET `/collections-search` endpoint to be converted to a list format, matching the behavior of the `/collections` endpoint for consistency. [#511](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/511)
+
+### Removed
+
+### Updated
+
+- Improved OpenAPI docs for `/collections-search` GET and POST endpoints. [#508](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/508)
+
+## [v6.6.0] - 2025-10-21
+
+### Added
+
+- Spatial search support for collections via `bbox` parameter on `/collections` endpoint. Collections are now indexed with a `bbox_shape` field (GeoJSON polygon) derived from their spatial extent for efficient geospatial queries when created or updated. [#481](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/481
+- Introduced SFEOS Tools (`sfeos_tools/`) - An installable Click-based CLI package for managing SFEOS deployments. Initial command `add-bbox-shape` adds the `bbox_shape` field to existing collections for spatial search compatibility. Install with `pip install sfeos-tools[elasticsearch]` or `pip install sfeos-tools[opensearch]`. [#481](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/481)
+- Moved SFEOS Tools to its own repository at [Healy-Hyperspatial/sfeos-tools](https://github.com/Healy-Hyperspatial/sfeos-tools). The CLI package is now maintained separately.
+- CloudFerro logo to sponsors and supporters list [#485](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/485)
+- Latest news section to README [#485](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/485)
+- Python 3.14 support [#500](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/500)
+
+### Changed
+
+- Removed ENV_MAX_LIMIT environment variable; maximum limits are now handled by the default global limit environment variable. [#482](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/482)
+- Changed the default and maximum pagination limits for collections/items endpoints. [#482](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/482)
+- Removed the `rel=child` links to the collections from the landing page, as the listing was incomplete due to pagination. [#496](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/496)
+- Changed to pyproject.toml file from setup.py [#505](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/505)
+
+### Fixed
+
+### Removed
+
+- Removed Elasticsearch 7 from CI/CD test matrix. The project now only tests against Elasticsearch 8 and OpenSearch. [#497](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/497)
+
+### Updated
+
+- Updated Elasticsearch version to 8.19.5 in CI/CD test matrix and compose.yml. [#497](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/497)
+- Updated OpenSearch version to 2.19.3 in CI/CD test matrix and compose.yml. [#499](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/499)
+- Updated elasticsearh python library to 8.19.1 in setup.py. [#499](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/499)
 
 ## [v6.5.1] - 2025-09-30
 
@@ -562,7 +623,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.5.1...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.2...main
+[v6.7.2]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.1...v6.7.2
+[v6.7.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.0...v6.7.1
+[v6.7.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.6.0...v6.7.0
+[v6.6.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.5.1...v6.6.0
 [v6.5.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.5.0...v6.5.1
 [v6.5.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.4.0...v6.5.0
 [v6.4.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.3.0...v6.4.0

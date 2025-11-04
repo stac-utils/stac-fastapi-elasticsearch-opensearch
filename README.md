@@ -30,12 +30,22 @@ The following organizations have contributed time and/or funding to support the 
 
 ## Latest News
 
-<div style="max-height: 200px; overflow-y: auto; padding: 10px; border: 1px solid #eaecef; border-radius: 6px; margin-bottom: 16px;">
+- **10/24/2025:** Added `previous_token` pagination using Redis for efficient navigation. This feature allows users to navigate backwards through large result sets by storing pagination state in Redis. To use this feature, ensure Redis is configured (see [Redis for navigation](#redis-for-navigation)) and set `REDIS_ENABLE=true` in your environment.
+- **10/23/2025:** The `EXCLUDED_FROM_QUERYABLES` environment variable was added to exclude fields from the `queryables` endpoint. See [docs](#excluding-fields-from-queryables).
+- **10/15/2025:** 🚀 SFEOS Tools v0.1.0 Released! - The new `sfeos-tools` CLI is now available on [PyPI](https://pypi.org/project/sfeos-tools/)
+- **10/15/2025:** Added `reindex` command to **[SFEOS-tools](https://github.com/Healy-Hyperspatial/sfeos-tools)** for zero-downtime index updates when changing mappings or settings. The new `reindex` command makes it easy to apply mapping changes, update index settings, or migrate to new index structures without any service interruption, ensuring high availability of your STAC API during maintenance operations.
+- **10/12/2025:** Collections search **bbox** functionality added! The collections search extension now supports bbox queries. Collections will need to be updated via the API or with the new **[SFEOS-tools](https://github.com/Healy-Hyperspatial/sfeos-tools)** CLI package to support geospatial discoverability. 🙏 Thanks again to **CloudFerro** for their sponsorship of this work!
 
-- **10/12/2025:** Collections search **bbox** functionality added! The collections search extension now supports bbox queries. Collections will need to be updated via the API or with the new **[SFEOS-tools](#sfeos-tools-cli)** CLI package to support geospatial discoverability. Thanks again to **CloudFerro** for their sponsorship of this work!
+<details style="border: 1px solid #eaecef; border-radius: 6px; padding: 10px; margin-bottom: 16px; background-color: #f9f9f9;">
+<summary style="cursor: pointer; font-weight: bold; margin: -10px -10px 0; padding: 10px; background-color: #f0f0f0; border-bottom: 1px solid #eaecef; border-top-left-radius: 6px; border-top-right-radius: 6px;">View Older News (Click to Expand)</summary>
+
+-------------
 - **10/04/2025:** The **[CloudFerro](https://cloudferro.com/)** logo has been added to the sponsors and supporters list above. Their sponsorship of the ongoing collections search extension work has been invaluable. This is in addition to the many other important changes and updates their developers have added to the project.
+- **09/25/2025:** v6.5.0 adds a new GET/POST /collections-search endpoint (disabled by default via ENABLE_COLLECTIONS_SEARCH_ROUTE) to avoid conflicts with the Transactions Extension, and enhances collections search with structured filtering (CQL2 JSON/text), query, and datetime filtering. These changes make collection discovery more powerful and configurable while preserving compatibility with transaction-enabled deployments.
+<!-- Add more older news items here in Markdown format; GitHub will parse them thanks to the blank line implicit in this structure -->
 
-</div>
+</details>
+
 
 ## Project Introduction - What is SFEOS?
 
@@ -94,6 +104,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
       - [Using Pre-built Docker Images](#using-pre-built-docker-images)
       - [Using Docker Compose](#using-docker-compose)
   - [Configuration Reference](#configuration-reference)
+  - [Excluding Fields from Queryables](#excluding-fields-from-queryables)
   - [Datetime-Based Index Management](#datetime-based-index-management)
     - [Overview](#overview)
     - [When to Use](#when-to-use)
@@ -108,6 +119,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
   - [Collection Pagination](#collection-pagination)
   - [SFEOS Tools CLI](#sfeos-tools-cli)
   - [Ingesting Sample Data CLI Tool](#ingesting-sample-data-cli-tool)
+  - [Redis for navigation](#redis-for-navigation)
   - [Elasticsearch Mappings](#elasticsearch-mappings)
   - [Managing Elasticsearch Indices](#managing-elasticsearch-indices)
     - [Snapshots](#snapshots)
@@ -170,7 +182,7 @@ These endpoints support advanced collection discovery features including:
   - **Implementation Note**: When collections are created or updated, a `bbox_shape` field is automatically generated from the collection's spatial extent and indexed as a GeoJSON polygon for efficient geospatial queries
   - **Migrating Legacy Collections**: Collections created before this feature was added will not be discoverable via bbox search until they have the `bbox_shape` field added. You can either:
     - Update each collection via the API (PUT `/collections/{collection_id}` with the existing collection data)
-    - Run the migration tool (see [SFEOS Tools CLI](#sfeos-tools-cli) for installation and connection options):
+    - Use the [SFEOS Tools CLI](https://github.com/Healy-Hyperspatial/sfeos-tools) (install with `pip install sfeos-tools[elasticsearch]` or `pip install sfeos-tools[opensearch]`):
       - `sfeos-tools add-bbox-shape --backend elasticsearch --no-ssl`
       - `sfeos-tools add-bbox-shape --backend opensearch --host db.example.com --no-ssl`
 
@@ -323,13 +335,66 @@ You can customize additional settings in your `.env` file:
 | `ENABLE_COLLECTIONS_SEARCH`  | Enable collection search extensions (sort, fields, free text search, structured filtering, and datetime filtering) on the core `/collections` endpoint. | `true`                   | Optional                                                                                    |
 | `ENABLE_COLLECTIONS_SEARCH_ROUTE` | Enable the custom `/collections-search` endpoint (both GET and POST methods). When disabled, the custom endpoint will not be available, but collection search extensions will still be available on the core `/collections` endpoint if `ENABLE_COLLECTIONS_SEARCH` is true. | `false` | Optional |
 | `ENABLE_TRANSACTIONS_EXTENSIONS` | Enables or disables the Transactions and Bulk Transactions API extensions. This is useful for deployments where mutating the catalog via the API should be prevented. If set to `true`, the POST `/collections` route for search will be unavailable in the API. | `true` | Optional |
-| `STAC_ITEM_LIMIT` | Sets the environment variable for result limiting to SFEOS for the number of returned items and STAC collections. | `10` | Optional |
+| `STAC_GLOBAL_COLLECTION_MAX_LIMIT` | Configures the maximum number of STAC collections that can be returned in a single search request. | N/A | Optional |
+| `STAC_DEFAULT_COLLECTION_LIMIT` | Configures the default number of STAC collections returned when no limit parameter is specified in the request. | `300` | Optional |
+| `STAC_GLOBAL_ITEM_MAX_LIMIT` | Configures the maximum number of STAC items that can be returned in a single search request. | N/A | Optional |
+| `STAC_DEFAULT_ITEM_LIMIT` | Configures the default number of STAC items returned when no limit parameter is specified in the request. | `10` | Optional |
 | `STAC_INDEX_ASSETS` | Controls if Assets are indexed when added to Elasticsearch/Opensearch. This allows asset fields to be included in search queries. | `false` | Optional |
-| `ENV_MAX_LIMIT` | Configures the environment variable in SFEOS to override the default `MAX_LIMIT`, which controls the limit parameter for returned items and STAC collections. | `10,000` | Optional |
 | `USE_DATETIME` | Configures the datetime search behavior in SFEOS. When enabled, searches both datetime field and falls back to start_datetime/end_datetime range for items with null datetime. When disabled, searches only by start_datetime/end_datetime range. | `true` | Optional |
+| `EXCLUDED_FROM_QUERYABLES` | Comma-separated list of fully qualified field names to exclude from the queryables endpoint and filtering. Use full paths like `properties.auth:schemes,properties.storage:schemes`. Excluded fields and their nested children will not be exposed in queryables. | None | Optional |
 
 > [!NOTE]
 > The variables `ES_HOST`, `ES_PORT`, `ES_USE_SSL`, `ES_VERIFY_CERTS` and `ES_TIMEOUT` apply to both Elasticsearch and OpenSearch backends, so there is no need to rename the key names to `OS_` even if you're using OpenSearch.
+
+## Redis for Navigation environment variables:
+These Redis configuration variables to enable proper navigation functionality in STAC FastAPI.
+
+| Variable                      | Description                                                                                  | Default                  | Required                                                                                     |
+|-------------------------------|----------------------------------------------------------------------------------------------|--------------------------|---------------------------------------------------------------------------------------------|
+| `REDIS_ENABLE`                | Enables or disables Redis caching for navigation. Set to `true` to use Redis, or `false` to disable. | `false`                  | **Required** (determines whether Redis is used at all)                                      |
+| **Redis Sentinel**            |                                                                                              |                          |                                                                                             |
+| `REDIS_SENTINEL_HOSTS`        | Comma-separated list of Redis Sentinel hostnames/IP addresses.                               | `""`                     | Conditional (required if using Sentinel)                                                    |
+| `REDIS_SENTINEL_PORTS`        | Comma-separated list of Redis Sentinel ports (must match order).                             | `"26379"`                | Conditional (required if using Sentinel)                                                    |
+| `REDIS_SENTINEL_MASTER_NAME`  | Name of the Redis master node in Sentinel configuration.                                     | `"master"`               | Conditional (required if using Sentinel)                                                    |
+| **Redis**                     |                                                                                              |                          |                                                                                             |
+| `REDIS_HOST`                  | Redis server hostname or IP address for Redis configuration.                                 | `""`                     | Conditional (required for standalone Redis)                                                 |
+| `REDIS_PORT`                  | Redis server port for Redis configuration.                                                   | `6379`                   | Conditional (required for standalone Redis)                                                 |
+| **Both**                      |                                                                                              |                          |                                                                                             |
+| `REDIS_DB`                    | Redis database number to use for caching.                                                    | `0` (Sentinel) / `15` (Standalone) | Optional                                                                                    |
+| `REDIS_MAX_CONNECTIONS`       | Maximum number of connections in the Redis connection pool.                                  | `10`                     | Optional                                                                                    |
+| `REDIS_RETRY_TIMEOUT`         | Enable retry on timeout for Redis operations.                                                | `true`                   | Optional                                                                                    |
+| `REDIS_DECODE_RESPONSES`      | Automatically decode Redis responses to strings.                                             | `true`                   | Optional                                                                                    |
+| `REDIS_CLIENT_NAME`           | Client name identifier for Redis connections.                                                | `"stac-fastapi-app"`     | Optional                                                                                    |
+| `REDIS_HEALTH_CHECK_INTERVAL` | Interval in seconds for Redis health checks.                                                 | `30`                     | Optional                                                                                    |
+| `REDIS_SELF_LINK_TTL` | Time-to-live (TTL) in seconds for storing self-links in Redis, used for pagination caching. | 1800 | Optional |
+
+
+> [!NOTE]
+> Use either the Sentinel configuration (`REDIS_SENTINEL_HOSTS`, `REDIS_SENTINEL_PORTS`, `REDIS_SENTINEL_MASTER_NAME`) OR the Redis configuration (`REDIS_HOST`, `REDIS_PORT`), but not both.
+
+## Excluding Fields from Queryables
+
+You can exclude specific fields from being exposed in the queryables endpoint and from filtering by setting the `EXCLUDED_FROM_QUERYABLES` environment variable. This is useful for hiding sensitive or internal fields that should not be queryable by API users.
+
+**Environment Variable:**
+
+```bash
+EXCLUDED_FROM_QUERYABLES="properties.auth:schemes,properties.storage:schemes,properties.internal:metadata"
+```
+
+**Format:**
+
+- Comma-separated list of fully qualified field names
+- Use the full path including the `properties.` prefix for item properties
+- Example field names:
+  - `properties.auth:schemes`
+  - `properties.storage:schemes`
+
+**Behavior:**
+
+- Excluded fields will not appear in the queryables response
+- Excluded fields and their nested children will be skipped during field traversal
+- Both the field itself and any nested properties will be excluded
 
 ## Datetime-Based Index Management
 
@@ -411,7 +476,7 @@ The system uses a precise naming convention:
 - **Creating a Collection**:
   ```shell
   curl -X "POST" "http://localhost:8080/collections" \
-       -H 'Content-Type: application/json; charset=utf-8' \
+       -H 'Content-Type: application/json' \
        -d $'{
     "id": "my_collection"
   }'
@@ -420,14 +485,14 @@ The system uses a precise naming convention:
 - **Adding an Item to a Collection**:
   ```shell
   curl -X "POST" "http://localhost:8080/collections/my_collection/items" \
-       -H 'Content-Type: application/json; charset=utf-8' \
+       -H 'Content-Type: application/json' \
        -d @item.json
   ```
 
 - **Searching for Items**:
   ```shell
   curl -X "GET" "http://localhost:8080/search" \
-       -H 'Content-Type: application/json; charset=utf-8' \
+       -H 'Content-Type: application/json' \
        -d $'{
     "collections": ["my_collection"],
     "limit": 10
@@ -437,7 +502,7 @@ The system uses a precise naming convention:
 - **Filtering by Bbox**:
   ```shell
   curl -X "GET" "http://localhost:8080/search" \
-       -H 'Content-Type: application/json; charset=utf-8' \
+       -H 'Content-Type: application/json' \
        -d $'{
     "collections": ["my_collection"],
     "bbox": [-180, -90, 180, 90]
@@ -447,7 +512,7 @@ The system uses a precise naming convention:
 - **Filtering by Datetime**:
   ```shell
   curl -X "GET" "http://localhost:8080/search" \
-       -H 'Content-Type: application/json; charset=utf-8' \
+       -H 'Content-Type: application/json' \
        -d $'{
     "collections": ["my_collection"],
     "datetime": "2020-01-01T00:00:00Z/2020-12-31T23:59:59Z"
@@ -486,7 +551,7 @@ The system uses a precise naming convention:
 
 ## SFEOS Tools CLI
 
-- **Overview**: SFEOS Tools is an installable CLI package for managing and maintaining SFEOS deployments.
+- **Overview**: [SFEOS Tools](https://github.com/Healy-Hyperspatial/sfeos-tools) is an installable CLI package for managing and maintaining SFEOS deployments. This CLI package provides utilities for managing and maintaining SFEOS deployments.
 
 - **Installation**:
   ```shell
@@ -496,14 +561,11 @@ The system uses a precise naming convention:
   # For OpenSearch (from PyPI)
   pip install sfeos-tools[opensearch]
   
-  # For local development
-  pip install -e sfeos_tools[elasticsearch]
-  # or
-  pip install -e sfeos_tools[opensearch]
   ```
 
 - **Available Commands**:
   - `add-bbox-shape`: Add bbox_shape field to existing collections for spatial search support
+  - `reindex`: Reindex all STAC indices (collections and per-collection items) to new versioned indices and update aliases; supports both Elasticsearch and OpenSearch backends. Use this when you need to apply mapping changes, update index settings, or migrate to a new index structure. The command handles the entire process including creating new indices, reindexing data, and atomically updating aliases with zero downtime.
 
 - **Basic Usage**:
   ```shell
@@ -538,9 +600,15 @@ The system uses a precise naming convention:
   # Using --help for more information
   sfeos-tools --help
   sfeos-tools add-bbox-shape --help
+  sfeos-tools reindex --help
+
   ```
 
-For more details, see the [SFEOS Tools README](./sfeos_tools/README.md).
+- **Documentation**:
+  For complete documentation, examples, and advanced usage, please visit the [SFEOS Tools GitHub repository](https://github.com/Healy-Hyperspatial/sfeos-tools).
+
+- **Contributing**:
+  Contributions, bug reports, and feature requests are welcome! Please file them on the [SFEOS Tools issue tracker](https://github.com/Healy-Hyperspatial/sfeos-tools/issues).
 
 ## Ingesting Sample Data CLI Tool
 
@@ -574,6 +642,19 @@ For more details, see the [SFEOS Tools README](./sfeos_tools/README.md).
     ```shell
     python3 data_loader.py --base-url http://localhost:8080 --use-bulk
     ```
+
+## Redis for Navigation
+
+The Redis cache stores navigation state for paginated results, allowing the system to maintain previous page links using tokens. The configuration supports both Redis Sentinel and standalone Redis setups.
+
+Steps to configure:
+1. Ensure that a Redis instance is available, either a standalone server or a Sentinel-managed cluster.
+2. Establish a connection between STAC FastAPI and Redis instance by setting the appropriate [**environment variables**](#redis-for-navigation-environment-variables). These define the Redis host, port, authentication, and optional Sentinel settings.
+3. Control whether Redis caching is activated using the `REDIS_ENABLE` environment variable to `True` or `False`.
+4. Ensure the appropriate version of `Redis` is installed:
+```
+pip install stac-fastapi-elasticsearch[redis]
+```
 
 ## Elasticsearch Mappings
 
