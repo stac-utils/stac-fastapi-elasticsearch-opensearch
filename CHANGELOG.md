@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Updated
 
+## [v6.7.2] - 2025-11-04
+
+### Fixed
+
+- Fixed "list index out of range" error when using BETWEEN operator in CQL2-text filters. [#521](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/521)
+
 ## [v6.7.1] - 2025-10-31
 
 ### Fixed
@@ -617,7 +623,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.1...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.2...main
+[v6.7.2]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.1...v6.7.2
 [v6.7.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.0...v6.7.1
 [v6.7.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.6.0...v6.7.0
 [v6.6.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.5.1...v6.6.0

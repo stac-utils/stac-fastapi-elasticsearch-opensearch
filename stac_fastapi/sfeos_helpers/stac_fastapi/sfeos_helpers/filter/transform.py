@@ -92,7 +92,19 @@ def to_es(queryables_mapping: Dict[str, Any], query: Dict[str, Any]) -> Dict[str
 
     elif query["op"] == AdvancedComparisonOp.BETWEEN:
         field = to_es_field(queryables_mapping, query["args"][0]["property"])
-        gte, lte = query["args"][1], query["args"][2]
+
+        # Handle both formats: [property, [lower, upper]] or [property, lower, upper]
+        if len(query["args"]) == 2 and isinstance(query["args"][1], list):
+            # Format: [{'property': '...'}, [lower, upper]]
+            gte, lte = query["args"][1][0], query["args"][1][1]
+        elif len(query["args"]) == 3:
+            # Format: [{'property': '...'}, lower, upper]
+            gte, lte = query["args"][1], query["args"][2]
+        else:
+            raise ValueError(
+                f"BETWEEN operator expects 2 or 3 args, got {len(query['args'])}"
+            )
+
         if isinstance(gte, dict) and "timestamp" in gte:
             gte = gte["timestamp"]
         if isinstance(lte, dict) and "timestamp" in lte:
