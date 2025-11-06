@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Removed
 
-- Removed `/collections-search` endpoint from default landing page. It now only shows when `ENABLE_COLLECTIONS_SEARCH_ROUTE` is set to `True`.
+- Removed `/collections-search` endpoint from default landing page. It now only shows when `ENABLE_COLLECTIONS_SEARCH_ROUTE` is set to `True`. [#524](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/524)
 
 ### Updated
 
