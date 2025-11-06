@@ -137,20 +137,6 @@ class CoreClient(AsyncBaseCoreClient):
                     "href": urljoin(base_url, "search"),
                     "method": "POST",
                 },
-                {
-                    "rel": "collections-search",
-                    "type": "application/json",
-                    "title": "Collections Search",
-                    "href": urljoin(base_url, "collections-search"),
-                    "method": "GET",
-                },
-                {
-                    "rel": "collections-search",
-                    "type": "application/json",
-                    "title": "Collections Search",
-                    "href": urljoin(base_url, "collections-search"),
-                    "method": "POST",
-                },
             ],
             stac_extensions=extension_schemas,
         )
@@ -198,6 +184,26 @@ class CoreClient(AsyncBaseCoreClient):
                         "type": "application/json",
                         "title": "Aggregations",
                         "href": urljoin(base_url, "aggregations"),
+                    },
+                ]
+            )
+
+        if self.extension_is_enabled("CollectionsSearchEndpointExtension"):
+            landing_page["links"].extend(
+                [
+                    {
+                        "rel": "collections-search",
+                        "type": "application/json",
+                        "title": "Collections Search",
+                        "href": urljoin(base_url, "collections-search"),
+                        "method": "GET",
+                    },
+                    {
+                        "rel": "collections-search",
+                        "type": "application/json",
+                        "title": "Collections Search",
+                        "href": urljoin(base_url, "collections-search"),
+                        "method": "POST",
                     },
                 ]
             )
