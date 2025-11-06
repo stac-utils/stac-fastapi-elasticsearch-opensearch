@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 
 - Environment variable `EXCLUDED_FROM_ITEMS` to exclude specific fields from items endpoint response. Supports comma-separated list of fully qualified field names (e.g., `properties.auth:schemes,properties.storage:schemes`) [#518](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/518)
+- Added validator for `REDIS_MAX_CONNECTIONS` to handle empty or null-like values ("", "null", None) and return None instead. [#519](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/519)
 
 ### Changed
 
@@ -17,7 +18,21 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Removed
 
+- Removed `/collections-search` endpoint from default landing page. It now only shows when `ENABLE_COLLECTIONS_SEARCH_ROUTE` is set to `True`. [#524](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/524)
+
 ### Updated
+
+## [v6.7.2] - 2025-11-04
+
+### Fixed
+
+- Fixed "list index out of range" error when using BETWEEN operator in CQL2-text filters. [#521](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/521)
+
+## [v6.7.1] - 2025-10-31
+
+### Fixed
+
+- Ensure `REDIS_MAX_CONNECTION` can accept `None` and integer value for default number of connection. [#515](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/515)
 
 ## [v6.7.0] - 2025-10-27
 
@@ -611,7 +626,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.0...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.2...main
+[v6.7.2]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.1...v6.7.2
+[v6.7.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.0...v6.7.1
 [v6.7.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.6.0...v6.7.0
 [v6.6.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.5.1...v6.6.0
 [v6.5.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.5.0...v6.5.1
