@@ -410,7 +410,7 @@ async def test_search_filter_extension_in_no_list(app_client, ctx):
 
     assert resp.status_code == 400
     assert resp.json() == {
-        "detail": f"Error with cql2_json filter: Arg {product_id} is not a list"
+        "detail": f"Error with cql2 filter: Arg {product_id} is not a list"
     }
 
 
@@ -435,6 +435,24 @@ async def test_search_filter_extension_between(app_client, ctx):
         }
     }
     resp = await app_client.post("/search", json=params)
+
+    assert resp.status_code == 200
+    assert len(resp.json()["features"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_search_filter_extension_between_get(app_client, ctx):
+    """Test BETWEEN operator with GET request using CQL2-text format."""
+    sun_elevation = ctx.item["properties"]["view:sun_elevation"]
+    lower_bound = sun_elevation - 0.01
+    upper_bound = sun_elevation + 0.01
+
+    # Use CQL2-text format for GET request
+    filter_expr = f"properties.view:sun_elevation BETWEEN {lower_bound} AND {upper_bound} AND id = '{ctx.item['id']}'"
+
+    resp = await app_client.get(
+        "/search", params={"filter": filter_expr, "filter_lang": "cql2-text"}
+    )
 
     assert resp.status_code == 200
     assert len(resp.json()["features"]) == 1
