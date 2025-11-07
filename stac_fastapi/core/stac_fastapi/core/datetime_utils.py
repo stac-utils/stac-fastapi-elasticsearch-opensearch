@@ -1,5 +1,6 @@
 """Utility functions to handle datetime parsing."""
 
+import math
 from datetime import datetime, timezone
 
 from stac_fastapi.types.rfc3339 import rfc3339_str_to_datetime
@@ -23,7 +24,9 @@ def format_datetime_range(date_str: str) -> str:
             return ".."
         dt_obj = rfc3339_str_to_datetime(dt)
         dt_utc = dt_obj.astimezone(timezone.utc)
-        rounded_dt = dt_utc.replace(microsecond=round(dt_utc.microsecond / 1000) * 1000)
+        rounded_dt = dt_utc.replace(
+            microsecond=math.floor(dt_utc.microsecond / 1000 + 0.5) * 1000
+        )
         return rounded_dt.isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
     if not isinstance(date_str, str):

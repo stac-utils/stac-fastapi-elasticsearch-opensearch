@@ -5,6 +5,7 @@ Elasticsearch and OpenSearch query formatting.
 """
 
 import logging
+import math
 import re
 from datetime import date
 from datetime import datetime as datetime_type
@@ -44,7 +45,9 @@ def return_date(
             return dt_str
         dt_obj = rfc3339_str_to_datetime(dt_str)
         dt_utc = dt_obj.astimezone(timezone.utc)
-        rounded_dt = dt_utc.replace(microsecond=round(dt_utc.microsecond / 1000) * 1000)
+        rounded_dt = dt_utc.replace(
+            microsecond=math.floor(dt_utc.microsecond / 1000 + 0.5) * 1000
+        )
         return rounded_dt.isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
     result: Dict[str, Optional[str]] = {"gte": None, "lte": None}
