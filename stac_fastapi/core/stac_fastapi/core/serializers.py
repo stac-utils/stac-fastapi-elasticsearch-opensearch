@@ -2,6 +2,7 @@
 
 import abc
 import logging
+import os
 from copy import deepcopy
 from typing import Any, List, Optional
 
@@ -10,7 +11,7 @@ from starlette.requests import Request
 
 from stac_fastapi.core.datetime_utils import now_to_rfc3339_str
 from stac_fastapi.core.models.links import CollectionLinks
-from stac_fastapi.core.utilities import get_bool_env
+from stac_fastapi.core.utilities import get_bool_env, get_excluded_from_items
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.links import ItemLinks, resolve_links
 
@@ -108,7 +109,7 @@ class ItemSerializer(Serializer):
         else:
             assets = item.get("assets", {})
 
-        return stac_types.Item(
+        stac_item = stac_types.Item(
             type="Feature",
             stac_version=item.get("stac_version", ""),
             stac_extensions=item.get("stac_extensions", []),
@@ -120,6 +121,14 @@ class ItemSerializer(Serializer):
             links=item_links,
             assets=assets,
         )
+
+        excluded_fields = os.getenv("EXCLUDED_FROM_ITEMS")
+        if excluded_fields:
+            for field_path in excluded_fields.split(","):
+                if field_path := field_path.strip():
+                    get_excluded_from_items(stac_item, field_path)
+
+        return stac_item
 
 
 class CollectionSerializer(Serializer):
