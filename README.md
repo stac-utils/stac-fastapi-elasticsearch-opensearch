@@ -1,5 +1,3 @@
-# stac-fastapi-elasticsearch-opensearch
-
 <!-- markdownlint-disable MD033 MD041 -->
 
 
