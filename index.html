@@ -1,0 +1,3340 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="STAC FastAPI Elasticsearch and Opensearch backends.">
+      
+      
+      
+      
+      
+        <link rel="next" href="tips-and-tricks/">
+      
+      <link rel="icon" href="assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.4.3, mkdocs-material-9.0.15">
+    
+    
+      
+        <title>stac-fastapi-elasticsearch-opensearch</title>
+      
+    
+    
+      <link rel="stylesheet" href="assets/stylesheets/main.113286f1.min.css">
+      
+        
+        <link rel="stylesheet" href="assets/stylesheets/palette.a0c5b2b5.min.css">
+      
+      
+
+    
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Nunito+Sans:300,300i,400,400i,700,700i%7CFira+Code:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Nunito Sans";--md-code-font:"Fira Code"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="stylesheets/extra.css">
+    
+    <script>__md_scope=new URL(".",location),__md_hash=e=>[...e].reduce((e,_)=>(e<<5)-e+_.charCodeAt(0),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="" data-md-color-accent="">
+  
+    
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#sponsors-supporters" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="." title="stac-fastapi-elasticsearch-opensearch" class="md-header__button md-logo" aria-label="stac-fastapi-elasticsearch-opensearch" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8h5Z"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3V6m0 5h18v2H3v-2m0 5h18v2H3v-2Z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            stac-fastapi-elasticsearch-opensearch
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Home
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+    
+    
+      <label class="md-header__button md-icon" for="__search">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5Z"/></svg>
+      </label>
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.516 6.516 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5Z"/></svg>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11h12Z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12 19 6.41Z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.3.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2023 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg>
+  </div>
+  <div class="md-source__repository">
+    stac-utils/stac-fastapi-elasticsearch-opensearch
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="." title="stac-fastapi-elasticsearch-opensearch" class="md-nav__button md-logo" aria-label="stac-fastapi-elasticsearch-opensearch" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8h5Z"/></svg>
+
+    </a>
+    stac-fastapi-elasticsearch-opensearch
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.3.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2023 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg>
+  </div>
+  <div class="md-source__repository">
+    stac-utils/stac-fastapi-elasticsearch-opensearch
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+      
+
+  
+  
+    
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          Home
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="." class="md-nav__link md-nav__link--active">
+        Home
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#sponsors-supporters" class="md-nav__link">
+    Sponsors &amp; Supporters
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#latest-news" class="md-nav__link">
+    Latest News
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#project-introduction-what-is-sfeos" class="md-nav__link">
+    Project Introduction - What is SFEOS?
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-deployment-patterns" class="md-nav__link">
+    Common Deployment Patterns
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#technologies" class="md-nav__link">
+    Technologies
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#table-of-contents" class="md-nav__link">
+    Table of Contents
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#documentation-resources" class="md-nav__link">
+    Documentation &amp; Resources
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sfeos-stac-viewer" class="md-nav__link">
+    SFEOS STAC Viewer
+  </a>
+  
+    <nav class="md-nav" aria-label="SFEOS STAC Viewer">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#access" class="md-nav__link">
+    Access
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#features" class="md-nav__link">
+    Features
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#usage" class="md-nav__link">
+    Usage
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#collection-search-extensions" class="md-nav__link">
+    Collection Search Extensions
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#package-structure" class="md-nav__link">
+    Package Structure
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    Examples
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance" class="md-nav__link">
+    Performance
+  </a>
+  
+    <nav class="md-nav" aria-label="Performance">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#direct-response-mode" class="md-nav__link">
+    Direct Response Mode
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start" class="md-nav__link">
+    Quick Start
+  </a>
+  
+    <nav class="md-nav" aria-label="Quick Start">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#installation" class="md-nav__link">
+    Installation
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#running-locally" class="md-nav__link">
+    Running Locally
+  </a>
+  
+    <nav class="md-nav" aria-label="Running Locally">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#using-pre-built-docker-images" class="md-nav__link">
+    Using Pre-built Docker Images
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#using-docker-compose" class="md-nav__link">
+    Using Docker Compose
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration-reference" class="md-nav__link">
+    Configuration Reference
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#redis-for-navigation-environment-variables" class="md-nav__link">
+    Redis for Navigation environment variables:
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#excluding-fields-from-queryables" class="md-nav__link">
+    Excluding Fields from Queryables
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#datetime-based-index-management" class="md-nav__link">
+    Datetime-Based Index Management
+  </a>
+  
+    <nav class="md-nav" aria-label="Datetime-Based Index Management">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    Overview
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-to-use" class="md-nav__link">
+    When to Use
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    Configuration
+  </a>
+  
+    <nav class="md-nav" aria-label="Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#enabling-datetime-based-indexing" class="md-nav__link">
+    Enabling Datetime-Based Indexing
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#related-configuration-variables" class="md-nav__link">
+    Related Configuration Variables
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-datetime-based-indexing-works" class="md-nav__link">
+    How Datetime-Based Indexing Works
+  </a>
+  
+    <nav class="md-nav" aria-label="How Datetime-Based Indexing Works">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#index-and-alias-naming-convention" class="md-nav__link">
+    Index and Alias Naming Convention
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#index-size-management" class="md-nav__link">
+    Index Size Management
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#interacting-with-the-api" class="md-nav__link">
+    Interacting with the API
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configure-the-api" class="md-nav__link">
+    Configure the API
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#collection-pagination" class="md-nav__link">
+    Collection Pagination
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sfeos-tools-cli" class="md-nav__link">
+    SFEOS Tools CLI
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ingesting-sample-data-cli-tool" class="md-nav__link">
+    Ingesting Sample Data CLI Tool
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#redis-for-navigation" class="md-nav__link">
+    Redis for Navigation
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#elasticsearch-mappings" class="md-nav__link">
+    Elasticsearch Mappings
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#managing-elasticsearch-indices" class="md-nav__link">
+    Managing Elasticsearch Indices
+  </a>
+  
+    <nav class="md-nav" aria-label="Managing Elasticsearch Indices">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#snapshots" class="md-nav__link">
+    Snapshots
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reindexing" class="md-nav__link">
+    Reindexing
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#auth" class="md-nav__link">
+    Auth
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#aggregation" class="md-nav__link">
+    Aggregation
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rate-limiting" class="md-nav__link">
+    Rate Limiting
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+      
+
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="tips-and-tricks/" class="md-nav__link">
+        Tips and Tricks
+      </a>
+    </li>
+  
+
+    
+      
+      
+      
+
+  
+  
+  
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+      
+      
+      
+      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" >
+      
+      
+      
+        <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+          API
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+        <label class="md-nav__title" for="__nav_3">
+          <span class="md-nav__icon md-icon"></span>
+          API
+        </label>
+        <ul class="md-nav__list" data-md-scrollfix>
+          
+            
+              
+  
+  
+  
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+      
+      
+      
+      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_1" >
+      
+      
+      
+        <label class="md-nav__link" for="__nav_3_1" id="__nav_3_1_label" tabindex="0">
+          stac_fastapi.elasticsearch
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_1_label" aria-expanded="false">
+        <label class="md-nav__title" for="__nav_3_1">
+          <span class="md-nav__icon md-icon"></span>
+          stac_fastapi.elasticsearch
+        </label>
+        <ul class="md-nav__list" data-md-scrollfix>
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/stac_fastapi/elasticsearch/" class="md-nav__link">
+        index
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/stac_fastapi/elasticsearch/app/" class="md-nav__link">
+        app
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/stac_fastapi/elasticsearch/config/" class="md-nav__link">
+        config
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/stac_fastapi/elasticsearch/database_logic/" class="md-nav__link">
+        database_logic
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/stac_fastapi/elasticsearch/version/" class="md-nav__link">
+        version
+      </a>
+    </li>
+  
+
+            
+          
+        </ul>
+      </nav>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+      
+      
+      
+      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_2" >
+      
+      
+      
+        <label class="md-nav__link" for="__nav_3_2" id="__nav_3_2_label" tabindex="0">
+          stac_fastapi.opensearch
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_2_label" aria-expanded="false">
+        <label class="md-nav__title" for="__nav_3_2">
+          <span class="md-nav__icon md-icon"></span>
+          stac_fastapi.opensearch
+        </label>
+        <ul class="md-nav__list" data-md-scrollfix>
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/stac_fastapi/opensearch/" class="md-nav__link">
+        index
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/stac_fastapi/opensearch/app/" class="md-nav__link">
+        app
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/stac_fastapi/opensearch/config/" class="md-nav__link">
+        config
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/stac_fastapi/opensearch/database_logic/" class="md-nav__link">
+        database_logic
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/stac_fastapi/opensearch/version/" class="md-nav__link">
+        version
+      </a>
+    </li>
+  
+
+            
+          
+        </ul>
+      </nav>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+      
+      
+      
+      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3" >
+      
+      
+      
+        <label class="md-nav__link" for="__nav_3_3" id="__nav_3_3_label" tabindex="0">
+          sfeos_helpers
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_3_label" aria-expanded="false">
+        <label class="md-nav__title" for="__nav_3_3">
+          <span class="md-nav__icon md-icon"></span>
+          sfeos_helpers
+        </label>
+        <ul class="md-nav__list" data-md-scrollfix>
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/sfeos_helpers/index.md" class="md-nav__link">
+        index
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+      
+      
+      
+      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3_2" >
+      
+      
+      
+        <label class="md-nav__link" for="__nav_3_3_2" id="__nav_3_3_2_label" tabindex="0">
+          aggregation
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_3_3_2_label" aria-expanded="false">
+        <label class="md-nav__title" for="__nav_3_3_2">
+          <span class="md-nav__icon md-icon"></span>
+          aggregation
+        </label>
+        <ul class="md-nav__list" data-md-scrollfix>
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/sfeos_helpers/aggregation/index.md" class="md-nav__link">
+        module
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/sfeos_helpers/aggregation/client.md" class="md-nav__link">
+        client
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/sfeos_helpers/aggregation/format.md" class="md-nav__link">
+        format
+      </a>
+    </li>
+  
+
+            
+          
+        </ul>
+      </nav>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+      
+      
+      
+      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3_3" >
+      
+      
+      
+        <label class="md-nav__link" for="__nav_3_3_3" id="__nav_3_3_3_label" tabindex="0">
+          database
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_3_3_3_label" aria-expanded="false">
+        <label class="md-nav__title" for="__nav_3_3_3">
+          <span class="md-nav__icon md-icon"></span>
+          database
+        </label>
+        <ul class="md-nav__list" data-md-scrollfix>
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/sfeos_helpers/database/index.md" class="md-nav__link">
+        module
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/sfeos_helpers/database/datetime.md" class="md-nav__link">
+        datetime
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/sfeos_helpers/database/document.md" class="md-nav__link">
+        document
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/sfeos_helpers/database/index.md" class="md-nav__link">
+        index
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/sfeos_helpers/database/mapping.md" class="md-nav__link">
+        mapping
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/sfeos_helpers/database/query.md" class="md-nav__link">
+        query
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/sfeos_helpers/database/utils.md" class="md-nav__link">
+        utils
+      </a>
+    </li>
+  
+
+            
+          
+        </ul>
+      </nav>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+      
+      
+      
+      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_3_4" >
+      
+      
+      
+        <label class="md-nav__link" for="__nav_3_3_4" id="__nav_3_3_4_label" tabindex="0">
+          filter
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_3_3_4_label" aria-expanded="false">
+        <label class="md-nav__title" for="__nav_3_3_4">
+          <span class="md-nav__icon md-icon"></span>
+          filter
+        </label>
+        <ul class="md-nav__list" data-md-scrollfix>
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/sfeos_helpers/filter/index.md" class="md-nav__link">
+        module
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/sfeos_helpers/filter/client.md" class="md-nav__link">
+        client
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/sfeos_helpers/filter/cql2.md" class="md-nav__link">
+        cql2
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/sfeos_helpers/filter/transform.md" class="md-nav__link">
+        transform
+      </a>
+    </li>
+  
+
+            
+          
+        </ul>
+      </nav>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/sfeos_helpers/mappings.md" class="md-nav__link">
+        mappings
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/sfeos_helpers/version.md" class="md-nav__link">
+        version
+      </a>
+    </li>
+  
+
+            
+          
+        </ul>
+      </nav>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+      
+      
+      
+      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4" >
+      
+      
+      
+        <label class="md-nav__link" for="__nav_3_4" id="__nav_3_4_label" tabindex="0">
+          stac_fastapi.core
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_4_label" aria-expanded="false">
+        <label class="md-nav__title" for="__nav_3_4">
+          <span class="md-nav__icon md-icon"></span>
+          stac_fastapi.core
+        </label>
+        <ul class="md-nav__list" data-md-scrollfix>
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/stac_fastapi/core/" class="md-nav__link">
+        index
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/stac_fastapi/core/base_database_logic/" class="md-nav__link">
+        base_database_logic
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/stac_fastapi/core/base_settings/" class="md-nav__link">
+        base_settings
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/stac_fastapi/core/basic_auth/" class="md-nav__link">
+        basic_auth
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/stac_fastapi/core/core/" class="md-nav__link">
+        core
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/stac_fastapi/core/datetime_utils/" class="md-nav__link">
+        datetime_utils
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+      
+      
+      
+      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4_7" >
+      
+      
+      
+        <label class="md-nav__link" for="__nav_3_4_7" id="__nav_3_4_7_label" tabindex="0">
+          extensions
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_3_4_7_label" aria-expanded="false">
+        <label class="md-nav__title" for="__nav_3_4_7">
+          <span class="md-nav__icon md-icon"></span>
+          extensions
+        </label>
+        <ul class="md-nav__list" data-md-scrollfix>
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/stac_fastapi/core/extensions/" class="md-nav__link">
+        module
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/stac_fastapi/core/extensions/aggregation/" class="md-nav__link">
+        aggregation
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/stac_fastapi/core/extensions/fields/" class="md-nav__link">
+        fields
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/stac_fastapi/core/extensions/filter/" class="md-nav__link">
+        filter
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/stac_fastapi/core/extensions/query/" class="md-nav__link">
+        query
+      </a>
+    </li>
+  
+
+            
+          
+        </ul>
+      </nav>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+      
+      
+      
+      <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_4_8" >
+      
+      
+      
+        <label class="md-nav__link" for="__nav_3_4_8" id="__nav_3_4_8_label" tabindex="0">
+          models
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <nav class="md-nav" data-md-level="3" aria-labelledby="__nav_3_4_8_label" aria-expanded="false">
+        <label class="md-nav__title" for="__nav_3_4_8">
+          <span class="md-nav__icon md-icon"></span>
+          models
+        </label>
+        <ul class="md-nav__list" data-md-scrollfix>
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/stac_fastapi/core/models/" class="md-nav__link">
+        module
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/stac_fastapi/core/models/links/" class="md-nav__link">
+        links
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/stac_fastapi/core/models/search/" class="md-nav__link">
+        search
+      </a>
+    </li>
+  
+
+            
+          
+        </ul>
+      </nav>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/stac_fastapi/core/rate_limit/" class="md-nav__link">
+        rate_limit
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/stac_fastapi/core/route_dependencies/" class="md-nav__link">
+        route_dependencies
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/stac_fastapi/core/serializers/" class="md-nav__link">
+        serializers
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/stac_fastapi/core/session/" class="md-nav__link">
+        session
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/stac_fastapi/core/utilities/" class="md-nav__link">
+        utilities
+      </a>
+    </li>
+  
+
+            
+          
+            
+              
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="api/stac_fastapi/core/version/" class="md-nav__link">
+        version
+      </a>
+    </li>
+  
+
+            
+          
+        </ul>
+      </nav>
+    </li>
+  
+
+            
+          
+        </ul>
+      </nav>
+    </li>
+  
+
+    
+      
+      
+      
+
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="aggregation/" class="md-nav__link">
+        Aggregation
+      </a>
+    </li>
+  
+
+    
+      
+      
+      
+
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="contributing/" class="md-nav__link">
+        Development - Contributing
+      </a>
+    </li>
+  
+
+    
+      
+      
+      
+
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="release-notes/" class="md-nav__link">
+        Release Notes
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#sponsors-supporters" class="md-nav__link">
+    Sponsors &amp; Supporters
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#latest-news" class="md-nav__link">
+    Latest News
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#project-introduction-what-is-sfeos" class="md-nav__link">
+    Project Introduction - What is SFEOS?
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#common-deployment-patterns" class="md-nav__link">
+    Common Deployment Patterns
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#technologies" class="md-nav__link">
+    Technologies
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#table-of-contents" class="md-nav__link">
+    Table of Contents
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#documentation-resources" class="md-nav__link">
+    Documentation &amp; Resources
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sfeos-stac-viewer" class="md-nav__link">
+    SFEOS STAC Viewer
+  </a>
+  
+    <nav class="md-nav" aria-label="SFEOS STAC Viewer">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#access" class="md-nav__link">
+    Access
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#features" class="md-nav__link">
+    Features
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#usage" class="md-nav__link">
+    Usage
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#collection-search-extensions" class="md-nav__link">
+    Collection Search Extensions
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#package-structure" class="md-nav__link">
+    Package Structure
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#examples" class="md-nav__link">
+    Examples
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#performance" class="md-nav__link">
+    Performance
+  </a>
+  
+    <nav class="md-nav" aria-label="Performance">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#direct-response-mode" class="md-nav__link">
+    Direct Response Mode
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start" class="md-nav__link">
+    Quick Start
+  </a>
+  
+    <nav class="md-nav" aria-label="Quick Start">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#installation" class="md-nav__link">
+    Installation
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#running-locally" class="md-nav__link">
+    Running Locally
+  </a>
+  
+    <nav class="md-nav" aria-label="Running Locally">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#using-pre-built-docker-images" class="md-nav__link">
+    Using Pre-built Docker Images
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#using-docker-compose" class="md-nav__link">
+    Using Docker Compose
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configuration-reference" class="md-nav__link">
+    Configuration Reference
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#redis-for-navigation-environment-variables" class="md-nav__link">
+    Redis for Navigation environment variables:
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#excluding-fields-from-queryables" class="md-nav__link">
+    Excluding Fields from Queryables
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#datetime-based-index-management" class="md-nav__link">
+    Datetime-Based Index Management
+  </a>
+  
+    <nav class="md-nav" aria-label="Datetime-Based Index Management">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#overview" class="md-nav__link">
+    Overview
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-to-use" class="md-nav__link">
+    When to Use
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#configuration" class="md-nav__link">
+    Configuration
+  </a>
+  
+    <nav class="md-nav" aria-label="Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#enabling-datetime-based-indexing" class="md-nav__link">
+    Enabling Datetime-Based Indexing
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#related-configuration-variables" class="md-nav__link">
+    Related Configuration Variables
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-datetime-based-indexing-works" class="md-nav__link">
+    How Datetime-Based Indexing Works
+  </a>
+  
+    <nav class="md-nav" aria-label="How Datetime-Based Indexing Works">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#index-and-alias-naming-convention" class="md-nav__link">
+    Index and Alias Naming Convention
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#index-size-management" class="md-nav__link">
+    Index Size Management
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#interacting-with-the-api" class="md-nav__link">
+    Interacting with the API
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#configure-the-api" class="md-nav__link">
+    Configure the API
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#collection-pagination" class="md-nav__link">
+    Collection Pagination
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#sfeos-tools-cli" class="md-nav__link">
+    SFEOS Tools CLI
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ingesting-sample-data-cli-tool" class="md-nav__link">
+    Ingesting Sample Data CLI Tool
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#redis-for-navigation" class="md-nav__link">
+    Redis for Navigation
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#elasticsearch-mappings" class="md-nav__link">
+    Elasticsearch Mappings
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#managing-elasticsearch-indices" class="md-nav__link">
+    Managing Elasticsearch Indices
+  </a>
+  
+    <nav class="md-nav" aria-label="Managing Elasticsearch Indices">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#snapshots" class="md-nav__link">
+    Snapshots
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reindexing" class="md-nav__link">
+    Reindexing
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#auth" class="md-nav__link">
+    Auth
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#aggregation" class="md-nav__link">
+    Aggregation
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rate-limiting" class="md-nav__link">
+    Rate Limiting
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+  
+  
+
+
+  <h1>Home</h1>
+
+<!-- markdownlint-disable MD033 MD041 -->
+
+<p align="left">
+  <img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/sfeos.png" width=1000>
+</p>
+
+<p><strong>Jump to:</strong> <a href="#project-introduction---what-is-sfeos">Project Introduction</a> | <a href="#quick-start">Quick Start</a> | <a href="#table-of-contents">Table of Contents</a></p>
+<p><a href="https://pepy.tech/project/stac-fastapi-core"><img alt="Downloads" src="https://static.pepy.tech/badge/stac-fastapi-core?color=blue" /></a>
+  <a href="https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/graphs/contributors"><img alt="GitHub contributors" src="https://img.shields.io/github/contributors/stac-utils/stac-fastapi-elasticsearch-opensearch?color=blue" /></a>
+  <a href="https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/stargazers"><img alt="GitHub stars" src="https://img.shields.io/github/stars/stac-utils/stac-fastapi-elasticsearch-opensearch.svg?color=blue" /></a>
+  <a href="https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/network/members"><img alt="GitHub forks" src="https://img.shields.io/github/forks/stac-utils/stac-fastapi-elasticsearch-opensearch.svg?color=blue" /></a>
+   <a href="https://pypi.org/project/stac-fastapi-elasticsearch/"><img alt="PyPI version" src="https://img.shields.io/pypi/v/stac-fastapi-elasticsearch.svg?color=blue" /></a>
+  <a href="https://github.com/radiantearth/stac-spec/tree/v1.1.0"><img alt="STAC" src="https://img.shields.io/badge/STAC-1.1.0-blue.svg" /></a>
+  <a href="https://github.com/stac-utils/stac-fastapi"><img alt="stac-fastapi" src="https://img.shields.io/badge/stac--fastapi-6.0.0-blue.svg" /></a></p>
+<h2 id="sponsors-supporters">Sponsors &amp; Supporters<a class="headerlink" href="#sponsors-supporters" title="Permanent link">&para;</a></h2>
+<p>The following organizations have contributed time and/or funding to support the development of this project:</p>
+<p align="left">
+  <a href="https://healy-hyperspatial.github.io/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/hh-logo-blue.png" alt="Healy Hyperspatial" height="100" hspace="20"></a>
+  <a href="https://atomicmaps.io/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/am-logo-black.png" alt="Atomic Maps" height="100" hspace="20"></a>
+  <a href="https://remotesensing.vito.be/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/VITO.png" alt="VITO Remote Sensing" height="100" hspace="20"></a>
+  <a href="https://cloudferro.com/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/cloudferro-logo.png" alt="CloudFerro" height="105" hspace="20"></a>
+</p>
+
+<h2 id="latest-news">Latest News<a class="headerlink" href="#latest-news" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>11/07/2025:</strong> 🌍 The SFEOS STAC Viewer is now available at: <a href="https://healy-hyperspatial.github.io/sfeos-web">healy-hyperspatial.github.io/sfeos-web</a>. Use this site to examine your data and test your STAC API!</li>
+<li><strong>10/24/2025:</strong> Added <code>previous_token</code> pagination using Redis for efficient navigation. This feature allows users to navigate backwards through large result sets by storing pagination state in Redis. To use this feature, ensure Redis is configured (see <a href="#redis-for-navigation">Redis for navigation</a>) and set <code>REDIS_ENABLE=true</code> in your environment.</li>
+<li><strong>10/23/2025:</strong> The <code>EXCLUDED_FROM_QUERYABLES</code> environment variable was added to exclude fields from the <code>queryables</code> endpoint. See <a href="#excluding-fields-from-queryables">docs</a>.</li>
+<li><strong>10/15/2025:</strong> 🚀 SFEOS Tools v0.1.0 Released! - The new <code>sfeos-tools</code> CLI is now available on <a href="https://pypi.org/project/sfeos-tools/">PyPI</a></li>
+<li><strong>10/15/2025:</strong> Added <code>reindex</code> command to <strong><a href="https://github.com/Healy-Hyperspatial/sfeos-tools">SFEOS-tools</a></strong> for zero-downtime index updates when changing mappings or settings. The new <code>reindex</code> command makes it easy to apply mapping changes, update index settings, or migrate to new index structures without any service interruption, ensuring high availability of your STAC API during maintenance operations.</li>
+<li><strong>10/12/2025:</strong> Collections search <strong>bbox</strong> functionality added! The collections search extension now supports bbox queries. Collections will need to be updated via the API or with the new <strong><a href="https://github.com/Healy-Hyperspatial/sfeos-tools">SFEOS-tools</a></strong> CLI package to support geospatial discoverability. 🙏 Thanks again to <strong>CloudFerro</strong> for their sponsorship of this work!</li>
+</ul>
+<details style="border: 1px solid #eaecef; border-radius: 6px; padding: 10px; margin-bottom: 16px; background-color: #f9f9f9;">
+<summary style="cursor: pointer; font-weight: bold; margin: -10px -10px 0; padding: 10px; background-color: #f0f0f0; border-bottom: 1px solid #eaecef; border-top-left-radius: 6px; border-top-right-radius: 6px;">View Older News (Click to Expand)</summary>
+
+-------------
+- **10/04/2025:** The **[CloudFerro](https://cloudferro.com/)** logo has been added to the sponsors and supporters list above. Their sponsorship of the ongoing collections search extension work has been invaluable. This is in addition to the many other important changes and updates their developers have added to the project.
+- **09/25/2025:** v6.5.0 adds a new GET/POST /collections-search endpoint (disabled by default via ENABLE_COLLECTIONS_SEARCH_ROUTE) to avoid conflicts with the Transactions Extension, and enhances collections search with structured filtering (CQL2 JSON/text), query, and datetime filtering. These changes make collection discovery more powerful and configurable while preserving compatibility with transaction-enabled deployments.
+<!-- Add more older news items here in Markdown format; GitHub will parse them thanks to the blank line implicit in this structure -->
+
+</details>
+
+<h2 id="project-introduction-what-is-sfeos">Project Introduction - What is SFEOS?<a class="headerlink" href="#project-introduction-what-is-sfeos" title="Permanent link">&para;</a></h2>
+<p>SFEOS (stac-fastapi-elasticsearch-opensearch) is a high-performance, scalable API implementation for serving SpatioTemporal Asset Catalog (STAC) data - an enhanced GeoJSON format designed specifically for geospatial assets like satellite imagery, aerial photography, and other Earth observation data. This project enables organizations to:</p>
+<ul>
+<li><strong>Efficiently catalog and search geospatial data</strong> such as satellite imagery, aerial photography, DEMs, and other geospatial assets using Elasticsearch or OpenSearch as the database backend</li>
+<li><strong>Implement standardized STAC APIs</strong> that support complex spatial, temporal, and property-based queries across large collections of geospatial data</li>
+<li><strong>Scale to millions of geospatial assets</strong> with fast search performance through optimized spatial indexing and query capabilities</li>
+<li><strong>Support OGC-compliant filtering</strong> including spatial operations (intersects, contains, etc.) and temporal queries</li>
+<li><strong>Perform geospatial aggregations</strong> to analyze data distribution across space and time</li>
+<li><strong>Enhanced collection search capabilities</strong> with support for sorting and field selection</li>
+</ul>
+<p>This implementation builds on the STAC-FastAPI framework, providing a production-ready solution specifically optimized for Elasticsearch and OpenSearch databases. It's ideal for organizations managing large geospatial data catalogs who need efficient discovery and access capabilities through standardized APIs.</p>
+<h2 id="common-deployment-patterns">Common Deployment Patterns<a class="headerlink" href="#common-deployment-patterns" title="Permanent link">&para;</a></h2>
+<p>stac-fastapi-elasticsearch-opensearch can be deployed in several ways depending on your needs:</p>
+<ul>
+<li><strong>Containerized Application</strong>: Run as a Docker container with connections to Elasticsearch/OpenSearch databases</li>
+<li><strong>Serverless Function</strong>: Deploy as AWS Lambda or similar serverless function with API Gateway</li>
+<li><strong>Traditional Server</strong>: Run on virtual machines or bare metal servers in your infrastructure</li>
+<li><strong>Kubernetes</strong>: Deploy as part of a larger microservices architecture with container orchestration</li>
+</ul>
+<p>The implementation is flexible and can scale from small local deployments to large production environments serving millions of geospatial assets.</p>
+<h2 id="technologies">Technologies<a class="headerlink" href="#technologies" title="Permanent link">&para;</a></h2>
+<p>This project is built on the following technologies: STAC, stac-fastapi, FastAPI, Elasticsearch, Python, OpenSearch</p>
+<p align="left">
+  <a href="https://stacspec.org/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/STAC-01.png" alt="STAC" height="100" hspace="10"></a>
+  <a href="https://www.python.org/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/python.png" alt="Python" height="80" hspace="10"></a>
+  <a href="https://fastapi.tiangolo.com/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/fastapi.svg" alt="FastAPI" height="80" hspace="10"></a>
+  <a href="https://www.elastic.co/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/elasticsearch.png" alt="Elasticsearch" height="80" hspace="10"></a>
+  <a href="https://opensearch.org/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/opensearch.svg" alt="OpenSearch" height="80" hspace="10"></a>
+</p>
+
+<h2 id="table-of-contents">Table of Contents<a class="headerlink" href="#table-of-contents" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="#stac-fastapi-elasticsearch-opensearch">stac-fastapi-elasticsearch-opensearch</a></li>
+<li><a href="#sponsors--supporters">Sponsors &amp; Supporters</a></li>
+<li><a href="#latest-news">Latest News</a></li>
+<li><a href="#project-introduction---what-is-sfeos">Project Introduction - What is SFEOS?</a></li>
+<li><a href="#common-deployment-patterns">Common Deployment Patterns</a></li>
+<li><a href="#technologies">Technologies</a></li>
+<li><a href="#table-of-contents">Table of Contents</a></li>
+<li><a href="#collection-search-extensions">Collection Search Extensions</a></li>
+<li><a href="#documentation--resources">Documentation &amp; Resources</a></li>
+<li><a href="#sfeos-stac-viewer">SFEOS STAC Viewer</a></li>
+<li><a href="#package-structure">Package Structure</a></li>
+<li><a href="#examples">Examples</a></li>
+<li><a href="#performance">Performance</a><ul>
+<li><a href="#direct-response-mode">Direct Response Mode</a></li>
+</ul>
+</li>
+<li><a href="#quick-start">Quick Start</a><ul>
+<li><a href="#installation">Installation</a></li>
+<li><a href="#running-locally">Running Locally</a></li>
+<li><a href="#using-pre-built-docker-images">Using Pre-built Docker Images</a></li>
+<li><a href="#using-docker-compose">Using Docker Compose</a></li>
+</ul>
+</li>
+<li><a href="#configuration-reference">Configuration Reference</a></li>
+<li><a href="#excluding-fields-from-queryables">Excluding Fields from Queryables</a></li>
+<li><a href="#datetime-based-index-management">Datetime-Based Index Management</a><ul>
+<li><a href="#overview">Overview</a></li>
+<li><a href="#when-to-use">When to Use</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#enabling-datetime-based-indexing">Enabling Datetime-Based Indexing</a></li>
+<li><a href="#related-configuration-variables">Related Configuration Variables</a></li>
+</ul>
+</li>
+<li><a href="#how-datetime-based-indexing-works">How Datetime-Based Indexing Works</a><ul>
+<li><a href="#index-and-alias-naming-convention">Index and Alias Naming Convention</a></li>
+<li><a href="#index-size-management">Index Size Management</a></li>
+</ul>
+</li>
+<li><a href="#interacting-with-the-api">Interacting with the API</a></li>
+<li><a href="#configure-the-api">Configure the API</a></li>
+<li><a href="#collection-pagination">Collection Pagination</a></li>
+<li><a href="#sfeos-tools-cli">SFEOS Tools CLI</a></li>
+<li><a href="#ingesting-sample-data-cli-tool">Ingesting Sample Data CLI Tool</a></li>
+<li><a href="#redis-for-navigation">Redis for navigation</a></li>
+<li><a href="#elasticsearch-mappings">Elasticsearch Mappings</a></li>
+<li><a href="#managing-elasticsearch-indices">Managing Elasticsearch Indices</a><ul>
+<li><a href="#snapshots">Snapshots</a></li>
+<li><a href="#reindexing">Reindexing</a></li>
+</ul>
+</li>
+<li><a href="#auth">Auth</a></li>
+<li><a href="#aggregation">Aggregation</a></li>
+<li><a href="#rate-limiting">Rate Limiting</a></li>
+</ul>
+<h2 id="documentation-resources">Documentation &amp; Resources<a class="headerlink" href="#documentation-resources" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Online Documentation</strong>: <a href="https://stac-utils.github.io/stac-fastapi-elasticsearch-opensearch/">https://stac-utils.github.io/stac-fastapi-elasticsearch-opensearch</a></li>
+<li><strong>Source Code</strong>: <a class="magiclink magiclink-github magiclink-repository" href="https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch" title="GitHub Repository: stac-utils/stac-fastapi-elasticsearch-opensearch">stac-utils/stac-fastapi-elasticsearch-opensearch</a></li>
+<li><strong>API Examples</strong>: <a href="https://documenter.getpostman.com/view/12888943/2s8ZDSdRHA">Postman Documentation</a> - Examples of how to use the API endpoints</li>
+<li><strong>Community</strong>:</li>
+<li><a href="https://app.gitter.im/#/room/#stac-fastapi-elasticsearch_community:gitter.im">Gitter Chat</a> - For real-time discussions</li>
+<li><a href="https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/discussions">GitHub Discussions</a> - For longer-form questions and answers</li>
+</ul>
+<h2 id="sfeos-stac-viewer">SFEOS STAC Viewer<a class="headerlink" href="#sfeos-stac-viewer" title="Permanent link">&para;</a></h2>
+<p>The SFEOS STAC viewer is a web-based application for examining and testing STAC APIs. It provides an interactive interface to explore geospatial data catalogs, visualize spatial extents, and test API endpoints.</p>
+<h3 id="access">Access<a class="headerlink" href="#access" title="Permanent link">&para;</a></h3>
+<p>The viewer is available at: <a href="https://healy-hyperspatial.github.io/sfeos-web/">healy-hyperspatial.github.io/sfeos-web/</a></p>
+<h3 id="features">Features<a class="headerlink" href="#features" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Browse collections and items interactively</li>
+<li>Interactive map visualization of spatial extents</li>
+<li>Test API endpoints directly from the interface</li>
+<li>Search and filter capabilities for exploring data</li>
+</ul>
+<h3 id="usage">Usage<a class="headerlink" href="#usage" title="Permanent link">&para;</a></h3>
+<p>Navigate to the URL above and connect to your SFEOS API instance by providing the base URL of your STAC API. This is done with the <code>API SERVER</code> button on the right side of the page. </p>
+<p>You can also override the default STAC API URL by appending the <code>stacApiUrl</code> parameter to the application URL. For example:</p>
+<p><a href="https://healy-hyperspatial.github.io/sfeos-web?stacApiUrl=http://localhost:8080">healy-hyperspatial.github.io/sfeos-web?stacApiUrl=http://localhost:8080</a></p>
+<p><strong>Note</strong>: The parameter name <code>stacApiUrl</code> is case-sensitive. This allows you to connect to different STAC API servers without modifying the web app configuration.</p>
+<h2 id="collection-search-extensions">Collection Search Extensions<a class="headerlink" href="#collection-search-extensions" title="Permanent link">&para;</a></h2>
+<p>SFEOS provides enhanced collection search capabilities through two primary routes:
+- <strong>GET/POST <code>/collections</code></strong>: The standard STAC endpoint with extended query parameters
+- <strong>GET/POST <code>/collections-search</code></strong>: A custom endpoint that supports the same parameters, created to avoid conflicts with the STAC Transactions extension if enabled (which uses POST <code>/collections</code> for collection creation)</p>
+<p>These endpoints support advanced collection discovery features including:</p>
+<ul>
+<li><strong>Sorting</strong>: Sort collections by sortable fields using the <code>sortby</code> parameter</li>
+<li>Example: <code>/collections?sortby=+id</code> (ascending sort by ID)</li>
+<li>Example: <code>/collections?sortby=-id</code> (descending sort by ID)</li>
+<li>
+<p>Example: <code>/collections?sortby=-temporal</code> (descending sort by temporal extent)</p>
+</li>
+<li>
+<p><strong>Field Selection</strong>: Request only specific fields to be returned using the <code>fields</code> parameter</p>
+</li>
+<li>Example: <code>/collections?fields=id,title,description</code></li>
+<li>
+<p>This helps reduce payload size when only certain fields are needed</p>
+</li>
+<li>
+<p><strong>Free Text Search</strong>: Search across collection text fields using the <code>q</code> parameter</p>
+</li>
+<li>Example: <code>/collections?q=landsat</code></li>
+<li>Searches across multiple text fields including title, description, and keywords</li>
+<li>
+<p>Supports partial word matching and relevance-based sorting</p>
+</li>
+<li>
+<p><strong>Structured Filtering</strong>: Filter collections using CQL2 expressions</p>
+</li>
+<li>JSON format: <code>/collections?filter={"op":"=","args":[{"property":"id"},"sentinel-2"]}&amp;filter-lang=cql2-json</code></li>
+<li>Text format: <code>/collections?filter=id='sentinel-2'&amp;filter-lang=cql2-text</code> (note: string values must be quoted)</li>
+<li>Advanced text format: <code>/collections?filter=id LIKE '%sentinel%'&amp;filter-lang=cql2-text</code> (supports LIKE, BETWEEN, etc.)</li>
+<li>Supports both CQL2 JSON and CQL2 text formats with various operators</li>
+<li>
+<p>Enables precise filtering on any collection property</p>
+</li>
+<li>
+<p><strong>Datetime Filtering</strong>: Filter collections by their temporal extent using the <code>datetime</code> parameter</p>
+</li>
+<li>Example: <code>/collections?datetime=2020-01-01T00:00:00Z/2020-12-31T23:59:59Z</code> (finds collections with temporal extents that overlap this range)</li>
+<li>Example: <code>/collections?datetime=2020-06-15T12:00:00Z</code> (finds collections whose temporal extent includes this specific time)</li>
+<li>Example: <code>/collections?datetime=2020-01-01T00:00:00Z/..</code> (finds collections with temporal extents that extend to or beyond January 1, 2020)</li>
+<li>Example: <code>/collections?datetime=../2020-12-31T23:59:59Z</code> (finds collections with temporal extents that begin on or before December 31, 2020)</li>
+<li>Collections are matched if their temporal extent overlaps with the provided datetime parameter</li>
+<li>
+<p>This allows for efficient discovery of collections based on time periods</p>
+</li>
+<li>
+<p><strong>Spatial Filtering</strong>: Filter collections by their spatial extent using the <code>bbox</code> parameter</p>
+</li>
+<li>Example: <code>/collections?bbox=-10,35,40,70</code> (finds collections whose spatial extent intersects with this bounding box)</li>
+<li>Example: <code>/collections?bbox=-180,-90,180,90</code> (finds all collections with global coverage)</li>
+<li>Supports both 2D bounding boxes <code>[minx, miny, maxx, maxy]</code> and 3D bounding boxes <code>[minx, miny, minz, maxx, maxy, maxz]</code> (altitude values are ignored for spatial queries)</li>
+<li>Collections are matched if their spatial extent (stored in the <code>extent.spatial.bbox</code> field) intersects with the provided bbox parameter</li>
+<li><strong>Implementation Note</strong>: When collections are created or updated, a <code>bbox_shape</code> field is automatically generated from the collection's spatial extent and indexed as a GeoJSON polygon for efficient geospatial queries</li>
+<li><strong>Migrating Legacy Collections</strong>: Collections created before this feature was added will not be discoverable via bbox search until they have the <code>bbox_shape</code> field added. You can either:<ul>
+<li>Update each collection via the API (PUT <code>/collections/{collection_id}</code> with the existing collection data)</li>
+<li>Use the <a href="https://github.com/Healy-Hyperspatial/sfeos-tools">SFEOS Tools CLI</a> (install with <code>pip install sfeos-tools[elasticsearch]</code> or <code>pip install sfeos-tools[opensearch]</code>):</li>
+<li><code>sfeos-tools add-bbox-shape --backend elasticsearch --no-ssl</code></li>
+<li><code>sfeos-tools add-bbox-shape --backend opensearch --host db.example.com --no-ssl</code></li>
+</ul>
+</li>
+</ul>
+<p>These extensions make it easier to build user interfaces that display and navigate through collections efficiently.</p>
+<blockquote>
+<p><strong>Configuration</strong>: Collection search extensions (sorting, field selection, free text search, structured filtering, datetime filtering, and spatial filtering) for the <code>/collections</code> endpoint can be disabled by setting the <code>ENABLE_COLLECTIONS_SEARCH</code> environment variable to <code>false</code>. By default, these extensions are enabled.</p>
+<p><strong>Configuration</strong>: The custom <code>/collections-search</code> endpoint can be enabled by setting the <code>ENABLE_COLLECTIONS_SEARCH_ROUTE</code> environment variable to <code>true</code>. By default, this endpoint is <strong>disabled</strong>.</p>
+<p><strong>Note</strong>: Sorting is only available on fields that are indexed for sorting in Elasticsearch/OpenSearch. With the default mappings, you can sort on:
+- <code>id</code> (keyword field)
+- <code>extent.temporal.interval</code> (date field)
+- <code>temporal</code> (alias to extent.temporal.interval)</p>
+<p>Text fields like <code>title</code> and <code>description</code> are not sortable by default as they use text analysis for better search capabilities. Attempting to sort on these fields will result in a user-friendly error message explaining which fields are sortable and how to make additional fields sortable by updating the mappings.</p>
+<p><strong>Important</strong>: Adding keyword fields to make text fields sortable can significantly increase the index size, especially for large text fields. Consider the storage implications when deciding which fields to make sortable.</p>
+</blockquote>
+<h2 id="package-structure">Package Structure<a class="headerlink" href="#package-structure" title="Permanent link">&para;</a></h2>
+<p>This project is organized into several packages, each with a specific purpose:</p>
+<ul>
+<li>
+<p><strong>stac_fastapi_core</strong>: Core functionality that's database-agnostic, including API models, extensions, and shared utilities. This package provides the foundation for building STAC API implementations with any database backend. See <a href="https://github.com/Healy-Hyperspatial/stac-fastapi-mongo">stac-fastapi-mongo</a> for a working example.</p>
+</li>
+<li>
+<p><strong>sfeos_helpers</strong>: Shared helper functions and utilities used by both the Elasticsearch and OpenSearch backends. This package includes:</p>
+</li>
+<li><code>database</code>: Specialized modules for index, document, and database utility operations</li>
+<li><code>aggregation</code>: Elasticsearch/OpenSearch-specific aggregation functionality</li>
+<li>
+<p>Shared logic and utilities that improve code reuse between backends</p>
+</li>
+<li>
+<p><strong>stac_fastapi_elasticsearch</strong>: Complete implementation of the STAC API using Elasticsearch as the backend database. This package depends on both <code>stac_fastapi_core</code> and <code>sfeos_helpers</code>.</p>
+</li>
+<li>
+<p><strong>stac_fastapi_opensearch</strong>: Complete implementation of the STAC API using OpenSearch as the backend database. This package depends on both <code>stac_fastapi_core</code> and <code>sfeos_helpers</code>.</p>
+</li>
+</ul>
+<h2 id="examples">Examples<a class="headerlink" href="#examples" title="Permanent link">&para;</a></h2>
+<p>The <code>/examples</code> directory contains several useful examples and reference implementations:</p>
+<ul>
+<li><strong>pip_docker</strong>: Examples of running stac-fastapi-elasticsearch from PyPI in Docker without needing any code from the repository</li>
+<li><strong>auth</strong>: Authentication examples including:</li>
+<li>Basic authentication</li>
+<li>OAuth2 with Keycloak</li>
+<li>Route dependencies configuration</li>
+<li><strong>rate_limit</strong>: Example of implementing rate limiting for API requests</li>
+<li><strong>postman_collections</strong>: Postman collection files you can import for testing API endpoints</li>
+</ul>
+<p>These examples provide practical reference implementations for various deployment scenarios and features.</p>
+<h2 id="performance">Performance<a class="headerlink" href="#performance" title="Permanent link">&para;</a></h2>
+<h3 id="direct-response-mode">Direct Response Mode<a class="headerlink" href="#direct-response-mode" title="Permanent link">&para;</a></h3>
+<ul>
+<li>The <code>enable_direct_response</code> option is provided by the stac-fastapi core library (introduced in stac-fastapi 5.2.0) and is available in this project starting from v4.0.0.</li>
+<li><strong>Control via environment variable</strong>: Set <code>ENABLE_DIRECT_RESPONSE=true</code> to enable this feature.</li>
+<li><strong>How it works</strong>: When enabled, endpoints return Starlette Response objects directly, bypassing FastAPI's default serialization for improved performance.</li>
+<li><strong>Important limitation</strong>: All FastAPI dependencies (including authentication, custom status codes, and validation) are disabled for all routes when this mode is enabled.</li>
+<li><strong>Best use case</strong>: This mode is best suited for public or read-only APIs where authentication and custom logic are not required.</li>
+<li><strong>Default setting</strong>: <code>false</code> for safety.</li>
+<li><strong>More information</strong>: See <a href="https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/347">issue #347</a> for background and implementation details.</li>
+</ul>
+<h2 id="quick-start">Quick Start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h2>
+<p>This section helps you get up and running with stac-fastapi-elasticsearch-opensearch quickly.</p>
+<h3 id="installation">Installation<a class="headerlink" href="#installation" title="Permanent link">&para;</a></h3>
+<ul>
+<li>
+<p><strong>For versions 4.0.0a1 and newer</strong> (PEP 625 compliant naming):
+  <div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>stac-fastapi-elasticsearch<span class="w">  </span><span class="c1"># Elasticsearch backend</span>
+pip<span class="w"> </span>install<span class="w"> </span>stac-fastapi-opensearch<span class="w">    </span><span class="c1"># Opensearch backend</span>
+pip<span class="w"> </span>install<span class="w"> </span>stac-fastapi-core<span class="w">          </span><span class="c1"># Core library</span>
+</code></pre></div></p>
+</li>
+<li>
+<p><strong>For versions 4.0.0a0 and older</strong>:
+  <div class="highlight"><pre><span></span><code>pip<span class="w"> </span>install<span class="w"> </span>stac-fastapi.elasticsearch<span class="w">  </span><span class="c1"># Elasticsearch backend</span>
+pip<span class="w"> </span>install<span class="w"> </span>stac-fastapi.opensearch<span class="w">    </span><span class="c1"># Opensearch backend</span>
+pip<span class="w"> </span>install<span class="w"> </span>stac-fastapi.core<span class="w">          </span><span class="c1"># Core library</span>
+</code></pre></div></p>
+</li>
+</ul>
+<blockquote>
+<p><strong>Important Note:</strong> Starting with version 4.0.0a1, package names have changed from using periods (e.g., <code>stac-fastapi.core</code>) to using hyphens (e.g., <code>stac-fastapi-core</code>) to comply with PEP 625. The internal package structure uses underscores, but users should install with hyphens as shown above. Please update your requirements files accordingly.</p>
+</blockquote>
+<h3 id="running-locally">Running Locally<a class="headerlink" href="#running-locally" title="Permanent link">&para;</a></h3>
+<p>There are two main ways to run the API locally:</p>
+<h4 id="using-pre-built-docker-images">Using Pre-built Docker Images<a class="headerlink" href="#using-pre-built-docker-images" title="Permanent link">&para;</a></h4>
+<ul>
+<li>We provide ready-to-use Docker images through GitHub Container Registry:</li>
+<li><a href="https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pkgs/container/stac-fastapi-es">ElasticSearch backend</a></li>
+<li>
+<p><a href="https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pkgs/container/stac-fastapi-os">OpenSearch backend</a></p>
+</li>
+<li>
+<p><strong>Pull and run the images</strong>:
+  <div class="highlight"><pre><span></span><code><span class="c1"># For Elasticsearch backend</span>
+docker<span class="w"> </span>pull<span class="w"> </span>ghcr.io/stac-utils/stac-fastapi-es:latest
+
+<span class="c1"># For OpenSearch backend</span>
+docker<span class="w"> </span>pull<span class="w"> </span>ghcr.io/stac-utils/stac-fastapi-os:latest
+</code></pre></div></p>
+</li>
+</ul>
+<h4 id="using-docker-compose">Using Docker Compose<a class="headerlink" href="#using-docker-compose" title="Permanent link">&para;</a></h4>
+<ul>
+<li>
+<p><strong>Prerequisites</strong>: Ensure <a href="https://docs.docker.com/compose/install/">Docker Compose</a> or <a href="https://podman-desktop.io/docs/compose">Podman Compose</a> is installed on your machine.</p>
+</li>
+<li>
+<p><strong>Start the API</strong>:
+  <div class="highlight"><pre><span></span><code>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>elasticsearch<span class="w"> </span>app-elasticsearch
+</code></pre></div></p>
+</li>
+<li>
+<p><strong>Configuration</strong>: By default, Docker Compose uses Elasticsearch 8.x and OpenSearch 2.11.1. To use different versions, create a <code>.env</code> file:
+  <div class="highlight"><pre><span></span><code><span class="nv">ELASTICSEARCH_VERSION</span><span class="o">=</span><span class="m">8</span>.11.0
+<span class="nv">OPENSEARCH_VERSION</span><span class="o">=</span><span class="m">2</span>.11.1
+<span class="nv">ENABLE_DIRECT_RESPONSE</span><span class="o">=</span><span class="nb">false</span>
+</code></pre></div></p>
+</li>
+<li>
+<p><strong>Compatibility</strong>: The most recent Elasticsearch 7.x versions should also work. See the <a href="https://github.com/opensearch-project/opensearch-py/blob/main/COMPATIBILITY.md">opensearch-py docs</a> for compatibility information.</p>
+</li>
+</ul>
+<h2 id="configuration-reference">Configuration Reference<a class="headerlink" href="#configuration-reference" title="Permanent link">&para;</a></h2>
+<p>You can customize additional settings in your <code>.env</code> file:</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Description</th>
+<th>Default</th>
+<th>Required</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ES_HOST</code></td>
+<td>Hostname for external Elasticsearch/OpenSearch.</td>
+<td><code>localhost</code></td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>ES_PORT</code></td>
+<td>Port for Elasticsearch/OpenSearch.</td>
+<td><code>9200</code> (ES) / <code>9202</code> (OS)</td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>ES_USE_SSL</code></td>
+<td>Use SSL for connecting to Elasticsearch/OpenSearch.</td>
+<td><code>true</code></td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>ES_VERIFY_CERTS</code></td>
+<td>Verify SSL certificates when connecting.</td>
+<td><code>true</code></td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>ES_API_KEY</code></td>
+<td>API Key for external Elasticsearch/OpenSearch.</td>
+<td>N/A</td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>ES_TIMEOUT</code></td>
+<td>Client timeout for Elasticsearch/OpenSearch.</td>
+<td>DB client default</td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>STAC_FASTAPI_TITLE</code></td>
+<td>Title of the API in the documentation.</td>
+<td><code>stac-fastapi-&lt;backend&gt;</code></td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>STAC_FASTAPI_DESCRIPTION</code></td>
+<td>Description of the API in the documentation.</td>
+<td>N/A</td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>STAC_FASTAPI_VERSION</code></td>
+<td>API version.</td>
+<td><code>2.1</code></td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>STAC_FASTAPI_LANDING_PAGE_ID</code></td>
+<td>Landing page ID</td>
+<td><code>stac-fastapi</code></td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>APP_HOST</code></td>
+<td>Server bind address.</td>
+<td><code>0.0.0.0</code></td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>APP_PORT</code></td>
+<td>Server port.</td>
+<td><code>8000</code></td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>ENVIRONMENT</code></td>
+<td>Runtime environment.</td>
+<td><code>local</code></td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>WEB_CONCURRENCY</code></td>
+<td>Number of worker processes.</td>
+<td><code>10</code></td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>RELOAD</code></td>
+<td>Enable auto-reload for development.</td>
+<td><code>true</code></td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>STAC_FASTAPI_RATE_LIMIT</code></td>
+<td>API rate limit per client.</td>
+<td><code>200/minute</code></td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>BACKEND</code></td>
+<td>Tests-related variable</td>
+<td><code>elasticsearch</code> or <code>opensearch</code> based on the backend</td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>ELASTICSEARCH_VERSION</code></td>
+<td>Version of Elasticsearch to use.</td>
+<td><code>8.11.0</code></td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>OPENSEARCH_VERSION</code></td>
+<td>OpenSearch version</td>
+<td><code>2.11.1</code></td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>ENABLE_DIRECT_RESPONSE</code></td>
+<td>Enable direct response for maximum performance (disables all FastAPI dependencies, including authentication, custom status codes, and validation)</td>
+<td><code>false</code></td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>RAISE_ON_BULK_ERROR</code></td>
+<td>Controls whether bulk insert operations raise exceptions on errors. If set to <code>true</code>, the operation will stop and raise an exception when an error occurs. If set to <code>false</code>, errors will be logged, and the operation will continue. <strong>Note:</strong> STAC Item and ItemCollection validation errors will always raise, regardless of this flag.</td>
+<td><code>false</code></td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>DATABASE_REFRESH</code></td>
+<td>Controls whether database operations refresh the index immediately after changes. If set to <code>true</code>, changes will be immediately searchable. If set to <code>false</code>, changes may not be immediately visible but can improve performance for bulk operations. If set to <code>wait_for</code>, changes will wait for the next refresh cycle to become visible.</td>
+<td><code>false</code></td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>ENABLE_COLLECTIONS_SEARCH</code></td>
+<td>Enable collection search extensions (sort, fields, free text search, structured filtering, and datetime filtering) on the core <code>/collections</code> endpoint.</td>
+<td><code>true</code></td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>ENABLE_COLLECTIONS_SEARCH_ROUTE</code></td>
+<td>Enable the custom <code>/collections-search</code> endpoint (both GET and POST methods). When disabled, the custom endpoint will not be available, but collection search extensions will still be available on the core <code>/collections</code> endpoint if <code>ENABLE_COLLECTIONS_SEARCH</code> is true.</td>
+<td><code>false</code></td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>ENABLE_TRANSACTIONS_EXTENSIONS</code></td>
+<td>Enables or disables the Transactions and Bulk Transactions API extensions. This is useful for deployments where mutating the catalog via the API should be prevented. If set to <code>true</code>, the POST <code>/collections</code> route for search will be unavailable in the API.</td>
+<td><code>true</code></td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>STAC_GLOBAL_COLLECTION_MAX_LIMIT</code></td>
+<td>Configures the maximum number of STAC collections that can be returned in a single search request.</td>
+<td>N/A</td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>STAC_DEFAULT_COLLECTION_LIMIT</code></td>
+<td>Configures the default number of STAC collections returned when no limit parameter is specified in the request.</td>
+<td><code>300</code></td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>STAC_GLOBAL_ITEM_MAX_LIMIT</code></td>
+<td>Configures the maximum number of STAC items that can be returned in a single search request.</td>
+<td>N/A</td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>STAC_DEFAULT_ITEM_LIMIT</code></td>
+<td>Configures the default number of STAC items returned when no limit parameter is specified in the request.</td>
+<td><code>10</code></td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>STAC_INDEX_ASSETS</code></td>
+<td>Controls if Assets are indexed when added to Elasticsearch/Opensearch. This allows asset fields to be included in search queries.</td>
+<td><code>false</code></td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>USE_DATETIME</code></td>
+<td>Configures the datetime search behavior in SFEOS. When enabled, searches both datetime field and falls back to start_datetime/end_datetime range for items with null datetime. When disabled, searches only by start_datetime/end_datetime range.</td>
+<td><code>true</code></td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>EXCLUDED_FROM_QUERYABLES</code></td>
+<td>Comma-separated list of fully qualified field names to exclude from the queryables endpoint and filtering. Use full paths like <code>properties.auth:schemes,properties.storage:schemes</code>. Excluded fields and their nested children will not be exposed in queryables.</td>
+<td>None</td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>EXCLUDED_FROM_ITEMS</code></td>
+<td>Specifies fields to exclude from STAC item responses. Supports comma-separated field names and dot notation for nested fields (e.g., <code>private_data,properties.confidential,assets.internal</code>).</td>
+<td><code>None</code></td>
+<td>Optional</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>[!NOTE]
+The variables <code>ES_HOST</code>, <code>ES_PORT</code>, <code>ES_USE_SSL</code>, <code>ES_VERIFY_CERTS</code> and <code>ES_TIMEOUT</code> apply to both Elasticsearch and OpenSearch backends, so there is no need to rename the key names to <code>OS_</code> even if you're using OpenSearch.</p>
+</blockquote>
+<h2 id="redis-for-navigation-environment-variables">Redis for Navigation environment variables:<a class="headerlink" href="#redis-for-navigation-environment-variables" title="Permanent link">&para;</a></h2>
+<p>These Redis configuration variables to enable proper navigation functionality in STAC FastAPI.</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Description</th>
+<th>Default</th>
+<th>Required</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>REDIS_ENABLE</code></td>
+<td>Enables or disables Redis caching for navigation. Set to <code>true</code> to use Redis, or <code>false</code> to disable.</td>
+<td><code>false</code></td>
+<td><strong>Required</strong> (determines whether Redis is used at all)</td>
+</tr>
+<tr>
+<td><strong>Redis Sentinel</strong></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>REDIS_SENTINEL_HOSTS</code></td>
+<td>Comma-separated list of Redis Sentinel hostnames/IP addresses.</td>
+<td><code>""</code></td>
+<td>Conditional (required if using Sentinel)</td>
+</tr>
+<tr>
+<td><code>REDIS_SENTINEL_PORTS</code></td>
+<td>Comma-separated list of Redis Sentinel ports (must match order).</td>
+<td><code>"26379"</code></td>
+<td>Conditional (required if using Sentinel)</td>
+</tr>
+<tr>
+<td><code>REDIS_SENTINEL_MASTER_NAME</code></td>
+<td>Name of the Redis master node in Sentinel configuration.</td>
+<td><code>"master"</code></td>
+<td>Conditional (required if using Sentinel)</td>
+</tr>
+<tr>
+<td><strong>Redis</strong></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>REDIS_HOST</code></td>
+<td>Redis server hostname or IP address for Redis configuration.</td>
+<td><code>""</code></td>
+<td>Conditional (required for standalone Redis)</td>
+</tr>
+<tr>
+<td><code>REDIS_PORT</code></td>
+<td>Redis server port for Redis configuration.</td>
+<td><code>6379</code></td>
+<td>Conditional (required for standalone Redis)</td>
+</tr>
+<tr>
+<td><strong>Both</strong></td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td><code>REDIS_DB</code></td>
+<td>Redis database number to use for caching.</td>
+<td><code>0</code> (Sentinel) / <code>15</code> (Standalone)</td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>REDIS_MAX_CONNECTIONS</code></td>
+<td>Maximum number of connections in the Redis connection pool.</td>
+<td><code>10</code></td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>REDIS_RETRY_TIMEOUT</code></td>
+<td>Enable retry on timeout for Redis operations.</td>
+<td><code>true</code></td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>REDIS_DECODE_RESPONSES</code></td>
+<td>Automatically decode Redis responses to strings.</td>
+<td><code>true</code></td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>REDIS_CLIENT_NAME</code></td>
+<td>Client name identifier for Redis connections.</td>
+<td><code>"stac-fastapi-app"</code></td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>REDIS_HEALTH_CHECK_INTERVAL</code></td>
+<td>Interval in seconds for Redis health checks.</td>
+<td><code>30</code></td>
+<td>Optional</td>
+</tr>
+<tr>
+<td><code>REDIS_SELF_LINK_TTL</code></td>
+<td>Time-to-live (TTL) in seconds for storing self-links in Redis, used for pagination caching.</td>
+<td>1800</td>
+<td>Optional</td>
+</tr>
+</tbody>
+</table>
+<blockquote>
+<p>[!NOTE]
+Use either the Sentinel configuration (<code>REDIS_SENTINEL_HOSTS</code>, <code>REDIS_SENTINEL_PORTS</code>, <code>REDIS_SENTINEL_MASTER_NAME</code>) OR the Redis configuration (<code>REDIS_HOST</code>, <code>REDIS_PORT</code>), but not both.</p>
+</blockquote>
+<h2 id="excluding-fields-from-queryables">Excluding Fields from Queryables<a class="headerlink" href="#excluding-fields-from-queryables" title="Permanent link">&para;</a></h2>
+<p>You can exclude specific fields from being exposed in the queryables endpoint and from filtering by setting the <code>EXCLUDED_FROM_QUERYABLES</code> environment variable. This is useful for hiding sensitive or internal fields that should not be queryable by API users.</p>
+<p><strong>Environment Variable:</strong></p>
+<div class="highlight"><pre><span></span><code><span class="nv">EXCLUDED_FROM_QUERYABLES</span><span class="o">=</span><span class="s2">&quot;properties.auth:schemes,properties.storage:schemes,properties.internal:metadata&quot;</span>
+</code></pre></div>
+<p><strong>Format:</strong></p>
+<ul>
+<li>Comma-separated list of fully qualified field names</li>
+<li>Use the full path including the <code>properties.</code> prefix for item properties</li>
+<li>Example field names:</li>
+<li><code>properties.auth:schemes</code></li>
+<li><code>properties.storage:schemes</code></li>
+</ul>
+<p><strong>Behavior:</strong></p>
+<ul>
+<li>Excluded fields will not appear in the queryables response</li>
+<li>Excluded fields and their nested children will be skipped during field traversal</li>
+<li>Both the field itself and any nested properties will be excluded</li>
+</ul>
+<h2 id="datetime-based-index-management">Datetime-Based Index Management<a class="headerlink" href="#datetime-based-index-management" title="Permanent link">&para;</a></h2>
+<h3 id="overview">Overview<a class="headerlink" href="#overview" title="Permanent link">&para;</a></h3>
+<p>SFEOS supports two indexing strategies for managing STAC items:</p>
+<ol>
+<li><strong>Simple Indexing</strong> (default) - One index per collection</li>
+<li><strong>Datetime-Based Indexing</strong> - Time-partitioned indexes with automatic management</li>
+</ol>
+<p>The datetime-based indexing strategy is particularly useful for large temporal datasets. When a user provides a datetime parameter in a query, the system knows exactly which index to search, providing <strong>multiple times faster searches</strong> and significantly <strong>reducing database load</strong>.</p>
+<h3 id="when-to-use">When to Use<a class="headerlink" href="#when-to-use" title="Permanent link">&para;</a></h3>
+<p><strong>Recommended for:</strong>
+- Systems with large collections containing millions of items
+- Systems requiring high-performance temporal searching</p>
+<p><strong>Pros:</strong>
+- Multiple times faster queries with datetime filter
+- Reduced database load - only relevant indexes are searched</p>
+<p><strong>Cons:</strong>
+- Slightly longer item indexing time (automatic index management)
+- Greater management complexity</p>
+<h3 id="configuration">Configuration<a class="headerlink" href="#configuration" title="Permanent link">&para;</a></h3>
+<h4 id="enabling-datetime-based-indexing">Enabling Datetime-Based Indexing<a class="headerlink" href="#enabling-datetime-based-indexing" title="Permanent link">&para;</a></h4>
+<p>Enable datetime-based indexing by setting the following environment variable:</p>
+<div class="highlight"><pre><span></span><code><span class="nv">ENABLE_DATETIME_INDEX_FILTERING</span><span class="o">=</span><span class="nb">true</span>
+</code></pre></div>
+<h3 id="related-configuration-variables">Related Configuration Variables<a class="headerlink" href="#related-configuration-variables" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Description</th>
+<th>Default</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ENABLE_DATETIME_INDEX_FILTERING</code></td>
+<td>Enables time-based index partitioning</td>
+<td><code>false</code></td>
+<td><code>true</code></td>
+</tr>
+<tr>
+<td><code>DATETIME_INDEX_MAX_SIZE_GB</code></td>
+<td>Maximum size limit for datetime indexes (GB) - note: add +20% to target size due to ES/OS compression</td>
+<td><code>25</code></td>
+<td><code>50</code></td>
+</tr>
+<tr>
+<td><code>STAC_ITEMS_INDEX_PREFIX</code></td>
+<td>Prefix for item indexes</td>
+<td><code>items_</code></td>
+<td><code>stac_items_</code></td>
+</tr>
+</tbody>
+</table>
+<h2 id="how-datetime-based-indexing-works">How Datetime-Based Indexing Works<a class="headerlink" href="#how-datetime-based-indexing-works" title="Permanent link">&para;</a></h2>
+<h3 id="index-and-alias-naming-convention">Index and Alias Naming Convention<a class="headerlink" href="#index-and-alias-naming-convention" title="Permanent link">&para;</a></h3>
+<p>The system uses a precise naming convention:</p>
+<p><strong>Physical indexes:</strong>
+<div class="highlight"><pre><span></span><code>{ITEMS_INDEX_PREFIX}{collection-id}_{uuid4}
+</code></pre></div></p>
+<p><strong>Aliases:</strong>
+<div class="highlight"><pre><span></span><code>{ITEMS_INDEX_PREFIX}{collection-id}                                  # Main collection alias
+{ITEMS_INDEX_PREFIX}{collection-id}_{start-datetime}                 # Temporal alias
+{ITEMS_INDEX_PREFIX}{collection-id}_{start-datetime}_{end-datetime}  # Closed index alias
+</code></pre></div></p>
+<p><strong>Example:</strong></p>
+<p><em>Physical indexes:</em>
+- <code>items_sentinel-2-l2a_a1b2c3d4-e5f6-7890-abcd-ef1234567890</code></p>
+<p><em>Aliases:</em>
+- <code>items_sentinel-2-l2a</code> - main collection alias
+- <code>items_sentinel-2-l2a_2024-01-01</code> - active alias from January 1, 2024
+- <code>items_sentinel-2-l2a_2024-01-01_2024-03-15</code> - closed index alias (reached size limit)</p>
+<h3 id="index-size-management">Index Size Management<a class="headerlink" href="#index-size-management" title="Permanent link">&para;</a></h3>
+<p><strong>Important - Data Compression:</strong> Elasticsearch and OpenSearch automatically compress data. The configured <code>DATETIME_INDEX_MAX_SIZE_GB</code> limit refers to the compressed size on disk. It is recommended to add +20% to the target size to account for compression overhead and metadata.</p>
+<h2 id="interacting-with-the-api">Interacting with the API<a class="headerlink" href="#interacting-with-the-api" title="Permanent link">&para;</a></h2>
+<ul>
+<li>
+<p><strong>Creating a Collection</strong>:
+  <div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-X<span class="w"> </span><span class="s2">&quot;POST&quot;</span><span class="w"> </span><span class="s2">&quot;http://localhost:8080/collections&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">     </span>-H<span class="w"> </span><span class="s1">&#39;Content-Type: application/json&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">     </span>-d<span class="w"> </span><span class="s1">$&#39;{</span>
+<span class="s1">  &quot;id&quot;: &quot;my_collection&quot;</span>
+<span class="s1">}&#39;</span>
+</code></pre></div></p>
+</li>
+<li>
+<p><strong>Adding an Item to a Collection</strong>:
+  <div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-X<span class="w"> </span><span class="s2">&quot;POST&quot;</span><span class="w"> </span><span class="s2">&quot;http://localhost:8080/collections/my_collection/items&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">     </span>-H<span class="w"> </span><span class="s1">&#39;Content-Type: application/json&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">     </span>-d<span class="w"> </span>@item.json
+</code></pre></div></p>
+</li>
+<li>
+<p><strong>Searching for Items</strong>:
+  <div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-X<span class="w"> </span><span class="s2">&quot;GET&quot;</span><span class="w"> </span><span class="s2">&quot;http://localhost:8080/search&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">     </span>-H<span class="w"> </span><span class="s1">&#39;Content-Type: application/json&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">     </span>-d<span class="w"> </span><span class="s1">$&#39;{</span>
+<span class="s1">  &quot;collections&quot;: [&quot;my_collection&quot;],</span>
+<span class="s1">  &quot;limit&quot;: 10</span>
+<span class="s1">}&#39;</span>
+</code></pre></div></p>
+</li>
+<li>
+<p><strong>Filtering by Bbox</strong>:
+  <div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-X<span class="w"> </span><span class="s2">&quot;GET&quot;</span><span class="w"> </span><span class="s2">&quot;http://localhost:8080/search&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">     </span>-H<span class="w"> </span><span class="s1">&#39;Content-Type: application/json&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">     </span>-d<span class="w"> </span><span class="s1">$&#39;{</span>
+<span class="s1">  &quot;collections&quot;: [&quot;my_collection&quot;],</span>
+<span class="s1">  &quot;bbox&quot;: [-180, -90, 180, 90]</span>
+<span class="s1">}&#39;</span>
+</code></pre></div></p>
+</li>
+<li>
+<p><strong>Filtering by Datetime</strong>:
+  <div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-X<span class="w"> </span><span class="s2">&quot;GET&quot;</span><span class="w"> </span><span class="s2">&quot;http://localhost:8080/search&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">     </span>-H<span class="w"> </span><span class="s1">&#39;Content-Type: application/json&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">     </span>-d<span class="w"> </span><span class="s1">$&#39;{</span>
+<span class="s1">  &quot;collections&quot;: [&quot;my_collection&quot;],</span>
+<span class="s1">  &quot;datetime&quot;: &quot;2020-01-01T00:00:00Z/2020-12-31T23:59:59Z&quot;</span>
+<span class="s1">}&#39;</span>
+</code></pre></div></p>
+</li>
+</ul>
+<h2 id="configure-the-api">Configure the API<a class="headerlink" href="#configure-the-api" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>API Title and Description</strong>: By default set to <code>stac-fastapi-&lt;backend&gt;</code>. Customize these by setting:</li>
+<li><code>STAC_FASTAPI_TITLE</code>: Changes the API title in the documentation</li>
+<li>
+<p><code>STAC_FASTAPI_DESCRIPTION</code>: Changes the API description in the documentation</p>
+</li>
+<li>
+<p><strong>Database Indices</strong>: By default, the API reads from and writes to:</p>
+</li>
+<li><code>collections</code> index for collections</li>
+<li><code>items_&lt;collection name&gt;</code> indices for items</li>
+<li>
+<p>Customize with <code>STAC_COLLECTIONS_INDEX</code> and <code>STAC_ITEMS_INDEX_PREFIX</code> environment variables</p>
+</li>
+<li>
+<p><strong>Root Path Configuration</strong>: The application root path is the base URL by default.</p>
+</li>
+<li>
+<p>For AWS Lambda with Gateway API: Set <code>STAC_FASTAPI_ROOT_PATH</code> to match the Gateway API stage name (e.g., <code>/v1</code>)</p>
+</li>
+<li>
+<p><strong>Feature Configuration</strong>: Control which features are enabled:</p>
+</li>
+<li><code>ENABLE_COLLECTIONS_SEARCH</code>: Set to <code>true</code> (default) to enable collection search extensions (sort, fields). Set to <code>false</code> to disable.</li>
+<li><code>ENABLE_TRANSACTIONS_EXTENSIONS</code>: Set to <code>true</code> (default) to enable transaction extensions. Set to <code>false</code> to disable.</li>
+</ul>
+<h2 id="collection-pagination">Collection Pagination<a class="headerlink" href="#collection-pagination" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Overview</strong>: The collections route supports pagination through optional query parameters.</li>
+<li><strong>Parameters</strong>:</li>
+<li><code>limit</code>: Controls the number of collections returned per page</li>
+<li><code>token</code>: Used to retrieve subsequent pages of results</li>
+<li><strong>Response Structure</strong>: The <code>links</code> field in the response contains a <code>next</code> link with the token for the next page of results.</li>
+<li><strong>Example Usage</strong>:
+  <div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-X<span class="w"> </span><span class="s2">&quot;GET&quot;</span><span class="w"> </span><span class="s2">&quot;http://localhost:8080/collections?limit=1&amp;token=example_token&quot;</span>
+</code></pre></div></li>
+</ul>
+<h2 id="sfeos-tools-cli">SFEOS Tools CLI<a class="headerlink" href="#sfeos-tools-cli" title="Permanent link">&para;</a></h2>
+<ul>
+<li>
+<p><strong>Overview</strong>: <a href="https://github.com/Healy-Hyperspatial/sfeos-tools">SFEOS Tools</a> is an installable CLI package for managing and maintaining SFEOS deployments. This CLI package provides utilities for managing and maintaining SFEOS deployments.</p>
+</li>
+<li>
+<p><strong>Installation</strong>:
+  <div class="highlight"><pre><span></span><code><span class="c1"># For Elasticsearch (from PyPI)</span>
+pip<span class="w"> </span>install<span class="w"> </span>sfeos-tools<span class="o">[</span>elasticsearch<span class="o">]</span>
+
+<span class="c1"># For OpenSearch (from PyPI)</span>
+pip<span class="w"> </span>install<span class="w"> </span>sfeos-tools<span class="o">[</span>opensearch<span class="o">]</span>
+</code></pre></div></p>
+</li>
+<li>
+<p><strong>Available Commands</strong>:</p>
+</li>
+<li><code>add-bbox-shape</code>: Add bbox_shape field to existing collections for spatial search support</li>
+<li>
+<p><code>reindex</code>: Reindex all STAC indices (collections and per-collection items) to new versioned indices and update aliases; supports both Elasticsearch and OpenSearch backends. Use this when you need to apply mapping changes, update index settings, or migrate to a new index structure. The command handles the entire process including creating new indices, reindexing data, and atomically updating aliases with zero downtime.</p>
+</li>
+<li>
+<p><strong>Basic Usage</strong>:
+  <div class="highlight"><pre><span></span><code>sfeos-tools<span class="w"> </span>add-bbox-shape<span class="w"> </span>--backend<span class="w"> </span>elasticsearch
+sfeos-tools<span class="w"> </span>add-bbox-shape<span class="w"> </span>--backend<span class="w"> </span>opensearch
+</code></pre></div></p>
+</li>
+<li>
+<p><strong>Connection Options</strong>: Configure database connection via CLI flags or environment variables:</p>
+</li>
+<li><code>--host</code>: Database host (default: <code>localhost</code> or <code>ES_HOST</code> env var)</li>
+<li><code>--port</code>: Database port (default: <code>9200</code> or <code>ES_PORT</code> env var)</li>
+<li><code>--use-ssl</code> / <code>--no-ssl</code>: Use SSL connection (default: <code>true</code> or <code>ES_USE_SSL</code> env var)</li>
+<li><code>--user</code>: Database username (default: <code>ES_USER</code> env var)</li>
+<li>
+<p><code>--password</code>: Database password (default: <code>ES_PASS</code> env var)</p>
+</li>
+<li>
+<p><strong>Examples</strong>:
+  <div class="highlight"><pre><span></span><code><span class="c1"># Local Docker Compose (no SSL)</span>
+sfeos-tools<span class="w"> </span>add-bbox-shape<span class="w"> </span>--backend<span class="w"> </span>elasticsearch<span class="w"> </span>--no-ssl
+
+<span class="c1"># Remote server with SSL</span>
+sfeos-tools<span class="w"> </span>add-bbox-shape<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--backend<span class="w"> </span>elasticsearch<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--host<span class="w"> </span>db.example.com<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--port<span class="w"> </span><span class="m">9200</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--user<span class="w"> </span>admin<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--password<span class="w"> </span>secret
+
+<span class="c1"># Cloud deployment with environment variables</span>
+<span class="nv">ES_HOST</span><span class="o">=</span>my-es-cluster.cloud.com<span class="w"> </span><span class="nv">ES_PORT</span><span class="o">=</span><span class="m">9243</span><span class="w"> </span><span class="nv">ES_USER</span><span class="o">=</span>elastic<span class="w"> </span><span class="nv">ES_PASS</span><span class="o">=</span>changeme<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>sfeos-tools<span class="w"> </span>add-bbox-shape<span class="w"> </span>--backend<span class="w"> </span>elasticsearch
+
+<span class="c1"># Using --help for more information</span>
+sfeos-tools<span class="w"> </span>--help
+sfeos-tools<span class="w"> </span>add-bbox-shape<span class="w"> </span>--help
+sfeos-tools<span class="w"> </span>reindex<span class="w"> </span>--help
+</code></pre></div></p>
+</li>
+<li>
+<p><strong>Documentation</strong>:
+  For complete documentation, examples, and advanced usage, please visit the <a href="https://github.com/Healy-Hyperspatial/sfeos-tools">SFEOS Tools GitHub repository</a>.</p>
+</li>
+<li>
+<p><strong>Contributing</strong>:
+  Contributions, bug reports, and feature requests are welcome! Please file them on the <a href="https://github.com/Healy-Hyperspatial/sfeos-tools/issues">SFEOS Tools issue tracker</a>.</p>
+</li>
+</ul>
+<h2 id="ingesting-sample-data-cli-tool">Ingesting Sample Data CLI Tool<a class="headerlink" href="#ingesting-sample-data-cli-tool" title="Permanent link">&para;</a></h2>
+<ul>
+<li>
+<p><strong>Overview</strong>: The <code>data_loader.py</code> script provides a convenient way to load STAC items into the database.</p>
+</li>
+<li>
+<p><strong>Usage</strong>:
+  <div class="highlight"><pre><span></span><code>python3<span class="w"> </span>data_loader.py<span class="w"> </span>--base-url<span class="w"> </span>http://localhost:8080
+</code></pre></div></p>
+</li>
+<li>
+<p><strong>Options</strong>:
+  <div class="highlight"><pre><span></span><code>--base-url TEXT       Base URL of the STAC API  [required]
+--collection-id TEXT  ID of the collection to which items are added
+--use-bulk            Use bulk insert method for items
+--data-dir PATH       Directory containing collection.json and feature
+                      collection file
+--help                Show this message and exit.
+</code></pre></div></p>
+</li>
+<li>
+<p><strong>Example Workflows</strong>:</p>
+</li>
+<li><strong>Loading Sample Data</strong>: 
+    <div class="highlight"><pre><span></span><code>python3<span class="w"> </span>data_loader.py<span class="w"> </span>--base-url<span class="w"> </span>http://localhost:8080
+</code></pre></div></li>
+<li><strong>Loading Data to a Specific Collection</strong>:
+    <div class="highlight"><pre><span></span><code>python3<span class="w"> </span>data_loader.py<span class="w"> </span>--base-url<span class="w"> </span>http://localhost:8080<span class="w"> </span>--collection-id<span class="w"> </span>my-collection
+</code></pre></div></li>
+<li><strong>Using Bulk Insert for Performance</strong>:
+    <div class="highlight"><pre><span></span><code>python3<span class="w"> </span>data_loader.py<span class="w"> </span>--base-url<span class="w"> </span>http://localhost:8080<span class="w"> </span>--use-bulk
+</code></pre></div></li>
+</ul>
+<h2 id="redis-for-navigation">Redis for Navigation<a class="headerlink" href="#redis-for-navigation" title="Permanent link">&para;</a></h2>
+<p>The Redis cache stores navigation state for paginated results, allowing the system to maintain previous page links using tokens. The configuration supports both Redis Sentinel and standalone Redis setups.</p>
+<p>Steps to configure:
+1. Ensure that a Redis instance is available, either a standalone server or a Sentinel-managed cluster.
+2. Establish a connection between STAC FastAPI and Redis instance by setting the appropriate <a href="#redis-for-navigation-environment-variables"><strong>environment variables</strong></a>. These define the Redis host, port, authentication, and optional Sentinel settings.
+3. Control whether Redis caching is activated using the <code>REDIS_ENABLE</code> environment variable to <code>True</code> or <code>False</code>.
+4. Ensure the appropriate version of <code>Redis</code> is installed:
+<div class="highlight"><pre><span></span><code>pip install stac-fastapi-elasticsearch[redis]
+</code></pre></div></p>
+<h2 id="elasticsearch-mappings">Elasticsearch Mappings<a class="headerlink" href="#elasticsearch-mappings" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Overview</strong>: Mappings apply to search index, not source data. They define how documents and their fields are stored and indexed.</li>
+<li><strong>Implementation</strong>: </li>
+<li>Mappings are stored in index templates that are created on application startup</li>
+<li>These templates are automatically applied when creating new Collection and Item indices</li>
+<li>The <code>sfeos_helpers</code> package contains shared mapping definitions used by both Elasticsearch and OpenSearch backends</li>
+<li><strong>Customization</strong>: Custom mappings can be defined by extending the base mapping templates.</li>
+</ul>
+<h2 id="managing-elasticsearch-indices">Managing Elasticsearch Indices<a class="headerlink" href="#managing-elasticsearch-indices" title="Permanent link">&para;</a></h2>
+<h3 id="snapshots">Snapshots<a class="headerlink" href="#snapshots" title="Permanent link">&para;</a></h3>
+<ul>
+<li>
+<p><strong>Overview</strong>: Snapshots provide a way to backup and restore your indices.</p>
+</li>
+<li>
+<p><strong>Creating a Snapshot Repository</strong>:
+  <div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-X<span class="w"> </span><span class="s2">&quot;PUT&quot;</span><span class="w"> </span><span class="s2">&quot;http://localhost:9200/_snapshot/my_fs_backup&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">     </span>-H<span class="w"> </span><span class="s1">&#39;Content-Type: application/json; charset=utf-8&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">     </span>-d<span class="w"> </span><span class="s1">$&#39;{</span>
+<span class="s1">             &quot;type&quot;: &quot;fs&quot;,</span>
+<span class="s1">             &quot;settings&quot;: {</span>
+<span class="s1">                 &quot;location&quot;: &quot;/usr/share/elasticsearch/snapshots/my_fs_backup&quot;</span>
+<span class="s1">             }</span>
+<span class="s1">}&#39;</span>
+</code></pre></div></p>
+</li>
+<li>This creates a snapshot repository that stores files in the elasticsearch/snapshots directory in this git repo clone</li>
+<li>
+<p>The elasticsearch.yml and compose files create a mapping from that directory to /usr/share/elasticsearch/snapshots within the Elasticsearch container and grant permissions for using it</p>
+</li>
+<li>
+<p><strong>Creating a Snapshot</strong>:
+  <div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-X<span class="w"> </span><span class="s2">&quot;PUT&quot;</span><span class="w"> </span><span class="s2">&quot;http://localhost:9200/_snapshot/my_fs_backup/my_snapshot_2?wait_for_completion=true&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">     </span>-H<span class="w"> </span><span class="s1">&#39;Content-Type: application/json; charset=utf-8&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">     </span>-d<span class="w"> </span><span class="s1">$&#39;{</span>
+<span class="s1">  &quot;metadata&quot;: {</span>
+<span class="s1">    &quot;taken_because&quot;: &quot;dump of all items&quot;,</span>
+<span class="s1">    &quot;taken_by&quot;: &quot;pvarner&quot;</span>
+<span class="s1">  },</span>
+<span class="s1">  &quot;include_global_state&quot;: false,</span>
+<span class="s1">  &quot;ignore_unavailable&quot;: false,</span>
+<span class="s1">  &quot;indices&quot;: &quot;items_my-collection&quot;</span>
+<span class="s1">}&#39;</span>
+</code></pre></div></p>
+</li>
+<li>This creates a snapshot named my_snapshot_2 and waits for the action to be completed before returning</li>
+<li>This can also be done asynchronously by omitting the wait_for_completion parameter, and queried for status later</li>
+<li>
+<p>The indices parameter determines which indices are snapshotted, and can include wildcards</p>
+</li>
+<li>
+<p><strong>Viewing Snapshots</strong>:
+  <div class="highlight"><pre><span></span><code><span class="c1"># View a specific snapshot</span>
+curl<span class="w"> </span>http://localhost:9200/_snapshot/my_fs_backup/my_snapshot_2
+
+<span class="c1"># View all snapshots</span>
+curl<span class="w"> </span>http://localhost:9200/_snapshot/my_fs_backup/_all
+</code></pre></div></p>
+</li>
+<li>
+<p>These commands allow you to check the status and details of your snapshots</p>
+</li>
+<li>
+<p><strong>Restoring a Snapshot</strong>:
+  <div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-X<span class="w"> </span><span class="s2">&quot;POST&quot;</span><span class="w"> </span><span class="s2">&quot;http://localhost:9200/_snapshot/my_fs_backup/my_snapshot_2/_restore?wait_for_completion=true&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">     </span>-H<span class="w"> </span><span class="s1">&#39;Content-Type: application/json; charset=utf-8&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">     </span>-d<span class="w"> </span><span class="s1">$&#39;{</span>
+<span class="s1">  &quot;include_aliases&quot;: false,</span>
+<span class="s1">  &quot;include_global_state&quot;: false,</span>
+<span class="s1">  &quot;ignore_unavailable&quot;: true,</span>
+<span class="s1">  &quot;rename_replacement&quot;: &quot;items_$1-copy&quot;,</span>
+<span class="s1">  &quot;indices&quot;: &quot;items_*&quot;,</span>
+<span class="s1">  &quot;rename_pattern&quot;: &quot;items_(.+)&quot;</span>
+<span class="s1">}&#39;</span>
+</code></pre></div></p>
+</li>
+<li>This specific command will restore any indices that match items_* and rename them so that the new index name will be suffixed with -copy</li>
+<li>
+<p>The rename_pattern and rename_replacement parameters allow you to restore indices under new names</p>
+</li>
+<li>
+<p><strong>Updating Collection References</strong>:
+  <div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-X<span class="w"> </span><span class="s2">&quot;POST&quot;</span><span class="w"> </span><span class="s2">&quot;http://localhost:9200/items_my-collection-copy/_update_by_query&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">     </span>-H<span class="w"> </span><span class="s1">&#39;Content-Type: application/json; charset=utf-8&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">     </span>-d<span class="w"> </span><span class="s1">$&#39;{</span>
+<span class="s1">    &quot;query&quot;: {</span>
+<span class="s1">        &quot;match_all&quot;: {}</span>
+<span class="s1">},</span>
+<span class="s1">  &quot;script&quot;: {</span>
+<span class="s1">    &quot;lang&quot;: &quot;painless&quot;,</span>
+<span class="s1">    &quot;params&quot;: {</span>
+<span class="s1">      &quot;collection&quot;: &quot;my-collection-copy&quot;</span>
+<span class="s1">    },</span>
+<span class="s1">    &quot;source&quot;: &quot;ctx._source.collection = params.collection&quot;</span>
+<span class="s1">  }</span>
+<span class="s1">}&#39;</span>
+</code></pre></div></p>
+</li>
+<li>After restoring, the item documents have been restored in the new index (e.g., my-collection-copy), but the value of the collection field in those documents is still the original value of my-collection</li>
+<li>
+<p>This command updates these values to match the new collection name using Elasticsearch's Update By Query feature</p>
+</li>
+<li>
+<p><strong>Creating a New Collection</strong>:
+  <div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-X<span class="w"> </span><span class="s2">&quot;POST&quot;</span><span class="w"> </span><span class="s2">&quot;http://localhost:8080/collections&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">     </span>-H<span class="w"> </span><span class="s1">&#39;Content-Type: application/json&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">     </span>-d<span class="w"> </span><span class="s1">$&#39;{</span>
+<span class="s1">  &quot;id&quot;: &quot;my-collection-copy&quot;</span>
+<span class="s1">}&#39;</span>
+</code></pre></div></p>
+</li>
+<li>The final step is to create a new collection through the API with the new name for each of the restored indices</li>
+<li>This gives you a copy of the collection that has a resource URI (/collections/my-collection-copy) and can be correctly queried by collection name</li>
+</ul>
+<h3 id="reindexing">Reindexing<a class="headerlink" href="#reindexing" title="Permanent link">&para;</a></h3>
+<ul>
+<li>
+<p><strong>Overview</strong>: Reindexing allows you to copy documents from one index to another, optionally transforming them in the process.</p>
+</li>
+<li>
+<p><strong>Use Cases</strong>:</p>
+</li>
+<li>Apply changes to documents</li>
+<li>Correct dynamically generated mappings</li>
+<li>Transform data (e.g., lowercase identifiers)</li>
+<li>
+<p>The index templates will make sure that manually created indices will also have the correct mappings and settings</p>
+</li>
+<li>
+<p><strong>Example: Reindexing with Transformation</strong>:
+  <div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-X<span class="w"> </span><span class="s2">&quot;POST&quot;</span><span class="w"> </span><span class="s2">&quot;http://localhost:9200/_reindex&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s1">&#39;Content-Type: application/json&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-d<span class="w"> </span><span class="s1">$&#39;{</span>
+<span class="s1">    &quot;source&quot;: {</span>
+<span class="s1">      &quot;index&quot;: &quot;items_my-collection-lower_my-collection-hex-000001&quot;</span>
+<span class="s1">    }, </span>
+<span class="s1">    &quot;dest&quot;: {</span>
+<span class="s1">      &quot;index&quot;: &quot;items_my-collection-lower_my-collection-hex-000002&quot;</span>
+<span class="s1">    },</span>
+<span class="s1">    &quot;script&quot;: {</span>
+<span class="s1">      &quot;source&quot;: &quot;ctx._source.id = ctx._source.id.toLowerCase()&quot;,</span>
+<span class="s1">      &quot;lang&quot;: &quot;painless&quot;</span>
+<span class="s1">    }</span>
+<span class="s1">  }&#39;</span>
+</code></pre></div></p>
+</li>
+<li>In this example, we make a copy of an existing Item index but change the Item identifier to be lowercase</li>
+<li>
+<p>The script parameter allows you to transform documents during the reindexing process</p>
+</li>
+<li>
+<p><strong>Updating Aliases</strong>:
+  <div class="highlight"><pre><span></span><code>curl<span class="w"> </span>-X<span class="w"> </span><span class="s2">&quot;POST&quot;</span><span class="w"> </span><span class="s2">&quot;http://localhost:9200/_aliases&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-H<span class="w"> </span><span class="s1">&#39;Content-Type: application/json&#39;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>-d<span class="w"> </span><span class="s1">$&#39;{</span>
+<span class="s1">    &quot;actions&quot;: [</span>
+<span class="s1">      {</span>
+<span class="s1">        &quot;remove&quot;: {</span>
+<span class="s1">          &quot;index&quot;: &quot;*&quot;,</span>
+<span class="s1">          &quot;alias&quot;: &quot;items_my-collection&quot;</span>
+<span class="s1">        }</span>
+<span class="s1">      },</span>
+<span class="s1">      {</span>
+<span class="s1">        &quot;add&quot;: {</span>
+<span class="s1">          &quot;index&quot;: &quot;items_my-collection-lower_my-collection-hex-000002&quot;,</span>
+<span class="s1">          &quot;alias&quot;: &quot;items_my-collection&quot;</span>
+<span class="s1">        }</span>
+<span class="s1">      }</span>
+<span class="s1">    ]</span>
+<span class="s1">  }&#39;</span>
+</code></pre></div></p>
+</li>
+<li>If you are happy with the data in the newly created index, you can move the alias items_my-collection to the new index</li>
+<li>This makes the modified Items with lowercase identifiers visible to users accessing my-collection in the STAC API</li>
+<li>Using aliases allows you to switch between different index versions without changing the API endpoint</li>
+</ul>
+<h2 id="auth">Auth<a class="headerlink" href="#auth" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Overview</strong>: Authentication is an optional feature that can be enabled through Route Dependencies.</li>
+<li><strong>Implementation Options</strong>:</li>
+<li>Basic authentication</li>
+<li>OAuth2 with Keycloak</li>
+<li>Custom route dependencies</li>
+<li><strong>Configuration</strong>: Authentication can be configured using the <code>STAC_FASTAPI_ROUTE_DEPENDENCIES</code> environment variable.</li>
+<li><strong>Examples and Documentation</strong>: Detailed examples and implementation guides can be found in the <a href="examples/auth">examples/auth</a> directory.</li>
+</ul>
+<h2 id="aggregation">Aggregation<a class="headerlink" href="#aggregation" title="Permanent link">&para;</a></h2>
+<ul>
+<li><strong>Supported Aggregations</strong>:</li>
+<li>Spatial aggregations of points and geometries</li>
+<li>Frequency distribution aggregation of any property including dates</li>
+<li>
+<p>Temporal distribution of datetime values</p>
+</li>
+<li>
+<p><strong>Endpoint Locations</strong>:</p>
+</li>
+<li>Root Catalog level: <code>/aggregations</code></li>
+<li>
+<p>Collection level: <code>/&lt;collection_id&gt;/aggregations</code></p>
+</li>
+<li>
+<p><strong>Implementation Details</strong>: The <code>sfeos_helpers.aggregation</code> package provides specialized functionality for both Elasticsearch and OpenSearch backends.</p>
+</li>
+<li>
+<p><strong>Documentation</strong>: Detailed information about supported aggregations can be found in <a href="./docs/src/aggregation.md">the aggregation docs</a>.</p>
+</li>
+</ul>
+<h2 id="rate-limiting">Rate Limiting<a class="headerlink" href="#rate-limiting" title="Permanent link">&para;</a></h2>
+<ul>
+<li>
+<p><strong>Overview</strong>: Rate limiting is an optional security feature that controls API request frequency on a remote address basis.</p>
+</li>
+<li>
+<p><strong>Configuration</strong>: Enabled by setting the <code>STAC_FASTAPI_RATE_LIMIT</code> environment variable:
+  <div class="highlight"><pre><span></span><code>STAC_FASTAPI_RATE_LIMIT=500/minute
+</code></pre></div></p>
+</li>
+<li>
+<p><strong>Functionality</strong>: </p>
+</li>
+<li>Limits each client to a specified number of requests per time period (e.g., 500 requests per minute)</li>
+<li>Helps prevent API abuse and maintains system stability</li>
+<li>
+<p>Ensures fair resource allocation among all clients</p>
+</li>
+<li>
+<p><strong>Examples</strong>: Implementation examples are available in the <a href="examples/rate_limit">examples/rate_limit</a> directory.</p>
+</li>
+</ul>
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        <div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/stac-utils" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.3.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2023 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6zm-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3zm44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9zM244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8zM97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1zm-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7zm32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1zm-11.4-14.7c-1.6 1-1.6 3.6 0 5.9 1.6 2.3 4.3 3.3 5.6 2.3 1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    <script id="__config" type="application/json">{"base": ".", "features": [], "search": "assets/javascripts/workers/search.208ed371.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}}</script>
+    
+    
+      <script src="assets/javascripts/bundle.2a6f1dda.min.js"></script>
+      
+    
+  </body>
+</html>
