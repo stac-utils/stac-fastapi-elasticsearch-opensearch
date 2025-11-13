@@ -10,7 +10,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 
 - Environment variable `EXCLUDED_FROM_ITEMS` to exclude specific fields from items endpoint response. Supports comma-separated list of fully qualified field names (e.g., `properties.auth:schemes,properties.storage:schemes`) [#518](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/518)
-- Added validator for `REDIS_MAX_CONNECTIONS` to handle empty or null-like values ("", "null", None) and return None instead. [#519](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/519)
 
 ### Changed
 
