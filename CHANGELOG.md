@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- Ensure datetime filter uses nanosecond precision (6 digits) instead of millisecond  (3 digits) and truncation of after 3 miliseconds, and enforce 1970-2262 date boundaries to prevent Elasticsearch/OpenSearch resolution errors. [#529](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/529)
+
 ### Removed
 
 ### Updated
