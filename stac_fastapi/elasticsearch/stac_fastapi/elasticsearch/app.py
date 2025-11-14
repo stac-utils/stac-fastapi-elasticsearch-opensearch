@@ -198,6 +198,7 @@ if ENABLE_COLLECTIONS_SEARCH_ROUTE:
             FieldsConformanceClasses.COLLECTIONS,
         ],
     )
+    extensions.append(collection_search_ext)
     extensions.append(collections_search_endpoint_ext)
 
 

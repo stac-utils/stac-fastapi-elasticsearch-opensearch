@@ -1,1 +1,34 @@
-../../README.md
+# sfeos-helpers
+
+<p align="left">
+  <img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/sfeos.png" width=1000>
+</p>
+
+  [![Downloads](https://static.pepy.tech/badge/stac-fastapi-core?color=blue)](https://pepy.tech/project/stac-fastapi-core)
+  [![GitHub contributors](https://img.shields.io/github/contributors/stac-utils/stac-fastapi-elasticsearch-opensearch?color=blue)](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/graphs/contributors)
+  [![GitHub stars](https://img.shields.io/github/stars/stac-utils/stac-fastapi-elasticsearch-opensearch.svg?color=blue)](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/stargazers)
+  [![GitHub forks](https://img.shields.io/github/forks/stac-utils/stac-fastapi-elasticsearch-opensearch.svg?color=blue)](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/network/members)
+   [![PyPI version](https://img.shields.io/pypi/v/stac-fastapi-elasticsearch.svg?color=blue)](https://pypi.org/project/stac-fastapi-elasticsearch/)
+  [![STAC](https://img.shields.io/badge/STAC-1.1.0-blue.svg)](https://github.com/radiantearth/stac-spec/tree/v1.1.0)
+  [![stac-fastapi](https://img.shields.io/badge/stac--fastapi-6.0.0-blue.svg)](https://github.com/stac-utils/stac-fastapi)
+
+Helper utilities for the stac-fastapi project. For full documentation, please see the [main README](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/blob/main/README.md).
+
+## Package Information
+
+- **Package name**: sfeos-helpers
+- **Description**: Helper utilities for the stac-fastapi project.
+- **Documentation**: [https://stac-utils.github.io/stac-fastapi-elasticsearch-opensearch/](https://stac-utils.github.io/stac-fastapi-elasticsearch-opensearch/)
+- **Source**: [GitHub Repository](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/)
+
+## Installation
+
+This package is a dependency of stac-fastapi-elasticsearch and stac-fastapi-opensearch and is typically installed automatically.
+
+```bash
+pip install stac-fastapi-elasticsearch  # or stac-fastapi-opensearch
+```
+
+## Quick Start
+
+For detailed usage and examples, please refer to the [main documentation](https://stac-utils.github.io/stac-fastapi-elasticsearch-opensearch/).

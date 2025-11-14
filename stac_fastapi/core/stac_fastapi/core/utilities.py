@@ -10,15 +10,7 @@ from typing import Any, Dict, List, Optional, Set, Union
 
 from stac_fastapi.types.stac import Item
 
-
-def get_max_limit():
-    """
-    Retrieve a MAX_LIMIT value from an environment variable.
-
-    Returns:
-        int: The int value parsed from the environment variable.
-    """
-    return int(os.getenv("ENV_MAX_LIMIT", 10000))
+MAX_LIMIT = 10000
 
 
 def get_bool_env(name: str, default: Union[bool, str] = False) -> bool:
@@ -186,3 +178,20 @@ def dict_deep_update(merge_to: Dict[str, Any], merge_from: Dict[str, Any]) -> No
             dict_deep_update(merge_to[k], merge_from[k])
         else:
             merge_to[k] = v
+
+
+def get_excluded_from_items(obj: dict, field_path: str) -> None:
+    """Remove a field from items.
+
+    The field is removed in-place from the dictionary if it exists.
+    If any intermediate path does not exist or is not a dictionary,
+    the function returns without making any changes.
+    """
+    *path, final = field_path.split(".")
+    current = obj
+    for part in path:
+        current = current.get(part, {})
+        if not isinstance(current, dict):
+            return
+
+    current.pop(final, None)

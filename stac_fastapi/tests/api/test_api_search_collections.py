@@ -829,7 +829,7 @@ async def test_collections_post(app_client, txn_client, ctx):
 async def test_collections_search_cql2_text(app_client, txn_client, ctx):
     """Test collections search with CQL2-text filter."""
     # Create a unique prefix for test collections
-    test_prefix = f"test-{uuid.uuid4()}"
+    test_prefix = f"test-{uuid.uuid4().hex[:8]}"
 
     # Create test collections
     collection_data = ctx.collection.copy()
@@ -855,9 +855,8 @@ async def test_collections_search_cql2_text(app_client, txn_client, ctx):
     assert filtered_collections[0]["id"] == collection_id
 
     # Test GET search with more complex CQL2-text filter (LIKE operator)
-    test_prefix_escaped = test_prefix.replace("-", "\\-")
     resp = await app_client.get(
-        f"/collections-search?filter-lang=cql2-text&filter=id LIKE '{test_prefix_escaped}%'"
+        f"/collections-search?filter-lang=cql2-text&filter=id LIKE '{test_prefix}%'"
     )
     assert resp.status_code == 200
     resp_json = resp.json()
