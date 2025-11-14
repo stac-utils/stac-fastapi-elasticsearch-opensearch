@@ -15,18 +15,23 @@ def format_datetime_range(date_str: str) -> str:
     Returns:
         str: A string formatted as 'YYYY-MM-DDTHH:MM:SSZ/YYYY-MM-DDTHH:MM:SSZ', with '..' used if any element is None.
     """
+    MIN_DATE_NANOS = datetime(1970, 1, 1, tzinfo=timezone.utc)
+    MAX_DATE_NANOS = datetime(2262, 4, 11, 23, 47, 16, 854775, tzinfo=timezone.utc)
 
     def normalize(dt):
         """Normalize datetime string and preserve millisecond precision."""
         dt = dt.strip()
         if not dt or dt == "..":
             return ".."
-        dt_obj = rfc3339_str_to_datetime(dt)
-        dt_utc = dt_obj.astimezone(timezone.utc)
-        return dt_utc.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+        dt_utc = rfc3339_str_to_datetime(dt).astimezone(timezone.utc)
+        if dt_utc < MIN_DATE_NANOS:
+            dt_utc = MIN_DATE_NANOS
+        if dt_utc > MAX_DATE_NANOS:
+            dt_utc = MAX_DATE_NANOS
+        return dt_utc.isoformat(timespec="auto").replace("+00:00", "Z")
 
     if not isinstance(date_str, str):
-        return "../.."
+        return f"{MIN_DATE_NANOS.isoformat(timespec='auto').replace('+00:00','Z')}/{MAX_DATE_NANOS.isoformat(timespec='auto').replace('+00:00','Z')}"
 
     if "/" not in date_str:
         return f"{normalize(date_str)}/{normalize(date_str)}"
@@ -34,8 +39,21 @@ def format_datetime_range(date_str: str) -> str:
     try:
         start, end = date_str.split("/", 1)
     except Exception:
-        return "../.."
-    return f"{normalize(start)}/{normalize(end)}"
+        return f"{MIN_DATE_NANOS.isoformat(timespec='auto').replace('+00:00','Z')}/{MAX_DATE_NANOS.isoformat(timespec='auto').replace('+00:00','Z')}"
+
+    normalized_start = normalize(start)
+    normalized_end = normalize(end)
+
+    if normalized_start == "..":
+        normalized_start = MIN_DATE_NANOS.isoformat(timespec="auto").replace(
+            "+00:00", "Z"
+        )
+    if normalized_end == "..":
+        normalized_end = MAX_DATE_NANOS.isoformat(timespec="auto").replace(
+            "+00:00", "Z"
+        )
+
+    return f"{normalized_start}/{normalized_end}"
 
 
 # Borrowed from pystac - https://github.com/stac-utils/pystac/blob/f5e4cf4a29b62e9ef675d4a4dac7977b09f53c8f/pystac/utils.py#L370-L394
