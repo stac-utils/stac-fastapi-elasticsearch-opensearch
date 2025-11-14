@@ -2,13 +2,17 @@
 
 import json
 import logging
-from typing import List, Optional, Tuple
+from functools import wraps
+from typing import Callable, List, Optional, Tuple
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 from redis import asyncio as aioredis
 from redis.asyncio.sentinel import Sentinel
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import TimeoutError as RedisTimeoutError
+from retry import retry  # type: ignore
 
 logger = logging.getLogger(__name__)
 
@@ -143,64 +147,103 @@ class RedisSettings(BaseSettings):
         return v
 
 
+class RedisRetrySettings(BaseSettings):
+    """Configuration for Redis retry wrapper."""
+
+    redis_query_retries_num: int = Field(
+        default=3, alias="REDIS_QUERY_RETRIES_NUM", gt=0
+    )
+    redis_query_initial_delay: float = Field(
+        default=1.0, alias="REDIS_QUERY_INITIAL_DELAY", gt=0
+    )
+    redis_query_backoff: float = Field(default=2.0, alias="REDIS_QUERY_BACKOFF", gt=1)
+
+
 # Configure only one Redis configuration
 sentinel_settings = RedisSentinelSettings()
 standalone_settings = RedisSettings()
+retry_settings = RedisRetrySettings()
+
+
+def redis_retry(func: Callable) -> Callable:
+    """Wrap function in retry with back-off logic."""
+
+    @wraps(func)
+    @retry(
+        exceptions=(RedisConnectionError, RedisTimeoutError),
+        tries=retry_settings.redis_query_retries_num,
+        delay=retry_settings.redis_query_initial_delay,
+        backoff=retry_settings.redis_query_backoff,
+        logger=logger,
+    )
+    async def wrapper(*args, **kwargs):
+        return await func(*args, **kwargs)
+
+    return wrapper
+
+
+@redis_retry
+async def _connect_redis_internal() -> Optional[aioredis.Redis]:
+    """Return a Redis connection Redis or Redis Sentinel."""
+    if sentinel_settings.REDIS_SENTINEL_HOSTS:
+        sentinel_nodes = sentinel_settings.get_sentinel_nodes()
+        sentinel = Sentinel(
+            sentinel_nodes,
+            decode_responses=sentinel_settings.REDIS_DECODE_RESPONSES,
+        )
+
+        redis = sentinel.master_for(
+            service_name=sentinel_settings.REDIS_SENTINEL_MASTER_NAME,
+            db=sentinel_settings.REDIS_DB,
+            decode_responses=sentinel_settings.REDIS_DECODE_RESPONSES,
+            retry_on_timeout=sentinel_settings.REDIS_RETRY_TIMEOUT,
+            client_name=sentinel_settings.REDIS_CLIENT_NAME,
+            max_connections=sentinel_settings.REDIS_MAX_CONNECTIONS,
+            health_check_interval=sentinel_settings.REDIS_HEALTH_CHECK_INTERVAL,
+        )
+        logger.info("Connected to Redis Sentinel")
+
+    elif standalone_settings.REDIS_HOST:
+        pool = aioredis.ConnectionPool(
+            host=standalone_settings.REDIS_HOST,
+            port=standalone_settings.REDIS_PORT,
+            db=standalone_settings.REDIS_DB,
+            max_connections=standalone_settings.REDIS_MAX_CONNECTIONS,
+            decode_responses=standalone_settings.REDIS_DECODE_RESPONSES,
+            retry_on_timeout=standalone_settings.REDIS_RETRY_TIMEOUT,
+            health_check_interval=standalone_settings.REDIS_HEALTH_CHECK_INTERVAL,
+        )
+        redis = aioredis.Redis(
+            connection_pool=pool, client_name=standalone_settings.REDIS_CLIENT_NAME
+        )
+        logger.info("Connected to Redis")
+    else:
+        logger.warning("No Redis configuration found")
+        return None
+
+    return redis
 
 
 async def connect_redis() -> Optional[aioredis.Redis]:
-    """Return a Redis connection Redis or Redis Sentinel."""
+    """Handle Redis connection."""
     try:
-        if sentinel_settings.REDIS_SENTINEL_HOSTS:
-            sentinel_nodes = sentinel_settings.get_sentinel_nodes()
-            sentinel = Sentinel(
-                sentinel_nodes,
-                decode_responses=sentinel_settings.REDIS_DECODE_RESPONSES,
-            )
-
-            redis = sentinel.master_for(
-                service_name=sentinel_settings.REDIS_SENTINEL_MASTER_NAME,
-                db=sentinel_settings.REDIS_DB,
-                decode_responses=sentinel_settings.REDIS_DECODE_RESPONSES,
-                retry_on_timeout=sentinel_settings.REDIS_RETRY_TIMEOUT,
-                client_name=sentinel_settings.REDIS_CLIENT_NAME,
-                max_connections=sentinel_settings.REDIS_MAX_CONNECTIONS,
-                health_check_interval=sentinel_settings.REDIS_HEALTH_CHECK_INTERVAL,
-            )
-            logger.info("Connected to Redis Sentinel")
-
-        elif standalone_settings.REDIS_HOST:
-            pool = aioredis.ConnectionPool(
-                host=standalone_settings.REDIS_HOST,
-                port=standalone_settings.REDIS_PORT,
-                db=standalone_settings.REDIS_DB,
-                max_connections=standalone_settings.REDIS_MAX_CONNECTIONS,
-                decode_responses=standalone_settings.REDIS_DECODE_RESPONSES,
-                retry_on_timeout=standalone_settings.REDIS_RETRY_TIMEOUT,
-                health_check_interval=standalone_settings.REDIS_HEALTH_CHECK_INTERVAL,
-            )
-            redis = aioredis.Redis(
-                connection_pool=pool, client_name=standalone_settings.REDIS_CLIENT_NAME
-            )
-            logger.info("Connected to Redis")
-        else:
-            logger.warning("No Redis configuration found")
-            return None
-
-        return redis
-
+        return await _connect_redis_internal()
+    except (
+        aioredis.ConnectionError,
+        aioredis.TimeoutError,
+    ) as e:
+        logger.error(f"Redis connection failed after retries: {e}")
     except aioredis.ConnectionError as e:
         logger.error(f"Redis connection error: {e}")
         return None
     except aioredis.AuthenticationError as e:
         logger.error(f"Redis authentication error: {e}")
         return None
-    except aioredis.TimeoutError as e:
-        logger.error(f"Redis timeout error: {e}")
-        return None
     except Exception as e:
         logger.error(f"Failed to connect to Redis: {e}")
         return None
+
+    return None
 
 
 def get_redis_key(url: str, token: str) -> str:
@@ -230,6 +273,7 @@ def build_url_with_token(base_url: str, token: str) -> str:
     )
 
 
+@redis_retry
 async def save_prev_link(
     redis: aioredis.Redis, next_url: str, current_url: str, next_token: str
 ) -> None:
@@ -243,6 +287,7 @@ async def save_prev_link(
         await redis.setex(key, ttl_seconds, current_url)
 
 
+@redis_retry
 async def get_prev_link(
     redis: aioredis.Redis, current_url: str, current_token: str
 ) -> Optional[str]:
