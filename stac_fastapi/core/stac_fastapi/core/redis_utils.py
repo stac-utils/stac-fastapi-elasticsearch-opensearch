@@ -17,14 +17,10 @@ from retry import retry  # type: ignore
 logger = logging.getLogger(__name__)
 
 
-class RedisSentinelSettings(BaseSettings):
-    """Configuration for connecting to Redis Sentinel."""
+class RedisCommonSettings(BaseSettings):
+    """Common configuration for Redis Sentinel and Redis Standalone."""
 
-    REDIS_SENTINEL_HOSTS: str = ""
-    REDIS_SENTINEL_PORTS: str = "26379"
-    REDIS_SENTINEL_MASTER_NAME: str = "master"
     REDIS_DB: int = 15
-
     REDIS_MAX_CONNECTIONS: Optional[int] = None
     REDIS_RETRY_TIMEOUT: bool = True
     REDIS_DECODE_RESPONSES: bool = True
@@ -32,9 +28,13 @@ class RedisSentinelSettings(BaseSettings):
     REDIS_HEALTH_CHECK_INTERVAL: int = Field(default=30, gt=0)
     REDIS_SELF_LINK_TTL: int = 1800
 
+    REDIS_QUERY_RETRIES_NUM: int = Field(default=3, gt=0)
+    REDIS_QUERY_INITIAL_DELAY: float = Field(default=1.0, gt=0)
+    REDIS_QUERY_BACKOFF: float = Field(default=2.0, gt=1)
+
     @field_validator("REDIS_DB")
     @classmethod
-    def validate_db_sentinel(cls, v: int) -> int:
+    def validate_db(cls, v: int) -> int:
         """Validate REDIS_DB is not negative integer."""
         if v < 0:
             raise ValueError("REDIS_DB must be a positive integer")
@@ -50,11 +50,19 @@ class RedisSentinelSettings(BaseSettings):
 
     @field_validator("REDIS_SELF_LINK_TTL")
     @classmethod
-    def validate_self_link_ttl_sentinel(cls, v: int) -> int:
-        """Validate REDIS_SELF_LINK_TTL is not a negative integer."""
+    def validate_self_link_ttl(cls, v: int) -> int:
+        """Validate REDIS_SELF_LINK_TTL is negative."""
         if v < 0:
             raise ValueError("REDIS_SELF_LINK_TTL must be a positive integer")
         return v
+
+
+class RedisSentinelSettings(RedisCommonSettings):
+    """Configuration for connecting to Redis Sentinel."""
+
+    REDIS_SENTINEL_HOSTS: str = ""
+    REDIS_SENTINEL_PORTS: str = "26379"
+    REDIS_SENTINEL_MASTER_NAME: str = "master"
 
     def get_sentinel_hosts(self) -> List[str]:
         """Parse Redis Sentinel hosts from string to list."""
@@ -100,19 +108,11 @@ class RedisSentinelSettings(BaseSettings):
         return [(str(host), int(port)) for host, port in zip(hosts, ports)]
 
 
-class RedisSettings(BaseSettings):
+class RedisSettings(RedisCommonSettings):
     """Configuration for connecting Redis."""
 
     REDIS_HOST: str = ""
     REDIS_PORT: int = 6379
-    REDIS_DB: int = 15
-
-    REDIS_MAX_CONNECTIONS: Optional[int] = None
-    REDIS_RETRY_TIMEOUT: bool = True
-    REDIS_DECODE_RESPONSES: bool = True
-    REDIS_CLIENT_NAME: str = "stac-fastapi-app"
-    REDIS_HEALTH_CHECK_INTERVAL: int = Field(default=30, gt=0)
-    REDIS_SELF_LINK_TTL: int = 1800
 
     @field_validator("REDIS_PORT")
     @classmethod
@@ -122,58 +122,28 @@ class RedisSettings(BaseSettings):
             raise ValueError("REDIS_PORT must be a positive integer")
         return v
 
-    @field_validator("REDIS_DB")
-    @classmethod
-    def validate_db_standalone(cls, v: int) -> int:
-        """Validate REDIS_DB is not a negative integer."""
-        if v < 0:
-            raise ValueError("REDIS_DB must be a positive integer")
-        return v
-
-    @field_validator("REDIS_MAX_CONNECTIONS", mode="before")
-    @classmethod
-    def validate_max_connections(cls, v):
-        """Handle empty/None values for REDIS_MAX_CONNECTIONS."""
-        if v in ["", "null", "Null", "NULL", "none", "None", "NONE", None]:
-            return None
-        return v
-
-    @field_validator("REDIS_SELF_LINK_TTL")
-    @classmethod
-    def validate_self_link_ttl_standalone(cls, v: int) -> int:
-        """Validate REDIS_SELF_LINK_TTL is negative."""
-        if v < 0:
-            raise ValueError("REDIS_SELF_LINK_TTL must be a positive integer")
-        return v
-
-
-class RedisRetrySettings(BaseSettings):
-    """Configuration for Redis retry wrapper."""
-
-    redis_query_retries_num: int = Field(
-        default=3, alias="REDIS_QUERY_RETRIES_NUM", gt=0
-    )
-    redis_query_initial_delay: float = Field(
-        default=1.0, alias="REDIS_QUERY_INITIAL_DELAY", gt=0
-    )
-    redis_query_backoff: float = Field(default=2.0, alias="REDIS_QUERY_BACKOFF", gt=1)
-
 
 # Configure only one Redis configuration
 sentinel_settings = RedisSentinelSettings()
 standalone_settings = RedisSettings()
-retry_settings = RedisRetrySettings()
 
 
 def redis_retry(func: Callable) -> Callable:
-    """Wrap function in retry with back-off logic."""
+    """Retry with back-off decorator for Redis connections."""
+    _is_sentinel = True if sentinel_settings.REDIS_SENTINEL_HOSTS else False
 
     @wraps(func)
     @retry(
         exceptions=(RedisConnectionError, RedisTimeoutError),
-        tries=retry_settings.redis_query_retries_num,
-        delay=retry_settings.redis_query_initial_delay,
-        backoff=retry_settings.redis_query_backoff,
+        tries=sentinel_settings.REDIS_QUERY_RETRIES_NUM
+        if _is_sentinel
+        else standalone_settings.REDIS_QUERY_RETRIES_NUM,
+        delay=sentinel_settings.REDIS_QUERY_INITIAL_DELAY
+        if _is_sentinel
+        else standalone_settings.REDIS_QUERY_INITIAL_DELAY,
+        backoff=sentinel_settings.REDIS_QUERY_BACKOFF
+        if _is_sentinel
+        else standalone_settings.REDIS_QUERY_BACKOFF,
         logger=logger,
     )
     async def wrapper(*args, **kwargs):
@@ -242,7 +212,6 @@ async def connect_redis() -> Optional[aioredis.Redis]:
     except Exception as e:
         logger.error(f"Failed to connect to Redis: {e}")
         return None
-
     return None
 
 
