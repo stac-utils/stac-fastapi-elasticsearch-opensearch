@@ -53,23 +53,12 @@ async def test_redis_utils_functions():
 @pytest.mark.asyncio
 async def test_redis_retry_retries_until_success(monkeypatch):
     monkeypatch.setattr(
-        redis_utils.sentinel_settings, "REDIS_QUERY_RETRIES_NUM", 3, raising=False
+        redis_utils.settings, "REDIS_QUERY_RETRIES_NUM", 3, raising=False
     )
     monkeypatch.setattr(
-        redis_utils.sentinel_settings, "REDIS_QUERY_INITIAL_DELAY", 0, raising=False
+        redis_utils.settings, "REDIS_QUERY_INITIAL_DELAY", 0, raising=False
     )
-    monkeypatch.setattr(
-        redis_utils.sentinel_settings, "REDIS_QUERY_BACKOFF", 2.0, raising=False
-    )
-    monkeypatch.setattr(
-        redis_utils.standalone_settings, "REDIS_QUERY_RETRIES_NUM", 3, raising=False
-    )
-    monkeypatch.setattr(
-        redis_utils.standalone_settings, "REDIS_QUERY_INITIAL_DELAY", 0, raising=False
-    )
-    monkeypatch.setattr(
-        redis_utils.standalone_settings, "REDIS_QUERY_BACKOFF", 2.0, raising=False
-    )
+    monkeypatch.setattr(redis_utils.settings, "REDIS_QUERY_BACKOFF", 2.0, raising=False)
 
     captured_kwargs = {}
 
@@ -107,51 +96,20 @@ async def test_redis_retry_retries_until_success(monkeypatch):
 
     assert result == "success"
     assert call_counter["count"] == 3
-    assert (
-        captured_kwargs["tries"]
-        == redis_utils.sentinel_settings.REDIS_QUERY_RETRIES_NUM
-    )
-    assert (
-        captured_kwargs["delay"]
-        == redis_utils.sentinel_settings.REDIS_QUERY_INITIAL_DELAY
-    )
-    assert (
-        captured_kwargs["backoff"] == redis_utils.sentinel_settings.REDIS_QUERY_BACKOFF
-    )
-    assert (
-        captured_kwargs["tries"]
-        == redis_utils.standalone_settings.REDIS_QUERY_RETRIES_NUM
-    )
-    assert (
-        captured_kwargs["delay"]
-        == redis_utils.standalone_settings.REDIS_QUERY_INITIAL_DELAY
-    )
-    assert (
-        captured_kwargs["backoff"]
-        == redis_utils.standalone_settings.REDIS_QUERY_BACKOFF
-    )
+    assert captured_kwargs["tries"] == redis_utils.settings.REDIS_QUERY_RETRIES_NUM
+    assert captured_kwargs["delay"] == redis_utils.settings.REDIS_QUERY_INITIAL_DELAY
+    assert captured_kwargs["backoff"] == redis_utils.settings.REDIS_QUERY_BACKOFF
 
 
 @pytest.mark.asyncio
 async def test_redis_retry_raises_after_exhaustion(monkeypatch):
     monkeypatch.setattr(
-        redis_utils.sentinel_settings, "REDIS_QUERY_RETRIES_NUM", 3, raising=False
+        redis_utils.settings, "REDIS_QUERY_RETRIES_NUM", 3, raising=False
     )
     monkeypatch.setattr(
-        redis_utils.sentinel_settings, "REDIS_QUERY_INITIAL_DELAY", 0, raising=False
+        redis_utils.settings, "REDIS_QUERY_INITIAL_DELAY", 0, raising=False
     )
-    monkeypatch.setattr(
-        redis_utils.sentinel_settings, "REDIS_QUERY_BACKOFF", 2.0, raising=False
-    )
-    monkeypatch.setattr(
-        redis_utils.standalone_settings, "REDIS_QUERY_RETRIES_NUM", 3, raising=False
-    )
-    monkeypatch.setattr(
-        redis_utils.standalone_settings, "REDIS_QUERY_INITIAL_DELAY", 0, raising=False
-    )
-    monkeypatch.setattr(
-        redis_utils.standalone_settings, "REDIS_QUERY_BACKOFF", 2.0, raising=False
-    )
+    monkeypatch.setattr(redis_utils.settings, "REDIS_QUERY_BACKOFF", 2.0, raising=False)
 
     def fake_retry(**kwargs):
         def decorator(func):

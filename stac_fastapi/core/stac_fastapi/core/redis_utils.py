@@ -3,7 +3,7 @@
 import json
 import logging
 from functools import wraps
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple, cast
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from pydantic import Field, field_validator
@@ -125,25 +125,21 @@ class RedisSettings(RedisCommonSettings):
 
 # Configure only one Redis configuration
 sentinel_settings = RedisSentinelSettings()
-standalone_settings = RedisSettings()
+settings: RedisCommonSettings = cast(
+    RedisCommonSettings,
+    sentinel_settings if sentinel_settings.REDIS_SENTINEL_HOSTS else RedisSettings(),
+)
 
 
 def redis_retry(func: Callable) -> Callable:
     """Retry with back-off decorator for Redis connections."""
-    _is_sentinel = True if sentinel_settings.REDIS_SENTINEL_HOSTS else False
 
     @wraps(func)
     @retry(
         exceptions=(RedisConnectionError, RedisTimeoutError),
-        tries=sentinel_settings.REDIS_QUERY_RETRIES_NUM
-        if _is_sentinel
-        else standalone_settings.REDIS_QUERY_RETRIES_NUM,
-        delay=sentinel_settings.REDIS_QUERY_INITIAL_DELAY
-        if _is_sentinel
-        else standalone_settings.REDIS_QUERY_INITIAL_DELAY,
-        backoff=sentinel_settings.REDIS_QUERY_BACKOFF
-        if _is_sentinel
-        else standalone_settings.REDIS_QUERY_BACKOFF,
+        tries=settings.REDIS_QUERY_RETRIES_NUM,
+        delay=settings.REDIS_QUERY_INITIAL_DELAY,
+        backoff=settings.REDIS_QUERY_BACKOFF,
         logger=logger,
     )
     async def wrapper(*args, **kwargs):
@@ -156,35 +152,35 @@ def redis_retry(func: Callable) -> Callable:
 async def _connect_redis_internal() -> Optional[aioredis.Redis]:
     """Return a Redis connection Redis or Redis Sentinel."""
     if sentinel_settings.REDIS_SENTINEL_HOSTS:
-        sentinel_nodes = sentinel_settings.get_sentinel_nodes()
+        sentinel_nodes = settings.get_sentinel_nodes()
         sentinel = Sentinel(
             sentinel_nodes,
-            decode_responses=sentinel_settings.REDIS_DECODE_RESPONSES,
+            decode_responses=settings.REDIS_DECODE_RESPONSES,
         )
 
         redis = sentinel.master_for(
-            service_name=sentinel_settings.REDIS_SENTINEL_MASTER_NAME,
-            db=sentinel_settings.REDIS_DB,
-            decode_responses=sentinel_settings.REDIS_DECODE_RESPONSES,
-            retry_on_timeout=sentinel_settings.REDIS_RETRY_TIMEOUT,
-            client_name=sentinel_settings.REDIS_CLIENT_NAME,
-            max_connections=sentinel_settings.REDIS_MAX_CONNECTIONS,
-            health_check_interval=sentinel_settings.REDIS_HEALTH_CHECK_INTERVAL,
+            service_name=settings.REDIS_SENTINEL_MASTER_NAME,
+            db=settings.REDIS_DB,
+            decode_responses=settings.REDIS_DECODE_RESPONSES,
+            retry_on_timeout=settings.REDIS_RETRY_TIMEOUT,
+            client_name=settings.REDIS_CLIENT_NAME,
+            max_connections=settings.REDIS_MAX_CONNECTIONS,
+            health_check_interval=settings.REDIS_HEALTH_CHECK_INTERVAL,
         )
         logger.info("Connected to Redis Sentinel")
 
-    elif standalone_settings.REDIS_HOST:
+    elif settings.REDIS_HOST:
         pool = aioredis.ConnectionPool(
-            host=standalone_settings.REDIS_HOST,
-            port=standalone_settings.REDIS_PORT,
-            db=standalone_settings.REDIS_DB,
-            max_connections=standalone_settings.REDIS_MAX_CONNECTIONS,
-            decode_responses=standalone_settings.REDIS_DECODE_RESPONSES,
-            retry_on_timeout=standalone_settings.REDIS_RETRY_TIMEOUT,
-            health_check_interval=standalone_settings.REDIS_HEALTH_CHECK_INTERVAL,
+            host=settings.REDIS_HOST,
+            port=settings.REDIS_PORT,
+            db=settings.REDIS_DB,
+            max_connections=settings.REDIS_MAX_CONNECTIONS,
+            decode_responses=settings.REDIS_DECODE_RESPONSES,
+            retry_on_timeout=settings.REDIS_RETRY_TIMEOUT,
+            health_check_interval=settings.REDIS_HEALTH_CHECK_INTERVAL,
         )
         redis = aioredis.Redis(
-            connection_pool=pool, client_name=standalone_settings.REDIS_CLIENT_NAME
+            connection_pool=pool, client_name=settings.REDIS_CLIENT_NAME
         )
         logger.info("Connected to Redis")
     else:
@@ -249,9 +245,9 @@ async def save_prev_link(
     """Save the current page as the previous link for the next URL."""
     if next_url and next_token:
         if sentinel_settings.REDIS_SENTINEL_HOSTS:
-            ttl_seconds = sentinel_settings.REDIS_SELF_LINK_TTL
-        elif standalone_settings.REDIS_HOST:
-            ttl_seconds = standalone_settings.REDIS_SELF_LINK_TTL
+            ttl_seconds = settings.REDIS_SELF_LINK_TTL
+        elif settings.REDIS_HOST:
+            ttl_seconds = settings.REDIS_SELF_LINK_TTL
         key = get_redis_key(next_url, next_token)
         await redis.setex(key, ttl_seconds, current_url)
 
