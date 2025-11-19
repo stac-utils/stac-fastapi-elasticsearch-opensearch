@@ -80,7 +80,7 @@ class QueryablesCache:
         if invalid_fields:
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid query fields: {', '.join(invalid_fields)}. Allowed fields are: {', '.join(allowed_fields)}",
+                detail=f"Invalid query fields: {', '.join(invalid_fields)}.",
             )
 
 
