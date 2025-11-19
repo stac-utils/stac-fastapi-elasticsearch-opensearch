@@ -39,6 +39,11 @@ from stac_fastapi.extensions.third_party.bulk_transactions import (
     BulkTransactionMethod,
     Items,
 )
+from stac_fastapi.sfeos_helpers.queryables import (
+    get_properties_from_cql2_filter,
+    initialize_queryables_cache,
+    validate_queryables,
+)
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
 from stac_fastapi.types.core import AsyncBaseCoreClient
@@ -87,6 +92,10 @@ class CoreClient(AsyncBaseCoreClient):
     landing_page_id: str = attr.ib(default="stac-fastapi")
     title: str = attr.ib(default="stac-fastapi")
     description: str = attr.ib(default="stac-fastapi")
+
+    def __attrs_post_init__(self):
+        """Initialize the queryables cache."""
+        initialize_queryables_cache(self.database)
 
     def _landing_page(
         self,
@@ -815,6 +824,8 @@ class CoreClient(AsyncBaseCoreClient):
             )
 
         if hasattr(search_request, "query") and getattr(search_request, "query"):
+            query_fields = set(getattr(search_request, "query").keys())
+            await validate_queryables(query_fields)
             for field_name, expr in getattr(search_request, "query").items():
                 field = "properties__" + field_name
                 for op, value in expr.items():
@@ -833,7 +844,11 @@ class CoreClient(AsyncBaseCoreClient):
 
         if cql2_filter is not None:
             try:
+                query_fields = get_properties_from_cql2_filter(cql2_filter)
+                await validate_queryables(query_fields)
                 search = await self.database.apply_cql2_filter(search, cql2_filter)
+            except HTTPException:
+                raise
             except Exception as e:
                 raise HTTPException(
                     status_code=400, detail=f"Error with cql2 filter: {e}"
