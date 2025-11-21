@@ -1,6 +1,6 @@
 """Async index selectors with datetime-based filtering."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from stac_fastapi.sfeos_helpers.database import filter_indexes_by_datetime
 from stac_fastapi.sfeos_helpers.mappings import ITEM_INDICES
@@ -40,23 +40,23 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
             self.alias_loader = IndexAliasLoader(client, self.cache_manager)
             self._initialized = True
 
-    async def refresh_cache(self) -> Dict[str, List[str]]:
+    async def refresh_cache(self) -> Dict[str, List[Tuple[Dict[str, str]]]]:
         """Force refresh of the aliases cache.
 
         Returns:
-            Dict[str, List[str]]: Refreshed dictionary mapping base collection aliases
+            Dict[str, List[Tuple[Dict[str, str]]]]: Refreshed dictionary mapping base collection aliases
                 to lists of their corresponding item index aliases.
         """
         return await self.alias_loader.refresh_aliases()
 
-    async def get_collection_indexes(self, collection_id: str) -> List[str]:
+    async def get_collection_indexes(self, collection_id: str) -> List[tuple[dict[str, str]]]:
         """Get all index aliases for a specific collection.
 
         Args:
             collection_id (str): The ID of the collection to retrieve indexes for.
 
         Returns:
-            List[str]: List of index aliases associated with the collection.
+            List[tuple[dict[str, str]]]: List of index aliases associated with the collection.
                 Returns empty list if collection is not found in cache.
         """
         return await self.alias_loader.get_collection_indexes(collection_id)
@@ -64,7 +64,7 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
     async def select_indexes(
         self,
         collection_ids: Optional[List[str]],
-        datetime_search: Dict[str, Optional[str]],
+        datetime_search: Dict[str, dict[str, str]],
     ) -> str:
         """Select indexes filtered by collection IDs and datetime criteria.
 
@@ -75,7 +75,7 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
         Args:
             collection_ids (Optional[List[str]]): List of collection IDs to filter by.
                 If None or empty, returns all item indices.
-            datetime_search (Dict[str, Optional[str]]): Dictionary containing datetime
+            datetime_search (Dict[str, dict[str, str]]): Dictionary containing datetime
                 search criteria with 'gte' and 'lte' keys for range filtering.
 
         Returns:
@@ -89,8 +89,7 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
                 collection_indexes = await self.get_collection_indexes(collection_id)
                 filtered_indexes = filter_indexes_by_datetime(
                     collection_indexes,
-                    datetime_search.get("gte"),
-                    datetime_search.get("lte"),
+                    datetime_search
                 )
                 selected_indexes.extend(filtered_indexes)
 

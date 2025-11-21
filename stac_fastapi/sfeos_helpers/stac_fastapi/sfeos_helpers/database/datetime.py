@@ -138,15 +138,18 @@ def return_date(
         return result
 
 
-def extract_date(date_str: str) -> date:
+def extract_date(date_str: str | None) -> date | None:
     """Extract date from ISO format string.
 
     Args:
         date_str: ISO format date string
 
     Returns:
-        A date object extracted from the input string.
+        A date object extracted from the input string or None.
     """
+    if not date_str:
+        return None
+
     date_str = date_str.replace("Z", "+00:00")
     return datetime_type.fromisoformat(date_str).date()
 
