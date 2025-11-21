@@ -459,7 +459,7 @@ class DatabaseLogic(BaseDatabaseLogic):
     @staticmethod
     def apply_datetime_filter(
         search: Search, datetime: Optional[str]
-    ) -> Tuple[Search, Dict[str, Optional[str]]]:
+    ) -> Tuple[Search, Dict[str, Dict[str, Optional[str]]]]:
         """Apply a filter to search on datetime, start_datetime, and end_datetime fields.
 
         Args:
@@ -471,13 +471,29 @@ class DatabaseLogic(BaseDatabaseLogic):
         """
         datetime_search = return_date(datetime)
 
-        if not datetime_search:
-            return search, datetime_search
-
         # USE_DATETIME env var
         # True: Search by datetime, if null search by start/end datetime
         # False: Always search only by start/end datetime
         USE_DATETIME = get_bool_env("USE_DATETIME", default=True)
+
+        result_metadata = {
+            "datetime": {
+                "gte": datetime_search.get("gte") if USE_DATETIME else None,
+                "lte": datetime_search.get("lte") if USE_DATETIME else None,
+            },
+            "start_datetime": {
+                "gte": datetime_search.get("gte") if not USE_DATETIME else None,
+                "lte": None,
+            },
+            "end_datetime": {
+                "gte": None,
+                "lte": datetime_search.get("lte") if not USE_DATETIME else None,
+            },
+        }
+
+        if not datetime_search:
+            return search, result_metadata
+
 
         if USE_DATETIME:
             if "eq" in datetime_search:
@@ -556,7 +572,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
             return (
                 search.query(Q("bool", should=should, minimum_should_match=1)),
-                datetime_search,
+                result_metadata,
             )
         else:
             if "eq" in datetime_search:
@@ -591,7 +607,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                         ),
                     ],
                 )
-        return search.query(filter_query), datetime_search
+            return search.query(filter_query), result_metadata
 
     @staticmethod
     def apply_bbox_filter(search: Search, bbox: List):

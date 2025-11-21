@@ -1,6 +1,5 @@
 """Async index insertion strategies."""
 import logging
-from datetime import timedelta
 from typing import Any, Dict, List
 
 from fastapi import HTTPException, status
@@ -14,7 +13,7 @@ from stac_fastapi.sfeos_helpers.database import (
 
 from .base import BaseIndexInserter
 from .index_operations import IndexOperations
-from .managers import DatetimeIndexManager
+from .managers import DatetimeIndexManager, ProductDatetimes
 from .selection import DatetimeBasedIndexSelector
 
 logger = logging.getLogger(__name__)
@@ -89,7 +88,7 @@ class DatetimeIndexInserter(BaseIndexInserter):
             logger.error(msg)
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=msg)
 
-        items.sort(key=lambda item: item["properties"]["datetime"])
+        items.sort(key=lambda item: item["properties"]["start_datetime"])
         index_selector = DatetimeBasedIndexSelector(self.client)
 
         await self._ensure_indexes_exist(index_selector, collection_id, items)
@@ -130,42 +129,56 @@ class DatetimeIndexInserter(BaseIndexInserter):
         Returns:
             str: Target index name.
         """
-        product_datetime = self.datetime_manager.validate_product_datetime(product)
-        datetime_range = {"gte": product_datetime, "lte": product_datetime}
+        product_datetimes = self.datetime_manager.validate_product_datetimes(product)
+
+        datetime_ranges = {
+            "start_datetime": {"gte": product_datetimes.start_datetime, "lte": product_datetimes.start_datetime},
+            "end_datetime": {"gte": product_datetimes.end_datetime, "lte": product_datetimes.end_datetime},
+            "datetime": {"gte": product_datetimes.datetime, "lte": product_datetimes.datetime}
+        }
+
         target_index = await index_selector.select_indexes(
-            [collection_id], datetime_range
+            [collection_id], datetime_ranges
         )
         all_indexes = await index_selector.get_collection_indexes(collection_id)
 
         if not all_indexes:
             target_index = await self.datetime_manager.handle_new_collection(
-                collection_id, product_datetime
+                collection_id, product_datetimes
             )
             await index_selector.refresh_cache()
             return target_index
 
-        all_indexes.sort()
-        start_date = extract_date(product_datetime)
-        end_date = extract_first_date_from_index(all_indexes[0])
+        all_indexes = sorted(all_indexes, key=lambda x: x[0]['start_datetime'])
+        start_date = extract_date(product_datetimes.start_datetime)
+        end_date = extract_first_date_from_index(all_indexes[0][0]["start_datetime"])
 
         if start_date < end_date:
             alias = await self.datetime_manager.handle_early_date(
-                collection_id, start_date, end_date
+                collection_id, product_datetimes, all_indexes[0][0]
             )
             await index_selector.refresh_cache()
-
             return alias
 
         if target_index != all_indexes[-1]:
-            return target_index
+            for item in all_indexes:
+                aliases_dict = item[0]
+                if target_index in aliases_dict.values():
+                    await self.datetime_manager.handle_early_date(
+                        collection_id, product_datetimes, aliases_dict
+                    )
+                    return target_index
 
         if check_size and await self.datetime_manager.size_manager.is_index_oversized(
             target_index
         ):
-            target_index = await self.datetime_manager.handle_oversized_index(
-                collection_id, target_index, product_datetime
-            )
-            await index_selector.refresh_cache()
+            for item in all_indexes:
+                aliases_dict = item[0]
+                if target_index in aliases_dict.values():
+                    target_index = await self.datetime_manager.handle_oversized_index(
+                        collection_id, product_datetimes, aliases_dict
+                    )
+                    await index_selector.refresh_cache()
 
         return target_index
 
@@ -186,7 +199,9 @@ class DatetimeIndexInserter(BaseIndexInserter):
             await self.index_operations.create_datetime_index(
                 self.client,
                 collection_id,
+                extract_date(first_item["properties"]["start_datetime"]),
                 extract_date(first_item["properties"]["datetime"]),
+                extract_date(first_item["properties"]["end_datetime"]),
             )
             await index_selector.refresh_cache()
 
@@ -212,8 +227,9 @@ class DatetimeIndexInserter(BaseIndexInserter):
         )
 
         all_indexes = await index_selector.get_collection_indexes(collection_id)
-        all_indexes.sort()
-        latest_index = all_indexes[-1]
+        all_indexes = sorted(all_indexes, key=lambda x: x[0]['start_datetime'])
+
+        latest_index = all_indexes[-1][0]
 
         if first_item_index != latest_index:
             return None
@@ -226,15 +242,13 @@ class DatetimeIndexInserter(BaseIndexInserter):
         latest_item = await self.index_operations.find_latest_item_in_index(
             self.client, latest_index
         )
-        product_datetime = latest_item["_source"]["properties"]["datetime"]
-        end_date = extract_date(product_datetime)
-        await self.index_operations.update_index_alias(
-            self.client, str(end_date), latest_index
+        product_datetimes = ProductDatetimes(
+            start_datetime=latest_item["_source"]["properties"]["start_datetime"],
+            datetime=latest_item["_source"]["properties"]["datetime"],
+            end_datetime=latest_item["_source"]["properties"]["end_datetime"],
         )
-        next_day_start = end_date + timedelta(days=1)
-        await self.index_operations.create_datetime_index(
-            self.client, collection_id, str(next_day_start)
-        )
+
+        await self.datetime_manager.handle_oversized_index(collection_id, product_datetimes, latest_index)
         await index_selector.refresh_cache()
 
 
