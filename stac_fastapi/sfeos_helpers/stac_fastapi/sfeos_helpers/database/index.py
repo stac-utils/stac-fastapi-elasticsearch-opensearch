@@ -114,7 +114,9 @@ def filter_indexes_by_datetime(
         date_str = date_str.rstrip("Z")
         return datetime.fromisoformat(date_str).date()
 
-    def check_criteria(value_begin: datetime, value_end: datetime, criteria: Dict) -> bool:
+    def check_criteria(
+        value_begin: datetime, value_end: datetime, criteria: Dict
+    ) -> bool:
         gte = parse_search_date(criteria.get("gte"))
         lte = parse_search_date(criteria.get("lte"))
 
