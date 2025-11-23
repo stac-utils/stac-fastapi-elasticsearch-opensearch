@@ -494,7 +494,6 @@ class DatabaseLogic(BaseDatabaseLogic):
         if not datetime_search:
             return search, result_metadata
 
-
         if USE_DATETIME:
             if "eq" in datetime_search:
                 # For exact matches, include:

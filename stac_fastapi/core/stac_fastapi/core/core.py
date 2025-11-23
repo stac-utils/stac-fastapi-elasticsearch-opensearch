@@ -510,18 +510,20 @@ class CoreClient(AsyncBaseCoreClient):
         return await self.all_collections(
             limit=search_request.limit if hasattr(search_request, "limit") else None,
             bbox=search_request.bbox if hasattr(search_request, "bbox") else None,
-            datetime=search_request.datetime
-            if hasattr(search_request, "datetime")
-            else None,
+            datetime=(
+                search_request.datetime if hasattr(search_request, "datetime") else None
+            ),
             token=search_request.token if hasattr(search_request, "token") else None,
             fields=fields,
             sortby=sortby,
-            filter_expr=search_request.filter
-            if hasattr(search_request, "filter")
-            else None,
-            filter_lang=search_request.filter_lang
-            if hasattr(search_request, "filter_lang")
-            else None,
+            filter_expr=(
+                search_request.filter if hasattr(search_request, "filter") else None
+            ),
+            filter_lang=(
+                search_request.filter_lang
+                if hasattr(search_request, "filter_lang")
+                else None
+            ),
             query=search_request.query if hasattr(search_request, "query") else None,
             q=search_request.q if hasattr(search_request, "q") else None,
             request=request,

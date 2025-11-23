@@ -49,7 +49,9 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
         """
         return await self.alias_loader.refresh_aliases()
 
-    async def get_collection_indexes(self, collection_id: str) -> List[tuple[dict[str, str]]]:
+    async def get_collection_indexes(
+        self, collection_id: str
+    ) -> List[tuple[dict[str, str]]]:
         """Get all index aliases for a specific collection.
 
         Args:
@@ -88,8 +90,7 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
             for collection_id in collection_ids:
                 collection_indexes = await self.get_collection_indexes(collection_id)
                 filtered_indexes = filter_indexes_by_datetime(
-                    collection_indexes,
-                    datetime_search
+                    collection_indexes, datetime_search
                 )
                 selected_indexes.extend(filtered_indexes)
 
@@ -104,7 +105,7 @@ class UnfilteredIndexSelector(BaseIndexSelector):
     async def select_indexes(
         self,
         collection_ids: Optional[List[str]],
-        datetime_search: Dict[str, Optional[str]],
+        datetime_search: Dict[str, dict[str, str]],
     ) -> str:
         """Select all indices for given collections without datetime filtering.
 
