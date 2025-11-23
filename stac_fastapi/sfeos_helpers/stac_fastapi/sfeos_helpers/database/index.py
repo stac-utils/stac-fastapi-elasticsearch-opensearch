@@ -114,13 +114,13 @@ def filter_indexes_by_datetime(
         date_str = date_str.rstrip("Z")
         return datetime.fromisoformat(date_str).date()
 
-    def check_criteria(value_begin: date, value_end: date, criteria: Dict) -> bool:
+    def check_criteria(value_begin: datetime, value_end: datetime, criteria: Dict) -> bool:
         gte = parse_search_date(criteria.get("gte"))
         lte = parse_search_date(criteria.get("lte"))
 
-        if gte and value_end < gte:
+        if gte and value_end.date() < gte:
             return False
-        if lte and value_begin > lte:
+        if lte and value_begin.date() > lte:
             return False
 
         return True
