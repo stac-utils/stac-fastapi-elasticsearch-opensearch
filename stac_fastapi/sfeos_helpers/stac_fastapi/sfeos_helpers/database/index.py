@@ -70,7 +70,7 @@ def indices(collection_ids: Optional[List[str]]) -> str:
 
 def filter_indexes_by_datetime(
     collection_indexes: List[Tuple[Dict[str, str], ...]],
-    datetime_search: Dict[str, Dict[str, str | None]],
+    datetime_search: Dict[str, Dict[str, Optional[str]]],
 ) -> List[str]:
     """
     Filter Elasticsearch index aliases based on datetime search criteria.
@@ -82,7 +82,7 @@ def filter_indexes_by_datetime(
     Args:
         collection_indexes (List[Tuple[Dict[str, str], ...]]): A list of tuples containing dictionaries
             with 'datetime', 'start_datetime', and 'end_datetime' aliases.
-        datetime_search (Dict[str, Dict[str, str | None]]): A dictionary with keys 'datetime',
+        datetime_search (Dict[str, Dict[str, Optional[str]]]): A dictionary with keys 'datetime',
             'start_datetime', and 'end_datetime', each containing 'gte' and 'lte' criteria as ISO format
             datetime strings or None.
 
@@ -90,7 +90,7 @@ def filter_indexes_by_datetime(
         List[str]: A list of start_datetime aliases that match all provided search criteria.
     """
 
-    def extract_date_from_alias(alias: str) -> tuple[datetime, datetime] | None:
+    def extract_date_from_alias(alias: str) -> Optional[tuple[datetime, datetime]]:
         date_pattern = re.compile(r"\d{4}-\d{2}-\d{2}")
         try:
             dates = date_pattern.findall(alias)
@@ -108,7 +108,7 @@ def filter_indexes_by_datetime(
         except (ValueError, IndexError):
             return None
 
-    def parse_search_date(date_str: str | None) -> Optional[date]:
+    def parse_search_date(date_str: Optional[str]) -> Optional[date]:
         if not date_str:
             return None
         date_str = date_str.rstrip("Z")

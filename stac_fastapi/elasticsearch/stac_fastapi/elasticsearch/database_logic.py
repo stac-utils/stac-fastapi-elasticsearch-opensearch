@@ -656,7 +656,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                         ),
                     ],
                 )
-            return search.query(filter_query), datetime_search
+        return search.query(filter_query), datetime_search
 
     @staticmethod
     def apply_bbox_filter(search: Search, bbox: List):
