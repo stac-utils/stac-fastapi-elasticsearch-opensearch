@@ -433,6 +433,20 @@ class DatabaseLogic(BaseDatabaseLogic):
         """Database logic to search a list of STAC collection ids."""
         return search.filter("terms", collection=collection_ids)
 
+    # Add this method to the Elasticsearch DatabaseLogic class
+    @staticmethod
+    def apply_index_selection(
+        search: Search,
+        datetime_search: Optional[Dict[str, Optional[str]]],
+        collections: Optional[List[str]],
+    ) -> Search:
+        """Apply index selection based on datetime analysis and collections.
+
+        For Elasticsearch, this might be a no-op or implement different logic
+        since Elasticsearch doesn't use the same AST pattern as OpenSearch.
+        """
+        return search
+
     @staticmethod
     def apply_datetime_filter(
         search: Search, datetime: Optional[str]

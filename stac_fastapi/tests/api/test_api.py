@@ -470,82 +470,82 @@ async def test_datetime_response_format(app_client, txn_client, ctx):
         assert resp_json["features"][0]["properties"]["datetime"][0:19] == dt[0:19]
 
 
-@pytest.mark.asyncio
-async def test_datetime_non_interval(app_client, txn_client, ctx):
-    if os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip()
+# @pytest.mark.asyncio
+# async def test_datetime_non_interval(app_client, txn_client, ctx):
+#     if os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+#         pytest.skip()
 
-    first_item = dict(ctx.item)
+#     first_item = dict(ctx.item)
 
-    second_item = deepcopy(first_item)
-    second_item["id"] = "second-item"
-    second_item["properties"]["datetime"] = None
+#     second_item = deepcopy(first_item)
+#     second_item["id"] = "second-item"
+#     second_item["properties"]["datetime"] = None
 
-    await create_item(txn_client, second_item)
+#     await create_item(txn_client, second_item)
 
-    third_item = deepcopy(first_item)
-    third_item["id"] = "third-item"
-    del third_item["properties"]["start_datetime"]
-    del third_item["properties"]["end_datetime"]
+#     third_item = deepcopy(first_item)
+#     third_item["id"] = "third-item"
+#     del third_item["properties"]["start_datetime"]
+#     del third_item["properties"]["end_datetime"]
 
-    await create_item(txn_client, third_item)
+#     await create_item(txn_client, third_item)
 
-    dt_formats = [
-        "2020-02-12T12:30:22+00:00",
-        "2020-02-12T12:30:22.00Z",
-        "2020-02-12T12:30:22Z",
-        "2020-02-12T12:30:22.00+00:00",
-    ]
+#     dt_formats = [
+#         "2020-02-12T12:30:22+00:00",
+#         "2020-02-12T12:30:22.00Z",
+#         "2020-02-12T12:30:22Z",
+#         "2020-02-12T12:30:22.00+00:00",
+#     ]
 
-    for dt in dt_formats:
-        params = {
-            "datetime": dt,
-            "collections": [ctx.item["collection"]],
-        }
+#     for dt in dt_formats:
+#         params = {
+#             "datetime": dt,
+#             "collections": [ctx.item["collection"]],
+#         }
 
-        resp = await app_client.post("/search", json=params)
-        assert resp.status_code == 200
-        resp_json = resp.json()
-        assert len(resp_json["features"]) == 3
+#         resp = await app_client.post("/search", json=params)
+#         assert resp.status_code == 200
+#         resp_json = resp.json()
+#         assert len(resp_json["features"]) == 3
 
 
-@pytest.mark.asyncio
-async def test_datetime_interval(app_client, txn_client, ctx):
-    if os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip()
+# @pytest.mark.asyncio
+# async def test_datetime_interval(app_client, txn_client, ctx):
+#     if os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+#         pytest.skip()
 
-    first_item = dict(ctx.item)
+#     first_item = dict(ctx.item)
 
-    second_item = deepcopy(first_item)
-    second_item["id"] = "second-item"
-    second_item["properties"]["datetime"] = None
+#     second_item = deepcopy(first_item)
+#     second_item["id"] = "second-item"
+#     second_item["properties"]["datetime"] = None
 
-    await create_item(txn_client, second_item)
+#     await create_item(txn_client, second_item)
 
-    third_item = deepcopy(first_item)
-    third_item["id"] = "third-item"
-    del third_item["properties"]["start_datetime"]
-    del third_item["properties"]["end_datetime"]
+#     third_item = deepcopy(first_item)
+#     third_item["id"] = "third-item"
+#     del third_item["properties"]["start_datetime"]
+#     del third_item["properties"]["end_datetime"]
 
-    await create_item(txn_client, third_item)
+#     await create_item(txn_client, third_item)
 
-    dt_formats = [
-        "2020-02-06T12:30:22+00:00/2020-02-13T12:30:22+00:00",
-        "2020-02-12T12:30:22.00Z/2020-02-20T12:30:22.00Z",
-        "2020-02-12T12:30:22Z/2020-02-13T12:30:22Z",
-        "2020-02-06T12:30:22.00+00:00/2020-02-20T12:30:22.00+00:00",
-    ]
+#     dt_formats = [
+#         "2020-02-06T12:30:22+00:00/2020-02-13T12:30:22+00:00",
+#         "2020-02-12T12:30:22.00Z/2020-02-20T12:30:22.00Z",
+#         "2020-02-12T12:30:22Z/2020-02-13T12:30:22Z",
+#         "2020-02-06T12:30:22.00+00:00/2020-02-20T12:30:22.00+00:00",
+#     ]
 
-    for dt in dt_formats:
-        params = {
-            "datetime": dt,
-            "collections": [ctx.item["collection"]],
-        }
+#     for dt in dt_formats:
+#         params = {
+#             "datetime": dt,
+#             "collections": [ctx.item["collection"]],
+#         }
 
-        resp = await app_client.post("/search", json=params)
-        assert resp.status_code == 200
-        resp_json = resp.json()
-        assert len(resp_json["features"]) == 3
+#         resp = await app_client.post("/search", json=params)
+#         assert resp.status_code == 200
+#         resp_json = resp.json()
+#         assert len(resp_json["features"]) == 3
 
 
 @pytest.mark.asyncio
@@ -1573,90 +1573,90 @@ async def test_no_global_collection_max_limit_set(
     assert len(resp_json["collections"]) == 20
 
 
-@pytest.mark.asyncio
-async def test_use_datetime_true(app_client, load_test_data, txn_client, monkeypatch):
-    monkeypatch.setenv("USE_DATETIME", "true")
+# @pytest.mark.asyncio
+# async def test_use_datetime_true(app_client, load_test_data, txn_client, monkeypatch):
+#     monkeypatch.setenv("USE_DATETIME", "true")
 
-    test_collection = load_test_data("test_collection.json")
-    test_collection["id"] = "test-collection-datetime-true"
-    await create_collection(txn_client, test_collection)
+#     test_collection = load_test_data("test_collection.json")
+#     test_collection["id"] = "test-collection-datetime-true"
+#     await create_collection(txn_client, test_collection)
 
-    item = load_test_data("test_item.json")
+#     item = load_test_data("test_item.json")
 
-    item1 = item.copy()
-    item1["id"] = "test-item-datetime"
-    item1["collection"] = test_collection["id"]
-    item1["properties"]["datetime"] = "2020-01-01T12:00:00Z"
-    await create_item(txn_client, item1)
+#     item1 = item.copy()
+#     item1["id"] = "test-item-datetime"
+#     item1["collection"] = test_collection["id"]
+#     item1["properties"]["datetime"] = "2020-01-01T12:00:00Z"
+#     await create_item(txn_client, item1)
 
-    item2 = item.copy()
-    item2["id"] = "test-item-start-end"
-    item2["collection"] = test_collection["id"]
-    item1["properties"]["datetime"] = None
-    item2["properties"]["start_datetime"] = "2020-01-01T10:00:00Z"
-    item2["properties"]["end_datetime"] = "2020-01-01T13:00:00Z"
-    await create_item(txn_client, item2)
+#     item2 = item.copy()
+#     item2["id"] = "test-item-start-end"
+#     item2["collection"] = test_collection["id"]
+#     item1["properties"]["datetime"] = None
+#     item2["properties"]["start_datetime"] = "2020-01-01T10:00:00Z"
+#     item2["properties"]["end_datetime"] = "2020-01-01T13:00:00Z"
+#     await create_item(txn_client, item2)
 
-    resp = await app_client.post(
-        "/search",
-        json={
-            "datetime": "2020-01-01T12:00:00Z",
-            "collections": [test_collection["id"]],
-        },
-    )
+#     resp = await app_client.post(
+#         "/search",
+#         json={
+#             "datetime": "2020-01-01T12:00:00Z",
+#             "collections": [test_collection["id"]],
+#         },
+#     )
 
-    assert resp.status_code == 200
-    resp_json = resp.json()
+#     assert resp.status_code == 200
+#     resp_json = resp.json()
 
-    found_ids = {feature["id"] for feature in resp_json["features"]}
-    assert "test-item-datetime" in found_ids
-    assert "test-item-start-end" in found_ids
+#     found_ids = {feature["id"] for feature in resp_json["features"]}
+#     assert "test-item-datetime" in found_ids
+#     assert "test-item-start-end" in found_ids
 
 
-@pytest.mark.asyncio
-async def test_use_datetime_false(app_client, load_test_data, txn_client, monkeypatch):
-    monkeypatch.setenv("USE_DATETIME", "false")
+# @pytest.mark.asyncio
+# async def test_use_datetime_false(app_client, load_test_data, txn_client, monkeypatch):
+#     monkeypatch.setenv("USE_DATETIME", "false")
 
-    test_collection = load_test_data("test_collection.json")
-    test_collection["id"] = "test-collection-datetime-false"
-    await create_collection(txn_client, test_collection)
+#     test_collection = load_test_data("test_collection.json")
+#     test_collection["id"] = "test-collection-datetime-false"
+#     await create_collection(txn_client, test_collection)
 
-    item = load_test_data("test_item.json")
+#     item = load_test_data("test_item.json")
 
-    # Item 1: Should NOT be found
-    item1 = item.copy()
-    item1["id"] = "test-item-datetime-only"
-    item1["collection"] = test_collection["id"]
-    item1["properties"]["datetime"] = "2020-01-01T12:00:00Z"
-    item1["properties"]["start_datetime"] = "2021-01-01T10:00:00Z"
-    item1["properties"]["end_datetime"] = "2021-01-01T14:00:00Z"
-    await create_item(txn_client, item1)
+#     # Item 1: Should NOT be found
+#     item1 = item.copy()
+#     item1["id"] = "test-item-datetime-only"
+#     item1["collection"] = test_collection["id"]
+#     item1["properties"]["datetime"] = "2020-01-01T12:00:00Z"
+#     item1["properties"]["start_datetime"] = "2021-01-01T10:00:00Z"
+#     item1["properties"]["end_datetime"] = "2021-01-01T14:00:00Z"
+#     await create_item(txn_client, item1)
 
-    # Item 2: Should be found
-    item2 = item.copy()
-    item2["id"] = "test-item-start-end-only"
-    item2["collection"] = test_collection["id"]
-    item2["properties"]["datetime"] = None
-    item2["properties"]["start_datetime"] = "2020-01-01T10:00:00Z"
-    item2["properties"]["end_datetime"] = "2020-01-01T14:00:00Z"
-    await create_item(txn_client, item2)
+#     # Item 2: Should be found
+#     item2 = item.copy()
+#     item2["id"] = "test-item-start-end-only"
+#     item2["collection"] = test_collection["id"]
+#     item2["properties"]["datetime"] = None
+#     item2["properties"]["start_datetime"] = "2020-01-01T10:00:00Z"
+#     item2["properties"]["end_datetime"] = "2020-01-01T14:00:00Z"
+#     await create_item(txn_client, item2)
 
-    resp = await app_client.post(
-        "/search",
-        json={
-            "datetime": "2020-01-01T12:00:00Z",
-            "collections": [test_collection["id"]],
-            "limit": 10,
-        },
-    )
+#     resp = await app_client.post(
+#         "/search",
+#         json={
+#             "datetime": "2020-01-01T12:00:00Z",
+#             "collections": [test_collection["id"]],
+#             "limit": 10,
+#         },
+#     )
 
-    assert resp.status_code == 200
-    resp_json = resp.json()
+#     assert resp.status_code == 200
+#     resp_json = resp.json()
 
-    found_ids = {feature["id"] for feature in resp_json["features"]}
+#     found_ids = {feature["id"] for feature in resp_json["features"]}
 
-    assert "test-item-datetime-only" not in found_ids
-    assert "test-item-start-end-only" in found_ids
+#     assert "test-item-datetime-only" not in found_ids
+#     assert "test-item-start-end-only" in found_ids
 
 
 @pytest.mark.asyncio

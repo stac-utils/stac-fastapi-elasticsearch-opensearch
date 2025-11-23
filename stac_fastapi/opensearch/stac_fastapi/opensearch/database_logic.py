@@ -5,7 +5,9 @@ import logging
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from collections.abc import Iterable
 from copy import deepcopy
-from typing import Any, Dict, List, Optional, Tuple, Type
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Tuple, Type, Union, cast
 
 import attr
 import orjson
@@ -41,7 +43,6 @@ from stac_fastapi.sfeos_helpers.database import (
     mk_actions,
     mk_item_id,
     populate_sort_shared,
-    return_date,
     validate_refresh,
 )
 from stac_fastapi.sfeos_helpers.database.query import (
@@ -72,6 +73,228 @@ from stac_fastapi.types.links import resolve_links
 from stac_fastapi.types.stac import Collection, Item
 
 logger = logging.getLogger(__name__)
+
+
+# AST-style node classes for bbox filtering
+@dataclass
+class GeoShapeNode:
+    """Represents a geo_shape query node in the AST."""
+
+    geometry: "GeometryNode"
+
+
+@dataclass
+class GeometryNode:
+    """Represents a geometry node with shape and relation."""
+
+    shape: "ShapeNode"
+    relation: str
+
+
+@dataclass
+class ShapeNode:
+    """Represents a shape node with type and coordinates."""
+
+    type: str
+    coordinates: List[List[List[float]]]
+
+
+@dataclass
+class DateTimeNode:
+    """Base node for datetime."""
+
+    field: str = "datetime"
+
+
+@dataclass
+class DateTimeRangeNode(DateTimeNode):
+    """Represents a datetime range."""
+
+    start: Optional[str] = None
+    end: Optional[str] = None
+
+
+@dataclass
+class DateTimeExactNode(DateTimeNode):
+    """Represents an exact datetime."""
+
+    value: str = ""
+
+
+def analyze_bbox_query(node) -> dict:
+    """
+    Analyze and build bbox query from node tree.
+
+    Args:
+        node: The AST node to analyze.
+
+    Returns:
+        The constructed geo_shape query.
+    """
+    if isinstance(node, GeoShapeNode):
+        return analyze_bbox_query(node.geometry)
+    elif isinstance(node, GeometryNode):
+        shape_filter = analyze_bbox_query(node.shape)
+        return {"shape": shape_filter, "relation": node.relation}
+    elif isinstance(node, ShapeNode):
+        if node.type == "polygon":
+            return {"type": node.type, "coordinates": node.coordinates}
+    return {}
+
+
+def analyze_datetime_query(node: DateTimeNode) -> Tuple[Optional[str], Dict[str, Any]]:
+    """Analyze datetime AST to determine index and build query."""
+    optimal_index: Optional[str] = None
+    query_dict: Dict[str, Any] = {}
+
+    if isinstance(node, DateTimeRangeNode):
+        optimal_index = "datetime-range"
+        if node.start and node.end:
+            query_dict = {
+                "range": {"properties.datetime": {"gte": node.start, "lte": node.end}}
+            }
+        elif node.start:
+            query_dict = {"range": {"properties.datetime": {"gte": node.start}}}
+        elif node.end:
+            query_dict = {"range": {"properties.datetime": {"lte": node.end}}}
+
+    elif isinstance(node, DateTimeExactNode):
+        optimal_index = "datetime-exact"
+        query_dict = {"term": {"properties.datetime": node.value}}
+
+    return optimal_index, query_dict
+
+
+def parse_datetime_to_ast(
+    interval: Optional[
+        Union[
+            str,
+            datetime,
+            Tuple[Optional[Union[str, datetime]], Optional[Union[str, datetime]]],
+        ]
+    ]
+) -> Optional[DateTimeNode]:
+    """
+    Parse datetime interval into AST, replicating return_date logic.
+
+    Args:
+        interval: The date interval (string, datetime, or tuple of strings/datetimes)
+
+    Returns:
+        DateTimeNode AST or None
+    """
+    if interval is None:
+        return None
+
+    use_datetime_nanos = get_bool_env("USE_DATETIME_NANOS", default=True)
+
+    # Define min/max dates based on USE_DATETIME_NANOS
+    if use_datetime_nanos:
+        MIN_DATE_NANOS = datetime(1970, 1, 1, tzinfo=timezone.utc)
+        MAX_DATE_NANOS = datetime(2262, 4, 11, 23, 47, 16, 854775, tzinfo=timezone.utc)
+    else:
+        MIN_DATE_NANOS = datetime.min.replace(tzinfo=timezone.utc)
+        MAX_DATE_NANOS = datetime.max.replace(tzinfo=timezone.utc)
+
+    def format_datetime(dt: datetime) -> str:
+        """Format datetime to ISO string with Z suffix."""
+        dt_utc = (
+            dt.astimezone(timezone.utc)
+            if dt.tzinfo
+            else dt.replace(tzinfo=timezone.utc)
+        )
+
+        # Apply min/max bounds
+        if dt_utc < MIN_DATE_NANOS:
+            dt_utc = MIN_DATE_NANOS
+        elif dt_utc > MAX_DATE_NANOS:
+            dt_utc = MAX_DATE_NANOS
+
+        # Format with proper precision
+        if use_datetime_nanos:
+            return dt_utc.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+        else:
+            return dt_utc.isoformat()
+
+    # Handle string interval
+    if isinstance(interval, str):
+        if "/" in interval:
+            parts = interval.split("/")
+
+            # Parse start
+            if parts[0] == "..":
+                start = None
+            else:
+                try:
+                    # Try parsing as datetime
+                    start_dt = datetime.fromisoformat(parts[0].replace("Z", "+00:00"))
+                    start = format_datetime(start_dt)
+                except ValueError:
+                    # If parsing fails, use as-is (should be ISO string already)
+                    start = parts[0]
+
+            # Parse end
+            if len(parts) > 1 and parts[1] == "..":
+                end = None
+            elif len(parts) > 1:
+                try:
+                    end_dt = datetime.fromisoformat(parts[1].replace("Z", "+00:00"))
+                    end = format_datetime(end_dt)
+                except ValueError:
+                    end = parts[1]
+            else:
+                end = None
+
+            return DateTimeRangeNode(start=start, end=end, field="datetime")
+        else:
+            # Single datetime
+            if interval == "..":
+                return None
+
+            try:
+                dt = datetime.fromisoformat(interval.replace("Z", "+00:00"))
+                value = format_datetime(dt)
+                return DateTimeExactNode(value=value, field="datetime")
+            except ValueError:
+                # If parsing fails, use as-is
+                return DateTimeExactNode(value=interval, field="datetime")
+
+    # Handle datetime object
+    elif isinstance(interval, datetime):
+        value = format_datetime(interval)
+        return DateTimeExactNode(value=value, field="datetime")
+
+    # Handle tuple (start, end)
+    elif isinstance(interval, tuple):
+        # Cast to the correct type to help mypy
+        start_raw, end_raw = interval
+        start: Optional[Union[str, datetime]] = start_raw  # type: ignore[no-redef]
+        end: Optional[Union[str, datetime]] = end_raw  # type: ignore[no-redef]
+
+        def _to_iso_string(val: Optional[Union[str, datetime]]) -> Optional[str]:
+            """Convert value to ISO string if it's a datetime, otherwise return as-is."""
+            if val is None:
+                return None
+            elif isinstance(val, datetime):
+                return format_datetime(val)
+            elif isinstance(val, str):
+                # If it's already a string, try to parse and format it
+                try:
+                    dt = datetime.fromisoformat(val.replace("Z", "+00:00"))
+                    return format_datetime(dt)
+                except ValueError:
+                    # If parsing fails, return as-is (should already be ISO format)
+                    return val
+            else:
+                # Unexpected type, convert to string
+                return str(val)
+
+        start_result = _to_iso_string(start)
+        end_result = _to_iso_string(end)
+
+        return DateTimeRangeNode(start=start_result, end=end_result, field="datetime")
+
+    return None
 
 
 async def create_index_templates() -> None:
@@ -191,7 +414,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         sortable_fields = ["id", "extent.temporal.interval", "temporal"]
 
         # Format the sort parameter
-        formatted_sort = []
+        formatted_sort: List[Dict[str, Dict[str, str]]] = []
         if sort:
             for item in sort:
                 field = item.get("field")
@@ -212,7 +435,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         else:
             formatted_sort = [{"id": {"order": "asc"}}]
 
-        body = {
+        body: Dict[str, Any] = {
             "sort": formatted_sort,
             "size": limit,
         }
@@ -234,12 +457,12 @@ class DatabaseLogic(BaseDatabaseLogic):
                 body["search_after"] = search_after
 
         # Build the query part of the body
-        query_parts = []
+        query_parts: List[Dict[str, Any]] = []
 
         # Apply free text query if provided
         if q:
             # For collections, we want to search across all relevant fields
-            should_clauses = []
+            should_clauses: List[Dict[str, Any]] = []
 
             # For each search term
             for term in q:
@@ -254,13 +477,20 @@ class DatabaseLogic(BaseDatabaseLogic):
                     "providers.name",
                     "providers.url",
                 ]:
+                    # Explicitly cast to satisfy mypy
                     should_clauses.append(
-                        {
-                            "wildcard": {
-                                field: {"value": f"*{term}*", "case_insensitive": True}
-                            }
-                        }
-                    )
+                        cast(
+                            Dict[str, Any],
+                            {
+                                "wildcard": {
+                                    field: {
+                                        "value": f"*{term}*",
+                                        "case_insensitive": True,
+                                    }
+                                }
+                            },
+                        )
+                    )  # type: ignore[dict-item]
 
             # Add the free text query to the query parts
             query_parts.append(
@@ -458,8 +688,8 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     @staticmethod
     def apply_datetime_filter(
-        search: Search, datetime: Optional[str]
-    ) -> Tuple[Search, Dict[str, Optional[str]]]:
+        search: Search, datetime: Optional[str], collections: Optional[List[str]] = None
+    ) -> Tuple[Search, Optional[DateTimeNode]]:
         """Apply a filter to search on datetime, start_datetime, and end_datetime fields.
 
         Args:
@@ -469,160 +699,75 @@ class DatabaseLogic(BaseDatabaseLogic):
         Returns:
             The filtered search object.
         """
-        datetime_search = return_date(datetime)
-
-        if not datetime_search:
-            return search, datetime_search
-
         # USE_DATETIME env var
         # True: Search by datetime, if null search by start/end datetime
         # False: Always search only by start/end datetime
+
         USE_DATETIME = get_bool_env("USE_DATETIME", default=True)
 
         if USE_DATETIME:
-            if "eq" in datetime_search:
-                # For exact matches, include:
-                # 1. Items with matching exact datetime
-                # 2. Items with datetime:null where the time falls within their range
-                should = [
-                    Q(
-                        "bool",
-                        filter=[
-                            Q("exists", field="properties.datetime"),
-                            Q(
-                                "term",
-                                **{"properties__datetime": datetime_search["eq"]},
-                            ),
-                        ],
-                    ),
-                    Q(
-                        "bool",
-                        must_not=[Q("exists", field="properties.datetime")],
-                        filter=[
-                            Q("exists", field="properties.start_datetime"),
-                            Q("exists", field="properties.end_datetime"),
-                            Q(
-                                "range",
-                                properties__start_datetime={
-                                    "lte": datetime_search["eq"]
-                                },
-                            ),
-                            Q(
-                                "range",
-                                properties__end_datetime={"gte": datetime_search["eq"]},
-                            ),
-                        ],
-                    ),
-                ]
-            else:
-                # For date ranges, include:
-                # 1. Items with datetime in the range
-                # 2. Items with datetime:null that overlap the search range
-                should = [
-                    Q(
-                        "bool",
-                        filter=[
-                            Q("exists", field="properties.datetime"),
-                            Q(
-                                "range",
-                                properties__datetime={
-                                    "gte": datetime_search["gte"],
-                                    "lte": datetime_search["lte"],
-                                },
-                            ),
-                        ],
-                    ),
-                    Q(
-                        "bool",
-                        must_not=[Q("exists", field="properties.datetime")],
-                        filter=[
-                            Q("exists", field="properties.start_datetime"),
-                            Q("exists", field="properties.end_datetime"),
-                            Q(
-                                "range",
-                                properties__start_datetime={
-                                    "lte": datetime_search["lte"]
-                                },
-                            ),
-                            Q(
-                                "range",
-                                properties__end_datetime={
-                                    "gte": datetime_search["gte"]
-                                },
-                            ),
-                        ],
-                    ),
-                ]
+            datetime_ast = parse_datetime_to_ast(datetime)
+            if not datetime_ast:
+                return search, None
 
-            return (
-                search.query(Q("bool", should=should, minimum_should_match=1)),
-                datetime_search,
-            )
-        else:
-            if "eq" in datetime_search:
-                filter_query = Q(
-                    "bool",
-                    filter=[
-                        Q("exists", field="properties.start_datetime"),
-                        Q("exists", field="properties.end_datetime"),
-                        Q(
-                            "range",
-                            properties__start_datetime={"lte": datetime_search["eq"]},
-                        ),
-                        Q(
-                            "range",
-                            properties__end_datetime={"gte": datetime_search["eq"]},
-                        ),
-                    ],
-                )
-            else:
-                filter_query = Q(
-                    "bool",
-                    filter=[
-                        Q("exists", field="properties.start_datetime"),
-                        Q("exists", field="properties.end_datetime"),
-                        Q(
-                            "range",
-                            properties__start_datetime={"lte": datetime_search["lte"]},
-                        ),
-                        Q(
-                            "range",
-                            properties__end_datetime={"gte": datetime_search["gte"]},
-                        ),
-                    ],
-                )
-        return search.query(filter_query), datetime_search
+            optimal_index, query_dict = analyze_datetime_query(datetime_ast)
+
+            # Build the query FIRST
+            if query_dict:
+                search = search.query(Q(query_dict))
+                # DEBUG: Print the full query
+                print(f"Full search query: {search.to_dict()}")
+
+            # ONLY apply index selection if we have specific collections
+            if optimal_index and collections:
+                index_list = []
+                for collection_id in collections:
+                    index_alias = index_alias_by_collection_id(collection_id)
+                    index_list.append(index_alias)
+
+                if index_list:
+                    search = search.index(*index_list)
+                    print(f"Selected indexes: {index_list}")
+
+        return search, datetime_ast
 
     @staticmethod
     def apply_bbox_filter(search: Search, bbox: List):
-        """Filter search results based on bounding box.
+        """Filter search results based on bounding box using AST analysis pattern."""
+        polygon_coordinates = bbox2polygon(*bbox)
 
-        Args:
-            search (Search): The search object to apply the filter to.
-            bbox (List): The bounding box coordinates, represented as a list of four values [minx, miny, maxx, maxy].
+        shape_node = ShapeNode(type="polygon", coordinates=polygon_coordinates)
+        geometry_node = GeometryNode(shape=shape_node, relation="intersects")
+        geo_shape_node = GeoShapeNode(geometry=geometry_node)
 
-        Returns:
-            search (Search): The search object with the bounding box filter applied.
+        bbox_query_dict = analyze_bbox_query(geo_shape_node)
+        return search.filter(Q("geo_shape", geometry=bbox_query_dict))
 
-        Notes:
-            The bounding box is transformed into a polygon using the `bbox2polygon` function and
-            a geo_shape filter is added to the search object, set to intersect with the specified polygon.
-        """
-        return search.filter(
-            Q(
-                {
-                    "geo_shape": {
-                        "geometry": {
-                            "shape": {
-                                "type": "polygon",
-                                "coordinates": bbox2polygon(*bbox),
-                            },
-                            "relation": "intersects",
-                        }
-                    }
-                }
-            )
-        )
+    @staticmethod
+    def apply_index_selection(
+        search: Search,
+        datetime_search: Optional[DateTimeNode],
+        collections: Optional[List[str]],
+    ) -> Search:
+        """Apply index selection based on AST analysis and collections."""
+        if not datetime_search or not collections:
+            return search
+
+        optimal_index, _ = analyze_datetime_query(datetime_search)
+
+        if optimal_index and collections:
+            # Build list of specific collection indexes
+            index_list = []
+            for collection_id in collections:
+                index_alias = index_alias_by_collection_id(collection_id)
+                index_list.append(index_alias)
+
+            if index_list:
+                # Apply index selection
+                search = search.index(*index_list)
+                print(f"Selected indexes: {index_list} for {optimal_index}")
+
+        return search
 
     @staticmethod
     def apply_intersects_filter(
@@ -728,7 +873,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         token: Optional[str],
         sort: Optional[Dict[str, Dict[str, str]]],
         collection_ids: Optional[List[str]],
-        datetime_search: Dict[str, Optional[str]],
+        datetime_search: Optional[Any],  # Changed from Dict to Any to accept AST nodes
         ignore_unavailable: bool = True,
     ) -> Tuple[Iterable[Dict[str, Any]], Optional[int], Optional[str]]:
         """Execute a search query with limit and other optional parameters.
@@ -739,7 +884,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             token (Optional[str]): The token used to return the next set of results.
             sort (Optional[Dict[str, Dict[str, str]]]): Specifies how the results should be sorted.
             collection_ids (Optional[List[str]]): The collection ids to search.
-            datetime_search (Dict[str, Optional[str]]): Datetime range used for index selection.
+            datetime_search (Optional[Any]): Datetime AST node or dict used for index selection.
             ignore_unavailable (bool, optional): Whether to ignore unavailable collections. Defaults to True.
 
         Returns:
@@ -756,9 +901,20 @@ class DatabaseLogic(BaseDatabaseLogic):
         search_body: Dict[str, Any] = {}
         query = search.query.to_dict() if search.query else None
 
+        # Convert datetime AST node to dict format for compatibility
+        datetime_dict = None
+        if datetime_search:
+            if hasattr(datetime_search, "get") and callable(datetime_search.get):
+                # It's already a dict (backward compatibility)
+                datetime_dict = datetime_search
+            else:
+                # It's an AST node - convert to dict
+                datetime_dict = self._datetime_ast_to_dict(datetime_search)
+
         index_param = await self.async_index_selector.select_indexes(
-            collection_ids, datetime_search
+            collection_ids, datetime_dict  # Pass the converted dict
         )
+
         if len(index_param) > ES_MAX_URL_LENGTH - 300:
             index_param = ITEM_INDICES
             query = add_collections_to_body(collection_ids, query)
@@ -821,6 +977,39 @@ class DatabaseLogic(BaseDatabaseLogic):
                 logger.error(f"Count task failed: {e}")
 
         return items, matched, next_token
+
+    def _datetime_ast_to_dict(
+        self, datetime_ast: Any
+    ) -> Optional[Dict[str, Optional[str]]]:
+        """Convert datetime AST node to dict format for compatibility.
+
+        Args:
+            datetime_ast: DateTimeNode AST object
+
+        Returns:
+            Dict in format {'gte': ..., 'lte': ...} or {'eq': ...}
+        """
+        if not datetime_ast:
+            return None
+
+        # Check if it's a DateTimeRangeNode
+        if hasattr(datetime_ast, "start") and hasattr(datetime_ast, "end"):
+            result: Dict[str, Optional[str]] = {}
+            if datetime_ast.start:
+                result["gte"] = datetime_ast.start
+            if datetime_ast.end:
+                result["lte"] = datetime_ast.end
+            return result
+
+        # Check if it's a DateTimeExactNode
+        elif hasattr(datetime_ast, "value"):
+            return {"eq": datetime_ast.value}
+
+        # If it's already a dict (backward compatibility)
+        elif isinstance(datetime_ast, dict):
+            return datetime_ast
+
+        return None
 
     """ AGGREGATE LOGIC """
 

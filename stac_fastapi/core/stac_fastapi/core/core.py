@@ -800,6 +800,12 @@ class CoreClient(AsyncBaseCoreClient):
             logger.error(msg)
             raise HTTPException(status_code=400, detail=msg)
 
+        if datetime_search and search_request.collections:
+            search = self.database.apply_index_selection(
+                search=search,
+                datetime_search=datetime_search,
+                collections=search_request.collections,
+            )
         if search_request.bbox:
             bbox = search_request.bbox
             if len(bbox) == 6:

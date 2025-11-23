@@ -4,6 +4,7 @@ This module provides functions for building and manipulating Elasticsearch/OpenS
 """
 
 import logging
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Union
 
 from stac_fastapi.core.utilities import bbox2polygon
@@ -38,10 +39,54 @@ def apply_free_text_filter_shared(
     return search
 
 
+@dataclass
+class SpatialNode:
+    """AST node for spatial operations."""
+
+    operator: str
+    geometry_field: str
+    geometry_type: str
+    coordinates: Any
+    relation: str = "intersects"
+
+
+@dataclass
+class GeoShapeNode:
+    """AST node for geo_shape operations."""
+
+    spatial: SpatialNode
+
+
+def analyze_spatial_query(node) -> Dict[str, Dict]:
+    """Analyze and build geo_shape query from node tree.
+
+    Args:
+        node: The AST node to analyze.
+
+    Returns:
+        The constructed geo_shape query.
+    """
+    if isinstance(node, GeoShapeNode):
+        return analyze_spatial_query(node.spatial)
+    elif isinstance(node, SpatialNode):
+        return {
+            "geo_shape": {
+                node.geometry_field: {
+                    "shape": {
+                        "type": node.geometry_type.lower(),
+                        "coordinates": node.coordinates,
+                    },
+                    "relation": node.relation,
+                }
+            }
+        }
+    return {}
+
+
 def apply_intersects_filter_shared(
     intersects: Geometry,
 ) -> Dict[str, Dict]:
-    """Create a geo_shape filter for intersecting geometry.
+    """Create a geo_shape filter for intersecting geometry using AST pattern.
 
     Args:
         intersects (Geometry): The intersecting geometry, represented as a GeoJSON-like object.
@@ -52,20 +97,20 @@ def apply_intersects_filter_shared(
 
     Notes:
         This function creates a geo_shape filter configuration to find documents that intersect
-        with the specified geometry. The returned dictionary should be wrapped in a Q object
-        when applied to a search.
+        with the specified geometry using an AST-based approach.
     """
-    return {
-        "geo_shape": {
-            "geometry": {
-                "shape": {
-                    "type": intersects.type.lower(),
-                    "coordinates": intersects.coordinates,
-                },
-                "relation": "intersects",
-            }
-        }
-    }
+    # Create AST nodes
+    spatial_node = SpatialNode(
+        operator="intersects",
+        geometry_field="geometry",
+        geometry_type=intersects.type.lower(),
+        coordinates=intersects.coordinates,
+        relation="intersects",
+    )
+    geo_shape_node = GeoShapeNode(spatial=spatial_node)
+
+    # Analyze and build query from AST
+    return analyze_spatial_query(geo_shape_node)
 
 
 def apply_collections_datetime_filter_shared(
