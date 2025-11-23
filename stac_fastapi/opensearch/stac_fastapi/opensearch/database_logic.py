@@ -5,6 +5,7 @@ import logging
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from collections.abc import Iterable
 from copy import deepcopy
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Type
 
 import attr
@@ -72,6 +73,49 @@ from stac_fastapi.types.links import resolve_links
 from stac_fastapi.types.stac import Collection, Item
 
 logger = logging.getLogger(__name__)
+
+
+# AST-style node classes for bbox filtering
+@dataclass
+class GeoShapeNode:
+    """Represents a geo_shape query node in the AST."""
+
+    geometry: "GeometryNode"
+
+
+@dataclass
+class GeometryNode:
+    """Represents a geometry node with shape and relation."""
+
+    shape: "ShapeNode"
+    relation: str
+
+
+@dataclass
+class ShapeNode:
+    """Represents a shape node with type and coordinates."""
+
+    type: str
+    coordinates: List[List[List[float]]]
+
+
+def analyze_bbox_query(node) -> dict:
+    """Analyze and build bbox query from node tree.
+    Args:
+        node: The AST node to analyze.
+
+    Returns:
+        The constructed geo_shape query.
+    """
+    if isinstance(node, GeoShapeNode):
+        return analyze_bbox_query(node.geometry)
+    elif isinstance(node, GeometryNode):
+        shape_filter = analyze_bbox_query(node.shape)
+        return {"shape": shape_filter, "relation": node.relation}
+    elif isinstance(node, ShapeNode):
+        if node.type == "polygon":
+            return {"type": node.type, "coordinates": node.coordinates}
+    return {}
 
 
 async def create_index_templates() -> None:
@@ -595,34 +639,15 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     @staticmethod
     def apply_bbox_filter(search: Search, bbox: List):
-        """Filter search results based on bounding box.
+        """Filter search results based on bounding box using AST analysis pattern."""
+        polygon_coordinates = bbox2polygon(*bbox)
 
-        Args:
-            search (Search): The search object to apply the filter to.
-            bbox (List): The bounding box coordinates, represented as a list of four values [minx, miny, maxx, maxy].
+        shape_node = ShapeNode(type="polygon", coordinates=polygon_coordinates)
+        geometry_node = GeometryNode(shape=shape_node, relation="intersects")
+        geo_shape_node = GeoShapeNode(geometry=geometry_node)
 
-        Returns:
-            search (Search): The search object with the bounding box filter applied.
-
-        Notes:
-            The bounding box is transformed into a polygon using the `bbox2polygon` function and
-            a geo_shape filter is added to the search object, set to intersect with the specified polygon.
-        """
-        return search.filter(
-            Q(
-                {
-                    "geo_shape": {
-                        "geometry": {
-                            "shape": {
-                                "type": "polygon",
-                                "coordinates": bbox2polygon(*bbox),
-                            },
-                            "relation": "intersects",
-                        }
-                    }
-                }
-            )
-        )
+        bbox_query_dict = analyze_bbox_query(geo_shape_node)
+        return search.filter(Q("geo_shape", geometry=bbox_query_dict))
 
     @staticmethod
     def apply_intersects_filter(
