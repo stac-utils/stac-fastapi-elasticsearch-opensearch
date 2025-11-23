@@ -11,7 +11,7 @@ class BaseIndexSelector(ABC):
     async def select_indexes(
         self,
         collection_ids: Optional[List[str]],
-        datetime_search: Dict[str, Optional[str]],
+        datetime_search: Dict[str, dict[str, str]],
     ) -> str:
         """Select appropriate indexes asynchronously.
 

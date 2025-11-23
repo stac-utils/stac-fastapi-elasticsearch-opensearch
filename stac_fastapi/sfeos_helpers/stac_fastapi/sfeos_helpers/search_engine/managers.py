@@ -18,8 +18,16 @@ logger = logging.getLogger(__name__)
 
 
 class ProductDatetimes(NamedTuple):
+    """Named tuple representing product datetime fields.
+
+    Attributes:
+        start_datetime (str): ISO format start datetime string.
+        datetime (str): ISO format datetime string.
+        end_datetime (str): ISO format end datetime string.
+    """
+
     start_datetime: str
-    datetime: str | None
+    datetime: str
     end_datetime: str
 
 
@@ -123,28 +131,27 @@ class DatetimeIndexManager:
         Returns:
             ProductDatetimes: Named tuple containing:
                 - start_datetime (str): Start datetime value
-                - datetime (str | None): datetime value
+                - datetime (str): datetime value
                 - end_datetime (str): End datetime value
 
         Raises:
             HTTPException: If product start_datetime is missing or invalid.
         """
-
         properties = product.get("properties", {})
         start_datetime_value = properties.get("start_datetime")
         datetime_value = properties.get("datetime")
         end_datetime_value = properties.get("end_datetime")
 
-        if not start_datetime_value:
+        if not start_datetime_value or not datetime_value or not end_datetime_value:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Product 'start_datetime' is required for indexing",
+                detail="Product 'start_datetime', 'datetime' and 'end_datetime' is required for indexing",
             )
 
-        if not datetime_value and not end_datetime_value:
+        if not (start_datetime_value <= datetime_value <= end_datetime_value):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="'end_datetime' is required when 'datetime' is not provided."
+                detail="'start_datetime' <= 'datetime' <= 'end_datetime' is required",
             )
 
         return ProductDatetimes(
@@ -170,7 +177,11 @@ class DatetimeIndexManager:
         end_datetime = extract_date(product_datetimes.end_datetime)
 
         target_index = await self.index_operations.create_datetime_index(
-            self.client, collection_id, start_datetime, datetime, end_datetime
+            self.client,
+            collection_id,
+            str(start_datetime),
+            str(datetime),
+            str(end_datetime),
         )
         logger.info(
             f"Successfully created index '{target_index}' for collection '{collection_id}'"
@@ -178,7 +189,10 @@ class DatetimeIndexManager:
         return target_index
 
     async def handle_early_date(
-        self, collection_id: str, product_datetimes: ProductDatetimes, old_aliases: Dict[str, str]
+        self,
+        collection_id: str,
+        product_datetimes: ProductDatetimes,
+        old_aliases: Dict[str, str],
     ) -> str:
         """Handle product with date earlier than existing indexes asynchronously.
 
@@ -194,9 +208,13 @@ class DatetimeIndexManager:
         dt = extract_date(product_datetimes.datetime)
         end_dt = extract_date(product_datetimes.end_datetime)
 
-        old_start_datetime_alias = extract_first_date_from_index(old_aliases["start_datetime"])
+        old_start_datetime_alias = extract_first_date_from_index(
+            old_aliases["start_datetime"]
+        )
         old_datetime_alias = extract_first_date_from_index(old_aliases["datetime"])
-        old_end_datetime_alias = extract_first_date_from_index(old_aliases["end_datetime"])
+        old_end_datetime_alias = extract_first_date_from_index(
+            old_aliases["end_datetime"]
+        )
 
         new_start_datetime_alias = self.index_operations.create_alias_name(
             collection_id, "start_datetime", str(start_dt)
@@ -205,10 +223,9 @@ class DatetimeIndexManager:
         aliases_to_change = []
         aliases_to_create = []
 
-        if start_dt > old_start_datetime_alias:
+        if start_dt < old_start_datetime_alias:
             aliases_to_create.append(new_start_datetime_alias)
             aliases_to_change.append(old_aliases["start_datetime"])
-
 
         if dt > old_datetime_alias:
             new_datetime_alias = self.index_operations.create_alias_name(
@@ -226,12 +243,18 @@ class DatetimeIndexManager:
 
         if aliases_to_change:
             await self.index_operations.change_alias_name(
-                self.client, old_aliases["start_datetime"], aliases_to_change, aliases_to_create
+                self.client,
+                old_aliases["start_datetime"],
+                aliases_to_change,
+                aliases_to_create,
             )
         return new_start_datetime_alias
 
     async def handle_oversized_index(
-        self, collection_id: str, product_datetimes: ProductDatetimes, old_aliases: Dict[str, str]
+        self,
+        collection_id: str,
+        product_datetimes: ProductDatetimes,
+        old_aliases: Dict[str, str],
     ) -> str:
         """Handle index that exceeds size limit asynchronously.
 
@@ -250,7 +273,9 @@ class DatetimeIndexManager:
 
         old_start_datetime_alias = extract_first_date_from_index(target_index)
         old_datetime_alias = extract_first_date_from_index(old_aliases["datetime"])
-        old_end_datetime_alias = extract_first_date_from_index(old_aliases["end_datetime"])
+        old_end_datetime_alias = extract_first_date_from_index(
+            old_aliases["end_datetime"]
+        )
 
         if start_dt != old_start_datetime_alias:
             aliases_to_change = []
@@ -274,9 +299,15 @@ class DatetimeIndexManager:
                 aliases_to_create.append(new_end_datetime_alias)
                 aliases_to_change.append(old_aliases["end_datetime"])
 
-            await self.index_operations.change_alias_name(self.client, target_index, aliases_to_change, aliases_to_create)
+            await self.index_operations.change_alias_name(
+                self.client, target_index, aliases_to_change, aliases_to_create
+            )
             target_index = await self.index_operations.create_datetime_index(
-                self.client, collection_id, str(start_dt + timedelta(days=1)), str(dt), str(end_dt)
+                self.client,
+                collection_id,
+                str(start_dt + timedelta(days=1)),
+                str(dt),
+                str(end_dt),
             )
 
         return target_index
