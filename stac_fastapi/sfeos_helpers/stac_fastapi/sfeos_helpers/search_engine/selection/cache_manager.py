@@ -3,7 +3,7 @@
 import copy
 import threading
 import time
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Any, Dict, List, Optional, Tuple
 
 from stac_fastapi.sfeos_helpers.database import index_alias_by_collection_id
 from stac_fastapi.sfeos_helpers.mappings import ITEMS_INDEX_PREFIX
@@ -91,7 +91,7 @@ class IndexAliasLoader:
             }
         """
         response = await self.client.indices.get_alias(index=f"{ITEMS_INDEX_PREFIX}*")
-        result = {}
+        result: Dict[str, List[Tuple[Dict[str, str]]]] = {}
 
         for index_name, index_info in response.items():
             aliases = index_info.get("aliases", {})
@@ -126,7 +126,7 @@ class IndexAliasLoader:
         Returns:
             str: The main collection alias.
         """
-        temporal_keywords = ['datetime', 'start_datetime', 'end_datetime']
+        temporal_keywords = ["datetime", "start_datetime", "end_datetime"]
 
         for alias in aliases:
             if not any(keyword in alias for keyword in temporal_keywords):
@@ -151,12 +151,12 @@ class IndexAliasLoader:
             if alias == main_alias:
                 continue
 
-            if 'start_datetime' in alias:
-                aliases_dict['start_datetime'] = alias
-            elif 'end_datetime' in alias:
-                aliases_dict['end_datetime'] = alias
-            elif 'datetime' in alias:
-                aliases_dict['datetime'] = alias
+            if "start_datetime" in alias:
+                aliases_dict["start_datetime"] = alias
+            elif "end_datetime" in alias:
+                aliases_dict["end_datetime"] = alias
+            elif "datetime" in alias:
+                aliases_dict["datetime"] = alias
 
         return aliases_dict
 
@@ -179,7 +179,9 @@ class IndexAliasLoader:
         """
         return await self.load_aliases()
 
-    async def get_collection_indexes(self, collection_id: str) -> List[Tuple[Dict[str, str]]]:
+    async def get_collection_indexes(
+        self, collection_id: str
+    ) -> List[Tuple[Dict[str, str]]]:
         """Get index information for a specific collection.
 
         Args:

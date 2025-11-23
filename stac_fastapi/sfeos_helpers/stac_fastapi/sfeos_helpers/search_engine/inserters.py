@@ -1,6 +1,7 @@
 """Async index insertion strategies."""
+
 import logging
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from fastapi import HTTPException, status
 
@@ -117,7 +118,7 @@ class DatetimeIndexInserter(BaseIndexInserter):
         collection_id: str,
         product: Dict[str, Any],
         check_size: bool = True,
-    ) -> str:
+    ) -> Optional[str]:
         """Get target index with size checking internally.
 
         Args:
@@ -132,9 +133,9 @@ class DatetimeIndexInserter(BaseIndexInserter):
         product_datetimes = self.datetime_manager.validate_product_datetimes(product)
 
         datetime_ranges = {
-            "start_datetime": {"gte": product_datetimes.start_datetime, "lte": product_datetimes.start_datetime},
-            "end_datetime": {"gte": product_datetimes.end_datetime, "lte": product_datetimes.end_datetime},
-            "datetime": {"gte": product_datetimes.datetime, "lte": product_datetimes.datetime}
+            "start_datetime": {"gte": None, "lte": product_datetimes.start_datetime},
+            "end_datetime": {"gte": None, "lte": None},
+            "datetime": {"gte": None, "lte": None},
         }
 
         target_index = await index_selector.select_indexes(
@@ -149,7 +150,7 @@ class DatetimeIndexInserter(BaseIndexInserter):
             await index_selector.refresh_cache()
             return target_index
 
-        all_indexes = sorted(all_indexes, key=lambda x: x[0]['start_datetime'])
+        all_indexes = sorted(all_indexes, key=lambda x: x[0]["start_datetime"])
         start_date = extract_date(product_datetimes.start_datetime)
         end_date = extract_first_date_from_index(all_indexes[0][0]["start_datetime"])
 
@@ -160,7 +161,7 @@ class DatetimeIndexInserter(BaseIndexInserter):
             await index_selector.refresh_cache()
             return alias
 
-        if target_index != all_indexes[-1]:
+        if target_index != all_indexes[-1][0]["start_datetime"]:
             for item in all_indexes:
                 aliases_dict = item[0]
                 if target_index in aliases_dict.values():
@@ -179,8 +180,16 @@ class DatetimeIndexInserter(BaseIndexInserter):
                         collection_id, product_datetimes, aliases_dict
                     )
                     await index_selector.refresh_cache()
+                    return target_index
 
-        return target_index
+        for item in all_indexes:
+            aliases_dict = item[0]
+            if target_index in aliases_dict.values():
+                await self.datetime_manager.handle_early_date(
+                    collection_id, product_datetimes, aliases_dict
+                )
+                return target_index
+        return None
 
     async def _ensure_indexes_exist(
         self, index_selector, collection_id: str, items: List[Dict[str, Any]]
@@ -199,9 +208,9 @@ class DatetimeIndexInserter(BaseIndexInserter):
             await self.index_operations.create_datetime_index(
                 self.client,
                 collection_id,
-                extract_date(first_item["properties"]["start_datetime"]),
-                extract_date(first_item["properties"]["datetime"]),
-                extract_date(first_item["properties"]["end_datetime"]),
+                str(extract_date(first_item["properties"]["start_datetime"])),
+                str(extract_date(first_item["properties"]["datetime"])),
+                str(extract_date(first_item["properties"]["end_datetime"])),
             )
             await index_selector.refresh_cache()
 
@@ -227,9 +236,9 @@ class DatetimeIndexInserter(BaseIndexInserter):
         )
 
         all_indexes = await index_selector.get_collection_indexes(collection_id)
-        all_indexes = sorted(all_indexes, key=lambda x: x[0]['start_datetime'])
+        all_indexes = sorted(all_indexes, key=lambda x: x[0]["start_datetime"])
 
-        latest_index = all_indexes[-1][0]
+        latest_index = all_indexes[-1][0]["start_datetime"]
 
         if first_item_index != latest_index:
             return None
@@ -248,7 +257,9 @@ class DatetimeIndexInserter(BaseIndexInserter):
             end_datetime=latest_item["_source"]["properties"]["end_datetime"],
         )
 
-        await self.datetime_manager.handle_oversized_index(collection_id, product_datetimes, latest_index)
+        await self.datetime_manager.handle_oversized_index(
+            collection_id, product_datetimes, all_indexes[-1][0]
+        )
         await index_selector.refresh_cache()
 
 

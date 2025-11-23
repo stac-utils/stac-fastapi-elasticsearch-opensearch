@@ -4,11 +4,9 @@ This module provides functions for creating and managing indices in Elasticsearc
 """
 
 import re
-from datetime import datetime
+from datetime import date, datetime
 from functools import lru_cache
-from typing import Any, List, Optional, Tuple, Dict
-
-from dateutil.parser import parse  # type: ignore[import]
+from typing import Any, Dict, List, Optional, Tuple
 
 from stac_fastapi.sfeos_helpers.mappings import (
     _ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE,
@@ -72,10 +70,28 @@ def indices(collection_ids: Optional[List[str]]) -> str:
 
 def filter_indexes_by_datetime(
     collection_indexes: List[Tuple[Dict[str, str], ...]],
-    datetime_search: Dict[str, Dict[str, str | None]]
+    datetime_search: Dict[str, Dict[str, str | None]],
 ) -> List[str]:
+    """
+    Filter Elasticsearch index aliases based on datetime search criteria.
+
+    Filters a list of collection indexes by matching their datetime, start_datetime, and end_datetime
+    aliases against the provided search criteria. Each criterion can have optional 'gte' (greater than
+    or equal) and 'lte' (less than or equal) bounds.
+
+    Args:
+        collection_indexes (List[Tuple[Dict[str, str], ...]]): A list of tuples containing dictionaries
+            with 'datetime', 'start_datetime', and 'end_datetime' aliases.
+        datetime_search (Dict[str, Dict[str, str | None]]): A dictionary with keys 'datetime',
+            'start_datetime', and 'end_datetime', each containing 'gte' and 'lte' criteria as ISO format
+            datetime strings or None.
+
+    Returns:
+        List[str]: A list of start_datetime aliases that match all provided search criteria.
+    """
+
     def extract_date_from_alias(alias: str) -> tuple[datetime, datetime] | None:
-        date_pattern = re.compile(r'\d{4}-\d{2}-\d{2}')
+        date_pattern = re.compile(r"\d{4}-\d{2}-\d{2}")
         try:
             dates = date_pattern.findall(alias)
 
@@ -83,26 +99,30 @@ def filter_indexes_by_datetime(
                 return None
 
             if len(dates) >= 2:
-                return datetime.strptime(dates[-2], '%Y-%m-%d'), datetime.strptime(dates[-1], '%Y-%m-%d')
+                return datetime.strptime(dates[-2], "%Y-%m-%d"), datetime.strptime(
+                    dates[-1], "%Y-%m-%d"
+                )
             else:
-                date = datetime.strptime(dates[-1], '%Y-%m-%d')
+                date = datetime.strptime(dates[-1], "%Y-%m-%d")
                 return date, date
         except (ValueError, IndexError):
             return None
 
-    def parse_search_date(date_str: str | None) -> Optional[datetime.date]:
+    def parse_search_date(date_str: str | None) -> Optional[date]:
         if not date_str:
             return None
-        return datetime.fromisoformat(date_str.replace('Z', '+00:00')).date()
+        date_str = date_str.rstrip("Z")
+        return datetime.fromisoformat(date_str).date()
 
-    def check_criteria(value_begin: datetime.date, value_end: datetime.date, criteria: Dict) -> bool:
-        gte = parse_search_date(criteria.get('gte'))
-        lte = parse_search_date(criteria.get('lte'))
+    def check_criteria(value_begin: date, value_end: date, criteria: Dict) -> bool:
+        gte = parse_search_date(criteria.get("gte"))
+        lte = parse_search_date(criteria.get("lte"))
 
-        if gte and value_begin.date() < gte:
+        if gte and value_end < gte:
             return False
-        if lte and value_end.date() > lte:
+        if lte and value_begin > lte:
             return False
+
         return True
 
     filtered_indexes = []
@@ -112,9 +132,9 @@ def filter_indexes_by_datetime(
             continue
 
         index_dict = index_tuple[0]
-        start_datetime_alias = index_dict.get('start_datetime')
-        end_datetime_alias = index_dict.get('end_datetime')
-        datetime_alias = index_dict.get('datetime')
+        start_datetime_alias = index_dict.get("start_datetime")
+        end_datetime_alias = index_dict.get("end_datetime")
+        datetime_alias = index_dict.get("datetime")
 
         if not start_datetime_alias:
             continue
@@ -123,15 +143,20 @@ def filter_indexes_by_datetime(
         end_date = extract_date_from_alias(end_datetime_alias)
         datetime_date = extract_date_from_alias(datetime_alias)
 
-        if not start_range or not end_date or not datetime_date:
+        if not check_criteria(
+            start_range[0], start_range[1], datetime_search.get("start_datetime", {})
+        ):
             continue
-
-        if not check_criteria(start_range[0], start_range[1], datetime_search.get('start_datetime', {})):
-            continue
-        if not check_criteria(end_date[0], end_date[1], datetime_search.get('end_datetime', {})):
-            continue
-        if not check_criteria(datetime_date[0], datetime_date[1], datetime_search.get('datetime', {})):
-            continue
+        if end_date:
+            if not check_criteria(
+                end_date[0], end_date[1], datetime_search.get("end_datetime", {})
+            ):
+                continue
+        if datetime_date:
+            if not check_criteria(
+                datetime_date[0], datetime_date[1], datetime_search.get("datetime", {})
+            ):
+                continue
 
         filtered_indexes.append(start_datetime_alias)
 
