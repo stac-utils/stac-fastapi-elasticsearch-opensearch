@@ -49,11 +49,17 @@ dev = [
     "ciso8601~=2.3.0",
     "httpx>=0.24.0,<0.28.0",
     "redis==6.4.0",
+    "retry~=0.9.2"
 ]
 docs = [
     "mkdocs~=1.4.0",
     "mkdocs-material~=9.0.0",
     "pdocs~=1.2.0",
+]
+redis = [
+    "redis==6.4.0",
+    "retry==0.9.2",
+    "stac-fastapi-core[redis]==6.7.5",
 ]
 server = [
     "uvicorn[standard]~=0.23.0",
