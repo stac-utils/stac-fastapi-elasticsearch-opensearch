@@ -31,6 +31,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 - Upgrade stac-fastapi parent libraries to v6.1.1 [#541](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/541)
 
+### Removed
+
+- Removed support for Python 3.9, 3.10 as they are no longer supported by stac-fastapi parent libraries [#541](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/541)
+
 ## [v6.7.4] - 2025-11-13
 
 ### Added
