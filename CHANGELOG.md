@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
-- Add Redis to be installed in dev environemnet for local testing [#536](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/536)
+- Add Redis to be installed in dev environment for local testing [#536](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/536)
 - Fix Redis optional dependencies in opensearch and elasticsearch packages [#541](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/541)
 
 ### Updated
