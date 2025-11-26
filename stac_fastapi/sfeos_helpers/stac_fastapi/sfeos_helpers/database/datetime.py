@@ -75,7 +75,7 @@ def return_date(
                 dt_utc = MIN_DATE_NANOS
             elif dt_utc > MAX_DATE_NANOS:
                 dt_utc = MAX_DATE_NANOS
-            datetime_iso = dt_utc.isoformat()
+            datetime_iso = dt_utc.isoformat().replace("+00:00", "Z")
             result["gte"] = result["lte"] = datetime_iso
         elif isinstance(interval, tuple):
             start, end = interval
@@ -131,9 +131,9 @@ def return_date(
             start, end = interval
             # Ensure datetimes are converted to UTC and formatted with 'Z'
             if start:
-                result["gte"] = start_utc.isoformat().replace("+00:00", "Z")
+                result["gte"] = start.isoformat().replace("+00:00", "Z")
             if end:
-                result["lte"] = end_utc.isoformat().replace("+00:00", "Z")
+                result["lte"] = end.isoformat().replace("+00:00", "Z")
 
         return result
 

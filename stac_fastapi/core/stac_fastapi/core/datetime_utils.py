@@ -32,7 +32,10 @@ def format_datetime_range(date_str: str) -> str:
                 dt_utc = MIN_DATE_NANOS
             if dt_utc > MAX_DATE_NANOS:
                 dt_utc = MAX_DATE_NANOS
-            return dt_utc.isoformat(timespec="auto").replace("+00:00", "Z")
+            dt_normalized = dt_utc.isoformat(timespec="auto").replace("+00:00", "Z")
+            if "." not in dt_normalized:
+                dt_normalized = dt_normalized.replace("Z", ".0Z")
+            return dt_normalized
 
         if not isinstance(date_str, str):
             return f"{MIN_DATE_NANOS.isoformat(timespec='auto').replace('+00:00','Z')}/{MAX_DATE_NANOS.isoformat(timespec='auto').replace('+00:00','Z')}"
