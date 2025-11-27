@@ -445,8 +445,9 @@ QUERYABLES_CACHE_TTL=3600  # Optional, defaults to 3600 seconds (1 hour)
 - Search requests (both GET and POST) are checked against this cache.
 - If a request contains a query parameter or filter field that is not in the list of allowed queryables, the API returns a `400 Bad Request` error with a message indicating the invalid field(s).
 - The cache is automatically refreshed based on the `QUERYABLES_CACHE_TTL` setting.
+- **Interaction with `EXCLUDED_FROM_QUERYABLES`**: If `VALIDATE_QUERYABLES` is enabled, fields listed in `EXCLUDED_FROM_QUERYABLES` will also be considered invalid for filtering. This effectively enforces the exclusion of these fields from search queries.
 
-This feature helps prevent queries on unindexed fields which could lead to poor performance or unexpected results.
+This feature helps prevent queries on non-queryable fields which could lead to unnecessary load on the database.
 
 ## Datetime-Based Index Management
 

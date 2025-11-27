@@ -27,6 +27,7 @@ class QueryablesCache:
         self._lock = asyncio.Lock()
         self.validation_enabled: bool = False
         self.cache_ttl: int = 3600  # How often to refresh cache (in seconds)
+        self.excluded_queryables: Set[str] = set()
         self.reload_settings()
 
     def reload_settings(self):
@@ -35,6 +36,17 @@ class QueryablesCache:
             os.getenv("VALIDATE_QUERYABLES", "false").lower() == "true"
         )
         self.cache_ttl = int(os.getenv("QUERYABLES_CACHE_TTL", "3600"))
+
+        excluded = os.getenv("EXCLUDED_FROM_QUERYABLES", "")
+        self.excluded_queryables = set()
+        if excluded:
+            for field in excluded.split(","):
+                field = field.strip()
+                if field:
+                    # Remove 'properties.' prefix if present
+                    if field.startswith("properties."):
+                        field = field[11:]
+                    self.excluded_queryables.add(field)
 
     async def _update_cache(self):
         """Update the cache with the latest queryables from the database."""
@@ -47,6 +59,9 @@ class QueryablesCache:
 
             queryables_mapping = await self._db_logic.get_queryables_mapping()
             all_queryables_set = set(queryables_mapping.keys())
+
+            if self.excluded_queryables:
+                all_queryables_set = all_queryables_set - self.excluded_queryables
 
             self._all_queryables = all_queryables_set
 

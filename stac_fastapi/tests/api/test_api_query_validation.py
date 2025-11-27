@@ -65,3 +65,32 @@ async def test_item_collection_get_filter_invalid_param(app_client, ctx):
     assert resp.status_code == 400
     resp_json = resp.json()
     assert "Invalid query fields: invalid_param" in resp_json["detail"]
+
+
+@pytest.mark.asyncio
+async def test_validate_queryables_excluded(app_client, ctx):
+    """Test that excluded queryables are rejected when validation is enabled."""
+
+    excluded_field = "eo:cloud_cover"
+
+    with mock.patch.dict(
+        os.environ,
+        {
+            "VALIDATE_QUERYABLES": "true",
+            "EXCLUDED_FROM_QUERYABLES": excluded_field,
+            "QUERYABLES_CACHE_TTL": "0",
+        },
+    ):
+        reload_queryables_settings()
+
+        query = {"query": {excluded_field: {"lt": 10}}}
+        resp = await app_client.post("/search", json=query)
+        assert resp.status_code == 400
+        assert "Invalid query fields" in resp.json()["detail"]
+        assert excluded_field in resp.json()["detail"]
+
+        query = {"query": {"id": {"eq": "test-item"}}}
+        resp = await app_client.post("/search", json=query)
+        assert resp.status_code == 200
+
+    reload_queryables_settings()
