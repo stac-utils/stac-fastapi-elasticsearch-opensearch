@@ -13,17 +13,33 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 - Environment variable `QUERYABLES_CACHE_TTL` to configure the TTL (in seconds) for caching queryables. Default is `3600` seconds (1 hour) to balance performance and freshness of queryables data. [#532](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/532)
 
-- Added retry with back-off logic for Redis related functions. [#528](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/528)
-
-- Added nanosecond precision datetime filtering that ensures nanosecond precision support in filtering by datetime. This is configured via the `USE_DATETIME_NANOS` environment variable, while maintaining microseconds compatibility for datetime precision. [#529](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/529)
-
 ### Changed
 
 ### Fixed
 
+- Fixed datetime filtering for .0Z milliseconds to preserve precision in apply_filter_datetime, ensuring only items exactly within the specified range are returned. [#535](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/535)
+
 ### Removed
 
+## [v6.7.5] - 2025-11-25
+
+### Added
+
+- Added retry with back-off logic for Redis related functions. [#528](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/528)
+- Added nanosecond precision datetime filtering that ensures nanosecond precision support in filtering by datetime. This is configured via the `USE_DATETIME_NANOS` environment variable, while maintaining microseconds compatibility for datetime precision. [#529](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/529)
+
+### Fixed
+
+- Add Redis to be installed in dev environment for local testing [#536](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/536)
+- Fix Redis optional dependencies in opensearch and elasticsearch packages [#541](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/541)
+
 ### Updated
+
+- Upgrade stac-fastapi parent libraries to v6.1.1 [#541](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/541)
+
+### Removed
+
+- Removed support for Python 3.9, 3.10 as they are no longer supported by stac-fastapi parent libraries [#541](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/541)
 
 ## [v6.7.4] - 2025-11-13
 
@@ -645,7 +661,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.4...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.5...main
+[v6.7.5]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.4...v6.7.5
 [v6.7.4]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.3...v6.7.4
 [v6.7.3]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.2...v6.7.3
 [v6.7.2]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.1...v6.7.2
