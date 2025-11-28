@@ -23,6 +23,7 @@ from stac_fastapi.core.extensions.aggregation import (
     EsAggregationExtensionGetRequest,
     EsAggregationExtensionPostRequest,
 )
+from stac_fastapi.core.extensions.catalogs import CatalogsExtension
 from stac_fastapi.core.extensions.collections_search import (
     CollectionsSearchEndpointExtension,
 )
@@ -65,11 +66,13 @@ ENABLE_COLLECTIONS_SEARCH = get_bool_env("ENABLE_COLLECTIONS_SEARCH", default=Tr
 ENABLE_COLLECTIONS_SEARCH_ROUTE = get_bool_env(
     "ENABLE_COLLECTIONS_SEARCH_ROUTE", default=False
 )
+ENABLE_CATALOG_ROUTE = get_bool_env("ENABLE_CATALOG_ROUTE", default=False)
 logger.info("TRANSACTIONS_EXTENSIONS is set to %s", TRANSACTIONS_EXTENSIONS)
 logger.info("ENABLE_COLLECTIONS_SEARCH is set to %s", ENABLE_COLLECTIONS_SEARCH)
 logger.info(
     "ENABLE_COLLECTIONS_SEARCH_ROUTE is set to %s", ENABLE_COLLECTIONS_SEARCH_ROUTE
 )
+logger.info("ENABLE_CATALOG_ROUTE is set to %s", ENABLE_CATALOG_ROUTE)
 
 settings = OpensearchSettings()
 session = Session.create_from_settings(settings)
@@ -199,6 +202,19 @@ if ENABLE_COLLECTIONS_SEARCH_ROUTE:
         ],
     )
     extensions.append(collections_search_endpoint_ext)
+
+
+if ENABLE_CATALOG_ROUTE:
+    catalogs_extension = CatalogsExtension(
+        client=CoreClient(
+            database=database_logic,
+            session=session,
+            post_request_model=collection_search_post_request_model,
+            landing_page_id=os.getenv("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"),
+        ),
+        settings=settings,
+    )
+    extensions.append(catalogs_extension)
 
 
 database_logic.extensions = [type(ext).__name__ for ext in extensions]
