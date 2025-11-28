@@ -2,6 +2,7 @@
 
 from datetime import datetime, timezone
 
+from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.types.rfc3339 import rfc3339_str_to_datetime
 
 
@@ -15,27 +16,74 @@ def format_datetime_range(date_str: str) -> str:
     Returns:
         str: A string formatted as 'YYYY-MM-DDTHH:MM:SSZ/YYYY-MM-DDTHH:MM:SSZ', with '..' used if any element is None.
     """
+    use_datetime_nanos = get_bool_env("USE_DATETIME_NANOS", default=True)
 
-    def normalize(dt):
-        """Normalize datetime string and preserve millisecond precision."""
-        dt = dt.strip()
-        if not dt or dt == "..":
-            return ".."
-        dt_obj = rfc3339_str_to_datetime(dt)
-        dt_utc = dt_obj.astimezone(timezone.utc)
-        return dt_utc.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    if use_datetime_nanos:
+        MIN_DATE_NANOS = datetime(1970, 1, 1, tzinfo=timezone.utc)
+        MAX_DATE_NANOS = datetime(2262, 4, 11, 23, 47, 16, 854775, tzinfo=timezone.utc)
 
-    if not isinstance(date_str, str):
-        return "../.."
+        def normalize(dt):
+            """Normalize datetime string and preserve nano second precision."""
+            dt = dt.strip()
+            if not dt or dt == "..":
+                return ".."
+            dt_utc = rfc3339_str_to_datetime(dt).astimezone(timezone.utc)
+            if dt_utc < MIN_DATE_NANOS:
+                dt_utc = MIN_DATE_NANOS
+            if dt_utc > MAX_DATE_NANOS:
+                dt_utc = MAX_DATE_NANOS
+            dt_normalized = dt_utc.isoformat(timespec="auto").replace("+00:00", "Z")
+            if "." not in dt_normalized:
+                dt_normalized = dt_normalized.replace("Z", ".0Z")
+            return dt_normalized
 
-    if "/" not in date_str:
-        return f"{normalize(date_str)}/{normalize(date_str)}"
+        if not isinstance(date_str, str):
+            return f"{MIN_DATE_NANOS.isoformat(timespec='auto').replace('+00:00','Z')}/{MAX_DATE_NANOS.isoformat(timespec='auto').replace('+00:00','Z')}"
 
-    try:
-        start, end = date_str.split("/", 1)
-    except Exception:
-        return "../.."
-    return f"{normalize(start)}/{normalize(end)}"
+        if "/" not in date_str:
+            return f"{normalize(date_str)}/{normalize(date_str)}"
+
+        try:
+            start, end = date_str.split("/", 1)
+        except Exception:
+            return f"{MIN_DATE_NANOS.isoformat(timespec='auto').replace('+00:00','Z')}/{MAX_DATE_NANOS.isoformat(timespec='auto').replace('+00:00','Z')}"
+
+        normalized_start = normalize(start)
+        normalized_end = normalize(end)
+
+        if normalized_start == "..":
+            normalized_start = MIN_DATE_NANOS.isoformat(timespec="auto").replace(
+                "+00:00", "Z"
+            )
+        if normalized_end == "..":
+            normalized_end = MAX_DATE_NANOS.isoformat(timespec="auto").replace(
+                "+00:00", "Z"
+            )
+
+        return f"{normalized_start}/{normalized_end}"
+
+    else:
+
+        def normalize(dt):
+            """Normalize datetime string and preserve millisecond precision."""
+            dt = dt.strip()
+            if not dt or dt == "..":
+                return ".."
+            dt_obj = rfc3339_str_to_datetime(dt)
+            dt_utc = dt_obj.astimezone(timezone.utc)
+            return dt_utc.isoformat(timespec="milliseconds").replace("+00:00", "Z")
+
+        if not isinstance(date_str, str):
+            return "../.."
+
+        if "/" not in date_str:
+            return f"{normalize(date_str)}/{normalize(date_str)}"
+
+        try:
+            start, end = date_str.split("/", 1)
+        except Exception:
+            return "../.."
+        return f"{normalize(start)}/{normalize(end)}"
 
 
 # Borrowed from pystac - https://github.com/stac-utils/pystac/blob/f5e4cf4a29b62e9ef675d4a4dac7977b09f53c8f/pystac/utils.py#L370-L394
