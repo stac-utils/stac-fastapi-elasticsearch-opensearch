@@ -23,9 +23,14 @@ from stac_pydantic.version import STAC_VERSION
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.datetime_utils import format_datetime_range
+from stac_fastapi.core.models import Catalog
 from stac_fastapi.core.models.links import PagingLinks
 from stac_fastapi.core.redis_utils import redis_pagination_links
-from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
+from stac_fastapi.core.serializers import (
+    CatalogSerializer,
+    CollectionSerializer,
+    ItemSerializer,
+)
 from stac_fastapi.core.session import Session
 from stac_fastapi.core.utilities import filter_fields, get_bool_env
 from stac_fastapi.extensions.core.transaction import AsyncBaseTransactionsClient
@@ -82,6 +87,7 @@ class CoreClient(AsyncBaseCoreClient):
     collection_serializer: Type[CollectionSerializer] = attr.ib(
         default=CollectionSerializer
     )
+    catalog_serializer: Type[CatalogSerializer] = attr.ib(default=CatalogSerializer)
     post_request_model = attr.ib(default=BaseSearchPostRequest)
     stac_version: str = attr.ib(default=STAC_VERSION)
     landing_page_id: str = attr.ib(default="stac-fastapi")
@@ -142,15 +148,24 @@ class CoreClient(AsyncBaseCoreClient):
         )
         return landing_page
 
-    async def landing_page(self, **kwargs) -> stac_types.LandingPage:
+    async def landing_page(self, **kwargs) -> Union[stac_types.LandingPage, Catalog]:
         """Landing page.
 
         Called with `GET /`.
 
         Returns:
-            API landing page, serving as an entry point to the API.
+            API landing page, serving as an entry point to the API, or root catalog if CatalogsExtension is enabled.
         """
         request: Request = kwargs["request"]
+
+        # If CatalogsExtension is enabled, return root catalog instead of landing page
+        if self.extension_is_enabled("CatalogsExtension"):
+            # Find the CatalogsExtension and call its catalogs method
+            for extension in self.extensions:
+                if extension.__class__.__name__ == "CatalogsExtension":
+                    return await extension.catalogs(request)
+
+        # Normal landing page logic
         base_url = get_base_url(request)
         landing_page = self._landing_page(
             base_url=base_url,

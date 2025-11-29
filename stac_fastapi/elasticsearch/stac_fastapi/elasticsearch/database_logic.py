@@ -16,7 +16,11 @@ from fastapi import HTTPException
 from starlette.requests import Request
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
-from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
+from stac_fastapi.core.serializers import (
+    CatalogSerializer,
+    CollectionSerializer,
+    ItemSerializer,
+)
 from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon, get_bool_env
 from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
 from stac_fastapi.elasticsearch.config import (
@@ -144,6 +148,7 @@ class DatabaseLogic(BaseDatabaseLogic):
     collection_serializer: Type[CollectionSerializer] = attr.ib(
         default=CollectionSerializer
     )
+    catalog_serializer: Type[CatalogSerializer] = attr.ib(default=CatalogSerializer)
 
     extensions: List[str] = attr.ib(default=attr.Factory(list))
 
@@ -1596,6 +1601,228 @@ class DatabaseLogic(BaseDatabaseLogic):
             index=COLLECTIONS_INDEX, id=collection_id, refresh=refresh
         )
         await delete_item_index(collection_id)
+
+    async def get_all_catalogs(
+        self,
+        token: Optional[str],
+        limit: int,
+        request: Request,
+        sort: Optional[List[Dict[str, Any]]] = None,
+    ) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[int]]:
+        """Retrieve a list of catalogs from Elasticsearch, supporting pagination.
+
+        Args:
+            token (Optional[str]): The pagination token.
+            limit (int): The number of results to return.
+            request (Request): The FastAPI request object.
+            sort (Optional[List[Dict[str, Any]]], optional): Optional sort parameter. Defaults to None.
+
+        Returns:
+            A tuple of (catalogs, next pagination token if any, optional count).
+        """
+        # Define sortable fields based on the ES_CATALOGS_MAPPINGS
+        sortable_fields = ["id"]
+
+        # Format the sort parameter
+        formatted_sort = []
+        if sort:
+            for item in sort:
+                field = item.get("field")
+                direction = item.get("direction", "asc")
+                if field:
+                    # Validate that the field is sortable
+                    if field not in sortable_fields:
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Field '{field}' is not sortable. Sortable fields are: {', '.join(sortable_fields)}. "
+                            + "Text fields are not sortable by default in Elasticsearch. "
+                            + "To make a field sortable, update the mapping to use 'keyword' type or add a '.keyword' subfield. ",
+                        )
+                    formatted_sort.append({field: {"order": direction}})
+            # Always include id as a secondary sort to ensure consistent pagination
+            if not any("id" in item for item in formatted_sort):
+                formatted_sort.append({"id": {"order": "asc"}})
+        else:
+            formatted_sort = [{"id": {"order": "asc"}}]
+
+        body = {
+            "sort": formatted_sort,
+            "size": limit,
+        }
+
+        # Handle search_after token
+        search_after = None
+        if token:
+            try:
+                # The token should be a pipe-separated string of sort values
+                search_after = token.split("|")
+                # If the number of sort fields doesn't match token parts, ignore the token
+                if len(search_after) != len(formatted_sort):
+                    search_after = None
+            except Exception:
+                search_after = None
+
+            if search_after is not None:
+                body["search_after"] = search_after
+
+        # Build the query part of the body
+        query_parts: List[Dict[str, Any]] = []
+
+        # Combine all query parts with AND logic
+        if query_parts:
+            body["query"] = (
+                query_parts[0]
+                if len(query_parts) == 1
+                else {"bool": {"must": query_parts}}
+            )
+
+        # Always filter for type: "Catalog"
+        type_filter = {"term": {"type": "Catalog"}}
+        if body.get("query"):
+            body["query"] = {"bool": {"must": [body["query"], type_filter]}}
+        else:
+            body["query"] = type_filter
+
+        # Create async tasks for both search and count
+        search_task = asyncio.create_task(
+            self.client.search(
+                index=COLLECTIONS_INDEX,
+                body=body,
+            )
+        )
+
+        count_task = asyncio.create_task(
+            self.client.count(
+                index=COLLECTIONS_INDEX,
+                body={"query": body.get("query", {"match_all": {}})},
+            )
+        )
+
+        # Wait for search task to complete
+        response = await search_task
+
+        hits = response["hits"]["hits"]
+        catalogs = [
+            self.catalog_serializer.db_to_stac(
+                catalog=hit["_source"], request=request, extensions=self.extensions
+            )
+            for hit in hits
+        ]
+
+        next_token = None
+        if len(hits) == limit:
+            next_token_values = hits[-1].get("sort")
+            if next_token_values:
+                # Join all sort values with '|' to create the token
+                next_token = "|".join(str(val) for val in next_token_values)
+
+        # Get the total count of catalogs
+        matched = (
+            response["hits"]["total"]["value"]
+            if response["hits"]["total"]["relation"] == "eq"
+            else None
+        )
+
+        # If count task is done, use its result
+        if count_task.done():
+            try:
+                matched = count_task.result().get("count")
+            except Exception as e:
+                logger.error(f"Count task failed: {e}")
+
+        return catalogs, next_token, matched
+
+    async def create_catalog(self, catalog: Dict, **kwargs: Any):
+        """Create a single catalog in the database.
+
+        Args:
+            catalog (Dict): The catalog object to be created.
+            **kwargs: Additional keyword arguments.
+                - refresh (str): Whether to refresh the index after the operation. Can be "true", "false", or "wait_for".
+                - refresh (bool): Whether to refresh the index after the operation. Defaults to the value in `self.async_settings.database_refresh`.
+
+        Raises:
+            ConflictError: If a Catalog with the same id already exists in the database.
+
+        Returns:
+            None
+        """
+        catalog_id = catalog["id"]
+
+        # Ensure kwargs is a dictionary
+        kwargs = kwargs or {}
+
+        # Resolve the `refresh` parameter
+        refresh = kwargs.get("refresh", self.async_settings.database_refresh)
+        refresh = validate_refresh(refresh)
+
+        # Log the creation attempt
+        logger.info(f"Creating catalog {catalog_id} with refresh={refresh}")
+
+        # Check if the catalog already exists
+        if await self.client.exists(index=COLLECTIONS_INDEX, id=catalog_id):
+            raise ConflictError(f"Catalog {catalog_id} already exists")
+
+        # Ensure the document has the correct type
+        catalog["type"] = "Catalog"
+
+        # Index the catalog in the database
+        await self.client.index(
+            index=COLLECTIONS_INDEX,
+            id=catalog_id,
+            document=catalog,
+            refresh=refresh,
+        )
+
+    async def find_catalog(self, catalog_id: str) -> Dict:
+        """Find and return a catalog from the database.
+
+        Args:
+            catalog_id (str): The ID of the catalog to be found.
+
+        Returns:
+            Dict: The found catalog.
+
+        Raises:
+            NotFoundError: If the catalog with the given `catalog_id` is not found in the database.
+        """
+        try:
+            catalog = await self.client.get(index=COLLECTIONS_INDEX, id=catalog_id)
+        except ESNotFoundError:
+            raise NotFoundError(f"Catalog {catalog_id} not found")
+
+        # Validate that this is actually a catalog, not a collection
+        if catalog["_source"].get("type") != "Catalog":
+            raise NotFoundError(f"Catalog {catalog_id} not found")
+
+        return catalog["_source"]
+
+    async def delete_catalog(self, catalog_id: str, **kwargs: Any):
+        """Delete a catalog from the database.
+
+        Parameters:
+            catalog_id (str): The ID of the catalog to be deleted.
+            kwargs (Any, optional): Additional keyword arguments, including `refresh`.
+                - refresh (str): Whether to refresh the index after the operation. Can be "true", "false", or "wait_for".
+                - refresh (bool): Whether to refresh the index after the operation. Defaults to the value in `self.async_settings.database_refresh`.
+
+        Raises:
+            NotFoundError: If the catalog with the given `catalog_id` is not found in the database.
+
+        Returns:
+            None
+        """
+        # Ensure kwargs is a dictionary
+        kwargs = kwargs or {}
+
+        refresh = kwargs.get("refresh", self.async_settings.database_refresh)
+        refresh = validate_refresh(refresh)
+
+        # Verify that the catalog exists and is actually a catalog
+        await self.find_catalog(catalog_id=catalog_id)
+        await self.client.delete(
+            index=COLLECTIONS_INDEX, id=catalog_id, refresh=refresh
+        )
 
     async def bulk_async(
         self,
