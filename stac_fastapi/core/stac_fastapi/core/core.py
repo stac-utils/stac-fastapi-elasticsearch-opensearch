@@ -799,9 +799,10 @@ class CoreClient(AsyncBaseCoreClient):
                 search=search, collection_ids=search_request.collections
             )
 
+        datetime_parsed = format_datetime_range(date_str=search_request.datetime)
         try:
             search, datetime_search = self.database.apply_datetime_filter(
-                search=search, datetime=search_request.datetime
+                search=search, datetime=datetime_parsed
             )
         except (ValueError, TypeError) as e:
             # Handle invalid interval formats if return_date fails
