@@ -24,6 +24,10 @@ from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.datetime_utils import format_datetime_range
 from stac_fastapi.core.models.links import PagingLinks
+from stac_fastapi.core.queryables import (
+    QueryablesCache,
+    get_properties_from_cql2_filter,
+)
 from stac_fastapi.core.redis_utils import redis_pagination_links
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.session import Session
@@ -38,11 +42,6 @@ from stac_fastapi.extensions.third_party.bulk_transactions import (
     BaseBulkTransactionsClient,
     BulkTransactionMethod,
     Items,
-)
-from stac_fastapi.sfeos_helpers.queryables import (
-    get_properties_from_cql2_filter,
-    initialize_queryables_cache,
-    validate_queryables,
 )
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
@@ -95,7 +94,7 @@ class CoreClient(AsyncBaseCoreClient):
 
     def __attrs_post_init__(self):
         """Initialize the queryables cache."""
-        initialize_queryables_cache(self.database)
+        self.queryables_cache = QueryablesCache(self.database)
 
     def _landing_page(
         self,
@@ -826,7 +825,7 @@ class CoreClient(AsyncBaseCoreClient):
 
         if hasattr(search_request, "query") and getattr(search_request, "query"):
             query_fields = set(getattr(search_request, "query").keys())
-            await validate_queryables(query_fields)
+            await self.queryables_cache.validate(query_fields)
             for field_name, expr in getattr(search_request, "query").items():
                 field = "properties__" + field_name
                 for op, value in expr.items():
@@ -846,7 +845,7 @@ class CoreClient(AsyncBaseCoreClient):
         if cql2_filter is not None:
             try:
                 query_fields = get_properties_from_cql2_filter(cql2_filter)
-                await validate_queryables(query_fields)
+                await self.queryables_cache.validate(query_fields)
                 search = await self.database.apply_cql2_filter(search, cql2_filter)
             except HTTPException:
                 raise

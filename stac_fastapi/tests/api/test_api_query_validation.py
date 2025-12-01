@@ -4,15 +4,34 @@ from unittest import mock
 
 import pytest
 
-from stac_fastapi.sfeos_helpers.queryables import reload_queryables_settings
+if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
+    from stac_fastapi.opensearch.app import app_config
+else:
+    from stac_fastapi.elasticsearch.app import app_config
+
+
+def get_core_client():
+    if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
+        from stac_fastapi.opensearch.app import app_config
+    else:
+        from stac_fastapi.elasticsearch.app import app_config
+    return app_config["client"]
+
+
+def reload_queryables_settings():
+    client = get_core_client()
+    if hasattr(client, "queryables_cache"):
+        client.queryables_cache.reload_settings()
 
 
 @pytest.fixture(autouse=True)
 def enable_validation():
+
+    client = app_config["client"]
     with mock.patch.dict(os.environ, {"VALIDATE_QUERYABLES": "true"}):
-        reload_queryables_settings()
+        client.queryables_cache.reload_settings()
         yield
-    reload_queryables_settings()
+    client.queryables_cache.reload_settings()
 
 
 @pytest.mark.asyncio
@@ -72,6 +91,7 @@ async def test_validate_queryables_excluded(app_client, ctx):
     """Test that excluded queryables are rejected when validation is enabled."""
 
     excluded_field = "eo:cloud_cover"
+    client = app_config["client"]
 
     with mock.patch.dict(
         os.environ,
@@ -81,7 +101,7 @@ async def test_validate_queryables_excluded(app_client, ctx):
             "QUERYABLES_CACHE_TTL": "0",
         },
     ):
-        reload_queryables_settings()
+        client.queryables_cache.reload_settings()
 
         query = {"query": {excluded_field: {"lt": 10}}}
         resp = await app_client.post("/search", json=query)
@@ -93,4 +113,4 @@ async def test_validate_queryables_excluded(app_client, ctx):
         resp = await app_client.post("/search", json=query)
         assert resp.status_code == 200
 
-    reload_queryables_settings()
+    client.queryables_cache.reload_settings()

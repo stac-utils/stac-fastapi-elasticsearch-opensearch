@@ -5,14 +5,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
-import stac_fastapi.sfeos_helpers.queryables as queryables_module
-from stac_fastapi.sfeos_helpers.queryables import (
+from stac_fastapi.core.queryables import (
     QueryablesCache,
-    all_queryables,
     get_properties_from_cql2_filter,
-    initialize_queryables_cache,
-    reload_queryables_settings,
-    validate_queryables,
 )
 
 
@@ -100,61 +95,6 @@ class TestQueryablesCache:
     async def test_validate_disabled(self, queryables_cache):
         queryables_cache.validation_enabled = False
         await queryables_cache.validate({"invalid_prop"})
-
-
-class TestGlobalFunctions:
-    @pytest.fixture(autouse=True)
-    def reset_global_cache(self):
-        original = queryables_module._queryables_cache_instance
-        queryables_module._queryables_cache_instance = None
-        yield
-
-        queryables_module._queryables_cache_instance = original
-
-    def test_initialize_queryables_cache(self):
-        db_logic = MagicMock()
-        initialize_queryables_cache(db_logic)
-        assert queryables_module._queryables_cache_instance is not None
-        assert queryables_module._queryables_cache_instance._db_logic == db_logic
-
-    @pytest.mark.asyncio
-    async def test_all_queryables_not_initialized(self):
-        with pytest.raises(Exception) as excinfo:
-            await all_queryables()
-        assert "Queryables cache not initialized" in str(excinfo.value)
-
-    @pytest.mark.asyncio
-    async def test_all_queryables(self):
-        db_logic = MagicMock()
-        db_logic.get_queryables_mapping = AsyncMock(return_value={"p1": "t1"})
-        initialize_queryables_cache(db_logic)
-
-        queryables_module._queryables_cache_instance.validation_enabled = True
-
-        res = await all_queryables()
-        assert res == {"p1"}
-
-    @pytest.mark.asyncio
-    async def test_validate_queryables(self):
-        db_logic = MagicMock()
-        db_logic.get_queryables_mapping = AsyncMock(return_value={"p1": "t1"})
-        initialize_queryables_cache(db_logic)
-        queryables_module._queryables_cache_instance.validation_enabled = True
-
-        await validate_queryables({"p1"})
-
-        with pytest.raises(HTTPException):
-            await validate_queryables({"invalid"})
-
-    def test_reload_queryables_settings(self):
-        db_logic = MagicMock()
-        initialize_queryables_cache(db_logic)
-
-        with patch.dict(os.environ, {"VALIDATE_QUERYABLES": "false"}):
-            reload_queryables_settings()
-            assert (
-                queryables_module._queryables_cache_instance.validation_enabled is False
-            )
 
 
 def test_get_properties_from_cql2_filter():

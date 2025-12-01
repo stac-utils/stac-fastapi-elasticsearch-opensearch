@@ -138,3 +138,8 @@ class BaseDatabaseLogic(abc.ABC):
     ) -> None:
         """Delete a collection from the database."""
         pass
+
+    @abc.abstractmethod
+    async def get_queryables_mapping(self, collection_id: str = "*") -> Dict[str, Any]:
+        """Retrieve mapping of Queryables for search."""
+        pass

@@ -3,11 +3,9 @@
 import asyncio
 import os
 import time
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Set
 
 from fastapi import HTTPException
-
-from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 
 
 class QueryablesCache:
@@ -97,40 +95,6 @@ class QueryablesCache:
                 status_code=400,
                 detail=f"Invalid query fields: {', '.join(invalid_fields)}.",
             )
-
-
-_queryables_cache_instance: Optional[QueryablesCache] = None
-
-
-def initialize_queryables_cache(database_logic: BaseDatabaseLogic):
-    """
-    Initialize the global queryables cache.
-
-    :param database_logic: An instance of DatabaseLogic.
-    """
-    global _queryables_cache_instance
-    if _queryables_cache_instance is None:
-        _queryables_cache_instance = QueryablesCache(database_logic)
-
-
-async def all_queryables() -> Set[str]:
-    """Get all queryable properties from the cache."""
-    if _queryables_cache_instance is None:
-        raise Exception("Queryables cache not initialized.")
-    return await _queryables_cache_instance.get_all_queryables()
-
-
-async def validate_queryables(fields: Set[str]) -> None:
-    """Validate if the provided fields are queryable."""
-    if _queryables_cache_instance is None:
-        return
-    await _queryables_cache_instance.validate(fields)
-
-
-def reload_queryables_settings():
-    """Reload queryables settings from environment variables."""
-    if _queryables_cache_instance:
-        _queryables_cache_instance.reload_settings()
 
 
 def get_properties_from_cql2_filter(cql2_filter: Dict[str, Any]) -> Set[str]:
