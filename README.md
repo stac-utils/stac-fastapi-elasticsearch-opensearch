@@ -121,6 +121,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
   - [Ingesting Sample Data CLI Tool](#ingesting-sample-data-cli-tool)
   - [Redis for navigation](#redis-for-navigation)
   - [Elasticsearch Mappings](#elasticsearch-mappings)
+  - [Custom Index Mappings](#custom-index-mappings)
   - [Managing Elasticsearch Indices](#managing-elasticsearch-indices)
     - [Snapshots](#snapshots)
     - [Reindexing](#reindexing)
@@ -369,6 +370,8 @@ You can customize additional settings in your `.env` file:
 | `USE_DATETIME_NANOS` | Enables nanosecond precision handling for `datetime` field searches as per the `date_nanos` type. When `False`, it uses 3 millisecond precision as per the type `date`. | `true` | Optional |
 | `EXCLUDED_FROM_QUERYABLES` | Comma-separated list of fully qualified field names to exclude from the queryables endpoint and filtering. Use full paths like `properties.auth:schemes,properties.storage:schemes`. Excluded fields and their nested children will not be exposed in queryables. | None | Optional |
 | `EXCLUDED_FROM_ITEMS` | Specifies fields to exclude from STAC item responses. Supports comma-separated field names and dot notation for nested fields (e.g., `private_data,properties.confidential,assets.internal`). | `None` | Optional |
+| `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` | JSON string of custom Elasticsearch/OpenSearch property mappings to merge with defaults. See [Custom Index Mappings](#custom-index-mappings). | `None` | Optional |
+| `STAC_FASTAPI_ES_DYNAMIC_MAPPING` | Controls dynamic mapping behavior for item indices. Values: `true` (default), `false`, or `strict`. See [Custom Index Mappings](#custom-index-mappings). | `true` | Optional |
 
 
 > [!NOTE]
@@ -692,6 +695,91 @@ pip install stac-fastapi-elasticsearch[redis]
   - These templates are automatically applied when creating new Collection and Item indices
   - The `sfeos_helpers` package contains shared mapping definitions used by both Elasticsearch and OpenSearch backends
 - **Customization**: Custom mappings can be defined by extending the base mapping templates.
+
+## Custom Index Mappings
+
+SFEOS provides environment variables to customize Elasticsearch/OpenSearch index mappings without modifying source code. This is useful for:
+
+- Adding STAC extension fields (SAR, Cube, etc.) with proper types
+- Optimizing performance by controlling which fields are indexed
+- Ensuring correct field types instead of relying on dynamic mapping inference
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` | JSON string of property mappings to merge with defaults | None |
+| `STAC_FASTAPI_ES_DYNAMIC_MAPPING` | Controls dynamic mapping: `true`, `false`, or `strict` | `true` |
+
+### Custom Mappings (`STAC_FASTAPI_ES_CUSTOM_MAPPINGS`)
+
+Accepts a JSON string representing a properties dictionary that will be merged into the default item mappings. Custom mappings will overwrite defaults if keys collide.
+
+**Example - Adding SAR Extension Fields:**
+
+```bash
+export STAC_FASTAPI_ES_CUSTOM_MAPPINGS='{
+  "properties": {
+    "properties": {
+      "sar:frequency_band": {"type": "keyword"},
+      "sar:center_frequency": {"type": "float"},
+      "sar:polarizations": {"type": "keyword"},
+      "sar:product_type": {"type": "keyword"}
+    }
+  }
+}'
+```
+
+**Example - Adding Cube Extension Fields:**
+
+```bash
+export STAC_FASTAPI_ES_CUSTOM_MAPPINGS='{
+  "properties": {
+    "properties": {
+      "cube:dimensions": {"type": "object", "enabled": false},
+      "cube:variables": {"type": "object", "enabled": false}
+    }
+  }
+}'
+```
+
+### Dynamic Mapping Control (`STAC_FASTAPI_ES_DYNAMIC_MAPPING`)
+
+Controls how Elasticsearch/OpenSearch handles fields not defined in the mapping:
+
+| Value | Behavior |
+|-------|----------|
+| `true` (default) | New fields are automatically added to the mapping. Maintains backward compatibility. |
+| `false` | New fields are ignored and not indexed. Documents can still contain these fields, but they won't be searchable. |
+| `strict` | Documents with unmapped fields are rejected. |
+
+### Combining Both Variables for Performance Optimization
+
+For large datasets with extensive metadata that isn't queried, you can disable dynamic mapping and define only the fields you need:
+
+```bash
+# Disable dynamic mapping
+export STAC_FASTAPI_ES_DYNAMIC_MAPPING=false
+
+# Define only queryable fields
+export STAC_FASTAPI_ES_CUSTOM_MAPPINGS='{
+  "properties": {
+    "properties": {
+      "platform": {"type": "keyword"},
+      "eo:cloud_cover": {"type": "float"},
+      "view:sun_elevation": {"type": "float"}
+    }
+  }
+}'
+```
+
+This prevents Elasticsearch from creating mappings for unused metadata fields, reducing index size and improving ingestion performance.
+
+> [!NOTE]
+> These environment variables apply to both Elasticsearch and OpenSearch backends. Changes only affect newly created indices. For existing indices, you'll need to reindex using [SFEOS-tools](https://github.com/Healy-Hyperspatial/sfeos-tools).
+
+> [!WARNING]
+> Use caution when overriding core fields like `geometry`, `datetime`, or `id`. Incorrect types may cause search failures or data loss.
 
 ## Managing Elasticsearch Indices
 
