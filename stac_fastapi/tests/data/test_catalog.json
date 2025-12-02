@@ -1,0 +1,37 @@
+{
+  "id": "test-catalog",
+  "type": "Catalog",
+  "stac_version": "1.0.0",
+  "title": "Test Catalog",
+  "description": "A test catalog for STAC API testing",
+  "links": [
+    {
+      "rel": "self",
+      "href": "http://test-server/catalogs/test-catalog",
+      "type": "application/json"
+    },
+    {
+      "rel": "root",
+      "href": "http://test-server/catalogs",
+      "type": "application/json"
+    },
+    {
+      "rel": "child",
+      "href": "http://test-server/collections/test-collection-1",
+      "type": "application/json",
+      "title": "Test Collection 1"
+    },
+    {
+      "rel": "child",
+      "href": "http://test-server/collections/test-collection-2",
+      "type": "application/json",
+      "title": "Test Collection 2"
+    },
+    {
+      "rel": "child",
+      "href": "http://test-server/collections/test-collection-3",
+      "type": "application/json",
+      "title": "Test Collection 3"
+    }
+  ]
+}

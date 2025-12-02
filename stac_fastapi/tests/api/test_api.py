@@ -50,6 +50,10 @@ ROUTES = {
     "POST /collections/{collection_id}/aggregate",
     "GET /collections-search",
     "POST /collections-search",
+    "GET /catalogs",
+    "POST /catalogs",
+    "GET /catalogs/{catalog_id}",
+    "GET /catalogs/{catalog_id}/collections",
 }
 
 
