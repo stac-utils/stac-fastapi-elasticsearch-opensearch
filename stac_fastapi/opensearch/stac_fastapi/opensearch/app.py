@@ -213,6 +213,9 @@ if ENABLE_CATALOG_ROUTE:
             landing_page_id=os.getenv("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"),
         ),
         settings=settings,
+        conformance_classes=[
+            "https://api.stacspec.org/v1.0.0-beta.1/catalogs",
+        ],
     )
     extensions.append(catalogs_extension)
 

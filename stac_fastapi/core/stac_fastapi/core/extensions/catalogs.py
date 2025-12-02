@@ -84,6 +84,42 @@ class CatalogsExtension(ApiExtension):
             tags=["Catalogs"],
         )
 
+        # Add endpoint for getting a specific collection in a catalog
+        self.router.add_api_route(
+            path="/catalogs/{catalog_id}/collections/{collection_id}",
+            endpoint=self.get_catalog_collection,
+            methods=["GET"],
+            response_model=stac_types.Collection,
+            response_class=self.response_class,
+            summary="Get Catalog Collection",
+            description="Get a specific collection from a catalog.",
+            tags=["Catalogs"],
+        )
+
+        # Add endpoint for getting items in a collection within a catalog
+        self.router.add_api_route(
+            path="/catalogs/{catalog_id}/collections/{collection_id}/items",
+            endpoint=self.get_catalog_collection_items,
+            methods=["GET"],
+            response_model=stac_types.ItemCollection,
+            response_class=self.response_class,
+            summary="Get Catalog Collection Items",
+            description="Get items from a collection in a catalog.",
+            tags=["Catalogs"],
+        )
+
+        # Add endpoint for getting a specific item in a collection within a catalog
+        self.router.add_api_route(
+            path="/catalogs/{catalog_id}/collections/{collection_id}/items/{item_id}",
+            endpoint=self.get_catalog_collection_item,
+            methods=["GET"],
+            response_model=stac_types.Item,
+            response_class=self.response_class,
+            summary="Get Catalog Collection Item",
+            description="Get a specific item from a collection in a catalog.",
+            tags=["Catalogs"],
+        )
+
         app.include_router(self.router, tags=["Catalogs"])
 
     async def catalogs(self, request: Request) -> Catalog:
@@ -253,3 +289,82 @@ class CatalogsExtension(ApiExtension):
             raise HTTPException(
                 status_code=404, detail=f"Catalog {catalog_id} not found"
             )
+
+    async def get_catalog_collection(
+        self, catalog_id: str, collection_id: str, request: Request
+    ) -> stac_types.Collection:
+        """Get a specific collection from a catalog.
+
+        Args:
+            catalog_id: The ID of the catalog.
+            collection_id: The ID of the collection.
+            request: Request object.
+
+        Returns:
+            The requested collection.
+        """
+        # Verify the catalog exists
+        try:
+            await self.client.database.find_catalog(catalog_id)
+        except Exception:
+            raise HTTPException(
+                status_code=404, detail=f"Catalog {catalog_id} not found"
+            )
+
+        # Delegate to the core client's get_collection method
+        return await self.client.get_collection(
+            collection_id=collection_id, request=request
+        )
+
+    async def get_catalog_collection_items(
+        self, catalog_id: str, collection_id: str, request: Request
+    ) -> stac_types.ItemCollection:
+        """Get items from a collection in a catalog.
+
+        Args:
+            catalog_id: The ID of the catalog.
+            collection_id: The ID of the collection.
+            request: Request object.
+
+        Returns:
+            ItemCollection containing items from the collection.
+        """
+        # Verify the catalog exists
+        try:
+            await self.client.database.find_catalog(catalog_id)
+        except Exception:
+            raise HTTPException(
+                status_code=404, detail=f"Catalog {catalog_id} not found"
+            )
+
+        # Delegate to the core client's item_collection method
+        return await self.client.item_collection(
+            collection_id=collection_id, request=request
+        )
+
+    async def get_catalog_collection_item(
+        self, catalog_id: str, collection_id: str, item_id: str, request: Request
+    ) -> stac_types.Item:
+        """Get a specific item from a collection in a catalog.
+
+        Args:
+            catalog_id: The ID of the catalog.
+            collection_id: The ID of the collection.
+            item_id: The ID of the item.
+            request: Request object.
+
+        Returns:
+            The requested item.
+        """
+        # Verify the catalog exists
+        try:
+            await self.client.database.find_catalog(catalog_id)
+        except Exception:
+            raise HTTPException(
+                status_code=404, detail=f"Catalog {catalog_id} not found"
+            )
+
+        # Delegate to the core client's get_item method
+        return await self.client.get_item(
+            item_id=item_id, collection_id=collection_id, request=request
+        )

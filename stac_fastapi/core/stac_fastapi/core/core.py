@@ -23,7 +23,6 @@ from stac_pydantic.version import STAC_VERSION
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.datetime_utils import format_datetime_range
-from stac_fastapi.core.models import Catalog
 from stac_fastapi.core.models.links import PagingLinks
 from stac_fastapi.core.redis_utils import redis_pagination_links
 from stac_fastapi.core.serializers import (
@@ -94,6 +93,17 @@ class CoreClient(AsyncBaseCoreClient):
     title: str = attr.ib(default="stac-fastapi")
     description: str = attr.ib(default="stac-fastapi")
 
+    def extension_is_enabled(self, extension_name: str) -> bool:
+        """Check if an extension is enabled by checking self.extensions.
+
+        Args:
+            extension_name: Name of the extension class to check for.
+
+        Returns:
+            True if the extension is in self.extensions, False otherwise.
+        """
+        return any(ext.__class__.__name__ == extension_name for ext in self.extensions)
+
     def _landing_page(
         self,
         base_url: str,
@@ -148,24 +158,16 @@ class CoreClient(AsyncBaseCoreClient):
         )
         return landing_page
 
-    async def landing_page(self, **kwargs) -> Union[stac_types.LandingPage, Catalog]:
+    async def landing_page(self, **kwargs) -> stac_types.LandingPage:
         """Landing page.
 
         Called with `GET /`.
 
         Returns:
-            API landing page, serving as an entry point to the API, or root catalog if CatalogsExtension is enabled.
+            API landing page, serving as an entry point to the API.
         """
         request: Request = kwargs["request"]
 
-        # If CatalogsExtension is enabled, return root catalog instead of landing page
-        if self.extension_is_enabled("CatalogsExtension"):
-            # Find the CatalogsExtension and call its catalogs method
-            for extension in self.extensions:
-                if extension.__class__.__name__ == "CatalogsExtension":
-                    return await extension.catalogs(request)
-
-        # Normal landing page logic
         base_url = get_base_url(request)
         landing_page = self._landing_page(
             base_url=base_url,
@@ -221,6 +223,16 @@ class CoreClient(AsyncBaseCoreClient):
                         "method": "POST",
                     },
                 ]
+            )
+
+        if self.extension_is_enabled("CatalogsExtension"):
+            landing_page["links"].append(
+                {
+                    "rel": "catalogs",
+                    "type": "application/json",
+                    "title": "Catalogs",
+                    "href": urljoin(base_url, "catalogs"),
+                }
             )
 
         # Add OpenAPI URL
