@@ -713,7 +713,56 @@ SFEOS provides environment variables to customize Elasticsearch/OpenSearch index
 
 ### Custom Mappings (`STAC_FASTAPI_ES_CUSTOM_MAPPINGS`)
 
-Accepts a JSON string representing a properties dictionary that will be merged into the default item mappings. Custom mappings will overwrite defaults if keys collide.
+Accepts a JSON string with the same structure as the default ES mappings. The custom mappings are **recursively merged** with the defaults at the root level.
+
+#### Merge Behavior
+
+The merge follows these rules:
+
+| Scenario | Result |
+|----------|--------|
+| Key only in defaults | Preserved |
+| Key only in custom | Added |
+| Key in both, both are dicts | Recursively merged |
+| Key in both, values are not both dicts | **Custom overwrites default** |
+
+**Example - Adding new properties (merged):**
+
+```json
+// Default has: {"geometry": {"type": "geo_shape"}}
+// Custom has:  {"geometry": {"ignore_malformed": true}}
+// Result:      {"geometry": {"type": "geo_shape", "ignore_malformed": true}}
+```
+
+**Example - Overriding a value (replaced):**
+
+```json
+// Default has: {"properties": {"datetime": {"type": "date_nanos"}}}
+// Custom has:  {"properties": {"datetime": {"type": "date"}}}
+// Result:      {"properties": {"datetime": {"type": "date"}}}
+```
+
+#### JSON Structure
+
+The custom JSON should mirror the structure of the default mappings. For STAC item properties, the path is `properties.properties.properties`:
+
+```
+{
+  "numeric_detection": false,
+  "dynamic_templates": [...],
+  "properties": {                    # Top-level ES mapping properties
+    "id": {...},
+    "geometry": {...},
+    "properties": {                  # STAC item "properties" field
+      "type": "object",
+      "properties": {                # Nested properties within STAC properties
+        "datetime": {...},
+        "sar:frequency_band": {...}  # <-- Custom extension fields go here
+      }
+    }
+  }
+}
+```
 
 **Example - Adding SAR Extension Fields:**
 
@@ -721,10 +770,12 @@ Accepts a JSON string representing a properties dictionary that will be merged i
 export STAC_FASTAPI_ES_CUSTOM_MAPPINGS='{
   "properties": {
     "properties": {
-      "sar:frequency_band": {"type": "keyword"},
-      "sar:center_frequency": {"type": "float"},
-      "sar:polarizations": {"type": "keyword"},
-      "sar:product_type": {"type": "keyword"}
+      "properties": {
+        "sar:frequency_band": {"type": "keyword"},
+        "sar:center_frequency": {"type": "float"},
+        "sar:polarizations": {"type": "keyword"},
+        "sar:product_type": {"type": "keyword"}
+      }
     }
   }
 }'
@@ -736,9 +787,21 @@ export STAC_FASTAPI_ES_CUSTOM_MAPPINGS='{
 export STAC_FASTAPI_ES_CUSTOM_MAPPINGS='{
   "properties": {
     "properties": {
-      "cube:dimensions": {"type": "object", "enabled": false},
-      "cube:variables": {"type": "object", "enabled": false}
+      "properties": {
+        "cube:dimensions": {"type": "object", "enabled": false},
+        "cube:variables": {"type": "object", "enabled": false}
+      }
     }
+  }
+}'
+```
+
+**Example - Adding geometry options:**
+
+```bash
+export STAC_FASTAPI_ES_CUSTOM_MAPPINGS='{
+  "properties": {
+    "geometry": {"ignore_malformed": true}
   }
 }'
 ```
@@ -765,9 +828,11 @@ export STAC_FASTAPI_ES_DYNAMIC_MAPPING=false
 export STAC_FASTAPI_ES_CUSTOM_MAPPINGS='{
   "properties": {
     "properties": {
-      "platform": {"type": "keyword"},
-      "eo:cloud_cover": {"type": "float"},
-      "view:sun_elevation": {"type": "float"}
+      "properties": {
+        "platform": {"type": "keyword"},
+        "eo:cloud_cover": {"type": "float"},
+        "view:sun_elevation": {"type": "float"}
+      }
     }
   }
 }'

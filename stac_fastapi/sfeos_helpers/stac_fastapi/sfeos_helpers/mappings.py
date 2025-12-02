@@ -82,9 +82,13 @@ def apply_custom_mappings(
 ) -> None:
     """Apply custom mappings from a JSON string to the mappings dictionary.
 
+    The custom mappings JSON should have the same structure as ES_ITEMS_MAPPINGS.
+    It will be recursively merged at the root level, allowing users to override
+    any part of the mapping including properties, dynamic_templates, etc.
+
     Args:
         mappings: The mappings dictionary to modify (modified in place).
-        custom_mappings_json: JSON string containing custom property mappings.
+        custom_mappings_json: JSON string containing custom mappings.
 
     Raises:
         Logs error if JSON parsing or merging fails.
@@ -94,7 +98,7 @@ def apply_custom_mappings(
 
     try:
         custom_mappings = json.loads(custom_mappings_json)
-        merge_mappings(mappings["properties"], custom_mappings)
+        merge_mappings(mappings, custom_mappings)
     except json.JSONDecodeError as e:
         logger.error(f"Failed to parse STAC_FASTAPI_ES_CUSTOM_MAPPINGS JSON: {e}")
     except Exception as e:

@@ -45,6 +45,13 @@ class TestMergeMappings:
         merge_mappings(base, custom)
         assert base["level1"]["a"] == {"type": "date"}
 
+    def test_merge_adds_properties_to_existing_nested_dict(self):
+        """Test that merging adds new properties to existing nested dicts."""
+        base = {"geometry": {"type": "geo_shape"}}
+        custom = {"geometry": {"ignore_malformed": True}}
+        merge_mappings(base, custom)
+        assert base == {"geometry": {"type": "geo_shape", "ignore_malformed": True}}
+
     @pytest.mark.parametrize(
         "base,custom,expected",
         [
@@ -111,24 +118,49 @@ class TestApplyCustomMappings:
         apply_custom_mappings(mappings, custom_json)
         assert mappings == original
 
-    def test_merges_valid_json(self):
-        """Test that valid JSON custom mappings are merged into properties."""
+    def test_merges_at_root_level(self):
+        """Test that custom mappings are merged at the root level."""
         mappings = {
+            "numeric_detection": False,
             "properties": {
-                "properties": {"properties": {"datetime": {"type": "date_nanos"}}}
-            }
+                "id": {"type": "keyword"},
+                "properties": {"properties": {"datetime": {"type": "date_nanos"}}},
+            },
         }
         custom_json = json.dumps(
-            {"properties": {"properties": {"sar:frequency_band": {"type": "keyword"}}}}
+            {
+                "properties": {
+                    "properties": {
+                        "properties": {"sar:frequency_band": {"type": "keyword"}}
+                    },
+                    "bbox": {"type": "object", "enabled": False},
+                }
+            }
         )
         apply_custom_mappings(mappings, custom_json)
 
+        # Existing fields preserved
+        assert mappings["properties"]["id"] == {"type": "keyword"}
         assert mappings["properties"]["properties"]["properties"]["datetime"] == {
             "type": "date_nanos"
         }
+        # New fields added
         assert mappings["properties"]["properties"]["properties"][
             "sar:frequency_band"
         ] == {"type": "keyword"}
+        assert mappings["properties"]["bbox"] == {"type": "object", "enabled": False}
+
+    def test_can_override_dynamic_templates(self):
+        """Test that dynamic_templates can be overridden via custom mappings."""
+        mappings = {
+            "dynamic_templates": [{"old": "template"}],
+            "properties": {"id": {"type": "keyword"}},
+        }
+        custom_json = json.dumps({"dynamic_templates": [{"new": "template"}]})
+        apply_custom_mappings(mappings, custom_json)
+
+        assert mappings["dynamic_templates"] == [{"new": "template"}]
+        assert mappings["properties"]["id"] == {"type": "keyword"}
 
     def test_invalid_json_logs_error_and_preserves_mappings(self, caplog):
         """Test that invalid JSON logs an error and doesn't modify mappings."""
@@ -159,7 +191,11 @@ class TestGetItemsMappings:
     def test_custom_mappings_merged_preserving_defaults(self):
         """Test that custom mappings are merged while preserving default fields."""
         custom = json.dumps(
-            {"properties": {"properties": {"custom:field": {"type": "keyword"}}}}
+            {
+                "properties": {
+                    "properties": {"properties": {"custom:field": {"type": "keyword"}}}
+                }
+            }
         )
         mappings = get_items_mappings(custom_mappings=custom)
 
@@ -177,7 +213,11 @@ class TestGetItemsMappings:
     def test_custom_can_override_defaults(self):
         """Test that custom mappings can override default field types."""
         custom = json.dumps(
-            {"properties": {"properties": {"datetime": {"type": "date"}}}}
+            {
+                "properties": {
+                    "properties": {"properties": {"datetime": {"type": "date"}}}
+                }
+            }
         )
         mappings = get_items_mappings(custom_mappings=custom)
         assert mappings["properties"]["properties"]["properties"]["datetime"] == {
@@ -212,9 +252,11 @@ class TestSTACExtensionUseCases:
                 {
                     "properties": {
                         "properties": {
-                            "sar:frequency_band": {"type": "keyword"},
-                            "sar:center_frequency": {"type": "float"},
-                            "sar:polarizations": {"type": "keyword"},
+                            "properties": {
+                                "sar:frequency_band": {"type": "keyword"},
+                                "sar:center_frequency": {"type": "float"},
+                                "sar:polarizations": {"type": "keyword"},
+                            }
                         }
                     }
                 },
@@ -224,8 +266,10 @@ class TestSTACExtensionUseCases:
                 {
                     "properties": {
                         "properties": {
-                            "cube:dimensions": {"type": "object", "enabled": False},
-                            "cube:variables": {"type": "object", "enabled": False},
+                            "properties": {
+                                "cube:dimensions": {"type": "object", "enabled": False},
+                                "cube:variables": {"type": "object", "enabled": False},
+                            }
                         }
                     }
                 },
@@ -238,7 +282,7 @@ class TestSTACExtensionUseCases:
         mappings = get_items_mappings(custom_mappings=json.dumps(custom_fields))
 
         props = mappings["properties"]["properties"]["properties"]
-        for field_name, field_config in custom_fields["properties"][
+        for field_name, field_config in custom_fields["properties"]["properties"][
             "properties"
         ].items():
             assert props[field_name] == field_config
@@ -250,8 +294,10 @@ class TestSTACExtensionUseCases:
         query_fields = {
             "properties": {
                 "properties": {
-                    "platform": {"type": "keyword"},
-                    "eo:cloud_cover": {"type": "float"},
+                    "properties": {
+                        "platform": {"type": "keyword"},
+                        "eo:cloud_cover": {"type": "float"},
+                    }
                 }
             }
         }
