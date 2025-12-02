@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Added catalogs route support to enable hierarchical catalog browsing and navigation in the STAC API.
+
 ### Changed
 
 ### Fixed
