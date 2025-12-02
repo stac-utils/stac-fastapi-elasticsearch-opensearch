@@ -53,12 +53,12 @@ def return_date(
             if "/" in interval:
                 parts = interval.split("/")
                 result["gte"] = (
-                    parts[0] if parts[0] != ".." else MIN_DATE_NANOS.isoformat() + "Z"
+                    parts[0] if parts[0] != ".." else MIN_DATE_NANOS.isoformat()
                 )
                 result["lte"] = (
                     parts[1]
                     if len(parts) > 1 and parts[1] != ".."
-                    else MAX_DATE_NANOS.isoformat() + "Z"
+                    else MAX_DATE_NANOS.isoformat()
                 )
             else:
                 converted_time = interval if interval != ".." else None
@@ -75,7 +75,7 @@ def return_date(
                 dt_utc = MIN_DATE_NANOS
             elif dt_utc > MAX_DATE_NANOS:
                 dt_utc = MAX_DATE_NANOS
-            datetime_iso = dt_utc.isoformat()
+            datetime_iso = dt_utc.isoformat().replace("+00:00", "Z")
             result["gte"] = result["lte"] = datetime_iso
         elif isinstance(interval, tuple):
             start, end = interval
@@ -90,7 +90,7 @@ def return_date(
                     start_utc = MIN_DATE_NANOS
                 elif start_utc > MAX_DATE_NANOS:
                     start_utc = MAX_DATE_NANOS
-                result["gte"] = start_utc.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+                result["gte"] = start_utc.isoformat().replace("+00:00", "Z")
             if end:
                 end_utc = (
                     end.astimezone(timezone.utc)
@@ -101,7 +101,7 @@ def return_date(
                     end_utc = MIN_DATE_NANOS
                 elif end_utc > MAX_DATE_NANOS:
                     end_utc = MAX_DATE_NANOS
-                result["lte"] = end_utc.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+                result["lte"] = end_utc.isoformat().replace("+00:00", "Z")
 
         return result
 
@@ -131,9 +131,9 @@ def return_date(
             start, end = interval
             # Ensure datetimes are converted to UTC and formatted with 'Z'
             if start:
-                result["gte"] = start.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+                result["gte"] = start.isoformat().replace("+00:00", "Z")
             if end:
-                result["lte"] = end.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+                result["lte"] = end.isoformat().replace("+00:00", "Z")
 
         return result
 
