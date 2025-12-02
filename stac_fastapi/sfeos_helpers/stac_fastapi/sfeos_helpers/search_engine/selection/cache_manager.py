@@ -78,17 +78,6 @@ class IndexAliasLoader:
 
         Returns:
             Dict[str, List[Tuple[Dict[str, str]]]]: Mapping of main collection aliases to their data.
-
-        Example:
-            {
-                'items_sentinel-2-l1c': [
-                    ({
-                        'datetime': 'items_datetime_sentinel-2-l1c_2025-09-27',
-                        'start_datetime': 'items_start_datetime_sentinel-2-l1c_2025-09-27',
-                        'end_datetime': 'items_end_datetime_sentinel-2-l1c_2025-09-28'
-                    },)
-                ]
-            }
         """
         response = await self.client.indices.get_alias(index=f"{ITEMS_INDEX_PREFIX}*")
         result: Dict[str, List[Tuple[Dict[str, str]]]] = {}

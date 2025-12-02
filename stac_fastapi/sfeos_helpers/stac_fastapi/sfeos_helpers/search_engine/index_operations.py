@@ -3,6 +3,7 @@
 import uuid
 from typing import Any, Dict, List, Literal
 
+from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.sfeos_helpers.database import (
     index_alias_by_collection_id,
     index_by_collection_id,
@@ -17,6 +18,16 @@ from stac_fastapi.sfeos_helpers.mappings import (
 
 class IndexOperations:
     """Base class for search engine adapters with common implementations."""
+
+    @property
+    def use_datetime(self) -> bool:
+        """Get USE_DATETIME setting dynamically."""
+        return get_bool_env("USE_DATETIME", default=True)
+
+    @property
+    def primary_datetime_name(self) -> str:
+        """Get primary datetime field name based on current USE_DATETIME setting."""
+        return "datetime" if self.use_datetime else "start_datetime"
 
     async def create_simple_index(self, client: Any, collection_id: str) -> str:
         """Create a simple index for the given collection.
@@ -42,44 +53,48 @@ class IndexOperations:
         self,
         client: Any,
         collection_id: str,
-        start_datetime: str,
-        datetime: str,
-        end_datetime: str,
+        start_datetime: str | None,
+        datetime: str | None,
+        end_datetime: str | None,
     ) -> str:
         """Create a datetime-based index for the given collection.
 
         Args:
             client: Search engine client instance.
             collection_id (str): Collection identifier.
-            start_datetime (str): Start datetime for the index alias.
-            datetime (str): Datetime for the datetime alias (can be None).
-            end_datetime (str): End datetime for the index alias.
+            start_datetime (str | None): Start datetime for the index alias.
+            datetime (str | None): Datetime for the datetime alias.
+            end_datetime (str | None): End datetime for the index alias.
 
         Returns:
-            str: Created start_datetime alias name.
+            str: Created datetime alias name.
         """
         index_name = self.create_index_name(collection_id)
-        alias_start_date = self.create_alias_name(
-            collection_id, "start_datetime", start_datetime
-        )
-        alias_date = self.create_alias_name(collection_id, "datetime", datetime)
-        alias_end_date = self.create_alias_name(
-            collection_id, "end_datetime", end_datetime
-        )
         collection_alias = index_alias_by_collection_id(collection_id)
 
         aliases: Dict[str, Any] = {
             collection_alias: {},
-            alias_start_date: {},
-            alias_date: {},
-            alias_end_date: {},
         }
+
+        if start_datetime:
+            alias_start_date = self.create_alias_name(
+                collection_id, "start_datetime", start_datetime
+            )
+            alias_end_date = self.create_alias_name(
+                collection_id, "end_datetime", end_datetime
+            )
+            aliases[alias_start_date] = {}
+            aliases[alias_end_date] = {}
+            created_alias = alias_start_date
+        else:
+            created_alias = self.create_alias_name(collection_id, "datetime", datetime)
+            aliases[created_alias] = {}
 
         await client.indices.create(
             index=index_name,
             body=self._create_index_body(aliases),
         )
-        return alias_start_date
+        return created_alias
 
     @staticmethod
     async def update_index_alias(client: Any, end_date: str, old_alias: str) -> str:
@@ -126,11 +141,11 @@ class IndexOperations:
         index_name = list(aliases_info.keys())[0]
         actions = []
 
-        for old_alias in aliases_to_change:
-            actions.append({"remove": {"index": index_name, "alias": old_alias}})
-
         for new_alias in aliases_to_create:
             actions.append({"add": {"index": index_name, "alias": new_alias}})
+
+        for old_alias in aliases_to_change:
+            actions.append({"remove": {"index": index_name, "alias": old_alias}})
 
         await client.indices.update_aliases(body={"actions": actions})
 
@@ -182,8 +197,9 @@ class IndexOperations:
             "settings": ES_ITEMS_SETTINGS,
         }
 
-    @staticmethod
-    async def find_latest_item_in_index(client: Any, index_name: str) -> dict[str, Any]:
+    async def find_latest_item_in_index(
+        self, client: Any, index_name: str
+    ) -> dict[str, Any]:
         """Find the latest item in the specified index.
 
         Args:
@@ -195,7 +211,7 @@ class IndexOperations:
         """
         query = {
             "size": 1,
-            "sort": [{"properties.start_datetime": {"order": "desc"}}],
+            "sort": [{f"properties.{self.primary_datetime_name}": {"order": "desc"}}],
             "_source": [
                 "properties.start_datetime",
                 "properties.datetime",

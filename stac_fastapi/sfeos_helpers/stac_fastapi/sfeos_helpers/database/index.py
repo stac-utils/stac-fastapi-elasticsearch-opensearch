@@ -71,6 +71,7 @@ def indices(collection_ids: Optional[List[str]]) -> str:
 def filter_indexes_by_datetime(
     collection_indexes: List[Tuple[Dict[str, str], ...]],
     datetime_search: Dict[str, Dict[str, Optional[str]]],
+    use_datetime: bool,
 ) -> List[str]:
     """
     Filter Elasticsearch index aliases based on datetime search criteria.
@@ -85,6 +86,9 @@ def filter_indexes_by_datetime(
         datetime_search (Dict[str, Dict[str, Optional[str]]]): A dictionary with keys 'datetime',
             'start_datetime', and 'end_datetime', each containing 'gte' and 'lte' criteria as ISO format
             datetime strings or None.
+        use_datetime (bool): Flag determining which datetime field to filter on:
+            - True: Filters using 'datetime' alias.
+            - False: Filters using 'start_datetime' and 'end_datetime' aliases.
 
     Returns:
         List[str]: A list of start_datetime aliases that match all provided search criteria.
@@ -138,29 +142,30 @@ def filter_indexes_by_datetime(
         end_datetime_alias = index_dict.get("end_datetime")
         datetime_alias = index_dict.get("datetime")
 
-        if not start_datetime_alias:
-            continue
-
-        start_range = extract_date_from_alias(start_datetime_alias)
-        end_date = extract_date_from_alias(end_datetime_alias)
-        datetime_date = extract_date_from_alias(datetime_alias)
-
-        if not check_criteria(
-            start_range[0], start_range[1], datetime_search.get("start_datetime", {})
-        ):
-            continue
-        if end_date:
+        if start_datetime_alias:
+            start_date = extract_date_from_alias(start_datetime_alias)
+            if not check_criteria(
+                start_date[0], start_date[1], datetime_search.get("start_datetime", {})
+            ):
+                continue
+        if end_datetime_alias:
+            end_date = extract_date_from_alias(end_datetime_alias)
             if not check_criteria(
                 end_date[0], end_date[1], datetime_search.get("end_datetime", {})
             ):
                 continue
-        if datetime_date:
+        if datetime_alias:
+            datetime_date = extract_date_from_alias(datetime_alias)
             if not check_criteria(
                 datetime_date[0], datetime_date[1], datetime_search.get("datetime", {})
             ):
                 continue
 
-        filtered_indexes.append(start_datetime_alias)
+        primary_datetime_alias = (
+            datetime_alias if use_datetime else start_datetime_alias
+        )
+
+        filtered_indexes.append(primary_datetime_alias)
 
     return filtered_indexes
 
