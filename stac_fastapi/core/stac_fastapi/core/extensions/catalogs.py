@@ -1,6 +1,6 @@
 """Catalogs extension."""
 
-from typing import List, Type
+from typing import List, Optional, Type
 
 import attr
 from fastapi import APIRouter, FastAPI, HTTPException, Request
@@ -144,12 +144,18 @@ class CatalogsExtension(ApiExtension):
         # Create child links to each catalog
         child_links = []
         for catalog in catalogs:
+            catalog_id = catalog.get("id") if isinstance(catalog, dict) else catalog.id
+            catalog_title = (
+                catalog.get("title") or catalog_id
+                if isinstance(catalog, dict)
+                else catalog.title or catalog.id
+            )
             child_links.append(
                 {
                     "rel": "child",
-                    "href": f"{base_url}catalogs/{catalog.id}",
+                    "href": f"{base_url}catalogs/{catalog_id}",
                     "type": "application/json",
-                    "title": catalog.title or catalog.id,
+                    "title": catalog_title,
                 }
             )
 
@@ -195,8 +201,12 @@ class CatalogsExtension(ApiExtension):
         # Convert STAC catalog to database format
         db_catalog = self.client.catalog_serializer.stac_to_db(catalog, request)
 
-        # Create the catalog in the database
-        await self.client.database.create_catalog(db_catalog.model_dump())
+        # Convert to dict and ensure type is set to Catalog
+        db_catalog_dict = db_catalog.model_dump()
+        db_catalog_dict["type"] = "Catalog"
+
+        # Create the catalog in the database with refresh to ensure immediate availability
+        await self.client.database.create_catalog(db_catalog_dict, refresh=True)
 
         # Return the created catalog
         return catalog
@@ -317,7 +327,19 @@ class CatalogsExtension(ApiExtension):
         )
 
     async def get_catalog_collection_items(
-        self, catalog_id: str, collection_id: str, request: Request
+        self,
+        catalog_id: str,
+        collection_id: str,
+        request: Request,
+        bbox: Optional[List[float]] = None,
+        datetime: Optional[str] = None,
+        limit: Optional[int] = None,
+        sortby: Optional[str] = None,
+        filter_expr: Optional[str] = None,
+        filter_lang: Optional[str] = None,
+        token: Optional[str] = None,
+        query: Optional[str] = None,
+        fields: Optional[List[str]] = None,
     ) -> stac_types.ItemCollection:
         """Get items from a collection in a catalog.
 
@@ -325,6 +347,15 @@ class CatalogsExtension(ApiExtension):
             catalog_id: The ID of the catalog.
             collection_id: The ID of the collection.
             request: Request object.
+            bbox: Optional bounding box filter.
+            datetime: Optional datetime or interval filter.
+            limit: Optional page size.
+            sortby: Optional sort specification.
+            filter_expr: Optional filter expression.
+            filter_lang: Optional filter language.
+            token: Optional pagination token.
+            query: Optional query string.
+            fields: Optional fields to include or exclude.
 
         Returns:
             ItemCollection containing items from the collection.
@@ -337,9 +368,19 @@ class CatalogsExtension(ApiExtension):
                 status_code=404, detail=f"Catalog {catalog_id} not found"
             )
 
-        # Delegate to the core client's item_collection method
+        # Delegate to the core client's item_collection method with all parameters
         return await self.client.item_collection(
-            collection_id=collection_id, request=request
+            collection_id=collection_id,
+            request=request,
+            bbox=bbox,
+            datetime=datetime,
+            limit=limit,
+            sortby=sortby,
+            filter_expr=filter_expr,
+            filter_lang=filter_lang,
+            token=token,
+            query=query,
+            fields=fields,
         )
 
     async def get_catalog_collection_item(

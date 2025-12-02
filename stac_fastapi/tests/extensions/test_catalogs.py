@@ -125,3 +125,179 @@ async def test_root_catalog_with_multiple_catalogs(catalogs_app_client, load_tes
     child_hrefs = [link["href"] for link in child_links]
     for catalog_id in catalog_ids:
         assert any(catalog_id in href for href in child_hrefs)
+
+
+@pytest.mark.asyncio
+async def test_get_catalog_collection(catalogs_app_client, load_test_data, ctx):
+    """Test getting a specific collection from a catalog."""
+    # First create a catalog
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+
+    # Get a specific collection through the catalog route
+    resp = await catalogs_app_client.get(
+        f"/catalogs/{test_catalog['id']}/collections/{ctx.collection['id']}"
+    )
+    assert resp.status_code == 200
+
+    collection = resp.json()
+    assert collection["id"] == ctx.collection["id"]
+    assert collection["type"] == "Collection"
+    assert "links" in collection
+
+
+@pytest.mark.asyncio
+async def test_get_catalog_collection_nonexistent_catalog(catalogs_app_client, ctx):
+    """Test getting a collection from a catalog that doesn't exist."""
+    resp = await catalogs_app_client.get(
+        f"/catalogs/nonexistent-catalog/collections/{ctx.collection['id']}"
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_catalog_collection_nonexistent_collection(
+    catalogs_app_client, load_test_data
+):
+    """Test getting a collection that doesn't exist from a catalog."""
+    # First create a catalog
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+
+    # Try to get a nonexistent collection
+    resp = await catalogs_app_client.get(
+        f"/catalogs/{test_catalog['id']}/collections/nonexistent-collection"
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_catalog_collection_items(catalogs_app_client, load_test_data, ctx):
+    """Test getting items from a collection in a catalog."""
+    # First create a catalog
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+
+    # Get items from a collection through the catalog route
+    resp = await catalogs_app_client.get(
+        f"/catalogs/{test_catalog['id']}/collections/{ctx.collection['id']}/items"
+    )
+    assert resp.status_code == 200
+
+    items_response = resp.json()
+    assert items_response["type"] == "FeatureCollection"
+    assert "features" in items_response
+    assert "links" in items_response
+    # Should contain the test item
+    assert len(items_response["features"]) > 0
+
+
+@pytest.mark.asyncio
+async def test_get_catalog_collection_items_nonexistent_catalog(
+    catalogs_app_client, ctx
+):
+    """Test getting items from a collection in a catalog that doesn't exist."""
+    resp = await catalogs_app_client.get(
+        f"/catalogs/nonexistent-catalog/collections/{ctx.collection['id']}/items"
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_catalog_collection_items_nonexistent_collection(
+    catalogs_app_client, load_test_data
+):
+    """Test getting items from a collection that doesn't exist in a catalog."""
+    # First create a catalog
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+
+    # Try to get items from a nonexistent collection
+    resp = await catalogs_app_client.get(
+        f"/catalogs/{test_catalog['id']}/collections/nonexistent-collection/items"
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_catalog_collection_item(catalogs_app_client, load_test_data, ctx):
+    """Test getting a specific item from a collection in a catalog."""
+    # First create a catalog
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+
+    # Get a specific item through the catalog route
+    resp = await catalogs_app_client.get(
+        f"/catalogs/{test_catalog['id']}/collections/{ctx.collection['id']}/items/{ctx.item['id']}"
+    )
+    assert resp.status_code == 200
+
+    item = resp.json()
+    assert item["id"] == ctx.item["id"]
+    assert item["type"] == "Feature"
+    assert "properties" in item
+    assert "geometry" in item
+
+
+@pytest.mark.asyncio
+async def test_get_catalog_collection_item_nonexistent_catalog(
+    catalogs_app_client, ctx
+):
+    """Test getting an item from a collection in a catalog that doesn't exist."""
+    resp = await catalogs_app_client.get(
+        f"/catalogs/nonexistent-catalog/collections/{ctx.collection['id']}/items/{ctx.item['id']}"
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_catalog_collection_item_nonexistent_collection(
+    catalogs_app_client, load_test_data, ctx
+):
+    """Test getting an item from a collection that doesn't exist in a catalog."""
+    # First create a catalog
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+
+    # Try to get an item from a nonexistent collection
+    resp = await catalogs_app_client.get(
+        f"/catalogs/{test_catalog['id']}/collections/nonexistent-collection/items/{ctx.item['id']}"
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_catalog_collection_item_nonexistent_item(
+    catalogs_app_client, load_test_data, ctx
+):
+    """Test getting an item that doesn't exist from a collection in a catalog."""
+    # First create a catalog
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+
+    # Try to get a nonexistent item
+    resp = await catalogs_app_client.get(
+        f"/catalogs/{test_catalog['id']}/collections/{ctx.collection['id']}/items/nonexistent-item"
+    )
+    assert resp.status_code == 404
