@@ -370,7 +370,7 @@ You can customize additional settings in your `.env` file:
 | `EXCLUDED_FROM_QUERYABLES` | Comma-separated list of fully qualified field names to exclude from the queryables endpoint and filtering. Use full paths like `properties.auth:schemes,properties.storage:schemes`. Excluded fields and their nested children will not be exposed in queryables. If `VALIDATE_QUERYABLES` is enabled, these fields will also be considered invalid for filtering. | None | Optional |
 | `EXCLUDED_FROM_ITEMS` | Specifies fields to exclude from STAC item responses. Supports comma-separated field names and dot notation for nested fields (e.g., `private_data,properties.confidential,assets.internal`). | `None` | Optional |
 | `VALIDATE_QUERYABLES` | Enable validation of query parameters against the collection's queryables. If set to `true`, the API will reject queries containing fields that are not defined in the collection's queryables. | `false` | Optional |
-| `QUERYABLES_CACHE_TTL` | Time-to-live (in seconds) for the queryables cache. Used when `VALIDATE_QUERYABLES` is enabled. | `3600` | Optional |
+| `QUERYABLES_CACHE_TTL` | Time-to-live (in seconds) for the queryables cache. Used when `VALIDATE_QUERYABLES` is enabled. | `21600` | Optional |
 
 
 > [!NOTE]
@@ -436,7 +436,7 @@ To enable queryables validation, set the following environment variables:
 
 ```bash
 VALIDATE_QUERYABLES=true
-QUERYABLES_CACHE_TTL=3600  # Optional, defaults to 3600 seconds (1 hour)
+QUERYABLES_CACHE_TTL=21600  # Optional, defaults to 21600 seconds (6 hours)
 ```
 
 **Behavior:**
