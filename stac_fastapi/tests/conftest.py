@@ -457,3 +457,14 @@ async def catalogs_app_client(catalogs_app):
         transport=ASGITransport(app=catalogs_app), base_url="http://test-server"
     ) as c:
         yield c
+
+
+@pytest.fixture
+def mock_datetime_env(txn_client, monkeypatch):
+    """Set USE_DATETIME environment variable to False for testing."""
+    monkeypatch.setenv("USE_DATETIME", "false")
+    if hasattr(txn_client.database.async_index_selector, "cache_manager"):
+        txn_client.database.async_index_selector.cache_manager.clear_cache()
+    yield
+    monkeypatch.setenv("USE_DATETIME", "true")
+
