@@ -24,7 +24,7 @@ class QueryablesCache:
         self._last_updated: float = 0
         self._lock = asyncio.Lock()
         self.validation_enabled: bool = False
-        self.cache_ttl: int = 21600  # How often to refresh cache (in seconds)
+        self.cache_ttl: int = 1800  # How often to refresh cache (in seconds)
         self.excluded_queryables: Set[str] = set()
         self.reload_settings()
 
@@ -33,7 +33,7 @@ class QueryablesCache:
         self.validation_enabled = (
             os.getenv("VALIDATE_QUERYABLES", "false").lower() == "true"
         )
-        self.cache_ttl = int(os.getenv("QUERYABLES_CACHE_TTL", "21600"))
+        self.cache_ttl = int(os.getenv("QUERYABLES_CACHE_TTL", "1800"))
 
         excluded = os.getenv("EXCLUDED_FROM_QUERYABLES", "")
         self.excluded_queryables = set()

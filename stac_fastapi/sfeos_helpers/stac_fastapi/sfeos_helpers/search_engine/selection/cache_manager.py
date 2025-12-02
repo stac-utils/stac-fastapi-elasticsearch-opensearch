@@ -12,7 +12,7 @@ from stac_fastapi.sfeos_helpers.mappings import ITEMS_INDEX_PREFIX
 class IndexCacheManager:
     """Manages caching of index aliases with expiration."""
 
-    def __init__(self, cache_ttl_seconds: int = 21600):
+    def __init__(self, cache_ttl_seconds: int = 1800):
         """Initialize the cache manager.
 
         Args:
