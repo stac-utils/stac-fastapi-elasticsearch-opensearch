@@ -586,7 +586,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                         ),
                     ],
                 )
-            return search.query(filter_query)
+        return search.query(filter_query)
 
     @staticmethod
     def apply_bbox_filter(search: Search, bbox: List):
