@@ -1,5 +1,6 @@
 """Catalogs extension."""
 
+import logging
 from typing import List, Optional, Type
 from urllib.parse import urlparse
 
@@ -12,6 +13,8 @@ from stac_fastapi.core.models import Catalog
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.core import BaseCoreClient
 from stac_fastapi.types.extension import ApiExtension
+
+logger = logging.getLogger(__name__)
 
 
 @attr.s
@@ -328,9 +331,21 @@ class CatalogsExtension(ApiExtension):
                         coll_id, request=request
                     )
                     collections.append(collection)
-                except Exception:
-                    # Skip collections that can't be found
-                    continue
+                except HTTPException as e:
+                    # Only skip collections that are not found (404)
+                    if e.status_code == 404:
+                        logger.debug(f"Collection {coll_id} not found, skipping")
+                        continue
+                    else:
+                        # Re-raise other HTTP exceptions (5xx server errors, etc.)
+                        logger.error(f"HTTP error retrieving collection {coll_id}: {e}")
+                        raise
+                except Exception as e:
+                    # Log unexpected errors and re-raise them
+                    logger.error(
+                        f"Unexpected error retrieving collection {coll_id}: {e}"
+                    )
+                    raise
 
             # Return in Collections format
             base_url = str(request.base_url)
