@@ -78,7 +78,12 @@
    {{- if .Values.monitoring.prometheus.enabled }}
    - Prometheus metrics: /metrics
    {{- if .Values.monitoring.prometheus.serviceMonitor.enabled }}
-   - ServiceMonitor created for Prometheus Operator
+    {{- if .Capabilities.APIVersions.Has "monitoring.coreos.com/v1/ServiceMonitor" }}
+    - ServiceMonitor created for Prometheus Operator
+    {{- else }}
+    - ServiceMonitor requested but CRD monitoring.coreos.com/v1 not found
+       (install Prometheus Operator to enable it)
+    {{- end }}
    {{- end }}
    {{- end }}
 {{- end }}

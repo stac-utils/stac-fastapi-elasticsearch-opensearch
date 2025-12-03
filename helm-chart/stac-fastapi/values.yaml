@@ -234,7 +234,6 @@ elasticsearch:
     elasticsearch.yml: |
       cluster.name: "stac-elasticsearch"
       network.host: 0.0.0.0
-      discovery.type: single-node
       action.destructive_requires_name: false
       xpack.security.enabled: false
       xpack.security.transport.ssl.enabled: false
