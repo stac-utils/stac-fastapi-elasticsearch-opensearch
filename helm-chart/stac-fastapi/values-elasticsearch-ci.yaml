@@ -13,6 +13,7 @@ elasticsearch:
   clusterName: "stac-elasticsearch-ci"
   replicas: 1
   minimumMasterNodes: 1
+  singleNode: true
   resources:
     requests:
       cpu: "200m"
@@ -25,8 +26,6 @@ elasticsearch:
     elasticsearch.yml: |
       cluster.name: "stac-elasticsearch-ci"
       network.host: 0.0.0.0
-      discovery.seed_hosts: ["stac-elasticsearch-ci-master-headless"]
-      cluster.initial_master_nodes: ["stac-elasticsearch-ci-master-0"]
       action.destructive_requires_name: false
       xpack.security.enabled: false
       xpack.security.transport.ssl.enabled: false
