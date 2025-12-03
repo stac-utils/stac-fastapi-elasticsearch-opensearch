@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Fix incorrect min/max date formatting in `apply_datetime_filter` for `POST` requests. [#539](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/539)
 - Fixed datetime filtering for .0Z milliseconds to preserve precision in apply_filter_datetime, ensuring only items exactly within the specified range are returned. [#535](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/535)
 - Normalize datetime in POST /search requests to match GET /search behavior. [#543](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/543)
-- Fix optional Redis support in core.py. [#544](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/544)
+- Fix optional Redis support in core.py. [#549](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/549)
 
 ### Removed
 
