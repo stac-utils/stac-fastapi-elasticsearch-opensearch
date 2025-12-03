@@ -286,6 +286,8 @@ class CatalogsExtension(ApiExtension):
             collection_ids = []
             if hasattr(catalog, "links") and catalog.links:
                 base_url = str(request.base_url).rstrip("/")
+                base_path = urlparse(base_url).path.rstrip("/")
+
                 for link in catalog.links:
                     if link.get("rel") in ["child", "item"]:
                         # Extract collection ID from href using proper URL parsing
@@ -293,29 +295,48 @@ class CatalogsExtension(ApiExtension):
                         if href:
                             try:
                                 parsed_url = urlparse(href)
-                                path = parsed_url.path
+                                path = parsed_url.path.rstrip("/")
 
-                                # Verify this is our expected URL pattern by checking it starts with base_url
-                                # or is a relative path that would resolve to our server
-                                full_href = (
-                                    href
-                                    if href.startswith(("http://", "https://"))
-                                    else f"{base_url}{href}"
-                                )
-                                if not full_href.startswith(base_url):
-                                    continue
+                                # Resolve relative URLs against base URL
+                                if not href.startswith(("http://", "https://")):
+                                    full_path = (
+                                        f"{base_path}{path}" if path else base_path
+                                    )
+                                else:
+                                    # For absolute URLs, ensure they belong to our base domain
+                                    if parsed_url.netloc != urlparse(base_url).netloc:
+                                        continue
+                                    full_path = path
 
-                                # Look for patterns like /collections/{id} or collections/{id}
-                                if "/collections/" in path:
-                                    # Split by /collections/ and take the last segment
-                                    path_parts = path.split("/collections/")
-                                    if len(path_parts) > 1:
-                                        collection_id = path_parts[1].split("/")[0]
+                                # Look for collections endpoint at the end of the path
+                                # This prevents false positives when /collections/ appears in base URL
+                                collections_pattern = "/collections/"
+                                if collections_pattern in full_path:
+                                    # Find the LAST occurrence of /collections/ to avoid base URL conflicts
+                                    last_collections_pos = full_path.rfind(
+                                        collections_pattern
+                                    )
+                                    if last_collections_pos != -1:
+                                        # Extract everything after the last /collections/
+                                        after_collections = full_path[
+                                            last_collections_pos
+                                            + len(collections_pattern) :
+                                        ]
+
+                                        # Handle cases where there might be additional path segments
+                                        # We only want the immediate collection ID
+                                        collection_id = (
+                                            after_collections.split("/")[0]
+                                            if after_collections
+                                            else None
+                                        )
+
                                         if (
                                             collection_id
                                             and collection_id not in collection_ids
                                         ):
                                             collection_ids.append(collection_id)
+
                             except Exception:
                                 # If URL parsing fails, skip this link
                                 continue
