@@ -271,8 +271,21 @@ class CatalogsExtension(ApiExtension):
             catalog = self.client.catalog_serializer.db_to_stac(db_catalog, request)
 
             # Extract collection IDs from catalog links
+            #
+            # FRAGILE IMPLEMENTATION WARNING:
+            # This approach relies on parsing URL patterns to determine catalog-collection relationships.
+            # This is fragile and will break if:
+            # - URLs don't follow the expected /collections/{id} pattern
+            # - Base URLs contain /collections/ in other segments
+            # - Relative links are used instead of absolute URLs
+            # - Links have trailing slashes or query parameters
+            #
+            # TODO: In a future version, this should be replaced with a proper database relationship
+            # (e.g., parent_catalog_id field on Collection documents)
+            #
             collection_ids = []
             if hasattr(catalog, "links") and catalog.links:
+                base_url = str(request.base_url).rstrip("/")
                 for link in catalog.links:
                     if link.get("rel") in ["child", "item"]:
                         # Extract collection ID from href using proper URL parsing
@@ -281,6 +294,17 @@ class CatalogsExtension(ApiExtension):
                             try:
                                 parsed_url = urlparse(href)
                                 path = parsed_url.path
+
+                                # Verify this is our expected URL pattern by checking it starts with base_url
+                                # or is a relative path that would resolve to our server
+                                full_href = (
+                                    href
+                                    if href.startswith(("http://", "https://"))
+                                    else f"{base_url}{href}"
+                                )
+                                if not full_href.startswith(base_url):
+                                    continue
+
                                 # Look for patterns like /collections/{id} or collections/{id}
                                 if "/collections/" in path:
                                     # Split by /collections/ and take the last segment
