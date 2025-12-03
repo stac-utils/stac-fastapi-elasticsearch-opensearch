@@ -18,6 +18,7 @@ RELEASE_NAME="stac-fastapi-test"
 NAMESPACE="stac-fastapi"
 BACKEND=${BACKEND:-"elasticsearch"}
 MATRIX_MODE=${MATRIX_MODE:-false}
+DEBUG_BACKEND_LOGS=${DEBUG_BACKEND_LOGS:-false}
 
 # Functions
 log_info() {
@@ -34,6 +35,51 @@ log_warning() {
 
 log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
+}
+
+collect_backend_logs() {
+    local backend="$1"
+    local stage="${2:-post-install}"
+
+    log_info "Collecting ${backend} backend logs (${stage})..."
+
+    set +e
+
+    kubectl get pods -n "$NAMESPACE" -o wide || log_warning "Failed to list pods in namespace $NAMESPACE"
+
+    local pod_resources
+    pod_resources=$(kubectl get pods -n "$NAMESPACE" -l "release=$RELEASE_NAME" -o name 2>/dev/null | grep "$backend" || true)
+
+    if [[ -z "$pod_resources" ]]; then
+        log_warning "No pods matching backend '$backend' found for log collection"
+        set -e
+        return
+    fi
+
+    while read -r pod_resource; do
+        [[ -z "$pod_resource" ]] && continue
+        local pod=${pod_resource#pod/}
+
+        log_info "----- Logs for pod $pod (all containers) -----"
+        kubectl logs -n "$NAMESPACE" "$pod" --all-containers --tail=200 || log_warning "Failed to fetch logs for $pod"
+
+        log_info "----- Describe pod $pod -----"
+        kubectl describe pod "$pod" -n "$NAMESPACE" || log_warning "Failed to describe $pod"
+    done <<< "$pod_resources"
+
+    log_info "----- Recent events in namespace $NAMESPACE -----"
+    kubectl get events -n "$NAMESPACE" --sort-by=.metadata.creationTimestamp | tail -n 50 || log_warning "Failed to fetch events"
+
+    set -e
+}
+
+maybe_collect_backend_logs() {
+    local backend="$1"
+    local stage="$2"
+
+    if [[ "$DEBUG_BACKEND_LOGS" == "true" ]]; then
+        collect_backend_logs "$backend" "$stage"
+    fi
 }
 
 # Help function
@@ -110,6 +156,11 @@ while [[ $# -gt 0 ]]; do
             ;;
     esac
 done
+
+# Enable debug logs automatically during matrix runs unless explicitly disabled
+if [[ "$MATRIX_MODE" == "true" && "$DEBUG_BACKEND_LOGS" == "false" ]]; then
+    DEBUG_BACKEND_LOGS=true
+fi
 
 # Validate backend
 if [[ "$BACKEND" != "elasticsearch" && "$BACKEND" != "opensearch" ]]; then
@@ -512,13 +563,17 @@ run_backend_test() {
     log_info "Step 3: Installing chart for $backend..."
     if ! install_chart; then
         log_error "Installation failed for $backend"
+        collect_backend_logs "$backend" "install-failure"
         return 1
     fi
+
+    maybe_collect_backend_logs "$backend" "post-install"
     
     # Step 4: Validate deployment
     log_info "Step 4: Validating deployment for $backend..."
     if ! validate_deployment; then
         log_error "Deployment validation failed for $backend"
+        collect_backend_logs "$backend" "validation-failure"
         test_failed=true
     fi
     
@@ -526,6 +581,7 @@ run_backend_test() {
     log_info "Step 5: Testing data operations for $backend..."
     if ! load_sample_data; then
         log_error "Data operations failed for $backend"
+        collect_backend_logs "$backend" "data-operations-failure"
         test_failed=true
     fi
     
@@ -533,6 +589,7 @@ run_backend_test() {
     log_info "Step 6: Testing $backend-specific functionality..."
     if ! test_backend_specifics "$backend"; then
         log_error "Backend-specific tests failed for $backend"
+        collect_backend_logs "$backend" "backend-specific-failure"
         test_failed=true
     fi
     
