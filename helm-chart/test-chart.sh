@@ -47,8 +47,20 @@ collect_backend_logs() {
 
     kubectl get pods -n "$NAMESPACE" -o wide || log_warning "Failed to list pods in namespace $NAMESPACE"
 
-    local pod_resources
-    pod_resources=$(kubectl get pods -n "$NAMESPACE" -l "release=$RELEASE_NAME" -o name 2>/dev/null | grep "$backend" || true)
+    local pod_resources=""
+    local selectors=(
+        "release=$RELEASE_NAME"
+        "app.kubernetes.io/instance=$RELEASE_NAME"
+    )
+
+    for selector in "${selectors[@]}"; do
+        pod_resources=$(kubectl get pods -n "$NAMESPACE" -l "$selector" -o name 2>/dev/null | grep "$backend" || true)
+        [[ -n "$pod_resources" ]] && break
+    done
+
+    if [[ -z "$pod_resources" ]]; then
+        pod_resources=$(kubectl get pods -n "$NAMESPACE" -o name 2>/dev/null | grep "$backend" || true)
+    fi
 
     if [[ -z "$pod_resources" ]]; then
         log_warning "No pods matching backend '$backend' found for log collection"
@@ -80,6 +92,80 @@ maybe_collect_backend_logs() {
     if [[ "$DEBUG_BACKEND_LOGS" == "true" ]]; then
         collect_backend_logs "$backend" "$stage"
     fi
+}
+
+get_desired_app_replicas() {
+    local values_path="$1"
+    local default_count="${APP_REPLICA_COUNT:-}"
+
+    if [[ -n "$default_count" ]]; then
+        echo "$default_count"
+        return
+    fi
+
+    default_count=2
+
+    if command -v python3 >/dev/null 2>&1; then
+        set +e
+        local parsed
+        parsed=$(python3 <<'PY' "$values_path" 2>/dev/null)
+import sys
+from pathlib import Path
+
+try:
+    import yaml
+except Exception:
+    raise SystemExit(1)
+
+values_path = Path(sys.argv[1])
+if not values_path.exists():
+    raise SystemExit(1)
+
+with values_path.open('r', encoding='utf-8') as fh:
+    data = yaml.safe_load(fh) or {}
+
+replicas = data
+for key in ("app",):
+    replicas = replicas.get(key, {}) if isinstance(replicas, dict) else {}
+
+if isinstance(replicas, dict):
+    replicas = replicas.get("replicaCount")
+
+if isinstance(replicas, int) and replicas >= 0:
+    print(replicas)
+else:
+    raise SystemExit(1)
+PY
+)
+        local status=$?
+        set -e
+        if [[ $status -eq 0 && "$parsed" =~ ^[0-9]+$ ]]; then
+            echo "$parsed"
+            return
+        fi
+    fi
+
+    echo "$default_count"
+}
+
+wait_for_backend_ready() {
+    local backend="$1"
+    local timeout="${BACKEND_READY_TIMEOUT:-600}"
+
+    log_info "Waiting for $backend backend statefulsets to become ready..."
+
+    local sts_list
+    sts_list=$(kubectl get statefulset -n "$NAMESPACE" -o name 2>/dev/null | grep "$backend" || true)
+
+    if [[ -z "$sts_list" ]]; then
+        log_warning "No statefulsets found for backend '$backend' while waiting"
+        return
+    fi
+
+    for sts in $sts_list; do
+        log_info "Waiting for rollout of $sts..."
+        kubectl rollout status "$sts" -n "$NAMESPACE" --timeout="${timeout}s"
+    done
 }
 
 # Help function
@@ -261,21 +347,47 @@ install_chart() {
             ;;
     esac
     
+    local values_path="$CHART_PATH/$values_file"
+    local desired_replicas
+    desired_replicas=$(get_desired_app_replicas "$values_path")
+
     log_info "Using values file: $values_file"
-    
-    # Install the chart with appropriate values
+    log_info "Target STAC FastAPI replica count: $desired_replicas"
+
+    local -a common_flags=(
+        --namespace "$NAMESPACE"
+        --values "$values_path"
+        --set backend="$BACKEND"
+        --set "${BACKEND}.enabled=true"
+        --set "app.image.tag=latest"
+        --set "app.service.type=ClusterIP"
+    )
+
+    log_info "Installing chart with STAC FastAPI scaled to 0 replicas while $BACKEND initializes..."
     helm install "$RELEASE_NAME" "$CHART_PATH" \
-        --namespace "$NAMESPACE" \
-        --values "$CHART_PATH/$values_file" \
-        --set backend="$BACKEND" \
-        --set "${BACKEND}.enabled=true" \
-        --set "app.image.tag=latest" \
-        --set "app.service.type=ClusterIP" \
+        --create-namespace \
+        "${common_flags[@]}" \
+        --set "app.replicaCount=0" \
         --wait \
         --timeout=10m
-    
+
+    wait_for_backend_ready "$BACKEND"
+
+    if [[ "$desired_replicas" -gt 0 ]]; then
+        log_info "Scaling STAC FastAPI deployment to $desired_replicas replicas..."
+        helm upgrade "$RELEASE_NAME" "$CHART_PATH" \
+            "${common_flags[@]}" \
+            --set "app.replicaCount=$desired_replicas" \
+            --wait \
+            --timeout=10m
+
+        kubectl rollout status deployment/"$RELEASE_NAME" -n "$NAMESPACE" --timeout=300s
+    else
+        log_info "Desired STAC FastAPI replica count is 0; leaving deployment scaled down."
+    fi
+
     log_success "Chart installed successfully"
-    
+
     # Show installation status
     helm status "$RELEASE_NAME" -n "$NAMESPACE"
 }

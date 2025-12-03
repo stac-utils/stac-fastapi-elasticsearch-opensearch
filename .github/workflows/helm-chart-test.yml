@@ -67,6 +67,7 @@ jobs:
           version: ${{ env.KIND_VERSION }}
           node_image: kindest/node:${{ matrix.kubernetes-version }}
           cluster_name: stac-fastapi-${{ matrix.kubernetes-version }}
+          config: .github/kind/multi-node.yaml
 
       - name: Setup Helm repositories
         uses: ./.github/actions/setup-helm-repos
@@ -110,6 +111,7 @@ jobs:
         with:
           version: ${{ env.KIND_VERSION }}
           cluster_name: stac-fastapi-integration
+          config: .github/kind/multi-node.yaml
 
       - name: Setup Helm repositories
         uses: ./.github/actions/setup-helm-repos
