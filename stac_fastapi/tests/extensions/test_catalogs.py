@@ -5,18 +5,17 @@ import pytest
 
 @pytest.mark.asyncio
 async def test_get_root_catalog(catalogs_app_client, load_test_data):
-    """Test getting the root catalog."""
+    """Test getting the catalogs list."""
     resp = await catalogs_app_client.get("/catalogs")
     assert resp.status_code == 200
 
-    catalog = resp.json()
-    assert catalog["type"] == "Catalog"
-    assert catalog["id"] == "root"
-    assert catalog["stac_version"] == "1.0.0"
-    assert "links" in catalog
+    catalogs_response = resp.json()
+    assert "catalogs" in catalogs_response
+    assert "links" in catalogs_response
+    assert "numberReturned" in catalogs_response
 
-    # Check for required links
-    links = catalog["links"]
+    # Check for required pagination links
+    links = catalogs_response["links"]
     link_rels = [link["rel"] for link in links]
     assert "self" in link_rels
     assert "root" in link_rels
@@ -102,7 +101,7 @@ async def test_get_catalog_collections_nonexistent_catalog(catalogs_app_client):
 
 @pytest.mark.asyncio
 async def test_root_catalog_with_multiple_catalogs(catalogs_app_client, load_test_data):
-    """Test that root catalog includes links to multiple catalogs."""
+    """Test that catalogs response includes multiple catalog objects."""
     # Create multiple catalogs
     catalog_ids = []
     for i in range(3):
@@ -114,17 +113,17 @@ async def test_root_catalog_with_multiple_catalogs(catalogs_app_client, load_tes
         assert resp.status_code == 201
         catalog_ids.append(test_catalog["id"])
 
-    # Get root catalog
+    # Get catalogs list
     resp = await catalogs_app_client.get("/catalogs")
     assert resp.status_code == 200
 
-    catalog = resp.json()
-    child_links = [link for link in catalog["links"] if link["rel"] == "child"]
+    catalogs_response = resp.json()
+    returned_catalogs = catalogs_response["catalogs"]
+    returned_ids = [catalog["id"] for catalog in returned_catalogs]
 
-    # Should have child links for all created catalogs
-    child_hrefs = [link["href"] for link in child_links]
+    # Should have all created catalogs in the response
     for catalog_id in catalog_ids:
-        assert any(catalog_id in href for href in child_hrefs)
+        assert catalog_id in returned_ids
 
 
 @pytest.mark.asyncio
@@ -321,11 +320,12 @@ async def test_catalogs_pagination_limit(catalogs_app_client, load_test_data):
     resp = await catalogs_app_client.get("/catalogs?limit=2")
     assert resp.status_code == 200
 
-    catalog = resp.json()
-    child_links = [link for link in catalog["links"] if link["rel"] == "child"]
+    catalogs_response = resp.json()
+    returned_catalogs = catalogs_response["catalogs"]
 
-    # Should only return 2 child links
-    assert len(child_links) == 2
+    # Should only return 2 catalogs
+    assert len(returned_catalogs) == 2
+    assert catalogs_response["numberReturned"] == 2
 
 
 @pytest.mark.asyncio
@@ -346,11 +346,12 @@ async def test_catalogs_pagination_default_limit(catalogs_app_client, load_test_
     resp = await catalogs_app_client.get("/catalogs")
     assert resp.status_code == 200
 
-    catalog = resp.json()
-    child_links = [link for link in catalog["links"] if link["rel"] == "child"]
+    catalogs_response = resp.json()
+    returned_catalogs = catalogs_response["catalogs"]
 
-    # Should return default limit of 10 child links
-    assert len(child_links) == 10
+    # Should return default limit of 10 catalogs
+    assert len(returned_catalogs) == 10
+    assert catalogs_response["numberReturned"] == 10
 
 
 @pytest.mark.asyncio
@@ -375,6 +376,6 @@ async def test_catalogs_pagination_token_parameter(catalogs_app_client, load_tes
     resp = await catalogs_app_client.get("/catalogs?token=invalid_token")
     assert resp.status_code == 200
 
-    catalog = resp.json()
-    assert catalog["type"] == "Catalog"
-    assert "links" in catalog
+    catalogs_response = resp.json()
+    assert "catalogs" in catalogs_response
+    assert "links" in catalogs_response

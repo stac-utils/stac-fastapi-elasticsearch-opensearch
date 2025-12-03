@@ -2,12 +2,13 @@
 
 import logging
 from typing import List, Optional, Type
-from urllib.parse import urlparse
+from urllib.parse import urlencode, urlparse
 
 import attr
 from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from starlette.responses import Response
+from typing_extensions import TypedDict
 
 from stac_fastapi.core.models import Catalog
 from stac_fastapi.types import stac as stac_types
@@ -17,12 +18,24 @@ from stac_fastapi.types.extension import ApiExtension
 logger = logging.getLogger(__name__)
 
 
+class Catalogs(TypedDict, total=False):
+    """Catalogs endpoint response.
+
+    Similar to Collections but for catalogs.
+    """
+
+    catalogs: List[Catalog]
+    links: List[dict]
+    numberMatched: Optional[int]
+    numberReturned: Optional[int]
+
+
 @attr.s
 class CatalogsExtension(ApiExtension):
     """Catalogs Extension.
 
-    The Catalogs extension adds a /catalogs endpoint that returns the root catalog
-    containing child links to all catalogs in the database.
+    The Catalogs extension adds a /catalogs endpoint that returns a list of all catalogs
+    in the database, similar to how /collections returns a list of collections.
     """
 
     client: BaseCoreClient = attr.ib(default=None)
@@ -44,10 +57,10 @@ class CatalogsExtension(ApiExtension):
             path="/catalogs",
             endpoint=self.catalogs,
             methods=["GET"],
-            response_model=Catalog,
+            response_model=Catalogs,
             response_class=self.response_class,
-            summary="Get Root Catalog",
-            description="Returns the root catalog containing links to all catalogs.",
+            summary="Get All Catalogs",
+            description="Returns a list of all catalogs in the database.",
             tags=["Catalogs"],
         )
 
@@ -140,8 +153,8 @@ class CatalogsExtension(ApiExtension):
             None,
             description="Pagination token for the next page of results",
         ),
-    ) -> Catalog:
-        """Get root catalog with links to all catalogs.
+    ) -> Catalogs:
+        """Get all catalogs with pagination support.
 
         Args:
             request: Request object.
@@ -149,64 +162,48 @@ class CatalogsExtension(ApiExtension):
             token: Pagination token for the next page of results.
 
         Returns:
-            Root catalog containing child links to all catalogs in the database.
+            Catalogs object containing catalogs and pagination links.
         """
         base_url = str(request.base_url)
 
         # Get all catalogs from database with pagination
-        catalogs, _, _ = await self.client.database.get_all_catalogs(
+        catalogs, next_token, _ = await self.client.database.get_all_catalogs(
             token=token,
             limit=limit,
             request=request,
             sort=[{"field": "id", "direction": "asc"}],
         )
 
-        # Create child links to each catalog
-        child_links = []
+        # Convert database catalogs to STAC format
+        catalog_stac_objects = []
         for catalog in catalogs:
-            catalog_id = catalog.get("id") if isinstance(catalog, dict) else catalog.id
-            catalog_title = (
-                catalog.get("title") or catalog_id
-                if isinstance(catalog, dict)
-                else catalog.title or catalog.id
-            )
-            child_links.append(
-                {
-                    "rel": "child",
-                    "href": f"{base_url}catalogs/{catalog_id}",
-                    "type": "application/json",
-                    "title": catalog_title,
-                }
-            )
+            catalog_stac = self.client.catalog_serializer.db_to_stac(catalog, request)
+            catalog_stac_objects.append(catalog_stac)
 
-        # Create root catalog
-        root_catalog = {
-            "type": "Catalog",
-            "stac_version": "1.0.0",
-            "id": "root",
-            "title": "Root Catalog",
-            "description": "Root catalog containing all available catalogs",
-            "links": [
-                {
-                    "rel": "self",
-                    "href": f"{base_url}catalogs",
-                    "type": "application/json",
-                },
-                {
-                    "rel": "root",
-                    "href": f"{base_url}catalogs",
-                    "type": "application/json",
-                },
-                {
-                    "rel": "parent",
-                    "href": base_url.rstrip("/"),
-                    "type": "application/json",
-                },
-            ]
-            + child_links,
-        }
+        # Create pagination links
+        links = [
+            {"rel": "root", "type": "application/json", "href": base_url},
+            {"rel": "parent", "type": "application/json", "href": base_url},
+            {"rel": "self", "type": "application/json", "href": str(request.url)},
+        ]
 
-        return Catalog(**root_catalog)
+        # Add next link if there are more pages
+        if next_token:
+            query_params = {"limit": limit, "token": next_token}
+            next_link = {
+                "rel": "next",
+                "href": f"{base_url}catalogs?{urlencode(query_params)}",
+                "type": "application/json",
+                "title": "Next page of catalogs",
+            }
+            links.append(next_link)
+
+        # Return Catalogs object with catalogs
+        return Catalogs(
+            catalogs=catalog_stac_objects,
+            links=links,
+            numberReturned=len(catalog_stac_objects),
+        )
 
     async def create_catalog(self, catalog: Catalog, request: Request) -> Catalog:
         """Create a new catalog.
