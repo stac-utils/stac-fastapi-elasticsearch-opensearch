@@ -301,3 +301,80 @@ async def test_get_catalog_collection_item_nonexistent_item(
         f"/catalogs/{test_catalog['id']}/collections/{ctx.collection['id']}/items/nonexistent-item"
     )
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_catalogs_pagination_limit(catalogs_app_client, load_test_data):
+    """Test that pagination limit parameter works for catalogs endpoint."""
+    # Create multiple catalogs
+    catalog_ids = []
+    for i in range(5):
+        test_catalog = load_test_data("test_catalog.json")
+        test_catalog["id"] = f"test-catalog-{uuid.uuid4()}-{i}"
+        test_catalog["title"] = f"Test Catalog {i}"
+
+        resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+        assert resp.status_code == 201
+        catalog_ids.append(test_catalog["id"])
+
+    # Test with limit=2
+    resp = await catalogs_app_client.get("/catalogs?limit=2")
+    assert resp.status_code == 200
+
+    catalog = resp.json()
+    child_links = [link for link in catalog["links"] if link["rel"] == "child"]
+
+    # Should only return 2 child links
+    assert len(child_links) == 2
+
+
+@pytest.mark.asyncio
+async def test_catalogs_pagination_default_limit(catalogs_app_client, load_test_data):
+    """Test that pagination uses default limit when no limit parameter is provided."""
+    # Create multiple catalogs
+    catalog_ids = []
+    for i in range(15):
+        test_catalog = load_test_data("test_catalog.json")
+        test_catalog["id"] = f"test-catalog-{uuid.uuid4()}-{i}"
+        test_catalog["title"] = f"Test Catalog {i}"
+
+        resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+        assert resp.status_code == 201
+        catalog_ids.append(test_catalog["id"])
+
+    # Test without limit parameter (should default to 10)
+    resp = await catalogs_app_client.get("/catalogs")
+    assert resp.status_code == 200
+
+    catalog = resp.json()
+    child_links = [link for link in catalog["links"] if link["rel"] == "child"]
+
+    # Should return default limit of 10 child links
+    assert len(child_links) == 10
+
+
+@pytest.mark.asyncio
+async def test_catalogs_pagination_limit_validation(catalogs_app_client):
+    """Test that pagination limit parameter validation works."""
+    # Test with limit=0 (should be invalid)
+    resp = await catalogs_app_client.get("/catalogs?limit=0")
+    assert resp.status_code == 400  # Validation error returns 400 for Query parameters
+
+
+@pytest.mark.asyncio
+async def test_catalogs_pagination_token_parameter(catalogs_app_client, load_test_data):
+    """Test that pagination token parameter is accepted (even if token is invalid)."""
+    # Create a catalog first
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+
+    resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert resp.status_code == 201
+
+    # Test with token parameter (even if invalid, should be accepted)
+    resp = await catalogs_app_client.get("/catalogs?token=invalid_token")
+    assert resp.status_code == 200
+
+    catalog = resp.json()
+    assert catalog["type"] == "Catalog"
+    assert "links" in catalog

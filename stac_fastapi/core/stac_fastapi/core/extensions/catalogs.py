@@ -1,9 +1,10 @@
 """Catalogs extension."""
 
 from typing import List, Optional, Type
+from urllib.parse import urlparse
 
 import attr
-from fastapi import APIRouter, FastAPI, HTTPException, Request
+from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from starlette.responses import Response
 
@@ -122,21 +123,37 @@ class CatalogsExtension(ApiExtension):
 
         app.include_router(self.router, tags=["Catalogs"])
 
-    async def catalogs(self, request: Request) -> Catalog:
+    async def catalogs(
+        self,
+        request: Request,
+        limit: Optional[int] = Query(
+            10,
+            ge=1,
+            description=(
+                "The maximum number of catalogs to return (page size). Defaults to 10."
+            ),
+        ),
+        token: Optional[str] = Query(
+            None,
+            description="Pagination token for the next page of results",
+        ),
+    ) -> Catalog:
         """Get root catalog with links to all catalogs.
 
         Args:
             request: Request object.
+            limit: The maximum number of catalogs to return (page size). Defaults to 10.
+            token: Pagination token for the next page of results.
 
         Returns:
             Root catalog containing child links to all catalogs in the database.
         """
         base_url = str(request.base_url)
 
-        # Get all catalogs from database
+        # Get all catalogs from database with pagination
         catalogs, _, _ = await self.client.database.get_all_catalogs(
-            token=None,
-            limit=1000,  # Large limit to get all catalogs
+            token=token,
+            limit=limit,
             request=request,
             sort=[{"field": "id", "direction": "asc"}],
         )
@@ -258,15 +275,26 @@ class CatalogsExtension(ApiExtension):
             if hasattr(catalog, "links") and catalog.links:
                 for link in catalog.links:
                     if link.get("rel") in ["child", "item"]:
-                        # Extract collection ID from href
+                        # Extract collection ID from href using proper URL parsing
                         href = link.get("href", "")
-                        # Look for patterns like /collections/{id} or collections/{id}
-                        if "/collections/" in href:
-                            collection_id = href.split("/collections/")[-1].split("/")[
-                                0
-                            ]
-                            if collection_id and collection_id not in collection_ids:
-                                collection_ids.append(collection_id)
+                        if href:
+                            try:
+                                parsed_url = urlparse(href)
+                                path = parsed_url.path
+                                # Look for patterns like /collections/{id} or collections/{id}
+                                if "/collections/" in path:
+                                    # Split by /collections/ and take the last segment
+                                    path_parts = path.split("/collections/")
+                                    if len(path_parts) > 1:
+                                        collection_id = path_parts[1].split("/")[0]
+                                        if (
+                                            collection_id
+                                            and collection_id not in collection_ids
+                                        ):
+                                            collection_ids.append(collection_id)
+                            except Exception:
+                                # If URL parsing fails, skip this link
+                                continue
 
             # Fetch the collections
             collections = []
