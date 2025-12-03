@@ -108,7 +108,7 @@ get_desired_app_replicas() {
     if command -v python3 >/dev/null 2>&1; then
         set +e
         local parsed
-        parsed=$(python3 <<'PY' "$values_path" 2>/dev/null)
+        parsed=$(python3 - "$values_path" 2>/dev/null <<'PY'
 import sys
 from pathlib import Path
 
@@ -124,17 +124,14 @@ if not values_path.exists():
 with values_path.open('r', encoding='utf-8') as fh:
     data = yaml.safe_load(fh) or {}
 
-replicas = data
-for key in ("app",):
-    replicas = replicas.get(key, {}) if isinstance(replicas, dict) else {}
-
-if isinstance(replicas, dict):
-    replicas = replicas.get("replicaCount")
+replicas = data.get("app", {}) if isinstance(data, dict) else {}
+replicas = replicas.get("replicaCount") if isinstance(replicas, dict) else None
 
 if isinstance(replicas, int) and replicas >= 0:
     print(replicas)
-else:
-    raise SystemExit(1)
+    raise SystemExit(0)
+
+raise SystemExit(1)
 PY
 )
         local status=$?
