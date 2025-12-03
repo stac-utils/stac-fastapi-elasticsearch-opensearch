@@ -1745,7 +1745,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             A tuple of (catalogs, next pagination token if any, optional count).
         """
         # Define sortable fields for catalogs
-        sortable_fields = ["id"]
+        sortable_fields = ["id", "title"]
 
         # Format the sort parameter
         formatted_sort = []
