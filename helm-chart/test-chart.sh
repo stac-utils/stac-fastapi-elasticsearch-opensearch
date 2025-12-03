@@ -19,6 +19,7 @@ NAMESPACE="stac-fastapi"
 BACKEND=${BACKEND:-"elasticsearch"}
 MATRIX_MODE=${MATRIX_MODE:-false}
 DEBUG_BACKEND_LOGS=${DEBUG_BACKEND_LOGS:-false}
+VALUES_PROFILE=${VALUES_PROFILE:-}
 
 # Functions
 log_info() {
@@ -245,6 +246,10 @@ if [[ "$MATRIX_MODE" == "true" && "$DEBUG_BACKEND_LOGS" == "false" ]]; then
     DEBUG_BACKEND_LOGS=true
 fi
 
+if [[ "$MATRIX_MODE" == "true" && -z "${APP_REPLICA_COUNT:-}" ]]; then
+    APP_REPLICA_COUNT=1
+fi
+
 # Validate backend
 if [[ "$BACKEND" != "elasticsearch" && "$BACKEND" != "opensearch" ]]; then
     log_error "Invalid backend: $BACKEND. Must be 'elasticsearch' or 'opensearch'"
@@ -344,6 +349,20 @@ install_chart() {
             ;;
     esac
     
+    local profile_suffix=""
+    if [[ -n "$VALUES_PROFILE" ]]; then
+        profile_suffix="-$VALUES_PROFILE"
+    elif [[ "$MATRIX_MODE" == "true" ]]; then
+        profile_suffix="-ci"
+    fi
+
+    if [[ -n "$profile_suffix" ]]; then
+        local candidate="values-${BACKEND}${profile_suffix}.yaml"
+        if [[ -f "$CHART_PATH/$candidate" ]]; then
+            values_file="$candidate"
+        fi
+    fi
+
     local values_path="$CHART_PATH/$values_file"
     local desired_replicas
     desired_replicas=$(get_desired_app_replicas "$values_path")

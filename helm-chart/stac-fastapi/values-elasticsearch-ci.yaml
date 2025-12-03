@@ -1,0 +1,47 @@
+# Lightweight values for CI testing with Elasticsearch backend
+backend: elasticsearch
+
+app:
+  replicaCount: 1
+  databaseAuth:
+    existingSecret: ""
+    username: ""
+    password: ""
+
+elasticsearch:
+  enabled: true
+  clusterName: "stac-elasticsearch-ci"
+  replicas: 1
+  minimumMasterNodes: 1
+  resources:
+    requests:
+      cpu: "200m"
+      memory: "1Gi"
+    limits:
+      cpu: "500m"
+      memory: "1Gi"
+  esJavaOpts: "-Xmx512m -Xms512m"
+  esConfig:
+    elasticsearch.yml: |
+      cluster.name: "stac-elasticsearch-ci"
+      network.host: 0.0.0.0
+      discovery.seed_hosts: ["stac-elasticsearch-ci-master-headless"]
+      cluster.initial_master_nodes: ["stac-elasticsearch-ci-master-0"]
+      action.destructive_requires_name: false
+      xpack.security.enabled: false
+      xpack.security.transport.ssl.enabled: false
+      xpack.security.http.ssl.enabled: false
+  volumeClaimTemplate:
+    accessModes: ["ReadWriteOnce"]
+    resources:
+      requests:
+        storage: 5Gi
+
+opensearch:
+  enabled: false
+
+externalDatabase:
+  enabled: false
+
+monitoring:
+  enabled: false
