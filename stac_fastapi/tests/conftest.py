@@ -39,7 +39,7 @@ from stac_fastapi.sfeos_helpers.mappings import ITEMS_INDEX_PREFIX
 from stac_fastapi.types.config import Settings
 
 os.environ.setdefault("ENABLE_COLLECTIONS_SEARCH_ROUTE", "true")
-os.environ.setdefault("ENABLE_CATALOG_ROUTE", "false")
+os.environ.setdefault("ENABLE_CATALOGS_ROUTE", "false")
 
 if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
     from stac_fastapi.opensearch.app import app_config

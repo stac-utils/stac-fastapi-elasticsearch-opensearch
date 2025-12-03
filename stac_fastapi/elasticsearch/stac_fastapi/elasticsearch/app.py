@@ -66,13 +66,13 @@ ENABLE_COLLECTIONS_SEARCH = get_bool_env("ENABLE_COLLECTIONS_SEARCH", default=Tr
 ENABLE_COLLECTIONS_SEARCH_ROUTE = get_bool_env(
     "ENABLE_COLLECTIONS_SEARCH_ROUTE", default=False
 )
-ENABLE_CATALOG_ROUTE = get_bool_env("ENABLE_CATALOG_ROUTE", default=False)
+ENABLE_CATALOGS_ROUTE = get_bool_env("ENABLE_CATALOGS_ROUTE", default=False)
 logger.info("TRANSACTIONS_EXTENSIONS is set to %s", TRANSACTIONS_EXTENSIONS)
 logger.info("ENABLE_COLLECTIONS_SEARCH is set to %s", ENABLE_COLLECTIONS_SEARCH)
 logger.info(
     "ENABLE_COLLECTIONS_SEARCH_ROUTE is set to %s", ENABLE_COLLECTIONS_SEARCH_ROUTE
 )
-logger.info("ENABLE_CATALOG_ROUTE is set to %s", ENABLE_CATALOG_ROUTE)
+logger.info("ENABLE_CATALOGS_ROUTE is set to %s", ENABLE_CATALOGS_ROUTE)
 
 settings = ElasticsearchSettings()
 session = Session.create_from_settings(settings)
@@ -205,7 +205,7 @@ if ENABLE_COLLECTIONS_SEARCH_ROUTE:
     extensions.append(collections_search_endpoint_ext)
 
 
-if ENABLE_CATALOG_ROUTE:
+if ENABLE_CATALOGS_ROUTE:
     catalogs_extension = CatalogsExtension(
         client=CoreClient(
             database=database_logic,
