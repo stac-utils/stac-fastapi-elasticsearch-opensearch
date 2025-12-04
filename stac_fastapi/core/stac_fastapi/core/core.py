@@ -24,7 +24,6 @@ from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.datetime_utils import format_datetime_range
 from stac_fastapi.core.models.links import PagingLinks
-from stac_fastapi.core.redis_utils import redis_pagination_links
 from stac_fastapi.core.serializers import (
     CatalogSerializer,
     CollectionSerializer,
@@ -453,6 +452,8 @@ class CoreClient(AsyncBaseCoreClient):
         ]
 
         if redis_enable:
+            from stac_fastapi.core.redis_utils import redis_pagination_links
+
             await redis_pagination_links(
                 current_url=str(request.url),
                 token=token,
@@ -931,6 +932,8 @@ class CoreClient(AsyncBaseCoreClient):
         links.extend(collection_links)
 
         if redis_enable:
+            from stac_fastapi.core.redis_utils import redis_pagination_links
+
             await redis_pagination_links(
                 current_url=str(request.url),
                 token=token_param,
