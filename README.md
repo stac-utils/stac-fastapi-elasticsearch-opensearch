@@ -248,6 +248,7 @@ This implementation follows the [STAC API Catalogs Extension](https://github.com
 - **GET `/catalogs`**: Retrieve the root catalog and its child catalogs
 - **POST `/catalogs`**: Create a new catalog (requires appropriate permissions)
 - **GET `/catalogs/{catalog_id}`**: Retrieve a specific catalog and its children
+- **DELETE `/catalogs/{catalog_id}`**: Delete a catalog (optionally cascade delete all collections)
 - **GET `/catalogs/{catalog_id}/collections`**: Retrieve collections within a specific catalog
 - **POST `/catalogs/{catalog_id}/collections`**: Create a new collection within a specific catalog
 - **GET `/catalogs/{catalog_id}/collections/{collection_id}`**: Retrieve a specific collection within a catalog
@@ -290,7 +291,21 @@ curl "http://localhost:8081/catalogs/earth-observation/collections/sentinel-2/it
 
 # Get specific item within a catalog
 curl "http://localhost:8081/catalogs/earth-observation/collections/sentinel-2/items/S2A_20231015_123456"
+
+# Delete a catalog (collections remain intact)
+curl -X DELETE "http://localhost:8081/catalogs/earth-observation"
+
+# Delete a catalog and all its collections (cascade delete)
+curl -X DELETE "http://localhost:8081/catalogs/earth-observation?cascade=true"
 ```
+
+### Delete Catalog Parameters
+
+The DELETE endpoint supports the following query parameter:
+
+- **`cascade`** (boolean, default: `false`): 
+  - If `false`: Only deletes the catalog. Collections linked to the catalog remain in the database but lose their catalog link.
+  - If `true`: Deletes the catalog AND all collections linked to it. Use with caution as this is a destructive operation.
 
 ### Response Structure
 

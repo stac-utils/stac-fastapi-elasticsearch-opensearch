@@ -116,6 +116,18 @@ class CatalogsExtension(ApiExtension):
             tags=["Catalogs"],
         )
 
+        # Add endpoint for deleting a catalog
+        self.router.add_api_route(
+            path="/catalogs/{catalog_id}",
+            endpoint=self.delete_catalog,
+            methods=["DELETE"],
+            response_class=self.response_class,
+            status_code=204,
+            summary="Delete Catalog",
+            description="Delete a catalog. Optionally cascade delete all collections in the catalog.",
+            tags=["Catalogs"],
+        )
+
         # Add endpoint for getting a specific collection in a catalog
         self.router.add_api_route(
             path="/catalogs/{catalog_id}/collections/{collection_id}",
@@ -264,6 +276,93 @@ class CatalogsExtension(ApiExtension):
         except Exception:
             raise HTTPException(
                 status_code=404, detail=f"Catalog {catalog_id} not found"
+            )
+
+    async def delete_catalog(
+        self,
+        catalog_id: str,
+        request: Request,
+        cascade: bool = Query(
+            False,
+            description="If true, delete all collections linked to this catalog. If false, only delete the catalog.",
+        ),
+    ) -> None:
+        """Delete a catalog.
+
+        Args:
+            catalog_id: The ID of the catalog to delete.
+            request: Request object.
+            cascade: If true, delete all collections linked to this catalog.
+                    If false, only delete the catalog.
+
+        Returns:
+            None (204 No Content)
+
+        Raises:
+            HTTPException: If the catalog is not found.
+        """
+        try:
+            # Get the catalog to verify it exists and get its collections
+            db_catalog = await self.client.database.find_catalog(catalog_id)
+            catalog = self.client.catalog_serializer.db_to_stac(db_catalog, request)
+
+            # If cascade is true, delete all collections linked to this catalog
+            if cascade:
+                # Extract collection IDs from catalog links
+                collection_ids = []
+                if hasattr(catalog, "links") and catalog.links:
+                    for link in catalog.links:
+                        rel = (
+                            link.get("rel")
+                            if hasattr(link, "get")
+                            else getattr(link, "rel", None)
+                        )
+                        if rel == "child":
+                            href = (
+                                link.get("href", "")
+                                if hasattr(link, "get")
+                                else getattr(link, "href", "")
+                            )
+                            if href and "/collections/" in href:
+                                # Extract collection ID from href
+                                collection_id = href.split("/collections/")[-1].split(
+                                    "/"
+                                )[0]
+                                if collection_id:
+                                    collection_ids.append(collection_id)
+
+                # Delete each collection
+                for coll_id in collection_ids:
+                    try:
+                        await self.client.database.delete_collection(coll_id)
+                        logger.info(
+                            f"Deleted collection {coll_id} as part of cascade delete for catalog {catalog_id}"
+                        )
+                    except Exception as e:
+                        error_msg = str(e)
+                        if "not found" in error_msg.lower():
+                            logger.debug(
+                                f"Collection {coll_id} not found, skipping (may have been deleted elsewhere)"
+                            )
+                        else:
+                            logger.warning(
+                                f"Failed to delete collection {coll_id}: {e}"
+                            )
+
+            # Delete the catalog
+            await self.client.database.delete_catalog(catalog_id)
+            logger.info(f"Deleted catalog {catalog_id}")
+
+        except Exception as e:
+            error_msg = str(e)
+            if "not found" in error_msg.lower():
+                raise HTTPException(
+                    status_code=404, detail=f"Catalog {catalog_id} not found"
+                )
+            logger.error(f"Error deleting catalog {catalog_id}: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to delete catalog: {str(e)}",
             )
 
     async def get_catalog_collections(

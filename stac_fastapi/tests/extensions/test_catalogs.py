@@ -476,3 +476,110 @@ async def test_create_catalog_collection_nonexistent_catalog(
         "/catalogs/nonexistent-catalog/collections", json=test_collection
     )
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_catalog(catalogs_app_client, load_test_data):
+    """Test deleting a catalog without cascade."""
+    # Create a catalog
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+    test_catalog["links"] = [
+        link for link in test_catalog.get("links", []) if link.get("rel") != "child"
+    ]
+
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+    catalog_id = test_catalog["id"]
+
+    # Verify catalog exists
+    get_resp = await catalogs_app_client.get(f"/catalogs/{catalog_id}")
+    assert get_resp.status_code == 200
+
+    # Delete the catalog
+    delete_resp = await catalogs_app_client.delete(f"/catalogs/{catalog_id}")
+    assert delete_resp.status_code == 204
+
+    # Verify catalog is deleted
+    get_resp = await catalogs_app_client.get(f"/catalogs/{catalog_id}")
+    assert get_resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_catalog_cascade(catalogs_app_client, load_test_data):
+    """Test deleting a catalog with cascade delete of collections."""
+    # Create a catalog
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+    test_catalog["links"] = [
+        link for link in test_catalog.get("links", []) if link.get("rel") != "child"
+    ]
+
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+    catalog_id = test_catalog["id"]
+
+    # Create a collection in the catalog
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = f"test-collection-{uuid.uuid4()}"
+
+    coll_resp = await catalogs_app_client.post(
+        f"/catalogs/{catalog_id}/collections", json=test_collection
+    )
+    assert coll_resp.status_code == 201
+    collection_id = test_collection["id"]
+
+    # Verify collection exists
+    get_coll_resp = await catalogs_app_client.get(f"/collections/{collection_id}")
+    assert get_coll_resp.status_code == 200
+
+    # Delete the catalog with cascade=true
+    delete_resp = await catalogs_app_client.delete(
+        f"/catalogs/{catalog_id}?cascade=true"
+    )
+    assert delete_resp.status_code == 204
+
+    # Verify catalog is deleted
+    get_resp = await catalogs_app_client.get(f"/catalogs/{catalog_id}")
+    assert get_resp.status_code == 404
+
+    # Verify collection is also deleted (cascade delete)
+    get_coll_resp = await catalogs_app_client.get(f"/collections/{collection_id}")
+    assert get_coll_resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_catalog_no_cascade(catalogs_app_client, load_test_data):
+    """Test deleting a catalog without cascade (collections remain)."""
+    # Create a catalog
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+    test_catalog["links"] = [
+        link for link in test_catalog.get("links", []) if link.get("rel") != "child"
+    ]
+
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+    catalog_id = test_catalog["id"]
+
+    # Create a collection in the catalog
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = f"test-collection-{uuid.uuid4()}"
+
+    coll_resp = await catalogs_app_client.post(
+        f"/catalogs/{catalog_id}/collections", json=test_collection
+    )
+    assert coll_resp.status_code == 201
+    collection_id = test_collection["id"]
+
+    # Delete the catalog with cascade=false (default)
+    delete_resp = await catalogs_app_client.delete(f"/catalogs/{catalog_id}")
+    assert delete_resp.status_code == 204
+
+    # Verify catalog is deleted
+    get_resp = await catalogs_app_client.get(f"/catalogs/{catalog_id}")
+    assert get_resp.status_code == 404
+
+    # Verify collection still exists (no cascade delete)
+    get_coll_resp = await catalogs_app_client.get(f"/collections/{collection_id}")
+    assert get_coll_resp.status_code == 200
