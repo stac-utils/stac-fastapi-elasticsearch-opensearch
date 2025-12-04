@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- Fix unawaited coroutine in `stac_fastapi.core.core`. [#551](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/551)
+
 ### Removed
 
 ### Updated
