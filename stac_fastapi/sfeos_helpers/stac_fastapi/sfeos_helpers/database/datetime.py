@@ -145,7 +145,7 @@ def extract_date(date_str: str) -> date:
         date_str: ISO format date string
 
     Returns:
-        A date object extracted from the input string.
+        A date object extracted from the input string or None.
     """
     date_str = date_str.replace("Z", "+00:00")
     return datetime_type.fromisoformat(date_str).date()

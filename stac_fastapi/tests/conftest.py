@@ -396,3 +396,13 @@ def build_test_app():
     # Create and return the app
     api = StacApi(**test_config)
     return api.app
+
+
+@pytest.fixture
+def mock_datetime_env(txn_client, monkeypatch):
+    """Set USE_DATETIME environment variable to False for testing."""
+    monkeypatch.setenv("USE_DATETIME", "false")
+    if hasattr(txn_client.database.async_index_selector, "cache_manager"):
+        txn_client.database.async_index_selector.cache_manager.clear_cache()
+    yield
+    monkeypatch.setenv("USE_DATETIME", "true")

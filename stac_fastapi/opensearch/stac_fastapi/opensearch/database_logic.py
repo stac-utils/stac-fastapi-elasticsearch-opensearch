@@ -457,9 +457,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         )
 
     @staticmethod
-    def apply_datetime_filter(
-        search: Search, datetime: Optional[str]
-    ) -> Tuple[Search, Dict[str, Optional[str]]]:
+    def apply_datetime_filter(search: Search, datetime: Optional[str]) -> Search:
         """Apply a filter to search on datetime, start_datetime, and end_datetime fields.
 
         Args:
@@ -471,13 +469,13 @@ class DatabaseLogic(BaseDatabaseLogic):
         """
         datetime_search = return_date(datetime)
 
-        if not datetime_search:
-            return search, datetime_search
-
         # USE_DATETIME env var
         # True: Search by datetime, if null search by start/end datetime
         # False: Always search only by start/end datetime
         USE_DATETIME = get_bool_env("USE_DATETIME", default=True)
+
+        if not datetime_search:
+            return search
 
         if USE_DATETIME:
             if "eq" in datetime_search:
@@ -554,10 +552,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                     ),
                 ]
 
-            return (
-                search.query(Q("bool", should=should, minimum_should_match=1)),
-                datetime_search,
-            )
+            return search.query(Q("bool", should=should, minimum_should_match=1))
         else:
             if "eq" in datetime_search:
                 filter_query = Q(
@@ -591,7 +586,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                         ),
                     ],
                 )
-        return search.query(filter_query), datetime_search
+        return search.query(filter_query)
 
     @staticmethod
     def apply_bbox_filter(search: Search, bbox: List):
@@ -728,7 +723,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         token: Optional[str],
         sort: Optional[Dict[str, Dict[str, str]]],
         collection_ids: Optional[List[str]],
-        datetime_search: Dict[str, Optional[str]],
+        datetime_search: str,
         ignore_unavailable: bool = True,
     ) -> Tuple[Iterable[Dict[str, Any]], Optional[int], Optional[str]]:
         """Execute a search query with limit and other optional parameters.
@@ -739,7 +734,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             token (Optional[str]): The token used to return the next set of results.
             sort (Optional[Dict[str, Dict[str, str]]]): Specifies how the results should be sorted.
             collection_ids (Optional[List[str]]): The collection ids to search.
-            datetime_search (Dict[str, Optional[str]]): Datetime range used for index selection.
+            datetime_search (str): Datetime used for index selection.
             ignore_unavailable (bool, optional): Whether to ignore unavailable collections. Defaults to True.
 
         Returns:
@@ -835,7 +830,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         geometry_geohash_grid_precision: int,
         geometry_geotile_grid_precision: int,
         datetime_frequency_interval: str,
-        datetime_search,
+        datetime_search: str,
         ignore_unavailable: Optional[bool] = True,
     ):
         """Return aggregations of STAC Items."""
