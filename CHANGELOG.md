@@ -14,11 +14,18 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+### Removed
+
+### Updated
+
+## [v6.7.6] - 2025-12-04
+
+### Fixed
+
 - Fix incorrect min/max date formatting in `apply_datetime_filter` for `POST` requests. [#539](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/539)
 - Fixed datetime filtering for .0Z milliseconds to preserve precision in apply_filter_datetime, ensuring only items exactly within the specified range are returned. [#535](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/535)
 - Normalize datetime in POST /search requests to match GET /search behavior. [#543](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/543)
-
-### Removed
+- Fix optional Redis support in core.py. [#549](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/549)
 
 ## [v6.7.5] - 2025-11-25
 
@@ -660,7 +667,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.5...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.6...main
+[v6.7.6]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.5...v6.7.6
 [v6.7.5]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.4...v6.7.5
 [v6.7.4]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.3...v6.7.4
 [v6.7.3]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.2...v6.7.3
