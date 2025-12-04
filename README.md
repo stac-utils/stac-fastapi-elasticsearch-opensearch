@@ -249,6 +249,7 @@ This implementation follows the [STAC API Catalogs Extension](https://github.com
 - **POST `/catalogs`**: Create a new catalog (requires appropriate permissions)
 - **GET `/catalogs/{catalog_id}`**: Retrieve a specific catalog and its children
 - **GET `/catalogs/{catalog_id}/collections`**: Retrieve collections within a specific catalog
+- **POST `/catalogs/{catalog_id}/collections`**: Create a new collection within a specific catalog
 - **GET `/catalogs/{catalog_id}/collections/{collection_id}`**: Retrieve a specific collection within a catalog
 - **GET `/catalogs/{catalog_id}/collections/{collection_id}/items`**: Retrieve items within a collection in a catalog context
 - **GET `/catalogs/{catalog_id}/collections/{collection_id}/items/{item_id}`**: Retrieve a specific item within a catalog context
@@ -264,6 +265,22 @@ curl "http://localhost:8081/catalogs/earth-observation"
 
 # Get collections in a catalog
 curl "http://localhost:8081/catalogs/earth-observation/collections"
+
+# Create a new collection within a catalog
+curl -X POST "http://localhost:8081/catalogs/earth-observation/collections" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "landsat-9",
+    "type": "Collection",
+    "stac_version": "1.0.0",
+    "description": "Landsat 9 satellite imagery collection",
+    "title": "Landsat 9",
+    "license": "MIT",
+    "extent": {
+      "spatial": {"bbox": [[-180, -90, 180, 90]]},
+      "temporal": {"interval": [["2021-09-27T00:00:00Z", null]]}
+    }
+  }'
 
 # Get specific collection within a catalog
 curl "http://localhost:8081/catalogs/earth-observation/collections/sentinel-2"

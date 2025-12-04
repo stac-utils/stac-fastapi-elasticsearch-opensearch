@@ -7,10 +7,12 @@ from urllib.parse import urlencode, urlparse
 import attr
 from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
+from stac_pydantic import Collection
 from starlette.responses import Response
 from typing_extensions import TypedDict
 
 from stac_fastapi.core.models import Catalog
+from stac_fastapi.sfeos_helpers.mappings import COLLECTIONS_INDEX
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.core import BaseCoreClient
 from stac_fastapi.types.extension import ApiExtension
@@ -98,6 +100,19 @@ class CatalogsExtension(ApiExtension):
             response_class=self.response_class,
             summary="Get Catalog Collections",
             description="Get collections linked from a specific catalog.",
+            tags=["Catalogs"],
+        )
+
+        # Add endpoint for creating collections in a catalog
+        self.router.add_api_route(
+            path="/catalogs/{catalog_id}/collections",
+            endpoint=self.create_catalog_collection,
+            methods=["POST"],
+            response_model=stac_types.Collection,
+            response_class=self.response_class,
+            status_code=201,
+            summary="Create Catalog Collection",
+            description="Create a new collection and link it to a specific catalog.",
             tags=["Catalogs"],
         )
 
@@ -289,9 +304,18 @@ class CatalogsExtension(ApiExtension):
                 base_path = urlparse(base_url).path.rstrip("/")
 
                 for link in catalog.links:
-                    if link.get("rel") in ["child", "item"]:
+                    rel = (
+                        link.get("rel")
+                        if hasattr(link, "get")
+                        else getattr(link, "rel", None)
+                    )
+                    if rel in ["child", "item"]:
                         # Extract collection ID from href using proper URL parsing
-                        href = link.get("href", "")
+                        href = (
+                            link.get("href", "")
+                            if hasattr(link, "get")
+                            else getattr(link, "href", "")
+                        )
                         if href:
                             try:
                                 parsed_url = urlparse(href)
@@ -380,10 +404,190 @@ class CatalogsExtension(ApiExtension):
                 ],
             )
 
-        except Exception:
+        except HTTPException:
+            # Re-raise HTTP exceptions as-is
+            raise
+        except Exception as e:
+            logger.error(
+                f"Error retrieving collections for catalog {catalog_id}: {e}",
+                exc_info=True,
+            )
             raise HTTPException(
                 status_code=404, detail=f"Catalog {catalog_id} not found"
             )
+
+    async def create_catalog_collection(
+        self, catalog_id: str, collection: Collection, request: Request
+    ) -> stac_types.Collection:
+        """Create a new collection and link it to a specific catalog.
+
+        Args:
+            catalog_id: The ID of the catalog to link the collection to.
+            collection: The collection to create.
+            request: Request object.
+
+        Returns:
+            The created collection.
+
+        Raises:
+            HTTPException: If the catalog is not found or collection creation fails.
+        """
+        try:
+            # Verify the catalog exists
+            await self.client.database.find_catalog(catalog_id)
+
+            # Create the collection using the same pattern as TransactionsClient.create_collection
+            # This handles the Collection model from stac_pydantic correctly
+            collection_dict = collection.model_dump(mode="json")
+
+            # Add a link from the collection back to its parent catalog BEFORE saving to database
+            base_url = str(request.base_url)
+            catalog_link = {
+                "rel": "catalog",
+                "type": "application/json",
+                "href": f"{base_url}catalogs/{catalog_id}",
+                "title": catalog_id,
+            }
+
+            # Add the catalog link to the collection dict
+            if "links" not in collection_dict:
+                collection_dict["links"] = []
+
+            # Check if the catalog link already exists
+            catalog_href = catalog_link["href"]
+            link_exists = any(
+                link.get("href") == catalog_href and link.get("rel") == "catalog"
+                for link in collection_dict.get("links", [])
+            )
+
+            if not link_exists:
+                collection_dict["links"].append(catalog_link)
+
+            # Now convert to database format (this will process the links)
+            collection_db = self.client.database.collection_serializer.stac_to_db(
+                collection_dict, request
+            )
+            await self.client.database.create_collection(
+                collection=collection_db, refresh=True
+            )
+
+            # Convert back to STAC format for the response
+            created_collection = self.client.database.collection_serializer.db_to_stac(
+                collection_db,
+                request,
+                extensions=[
+                    type(ext).__name__ for ext in self.client.database.extensions
+                ],
+            )
+
+            # Update the catalog to include a link to the new collection
+            await self._add_collection_to_catalog_links(
+                catalog_id, collection.id, request
+            )
+
+            return created_collection
+
+        except HTTPException as e:
+            # Re-raise HTTP exceptions (e.g., catalog not found, collection validation errors)
+            raise e
+        except Exception as e:
+            # Check if this is a "not found" error from find_catalog
+            error_msg = str(e)
+            if "not found" in error_msg.lower():
+                raise HTTPException(status_code=404, detail=error_msg)
+
+            # Handle unexpected errors
+            logger.error(f"Error creating collection in catalog {catalog_id}: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to create collection in catalog: {str(e)}",
+            )
+
+    async def _add_collection_to_catalog_links(
+        self, catalog_id: str, collection_id: str, request: Request
+    ) -> None:
+        """Add a collection link to a catalog.
+
+        This helper method updates a catalog's links to include a reference
+        to a collection by reindexing the updated catalog document.
+
+        Args:
+            catalog_id: The ID of the catalog to update.
+            collection_id: The ID of the collection to link.
+            request: Request object for base URL construction.
+        """
+        try:
+            # Get the current catalog
+            db_catalog = await self.client.database.find_catalog(catalog_id)
+            catalog = self.client.catalog_serializer.db_to_stac(db_catalog, request)
+
+            # Create the collection link
+            base_url = str(request.base_url)
+            collection_link = {
+                "rel": "child",
+                "href": f"{base_url}collections/{collection_id}",
+                "type": "application/json",
+                "title": collection_id,
+            }
+
+            # Add the link to the catalog if it doesn't already exist
+            catalog_links = (
+                catalog.get("links")
+                if isinstance(catalog, dict)
+                else getattr(catalog, "links", None)
+            )
+            if not catalog_links:
+                catalog_links = []
+                if isinstance(catalog, dict):
+                    catalog["links"] = catalog_links
+                else:
+                    catalog.links = catalog_links
+
+            # Check if the collection link already exists
+            collection_href = collection_link["href"]
+            link_exists = any(
+                (
+                    link.get("href")
+                    if hasattr(link, "get")
+                    else getattr(link, "href", None)
+                )
+                == collection_href
+                for link in catalog_links
+            )
+
+            if not link_exists:
+                catalog_links.append(collection_link)
+
+                # Update the catalog in the database by reindexing it
+                # Convert back to database format
+                updated_db_catalog = self.client.catalog_serializer.stac_to_db(
+                    catalog, request
+                )
+                updated_db_catalog_dict = (
+                    updated_db_catalog.model_dump()
+                    if hasattr(updated_db_catalog, "model_dump")
+                    else updated_db_catalog
+                )
+                updated_db_catalog_dict["type"] = "Catalog"
+
+                # Use the same approach as create_catalog to update the document
+                await self.client.database.client.index(
+                    index=COLLECTIONS_INDEX,
+                    id=catalog_id,
+                    body=updated_db_catalog_dict,
+                    refresh=True,
+                )
+
+                logger.info(
+                    f"Updated catalog {catalog_id} to include link to collection {collection_id}"
+                )
+
+        except Exception as e:
+            logger.error(
+                f"Failed to update catalog {catalog_id} links: {e}", exc_info=True
+            )
+            # Don't fail the entire operation if link update fails
+            # The collection was created successfully, just the catalog link is missing
 
     async def get_catalog_collection(
         self, catalog_id: str, collection_id: str, request: Request

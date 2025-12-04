@@ -17,21 +17,9 @@
     },
     {
       "rel": "child",
-      "href": "http://test-server/collections/test-collection-1",
+      "href": "http://test-server/collections/placeholder-collection",
       "type": "application/json",
-      "title": "Test Collection 1"
-    },
-    {
-      "rel": "child",
-      "href": "http://test-server/collections/test-collection-2",
-      "type": "application/json",
-      "title": "Test Collection 2"
-    },
-    {
-      "rel": "child",
-      "href": "http://test-server/collections/test-collection-3",
-      "type": "application/json",
-      "title": "Test Collection 3"
+      "title": "Placeholder Collection"
     }
   ]
 }

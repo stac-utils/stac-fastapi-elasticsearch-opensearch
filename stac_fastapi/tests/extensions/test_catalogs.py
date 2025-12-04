@@ -379,3 +379,100 @@ async def test_catalogs_pagination_token_parameter(catalogs_app_client, load_tes
     catalogs_response = resp.json()
     assert "catalogs" in catalogs_response
     assert "links" in catalogs_response
+
+
+@pytest.mark.asyncio
+async def test_create_catalog_collection(catalogs_app_client, load_test_data, ctx):
+    """Test creating a collection within a catalog."""
+    # First create a catalog
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+
+    # Remove placeholder collection links so we start with a clean catalog
+    test_catalog["links"] = [
+        link for link in test_catalog.get("links", []) if link.get("rel") != "child"
+    ]
+
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+    catalog_id = test_catalog["id"]
+
+    # Create a new collection within the catalog
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = f"test-collection-{uuid.uuid4()}"
+
+    resp = await catalogs_app_client.post(
+        f"/catalogs/{catalog_id}/collections", json=test_collection
+    )
+    assert resp.status_code == 201
+
+    created_collection = resp.json()
+    assert created_collection["id"] == test_collection["id"]
+    assert created_collection["type"] == "Collection"
+
+    # Verify the collection was created by getting it directly
+    get_resp = await catalogs_app_client.get(f"/collections/{test_collection['id']}")
+    assert get_resp.status_code == 200
+    assert get_resp.json()["id"] == test_collection["id"]
+
+    # Verify the collection has a catalog link to the catalog
+    collection_data = get_resp.json()
+    collection_links = collection_data.get("links", [])
+    catalog_link = None
+    for link in collection_links:
+        if link.get("rel") == "catalog" and f"/catalogs/{catalog_id}" in link.get(
+            "href", ""
+        ):
+            catalog_link = link
+            break
+
+    assert (
+        catalog_link is not None
+    ), f"Collection should have catalog link to /catalogs/{catalog_id}"
+    assert catalog_link["type"] == "application/json"
+    assert catalog_link["href"].endswith(f"/catalogs/{catalog_id}")
+
+    # Verify the catalog has a child link to the collection
+    catalog_resp = await catalogs_app_client.get(f"/catalogs/{catalog_id}")
+    assert catalog_resp.status_code == 200
+    catalog_data = catalog_resp.json()
+    catalog_links = catalog_data.get("links", [])
+    collection_child_link = None
+    for link in catalog_links:
+        if link.get(
+            "rel"
+        ) == "child" and f"/collections/{test_collection['id']}" in link.get(
+            "href", ""
+        ):
+            collection_child_link = link
+            break
+
+    assert (
+        collection_child_link is not None
+    ), f"Catalog should have child link to collection /collections/{test_collection['id']}"
+    assert collection_child_link["type"] == "application/json"
+    assert collection_child_link["href"].endswith(
+        f"/collections/{test_collection['id']}"
+    )
+
+    # Verify the catalog now includes the collection in its collections endpoint
+    catalog_resp = await catalogs_app_client.get(f"/catalogs/{catalog_id}/collections")
+    assert catalog_resp.status_code == 200
+
+    collections_response = catalog_resp.json()
+    collection_ids = [col["id"] for col in collections_response["collections"]]
+    assert test_collection["id"] in collection_ids
+
+
+@pytest.mark.asyncio
+async def test_create_catalog_collection_nonexistent_catalog(
+    catalogs_app_client, load_test_data
+):
+    """Test creating a collection in a catalog that doesn't exist."""
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = f"test-collection-{uuid.uuid4()}"
+
+    resp = await catalogs_app_client.post(
+        "/catalogs/nonexistent-catalog/collections", json=test_collection
+    )
+    assert resp.status_code == 404
