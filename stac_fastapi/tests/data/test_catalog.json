@@ -1,0 +1,25 @@
+{
+  "id": "test-catalog",
+  "type": "Catalog",
+  "stac_version": "1.0.0",
+  "title": "Test Catalog",
+  "description": "A test catalog for STAC API testing",
+  "links": [
+    {
+      "rel": "self",
+      "href": "http://test-server/catalogs/test-catalog",
+      "type": "application/json"
+    },
+    {
+      "rel": "root",
+      "href": "http://test-server/catalogs",
+      "type": "application/json"
+    },
+    {
+      "rel": "child",
+      "href": "http://test-server/collections/placeholder-collection",
+      "type": "application/json",
+      "title": "Placeholder Collection"
+    }
+  ]
+}
