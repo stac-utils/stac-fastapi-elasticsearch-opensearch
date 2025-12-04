@@ -583,3 +583,16 @@ async def test_delete_catalog_no_cascade(catalogs_app_client, load_test_data):
     # Verify collection still exists (no cascade delete)
     get_coll_resp = await catalogs_app_client.get(f"/collections/{collection_id}")
     assert get_coll_resp.status_code == 200
+
+    # Verify the catalog link was removed from the collection
+    collection_data = get_coll_resp.json()
+    collection_links = collection_data.get("links", [])
+    catalog_link = None
+    for link in collection_links:
+        if link.get("rel") == "catalog" and catalog_id in link.get("href", ""):
+            catalog_link = link
+            break
+
+    assert (
+        catalog_link is None
+    ), "Collection should not have catalog link after catalog deletion"

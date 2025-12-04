@@ -306,31 +306,30 @@ class CatalogsExtension(ApiExtension):
             db_catalog = await self.client.database.find_catalog(catalog_id)
             catalog = self.client.catalog_serializer.db_to_stac(db_catalog, request)
 
-            # If cascade is true, delete all collections linked to this catalog
-            if cascade:
-                # Extract collection IDs from catalog links
-                collection_ids = []
-                if hasattr(catalog, "links") and catalog.links:
-                    for link in catalog.links:
-                        rel = (
-                            link.get("rel")
+            # Extract collection IDs from catalog links
+            collection_ids = []
+            if hasattr(catalog, "links") and catalog.links:
+                for link in catalog.links:
+                    rel = (
+                        link.get("rel")
+                        if hasattr(link, "get")
+                        else getattr(link, "rel", None)
+                    )
+                    if rel == "child":
+                        href = (
+                            link.get("href", "")
                             if hasattr(link, "get")
-                            else getattr(link, "rel", None)
+                            else getattr(link, "href", "")
                         )
-                        if rel == "child":
-                            href = (
-                                link.get("href", "")
-                                if hasattr(link, "get")
-                                else getattr(link, "href", "")
-                            )
-                            if href and "/collections/" in href:
-                                # Extract collection ID from href
-                                collection_id = href.split("/collections/")[-1].split(
-                                    "/"
-                                )[0]
-                                if collection_id:
-                                    collection_ids.append(collection_id)
+                        if href and "/collections/" in href:
+                            # Extract collection ID from href
+                            collection_id = href.split("/collections/")[-1].split("/")[
+                                0
+                            ]
+                            if collection_id:
+                                collection_ids.append(collection_id)
 
+            if cascade:
                 # Delete each collection
                 for coll_id in collection_ids:
                     try:
@@ -347,6 +346,63 @@ class CatalogsExtension(ApiExtension):
                         else:
                             logger.warning(
                                 f"Failed to delete collection {coll_id}: {e}"
+                            )
+            else:
+                # Remove catalog link from each collection (orphan them)
+                for coll_id in collection_ids:
+                    try:
+                        collection = await self.client.get_collection(
+                            coll_id, request=request
+                        )
+                        # Remove the catalog link from the collection
+                        if hasattr(collection, "links"):
+                            collection.links = [
+                                link
+                                for link in collection.links
+                                if not (
+                                    getattr(link, "rel", None) == "catalog"
+                                    and catalog_id in getattr(link, "href", "")
+                                )
+                            ]
+                        elif isinstance(collection, dict):
+                            collection["links"] = [
+                                link
+                                for link in collection.get("links", [])
+                                if not (
+                                    link.get("rel") == "catalog"
+                                    and catalog_id in link.get("href", "")
+                                )
+                            ]
+
+                        # Update the collection in the database
+                        collection_dict = (
+                            collection.model_dump(mode="json")
+                            if hasattr(collection, "model_dump")
+                            else collection
+                        )
+                        collection_db = (
+                            self.client.database.collection_serializer.stac_to_db(
+                                collection_dict, request
+                            )
+                        )
+                        await self.client.database.client.index(
+                            index=COLLECTIONS_INDEX,
+                            id=coll_id,
+                            body=collection_db.model_dump()
+                            if hasattr(collection_db, "model_dump")
+                            else collection_db,
+                            refresh=True,
+                        )
+                        logger.info(f"Removed catalog link from collection {coll_id}")
+                    except Exception as e:
+                        error_msg = str(e)
+                        if "not found" in error_msg.lower():
+                            logger.debug(
+                                f"Collection {coll_id} not found, skipping (may have been deleted elsewhere)"
+                            )
+                        else:
+                            logger.warning(
+                                f"Failed to remove catalog link from collection {coll_id}: {e}"
                             )
 
             # Delete the catalog
