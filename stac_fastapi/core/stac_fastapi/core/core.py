@@ -759,7 +759,7 @@ class CoreClient(AsyncBaseCoreClient):
 
         body_limit = None
         try:
-            if request.method == "POST" and request.body():
+            if request.method == "POST" and await request.body():
                 body_data = await request.json()
                 body_limit = body_data.get("limit")
         except Exception:
