@@ -358,6 +358,33 @@ externalDatabase:
   # API key field in the secret
   apiKeySecretKey: "api-key"
 
+# Redis cache configuration
+redis:
+  # Deploy an in-cluster Redis when enabled
+  enabled: false
+  # Optional override for the generated Redis fullname
+  fullnameOverride: ""
+  # Default Redis database index used by the application
+  database: 0
+  architecture: standalone
+  master:
+    service:
+      ports:
+        redis: 6379
+  auth:
+    enabled: false
+    # Provide an existing secret containing the Redis password when auth is enabled
+    existingSecret: ""
+    existingSecretPasswordKey: "redis-password"
+  # Configure connection details for an externally managed Redis instance
+  external:
+    enabled: false
+    host: ""
+    port: 6379
+    # Optional secret that stores the Redis password for the external instance
+    passwordSecret: ""
+    passwordKey: "redis-password"
+
 # Configuration for monitoring and observability
 monitoring:
   # Enable monitoring

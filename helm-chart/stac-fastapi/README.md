@@ -20,10 +20,19 @@ The chart provides a flexible deployment solution for STAC FastAPI with the foll
 
 ## Quick Start
 
+### Add Helm repositories
+
+```bash
+helm repo add elasticsearch https://helm.elastic.co
+helm repo add opensearch https://opensearch-project.github.io/helm-charts/
+helm repo add bitnami https://charts.bitnami.com/bitnami
+helm repo update
+```
+
 ### Deploy with Elasticsearch
 
 ```bash
-# Add dependencies
+# Download chart dependencies
 helm dependency update ./helm-chart/stac-fastapi
 
 # Install with Elasticsearch backend
@@ -36,7 +45,7 @@ helm install my-stac-api ./helm-chart/stac-fastapi \
 ### Deploy with OpenSearch
 
 ```bash
-# Add dependencies
+# Download chart dependencies
 helm dependency update ./helm-chart/stac-fastapi
 
 # Install with OpenSearch backend

@@ -166,6 +166,48 @@ Create the database port based on backend selection
 {{- end }}
 
 {{/*
+Determine the Redis service name when the bundled chart is enabled
+*/}}
+{{- define "stac-fastapi.redisServiceName" -}}
+{{- if .Values.redis.fullnameOverride }}
+{{- printf "%s-master" .Values.redis.fullnameOverride }}
+{{- else }}
+{{- printf "%s-redis-master" .Release.Name }}
+{{- end }}
+{{- end }}
+
+{{/*
+Compute the Redis host, preferring the bundled deployment when enabled
+*/}}
+{{- define "stac-fastapi.redisHost" -}}
+{{- if and (.Values.redis.enabled) (not (and .Values.redis.external .Values.redis.external.enabled)) -}}
+  {{- $service := include "stac-fastapi.redisServiceName" . | trim -}}
+  {{- $namespace := .Release.Namespace | default "default" -}}
+  {{- $clusterDomain := default "cluster.local" .Values.global.clusterDomain -}}
+  {{- printf "%s.%s.svc.%s" $service $namespace $clusterDomain -}}
+{{- else if and .Values.redis.external .Values.redis.external.enabled -}}
+  {{- .Values.redis.external.host | default "" -}}
+{{- else -}}
+  {{- "" -}}
+{{- end }}
+{{- end }}
+
+{{/*
+Resolve the Redis port based on the active configuration
+*/}}
+{{- define "stac-fastapi.redisPort" -}}
+{{- if and (.Values.redis.enabled) (not (and .Values.redis.external .Values.redis.external.enabled)) -}}
+  {{- $ports := default (dict) (dig "master" "service" "ports" (dict) .Values.redis) -}}
+  {{- $port := default 6379 (index $ports "redis") -}}
+  {{- $port -}}
+{{- else if and .Values.redis.external .Values.redis.external.enabled -}}
+  {{- .Values.redis.external.port | default 6379 -}}
+{{- else -}}
+  {{- 6379 -}}
+{{- end }}
+{{- end }}
+
+{{/*
 Create the image repository with tag
 */}}
 {{- define "stac-fastapi.image" -}}
@@ -186,6 +228,9 @@ Create environment variables for the application
 {{- $envFromSecret := default (dict) .Values.app.envFromSecret -}}
 {{- $dbAuth := deepCopy (default (dict) .Values.app.databaseAuth) -}}
 {{- $opensearchSecurity := default (dict) .Values.opensearchSecurity -}}
+{{- $redisConfig := default (dict) .Values.redis -}}
+{{- $redisExternal := default (dict) (get $redisConfig "external") -}}
+{{- $redisEnabled := or ($redisConfig.enabled) (and $redisExternal ($redisExternal.enabled)) -}}
 {{- if and (eq .Values.backend "opensearch") (get $opensearchSecurity "generateAdminPassword") }}
   {{- $secretName := include "stac-fastapi.opensearchAdminSecretName" . -}}
   {{- if or (not (hasKey $dbAuth "existingSecret")) (not $dbAuth.existingSecret) }}

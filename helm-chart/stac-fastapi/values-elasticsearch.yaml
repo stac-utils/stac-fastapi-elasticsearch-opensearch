@@ -64,7 +64,7 @@ app:
     STAC_FASTAPI_DESCRIPTION: "High-performance STAC API for geospatial data discovery"
     ENVIRONMENT: "production"
     WEB_CONCURRENCY: "4"
-    ENABLE_DIRECT_RESPONSE: "true"  # Enable for maximum performance
+    ENABLE_DIRECT_RESPONSE: "false"
     DATABASE_REFRESH: "false"  # Better performance for bulk operations
     ENABLE_DATETIME_INDEX_FILTERING: "true"  # Enable for large datasets
     DATETIME_INDEX_MAX_SIZE_GB: "50"
@@ -129,6 +129,25 @@ opensearch:
 # External database disabled since we're using bundled Elasticsearch
 externalDatabase:
   enabled: false
+
+# Redis cache configuration for API response caching
+redis:
+  enabled: true
+  architecture: standalone
+  database: 0
+  master:
+    persistence:
+      enabled: true
+      size: 8Gi
+    resources:
+      requests:
+        cpu: 100m
+        memory: 256Mi
+      limits:
+        cpu: 500m
+        memory: 512Mi
+  auth:
+    enabled: false
 
 # Monitoring configuration
 monitoring:

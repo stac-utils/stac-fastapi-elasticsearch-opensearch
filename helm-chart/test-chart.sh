@@ -95,6 +95,32 @@ maybe_collect_backend_logs() {
     fi
 }
 
+ensure_helm_repo() {
+    local name="$1"
+    local url="$2"
+
+    local existing_repos
+    existing_repos=$(helm repo list 2>/dev/null | awk 'NR>1 {print $1}' || true)
+
+    if ! grep -qx "$name" <<<"$existing_repos"; then
+        log_info "Adding Helm repository: $name ($url)"
+        helm repo add "$name" "$url"
+    fi
+}
+
+ensure_chart_dependencies() {
+    log_info "Ensuring required Helm repositories are configured..."
+    ensure_helm_repo elasticsearch https://helm.elastic.co
+    ensure_helm_repo opensearch https://opensearch-project.github.io/helm-charts/
+    ensure_helm_repo bitnami https://charts.bitnami.com/bitnami
+
+    log_info "Updating Helm repositories..."
+    helm repo update
+
+    log_info "Updating chart dependencies..."
+    helm dependency update "$CHART_PATH"
+}
+
 get_desired_app_replicas() {
     local values_path="$1"
     local default_count="${APP_REPLICA_COUNT:-}"
@@ -287,9 +313,7 @@ lint_chart() {
         exit 1
     fi
     
-    # Update dependencies
-    log_info "Updating chart dependencies..."
-    helm dependency update "$CHART_PATH"
+    ensure_chart_dependencies
     
     # Lint the chart
     helm lint "$CHART_PATH"
@@ -310,6 +334,8 @@ lint_chart() {
 # Run Helm chart tests
 test_chart() {
     log_info "Running Helm chart tests..."
+
+    ensure_chart_dependencies
     
     # Dry run installation
     log_info "Testing chart installation (dry run)..."
@@ -331,8 +357,7 @@ install_chart() {
     # Create namespace if it doesn't exist
     kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
     
-    # Update dependencies
-    helm dependency update "$CHART_PATH"
+    ensure_chart_dependencies
     
     # Select appropriate values file for backend
     local values_file=""
@@ -412,7 +437,7 @@ install_chart() {
 upgrade_chart() {
     log_info "Upgrading STAC FastAPI chart..."
     
-    helm dependency update "$CHART_PATH"
+    ensure_chart_dependencies
     
     # Select appropriate values file for backend
     local values_file=""

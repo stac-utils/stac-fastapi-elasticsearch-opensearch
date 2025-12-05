@@ -9,4 +9,5 @@ runs:
       run: |
         helm repo add elasticsearch https://helm.elastic.co
         helm repo add opensearch https://opensearch-project.github.io/helm-charts/
+        helm repo add bitnami https://charts.bitnami.com/bitnami
         helm repo update
