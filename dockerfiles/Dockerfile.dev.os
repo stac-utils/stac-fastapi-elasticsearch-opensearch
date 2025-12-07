@@ -1,4 +1,4 @@
-FROM python:3.10-slim
+FROM python:3.11-slim
 
 
 # update apt pkgs, and install build-essential for ciso8601

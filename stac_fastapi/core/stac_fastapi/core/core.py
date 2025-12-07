@@ -24,7 +24,6 @@ from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.datetime_utils import format_datetime_range
 from stac_fastapi.core.models.links import PagingLinks
-from stac_fastapi.core.redis_utils import redis_pagination_links
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.session import Session
 from stac_fastapi.core.utilities import filter_fields, get_bool_env
@@ -426,6 +425,8 @@ class CoreClient(AsyncBaseCoreClient):
         ]
 
         if redis_enable:
+            from stac_fastapi.core.redis_utils import redis_pagination_links
+
             await redis_pagination_links(
                 current_url=str(request.url),
                 token=token,
@@ -758,7 +759,7 @@ class CoreClient(AsyncBaseCoreClient):
 
         body_limit = None
         try:
-            if request.method == "POST" and request.body():
+            if request.method == "POST" and await request.body():
                 body_data = await request.json()
                 body_limit = body_data.get("limit")
         except Exception:
@@ -790,9 +791,10 @@ class CoreClient(AsyncBaseCoreClient):
                 search=search, collection_ids=search_request.collections
             )
 
+        datetime_parsed = format_datetime_range(date_str=search_request.datetime)
         try:
             search, datetime_search = self.database.apply_datetime_filter(
-                search=search, datetime=search_request.datetime
+                search=search, datetime=datetime_parsed
             )
         except (ValueError, TypeError) as e:
             # Handle invalid interval formats if return_date fails
@@ -909,6 +911,8 @@ class CoreClient(AsyncBaseCoreClient):
         links.extend(collection_links)
 
         if redis_enable:
+            from stac_fastapi.core.redis_utils import redis_pagination_links
+
             await redis_pagination_links(
                 current_url=str(request.url),
                 token=token_param,
