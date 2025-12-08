@@ -96,8 +96,11 @@ class IndexAliasLoader:
                 main_alias = self._find_main_alias(items_aliases)
                 aliases_dict = self._organize_aliases(items_aliases, main_alias)
 
-                if aliases_dict and main_alias not in result:
-                    result[main_alias] = [(aliases_dict,)]
+                if aliases_dict:
+                    if main_alias not in result:
+                        result[main_alias] = []
+
+                    result[main_alias].append((aliases_dict,))
 
         self.cache_manager.set_cache(result)
         return result

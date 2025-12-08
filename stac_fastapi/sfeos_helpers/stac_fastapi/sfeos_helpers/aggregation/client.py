@@ -313,7 +313,7 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
             )
 
         if aggregate_request.datetime:
-            search = self.database.apply_datetime_filter(
+            search, _ = self.database.apply_datetime_filter(
                 search=search, datetime=aggregate_request.datetime
             )
 
