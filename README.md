@@ -252,6 +252,7 @@ This implementation follows the [STAC API Catalogs Extension](https://github.com
 - **GET `/catalogs/{catalog_id}/collections`**: Retrieve collections within a specific catalog
 - **POST `/catalogs/{catalog_id}/collections`**: Create a new collection within a specific catalog
 - **GET `/catalogs/{catalog_id}/collections/{collection_id}`**: Retrieve a specific collection within a catalog
+- **DELETE `/catalogs/{catalog_id}/collections/{collection_id}`**: Delete a collection from a catalog (removes parent_id if multiple parents exist, deletes collection if it's the only parent)
 - **GET `/catalogs/{catalog_id}/collections/{collection_id}/items`**: Retrieve items within a collection in a catalog context
 - **GET `/catalogs/{catalog_id}/collections/{collection_id}/items/{item_id}`**: Retrieve a specific item within a catalog context
 
@@ -291,6 +292,11 @@ curl "http://localhost:8081/catalogs/earth-observation/collections/sentinel-2/it
 
 # Get specific item within a catalog
 curl "http://localhost:8081/catalogs/earth-observation/collections/sentinel-2/items/S2A_20231015_123456"
+
+# Delete a collection from a catalog
+# If the collection has multiple parent catalogs, only removes this catalog from parent_ids
+# If this is the only parent catalog, deletes the collection entirely
+curl -X DELETE "http://localhost:8081/catalogs/earth-observation/collections/sentinel-2"
 
 # Delete a catalog (collections remain intact)
 curl -X DELETE "http://localhost:8081/catalogs/earth-observation"
