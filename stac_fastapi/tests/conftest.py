@@ -467,4 +467,3 @@ def mock_datetime_env(txn_client, monkeypatch):
         txn_client.database.async_index_selector.cache_manager.clear_cache()
     yield
     monkeypatch.setenv("USE_DATETIME", "true")
-

@@ -119,9 +119,7 @@ class DatetimeIndexInserter(BaseIndexInserter):
         items.sort(key=lambda item: item["properties"][self.primary_datetime_name])
 
         await self._ensure_indexes_exist(collection_id, items)
-        await self._check_and_handle_oversized_index(
-            collection_id, items
-        )
+        await self._check_and_handle_oversized_index(collection_id, items)
 
         actions = []
         for item in items:
