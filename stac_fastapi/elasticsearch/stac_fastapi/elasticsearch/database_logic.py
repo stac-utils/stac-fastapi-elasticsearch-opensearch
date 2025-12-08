@@ -439,7 +439,9 @@ class DatabaseLogic(BaseDatabaseLogic):
         return search.filter("terms", collection=collection_ids)
 
     @staticmethod
-    def apply_datetime_filter(search: Search, datetime: Optional[str]) -> Search:
+    def apply_datetime_filter(
+        search: Search, datetime: Optional[str]
+    ) -> Tuple[Search, Dict[str, Optional[str]]]:
         """Apply a filter to search on datetime, start_datetime, and end_datetime fields.
 
         Args:
@@ -449,15 +451,15 @@ class DatabaseLogic(BaseDatabaseLogic):
         Returns:
             The filtered search object.
         """
-        datetime_search = return_date(datetime)
-
         # USE_DATETIME env var
         # True: Search by datetime, if null search by start/end datetime
         # False: Always search only by start/end datetime
         USE_DATETIME = get_bool_env("USE_DATETIME", default=True)
 
+        datetime_search = return_date(datetime)
+
         if not datetime_search:
-            return search
+            return search, datetime_search
 
         if USE_DATETIME:
             if "eq" in datetime_search:
@@ -534,7 +536,10 @@ class DatabaseLogic(BaseDatabaseLogic):
                     ),
                 ]
 
-            return search.query(Q("bool", should=should, minimum_should_match=1))
+            return (
+                search.query(Q("bool", should=should, minimum_should_match=1)),
+                datetime_search,
+            )
         else:
             if "eq" in datetime_search:
                 filter_query = Q(
@@ -568,7 +573,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                         ),
                     ],
                 )
-        return search.query(filter_query)
+            return search.query(filter_query), datetime_search
 
     @staticmethod
     def apply_bbox_filter(search: Search, bbox: List):
