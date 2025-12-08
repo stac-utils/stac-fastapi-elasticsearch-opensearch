@@ -830,7 +830,7 @@ class CoreClient(AsyncBaseCoreClient):
 
         datetime_parsed = format_datetime_range(date_str=search_request.datetime)
         try:
-            search, _ = self.database.apply_datetime_filter(
+            search, datetime_search = self.database.apply_datetime_filter(
                 search=search, datetime=datetime_parsed
             )
         except (ValueError, TypeError) as e:
@@ -910,7 +910,7 @@ class CoreClient(AsyncBaseCoreClient):
             token=token_param,
             sort=sort,
             collection_ids=getattr(search_request, "collections", None),
-            datetime_search=datetime_parsed,
+            datetime_search=datetime_search,
         )
 
         fields = getattr(search_request, "fields", None)
