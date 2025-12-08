@@ -49,3 +49,21 @@ class BaseIndexInserter(ABC):
             str: Created index name.
         """
         pass
+
+    @staticmethod
+    @abstractmethod
+    def should_create_collection_index() -> bool:
+        """Whether this strategy requires collection index creation.
+
+        Returns:
+            bool: True if strategy creates collection indexes, False otherwise.
+        """
+        pass
+
+    async def refresh_cache(self) -> None:
+        """Refresh internal cache if applicable.
+
+        Default implementation does nothing. Subclasses that maintain
+        internal caches should override this method.
+        """
+        pass

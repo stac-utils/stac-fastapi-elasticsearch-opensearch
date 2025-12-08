@@ -1657,6 +1657,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         )
         # Delete the item index for the collection
         await delete_item_index(collection_id)
+        await self.async_index_inserter.refresh_cache()
 
     async def bulk_async(
         self,
