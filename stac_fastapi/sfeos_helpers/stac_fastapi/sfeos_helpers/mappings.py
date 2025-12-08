@@ -138,6 +138,18 @@ def get_items_mappings(
         if custom_mappings is not None
         else os.getenv("STAC_FASTAPI_ES_CUSTOM_MAPPINGS")
     )
+
+    if custom_config is None:
+        mappings_file = os.getenv("STAC_FASTAPI_ES_MAPPINGS_FILE")
+        if mappings_file:
+            try:
+                with open(mappings_file, "r") as f:
+                    custom_config = f.read()
+            except Exception as e:
+                logger.error(
+                    f"Failed to read STAC_FASTAPI_ES_MAPPINGS_FILE at {mappings_file}: {e}"
+                )
+
     apply_custom_mappings(mappings, custom_config)
 
     return mappings

@@ -371,6 +371,7 @@ You can customize additional settings in your `.env` file:
 | `EXCLUDED_FROM_QUERYABLES` | Comma-separated list of fully qualified field names to exclude from the queryables endpoint and filtering. Use full paths like `properties.auth:schemes,properties.storage:schemes`. Excluded fields and their nested children will not be exposed in queryables. | None | Optional |
 | `EXCLUDED_FROM_ITEMS` | Specifies fields to exclude from STAC item responses. Supports comma-separated field names and dot notation for nested fields (e.g., `private_data,properties.confidential,assets.internal`). | `None` | Optional |
 | `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` | JSON string of custom Elasticsearch/OpenSearch property mappings to merge with defaults. See [Custom Index Mappings](#custom-index-mappings). | `None` | Optional |
+| `STAC_FASTAPI_ES_MAPPINGS_FILE` | Path to a JSON file containing custom Elasticsearch/OpenSearch property mappings to merge with defaults. See [Custom Index Mappings](#custom-index-mappings). | `None` | Optional |
 | `STAC_FASTAPI_ES_DYNAMIC_MAPPING` | Controls dynamic mapping behavior for item indices. Values: `true` (default), `false`, or `strict`. See [Custom Index Mappings](#custom-index-mappings). | `true` | Optional |
 
 
@@ -709,11 +710,17 @@ SFEOS provides environment variables to customize Elasticsearch/OpenSearch index
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` | JSON string of property mappings to merge with defaults | None |
+| `STAC_FASTAPI_ES_MAPPINGS_FILE` | Path to a JSON file containing property mappings to merge with defaults | None |
 | `STAC_FASTAPI_ES_DYNAMIC_MAPPING` | Controls dynamic mapping: `true`, `false`, or `strict` | `true` |
 
-### Custom Mappings (`STAC_FASTAPI_ES_CUSTOM_MAPPINGS`)
+### Custom Mappings
 
-Accepts a JSON string with the same structure as the default ES mappings. The custom mappings are **recursively merged** with the defaults at the root level.
+You can customize the Elasticsearch/OpenSearch mappings by providing a JSON configuration. This can be done via:
+
+1. `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` environment variable (takes precedence)
+2. `STAC_FASTAPI_ES_MAPPINGS_FILE` environment variable (file path)
+
+The configuration should have the same structure as the default ES mappings. The custom mappings are **recursively merged** with the defaults at the root level.
 
 #### Merge Behavior
 
@@ -805,6 +812,86 @@ export STAC_FASTAPI_ES_CUSTOM_MAPPINGS='{
   }
 }'
 ```
+
+**Example - Using a mappings file (recommended for complex configurations):**
+
+Instead of passing large JSON blobs via environment variables, you can use a file:
+
+```bash
+# Create a mappings file
+cat > custom-mappings.json <<EOF
+{
+  "properties": {
+    "properties": {
+      "properties": {
+        "sar:frequency_band": {"type": "keyword"},
+        "sar:center_frequency": {"type": "float"},
+        "sar:polarizations": {"type": "keyword"},
+        "sar:product_type": {"type": "keyword"},
+        "eo:cloud_cover": {"type": "float"},
+        "platform": {"type": "keyword"}
+      }
+    }
+  }
+}
+EOF
+
+# Reference the file
+export STAC_FASTAPI_ES_MAPPINGS_FILE=/path/to/custom-mappings.json
+```
+
+In Docker Compose, you can mount the file:
+
+```yaml
+services:
+  app-elasticsearch:
+    volumes:
+      - ./custom-mappings.json:/app/mappings.json:ro
+    environment:
+      - STAC_FASTAPI_ES_MAPPINGS_FILE=/app/mappings.json
+```
+
+In Kubernetes, use a ConfigMap:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: stac-mappings
+data:
+  mappings.json: |
+    {
+      "properties": {
+        "properties": {
+          "properties": {
+            "platform": {"type": "keyword"},
+            "eo:cloud_cover": {"type": "float"}
+          }
+        }
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+spec:
+  template:
+    spec:
+      containers:
+      - name: stac-fastapi
+        env:
+        - name: STAC_FASTAPI_ES_MAPPINGS_FILE
+          value: /etc/stac/mappings.json
+        volumeMounts:
+        - name: mappings
+          mountPath: /etc/stac
+      volumes:
+      - name: mappings
+        configMap:
+          name: stac-mappings
+```
+
+> [!TIP]
+> If both `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` and `STAC_FASTAPI_ES_MAPPINGS_FILE` are set, the environment variable takes precedence, allowing quick overrides during testing or troubleshooting.
 
 ### Dynamic Mapping Control (`STAC_FASTAPI_ES_DYNAMIC_MAPPING`)
 
