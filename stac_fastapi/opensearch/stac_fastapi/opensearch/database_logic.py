@@ -154,6 +154,11 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     aggregation_mapping: Dict[str, Dict[str, Any]] = AGGREGATION_MAPPING
 
+    # Private constant for the datetime property field
+    PROPERTIES_DATETIME_FIELD = "properties.datetime"
+    PROPERTIES_START_DATETIME_FIELD = "properties.start_datetime"
+    PROPERTIES_END_DATETIME_FIELD = "properties.end_datetime"
+
     """CORE LOGIC"""
 
     async def get_all_collections(
@@ -488,7 +493,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                     Q(
                         "bool",
                         filter=[
-                            Q("exists", field="properties.datetime"),
+                            Q("exists", field=DatabaseLogic.PROPERTIES_DATETIME_FIELD),
                             Q(
                                 "term",
                                 **{"properties__datetime": datetime_search["eq"]},
@@ -497,10 +502,10 @@ class DatabaseLogic(BaseDatabaseLogic):
                     ),
                     Q(
                         "bool",
-                        must_not=[Q("exists", field="properties.datetime")],
+                        must_not=[Q("exists", field=DatabaseLogic.PROPERTIES_DATETIME_FIELD)],
                         filter=[
-                            Q("exists", field="properties.start_datetime"),
-                            Q("exists", field="properties.end_datetime"),
+                            Q("exists", field=DatabaseLogic.PROPERTIES_START_DATETIME_FIELD),
+                            Q("exists", field=DatabaseLogic.PROPERTIES_END_DATETIME_FIELD),
                             Q(
                                 "range",
                                 properties__start_datetime={
@@ -522,7 +527,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                     Q(
                         "bool",
                         filter=[
-                            Q("exists", field="properties.datetime"),
+                            Q("exists", field=DatabaseLogic.PROPERTIES_DATETIME_FIELD),
                             Q(
                                 "range",
                                 properties__datetime={
@@ -534,21 +539,17 @@ class DatabaseLogic(BaseDatabaseLogic):
                     ),
                     Q(
                         "bool",
-                        must_not=[Q("exists", field="properties.datetime")],
+                        must_not=[Q("exists", field=DatabaseLogic.PROPERTIES_DATETIME_FIELD)],
                         filter=[
-                            Q("exists", field="properties.start_datetime"),
-                            Q("exists", field="properties.end_datetime"),
+                            Q("exists", field=DatabaseLogic.PROPERTIES_START_DATETIME_FIELD),
+                            Q("exists", field=DatabaseLogic.PROPERTIES_END_DATETIME_FIELD),
                             Q(
                                 "range",
-                                properties__start_datetime={
-                                    "lte": datetime_search["lte"]
-                                },
+                                properties__start_datetime={"lte": datetime_search["lte"]},
                             ),
                             Q(
                                 "range",
-                                properties__end_datetime={
-                                    "gte": datetime_search["gte"]
-                                },
+                                properties__end_datetime={"gte": datetime_search["gte"]},
                             ),
                         ],
                     ),
@@ -563,8 +564,8 @@ class DatabaseLogic(BaseDatabaseLogic):
                 filter_query = Q(
                     "bool",
                     filter=[
-                        Q("exists", field="properties.start_datetime"),
-                        Q("exists", field="properties.end_datetime"),
+                        Q("exists", field=DatabaseLogic.PROPERTIES_START_DATETIME_FIELD),
+                        Q("exists", field=DatabaseLogic.PROPERTIES_END_DATETIME_FIELD),
                         Q(
                             "range",
                             properties__start_datetime={"lte": datetime_search["eq"]},
@@ -579,8 +580,8 @@ class DatabaseLogic(BaseDatabaseLogic):
                 filter_query = Q(
                     "bool",
                     filter=[
-                        Q("exists", field="properties.start_datetime"),
-                        Q("exists", field="properties.end_datetime"),
+                        Q("exists", field=DatabaseLogic.PROPERTIES_START_DATETIME_FIELD),
+                        Q("exists", field=DatabaseLogic.PROPERTIES_END_DATETIME_FIELD),
                         Q(
                             "range",
                             properties__start_datetime={"lte": datetime_search["lte"]},
