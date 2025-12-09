@@ -445,7 +445,9 @@ class DatabaseLogic(BaseDatabaseLogic):
     @staticmethod
     def apply_collections_filter(search: Search, collection_ids: List[str]):
         """Database logic to search a list of STAC collection ids."""
-        return search.filter("terms", **{DatabaseLogic.COLLECTION_FIELD:collection_ids})
+        return search.filter(
+            "terms", **{DatabaseLogic.COLLECTION_FIELD: collection_ids}
+        )
 
     @staticmethod
     def apply_free_text_filter(search: Search, free_text_queries: Optional[List[str]]):
@@ -506,10 +508,18 @@ class DatabaseLogic(BaseDatabaseLogic):
                     ),
                     Q(
                         "bool",
-                        must_not=[Q("exists", field=DatabaseLogic.PROPERTIES_DATETIME_FIELD)],
+                        must_not=[
+                            Q("exists", field=DatabaseLogic.PROPERTIES_DATETIME_FIELD)
+                        ],
                         filter=[
-                            Q("exists", field=DatabaseLogic.PROPERTIES_START_DATETIME_FIELD),
-                            Q("exists", field=DatabaseLogic.PROPERTIES_END_DATETIME_FIELD),
+                            Q(
+                                "exists",
+                                field=DatabaseLogic.PROPERTIES_START_DATETIME_FIELD,
+                            ),
+                            Q(
+                                "exists",
+                                field=DatabaseLogic.PROPERTIES_END_DATETIME_FIELD,
+                            ),
                             Q(
                                 "range",
                                 properties__start_datetime={
@@ -543,17 +553,29 @@ class DatabaseLogic(BaseDatabaseLogic):
                     ),
                     Q(
                         "bool",
-                        must_not=[Q("exists", field=DatabaseLogic.PROPERTIES_DATETIME_FIELD)],
+                        must_not=[
+                            Q("exists", field=DatabaseLogic.PROPERTIES_DATETIME_FIELD)
+                        ],
                         filter=[
-                            Q("exists", field=DatabaseLogic.PROPERTIES_START_DATETIME_FIELD),
-                            Q("exists", field=DatabaseLogic.PROPERTIES_END_DATETIME_FIELD),
                             Q(
-                                "range",
-                                properties__start_datetime={"lte": datetime_search["lte"]},
+                                "exists",
+                                field=DatabaseLogic.PROPERTIES_START_DATETIME_FIELD,
+                            ),
+                            Q(
+                                "exists",
+                                field=DatabaseLogic.PROPERTIES_END_DATETIME_FIELD,
                             ),
                             Q(
                                 "range",
-                                properties__end_datetime={"gte": datetime_search["gte"]},
+                                properties__start_datetime={
+                                    "lte": datetime_search["lte"]
+                                },
+                            ),
+                            Q(
+                                "range",
+                                properties__end_datetime={
+                                    "gte": datetime_search["gte"]
+                                },
                             ),
                         ],
                     ),
@@ -568,7 +590,10 @@ class DatabaseLogic(BaseDatabaseLogic):
                 filter_query = Q(
                     "bool",
                     filter=[
-                        Q("exists", field=DatabaseLogic.PROPERTIES_START_DATETIME_FIELD),
+                        Q(
+                            "exists",
+                            field=DatabaseLogic.PROPERTIES_START_DATETIME_FIELD,
+                        ),
                         Q("exists", field=DatabaseLogic.PROPERTIES_END_DATETIME_FIELD),
                         Q(
                             "range",
@@ -584,7 +609,10 @@ class DatabaseLogic(BaseDatabaseLogic):
                 filter_query = Q(
                     "bool",
                     filter=[
-                        Q("exists", field=DatabaseLogic.PROPERTIES_START_DATETIME_FIELD),
+                        Q(
+                            "exists",
+                            field=DatabaseLogic.PROPERTIES_START_DATETIME_FIELD,
+                        ),
                         Q("exists", field=DatabaseLogic.PROPERTIES_END_DATETIME_FIELD),
                         Q(
                             "range",

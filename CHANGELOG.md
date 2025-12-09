@@ -11,7 +11,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 - Added catalogs route support to enable federated hierarchical catalog browsing and navigation in the STAC API. [#547](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/547)
 
+
 ### Changed
+
+- Have opensearch datetime, geometry and collections fields defined as constant strings [#553](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/553)
 
 ### Fixed
 
