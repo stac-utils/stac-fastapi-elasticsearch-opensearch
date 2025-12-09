@@ -2,6 +2,7 @@
 
 import abc
 import logging
+import os
 from copy import deepcopy
 from typing import Any, List, Optional
 
@@ -9,8 +10,9 @@ import attr
 from starlette.requests import Request
 
 from stac_fastapi.core.datetime_utils import now_to_rfc3339_str
+from stac_fastapi.core.models import Catalog
 from stac_fastapi.core.models.links import CollectionLinks
-from stac_fastapi.core.utilities import get_bool_env
+from stac_fastapi.core.utilities import get_bool_env, get_excluded_from_items
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.links import ItemLinks, resolve_links
 
@@ -108,7 +110,7 @@ class ItemSerializer(Serializer):
         else:
             assets = item.get("assets", {})
 
-        return stac_types.Item(
+        stac_item = stac_types.Item(
             type="Feature",
             stac_version=item.get("stac_version", ""),
             stac_extensions=item.get("stac_extensions", []),
@@ -120,6 +122,14 @@ class ItemSerializer(Serializer):
             links=item_links,
             assets=assets,
         )
+
+        excluded_fields = os.getenv("EXCLUDED_FROM_ITEMS")
+        if excluded_fields:
+            for field_path in excluded_fields.split(","):
+                if field_path := field_path.strip():
+                    get_excluded_from_items(stac_item, field_path)
+
+        return stac_item
 
 
 class CollectionSerializer(Serializer):
@@ -216,3 +226,57 @@ class CollectionSerializer(Serializer):
 
         # Return the stac_types.Collection object
         return stac_types.Collection(**collection)
+
+
+class CatalogSerializer(Serializer):
+    """Serialization methods for STAC catalogs."""
+
+    @classmethod
+    def stac_to_db(cls, catalog: Catalog, request: Request) -> Catalog:
+        """
+        Transform STAC Catalog to database-ready STAC catalog.
+
+        Args:
+            catalog: the STAC Catalog object to be transformed
+            request: the API request
+
+        Returns:
+            Catalog: The database-ready STAC Catalog object.
+        """
+        catalog = deepcopy(catalog)
+        catalog.links = resolve_links(catalog.links, str(request.base_url))
+        return catalog
+
+    @classmethod
+    def db_to_stac(
+        cls, catalog: dict, request: Request, extensions: Optional[List[str]] = []
+    ) -> Catalog:
+        """Transform database model to STAC catalog.
+
+        Args:
+            catalog (dict): The catalog data in dictionary form, extracted from the database.
+            request (Request): the API request
+            extensions: A list of the extension class names (`ext.__name__`) or all enabled STAC API extensions.
+
+        Returns:
+            Catalog: The STAC catalog object.
+        """
+        # Avoid modifying the input dict in-place
+        catalog = deepcopy(catalog)
+
+        # Set defaults
+        catalog.setdefault("type", "Catalog")
+        catalog.setdefault("stac_extensions", [])
+        catalog.setdefault("stac_version", "")
+        catalog.setdefault("title", "")
+        catalog.setdefault("description", "")
+
+        # Create the catalog links - for now, just resolve existing links
+        original_links = catalog.get("links", [])
+        if original_links:
+            catalog["links"] = resolve_links(original_links, str(request.base_url))
+        else:
+            catalog["links"] = []
+
+        # Return the Catalog object
+        return Catalog(**catalog)

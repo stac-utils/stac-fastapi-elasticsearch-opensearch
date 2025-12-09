@@ -1,5 +1,3 @@
-# stac-fastapi-elasticsearch-opensearch
-
 <!-- markdownlint-disable MD033 MD041 -->
 
 
@@ -30,6 +28,7 @@ The following organizations have contributed time and/or funding to support the 
 
 ## Latest News
 
+- **11/07/2025:** 🌍 The SFEOS STAC Viewer is now available at: https://healy-hyperspatial.github.io/sfeos-web. Use this site to examine your data and test your STAC API!
 - **10/24/2025:** Added `previous_token` pagination using Redis for efficient navigation. This feature allows users to navigate backwards through large result sets by storing pagination state in Redis. To use this feature, ensure Redis is configured (see [Redis for navigation](#redis-for-navigation)) and set `REDIS_ENABLE=true` in your environment.
 - **10/23/2025:** The `EXCLUDED_FROM_QUERYABLES` environment variable was added to exclude fields from the `queryables` endpoint. See [docs](#excluding-fields-from-queryables).
 - **10/15/2025:** 🚀 SFEOS Tools v0.1.0 Released! - The new `sfeos-tools` CLI is now available on [PyPI](https://pypi.org/project/sfeos-tools/)
@@ -93,7 +92,9 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
   - [Technologies](#technologies)
   - [Table of Contents](#table-of-contents)
   - [Collection Search Extensions](#collection-search-extensions)
+  - [Catalogs Route](#catalogs-route)
   - [Documentation & Resources](#documentation--resources)
+  - [SFEOS STAC Viewer](#sfeos-stac-viewer)
   - [Package Structure](#package-structure)
   - [Examples](#examples)
   - [Performance](#performance)
@@ -137,11 +138,38 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
   - [Gitter Chat](https://app.gitter.im/#/room/#stac-fastapi-elasticsearch_community:gitter.im) - For real-time discussions
   - [GitHub Discussions](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/discussions) - For longer-form questions and answers
 
+## SFEOS STAC Viewer
+
+The SFEOS STAC viewer is a web-based application for examining and testing STAC APIs. It provides an interactive interface to explore geospatial data catalogs, visualize spatial extents, and test API endpoints.
+
+### Access
+
+The viewer is available at: https://healy-hyperspatial.github.io/sfeos-web/
+
+### Features
+
+- Browse collections and items interactively
+- Interactive map visualization of spatial extents
+- Test API endpoints directly from the interface
+- Search and filter capabilities for exploring data
+
+### Usage
+
+Navigate to the URL above and connect to your SFEOS API instance by providing the base URL of your STAC API. This is done with the `API SERVER` button on the right side of the page. 
+
+You can also override the default STAC API URL by appending the `stacApiUrl` parameter to the application URL. For example:
+
+https://healy-hyperspatial.github.io/sfeos-web?stacApiUrl=http://localhost:8080
+
+**Note**: The parameter name `stacApiUrl` is case-sensitive. This allows you to connect to different STAC API servers without modifying the web app configuration.
+
 ## Collection Search Extensions
 
 SFEOS provides enhanced collection search capabilities through two primary routes:
 - **GET/POST `/collections`**: The standard STAC endpoint with extended query parameters
 - **GET/POST `/collections-search`**: A custom endpoint that supports the same parameters, created to avoid conflicts with the STAC Transactions extension if enabled (which uses POST `/collections` for collection creation)
+
+The `/collections-search` endpoint follows the [STAC API Collection Search Endpoint](https://github.com/Healy-Hyperspatial/stac-api-extensions-collection-search-endpoint) specification, which provides a dedicated, conflict-free mechanism for advanced collection searching.
 
 These endpoints support advanced collection discovery features including:
 
@@ -200,6 +228,96 @@ These extensions make it easier to build user interfaces that display and naviga
 > Text fields like `title` and `description` are not sortable by default as they use text analysis for better search capabilities. Attempting to sort on these fields will result in a user-friendly error message explaining which fields are sortable and how to make additional fields sortable by updating the mappings.
 >
 > **Important**: Adding keyword fields to make text fields sortable can significantly increase the index size, especially for large text fields. Consider the storage implications when deciding which fields to make sortable.
+
+
+## Catalogs Route
+
+SFEOS supports federated hierarchical catalog browsing through the `/catalogs` endpoint, enabling users to navigate through STAC catalog structures in a tree-like fashion. This extension allows for organized discovery and browsing of collections and sub-catalogs.
+
+This implementation follows the [STAC API Catalogs Extension](https://github.com/Healy-Hyperspatial/stac-api-extensions-catalogs) specification, which enables a Federated STAC API architecture with a "Hub and Spoke" structure.
+
+### Features
+
+- **Hierarchical Navigation**: Browse catalogs and sub-catalogs in a parent-child relationship structure
+- **Collection Discovery**: Access collections within specific catalog contexts
+- **STAC API Compliance**: Follows STAC specification for catalog objects and linking
+- **Flexible Querying**: Support for standard STAC API query parameters when browsing collections within catalogs
+
+### Endpoints
+
+- **GET `/catalogs`**: Retrieve the root catalog and its child catalogs
+- **POST `/catalogs`**: Create a new catalog (requires appropriate permissions)
+- **GET `/catalogs/{catalog_id}`**: Retrieve a specific catalog and its children
+- **DELETE `/catalogs/{catalog_id}`**: Delete a catalog (optionally cascade delete all collections)
+- **GET `/catalogs/{catalog_id}/collections`**: Retrieve collections within a specific catalog
+- **POST `/catalogs/{catalog_id}/collections`**: Create a new collection within a specific catalog
+- **GET `/catalogs/{catalog_id}/collections/{collection_id}`**: Retrieve a specific collection within a catalog
+- **GET `/catalogs/{catalog_id}/collections/{collection_id}/items`**: Retrieve items within a collection in a catalog context
+- **GET `/catalogs/{catalog_id}/collections/{collection_id}/items/{item_id}`**: Retrieve a specific item within a catalog context
+
+### Usage Examples
+
+```bash
+# Get root catalog
+curl "http://localhost:8081/catalogs"
+
+# Get specific catalog
+curl "http://localhost:8081/catalogs/earth-observation"
+
+# Get collections in a catalog
+curl "http://localhost:8081/catalogs/earth-observation/collections"
+
+# Create a new collection within a catalog
+curl -X POST "http://localhost:8081/catalogs/earth-observation/collections" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "landsat-9",
+    "type": "Collection",
+    "stac_version": "1.0.0",
+    "description": "Landsat 9 satellite imagery collection",
+    "title": "Landsat 9",
+    "license": "MIT",
+    "extent": {
+      "spatial": {"bbox": [[-180, -90, 180, 90]]},
+      "temporal": {"interval": [["2021-09-27T00:00:00Z", null]]}
+    }
+  }'
+
+# Get specific collection within a catalog
+curl "http://localhost:8081/catalogs/earth-observation/collections/sentinel-2"
+
+# Get items in a collection within a catalog
+curl "http://localhost:8081/catalogs/earth-observation/collections/sentinel-2/items"
+
+# Get specific item within a catalog
+curl "http://localhost:8081/catalogs/earth-observation/collections/sentinel-2/items/S2A_20231015_123456"
+
+# Delete a catalog (collections remain intact)
+curl -X DELETE "http://localhost:8081/catalogs/earth-observation"
+
+# Delete a catalog and all its collections (cascade delete)
+curl -X DELETE "http://localhost:8081/catalogs/earth-observation?cascade=true"
+```
+
+### Delete Catalog Parameters
+
+The DELETE endpoint supports the following query parameter:
+
+- **`cascade`** (boolean, default: `false`): 
+  - If `false`: Only deletes the catalog. Collections linked to the catalog remain in the database but lose their catalog link.
+  - If `true`: Deletes the catalog AND all collections linked to it. Use with caution as this is a destructive operation.
+
+### Response Structure
+
+Catalog responses include:
+- **Catalog metadata**: ID, title, description, and other catalog properties
+- **Child catalogs**: Links to sub-catalogs for hierarchical navigation
+- **Collections**: Links to collections contained within the catalog
+- **STAC links**: Properly formatted STAC API links for navigation
+
+This feature enables building user interfaces that provide organized, hierarchical browsing of STAC collections, making it easier for users to discover and navigate through large collections organized by theme, provider, or any other categorization scheme.
+
+> **Configuration**: The catalogs route can be enabled or disabled by setting the `ENABLE_CATALOGS_ROUTE` environment variable to `true` or `false`. By default, this endpoint is **disabled**.
 
 
 ## Package Structure
@@ -335,13 +453,17 @@ You can customize additional settings in your `.env` file:
 | `ENABLE_COLLECTIONS_SEARCH`  | Enable collection search extensions (sort, fields, free text search, structured filtering, and datetime filtering) on the core `/collections` endpoint. | `true`                   | Optional                                                                                    |
 | `ENABLE_COLLECTIONS_SEARCH_ROUTE` | Enable the custom `/collections-search` endpoint (both GET and POST methods). When disabled, the custom endpoint will not be available, but collection search extensions will still be available on the core `/collections` endpoint if `ENABLE_COLLECTIONS_SEARCH` is true. | `false` | Optional |
 | `ENABLE_TRANSACTIONS_EXTENSIONS` | Enables or disables the Transactions and Bulk Transactions API extensions. This is useful for deployments where mutating the catalog via the API should be prevented. If set to `true`, the POST `/collections` route for search will be unavailable in the API. | `true` | Optional |
+| `ENABLE_CATALOGS_ROUTE` | Enable the `/catalogs` endpoint for federated hierarchical catalog browsing and navigation. When enabled, provides access to federated STAC API architecture with hub-and-spoke pattern. | `false` | Optional |
 | `STAC_GLOBAL_COLLECTION_MAX_LIMIT` | Configures the maximum number of STAC collections that can be returned in a single search request. | N/A | Optional |
 | `STAC_DEFAULT_COLLECTION_LIMIT` | Configures the default number of STAC collections returned when no limit parameter is specified in the request. | `300` | Optional |
 | `STAC_GLOBAL_ITEM_MAX_LIMIT` | Configures the maximum number of STAC items that can be returned in a single search request. | N/A | Optional |
 | `STAC_DEFAULT_ITEM_LIMIT` | Configures the default number of STAC items returned when no limit parameter is specified in the request. | `10` | Optional |
 | `STAC_INDEX_ASSETS` | Controls if Assets are indexed when added to Elasticsearch/Opensearch. This allows asset fields to be included in search queries. | `false` | Optional |
 | `USE_DATETIME` | Configures the datetime search behavior in SFEOS. When enabled, searches both datetime field and falls back to start_datetime/end_datetime range for items with null datetime. When disabled, searches only by start_datetime/end_datetime range. | `true` | Optional |
+| `USE_DATETIME_NANOS` | Enables nanosecond precision handling for `datetime` field searches as per the `date_nanos` type. When `False`, it uses 3 millisecond precision as per the type `date`. | `true` | Optional |
 | `EXCLUDED_FROM_QUERYABLES` | Comma-separated list of fully qualified field names to exclude from the queryables endpoint and filtering. Use full paths like `properties.auth:schemes,properties.storage:schemes`. Excluded fields and their nested children will not be exposed in queryables. | None | Optional |
+| `EXCLUDED_FROM_ITEMS` | Specifies fields to exclude from STAC item responses. Supports comma-separated field names and dot notation for nested fields (e.g., `private_data,properties.confidential,assets.internal`). | `None` | Optional |
+
 
 > [!NOTE]
 > The variables `ES_HOST`, `ES_PORT`, `ES_USE_SSL`, `ES_VERIFY_CERTS` and `ES_TIMEOUT` apply to both Elasticsearch and OpenSearch backends, so there is no need to rename the key names to `OS_` even if you're using OpenSearch.

@@ -6,15 +6,13 @@ build-backend = "hatchling.build"
 name = "sfeos_helpers"
 description = "Helper library for the Elasticsearch and Opensearch stac-fastapi backends."
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = []
 classifiers = [
     "Intended Audience :: Developers",
     "Intended Audience :: Information Technology",
     "Intended Audience :: Science/Research",
-    "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
@@ -31,7 +29,7 @@ keywords = [
 ]
 dynamic = ["version"]
 dependencies = [
-    "stac-fastapi.core==6.7.1",
+    "stac-fastapi.core==6.7.6",
 ]
 
 [project.urls]

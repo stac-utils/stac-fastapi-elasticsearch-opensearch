@@ -15,6 +15,7 @@ from opensearchpy.helpers.query import Q
 from opensearchpy.helpers.search import Search
 from starlette.requests import Request
 
+import stac_fastapi.sfeos_helpers.filter as filter_module
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon, get_bool_env
@@ -27,7 +28,6 @@ from stac_fastapi.opensearch.config import (
     AsyncOpensearchSettings as AsyncSearchSettings,
 )
 from stac_fastapi.opensearch.config import OpensearchSettings as SyncSearchSettings
-from stac_fastapi.sfeos_helpers import filter as filter_module
 from stac_fastapi.sfeos_helpers.database import (
     add_bbox_shape_to_collection,
     apply_collections_bbox_filter_shared,
@@ -1727,4 +1727,133 @@ class DatabaseLogic(BaseDatabaseLogic):
             index=COLLECTIONS_INDEX,
             body={"query": {"match_all": {}}},
             wait_for_completion=True,
+        )
+
+    """CATALOGS LOGIC"""
+
+    async def get_all_catalogs(
+        self,
+        token: Optional[str],
+        limit: int,
+        request: Any = None,
+        sort: Optional[List[Dict[str, Any]]] = None,
+    ) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[int]]:
+        """Retrieve a list of catalogs from OpenSearch, supporting pagination.
+
+        Args:
+            token (Optional[str]): The pagination token.
+            limit (int): The number of results to return.
+            request (Any, optional): The FastAPI request object. Defaults to None.
+            sort (Optional[List[Dict[str, Any]]], optional): Optional sort parameter. Defaults to None.
+
+        Returns:
+            A tuple of (catalogs, next pagination token if any, optional count).
+        """
+        # Define sortable fields for catalogs
+        sortable_fields = ["id"]
+
+        # Format the sort parameter
+        formatted_sort = []
+        if sort:
+            for item in sort:
+                field = item.get("field")
+                direction = item.get("direction", "asc")
+                if field and field in sortable_fields:
+                    formatted_sort.append({field: {"order": direction}})
+
+        if not formatted_sort:
+            formatted_sort = [{"id": {"order": "asc"}}]
+
+        body = {
+            "sort": formatted_sort,
+            "size": limit,
+            "query": {"term": {"type": "Catalog"}},
+        }
+
+        # Handle search_after token
+        search_after = None
+        if token:
+            try:
+                search_after = token.split("|")
+                if len(search_after) != len(formatted_sort):
+                    search_after = None
+            except Exception:
+                search_after = None
+
+            if search_after is not None:
+                body["search_after"] = search_after
+
+        # Search for catalogs in collections index
+        response = await self.client.search(
+            index=COLLECTIONS_INDEX,
+            body=body,
+        )
+
+        hits = response["hits"]["hits"]
+        catalogs = [hit["_source"] for hit in hits]
+
+        next_token = None
+        if len(hits) == limit:
+            next_token_values = hits[-1].get("sort")
+            if next_token_values:
+                next_token = "|".join(str(val) for val in next_token_values)
+
+        # Get the total count
+        matched = (
+            response["hits"]["total"]["value"]
+            if response["hits"]["total"]["relation"] == "eq"
+            else None
+        )
+
+        return catalogs, next_token, matched
+
+    async def create_catalog(self, catalog: Dict, refresh: bool = False) -> None:
+        """Create a catalog in OpenSearch.
+
+        Args:
+            catalog (Dict): The catalog document to create.
+            refresh (bool): Whether to refresh the index after creation.
+        """
+        await self.client.index(
+            index=COLLECTIONS_INDEX,
+            id=catalog.get("id"),
+            body=catalog,
+            refresh=refresh,
+        )
+
+    async def find_catalog(self, catalog_id: str) -> Dict:
+        """Find a catalog in OpenSearch by ID.
+
+        Args:
+            catalog_id (str): The ID of the catalog to find.
+
+        Returns:
+            Dict: The catalog document.
+
+        Raises:
+            NotFoundError: If the catalog is not found.
+        """
+        try:
+            response = await self.client.get(
+                index=COLLECTIONS_INDEX,
+                id=catalog_id,
+            )
+            # Verify it's a catalog
+            if response["_source"].get("type") != "Catalog":
+                raise NotFoundError(f"Catalog {catalog_id} not found")
+            return response["_source"]
+        except exceptions.NotFoundError:
+            raise NotFoundError(f"Catalog {catalog_id} not found")
+
+    async def delete_catalog(self, catalog_id: str, refresh: bool = False) -> None:
+        """Delete a catalog from OpenSearch.
+
+        Args:
+            catalog_id (str): The ID of the catalog to delete.
+            refresh (bool): Whether to refresh the index after deletion.
+        """
+        await self.client.delete(
+            index=COLLECTIONS_INDEX,
+            id=catalog_id,
+            refresh=refresh,
         )

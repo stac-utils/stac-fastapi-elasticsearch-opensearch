@@ -8,8 +8,10 @@ import logging
 import re
 from datetime import date
 from datetime import datetime as datetime_type
+from datetime import timezone
 from typing import Dict, Optional, Union
 
+from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.types.rfc3339 import DateTimeType
 
 logger = logging.getLogger(__name__)
@@ -37,38 +39,103 @@ def return_date(
             always containing 'gte' and 'lte' keys.
     """
     result: Dict[str, Optional[str]] = {"gte": None, "lte": None}
-
+    use_datetime_nanos = get_bool_env("USE_DATETIME_NANOS", default=True)
     if interval is None:
         return result
 
-    if isinstance(interval, str):
-        if "/" in interval:
-            parts = interval.split("/")
-            result["gte"] = (
-                parts[0] if parts[0] != ".." else datetime_type.min.isoformat() + "Z"
+    if use_datetime_nanos:
+        MIN_DATE_NANOS = datetime_type(1970, 1, 1, tzinfo=timezone.utc)
+        MAX_DATE_NANOS = datetime_type(
+            2262, 4, 11, 23, 47, 16, 854775, tzinfo=timezone.utc
+        )
+
+        if isinstance(interval, str):
+            if "/" in interval:
+                parts = interval.split("/")
+                result["gte"] = (
+                    parts[0] if parts[0] != ".." else MIN_DATE_NANOS.isoformat()
+                )
+                result["lte"] = (
+                    parts[1]
+                    if len(parts) > 1 and parts[1] != ".."
+                    else MAX_DATE_NANOS.isoformat()
+                )
+            else:
+                converted_time = interval if interval != ".." else None
+                result["gte"] = result["lte"] = converted_time
+            return result
+
+        if isinstance(interval, datetime_type):
+            dt_utc = (
+                interval.astimezone(timezone.utc)
+                if interval.tzinfo
+                else interval.replace(tzinfo=timezone.utc)
             )
-            result["lte"] = (
-                parts[1]
-                if len(parts) > 1 and parts[1] != ".."
-                else datetime_type.max.isoformat() + "Z"
-            )
-        else:
-            converted_time = interval if interval != ".." else None
-            result["gte"] = result["lte"] = converted_time
+            if dt_utc < MIN_DATE_NANOS:
+                dt_utc = MIN_DATE_NANOS
+            elif dt_utc > MAX_DATE_NANOS:
+                dt_utc = MAX_DATE_NANOS
+            datetime_iso = dt_utc.isoformat().replace("+00:00", "Z")
+            result["gte"] = result["lte"] = datetime_iso
+        elif isinstance(interval, tuple):
+            start, end = interval
+            # Ensure datetimes are converted to UTC and formatted with 'Z'
+            if start:
+                start_utc = (
+                    start.astimezone(timezone.utc)
+                    if start.tzinfo
+                    else start.replace(tzinfo=timezone.utc)
+                )
+                if start_utc < MIN_DATE_NANOS:
+                    start_utc = MIN_DATE_NANOS
+                elif start_utc > MAX_DATE_NANOS:
+                    start_utc = MAX_DATE_NANOS
+                result["gte"] = start_utc.isoformat().replace("+00:00", "Z")
+            if end:
+                end_utc = (
+                    end.astimezone(timezone.utc)
+                    if end.tzinfo
+                    else end.replace(tzinfo=timezone.utc)
+                )
+                if end_utc < MIN_DATE_NANOS:
+                    end_utc = MIN_DATE_NANOS
+                elif end_utc > MAX_DATE_NANOS:
+                    end_utc = MAX_DATE_NANOS
+                result["lte"] = end_utc.isoformat().replace("+00:00", "Z")
+
         return result
 
-    if isinstance(interval, datetime_type):
-        datetime_iso = interval.isoformat()
-        result["gte"] = result["lte"] = datetime_iso
-    elif isinstance(interval, tuple):
-        start, end = interval
-        # Ensure datetimes are converted to UTC and formatted with 'Z'
-        if start:
-            result["gte"] = start.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
-        if end:
-            result["lte"] = end.strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+    else:
+        if isinstance(interval, str):
+            if "/" in interval:
+                parts = interval.split("/")
+                result["gte"] = (
+                    parts[0]
+                    if parts[0] != ".."
+                    else datetime_type.min.isoformat() + "Z"
+                )
+                result["lte"] = (
+                    parts[1]
+                    if len(parts) > 1 and parts[1] != ".."
+                    else datetime_type.max.isoformat() + "Z"
+                )
+            else:
+                converted_time = interval if interval != ".." else None
+                result["gte"] = result["lte"] = converted_time
+            return result
 
-    return result
+        if isinstance(interval, datetime_type):
+            datetime_iso = interval.isoformat()
+            result["gte"] = result["lte"] = datetime_iso
+        elif isinstance(interval, tuple):
+            start, end = interval
+            # Ensure datetimes are converted to UTC and formatted with 'Z'
+            if start:
+                result["gte"] = start.isoformat().replace("+00:00", "Z")
+            if end:
+                result["lte"] = end.isoformat().replace("+00:00", "Z")
+
+        return result
 
 
 def extract_date(date_str: str) -> date:

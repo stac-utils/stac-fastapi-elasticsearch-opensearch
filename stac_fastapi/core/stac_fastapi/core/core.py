@@ -24,8 +24,11 @@ from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.datetime_utils import format_datetime_range
 from stac_fastapi.core.models.links import PagingLinks
-from stac_fastapi.core.redis_utils import redis_pagination_links
-from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
+from stac_fastapi.core.serializers import (
+    CatalogSerializer,
+    CollectionSerializer,
+    ItemSerializer,
+)
 from stac_fastapi.core.session import Session
 from stac_fastapi.core.utilities import filter_fields, get_bool_env
 from stac_fastapi.extensions.core.transaction import AsyncBaseTransactionsClient
@@ -82,11 +85,23 @@ class CoreClient(AsyncBaseCoreClient):
     collection_serializer: Type[CollectionSerializer] = attr.ib(
         default=CollectionSerializer
     )
+    catalog_serializer: Type[CatalogSerializer] = attr.ib(default=CatalogSerializer)
     post_request_model = attr.ib(default=BaseSearchPostRequest)
     stac_version: str = attr.ib(default=STAC_VERSION)
     landing_page_id: str = attr.ib(default="stac-fastapi")
     title: str = attr.ib(default="stac-fastapi")
     description: str = attr.ib(default="stac-fastapi")
+
+    def extension_is_enabled(self, extension_name: str) -> bool:
+        """Check if an extension is enabled by checking self.extensions.
+
+        Args:
+            extension_name: Name of the extension class to check for.
+
+        Returns:
+            True if the extension is in self.extensions, False otherwise.
+        """
+        return any(ext.__class__.__name__ == extension_name for ext in self.extensions)
 
     def _landing_page(
         self,
@@ -137,20 +152,6 @@ class CoreClient(AsyncBaseCoreClient):
                     "href": urljoin(base_url, "search"),
                     "method": "POST",
                 },
-                {
-                    "rel": "collections-search",
-                    "type": "application/json",
-                    "title": "Collections Search",
-                    "href": urljoin(base_url, "collections-search"),
-                    "method": "GET",
-                },
-                {
-                    "rel": "collections-search",
-                    "type": "application/json",
-                    "title": "Collections Search",
-                    "href": urljoin(base_url, "collections-search"),
-                    "method": "POST",
-                },
             ],
             stac_extensions=extension_schemas,
         )
@@ -165,6 +166,7 @@ class CoreClient(AsyncBaseCoreClient):
             API landing page, serving as an entry point to the API.
         """
         request: Request = kwargs["request"]
+
         base_url = get_base_url(request)
         landing_page = self._landing_page(
             base_url=base_url,
@@ -200,6 +202,36 @@ class CoreClient(AsyncBaseCoreClient):
                         "href": urljoin(base_url, "aggregations"),
                     },
                 ]
+            )
+
+        if self.extension_is_enabled("CollectionsSearchEndpointExtension"):
+            landing_page["links"].extend(
+                [
+                    {
+                        "rel": "collections-search",
+                        "type": "application/json",
+                        "title": "Collections Search",
+                        "href": urljoin(base_url, "collections-search"),
+                        "method": "GET",
+                    },
+                    {
+                        "rel": "collections-search",
+                        "type": "application/json",
+                        "title": "Collections Search",
+                        "href": urljoin(base_url, "collections-search"),
+                        "method": "POST",
+                    },
+                ]
+            )
+
+        if self.extension_is_enabled("CatalogsExtension"):
+            landing_page["links"].append(
+                {
+                    "rel": "catalogs",
+                    "type": "application/json",
+                    "title": "Catalogs",
+                    "href": urljoin(base_url, "catalogs"),
+                }
             )
 
         # Add OpenAPI URL
@@ -420,6 +452,8 @@ class CoreClient(AsyncBaseCoreClient):
         ]
 
         if redis_enable:
+            from stac_fastapi.core.redis_utils import redis_pagination_links
+
             await redis_pagination_links(
                 current_url=str(request.url),
                 token=token,
@@ -752,7 +786,7 @@ class CoreClient(AsyncBaseCoreClient):
 
         body_limit = None
         try:
-            if request.method == "POST" and request.body():
+            if request.method == "POST" and await request.body():
                 body_data = await request.json()
                 body_limit = body_data.get("limit")
         except Exception:
@@ -784,9 +818,10 @@ class CoreClient(AsyncBaseCoreClient):
                 search=search, collection_ids=search_request.collections
             )
 
+        datetime_parsed = format_datetime_range(date_str=search_request.datetime)
         try:
             search, datetime_search = self.database.apply_datetime_filter(
-                search=search, datetime=search_request.datetime
+                search=search, datetime=datetime_parsed
             )
         except (ValueError, TypeError) as e:
             # Handle invalid interval formats if return_date fails
@@ -830,7 +865,7 @@ class CoreClient(AsyncBaseCoreClient):
                 search = await self.database.apply_cql2_filter(search, cql2_filter)
             except Exception as e:
                 raise HTTPException(
-                    status_code=400, detail=f"Error with cql2_json filter: {e}"
+                    status_code=400, detail=f"Error with cql2 filter: {e}"
                 )
 
         if hasattr(search_request, "q"):
@@ -897,6 +932,8 @@ class CoreClient(AsyncBaseCoreClient):
         links.extend(collection_links)
 
         if redis_enable:
+            from stac_fastapi.core.redis_utils import redis_pagination_links
+
             await redis_pagination_links(
                 current_url=str(request.url),
                 token=token_param,
