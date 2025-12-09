@@ -28,8 +28,6 @@ from stac_fastapi.core.queryables import (
     QueryablesCache,
     get_properties_from_cql2_filter,
 )
-from stac_fastapi.core.redis_utils import redis_pagination_links
-from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.serializers import (
     CatalogSerializer,
     CollectionSerializer,
@@ -101,6 +99,7 @@ class CoreClient(AsyncBaseCoreClient):
     def __attrs_post_init__(self):
         """Initialize the queryables cache."""
         self.queryables_cache = QueryablesCache(self.database)
+
     def extension_is_enabled(self, extension_name: str) -> bool:
         """Check if an extension is enabled by checking self.extensions.
 
