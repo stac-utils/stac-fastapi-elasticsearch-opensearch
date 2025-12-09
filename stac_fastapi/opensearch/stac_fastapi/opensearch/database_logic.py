@@ -154,10 +154,14 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     aggregation_mapping: Dict[str, Dict[str, Any]] = AGGREGATION_MAPPING
 
-    # Private constant for the datetime property field
+    # constants for field names
+    # they are used in multiple methods
+    # and could be overwritten in subclasses used with alternate opensearch mappings.
     PROPERTIES_DATETIME_FIELD = "properties.datetime"
     PROPERTIES_START_DATETIME_FIELD = "properties.start_datetime"
     PROPERTIES_END_DATETIME_FIELD = "properties.end_datetime"
+    COLLECTION_FIELD = "collection"
+    GEOMETRY_FIELD = "geometry"
 
     """CORE LOGIC"""
 
@@ -441,7 +445,7 @@ class DatabaseLogic(BaseDatabaseLogic):
     @staticmethod
     def apply_collections_filter(search: Search, collection_ids: List[str]):
         """Database logic to search a list of STAC collection ids."""
-        return search.filter("terms", collection=collection_ids)
+        return search.filter("terms", **{DatabaseLogic.COLLECTION_FIELD:collection_ids})
 
     @staticmethod
     def apply_free_text_filter(search: Search, free_text_queries: Optional[List[str]]):
@@ -613,7 +617,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             Q(
                 {
                     "geo_shape": {
-                        "geometry": {
+                        DatabaseLogic.GEOMETRY_FIELD: {
                             "shape": {
                                 "type": "polygon",
                                 "coordinates": bbox2polygon(*bbox),
