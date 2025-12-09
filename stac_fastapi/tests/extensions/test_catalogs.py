@@ -993,6 +993,116 @@ async def test_catalog_links_contain_all_collections(
 
 
 @pytest.mark.asyncio
+async def test_delete_catalog_no_cascade_orphans_collections(
+    catalogs_app_client, load_test_data
+):
+    """Test that deleting a catalog without cascade makes collections root-level orphans."""
+    # Create a catalog
+    test_catalog = load_test_data("test_catalog.json")
+    catalog_id = f"test-catalog-{uuid.uuid4()}"
+    test_catalog["id"] = catalog_id
+    test_catalog["links"] = [
+        link for link in test_catalog.get("links", []) if link.get("rel") != "child"
+    ]
+
+    catalog_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert catalog_resp.status_code == 201
+
+    # Create a collection in the catalog
+    test_collection = load_test_data("test_collection.json")
+    collection_id = f"test-collection-{uuid.uuid4()}"
+    test_collection["id"] = collection_id
+
+    create_resp = await catalogs_app_client.post(
+        f"/catalogs/{catalog_id}/collections", json=test_collection
+    )
+    assert create_resp.status_code == 201
+
+    # Delete the catalog without cascade (default behavior)
+    delete_resp = await catalogs_app_client.delete(f"/catalogs/{catalog_id}")
+    assert delete_resp.status_code == 204
+
+    # Verify the collection still exists
+    get_resp = await catalogs_app_client.get(f"/collections/{collection_id}")
+    assert get_resp.status_code == 200
+
+    # Verify the collection is now a root-level orphan (accessible from /collections)
+    collections_resp = await catalogs_app_client.get("/collections")
+    assert collections_resp.status_code == 200
+    collections_data = collections_resp.json()
+    collection_ids = [col["id"] for col in collections_data.get("collections", [])]
+    assert (
+        collection_id in collection_ids
+    ), "Orphaned collection should appear in root /collections endpoint"
+
+    # Verify the collection no longer has a catalog link to the deleted catalog
+    collection_data = get_resp.json()
+    collection_links = collection_data.get("links", [])
+    catalog_link = None
+    for link in collection_links:
+        if link.get("rel") == "catalog" and catalog_id in link.get("href", ""):
+            catalog_link = link
+            break
+
+    assert (
+        catalog_link is None
+    ), "Orphaned collection should not have link to deleted catalog"
+
+
+@pytest.mark.asyncio
+async def test_delete_catalog_no_cascade_multi_parent_collection(
+    catalogs_app_client, load_test_data
+):
+    """Test that deleting a catalog without cascade preserves collections with other parents."""
+    # Create two catalogs
+    catalog_ids = []
+    for i in range(2):
+        test_catalog = load_test_data("test_catalog.json")
+        catalog_id = f"test-catalog-{uuid.uuid4()}-{i}"
+        test_catalog["id"] = catalog_id
+
+        catalog_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+        assert catalog_resp.status_code == 201
+        catalog_ids.append(catalog_id)
+
+    # Create a collection in the first catalog
+    test_collection = load_test_data("test_collection.json")
+    collection_id = f"test-collection-{uuid.uuid4()}"
+    test_collection["id"] = collection_id
+
+    create_resp = await catalogs_app_client.post(
+        f"/catalogs/{catalog_ids[0]}/collections", json=test_collection
+    )
+    assert create_resp.status_code == 201
+
+    # Add the collection to the second catalog
+    add_resp = await catalogs_app_client.post(
+        f"/catalogs/{catalog_ids[1]}/collections", json=test_collection
+    )
+    assert add_resp.status_code == 201
+
+    # Delete the first catalog without cascade
+    delete_resp = await catalogs_app_client.delete(f"/catalogs/{catalog_ids[0]}")
+    assert delete_resp.status_code == 204
+
+    # Verify the collection still exists
+    get_resp = await catalogs_app_client.get(f"/collections/{collection_id}")
+    assert get_resp.status_code == 200
+
+    # Verify the collection is still accessible from the second catalog
+    get_from_catalog_resp = await catalogs_app_client.get(
+        f"/catalogs/{catalog_ids[1]}/collections/{collection_id}"
+    )
+    assert get_from_catalog_resp.status_code == 200
+
+    # Verify the collection is NOT accessible from the deleted catalog
+    get_from_deleted_resp = await catalogs_app_client.get(
+        f"/catalogs/{catalog_ids[0]}/collections/{collection_id}"
+    )
+    assert get_from_deleted_resp.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_parent_ids_not_exposed_to_client(catalogs_app_client, load_test_data):
     """Test that parent_ids field is not exposed in API responses."""
     # Create a catalog
