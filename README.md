@@ -28,6 +28,7 @@ The following organizations have contributed time and/or funding to support the 
 
 ## Latest News
 
+- **12/09/2025:** Catalogs extension merged to main! The `/catalogs` endpoint is now available (optional via `ENABLE_CATALOGS_EXTENSION` environment variable) to enable federated hierarchical catalog browsing and navigation.
 - **11/07/2025:** 🌍 The SFEOS STAC Viewer is now available at: https://healy-hyperspatial.github.io/sfeos-web. Use this site to examine your data and test your STAC API!
 - **10/24/2025:** Added `previous_token` pagination using Redis for efficient navigation. This feature allows users to navigate backwards through large result sets by storing pagination state in Redis. To use this feature, ensure Redis is configured (see [Redis for navigation](#redis-for-navigation)) and set `REDIS_ENABLE=true` in your environment.
 - **10/23/2025:** The `EXCLUDED_FROM_QUERYABLES` environment variable was added to exclude fields from the `queryables` endpoint. See [docs](#excluding-fields-from-queryables).
