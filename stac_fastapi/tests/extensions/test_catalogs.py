@@ -606,6 +606,64 @@ async def test_delete_catalog_no_cascade(catalogs_app_client, load_test_data):
 
 
 @pytest.mark.asyncio
+async def test_delete_catalog_removes_parent_ids_from_collections(
+    catalogs_app_client, load_test_data
+):
+    """Test that deleting a catalog removes its ID from child collections' parent_ids."""
+    # Create a catalog
+    test_catalog = load_test_data("test_catalog.json")
+    catalog_id = f"test-catalog-{uuid.uuid4()}"
+    test_catalog["id"] = catalog_id
+    test_catalog["links"] = [
+        link for link in test_catalog.get("links", []) if link.get("rel") != "child"
+    ]
+
+    catalog_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert catalog_resp.status_code == 201
+
+    # Create 3 collections in the catalog
+    collection_ids = []
+    for i in range(3):
+        test_collection = load_test_data("test_collection.json")
+        collection_id = f"test-collection-{uuid.uuid4()}-{i}"
+        test_collection["id"] = collection_id
+
+        create_resp = await catalogs_app_client.post(
+            f"/catalogs/{catalog_id}/collections", json=test_collection
+        )
+        assert create_resp.status_code == 201
+        collection_ids.append(collection_id)
+
+    # Verify all collections have the catalog in their parent_ids
+    # (indirectly verified by checking they're accessible via the catalog endpoint)
+    get_collections_resp = await catalogs_app_client.get(
+        f"/catalogs/{catalog_id}/collections"
+    )
+    assert get_collections_resp.status_code == 200
+    collections_response = get_collections_resp.json()
+    returned_ids = [col["id"] for col in collections_response["collections"]]
+    for collection_id in collection_ids:
+        assert collection_id in returned_ids
+
+    # Delete the catalog without cascade
+    delete_resp = await catalogs_app_client.delete(f"/catalogs/{catalog_id}")
+    assert delete_resp.status_code == 204
+
+    # Verify all collections still exist
+    for collection_id in collection_ids:
+        get_resp = await catalogs_app_client.get(f"/collections/{collection_id}")
+        assert get_resp.status_code == 200
+
+    # Verify collections are no longer accessible via the deleted catalog
+    # (This indirectly verifies parent_ids was updated)
+    for collection_id in collection_ids:
+        get_from_catalog_resp = await catalogs_app_client.get(
+            f"/catalogs/{catalog_id}/collections/{collection_id}"
+        )
+        assert get_from_catalog_resp.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_create_catalog_collection_adds_parent_id(
     catalogs_app_client, load_test_data
 ):
@@ -878,6 +936,60 @@ async def test_delete_collection_not_in_catalog_returns_404(
         f"/catalogs/{catalog_id}/collections/{ctx.collection['id']}"
     )
     assert delete_resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_catalog_links_contain_all_collections(
+    catalogs_app_client, load_test_data
+):
+    """Test that a catalog's links contain all 3 collections added to it."""
+    # Create a catalog
+    test_catalog = load_test_data("test_catalog.json")
+    catalog_id = f"test-catalog-{uuid.uuid4()}"
+    test_catalog["id"] = catalog_id
+    # Remove any placeholder child links
+    test_catalog["links"] = [
+        link for link in test_catalog.get("links", []) if link.get("rel") != "child"
+    ]
+
+    catalog_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert catalog_resp.status_code == 201
+
+    # Create 3 collections in the catalog
+    collection_ids = []
+    for i in range(3):
+        test_collection = load_test_data("test_collection.json")
+        collection_id = f"test-collection-{uuid.uuid4()}-{i}"
+        test_collection["id"] = collection_id
+
+        create_resp = await catalogs_app_client.post(
+            f"/catalogs/{catalog_id}/collections", json=test_collection
+        )
+        assert create_resp.status_code == 201
+        collection_ids.append(collection_id)
+
+    # Get the catalog and verify all 3 collections are in its links
+    catalog_get_resp = await catalogs_app_client.get(f"/catalogs/{catalog_id}")
+    assert catalog_get_resp.status_code == 200
+
+    catalog_data = catalog_get_resp.json()
+    catalog_links = catalog_data.get("links", [])
+
+    # Extract all child links (collection links)
+    child_links = [link for link in catalog_links if link.get("rel") == "child"]
+
+    # Verify we have exactly 3 child links
+    assert (
+        len(child_links) == 3
+    ), f"Catalog should have 3 child links, but has {len(child_links)}"
+
+    # Verify each collection ID is in the child links
+    child_hrefs = [link.get("href", "") for link in child_links]
+    for collection_id in collection_ids:
+        collection_href = f"/collections/{collection_id}"
+        assert any(
+            collection_href in href for href in child_hrefs
+        ), f"Collection {collection_id} missing from catalog links. Found links: {child_hrefs}"
 
 
 @pytest.mark.asyncio

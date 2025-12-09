@@ -360,52 +360,44 @@ class CatalogsExtension(ApiExtension):
                                 f"Failed to delete collection {coll_id}: {e}"
                             )
             else:
-                # Remove catalog link from each collection (orphan them)
+                # Remove catalog from each collection's parent_ids and links (orphan them)
                 for coll_id in collection_ids:
                     try:
-                        collection = await self.client.get_collection(
-                            coll_id, request=request
+                        # Get the collection from database to access parent_ids
+                        collection_db = await self.client.database.find_collection(
+                            coll_id
                         )
-                        # Remove the catalog link from the collection
-                        if hasattr(collection, "links"):
-                            collection.links = [
-                                link
-                                for link in collection.links
-                                if not (
-                                    getattr(link, "rel", None) == "catalog"
-                                    and catalog_id in getattr(link, "href", "")
-                                )
-                            ]
-                        elif isinstance(collection, dict):
-                            collection["links"] = [
-                                link
-                                for link in collection.get("links", [])
-                                if not (
-                                    link.get("rel") == "catalog"
-                                    and catalog_id in link.get("href", "")
-                                )
-                            ]
 
-                        # Update the collection in the database
-                        collection_dict = (
-                            collection.model_dump(mode="json")
-                            if hasattr(collection, "model_dump")
-                            else collection
-                        )
-                        collection_db = (
-                            self.client.database.collection_serializer.stac_to_db(
-                                collection_dict, request
+                        # Remove catalog_id from parent_ids
+                        parent_ids = collection_db.get("parent_ids", [])
+                        if catalog_id in parent_ids:
+                            parent_ids.remove(catalog_id)
+                            collection_db["parent_ids"] = parent_ids
+
+                            # Also remove the catalog link from the collection's links
+                            if "links" in collection_db:
+                                collection_db["links"] = [
+                                    link
+                                    for link in collection_db.get("links", [])
+                                    if not (
+                                        link.get("rel") == "catalog"
+                                        and catalog_id in link.get("href", "")
+                                    )
+                                ]
+
+                            # Update the collection in the database
+                            await self.client.database.update_collection(
+                                collection_id=coll_id,
+                                collection=collection_db,
+                                refresh=True,
                             )
-                        )
-                        await self.client.database.client.index(
-                            index=COLLECTIONS_INDEX,
-                            id=coll_id,
-                            body=collection_db.model_dump()
-                            if hasattr(collection_db, "model_dump")
-                            else collection_db,
-                            refresh=True,
-                        )
-                        logger.info(f"Removed catalog link from collection {coll_id}")
+                            logger.info(
+                                f"Removed catalog {catalog_id} from collection {coll_id} parent_ids and links"
+                            )
+                        else:
+                            logger.debug(
+                                f"Catalog {catalog_id} not in parent_ids for collection {coll_id}"
+                            )
                     except Exception as e:
                         error_msg = str(e)
                         if "not found" in error_msg.lower():
@@ -414,7 +406,7 @@ class CatalogsExtension(ApiExtension):
                             )
                         else:
                             logger.warning(
-                                f"Failed to remove catalog link from collection {coll_id}: {e}"
+                                f"Failed to remove catalog {catalog_id} from collection {coll_id}: {e}"
                             )
 
             # Delete the catalog
