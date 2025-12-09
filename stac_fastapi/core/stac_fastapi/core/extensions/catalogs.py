@@ -314,71 +314,42 @@ class CatalogsExtension(ApiExtension):
             HTTPException: If the catalog is not found.
         """
         try:
-            # Get the catalog to verify it exists and get its collections
-            db_catalog = await self.client.database.find_catalog(catalog_id)
-            catalog = self.client.catalog_serializer.db_to_stac(db_catalog, request)
+            # Get the catalog to verify it exists
+            await self.client.database.find_catalog(catalog_id)
 
-            # Extract collection IDs from catalog links
-            collection_ids = []
-            if hasattr(catalog, "links") and catalog.links:
-                for link in catalog.links:
-                    rel = (
-                        link.get("rel")
-                        if hasattr(link, "get")
-                        else getattr(link, "rel", None)
-                    )
-                    if rel == "child":
-                        href = (
-                            link.get("href", "")
-                            if hasattr(link, "get")
-                            else getattr(link, "href", "")
-                        )
-                        if href and "/collections/" in href:
-                            # Extract collection ID from href
-                            collection_id = href.split("/collections/")[-1].split("/")[
-                                0
-                            ]
-                            if collection_id:
-                                collection_ids.append(collection_id)
+            # Use reverse lookup query to find all collections with this catalog in parent_ids.
+            # This is more reliable than parsing links, as it captures all collections
+            # regardless of pagination or link truncation.
+            query_body = {"query": {"term": {"parent_ids": catalog_id}}}
+            search_result = await self.client.database.client.search(
+                index=COLLECTIONS_INDEX, body=query_body, size=10000
+            )
+            children = [hit["_source"] for hit in search_result["hits"]["hits"]]
 
-            if cascade:
-                # Delete each collection
-                for coll_id in collection_ids:
-                    try:
-                        await self.client.database.delete_collection(coll_id)
+            # Process each child collection
+            for child in children:
+                child_id = child.get("id")
+                try:
+                    if cascade:
+                        # DANGER ZONE: User explicitly requested cascade delete.
+                        # Delete the collection entirely, regardless of other parents.
+                        await self.client.database.delete_collection(child_id)
                         logger.info(
-                            f"Deleted collection {coll_id} as part of cascade delete for catalog {catalog_id}"
+                            f"Deleted collection {child_id} as part of cascade delete for catalog {catalog_id}"
                         )
-                    except Exception as e:
-                        error_msg = str(e)
-                        if "not found" in error_msg.lower():
-                            logger.debug(
-                                f"Collection {coll_id} not found, skipping (may have been deleted elsewhere)"
-                            )
-                        else:
-                            logger.warning(
-                                f"Failed to delete collection {coll_id}: {e}"
-                            )
-            else:
-                # Remove catalog from each collection's parent_ids and links (orphan them)
-                for coll_id in collection_ids:
-                    try:
-                        # Get the collection from database to access parent_ids
-                        collection_db = await self.client.database.find_collection(
-                            coll_id
-                        )
-
-                        # Remove catalog_id from parent_ids
-                        parent_ids = collection_db.get("parent_ids", [])
+                    else:
+                        # SAFE ZONE: Smart Unlink - Remove only this catalog from parent_ids.
+                        # The collection survives and becomes a root-level collection if it has no other parents.
+                        parent_ids = child.get("parent_ids", [])
                         if catalog_id in parent_ids:
                             parent_ids.remove(catalog_id)
-                            collection_db["parent_ids"] = parent_ids
+                            child["parent_ids"] = parent_ids
 
                             # Also remove the catalog link from the collection's links
-                            if "links" in collection_db:
-                                collection_db["links"] = [
+                            if "links" in child:
+                                child["links"] = [
                                     link
-                                    for link in collection_db.get("links", [])
+                                    for link in child.get("links", [])
                                     if not (
                                         link.get("rel") == "catalog"
                                         and catalog_id in link.get("href", "")
@@ -387,30 +358,37 @@ class CatalogsExtension(ApiExtension):
 
                             # Update the collection in the database
                             await self.client.database.update_collection(
-                                collection_id=coll_id,
-                                collection=collection_db,
-                                refresh=True,
-                            )
-                            logger.info(
-                                f"Removed catalog {catalog_id} from collection {coll_id} parent_ids and links"
-                            )
-                        else:
-                            logger.debug(
-                                f"Catalog {catalog_id} not in parent_ids for collection {coll_id}"
-                            )
-                    except Exception as e:
-                        error_msg = str(e)
-                        if "not found" in error_msg.lower():
-                            logger.debug(
-                                f"Collection {coll_id} not found, skipping (may have been deleted elsewhere)"
-                            )
-                        else:
-                            logger.warning(
-                                f"Failed to remove catalog {catalog_id} from collection {coll_id}: {e}"
+                                collection_id=child_id,
+                                collection=child,
+                                refresh=False,
                             )
 
-            # Delete the catalog
-            await self.client.database.delete_catalog(catalog_id)
+                            # Log the result
+                            if len(parent_ids) == 0:
+                                logger.info(
+                                    f"Collection {child_id} is now a root-level orphan (no parent catalogs)"
+                                )
+                            else:
+                                logger.info(
+                                    f"Removed catalog {catalog_id} from collection {child_id}; still belongs to {len(parent_ids)} other catalog(s)"
+                                )
+                        else:
+                            logger.debug(
+                                f"Catalog {catalog_id} not in parent_ids for collection {child_id}"
+                            )
+                except Exception as e:
+                    error_msg = str(e)
+                    if "not found" in error_msg.lower():
+                        logger.debug(
+                            f"Collection {child_id} not found, skipping (may have been deleted elsewhere)"
+                        )
+                    else:
+                        logger.warning(
+                            f"Failed to process collection {child_id} during catalog deletion: {e}"
+                        )
+
+            # Delete the catalog itself
+            await self.client.database.delete_catalog(catalog_id, refresh=True)
             logger.info(f"Deleted catalog {catalog_id}")
 
         except Exception as e:
