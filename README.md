@@ -13,7 +13,7 @@
   [![GitHub forks](https://img.shields.io/github/forks/stac-utils/stac-fastapi-elasticsearch-opensearch.svg?color=blue)](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/network/members)
    [![PyPI version](https://img.shields.io/pypi/v/stac-fastapi-elasticsearch.svg?color=blue)](https://pypi.org/project/stac-fastapi-elasticsearch/)
   [![STAC](https://img.shields.io/badge/STAC-1.1.0-blue.svg)](https://github.com/radiantearth/stac-spec/tree/v1.1.0)
-  [![stac-fastapi](https://img.shields.io/badge/stac--fastapi-6.0.0-blue.svg)](https://github.com/stac-utils/stac-fastapi)
+  [![stac-fastapi](https://img.shields.io/badge/stac--fastapi-6.1.1-blue.svg)](https://github.com/stac-utils/stac-fastapi)
 
 ## Sponsors & Supporters
 
@@ -28,6 +28,7 @@ The following organizations have contributed time and/or funding to support the 
 
 ## Latest News
 
+- **12/09/2025:** **Feature Merge: Federated Catalogs.** The [`Catalogs Endpoint`](https://github.com/Healy-Hyperspatial/stac-api-extensions-catalogs-endpoint) extension is now in main! This enables a registry of catalogs and supports **poly-hierarchy** (collections belonging to multiple catalogs simultaneously). Enable it via `ENABLE_CATALOGS_EXTENSION`. _Coming next: Support for nested sub-catalogs._
 - **11/07/2025:** 🌍 The SFEOS STAC Viewer is now available at: https://healy-hyperspatial.github.io/sfeos-web. Use this site to examine your data and test your STAC API!
 - **10/24/2025:** Added `previous_token` pagination using Redis for efficient navigation. This feature allows users to navigate backwards through large result sets by storing pagination state in Redis. To use this feature, ensure Redis is configured (see [Redis for navigation](#redis-for-navigation)) and set `REDIS_ENABLE=true` in your environment.
 - **10/23/2025:** The `EXCLUDED_FROM_QUERYABLES` environment variable was added to exclude fields from the `queryables` endpoint. See [docs](#excluding-fields-from-queryables).
@@ -239,6 +240,7 @@ This implementation follows the [STAC API Catalogs Extension](https://github.com
 ### Features
 
 - **Hierarchical Navigation**: Browse catalogs and sub-catalogs in a parent-child relationship structure
+- **Multi-Catalog Collections**: Collections can belong to multiple catalogs simultaneously, enabling flexible organizational hierarchies
 - **Collection Discovery**: Access collections within specific catalog contexts
 - **STAC API Compliance**: Follows STAC specification for catalog objects and linking
 - **Flexible Querying**: Support for standard STAC API query parameters when browsing collections within catalogs
@@ -252,6 +254,7 @@ This implementation follows the [STAC API Catalogs Extension](https://github.com
 - **GET `/catalogs/{catalog_id}/collections`**: Retrieve collections within a specific catalog
 - **POST `/catalogs/{catalog_id}/collections`**: Create a new collection within a specific catalog
 - **GET `/catalogs/{catalog_id}/collections/{collection_id}`**: Retrieve a specific collection within a catalog
+- **DELETE `/catalogs/{catalog_id}/collections/{collection_id}`**: Delete a collection from a catalog (removes parent_id if multiple parents exist, deletes collection if it's the only parent)
 - **GET `/catalogs/{catalog_id}/collections/{collection_id}/items`**: Retrieve items within a collection in a catalog context
 - **GET `/catalogs/{catalog_id}/collections/{collection_id}/items/{item_id}`**: Retrieve a specific item within a catalog context
 
@@ -291,6 +294,11 @@ curl "http://localhost:8081/catalogs/earth-observation/collections/sentinel-2/it
 
 # Get specific item within a catalog
 curl "http://localhost:8081/catalogs/earth-observation/collections/sentinel-2/items/S2A_20231015_123456"
+
+# Delete a collection from a catalog
+# If the collection has multiple parent catalogs, only removes this catalog from parent_ids
+# If this is the only parent catalog, deletes the collection entirely
+curl -X DELETE "http://localhost:8081/catalogs/earth-observation/collections/sentinel-2"
 
 # Delete a catalog (collections remain intact)
 curl -X DELETE "http://localhost:8081/catalogs/earth-observation"
