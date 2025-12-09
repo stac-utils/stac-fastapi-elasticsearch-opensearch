@@ -30,6 +30,8 @@ def enable_validation():
     client = app_config["client"]
     with mock.patch.dict(os.environ, {"VALIDATE_QUERYABLES": "true"}):
         client.queryables_cache.reload_settings()
+        client.queryables_cache._cache = {}
+        client.queryables_cache._last_updated = 0
         yield
     client.queryables_cache.reload_settings()
 
@@ -114,3 +116,56 @@ async def test_validate_queryables_excluded(app_client, ctx):
         assert resp.status_code == 200
 
     client.queryables_cache.reload_settings()
+
+
+@pytest.mark.asyncio
+async def test_search_get_cql2_text_invalid_param(app_client, ctx):
+    """Test GET /search with an invalid cql2-text filter parameter."""
+    params = {
+        "filter-lang": "cql2-text",
+        "filter": "properties.invalid_param < 5",
+    }
+    resp = await app_client.get("/search", params=params)
+    assert resp.status_code == 400
+    resp_json = resp.json()
+    assert "Invalid query fields: invalid_param" in resp_json["detail"]
+
+
+@pytest.mark.asyncio
+async def test_search_get_cql2_text_valid_param(app_client, ctx):
+    """Test GET /search with a valid cql2-text filter parameter."""
+    params = {
+        "filter-lang": "cql2-text",
+        "filter": "eo:cloud_cover < 10",
+    }
+    resp = await app_client.get("/search", params=params)
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_item_collection_get_cql2_text_invalid_param(app_client, ctx):
+    """Test GET /collections/{collection_id}/items with invalid cql2-text filter."""
+    collection_id = ctx.item["collection"]
+    params = {
+        "filter-lang": "cql2-text",
+        "filter": "properties.invalid_param < 5",
+    }
+    resp = await app_client.get(f"/collections/{collection_id}/items", params=params)
+    assert resp.status_code == 400
+    resp_json = resp.json()
+    assert "Invalid query fields: invalid_param" in resp_json["detail"]
+
+
+@pytest.mark.asyncio
+async def test_search_get_cql2_text_with_properties_prefix(app_client, ctx):
+    """Test GET /search with a valid cql2-text filter using properties. prefix.
+
+    This tests the case where users specify 'properties.eo:cloud_cover' instead of
+    just 'eo:cloud_cover'. Both formats should work correctly.
+    """
+    params = {
+        "filter-lang": "cql2-text",
+        "filter": "properties.eo:cloud_cover < 10",
+    }
+    resp = await app_client.get("/search", params=params)
+    assert resp.status_code == 200

@@ -116,3 +116,22 @@ def test_get_properties_from_cql2_filter():
 
     # Empty/invalid
     assert get_properties_from_cql2_filter({}) == set()
+
+
+def test_get_properties_from_cql2_filter_strips_properties_prefix():
+    """Test that 'properties.' prefix is stripped from property names."""
+    # Single property with prefix
+    cql2 = {"op": "<", "args": [{"property": "properties.none"}, 5]}
+    props = get_properties_from_cql2_filter(cql2)
+    assert props == {"none"}
+
+    # Mixed with and without prefix
+    cql2_nested = {
+        "op": "and",
+        "args": [
+            {"op": "=", "args": [{"property": "properties.test"}, "v1"]},
+            {"op": "<", "args": [{"property": "eo:cloud_cover"}, 10]},
+        ],
+    }
+    props = get_properties_from_cql2_filter(cql2_nested)
+    assert props == {"test", "eo:cloud_cover"}

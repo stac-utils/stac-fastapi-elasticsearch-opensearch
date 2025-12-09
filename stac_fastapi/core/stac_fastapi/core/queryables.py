@@ -25,7 +25,6 @@ class QueryablesCache:
         self._lock = asyncio.Lock()
         self.validation_enabled: bool = False
         self.cache_ttl: int = 1800  # How often to refresh cache (in seconds)
-        self.excluded_queryables: Set[str] = set()
         self.reload_settings()
 
     def reload_settings(self):
@@ -34,17 +33,6 @@ class QueryablesCache:
             os.getenv("VALIDATE_QUERYABLES", "false").lower() == "true"
         )
         self.cache_ttl = int(os.getenv("QUERYABLES_CACHE_TTL", "1800"))
-
-        excluded = os.getenv("EXCLUDED_FROM_QUERYABLES", "")
-        self.excluded_queryables = set()
-        if excluded:
-            for field in excluded.split(","):
-                field = field.strip()
-                if field:
-                    # Remove 'properties.' prefix if present
-                    if field.startswith("properties."):
-                        field = field[11:]
-                    self.excluded_queryables.add(field)
 
     async def _update_cache(self):
         """Update the cache with the latest queryables from the database."""
@@ -57,9 +45,6 @@ class QueryablesCache:
 
             queryables_mapping = await self._db_logic.get_queryables_mapping()
             all_queryables_set = set(queryables_mapping.keys())
-
-            if self.excluded_queryables:
-                all_queryables_set = all_queryables_set - self.excluded_queryables
 
             self._all_queryables = all_queryables_set
 
@@ -93,12 +78,18 @@ class QueryablesCache:
         if invalid_fields:
             raise HTTPException(
                 status_code=400,
-                detail=f"Invalid query fields: {', '.join(invalid_fields)}.",
+                detail=f"Invalid query fields: {', '.join(sorted(invalid_fields))}. "
+                "These fields are not defined in the collection's queryables. "
+                "Use the /queryables endpoint to see available fields.",
             )
 
 
 def get_properties_from_cql2_filter(cql2_filter: Dict[str, Any]) -> Set[str]:
-    """Recursively extract property names from a CQL2 filter."""
+    """Recursively extract property names from a CQL2 filter.
+
+    Property names are normalized by stripping the 'properties.' prefix
+    if present, to match queryables stored without the prefix.
+    """
     props: Set[str] = set()
     if "op" in cql2_filter and "args" in cql2_filter:
         for arg in cql2_filter["args"]:
@@ -106,5 +97,9 @@ def get_properties_from_cql2_filter(cql2_filter: Dict[str, Any]) -> Set[str]:
                 if "op" in arg:
                     props.update(get_properties_from_cql2_filter(arg))
                 elif "property" in arg:
-                    props.add(arg["property"])
+                    prop_name = arg["property"]
+                    # Strip 'properties.' prefix if present
+                    if prop_name.startswith("properties."):
+                        prop_name = prop_name[11:]
+                    props.add(prop_name)
     return props
