@@ -39,6 +39,7 @@ from stac_fastapi.sfeos_helpers.mappings import ITEMS_INDEX_PREFIX
 from stac_fastapi.types.config import Settings
 
 os.environ.setdefault("ENABLE_COLLECTIONS_SEARCH_ROUTE", "true")
+os.environ.setdefault("ENABLE_CATALOGS_ROUTE", "false")
 
 if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
     from stac_fastapi.opensearch.app import app_config
@@ -396,3 +397,63 @@ def build_test_app():
     # Create and return the app
     api = StacApi(**test_config)
     return api.app
+
+
+def build_test_app_with_catalogs():
+    """Build a test app with catalogs extension enabled."""
+    from stac_fastapi.core.extensions.catalogs import CatalogsExtension
+
+    # Get the base config
+    test_config = app_config.copy()
+
+    # Get database and settings (already imported above)
+    test_database = DatabaseLogic()
+    test_settings = AsyncSettings()
+
+    # Add catalogs extension
+    catalogs_extension = CatalogsExtension(
+        client=CoreClient(
+            database=test_database,
+            session=None,
+            landing_page_id=os.getenv("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"),
+        ),
+        settings=test_settings,
+        conformance_classes=[
+            "https://api.stacspec.org/v1.0.0-beta.1/catalogs-endpoint",
+        ],
+    )
+
+    # Add to extensions if not already present
+    if not any(isinstance(ext, CatalogsExtension) for ext in test_config["extensions"]):
+        test_config["extensions"].append(catalogs_extension)
+
+    # Update client with new extensions
+    test_config["client"] = CoreClient(
+        database=test_database,
+        session=None,
+        extensions=test_config["extensions"],
+        post_request_model=test_config["search_post_request_model"],
+        landing_page_id=os.getenv("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"),
+    )
+
+    # Create and return the app
+    api = StacApi(**test_config)
+    return api.app
+
+
+@pytest_asyncio.fixture(scope="session")
+async def catalogs_app():
+    """Fixture to get the FastAPI app with catalogs extension enabled."""
+    return build_test_app_with_catalogs()
+
+
+@pytest_asyncio.fixture(scope="session")
+async def catalogs_app_client(catalogs_app):
+    """Fixture to get an async client for the app with catalogs extension enabled."""
+    await create_index_templates()
+    await create_collection_index()
+
+    async with AsyncClient(
+        transport=ASGITransport(app=catalogs_app), base_url="http://test-server"
+    ) as c:
+        yield c

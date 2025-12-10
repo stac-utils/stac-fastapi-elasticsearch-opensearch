@@ -138,3 +138,39 @@ class BaseDatabaseLogic(abc.ABC):
     ) -> None:
         """Delete a collection from the database."""
         pass
+
+    @abc.abstractmethod
+    async def get_all_catalogs(
+        self,
+        token: Optional[str],
+        limit: int,
+        request: Any = None,
+        sort: Optional[List[Dict[str, Any]]] = None,
+    ) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[int]]:
+        """Retrieve a list of catalogs from the database, supporting pagination.
+
+        Args:
+            token (Optional[str]): The pagination token.
+            limit (int): The number of results to return.
+            request (Any, optional): The FastAPI request object. Defaults to None.
+            sort (Optional[List[Dict[str, Any]]], optional): Optional sort parameter. Defaults to None.
+
+        Returns:
+            A tuple of (catalogs, next pagination token if any, optional count).
+        """
+        pass
+
+    @abc.abstractmethod
+    async def create_catalog(self, catalog: Dict, refresh: bool = False) -> None:
+        """Create a catalog in the database."""
+        pass
+
+    @abc.abstractmethod
+    async def find_catalog(self, catalog_id: str) -> Dict:
+        """Find a catalog in the database."""
+        pass
+
+    @abc.abstractmethod
+    async def delete_catalog(self, catalog_id: str, refresh: bool = False) -> None:
+        """Delete a catalog from the database."""
+        pass
