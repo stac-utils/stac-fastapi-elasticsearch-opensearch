@@ -251,6 +251,7 @@ This implementation follows the [STAC API Catalogs Extension](https://github.com
 - **POST `/catalogs`**: Create a new catalog (requires appropriate permissions)
 - **GET `/catalogs/{catalog_id}`**: Retrieve a specific catalog and its children
 - **DELETE `/catalogs/{catalog_id}`**: Delete a catalog (optionally cascade delete all collections)
+- **GET `/catalogs/{catalog_id}/children`**: Retrieve all children (Catalogs and Collections) of this catalog with optional type filtering
 - **GET `/catalogs/{catalog_id}/collections`**: Retrieve collections within a specific catalog
 - **POST `/catalogs/{catalog_id}/collections`**: Create a new collection within a specific catalog
 - **GET `/catalogs/{catalog_id}/collections/{collection_id}`**: Retrieve a specific collection within a catalog
@@ -266,6 +267,15 @@ curl "http://localhost:8081/catalogs"
 
 # Get specific catalog
 curl "http://localhost:8081/catalogs/earth-observation"
+
+# Get all children (catalogs and collections) of a catalog
+curl "http://localhost:8081/catalogs/earth-observation/children"
+
+# Get only catalog children of a catalog
+curl "http://localhost:8081/catalogs/earth-observation/children?type=Catalog"
+
+# Get only collection children of a catalog
+curl "http://localhost:8081/catalogs/earth-observation/children?type=Collection"
 
 # Get collections in a catalog
 curl "http://localhost:8081/catalogs/earth-observation/collections"
