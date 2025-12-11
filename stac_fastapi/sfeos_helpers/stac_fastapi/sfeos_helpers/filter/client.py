@@ -26,8 +26,12 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
         Reads from EXCLUDED_FROM_QUERYABLES environment variable.
         Supports comma-separated list of field names.
 
+        For each exclusion pattern, both the original and the version with/without
+        'properties.' prefix are included. This ensures fields are excluded regardless
+        of whether they appear at the top level or under 'properties' in the mapping.
+
         Example:
-            EXCLUDED_FROM_QUERYABLES="auth:schemes,storage:schemes"
+            EXCLUDED_FROM_QUERYABLES="properties.auth:schemes,storage:schemes"
 
         Returns:
             Set[str]: Set of field names to exclude from queryables
@@ -35,7 +39,41 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
         excluded = os.getenv("EXCLUDED_FROM_QUERYABLES", "")
         if not excluded:
             return set()
-        return {field.strip() for field in excluded.split(",") if field.strip()}
+
+        result = set()
+        for field in excluded.split(","):
+            field = field.strip()
+            if not field:
+                continue
+
+            result.add(field)
+
+            if field.startswith("properties."):
+                result.add(field.removeprefix("properties."))
+            else:
+                result.add(f"properties.{field}")
+
+        return result
+
+    @staticmethod
+    def _is_excluded(field_fqn: str, excluded: set[str]) -> bool:
+        """Check if a field should be excluded based on prefix matching.
+
+        A field is excluded if:
+        - It exactly matches an exclusion pattern
+        - It starts with an exclusion pattern followed by a dot (nested child)
+
+        Args:
+            field_fqn: Fully qualified field name (e.g., "properties.auth:schemes.s3.type")
+            excluded: Set of exclusion patterns
+
+        Returns:
+            True if field should be excluded, False otherwise
+        """
+        for prefix in excluded:
+            if field_fqn == prefix or field_fqn.startswith(prefix + "."):
+                return True
+        return False
 
     async def get_queryables(
         self,
@@ -92,23 +130,20 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
         while stack:
             field_fqn, field_def = stack.popleft()
 
-            # Iterate over nested fields
+            if self._is_excluded(field_fqn, excluded_fields):
+                continue
+
             field_properties = field_def.get("properties")
             if field_properties:
                 stack.extend(
                     (f"{field_fqn}.{k}", v)
                     for k, v in field_properties.items()
                     if v.get("enabled", True)
-                    and f"{field_fqn}.{k}" not in excluded_fields
                 )
 
             # Skip non-indexed or disabled fields
             field_type = field_def.get("type")
-            if (
-                not field_type
-                or not field_def.get("enabled", True)
-                or field_fqn in excluded_fields
-            ):
+            if not field_type or not field_def.get("enabled", True):
                 continue
 
             # Fields in Item Properties should be exposed with their un-prefixed names,
