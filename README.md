@@ -479,8 +479,10 @@ You can customize additional settings in your `.env` file:
 | `STAC_INDEX_ASSETS` | Controls if Assets are indexed when added to Elasticsearch/Opensearch. This allows asset fields to be included in search queries. | `false` | Optional |
 | `USE_DATETIME` | Configures the datetime search behavior in SFEOS. When enabled, searches both datetime field and falls back to start_datetime/end_datetime range for items with null datetime. When disabled, searches only by start_datetime/end_datetime range. | `true` | Optional |
 | `USE_DATETIME_NANOS` | Enables nanosecond precision handling for `datetime` field searches as per the `date_nanos` type. When `False`, it uses 3 millisecond precision as per the type `date`. | `true` | Optional |
-| `EXCLUDED_FROM_QUERYABLES` | Comma-separated list of fully qualified field names to exclude from the queryables endpoint and filtering. Use full paths like `properties.auth:schemes,properties.storage:schemes`. Excluded fields and their nested children will not be exposed in queryables. | None | Optional |
+| `EXCLUDED_FROM_QUERYABLES` | Comma-separated list of fully qualified field names to exclude from the queryables endpoint and filtering. Use full paths like `properties.auth:schemes,properties.storage:schemes`. Excluded fields and their nested children will not be exposed in queryables. If `VALIDATE_QUERYABLES` is enabled, these fields will also be considered invalid for filtering. | None | Optional |
 | `EXCLUDED_FROM_ITEMS` | Specifies fields to exclude from STAC item responses. Supports comma-separated field names and dot notation for nested fields (e.g., `private_data,properties.confidential,assets.internal`). | `None` | Optional |
+| `VALIDATE_QUERYABLES` | Enable validation of query parameters against the collection's queryables. If set to `true`, the API will reject queries containing fields that are not defined in the collection's queryables. | `false` | Optional |
+| `QUERYABLES_CACHE_TTL` | Time-to-live (in seconds) for the queryables cache. Used when `VALIDATE_QUERYABLES` is enabled. | `1800` | Optional |
 
 
 > [!NOTE]
@@ -535,6 +537,29 @@ EXCLUDED_FROM_QUERYABLES="properties.auth:schemes,properties.storage:schemes,pro
 - Excluded fields will not appear in the queryables response
 - Excluded fields and their nested children will be skipped during field traversal
 - Both the field itself and any nested properties will be excluded
+
+## Queryables Validation
+
+SFEOS supports validating query parameters against the collection's defined queryables. This ensures that users only query fields that are explicitly exposed and indexed.
+
+**Configuration:**
+
+To enable queryables validation, set the following environment variables:
+
+```bash
+VALIDATE_QUERYABLES=true
+QUERYABLES_CACHE_TTL=1800  # Optional, defaults to 1800 seconds (30 minutes)
+```
+
+**Behavior:**
+
+- When enabled, the API maintains a cache of all queryable fields across all collections.
+- Search requests (both GET and POST) are checked against this cache.
+- If a request contains a query parameter or filter field that is not in the list of allowed queryables, the API returns a `400 Bad Request` error with a message indicating the invalid field(s).
+- The cache is automatically refreshed based on the `QUERYABLES_CACHE_TTL` setting.
+- **Interaction with `EXCLUDED_FROM_QUERYABLES`**: If `VALIDATE_QUERYABLES` is enabled, fields listed in `EXCLUDED_FROM_QUERYABLES` will also be considered invalid for filtering. This effectively enforces the exclusion of these fields from search queries.
+
+This feature helps prevent queries on non-queryable fields which could lead to unnecessary load on the database.
 
 ## Datetime-Based Index Management
 
