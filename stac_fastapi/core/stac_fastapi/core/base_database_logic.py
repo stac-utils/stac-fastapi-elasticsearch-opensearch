@@ -140,6 +140,10 @@ class BaseDatabaseLogic(abc.ABC):
         pass
 
     @abc.abstractmethod
+    async def get_queryables_mapping(self, collection_id: str = "*") -> Dict[str, Any]:
+        """Retrieve mapping of Queryables for search."""
+        pass
+
     async def get_all_catalogs(
         self,
         token: Optional[str],

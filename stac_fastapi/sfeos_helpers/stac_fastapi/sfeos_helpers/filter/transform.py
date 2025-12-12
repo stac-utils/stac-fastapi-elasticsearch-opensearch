@@ -22,7 +22,20 @@ def to_es_field(queryables_mapping: Dict[str, Any], field: str) -> str:
     Returns:
         str: The mapped field name suitable for Elasticsearch queries.
     """
-    return queryables_mapping.get(field, field)
+    # First, try to find the field as-is in the mapping
+    if field in queryables_mapping:
+        return queryables_mapping[field]
+
+    # If field has 'properties.' prefix, try without it
+    # This handles cases where users specify 'properties.eo:cloud_cover'
+    # but queryables_mapping uses 'eo:cloud_cover' as the key
+    if field.startswith("properties."):
+        normalized_field = field[11:]  # len("properties.") == 11
+        if normalized_field in queryables_mapping:
+            return queryables_mapping[normalized_field]
+
+    # If not found, return the original field
+    return field
 
 
 def to_es(queryables_mapping: Dict[str, Any], query: Dict[str, Any]) -> Dict[str, Any]:
