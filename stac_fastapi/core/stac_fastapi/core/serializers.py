@@ -181,8 +181,9 @@ class CollectionSerializer(Serializer):
         # Avoid modifying the input dict in-place ... doing so breaks some tests
         collection = deepcopy(collection)
 
-        # Remove internal bbox_shape field (not part of STAC spec)
+        # Remove internal fields (not part of STAC spec)
         collection.pop("bbox_shape", None)
+        collection.pop("parent_ids", None)
 
         # Set defaults
         collection_id = collection.get("id")
