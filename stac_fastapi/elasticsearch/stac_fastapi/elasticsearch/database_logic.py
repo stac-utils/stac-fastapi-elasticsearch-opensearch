@@ -1,7 +1,7 @@
 """Database logic."""
-
 import asyncio
 import logging
+import os
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from copy import deepcopy
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Type
@@ -153,6 +153,26 @@ class DatabaseLogic(BaseDatabaseLogic):
     extensions: List[str] = attr.ib(default=attr.Factory(list))
 
     aggregation_mapping: Dict[str, Dict[str, Any]] = AGGREGATION_MAPPING
+
+    # constants for field names
+    # they are used in multiple methods
+    # and could be overwritten in subclasses used with alternate opensearch mappings.
+    PROPERTIES_DATETIME_FIELD = os.getenv(
+        "STAC_FIELD_PROP_DATETIME", "properties.datetime"
+    )
+    PROPERTIES_START_DATETIME_FIELD = os.getenv(
+        "STAC_FIELD_PROP_START_DATETIME", "properties.start_datetime"
+    )
+    PROPERTIES_END_DATETIME_FIELD = os.getenv(
+        "STAC_FIELD_PROP_END_DATETIME", "properties.end_datetime"
+    )
+    COLLECTION_FIELD = os.getenv("STAC_FIELD_COLLECTION", "collection")
+    GEOMETRY_FIELD = os.getenv("STAC_FIELD_GEOMETRY", "geometry")
+
+    @staticmethod
+    def __nested_field__(field: str):
+        """Convert opensearch field to nested field format."""
+        return field.replace(".", "__")
 
     """CORE LOGIC"""
 
@@ -436,7 +456,10 @@ class DatabaseLogic(BaseDatabaseLogic):
     @staticmethod
     def apply_collections_filter(search: Search, collection_ids: List[str]):
         """Database logic to search a list of STAC collection ids."""
-        return search.filter("terms", collection=collection_ids)
+        collection_nested_field = DatabaseLogic.__nested_field__(
+            DatabaseLogic.COLLECTION_FIELD
+        )
+        return search.filter("terms", **{collection_nested_field: collection_ids})
 
     @staticmethod
     def apply_datetime_filter(
@@ -461,6 +484,16 @@ class DatabaseLogic(BaseDatabaseLogic):
         if not datetime_search:
             return search, datetime_search
 
+        nested_datetime_field = DatabaseLogic.__nested_field__(
+            DatabaseLogic.PROPERTIES_DATETIME_FIELD
+        )
+        nested_start_datetime_field = DatabaseLogic.__nested_field__(
+            DatabaseLogic.PROPERTIES_START_DATETIME_FIELD
+        )
+        nested_end_datetime_field = DatabaseLogic.__nested_field__(
+            DatabaseLogic.PROPERTIES_END_DATETIME_FIELD
+        )
+
         if USE_DATETIME:
             if "eq" in datetime_search:
                 # For exact matches, include:
@@ -470,28 +503,42 @@ class DatabaseLogic(BaseDatabaseLogic):
                     Q(
                         "bool",
                         filter=[
-                            Q("exists", field="properties.datetime"),
+                            Q("exists", field=DatabaseLogic.PROPERTIES_DATETIME_FIELD),
                             Q(
                                 "term",
-                                **{"properties__datetime": datetime_search["eq"]},
+                                **{nested_datetime_field: datetime_search["eq"]},
                             ),
                         ],
                     ),
                     Q(
                         "bool",
-                        must_not=[Q("exists", field="properties.datetime")],
+                        must_not=[
+                            Q("exists", field=DatabaseLogic.PROPERTIES_DATETIME_FIELD)
+                        ],
                         filter=[
-                            Q("exists", field="properties.start_datetime"),
-                            Q("exists", field="properties.end_datetime"),
+                            Q(
+                                "exists",
+                                field=DatabaseLogic.PROPERTIES_START_DATETIME_FIELD,
+                            ),
+                            Q(
+                                "exists",
+                                field=DatabaseLogic.PROPERTIES_END_DATETIME_FIELD,
+                            ),
                             Q(
                                 "range",
-                                properties__start_datetime={
-                                    "lte": datetime_search["eq"]
+                                **{
+                                    nested_start_datetime_field: {
+                                        "lte": datetime_search["eq"]
+                                    }
                                 },
                             ),
                             Q(
                                 "range",
-                                properties__end_datetime={"gte": datetime_search["eq"]},
+                                **{
+                                    nested_end_datetime_field: {
+                                        "gte": datetime_search["eq"]
+                                    }
+                                },
                             ),
                         ],
                     ),
@@ -504,32 +551,46 @@ class DatabaseLogic(BaseDatabaseLogic):
                     Q(
                         "bool",
                         filter=[
-                            Q("exists", field="properties.datetime"),
+                            Q("exists", field=DatabaseLogic.PROPERTIES_DATETIME_FIELD),
                             Q(
                                 "range",
-                                properties__datetime={
-                                    "gte": datetime_search["gte"],
-                                    "lte": datetime_search["lte"],
+                                **{
+                                    nested_datetime_field: {
+                                        "gte": datetime_search["gte"],
+                                        "lte": datetime_search["lte"],
+                                    }
                                 },
                             ),
                         ],
                     ),
                     Q(
                         "bool",
-                        must_not=[Q("exists", field="properties.datetime")],
+                        must_not=[
+                            Q("exists", field=DatabaseLogic.PROPERTIES_DATETIME_FIELD)
+                        ],
                         filter=[
-                            Q("exists", field="properties.start_datetime"),
-                            Q("exists", field="properties.end_datetime"),
+                            Q(
+                                "exists",
+                                field=DatabaseLogic.PROPERTIES_START_DATETIME_FIELD,
+                            ),
+                            Q(
+                                "exists",
+                                field=DatabaseLogic.PROPERTIES_END_DATETIME_FIELD,
+                            ),
                             Q(
                                 "range",
-                                properties__start_datetime={
-                                    "lte": datetime_search["lte"]
+                                **{
+                                    nested_start_datetime_field: {
+                                        "lte": datetime_search["lte"]
+                                    }
                                 },
                             ),
                             Q(
                                 "range",
-                                properties__end_datetime={
-                                    "gte": datetime_search["gte"]
+                                **{
+                                    nested_end_datetime_field: {
+                                        "gte": datetime_search["gte"]
+                                    }
                                 },
                             ),
                         ],
@@ -545,15 +606,26 @@ class DatabaseLogic(BaseDatabaseLogic):
                 filter_query = Q(
                     "bool",
                     filter=[
-                        Q("exists", field="properties.start_datetime"),
-                        Q("exists", field="properties.end_datetime"),
+                        Q(
+                            "exists",
+                            field=DatabaseLogic.PROPERTIES_START_DATETIME_FIELD,
+                        ),
+                        Q("exists", field=DatabaseLogic.PROPERTIES_END_DATETIME_FIELD),
                         Q(
                             "range",
-                            properties__start_datetime={"lte": datetime_search["eq"]},
+                            **{
+                                nested_start_datetime_field: {
+                                    "lte": datetime_search["eq"]
+                                }
+                            },
                         ),
                         Q(
                             "range",
-                            properties__end_datetime={"gte": datetime_search["eq"]},
+                            **{
+                                nested_end_datetime_field: {
+                                    "gte": datetime_search["eq"]
+                                }
+                            },
                         ),
                     ],
                 )
@@ -561,15 +633,26 @@ class DatabaseLogic(BaseDatabaseLogic):
                 filter_query = Q(
                     "bool",
                     filter=[
-                        Q("exists", field="properties.start_datetime"),
-                        Q("exists", field="properties.end_datetime"),
+                        Q(
+                            "exists",
+                            field=DatabaseLogic.PROPERTIES_START_DATETIME_FIELD,
+                        ),
+                        Q("exists", field=DatabaseLogic.PROPERTIES_END_DATETIME_FIELD),
                         Q(
                             "range",
-                            properties__start_datetime={"lte": datetime_search["lte"]},
+                            **{
+                                nested_start_datetime_field: {
+                                    "lte": datetime_search["lte"]
+                                }
+                            },
                         ),
                         Q(
                             "range",
-                            properties__end_datetime={"gte": datetime_search["gte"]},
+                            **{
+                                nested_end_datetime_field: {
+                                    "gte": datetime_search["gte"]
+                                }
+                            },
                         ),
                     ],
                 )
@@ -594,7 +677,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             Q(
                 {
                     "geo_shape": {
-                        "geometry": {
+                        DatabaseLogic.GEOMETRY_FIELD: {
                             "shape": {
                                 "type": "polygon",
                                 "coordinates": bbox2polygon(*bbox),
@@ -1708,7 +1791,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         kwargs = kwargs or {}
 
         # Resolve the `refresh` parameter
-        refresh = kwargs.get("refresh", self.async_settings.database_refresh)
+        refresh = kwargs.get("refresh", self.sync_settings.database_refresh)
         refresh = validate_refresh(refresh)
 
         # Log the bulk insert attempt

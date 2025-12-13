@@ -20,7 +20,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Added `parent_ids` internal field to collections to support multi-catalog hierarchies. Collections can now belong to multiple catalogs, with parent catalog IDs stored in this field for efficient querying and management. [#554](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/554)
 - Added GET `/catalogs/{catalog_id}/children` endpoint implementing the STAC Children extension for efficient hierarchical catalog browsing. Supports type filtering (?type=Catalog|Collection), pagination, and returns numberReturned/numberMatched counts at the top level. [#558](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/558)
 
+
 ### Changed
+
+- Have opensearch datetime, geometry and collections fields defined as constant strings [#553](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/553)
 
 ### Fixed
 
