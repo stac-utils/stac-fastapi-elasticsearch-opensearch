@@ -1,7 +1,7 @@
 """Database logic."""
-
 import asyncio
 import logging
+import os
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from copy import deepcopy
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Type
@@ -157,11 +157,17 @@ class DatabaseLogic(BaseDatabaseLogic):
     # constants for field names
     # they are used in multiple methods
     # and could be overwritten in subclasses used with alternate opensearch mappings.
-    PROPERTIES_DATETIME_FIELD = "properties.datetime"
-    PROPERTIES_START_DATETIME_FIELD = "properties.start_datetime"
-    PROPERTIES_END_DATETIME_FIELD = "properties.end_datetime"
-    COLLECTION_FIELD = "collection"
-    GEOMETRY_FIELD = "geometry"
+    PROPERTIES_DATETIME_FIELD = os.getenv(
+        "STAC_FIELD_PROP_DATETIME", "properties.datetime"
+    )
+    PROPERTIES_START_DATETIME_FIELD = os.getenv(
+        "STAC_FIELD_PROP_START_DATETIME", "properties.start_datetime"
+    )
+    PROPERTIES_END_DATETIME_FIELD = os.getenv(
+        "STAC_FIELD_PROP_END_DATETIME", "properties.end_datetime"
+    )
+    COLLECTION_FIELD = os.getenv("STAC_FIELD_COLLECTION", "collection")
+    GEOMETRY_FIELD = os.getenv("STAC_FIELD_GEOMETRY", "geometry")
 
     @staticmethod
     def __nested_field__(field: str):
