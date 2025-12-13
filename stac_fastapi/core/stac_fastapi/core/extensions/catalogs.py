@@ -1,8 +1,8 @@
 """Catalogs extension."""
 
 import logging
-from typing import List, Optional, Type
-from urllib.parse import urlencode
+from typing import Any, Dict, List, Optional, Type
+from urllib.parse import parse_qs, urlencode, urlparse
 
 import attr
 from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
@@ -42,7 +42,9 @@ class CatalogsExtension(ApiExtension):
 
     client: BaseCoreClient = attr.ib(default=None)
     settings: dict = attr.ib(default=attr.Factory(dict))
-    conformance_classes: List[str] = attr.ib(default=attr.Factory(list))
+    conformance_classes: List[str] = attr.ib(
+        default=attr.Factory(lambda: ["https://api.stacspec.org/v1.0.0-rc.2/children"])
+    )
     router: APIRouter = attr.ib(default=attr.Factory(APIRouter))
     response_class: Type[Response] = attr.ib(default=JSONResponse)
 
@@ -173,6 +175,17 @@ class CatalogsExtension(ApiExtension):
             response_class=self.response_class,
             summary="Get Catalog Collection Item",
             description="Get a specific item from a collection in a catalog.",
+            tags=["Catalogs"],
+        )
+
+        # Add endpoint for Children Extension
+        self.router.add_api_route(
+            path="/catalogs/{catalog_id}/children",
+            endpoint=self.get_catalog_children,
+            methods=["GET"],
+            response_class=self.response_class,
+            summary="Get Catalog Children",
+            description="Retrieve all children (Catalogs and Collections) of this catalog.",
             tags=["Catalogs"],
         )
 
@@ -851,6 +864,142 @@ class CatalogsExtension(ApiExtension):
         return await self.client.get_item(
             item_id=item_id, collection_id=collection_id, request=request
         )
+
+    async def get_catalog_children(
+        self,
+        catalog_id: str,
+        request: Request,
+        limit: int = 10,
+        token: str = None,
+        type: Optional[str] = Query(
+            None, description="Filter by resource type (Catalog or Collection)"
+        ),
+    ) -> Dict[str, Any]:
+        """
+        Get all children (Catalogs and Collections) of a specific catalog.
+
+        This is a 'Union' endpoint that returns mixed content types.
+        """
+        # 1. Verify the parent catalog exists
+        await self.client.database.find_catalog(catalog_id)
+
+        # 2. Build the Search Query
+        # We search the COLLECTIONS_INDEX because it holds both Catalogs and Collections
+
+        # Base filter: Parent match
+        # This finds anything where 'parent_ids' contains this catalog_id
+        filter_queries = [{"term": {"parent_ids": catalog_id}}]
+
+        # Optional filter: Type
+        if type:
+            # If user asks for ?type=Catalog, we only return Catalogs
+            filter_queries.append({"term": {"type": type}})
+
+        # 3. Calculate Pagination (Search After)
+        body = {
+            "query": {"bool": {"filter": filter_queries}},
+            "sort": [{"id": {"order": "asc"}}],  # Stable sort for pagination
+            "size": limit,
+        }
+
+        # Handle search_after token - split by '|' to get all sort values
+        search_after: Optional[List[str]] = None
+        if token:
+            try:
+                # The token should be a pipe-separated string of sort values
+                # e.g., "collection-1"
+                from typing import cast
+
+                search_after_parts = cast(List[str], token.split("|"))
+                # If the number of sort fields doesn't match token parts, ignore the token
+                if len(search_after_parts) != len(body["sort"]):  # type: ignore
+                    search_after = None
+                else:
+                    search_after = search_after_parts
+            except Exception:
+                search_after = None
+
+            if search_after is not None:
+                body["search_after"] = search_after
+
+        # 4. Execute Search
+        search_result = await self.client.database.client.search(
+            index=COLLECTIONS_INDEX, body=body
+        )
+
+        # 5. Process Results
+        hits = search_result.get("hits", {}).get("hits", [])
+        total = search_result.get("hits", {}).get("total", {}).get("value", 0)
+
+        children = []
+        for hit in hits:
+            doc = hit["_source"]
+            resource_type = doc.get(
+                "type", "Collection"
+            )  # Default to Collection if missing
+
+            # Serialize based on type
+            # This ensures we hide internal fields like 'parent_ids' correctly
+            if resource_type == "Catalog":
+                child = self.client.catalog_serializer.db_to_stac(doc, request)
+            else:
+                child = self.client.collection_serializer.db_to_stac(doc, request)
+
+            children.append(child)
+
+        # 6. Format Response
+        # The Children extension uses a specific response format
+        response = {
+            "children": children,
+            "links": [
+                {"rel": "self", "type": "application/json", "href": str(request.url)},
+                {
+                    "rel": "root",
+                    "type": "application/json",
+                    "href": str(request.base_url),
+                },
+                {
+                    "rel": "parent",
+                    "type": "application/json",
+                    "href": f"{str(request.base_url)}catalogs/{catalog_id}",
+                },
+            ],
+            "numberReturned": len(children),
+            "numberMatched": total,
+        }
+
+        # 7. Generate Next Link
+        next_token = None
+        if len(hits) == limit:
+            next_token_values = hits[-1].get("sort")
+            if next_token_values:
+                # Join all sort values with '|' to create the token
+                next_token = "|".join(str(val) for val in next_token_values)
+
+        if next_token:
+            # Get existing query params
+            parsed_url = urlparse(str(request.url))
+            params = parse_qs(parsed_url.query)
+
+            # Update params
+            params["token"] = [next_token]
+            params["limit"] = [str(limit)]
+            if type:
+                params["type"] = [type]
+
+            # Flatten params for urlencode (parse_qs returns lists)
+            flat_params = {
+                k: v[0] if isinstance(v, list) else v for k, v in params.items()
+            }
+
+            next_link = {
+                "rel": "next",
+                "type": "application/json",
+                "href": f"{request.base_url}catalogs/{catalog_id}/children?{urlencode(flat_params)}",
+            }
+            response["links"].append(next_link)
+
+        return response
 
     async def delete_catalog_collection(
         self, catalog_id: str, collection_id: str, request: Request
