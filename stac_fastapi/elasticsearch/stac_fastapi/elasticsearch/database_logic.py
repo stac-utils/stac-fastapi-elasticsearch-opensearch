@@ -728,7 +728,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         token: Optional[str],
         sort: Optional[Dict[str, Dict[str, str]]],
         collection_ids: Optional[List[str]],
-        datetime_search: Dict[str, Optional[str]],
+        datetime_search: str,
         ignore_unavailable: bool = True,
     ) -> Tuple[Iterable[Dict[str, Any]], Optional[int], Optional[str]]:
         """Execute a search query with limit and other optional parameters.
@@ -739,7 +739,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             token (Optional[str]): The token used to return the next set of results.
             sort (Optional[Dict[str, Dict[str, str]]]): Specifies how the results should be sorted.
             collection_ids (Optional[List[str]]): The collection ids to search.
-            datetime_search (Dict[str, Optional[str]]): Datetime range used for index selection.
+            datetime_search (str): Datetime used for index selection.
             ignore_unavailable (bool, optional): Whether to ignore unavailable collections. Defaults to True.
 
         Returns:
@@ -829,7 +829,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         geometry_geohash_grid_precision: int,
         geometry_geotile_grid_precision: int,
         datetime_frequency_interval: str,
-        datetime_search,
+        datetime_search: str,
         ignore_unavailable: Optional[bool] = True,
     ):
         """Return aggregations of STAC Items."""
@@ -1601,6 +1601,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             index=COLLECTIONS_INDEX, id=collection_id, refresh=refresh
         )
         await delete_item_index(collection_id)
+        await self.async_index_inserter.refresh_cache()
 
     async def bulk_async(
         self,
