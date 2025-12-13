@@ -210,6 +210,96 @@ class CollectionSerializer(Serializer):
         original_links = collection.get("links")
         if original_links:
             collection_links += resolve_links(original_links, str(request.base_url))
+
+        collection["links"] = collection_links
+
+        if get_bool_env("STAC_INDEX_ASSETS"):
+            collection["assets"] = {
+                a.pop("es_key"): a for a in collection.get("assets", [])
+            }
+            collection["item_assets"] = {
+                i.pop("es_key"): i for i in collection.get("item_assets", [])
+            }
+
+        else:
+            collection["assets"] = collection.get("assets", {})
+            if item_assets := collection.get("item_assets"):
+                collection["item_assets"] = item_assets
+
+        # Return the stac_types.Collection object
+        return stac_types.Collection(**collection)
+
+    @classmethod
+    def db_to_stac_in_catalog(
+        cls,
+        collection: dict,
+        request: Request,
+        catalog_id: str,
+        extensions: Optional[List[str]] = [],
+    ) -> stac_types.Collection:
+        """Transform database model to STAC collection within a catalog context.
+
+        This method is used when a collection is accessed via /catalogs/{id}/collections/{id}.
+        It sets the structural parent to the catalog and injects a catalog link.
+
+        Args:
+            collection (dict): The collection data in dictionary form, extracted from the database.
+            request: the API request
+            catalog_id: The ID of the parent catalog (sets structural parent)
+            extensions: A list of the extension class names (`ext.__name__`) or all enabled STAC API extensions.
+
+        Returns:
+            stac_types.Collection: The STAC collection object with catalog context.
+        """
+        # Avoid modifying the input dict in-place
+        collection = deepcopy(collection)
+
+        # Remove internal fields (not part of STAC spec)
+        collection.pop("bbox_shape", None)
+
+        # Set defaults
+        collection_id = collection.get("id")
+        collection.setdefault("type", "Collection")
+        collection.setdefault("stac_extensions", [])
+        collection.setdefault("stac_version", "")
+        collection.setdefault("title", "")
+        collection.setdefault("description", "")
+        collection.setdefault("keywords", [])
+        collection.setdefault("license", "")
+        collection.setdefault("providers", [])
+        collection.setdefault("summaries", {})
+        collection.setdefault(
+            "extent", {"spatial": {"bbox": []}, "temporal": {"interval": []}}
+        )
+        collection.setdefault("assets", {})
+
+        # Determine the structural parent URL
+        # When accessed via /catalogs/{id}/collections/{id}, the parent is the catalog
+        base_url = str(request.base_url)
+        parent_url = f"{base_url}catalogs/{catalog_id}"
+
+        # Create the collection links using CollectionLinks with catalog as parent
+        collection_links = CollectionLinks(
+            collection_id=collection_id,
+            request=request,
+            extensions=extensions,
+            parent_url=parent_url,
+        ).create_links()
+
+        # Add any additional links from the collection dictionary
+        original_links = collection.get("links")
+        if original_links:
+            collection_links += resolve_links(original_links, str(request.base_url))
+
+        # Inject catalog link for consistency (same as parent in this context)
+        catalog_link = {
+            "rel": "catalog",
+            "type": "application/json",
+            "href": parent_url,
+            "title": catalog_id,
+        }
+        collection_links.append(catalog_link)
+
         collection["links"] = collection_links
 
         if get_bool_env("STAC_INDEX_ASSETS"):

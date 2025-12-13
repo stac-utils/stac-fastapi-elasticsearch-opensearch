@@ -113,6 +113,7 @@ class CollectionLinks(BaseLinks):
 
     collection_id: str = attr.ib()
     extensions: List[str] = attr.ib(default=attr.Factory(list))
+    parent_url: Optional[str] = attr.ib(default=None, kw_only=True)
 
     def link_self(self) -> Dict:
         """Return the self link."""
@@ -123,8 +124,14 @@ class CollectionLinks(BaseLinks):
         )
 
     def link_parent(self) -> Dict[str, Any]:
-        """Create the `parent` link."""
-        return dict(rel=Relations.parent, type=MimeTypes.json.value, href=self.base_url)
+        """Create the `parent` link.
+
+        The parent link represents the structural parent (the path the user is traversing):
+        - If accessed via /catalogs/{id}/collections/{id}, parent is the catalog
+        - If accessed via /collections/{id}, parent is the root landing page
+        """
+        parent_href = self.parent_url if self.parent_url else self.base_url
+        return dict(rel=Relations.parent, type=MimeTypes.json.value, href=parent_href)
 
     def link_items(self) -> Dict[str, Any]:
         """Create the `items` link."""
