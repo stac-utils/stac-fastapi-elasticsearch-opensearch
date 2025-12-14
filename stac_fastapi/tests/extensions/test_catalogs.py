@@ -1147,3 +1147,204 @@ async def test_parent_ids_not_exposed_to_client(catalogs_app_client, load_test_d
         assert (
             "parent_ids" not in collection
         ), "parent_ids should not be exposed in API response"
+
+
+@pytest.mark.asyncio
+async def test_get_catalog_children(catalogs_app_client, load_test_data):
+    """Test getting children (collections) from a catalog."""
+    # Create a catalog
+    test_catalog = load_test_data("test_catalog.json")
+    catalog_id = f"test-catalog-{uuid.uuid4()}"
+    test_catalog["id"] = catalog_id
+
+    catalog_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert catalog_resp.status_code == 201
+
+    # Create multiple collections in the catalog
+    collection_ids = []
+    for i in range(2):
+        test_collection = load_test_data("test_collection.json")
+        collection_id = f"test-collection-{uuid.uuid4()}-{i}"
+        test_collection["id"] = collection_id
+
+        coll_resp = await catalogs_app_client.post(
+            f"/catalogs/{catalog_id}/collections", json=test_collection
+        )
+        assert coll_resp.status_code == 201
+        collection_ids.append(collection_id)
+
+    # Get children from the catalog
+    children_resp = await catalogs_app_client.get(f"/catalogs/{catalog_id}/children")
+    assert children_resp.status_code == 200
+
+    children_data = children_resp.json()
+    assert "children" in children_data
+    assert "links" in children_data
+    assert "numberReturned" in children_data
+    assert "numberMatched" in children_data
+
+    # Should have 2 children (collections)
+    assert len(children_data["children"]) == 2
+    assert children_data["numberReturned"] == 2
+    assert children_data["numberMatched"] == 2
+
+    # Check that all are collections
+    child_types = [child["type"] for child in children_data["children"]]
+    assert all(child_type == "Collection" for child_type in child_types)
+
+    # Check that we have the right collection IDs
+    returned_ids = [child["id"] for child in children_data["children"]]
+    for collection_id in collection_ids:
+        assert collection_id in returned_ids
+
+    # Check required links
+    links = children_data["links"]
+    link_rels = [link["rel"] for link in links]
+    assert "self" in link_rels
+    assert "root" in link_rels
+    assert "parent" in link_rels
+
+
+@pytest.mark.asyncio
+async def test_get_catalog_children_type_filter_catalog(
+    catalogs_app_client, load_test_data
+):
+    """Test filtering children by type=Catalog (should return empty since no catalogs are children)."""
+    # Create a catalog
+    test_catalog = load_test_data("test_catalog.json")
+    catalog_id = f"test-catalog-{uuid.uuid4()}"
+    test_catalog["id"] = catalog_id
+
+    catalog_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert catalog_resp.status_code == 201
+
+    # Create a collection in the catalog
+    test_collection = load_test_data("test_collection.json")
+    collection_id = f"test-collection-{uuid.uuid4()}"
+    test_collection["id"] = collection_id
+
+    coll_resp = await catalogs_app_client.post(
+        f"/catalogs/{catalog_id}/collections", json=test_collection
+    )
+    assert coll_resp.status_code == 201
+
+    # Get only catalog children (should be empty)
+    children_resp = await catalogs_app_client.get(
+        f"/catalogs/{catalog_id}/children?type=Catalog"
+    )
+    assert children_resp.status_code == 200
+
+    children_data = children_resp.json()
+    assert len(children_data["children"]) == 0
+    assert children_data["numberReturned"] == 0
+    assert children_data["numberMatched"] == 0
+
+
+@pytest.mark.asyncio
+async def test_get_catalog_children_type_filter_collection(
+    catalogs_app_client, load_test_data
+):
+    """Test filtering children by type=Collection."""
+    # Create a catalog
+    test_catalog = load_test_data("test_catalog.json")
+    catalog_id = f"test-catalog-{uuid.uuid4()}"
+    test_catalog["id"] = catalog_id
+
+    catalog_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert catalog_resp.status_code == 201
+
+    # Create a collection in the catalog
+    test_collection = load_test_data("test_collection.json")
+    collection_id = f"test-collection-{uuid.uuid4()}"
+    test_collection["id"] = collection_id
+
+    coll_resp = await catalogs_app_client.post(
+        f"/catalogs/{catalog_id}/collections", json=test_collection
+    )
+    assert coll_resp.status_code == 201
+
+    # Get only collection children
+    children_resp = await catalogs_app_client.get(
+        f"/catalogs/{catalog_id}/children?type=Collection"
+    )
+    assert children_resp.status_code == 200
+
+    children_data = children_resp.json()
+    assert len(children_data["children"]) == 1
+    assert children_data["children"][0]["type"] == "Collection"
+    assert children_data["children"][0]["id"] == collection_id
+
+
+@pytest.mark.asyncio
+async def test_get_catalog_children_nonexistent_catalog(catalogs_app_client):
+    """Test getting children from a catalog that doesn't exist."""
+    resp = await catalogs_app_client.get("/catalogs/nonexistent-catalog/children")
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_catalog_children_pagination(catalogs_app_client, load_test_data):
+    """Test pagination of children endpoint."""
+    # Create a catalog
+    test_catalog = load_test_data("test_catalog.json")
+    catalog_id = f"test-catalog-{uuid.uuid4()}"
+    test_catalog["id"] = catalog_id
+
+    catalog_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert catalog_resp.status_code == 201
+
+    # Create multiple collections in the catalog
+    collection_ids = []
+    for i in range(5):
+        test_collection = load_test_data("test_collection.json")
+        collection_id = f"test-collection-{uuid.uuid4()}-{i}"
+        test_collection["id"] = collection_id
+
+        coll_resp = await catalogs_app_client.post(
+            f"/catalogs/{catalog_id}/collections", json=test_collection
+        )
+        assert coll_resp.status_code == 201
+        collection_ids.append(collection_id)
+
+    # Test pagination with limit=2
+    children_resp = await catalogs_app_client.get(
+        f"/catalogs/{catalog_id}/children?limit=2"
+    )
+    assert children_resp.status_code == 200
+
+    children_data = children_resp.json()
+    assert len(children_data["children"]) == 2
+    assert children_data["numberReturned"] == 2
+    assert children_data["numberMatched"] == 5
+
+    # Check for next link
+    links = children_data["links"]
+    next_link = None
+    for link in links:
+        if link.get("rel") == "next":
+            next_link = link
+            break
+
+    assert next_link is not None, "Should have next link for pagination"
+
+    # Follow the next link (extract token from URL)
+    next_url = next_link["href"]
+    # Parse the token from the URL
+    from urllib.parse import parse_qs, urlparse
+
+    parsed_url = urlparse(next_url)
+    query_params = parse_qs(parsed_url.query)
+    token = query_params.get("token", [None])[0]
+
+    assert token is not None, "Next link should contain token"
+
+    # Get next page
+    next_resp = await catalogs_app_client.get(
+        f"/catalogs/{catalog_id}/children?token={token}&limit=2"
+    )
+    assert next_resp.status_code == 200
+
+    next_data = next_resp.json()
+    assert len(next_data["children"]) == 2  # Should have remaining 3, but limited to 2
+    assert next_data["numberReturned"] == 2
+    assert next_data["numberMatched"] == 5

@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Added DELETE `/catalogs/{catalog_id}/collections/{collection_id}` endpoint to support removing collections from catalogs. When a collection belongs to multiple catalogs, it removes only the specified catalog from the collection's parent_ids. When a collection belongs to only one catalog, the collection is deleted entirely. [#554](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/554)
 
 - Added `parent_ids` internal field to collections to support multi-catalog hierarchies. Collections can now belong to multiple catalogs, with parent catalog IDs stored in this field for efficient querying and management. [#554](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/554)
+- Added GET `/catalogs/{catalog_id}/children` endpoint implementing the STAC Children extension for efficient hierarchical catalog browsing. Supports type filtering (?type=Catalog|Collection), pagination, and returns numberReturned/numberMatched counts at the top level. [#558](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/558)
 
 
 ### Changed
