@@ -52,6 +52,12 @@ from stac_fastapi.sfeos_helpers.database.utils import (
     merge_to_operations,
     operations_to_script,
 )
+from stac_fastapi.sfeos_helpers.filter import (
+    Cql2AstParser,
+    DatetimeOptimizer,
+    to_es_via_ast,
+)
+from stac_fastapi.sfeos_helpers.filter.datetime_optimizer import extract_from_ast
 from stac_fastapi.sfeos_helpers.mappings import (
     AGGREGATION_MAPPING,
     COLLECTIONS_INDEX,
@@ -683,11 +689,11 @@ class DatabaseLogic(BaseDatabaseLogic):
         self, search: Search, _filter: Optional[Dict[str, Any]]
     ):
         """
-        Apply a CQL2 filter to an Opensearch Search object.
+        Apply a CQL2 filter to an OpenSearch Search object.
 
-        This method transforms a dictionary representing a CQL2 filter into an Opensearch query
-        and applies it to the provided Search object. If the filter is None, the original Search
-        object is returned unmodified.
+        This method transforms a CQL2 filter dictionary into an OpenSearch query using
+        an AST tree-based approach. If the filter is None, the original Search object is returned
+        unmodified.
 
         Args:
             search (Search): The Opensearch Search object to which the filter will be applied.
@@ -701,8 +707,29 @@ class DatabaseLogic(BaseDatabaseLogic):
                     otherwise the original Search object.
         """
         if _filter is not None:
-            es_query = filter_module.to_es(await self.get_queryables_mapping(), _filter)
-            search = search.filter(es_query)
+            queryables_mapping = await self.get_queryables_mapping()
+
+            try:
+                parser = Cql2AstParser(queryables_mapping)
+                ast = parser.parse(_filter)
+
+                optimizer = DatetimeOptimizer()
+                optimized_ast = optimizer.optimize_query_structure(ast)
+
+                date_str = extract_from_ast(optimized_ast, "datetime")
+                collection_ids = extract_from_ast(optimized_ast, "collection") or None
+
+                es_query = to_es_via_ast(queryables_mapping, optimized_ast)
+
+                search = search.filter(es_query)
+                search._cql2_date_str = date_str
+                search._cql2_collection_ids = collection_ids
+
+            except Exception:
+                # Fallback to dictionary-based approach
+                es_query = filter_module.to_es(queryables_mapping, _filter)
+                search = search.filter(es_query)
+                return search
 
         return search
 
