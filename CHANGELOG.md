@@ -17,7 +17,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Added GET `/catalogs/{catalog_id}/children` endpoint implementing the STAC Children extension for efficient hierarchical catalog browsing. Supports type filtering (?type=Catalog|Collection), pagination, and returns numberReturned/numberMatched counts at the top level. [#558](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/558)
 - Implemented context-aware dynamic linking: catalogs use dynamic `rel="children"` links pointing to the `/catalogs/{id}/children` endpoint, and collections have context-dependent `rel="parent"` links (pointing to catalog when accessed via `/catalogs/{id}/collections/{id}`, or root when accessed via `/collections/{id}`). Catalog links are only injected in catalog context. This eliminates race conditions and ensures consistency with parent_ids relationships. [#559](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/559)
 
+
 ### Changed
+
+- Have opensearch datetime, geometry and collections fields defined as constant strings [#553](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/553)
 
 ### Fixed
 
