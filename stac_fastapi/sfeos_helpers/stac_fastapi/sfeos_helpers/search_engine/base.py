@@ -67,3 +67,16 @@ class BaseIndexInserter(ABC):
         internal caches should override this method.
         """
         pass
+
+    def validate_datetime_field_update(self, field_path: str) -> None:
+        """Validate if a datetime field can be updated.
+
+        For datetime-based indexing, certain datetime fields cannot be modified
+        because they determine the index where the item is stored.
+
+        Args:
+            field_path (str): The path of the field being updated (e.g., "properties.datetime").
+
+        """
+        pass
+

@@ -591,6 +591,77 @@ async def test_patch_item_for_datetime_index(
 
 @pytest.mark.datetime_filtering
 @pytest.mark.asyncio
+async def test_patch_item_datetime_field_blocked_use_datetime_false(
+    mock_datetime_env, app_client, load_test_data, ctx
+):
+    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip("Datetime index filtering not enabled")
+
+    base_item = load_test_data("test_item.json")
+    collection_id = base_item["collection"]
+
+    patch_data = {"properties": {"start_datetime": "2025-01-01T00:00:00Z"}}
+    response = await app_client.patch(
+        f"/collections/{collection_id}/items/{base_item['id']}", json=patch_data
+    )
+    assert response.status_code == 400
+    assert "start_datetime" in response.json()["detail"]
+    assert "not yet supported" in response.json()["detail"]
+
+    patch_data = {"properties": {"end_datetime": "2025-12-31T23:59:59Z"}}
+    response = await app_client.patch(
+        f"/collections/{collection_id}/items/{base_item['id']}", json=patch_data
+    )
+    assert response.status_code == 400
+    assert "end_datetime" in response.json()["detail"]
+    assert "not yet supported" in response.json()["detail"]
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_patch_item_datetime_field_blocked_use_datetime_true(
+    app_client, load_test_data, ctx, txn_client, monkeypatch
+):
+    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip("Datetime index filtering not enabled")
+
+    monkeypatch.setenv("USE_DATETIME", "true")
+    if hasattr(txn_client.database.async_index_selector, "cache_manager"):
+        txn_client.database.async_index_selector.cache_manager.clear_cache()
+
+    base_item = load_test_data("test_item.json")
+    collection_id = base_item["collection"]
+
+    patch_data = {"properties": {"datetime": "2025-06-15T12:00:00Z"}}
+    response = await app_client.patch(
+        f"/collections/{collection_id}/items/{base_item['id']}", json=patch_data
+    )
+    assert response.status_code == 400
+    assert "datetime" in response.json()["detail"]
+    assert "not yet supported" in response.json()["detail"]
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_patch_item_non_datetime_field_allowed(
+    mock_datetime_env, app_client, load_test_data, ctx
+):
+    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip("Datetime index filtering not enabled")
+
+    base_item = load_test_data("test_item.json")
+    collection_id = base_item["collection"]
+
+    patch_data = {"properties": {"platform": "updated-platform"}}
+    response = await app_client.patch(
+        f"/collections/{collection_id}/items/{base_item['id']}", json=patch_data
+    )
+    assert response.status_code == 200
+    assert response.json()["properties"]["platform"] == "updated-platform"
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
 async def test_put_item_for_datetime_index(
     mock_datetime_env, app_client, load_test_data, txn_client, ctx
 ):

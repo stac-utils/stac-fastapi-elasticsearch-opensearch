@@ -1218,6 +1218,10 @@ class DatabaseLogic(BaseDatabaseLogic):
         Returns:
             patched item.
         """
+        for operation in operations:
+            if operation.op in ["add", "replace", "remove"]:
+                self.async_index_inserter.validate_datetime_field_update(operation.path)
+
         new_item_id = None
         new_collection_id = None
         script_operations = []

@@ -83,6 +83,40 @@ class DatetimeIndexInserter(BaseIndexInserter):
         """
         await self.index_selector.refresh_cache()
 
+    def validate_datetime_field_update(self, field_path: str) -> None:
+        """Validate if a datetime field can be updated.
+
+        For datetime-based indexing, the primary datetime field cannot be modified
+        because it determines the index where the item is stored.
+
+        When USE_DATETIME=True, 'properties.datetime' is protected.
+        When USE_DATETIME=False, 'properties.start_datetime' and 'properties.end_datetime' are protected.
+
+        Args:
+            field_path (str): The path of the field being updated.
+        """
+        # TODO: In the future, updating these fields will be able to move an item between indices by changing the time-based aliases
+        if self.use_datetime:
+            if field_path == "properties/datetime":
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        "Updating 'properties.datetime' is not yet supported for datetime-based indexing. "
+                        "This feature will be available in a future release, enabling automatic "
+                        "index and time-based alias updates when datetime values change."
+                    ),
+                )
+        else:
+            if field_path in ("properties/start_datetime", "properties/end_datetime"):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        f"Updating '{field_path}' is not yet supported for datetime-based indexing. "
+                        "This feature will be available in a future release, enabling automatic "
+                        "index and time-based alias updates when datetime values change."
+                    ),
+                )
+
     async def get_target_index(
         self, collection_id: str, product: Dict[str, Any]
     ) -> str:
