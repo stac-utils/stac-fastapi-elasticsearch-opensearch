@@ -297,8 +297,42 @@ class CatalogsExtension(ApiExtension):
             # Convert to STAC format
             catalog = self.client.catalog_serializer.db_to_stac(db_catalog, request)
 
-            return catalog
-        except Exception:
+            # DYNAMIC INJECTION: Ensure the 'children' link exists
+            # This link points to the /children endpoint which dynamically lists all children
+            base_url = str(request.base_url)
+            children_link = {
+                "rel": "children",
+                "type": "application/json",
+                "href": f"{base_url}catalogs/{catalog_id}/children",
+                "title": "Child catalogs and collections",
+            }
+
+            # Convert to dict if needed to manipulate links
+            if isinstance(catalog, dict):
+                catalog_dict = catalog
+            else:
+                catalog_dict = (
+                    catalog.model_dump()
+                    if hasattr(catalog, "model_dump")
+                    else dict(catalog)
+                )
+
+            # Ensure catalog has a links array
+            if "links" not in catalog_dict:
+                catalog_dict["links"] = []
+
+            # Add children link if it doesn't already exist
+            if not any(
+                link.get("rel") == "children" for link in catalog_dict.get("links", [])
+            ):
+                catalog_dict["links"].append(children_link)
+
+            # Return as Catalog object
+            return Catalog(**catalog_dict)
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error retrieving catalog {catalog_id}: {e}")
             raise HTTPException(
                 status_code=404, detail=f"Catalog {catalog_id} not found"
             )
@@ -358,18 +392,8 @@ class CatalogsExtension(ApiExtension):
                             parent_ids.remove(catalog_id)
                             child["parent_ids"] = parent_ids
 
-                            # Also remove the catalog link from the collection's links
-                            if "links" in child:
-                                child["links"] = [
-                                    link
-                                    for link in child.get("links", [])
-                                    if not (
-                                        link.get("rel") == "catalog"
-                                        and catalog_id in link.get("href", "")
-                                    )
-                                ]
-
                             # Update the collection in the database
+                            # Note: Catalog links are now dynamically generated, so no need to remove them
                             await self.client.database.update_collection(
                                 collection_id=child_id,
                                 collection=child,
@@ -458,8 +482,19 @@ class CatalogsExtension(ApiExtension):
             collections = []
             for coll_id in collection_ids:
                 try:
-                    collection = await self.client.get_collection(
-                        coll_id, request=request
+                    # Get the collection from database
+                    collection_db = await self.client.database.find_collection(coll_id)
+                    # Serialize with catalog context (sets parent to catalog, injects catalog link)
+                    collection = (
+                        self.client.collection_serializer.db_to_stac_in_catalog(
+                            collection_db,
+                            request,
+                            catalog_id=catalog_id,
+                            extensions=[
+                                type(ext).__name__
+                                for ext in self.client.database.extensions
+                            ],
+                        )
                     )
                     collections.append(collection)
                 except HTTPException as e:
@@ -560,11 +595,6 @@ class CatalogsExtension(ApiExtension):
                     )
                 )
 
-                # Update the catalog to include a link to the collection
-                await self._add_collection_to_catalog_links(
-                    catalog_id, collection.id, request
-                )
-
                 return updated_collection
 
             except Exception as e:
@@ -585,28 +615,10 @@ class CatalogsExtension(ApiExtension):
                 if catalog_id not in collection_dict["parent_ids"]:
                     collection_dict["parent_ids"].append(catalog_id)
 
-                # Add a link from the collection back to its parent catalog BEFORE saving to database
-                base_url = str(request.base_url)
-                catalog_link = {
-                    "rel": "catalog",
-                    "type": "application/json",
-                    "href": f"{base_url}catalogs/{catalog_id}",
-                    "title": catalog_id,
-                }
-
-                # Add the catalog link to the collection dict
-                if "links" not in collection_dict:
-                    collection_dict["links"] = []
-
-                # Check if the catalog link already exists
-                catalog_href = catalog_link["href"]
-                link_exists = any(
-                    link.get("href") == catalog_href and link.get("rel") == "catalog"
-                    for link in collection_dict.get("links", [])
-                )
-
-                if not link_exists:
-                    collection_dict["links"].append(catalog_link)
+                # Note: We do NOT store catalog links in the database.
+                # Catalog links are injected dynamically by the serializer based on context.
+                # This allows the same collection to have different catalog links
+                # depending on which catalog it's accessed from.
 
                 # Now convert to database format (this will process the links)
                 collection_db = self.client.database.collection_serializer.stac_to_db(
@@ -628,11 +640,6 @@ class CatalogsExtension(ApiExtension):
                     )
                 )
 
-                # Update the catalog to include a link to the new collection
-                await self._add_collection_to_catalog_links(
-                    catalog_id, collection.id, request
-                )
-
                 return created_collection
 
         except HTTPException as e:
@@ -650,92 +657,6 @@ class CatalogsExtension(ApiExtension):
                 status_code=500,
                 detail=f"Failed to create collection in catalog: {str(e)}",
             )
-
-    async def _add_collection_to_catalog_links(
-        self, catalog_id: str, collection_id: str, request: Request
-    ) -> None:
-        """Add a collection link to a catalog.
-
-        This helper method updates a catalog's links to include a reference
-        to a collection by reindexing the updated catalog document.
-
-        Args:
-            catalog_id: The ID of the catalog to update.
-            collection_id: The ID of the collection to link.
-            request: Request object for base URL construction.
-        """
-        try:
-            # Get the current catalog
-            db_catalog = await self.client.database.find_catalog(catalog_id)
-            catalog = self.client.catalog_serializer.db_to_stac(db_catalog, request)
-
-            # Create the collection link
-            base_url = str(request.base_url)
-            collection_link = {
-                "rel": "child",
-                "href": f"{base_url}collections/{collection_id}",
-                "type": "application/json",
-                "title": collection_id,
-            }
-
-            # Add the link to the catalog if it doesn't already exist
-            catalog_links = (
-                catalog.get("links")
-                if isinstance(catalog, dict)
-                else getattr(catalog, "links", None)
-            )
-            if not catalog_links:
-                catalog_links = []
-                if isinstance(catalog, dict):
-                    catalog["links"] = catalog_links
-                else:
-                    catalog.links = catalog_links
-
-            # Check if the collection link already exists
-            collection_href = collection_link["href"]
-            link_exists = any(
-                (
-                    link.get("href")
-                    if hasattr(link, "get")
-                    else getattr(link, "href", None)
-                )
-                == collection_href
-                for link in catalog_links
-            )
-
-            if not link_exists:
-                catalog_links.append(collection_link)
-
-                # Update the catalog in the database by reindexing it
-                # Convert back to database format
-                updated_db_catalog = self.client.catalog_serializer.stac_to_db(
-                    catalog, request
-                )
-                updated_db_catalog_dict = (
-                    updated_db_catalog.model_dump()
-                    if hasattr(updated_db_catalog, "model_dump")
-                    else updated_db_catalog
-                )
-                updated_db_catalog_dict["type"] = "Catalog"
-
-                # Use the same approach as create_catalog to update the document
-                await self.client.database.client.index(
-                    index=COLLECTIONS_INDEX,
-                    id=catalog_id,
-                    body=updated_db_catalog_dict,
-                    refresh=True,
-                )
-
-                logger.info(
-                    f"Updated catalog {catalog_id} to include link to collection {collection_id}"
-                )
-
-        except Exception as e:
-            logger.error(
-                f"Failed to update catalog {catalog_id} links: {e}", exc_info=True
-            )
-            # Don't fail the entire operation if link update fails
-            # The collection was created successfully, just the catalog link is missing
 
     async def get_catalog_collection(
         self, catalog_id: str, collection_id: str, request: Request
@@ -776,9 +697,13 @@ class CatalogsExtension(ApiExtension):
                 status_code=404, detail=f"Collection {collection_id} not found"
             )
 
-        # Return the collection
-        return await self.client.get_collection(
-            collection_id=collection_id, request=request
+        # Return the collection with catalog context
+        collection_db = await self.client.database.find_collection(collection_id)
+        return self.client.collection_serializer.db_to_stac_in_catalog(
+            collection_db,
+            request,
+            catalog_id=catalog_id,
+            extensions=[type(ext).__name__ for ext in self.client.database.extensions],
         )
 
     async def get_catalog_collection_items(
@@ -1040,6 +965,7 @@ class CatalogsExtension(ApiExtension):
                 collection_db["parent_ids"] = parent_ids
 
                 # Update the collection in the database
+                # Note: Catalog links are now dynamically generated, so no need to remove them
                 await self.client.database.update_collection(
                     collection_id=collection_id, collection=collection_db, refresh=True
                 )
@@ -1056,11 +982,6 @@ class CatalogsExtension(ApiExtension):
                     f"Deleted collection {collection_id} (only parent was catalog {catalog_id})"
                 )
 
-            # Remove the collection link from the catalog
-            await self._remove_collection_from_catalog_links(
-                catalog_id, collection_id, request
-            )
-
         except HTTPException:
             raise
         except Exception as e:
@@ -1072,87 +993,3 @@ class CatalogsExtension(ApiExtension):
                 status_code=500,
                 detail=f"Failed to delete collection from catalog: {str(e)}",
             )
-
-    async def _remove_collection_from_catalog_links(
-        self, catalog_id: str, collection_id: str, request: Request
-    ) -> None:
-        """Remove a collection link from a catalog.
-
-        This helper method updates a catalog's links to remove a reference
-        to a collection by reindexing the updated catalog document.
-
-        Args:
-            catalog_id: The ID of the catalog to update.
-            collection_id: The ID of the collection to unlink.
-            request: Request object for base URL construction.
-        """
-        try:
-            # Get the current catalog
-            db_catalog = await self.client.database.find_catalog(catalog_id)
-            catalog = self.client.catalog_serializer.db_to_stac(db_catalog, request)
-
-            # Get the catalog links
-            catalog_links = (
-                catalog.get("links")
-                if isinstance(catalog, dict)
-                else getattr(catalog, "links", None)
-            )
-
-            if not catalog_links:
-                return
-
-            # Find and remove the collection link
-            collection_href = (
-                f"{str(request.base_url).rstrip('/')}/collections/{collection_id}"
-            )
-            links_to_keep = []
-            link_removed = False
-
-            for link in catalog_links:
-                link_href = (
-                    link.get("href")
-                    if hasattr(link, "get")
-                    else getattr(link, "href", None)
-                )
-                if link_href == collection_href and not link_removed:
-                    # Skip this link (remove it)
-                    link_removed = True
-                else:
-                    links_to_keep.append(link)
-
-            if link_removed:
-                # Update the catalog with the modified links
-                if isinstance(catalog, dict):
-                    catalog["links"] = links_to_keep
-                else:
-                    catalog.links = links_to_keep
-
-                # Convert back to database format and update
-                updated_db_catalog = self.client.catalog_serializer.stac_to_db(
-                    catalog, request
-                )
-                updated_db_catalog_dict = (
-                    updated_db_catalog.model_dump()
-                    if hasattr(updated_db_catalog, "model_dump")
-                    else updated_db_catalog
-                )
-                updated_db_catalog_dict["type"] = "Catalog"
-
-                # Update the document
-                await self.client.database.client.index(
-                    index=COLLECTIONS_INDEX,
-                    id=catalog_id,
-                    body=updated_db_catalog_dict,
-                    refresh=True,
-                )
-
-                logger.info(
-                    f"Removed collection {collection_id} link from catalog {catalog_id}"
-                )
-
-        except Exception as e:
-            logger.error(
-                f"Failed to remove collection link from catalog {catalog_id}: {e}",
-                exc_info=True,
-            )
-            # Don't fail the entire operation if link removal fails
