@@ -28,8 +28,8 @@ keywords = [
 ]
 dynamic = ["version"]
 dependencies = [
-    "stac-fastapi-core==6.7.6",
-    "sfeos-helpers==6.7.6",
+    "stac-fastapi-core==6.8.0",
+    "sfeos-helpers==6.8.0",
     "elasticsearch[async]~=8.19.1",
     "uvicorn~=0.23.0",
     "starlette>=0.35.0,<0.36.0",
@@ -48,7 +48,7 @@ dev = [
     "httpx>=0.24.0,<0.28.0",
     "redis~=6.4.0",
     "retry~=0.9.2",
-    "stac-fastapi-core[redis]==6.7.6",
+    "stac-fastapi-core[redis]==6.8.0",
 ]
 docs = [
     "mkdocs~=1.4.0",
@@ -58,7 +58,7 @@ docs = [
     "retry~=0.9.2",
 ]
 redis = [
-    "stac-fastapi-core[redis]==6.7.6",
+    "stac-fastapi-core[redis]==6.8.0",
 ]
 server = [
     "uvicorn[standard]~=0.23.0",
