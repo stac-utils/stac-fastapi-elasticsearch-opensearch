@@ -1242,8 +1242,6 @@ class DatabaseLogic(BaseDatabaseLogic):
             else:
                 script_operations.append(operation)
 
-        script = operations_to_script(script_operations, create_nest=create_nest)
-
         try:
             search_response = await self.client.search(
                 index=index_alias_by_collection_id(collection_id),
@@ -1256,13 +1254,18 @@ class DatabaseLogic(BaseDatabaseLogic):
                 raise NotFoundError(
                     f"Item {item_id} does not exist inside Collection {collection_id}"
                 )
-            document_index = search_response["hits"]["hits"][0]["_index"]
-            await self.client.update(
-                index=document_index,
-                id=mk_item_id(item_id, collection_id),
-                script=script,
-                refresh=True,
-            )
+
+            if script_operations:
+                script = operations_to_script(
+                    script_operations, create_nest=create_nest
+                )
+                document_index = search_response["hits"]["hits"][0]["_index"]
+                await self.client.update(
+                    index=document_index,
+                    id=mk_item_id(item_id, collection_id),
+                    script=script,
+                    refresh=True,
+                )
         except ESNotFoundError:
             raise NotFoundError(
                 f"Item {item_id} does not exist inside Collection {collection_id}"
@@ -1275,26 +1278,9 @@ class DatabaseLogic(BaseDatabaseLogic):
         item = await self.get_one_item(collection_id, item_id)
 
         if new_collection_id:
-            await self.client.reindex(
-                body={
-                    "dest": {
-                        "index": f"{ITEMS_INDEX_PREFIX}{new_collection_id}"
-                    },  # # noqa
-                    "source": {
-                        "index": f"{ITEMS_INDEX_PREFIX}{collection_id}",
-                        "query": {"term": {"id": {"value": item_id}}},
-                    },
-                    "script": {
-                        "lang": "painless",
-                        "source": (
-                            f"""ctx._id = ctx._id.replace('{collection_id}', '{new_collection_id}');"""  # noqa
-                            f"""ctx._source.collection = '{new_collection_id}';"""  # noqa
-                        ),
-                    },
-                },
-                wait_for_completion=True,
-                refresh=True,
-            )
+            item["collection"] = new_collection_id
+            item = await self.async_prep_create_item(item=item, base_url=base_url)
+            await self.create_item(item=item, refresh=True)
 
             await self.delete_item(
                 item_id=item_id,
@@ -1302,7 +1288,6 @@ class DatabaseLogic(BaseDatabaseLogic):
                 refresh=refresh,
             )
 
-            item["collection"] = new_collection_id
             collection_id = new_collection_id
 
         if new_item_id:

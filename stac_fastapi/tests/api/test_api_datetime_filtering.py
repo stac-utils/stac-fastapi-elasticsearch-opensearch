@@ -662,6 +662,47 @@ async def test_patch_item_non_datetime_field_allowed(
 
 @pytest.mark.datetime_filtering
 @pytest.mark.asyncio
+async def test_patch_item_change_collection_creates_datetime_aliases(
+    mock_datetime_env, app_client, load_test_data, txn_client, ctx
+):
+    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip("Datetime index filtering not enabled")
+
+    base_item = load_test_data("test_item.json")
+    original_collection_id = base_item["collection"]
+
+    test_collection = load_test_data("test_collection.json")
+    new_collection = deepcopy(test_collection)
+    new_collection["id"] = "test-collection-2"
+    response = await app_client.post("/collections", json=new_collection)
+    assert response.status_code == 201
+
+    patch_data = {"collection": new_collection["id"]}
+    response = await app_client.patch(
+        f"/collections/{original_collection_id}/items/{base_item['id']}",
+        json=patch_data,
+    )
+    assert response.status_code == 200
+    assert response.json()["collection"] == new_collection["id"]
+
+    indices = await txn_client.database.client.indices.get_alias(
+        index=f"items_{new_collection['id']}"
+    )
+    expected_aliases = [
+        f"items_start_datetime_{new_collection['id']}_2020-02-08",
+        f"items_end_datetime_{new_collection['id']}_2020-02-16",
+    ]
+    all_aliases = set()
+    for index_info in indices.values():
+        all_aliases.update(index_info.get("aliases", {}).keys())
+
+    assert all(alias in all_aliases for alias in expected_aliases)
+
+    await app_client.delete(f"/collections/{new_collection['id']}")
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
 async def test_put_item_for_datetime_index(
     mock_datetime_env, app_client, load_test_data, txn_client, ctx
 ):
