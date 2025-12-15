@@ -244,18 +244,35 @@ This implementation follows the [STAC API Catalogs Extension](https://github.com
 - **Collection Discovery**: Access collections within specific catalog contexts
 - **STAC API Compliance**: Follows STAC specification for catalog objects and linking
 - **Flexible Querying**: Support for standard STAC API query parameters when browsing collections within catalogs
+- **Safety-First Data Protection**: Collection data is never deleted through the catalogs route; only containers (catalogs) can be destroyed
+
+### Safety Architecture
+
+The catalogs extension implements a **safety-first design** that protects collection data:
+
+| Operation | Route | Behavior | Data Safety |
+|-----------|-------|----------|-------------|
+| Delete Catalog | `DELETE /catalogs/{id}` | Removes the catalog container; all links between catalog and collections are severed; collections are adopted by root if orphaned | 🟢 Safe (structure only) |
+| Unlink Collection | `DELETE /catalogs/{id}/collections/{id}` | Severs the link between collection and this catalog; collection survives at root if it has no other parents | 🟢 Safe (zero data loss) |
+| Destroy Collection | `DELETE /collections/{id}` | Permanently deletes collection and all items (intentional, outside catalogs route) | 🔴 Destructive |
+
+**Key Principle**: The catalogs route is write-safe for creation but read-only for deletion of collections. You can create collections via the catalogs route, but deleting collections is only allowed through the explicit `/collections` endpoint. This prevents accidental data loss while allowing full organizational flexibility.
+
+**Link Removal**: When you delete a catalog or unlink a collection, the relationship links are permanently severed from the database. However, the collection data itself remains intact and is automatically adopted by the root catalog if it becomes an orphan.
+
+**Collection Deletion**: Collections CAN be permanently deleted, but only via the `/collections/{collection_id}` endpoint (outside the catalogs route). This ensures intentional, explicit deletion of collection data and prevents accidental data loss through the catalogs API.
 
 ### Endpoints
 
 - **GET `/catalogs`**: Retrieve the root catalog and its child catalogs
 - **POST `/catalogs`**: Create a new catalog (requires appropriate permissions)
 - **GET `/catalogs/{catalog_id}`**: Retrieve a specific catalog and its children
-- **DELETE `/catalogs/{catalog_id}`**: Delete a catalog (optionally cascade delete all collections)
+- **DELETE `/catalogs/{catalog_id}`**: Delete a catalog (collections are unlinked and adopted by root if orphaned)
 - **GET `/catalogs/{catalog_id}/children`**: Retrieve all children (Catalogs and Collections) of this catalog with optional type filtering
 - **GET `/catalogs/{catalog_id}/collections`**: Retrieve collections within a specific catalog
 - **POST `/catalogs/{catalog_id}/collections`**: Create a new collection within a specific catalog
 - **GET `/catalogs/{catalog_id}/collections/{collection_id}`**: Retrieve a specific collection within a catalog
-- **DELETE `/catalogs/{catalog_id}/collections/{collection_id}`**: Delete a collection from a catalog (removes parent_id if multiple parents exist, deletes collection if it's the only parent)
+- **DELETE `/catalogs/{catalog_id}/collections/{collection_id}`**: Unlink a collection from a catalog (collection survives at root if orphaned)
 - **GET `/catalogs/{catalog_id}/collections/{collection_id}/items`**: Retrieve items within a collection in a catalog context
 - **GET `/catalogs/{catalog_id}/collections/{collection_id}/items/{item_id}`**: Retrieve a specific item within a catalog context
 
@@ -305,25 +322,38 @@ curl "http://localhost:8081/catalogs/earth-observation/collections/sentinel-2/it
 # Get specific item within a catalog
 curl "http://localhost:8081/catalogs/earth-observation/collections/sentinel-2/items/S2A_20231015_123456"
 
-# Delete a collection from a catalog
-# If the collection has multiple parent catalogs, only removes this catalog from parent_ids
-# If this is the only parent catalog, deletes the collection entirely
+# Unlink a collection from a catalog
+# The collection is removed from this catalog but survives in the database
+# If it has no other parent catalogs, it is automatically adopted by root
 curl -X DELETE "http://localhost:8081/catalogs/earth-observation/collections/sentinel-2"
 
-# Delete a catalog (collections remain intact)
+# Delete a catalog
+# All collections are unlinked and adopted by root if they become orphans
+# Collection data is NEVER deleted
 curl -X DELETE "http://localhost:8081/catalogs/earth-observation"
 
-# Delete a catalog and all its collections (cascade delete)
-curl -X DELETE "http://localhost:8081/catalogs/earth-observation?cascade=true"
+# To permanently delete a collection and all its items, use the /collections endpoint
+curl -X DELETE "http://localhost:8081/collections/sentinel-2"
 ```
 
-### Delete Catalog Parameters
+### Delete Behavior
 
-The DELETE endpoint supports the following query parameter:
+The catalogs extension implements a **safety-first deletion policy**:
 
-- **`cascade`** (boolean, default: `false`): 
-  - If `false`: Only deletes the catalog. Collections linked to the catalog remain in the database but lose their catalog link.
-  - If `true`: Deletes the catalog AND all collections linked to it. Use with caution as this is a destructive operation.
+- **`DELETE /catalogs/{id}`**: Removes the catalog container and severs all links between the catalog and its collections. Collections are automatically adopted by the root catalog if they become orphans. **Collection data is never deleted.**
+- **`DELETE /catalogs/{id}/collections/{id}`**: Severs the link between a collection and this catalog. If the collection has other parent catalogs, it remains linked to them. If it becomes an orphan, it is automatically adopted by root. **Collection data is never deleted.**
+- **`DELETE /collections/{id}`**: Permanently deletes a collection and all its items. This is the only way to destroy collection data and must be done explicitly outside the catalogs route.
+
+**What Gets Removed**:
+- Catalog documents (when deleting a catalog)
+- Relationship links between catalogs and collections (when unlinking)
+- Collection documents and items (only via `/collections` endpoint)
+
+**What Is Always Preserved**:
+- Collection data (never deleted through catalogs routes)
+- Item data (never deleted through catalogs routes)
+
+> **Note**: The `cascade` parameter has been removed. Collections are never deleted through the catalogs route. If you need to delete collections, use the `/collections` endpoint explicitly.
 
 ### Response Structure
 

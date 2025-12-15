@@ -11,9 +11,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 
+- Catalogs Extension - Safety-First Architecture: Implemented a safety-first deletion policy for the catalogs endpoint to prevent accidental data loss. Collections are now never deleted through the catalogs route; they are only unlinked and automatically adopted by the root catalog if they become orphans. Collection data can only be permanently deleted via the explicit `/collections/{collection_id}` DELETE endpoint. This ensures a clear separation between container (catalog) deletion and content (collection/item) deletion, with data always being preserved through the catalogs API.
+
 ### Fixed
 
 ### Removed
+
+- Removed `cascade` parameter from `DELETE /catalogs/{catalog_id}` endpoint. Collections are no longer deleted when a catalog is deleted; they are unlinked and adopted by root if orphaned.
 
 ### Updated
 
