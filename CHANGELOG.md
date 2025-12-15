@@ -11,15 +11,21 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 
-- Catalogs Extension - Safety-First Architecture: Implemented a safety-first deletion policy for the catalogs endpoint to prevent accidental data loss. Collections are now never deleted through the catalogs route; they are only unlinked and automatically adopted by the root catalog if they become orphans. Collection data can only be permanently deleted via the explicit `/collections/{collection_id}` DELETE endpoint. This ensures a clear separation between container (catalog) deletion and content (collection/item) deletion, with data always being preserved through the catalogs API.
-
 ### Fixed
 
 ### Removed
 
-- Removed `cascade` parameter from `DELETE /catalogs/{catalog_id}` endpoint. Collections are no longer deleted when a catalog is deleted; they are unlinked and adopted by root if orphaned.
-
 ### Updated
+
+## [v6.8.1] - 2025-12-15
+
+### Changed
+
+- Implemented a safety-first deletion policy for the catalogs endpoint to prevent accidental data loss. Collections are now never deleted through the catalogs route; they are only unlinked and automatically adopted by the root catalog if they become orphans. Collection data can only be permanently deleted via the explicit `/collections/{collection_id}` DELETE endpoint. This ensures a clear separation between container (catalog) deletion and content (collection/item) deletion, with data always being preserved through the catalogs API.
+
+### Removed
+
+- Removed `cascade` parameter from `DELETE /catalogs/{catalog_id}` endpoint. Collections are no longer deleted when a catalog is deleted; they are unlinked and adopted by root if orphaned.
 
 ## [v6.8.0] - 2025-12-15
 
@@ -693,7 +699,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.8.0...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.8.1...main
+[v6.8.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.8.0...v6.8.1
 [v6.8.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.6...v6.8.0
 [v6.7.6]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.5...v6.7.6
 [v6.7.5]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.4...v6.7.5
@@ -734,3 +741,4 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 [v0.3.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v0.2.0...v0.3.0
 [v0.2.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v0.1.0...v0.2.0
 [v0.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v0.1.0
+
