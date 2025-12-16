@@ -1,6 +1,6 @@
 """Extracts datetime patterns from CQL2 AST."""
 
-from typing import List, Union
+from typing import Any, List, Tuple, Union
 
 from stac_fastapi.core.extensions.filter import (
     AdvancedComparisonNode,
@@ -124,47 +124,110 @@ class DatetimeOptimizer:
         return False
 
 
-def extract_from_ast(node: CqlNode, field_name: str):
-    """Extract values from AST for a given field."""
+def extract_from_ast(node: CqlNode, field_name: str) -> List[Any]:
+    """Extract all values for a specific field from a CQL AST."""
     values = []
-    datetime_start = None
-    datetime_end = None
 
     def recurse(n):
-        nonlocal datetime_start, datetime_end
-
+        """Recursively traverse AST nodes to extract field values."""
         if hasattr(n, "children"):
             for child in n.children:
                 recurse(child)
 
         if hasattr(n, "field") and hasattr(n, "value"):
             if n.field == field_name:
-                if field_name == "datetime":
-                    op = getattr(n, "op", None)
-                    if op == ComparisonOp.GTE:
-                        datetime_start = n.value
-                    elif op == ComparisonOp.LTE:
-                        datetime_end = n.value
-                    else:
-                        values.append(n.value)
+                if isinstance(n.value, list):
+                    values.extend(n.value)
                 else:
-                    if isinstance(n.value, list):
-                        values.extend(n.value)
-                    else:
-                        values.append(n.value)
+                    values.append(n.value)
+        # Handle datetime range
+        elif hasattr(n, "op") and n.op == LogicalOp.AND and hasattr(n, "children"):
+            datetime_nodes = []
+            for child in n.children:
+                if (
+                    hasattr(child, "field")
+                    and child.field == "datetime"
+                    and hasattr(child, "op")
+                    and hasattr(child, "value")
+                ):
+                    datetime_nodes.append(child)
+
+            if len(datetime_nodes) == 2:
+                gte_node = None
+                lte_node = None
+                for d_node in datetime_nodes:
+                    if d_node.op == ComparisonOp.GTE:
+                        gte_node = d_node
+                    elif d_node.op == ComparisonOp.LTE:
+                        lte_node = d_node
+
+                if gte_node and lte_node:
+                    values.append(
+                        {
+                            "type": "range",
+                            "start": gte_node.value,
+                            "end": lte_node.value,
+                        }
+                    )
 
     recurse(node)
+    return values if values else None
 
-    if field_name == "datetime":
-        if datetime_start and datetime_end:
-            return f"{datetime_start}/{datetime_end}"
-        elif datetime_start:
-            return f"{datetime_start}/.."
-        elif datetime_end:
-            return f"../{datetime_end}"
-        elif values:
-            return values[0]
-        else:
-            return None
 
-    return values
+def extract_collection_datetime(node: CqlNode) -> List[Tuple[List[str], str]]:
+    """Extract (collections, datetime_range) from CQL AST.
+
+    Returns:
+        List of tuples where each tuple contains:
+        - collections: List[str] collection id(s)
+        - datetime_range: str or empty string if no datetime constraint
+    """
+    pairs = []
+
+    def recurse(n):
+        # Handle AND node
+        if hasattr(n, "op") and hasattr(n.op, "value") and n.op.value == "and":
+            collections = []
+            gte_date = None
+            lte_date = None
+
+            if hasattr(n, "children"):
+                for child in n.children:
+                    if (
+                        hasattr(child, "op")
+                        and hasattr(child, "field")
+                        and hasattr(child, "value")
+                    ):
+                        if child.field == "collection":
+                            if isinstance(child.value, list):
+                                collections.extend(child.value)
+                            else:
+                                collections.append(child.value)
+                        elif child.field in [
+                            "datetime",
+                            "start_datetime",
+                            "end_datetime",
+                        ]:
+                            if hasattr(child.op, "value"):
+                                if child.op.value == ">=":
+                                    gte_date = child.value
+                                elif child.op.value == "<=":
+                                    lte_date = child.value
+            if gte_date or lte_date:
+                if gte_date and lte_date:
+                    date_range = f"{gte_date}/{lte_date}"
+                elif gte_date:
+                    date_range = f"{gte_date}/.."
+                elif lte_date:
+                    date_range = f"../{lte_date}"
+                else:
+                    date_range = ""
+                pairs.append((collections, date_range))
+            elif collections:
+                pairs.append((collections, ""))
+        if hasattr(n, "children"):
+            for child in n.children:
+                recurse(child)
+
+    recurse(node)
+    return pairs

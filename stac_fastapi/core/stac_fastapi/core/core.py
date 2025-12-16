@@ -877,13 +877,6 @@ class CoreClient(AsyncBaseCoreClient):
                 query_fields = get_properties_from_cql2_filter(cql2_filter)
                 await self.queryables_cache.validate(query_fields)
                 search = await self.database.apply_cql2_filter(search, cql2_filter)
-                date_str = getattr(search, "_cql2_date_str", None)
-                collection_ids = getattr(search, "_cql2_collection_ids", None)
-                if date_str is not None:
-                    datetime_parsed = format_datetime_range(date_str=date_str)
-                    search, datetime_search = self.database.apply_datetime_filter(
-                        search=search, datetime=datetime_parsed
-                    )
             except HTTPException:
                 raise
             except Exception as e:
