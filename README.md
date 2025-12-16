@@ -28,7 +28,7 @@ The following organizations have contributed time and/or funding to support the 
 
 ## Latest News
 
-- **12/09/2025:** Feature Merge: **Federated Catalogs**. The [`Catalogs Endpoint`](https://github.com/Healy-Hyperspatial/stac-api-extensions-catalogs-endpoint) extension is now in main! This enables a registry of catalogs and supports **poly-hierarchy** (collections belonging to multiple catalogs simultaneously). Enable it via `ENABLE_CATALOGS_EXTENSION`. _Coming next: Support for nested sub-catalogs._
+- **12/09/2025:** Feature Merge: **Catalogs Endpoint**. The [`Catalogs Endpoint`](https://github.com/Healy-Hyperspatial/stac-api-extensions-catalogs-endpoint) extension is now in main! This enables a registry of catalogs and supports **poly-hierarchy** (collections belonging to multiple catalogs simultaneously). Enable it via `ENABLE_CATALOGS_EXTENSION`. _Coming next: Support for nested sub-catalogs._
 - **11/07/2025:** 🌍 The SFEOS STAC Viewer is now available at: https://healy-hyperspatial.github.io/sfeos-web. Use this site to examine your data and test your STAC API!
 - **10/24/2025:** Added `previous_token` pagination using Redis for efficient navigation. This feature allows users to navigate backwards through large result sets by storing pagination state in Redis. To use this feature, ensure Redis is configured (see [Redis for navigation](#redis-for-navigation)) and set `REDIS_ENABLE=true` in your environment.
 - **10/23/2025:** The `EXCLUDED_FROM_QUERYABLES` environment variable was added to exclude fields from the `queryables` endpoint. See [docs](#excluding-fields-from-queryables).
@@ -233,29 +233,46 @@ These extensions make it easier to build user interfaces that display and naviga
 
 ## Catalogs Route
 
-SFEOS supports federated hierarchical catalog browsing through the `/catalogs` endpoint, enabling users to navigate through STAC catalog structures in a tree-like fashion. This extension allows for organized discovery and browsing of collections and sub-catalogs.
+SFEOS supports a **Catalog Registry** through the `/catalogs` endpoint. This allows for organized discovery by grouping collections into specific logical catalogs.
 
-This implementation follows the [STAC API Catalogs Extension](https://github.com/Healy-Hyperspatial/stac-api-extensions-catalogs) specification, which enables a Federated STAC API architecture with a "Hub and Spoke" structure.
+This implementation follows the [STAC API Catalogs Extension](https://github.com/Healy-Hyperspatial/stac-api-extensions-catalogs) specification, which enables a multi-catalog STAC API architecture. Currently, SFEOS supports a single level of catalogs (Root -> Catalogs -> Collections).
 
 ### Features
 
-- **Hierarchical Navigation**: Browse catalogs and sub-catalogs in a parent-child relationship structure
+- **Catalog Registry**: Discover and browse a list of available catalogs
 - **Multi-Catalog Collections**: Collections can belong to multiple catalogs simultaneously, enabling flexible organizational hierarchies
 - **Collection Discovery**: Access collections within specific catalog contexts
 - **STAC API Compliance**: Follows STAC specification for catalog objects and linking
 - **Flexible Querying**: Support for standard STAC API query parameters when browsing collections within catalogs
+- **Safety-First Data Protection**: Collection data is never deleted through the catalogs route; only containers (catalogs) can be destroyed
+
+### Safety Architecture
+
+The catalogs extension implements a **safety-first design** that protects collection data:
+
+| Operation | Route | Behavior | Data Safety |
+|-----------|-------|----------|-------------|
+| Delete Catalog | `DELETE /catalogs/{id}` | Removes the catalog container; all links between catalog and collections are severed; collections are adopted by root if orphaned | 🟢 Safe (structure only) |
+| Unlink Collection | `DELETE /catalogs/{id}/collections/{id}` | Severs the link between collection and this catalog; collection survives at root if it has no other parents | 🟢 Safe (zero data loss) |
+| Destroy Collection | `DELETE /collections/{id}` | Permanently deletes collection and all items (intentional, outside catalogs route) | 🔴 Destructive |
+
+**Key Principle**: The catalogs route is write-safe for creation but read-only for deletion of collections. You can create collections via the catalogs route, but deleting collections is only allowed through the explicit `/collections` endpoint. This prevents accidental data loss while allowing full organizational flexibility.
+
+**Link Removal**: When you delete a catalog or unlink a collection, the relationship links are permanently severed from the database. However, the collection data itself remains intact and is automatically adopted by the root catalog if it becomes an orphan.
+
+**Collection Deletion**: Collections CAN be permanently deleted, but only via the `/collections/{collection_id}` endpoint (outside the catalogs route). This ensures intentional, explicit deletion of collection data and prevents accidental data loss through the catalogs API.
 
 ### Endpoints
 
 - **GET `/catalogs`**: Retrieve the root catalog and its child catalogs
 - **POST `/catalogs`**: Create a new catalog (requires appropriate permissions)
 - **GET `/catalogs/{catalog_id}`**: Retrieve a specific catalog and its children
-- **DELETE `/catalogs/{catalog_id}`**: Delete a catalog (optionally cascade delete all collections)
+- **DELETE `/catalogs/{catalog_id}`**: Delete a catalog (collections are unlinked and adopted by root if orphaned)
 - **GET `/catalogs/{catalog_id}/children`**: Retrieve all children (Catalogs and Collections) of this catalog with optional type filtering
 - **GET `/catalogs/{catalog_id}/collections`**: Retrieve collections within a specific catalog
 - **POST `/catalogs/{catalog_id}/collections`**: Create a new collection within a specific catalog
 - **GET `/catalogs/{catalog_id}/collections/{collection_id}`**: Retrieve a specific collection within a catalog
-- **DELETE `/catalogs/{catalog_id}/collections/{collection_id}`**: Delete a collection from a catalog (removes parent_id if multiple parents exist, deletes collection if it's the only parent)
+- **DELETE `/catalogs/{catalog_id}/collections/{collection_id}`**: Unlink a collection from a catalog (collection survives at root if orphaned)
 - **GET `/catalogs/{catalog_id}/collections/{collection_id}/items`**: Retrieve items within a collection in a catalog context
 - **GET `/catalogs/{catalog_id}/collections/{collection_id}/items/{item_id}`**: Retrieve a specific item within a catalog context
 
@@ -305,25 +322,38 @@ curl "http://localhost:8081/catalogs/earth-observation/collections/sentinel-2/it
 # Get specific item within a catalog
 curl "http://localhost:8081/catalogs/earth-observation/collections/sentinel-2/items/S2A_20231015_123456"
 
-# Delete a collection from a catalog
-# If the collection has multiple parent catalogs, only removes this catalog from parent_ids
-# If this is the only parent catalog, deletes the collection entirely
+# Unlink a collection from a catalog
+# The collection is removed from this catalog but survives in the database
+# If it has no other parent catalogs, it is automatically adopted by root
 curl -X DELETE "http://localhost:8081/catalogs/earth-observation/collections/sentinel-2"
 
-# Delete a catalog (collections remain intact)
+# Delete a catalog
+# All collections are unlinked and adopted by root if they become orphans
+# Collection data is NEVER deleted
 curl -X DELETE "http://localhost:8081/catalogs/earth-observation"
 
-# Delete a catalog and all its collections (cascade delete)
-curl -X DELETE "http://localhost:8081/catalogs/earth-observation?cascade=true"
+# To permanently delete a collection and all its items, use the /collections endpoint
+curl -X DELETE "http://localhost:8081/collections/sentinel-2"
 ```
 
-### Delete Catalog Parameters
+### Delete Behavior
 
-The DELETE endpoint supports the following query parameter:
+The catalogs extension implements a **safety-first deletion policy**:
 
-- **`cascade`** (boolean, default: `false`): 
-  - If `false`: Only deletes the catalog. Collections linked to the catalog remain in the database but lose their catalog link.
-  - If `true`: Deletes the catalog AND all collections linked to it. Use with caution as this is a destructive operation.
+- **`DELETE /catalogs/{id}`**: Removes the catalog container and severs all links between the catalog and its collections. Collections are automatically adopted by the root catalog if they become orphans. **Collection data is never deleted.**
+- **`DELETE /catalogs/{id}/collections/{id}`**: Severs the link between a collection and this catalog. If the collection has other parent catalogs, it remains linked to them. If it becomes an orphan, it is automatically adopted by root. **Collection data is never deleted.**
+- **`DELETE /collections/{id}`**: Permanently deletes a collection and all its items. This is the only way to destroy collection data and must be done explicitly outside the catalogs route.
+
+**What Gets Removed**:
+- Catalog documents (when deleting a catalog)
+- Relationship links between catalogs and collections (when unlinking)
+- Collection documents and items (only via `/collections` endpoint)
+
+**What Is Always Preserved**:
+- Collection data (never deleted through catalogs routes)
+- Item data (never deleted through catalogs routes)
+
+> **Note**: The `cascade` parameter has been removed. Collections are never deleted through the catalogs route. If you need to delete collections, use the `/collections` endpoint explicitly.
 
 ### Response Structure
 
@@ -466,12 +496,12 @@ You can customize additional settings in your `.env` file:
 | `ELASTICSEARCH_VERSION`                                                                                  | Version of Elasticsearch to use.                                                                                                                                                                                                                                                                                                            | `8.11.0`                                                                         | Optional                                                                                    |
 | `OPENSEARCH_VERSION`                                                                                     | OpenSearch version                                                                                                                                                                                                                                                                                                                          | `2.11.1`                                                                         | Optional                                                                                    |
 | `ENABLE_DIRECT_RESPONSE`                                                                                 | Enable direct response for maximum performance (disables all FastAPI dependencies, including authentication, custom status codes, and validation)                                                                                                                                                                                           | `false`                                                                          | Optional                       |
-| `RAISE_ON_BULK_ERROR`                                                                                    | Controls whether bulk insert operations raise exceptions on errors. If set to `true`, the operation will stop and raise an exception when an error occurs. If set to `false`, errors will be logged, and the operation will continue. **Note:** STAC Item and ItemCollection validation errors will always raise, regardless of this flag.  | `false`                                                                          | Optional |
-| `DATABASE_REFRESH`                                                                                       | Controls whether database operations refresh the index immediately after changes. If set to `true`, changes will be immediately searchable. If set to `false`, changes may not be immediately visible but can improve performance for bulk operations. If set to `wait_for`, changes will wait for the next refresh cycle to become visible. | `false`                                                                          | Optional |
+| `RAISE_ON_BULK_ERROR`| Controls whether bulk insert operations raise exceptions on errors. If set to `true`, the operation will stop and raise an exception when an error occurs. If set to `false`, errors will be logged, and the operation will continue. **Note:** STAC Item and ItemCollection validation errors will always raise, regardless of this flag.  | `false`                                                                          | Optional |
+| `DATABASE_REFRESH` | Controls whether database operations refresh the index immediately after changes. If set to `true`, changes will be immediately searchable. If set to `false`, changes may not be immediately visible but can improve performance for bulk operations. If set to `wait_for`, changes will wait for the next refresh cycle to become visible. | `false`                                                                          | Optional |
 | `ENABLE_COLLECTIONS_SEARCH`                                                                              | Enable collection search extensions (sort, fields, free text search, structured filtering, and datetime filtering) on the core `/collections` endpoint.                                                                                                                                                                                     | `true`                                                                           | Optional                                                                                    |
 | `ENABLE_COLLECTIONS_SEARCH_ROUTE`                                                                        | Enable the custom `/collections-search` endpoint (both GET and POST methods). When disabled, the custom endpoint will not be available, but collection search extensions will still be available on the core `/collections` endpoint if `ENABLE_COLLECTIONS_SEARCH` is true.                                                                | `false`                                                                          | Optional |
 | `ENABLE_TRANSACTIONS_EXTENSIONS`                                                                         | Enables or disables the Transactions and Bulk Transactions API extensions. This is useful for deployments where mutating the catalog via the API should be prevented. If set to `true`, the POST `/collections` route for search will be unavailable in the API.                                                                            | `true`                                                                           | Optional |
-| `ENABLE_CATALOGS_ROUTE`                                                                                  | Enable the `/catalogs` endpoint for federated hierarchical catalog browsing and navigation. When enabled, provides access to federated STAC API architecture with hub-and-spoke pattern.                                                                                                                                                    | `false`                                                                          | Optional |
+| `ENABLE_CATALOGS_ROUTE`| Enable the **/catalogs** endpoint for hierarchical catalog browsing and navigation.                                                                                                                                                 | `false`                                                                          | Optional |
 | `STAC_GLOBAL_COLLECTION_MAX_LIMIT`                                                                       | Configures the maximum number of STAC collections that can be returned in a single search request.                                                                                                                                                                                                                                          | N/A                                                                              | Optional |
 | `STAC_DEFAULT_COLLECTION_LIMIT`                                                                          | Configures the default number of STAC collections returned when no limit parameter is specified in the request.                                                                                                                                                                                                                             | `300`                                                                            | Optional |
 | `STAC_GLOBAL_ITEM_MAX_LIMIT`                                                                             | Configures the maximum number of STAC items that can be returned in a single search request.                                                                                                                                                                                                                                                | N/A                                                                              | Optional |
