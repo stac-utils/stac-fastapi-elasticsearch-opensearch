@@ -76,3 +76,39 @@ def parse_filter_geometry(request: Request) -> Optional[Dict[str, Any]]:
     except json.JSONDecodeError as e:
         logger.warning(f"Failed to parse geometry header: {e}")
         return None
+
+
+def geometry_intersects_filter(
+    item_geometry: Dict[str, Any], filter_geometry: Dict[str, Any]
+) -> bool:
+    """Check if item geometry intersects with the filter geometry.
+
+    Args:
+        item_geometry: GeoJSON geometry dict from the item.
+        filter_geometry: GeoJSON geometry dict from header filter.
+
+    Returns:
+        True if geometries intersect (or if shapely not available), False otherwise.
+
+    Note:
+        Requires shapely to be installed. If shapely is not available,
+        this function returns True (allows access) to avoid breaking
+        deployments without shapely.
+    """
+    try:
+        from shapely.geometry import shape
+    except ImportError:
+        logger.warning(
+            "shapely not installed - geometry filter check skipped. "
+            "Install shapely for full geometry filtering support."
+        )
+        return True  # Allow access if shapely not available
+
+    try:
+        item_shape = shape(item_geometry)
+        filter_shape = shape(filter_geometry)
+        return item_shape.intersects(filter_shape)
+    except Exception as e:
+        logger.warning(f"Geometry intersection check failed: {e}")
+        # On error, allow access (fail open)
+        return True

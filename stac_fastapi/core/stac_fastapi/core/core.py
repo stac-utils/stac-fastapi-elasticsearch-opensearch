@@ -693,7 +693,19 @@ class CoreClient(AsyncBaseCoreClient):
         item = await self.database.get_one_item(
             item_id=item_id, collection_id=collection_id
         )
-        return self.item_serializer.db_to_stac(item, base_url)
+        stac_item = self.item_serializer.db_to_stac(item, base_url)
+
+        # Check if item geometry intersects with allowed geometry filter
+        header_geometry = parse_filter_geometry(request)
+        if header_geometry is not None:
+            item_geometry = stac_item.get("geometry")
+            if item_geometry:
+                from stac_fastapi.core.header_filters import geometry_intersects_filter
+
+                if not geometry_intersects_filter(item_geometry, header_geometry):
+                    raise HTTPException(status_code=404, detail="Item not found")
+
+        return stac_item
 
     async def get_search(
         self,
