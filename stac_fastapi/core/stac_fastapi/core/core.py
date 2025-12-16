@@ -23,6 +23,10 @@ from stac_pydantic.version import STAC_VERSION
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.datetime_utils import format_datetime_range
+from stac_fastapi.core.header_filters import (
+    parse_filter_collections,
+    parse_filter_geometry,
+)
 from stac_fastapi.core.models.links import PagingLinks
 from stac_fastapi.core.queryables import (
     QueryablesCache,
@@ -449,6 +453,13 @@ class CoreClient(AsyncBaseCoreClient):
         else:
             filtered_collections = collections
 
+        # Filter by header collections if present
+        header_collections = parse_filter_collections(request)
+        if header_collections is not None:
+            filtered_collections = [
+                c for c in filtered_collections if c.get("id") in header_collections
+            ]
+
         links = [
             {"rel": Relations.root.value, "type": MimeTypes.json, "href": base_url},
             {"rel": Relations.parent.value, "type": MimeTypes.json, "href": base_url},
@@ -580,6 +591,12 @@ class CoreClient(AsyncBaseCoreClient):
             NotFoundError: If the collection with the given id cannot be found in the database.
         """
         request = kwargs["request"]
+
+        # Check if collection is allowed by header filter
+        header_collections = parse_filter_collections(request)
+        if header_collections is not None and collection_id not in header_collections:
+            raise HTTPException(status_code=404, detail="Collection not found")
+
         collection = await self.database.find_collection(collection_id=collection_id)
         return self.collection_serializer.db_to_stac(
             collection=collection,
@@ -665,7 +682,14 @@ class CoreClient(AsyncBaseCoreClient):
             Exception: If any error occurs while getting the item from the database.
             NotFoundError: If the item does not exist in the specified collection.
         """
-        base_url = str(kwargs["request"].base_url)
+        request = kwargs["request"]
+
+        # Check if collection is allowed by header filter
+        header_collections = parse_filter_collections(request)
+        if header_collections is not None and collection_id not in header_collections:
+            raise HTTPException(status_code=404, detail="Item not found")
+
+        base_url = str(request.base_url)
         item = await self.database.get_one_item(
             item_id=item_id, collection_id=collection_id
         )
@@ -821,7 +845,14 @@ class CoreClient(AsyncBaseCoreClient):
                 search=search, item_ids=search_request.ids
             )
 
-        if search_request.collections:
+        # Apply collection filter from header or request
+        header_collections = parse_filter_collections(request)
+        if header_collections is not None:
+            # Use header collections (stac-auth-proxy already did intersection)
+            search = self.database.apply_collections_filter(
+                search=search, collection_ids=header_collections
+            )
+        elif search_request.collections:
             search = self.database.apply_collections_filter(
                 search=search, collection_ids=search_request.collections
             )
@@ -843,6 +874,19 @@ class CoreClient(AsyncBaseCoreClient):
                 bbox = [bbox[0], bbox[1], bbox[3], bbox[4]]
 
             search = self.database.apply_bbox_filter(search=search, bbox=bbox)
+
+        # Apply geometry filter from header
+        header_geometry = parse_filter_geometry(request)
+        if header_geometry is not None:
+            from types import SimpleNamespace
+
+            geometry_obj = SimpleNamespace(
+                type=header_geometry.get("type", ""),
+                coordinates=header_geometry.get("coordinates", []),
+            )
+            search = self.database.apply_intersects_filter(
+                search=search, intersects=geometry_obj
+            )
 
         if hasattr(search_request, "intersects") and getattr(
             search_request, "intersects"
