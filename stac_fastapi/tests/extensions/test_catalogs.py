@@ -485,7 +485,7 @@ async def test_create_catalog_collection_nonexistent_catalog(
 
 @pytest.mark.asyncio
 async def test_delete_catalog(catalogs_app_client, load_test_data):
-    """Test deleting a catalog without cascade."""
+    """Test deleting an empty catalog."""
     # Create a catalog
     test_catalog = load_test_data("test_catalog.json")
     test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
@@ -511,51 +511,8 @@ async def test_delete_catalog(catalogs_app_client, load_test_data):
 
 
 @pytest.mark.asyncio
-async def test_delete_catalog_cascade(catalogs_app_client, load_test_data):
-    """Test deleting a catalog with cascade delete of collections."""
-    # Create a catalog
-    test_catalog = load_test_data("test_catalog.json")
-    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
-    test_catalog["links"] = [
-        link for link in test_catalog.get("links", []) if link.get("rel") != "child"
-    ]
-
-    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
-    assert create_resp.status_code == 201
-    catalog_id = test_catalog["id"]
-
-    # Create a collection in the catalog
-    test_collection = load_test_data("test_collection.json")
-    test_collection["id"] = f"test-collection-{uuid.uuid4()}"
-
-    coll_resp = await catalogs_app_client.post(
-        f"/catalogs/{catalog_id}/collections", json=test_collection
-    )
-    assert coll_resp.status_code == 201
-    collection_id = test_collection["id"]
-
-    # Verify collection exists
-    get_coll_resp = await catalogs_app_client.get(f"/collections/{collection_id}")
-    assert get_coll_resp.status_code == 200
-
-    # Delete the catalog with cascade=true
-    delete_resp = await catalogs_app_client.delete(
-        f"/catalogs/{catalog_id}?cascade=true"
-    )
-    assert delete_resp.status_code == 204
-
-    # Verify catalog is deleted
-    get_resp = await catalogs_app_client.get(f"/catalogs/{catalog_id}")
-    assert get_resp.status_code == 404
-
-    # Verify collection is also deleted (cascade delete)
-    get_coll_resp = await catalogs_app_client.get(f"/collections/{collection_id}")
-    assert get_coll_resp.status_code == 404
-
-
-@pytest.mark.asyncio
 async def test_delete_catalog_no_cascade(catalogs_app_client, load_test_data):
-    """Test deleting a catalog without cascade (collections remain)."""
+    """Test deleting a catalog (collections remain and are adopted by root)."""
     # Create a catalog
     test_catalog = load_test_data("test_catalog.json")
     test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
@@ -577,7 +534,7 @@ async def test_delete_catalog_no_cascade(catalogs_app_client, load_test_data):
     assert coll_resp.status_code == 201
     collection_id = test_collection["id"]
 
-    # Delete the catalog with cascade=false (default)
+    # Delete the catalog (cascade is no longer supported)
     delete_resp = await catalogs_app_client.delete(f"/catalogs/{catalog_id}")
     assert delete_resp.status_code == 204
 
@@ -585,7 +542,7 @@ async def test_delete_catalog_no_cascade(catalogs_app_client, load_test_data):
     get_resp = await catalogs_app_client.get(f"/catalogs/{catalog_id}")
     assert get_resp.status_code == 404
 
-    # Verify collection still exists (no cascade delete)
+    # Verify collection still exists (never deleted, only unlinked)
     get_coll_resp = await catalogs_app_client.get(f"/collections/{collection_id}")
     assert get_coll_resp.status_code == 200
 
@@ -643,7 +600,7 @@ async def test_delete_catalog_removes_parent_ids_from_collections(
     for collection_id in collection_ids:
         assert collection_id in returned_ids
 
-    # Delete the catalog without cascade
+    # Delete the catalog
     delete_resp = await catalogs_app_client.delete(f"/catalogs/{catalog_id}")
     assert delete_resp.status_code == 204
 
@@ -815,7 +772,11 @@ async def test_get_catalog_collections_uses_parent_ids(
 async def test_delete_collection_from_catalog_single_parent(
     catalogs_app_client, load_test_data
 ):
-    """Test deleting a collection from a catalog when it's the only parent."""
+    """Test deleting a collection from a catalog when it's the only parent.
+
+    With the "Unlink & Adopt" safety net, the collection should be adopted by root
+    instead of being deleted entirely.
+    """
     # Create a catalog
     test_catalog = load_test_data("test_catalog.json")
     catalog_id = f"test-catalog-{uuid.uuid4()}"
@@ -840,9 +801,15 @@ async def test_delete_collection_from_catalog_single_parent(
     )
     assert delete_resp.status_code == 204
 
-    # Verify the collection is completely deleted
+    # Verify the collection still exists (adopted by root, not deleted)
     get_resp = await catalogs_app_client.get(f"/collections/{collection_id}")
-    assert get_resp.status_code == 404
+    assert get_resp.status_code == 200
+
+    # Verify we cannot get it from the original catalog anymore
+    get_from_catalog_resp = await catalogs_app_client.get(
+        f"/catalogs/{catalog_id}/collections/{collection_id}"
+    )
+    assert get_from_catalog_resp.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -1008,10 +975,8 @@ async def test_catalog_links_contain_all_collections(
 
 
 @pytest.mark.asyncio
-async def test_delete_catalog_no_cascade_orphans_collections(
-    catalogs_app_client, load_test_data
-):
-    """Test that deleting a catalog without cascade makes collections root-level orphans."""
+async def test_delete_catalog_orphans_collections(catalogs_app_client, load_test_data):
+    """Test that deleting a catalog makes orphaned collections adopt root as parent."""
     # Create a catalog
     test_catalog = load_test_data("test_catalog.json")
     catalog_id = f"test-catalog-{uuid.uuid4()}"
@@ -1065,10 +1030,10 @@ async def test_delete_catalog_no_cascade_orphans_collections(
 
 
 @pytest.mark.asyncio
-async def test_delete_catalog_no_cascade_multi_parent_collection(
+async def test_delete_catalog_preserves_multi_parent_collections(
     catalogs_app_client, load_test_data
 ):
-    """Test that deleting a catalog without cascade preserves collections with other parents."""
+    """Test that deleting a catalog preserves collections with other parents."""
     # Create two catalogs
     catalog_ids = []
     for i in range(2):
@@ -1096,7 +1061,7 @@ async def test_delete_catalog_no_cascade_multi_parent_collection(
     )
     assert add_resp.status_code == 201
 
-    # Delete the first catalog without cascade
+    # Delete the first catalog
     delete_resp = await catalogs_app_client.delete(f"/catalogs/{catalog_ids[0]}")
     assert delete_resp.status_code == 204
 
