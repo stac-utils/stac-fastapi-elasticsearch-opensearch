@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Implemented header-based filtering for collections and geometry. Supports `X-Filter-Collections` (comma-separated collection IDs) and `X-Filter-Geometry` (GeoJSON) headers to restrict access to specific collections and geographic areas. Applies to `/collections`, `/collections/{id}`, `/collections/{id}/items`, `/collections/{id}/items/{id}`, and `/search` endpoints. Added optional `[geo]` extra with `shapely` dependency for geometry filtering on single item endpoints. [#563](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/563)
+
 ### Changed
 
 ### Fixed
