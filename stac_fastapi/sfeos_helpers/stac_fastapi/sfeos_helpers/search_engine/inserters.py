@@ -211,6 +211,7 @@ class DatetimeIndexInserter(BaseIndexInserter):
         all_indexes = sorted(
             all_indexes, key=lambda x: x[0][self.primary_datetime_name]
         )
+
         start_date = extract_date(primary_datetime_value)
         end_date = extract_first_date_from_index(
             all_indexes[0][0][self.primary_datetime_name]
@@ -225,6 +226,9 @@ class DatetimeIndexInserter(BaseIndexInserter):
             )
             await self.refresh_cache()
             return alias
+
+        if not target_index:
+            target_index = all_indexes[-1][0][self.primary_datetime_name]
 
         if target_index != all_indexes[-1][0][self.primary_datetime_name]:
             for item in all_indexes:
@@ -244,13 +248,16 @@ class DatetimeIndexInserter(BaseIndexInserter):
             for item in all_indexes:
                 aliases_dict = item[0]
                 if target_index in aliases_dict.values():
-                    target_index = await self.datetime_manager.handle_oversized_index(
+                    await self.datetime_manager.handle_oversized_index(
                         collection_id,
                         self.primary_datetime_name,
                         product_datetimes,
                         aliases_dict,
                     )
                     await self.refresh_cache()
+                    target_index = await self.index_selector.select_indexes(
+                        [collection_id], primary_datetime_value, for_insertion=True
+                    )
                     return target_index
 
         for item in all_indexes:
@@ -262,6 +269,7 @@ class DatetimeIndexInserter(BaseIndexInserter):
                     product_datetimes,
                     aliases_dict,
                 )
+                await self.refresh_cache()
                 return target_index
         return None
 

@@ -30,7 +30,13 @@ Function Naming Conventions:
 """
 
 # Re-export all functions for backward compatibility
-from .datetime import extract_date, extract_first_date_from_index, return_date
+from .datetime import (
+    extract_date,
+    extract_first_date_from_index,
+    extract_last_date_from_index,
+    is_index_closed,
+    return_date,
+)
 from .document import mk_actions, mk_item_id
 from .index import (
     create_index_templates_shared,
@@ -77,4 +83,6 @@ __all__ = [
     "return_date",
     "extract_date",
     "extract_first_date_from_index",
+    "extract_last_date_from_index",
+    "is_index_closed",
 ]

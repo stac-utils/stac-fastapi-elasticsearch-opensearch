@@ -126,11 +126,11 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
         if for_insertion:
             return {
                 "datetime": {
-                    "gte": None,
+                    "gte": datetime if self.use_datetime else None,
                     "lte": datetime if self.use_datetime else None,
                 },
                 "start_datetime": {
-                    "gte": None,
+                    "gte": datetime if not self.use_datetime else None,
                     "lte": datetime if not self.use_datetime else None,
                 },
                 "end_datetime": {"gte": None, "lte": None},

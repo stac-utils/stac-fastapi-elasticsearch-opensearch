@@ -11,6 +11,7 @@ from fastapi import HTTPException, status
 from stac_fastapi.sfeos_helpers.database import (
     extract_date,
     extract_first_date_from_index,
+    is_index_closed,
 )
 
 from .index_operations import IndexOperations
@@ -239,6 +240,84 @@ class DatetimeIndexManager:
                 If "start_datetime", handles start_datetime and end_datetime fields.
                 If "datetime", handles the datetime field.
             product_datetimes (ProductDatetimes): Object containing start_datetime, datetime, and end_datetime.
+            old_aliases (Dict[str, str]): Dictionary mapping alias types to their current names.
+
+        Returns:
+            str: Updated datetime alias name or new index alias.
+        """
+        current_alias = old_aliases[primary_datetime_name]
+
+        if is_index_closed(current_alias):
+            return await self._create_index_for_early_date(
+                collection_id, primary_datetime_name, product_datetimes, old_aliases
+            )
+
+        return await self._extend_open_index_alias(
+            collection_id, primary_datetime_name, product_datetimes, old_aliases
+        )
+
+    async def _create_index_for_early_date(
+        self,
+        collection_id: str,
+        primary_datetime_name: str,
+        product_datetimes: ProductDatetimes,
+        old_aliases: Dict[str, str],
+    ) -> str:
+        """Create a new closed index for product with date earlier than closed index.
+
+        The new index must be closed (have end date) to maintain continuity with
+        the next index. End date is set to day before the next index starts.
+
+        Args:
+            collection_id (str): Collection identifier.
+            primary_datetime_name (str): Name of the primary datetime field.
+            product_datetimes (ProductDatetimes): Object containing datetime fields.
+            old_aliases (Dict[str, str]): Dictionary mapping alias types to their current names.
+
+        Returns:
+            str: New index alias name.
+        """
+        if primary_datetime_name == "start_datetime":
+            product_start_dt = extract_date(product_datetimes.start_datetime)
+            product_end_dt = extract_date(product_datetimes.end_datetime)
+            next_index_start = extract_first_date_from_index(
+                old_aliases["start_datetime"]
+            )
+            new_start_alias_end_dt = next_index_start - timedelta(days=1)
+
+            return await self.index_operations.create_datetime_index(
+                self.client,
+                collection_id,
+                start_datetime=f"{product_start_dt}-{new_start_alias_end_dt}",
+                datetime=None,
+                end_datetime=str(product_end_dt),
+            )
+        else:
+            product_dt = extract_date(product_datetimes.datetime)
+            next_index_start = extract_first_date_from_index(old_aliases["datetime"])
+            new_datetime_alias_end_dt = next_index_start - timedelta(days=1)
+
+            return await self.index_operations.create_datetime_index(
+                self.client,
+                collection_id,
+                start_datetime=None,
+                datetime=f"{product_dt}-{new_datetime_alias_end_dt}",
+                end_datetime=None,
+            )
+
+    async def _extend_open_index_alias(
+        self,
+        collection_id: str,
+        primary_datetime_name: str,
+        product_datetimes: ProductDatetimes,
+        old_aliases: Dict[str, str],
+    ) -> str:
+        """Extend an open index alias to include the new product date.
+
+        Args:
+            collection_id (str): Collection identifier.
+            primary_datetime_name (str): Name of the primary datetime field.
+            product_datetimes (ProductDatetimes): Object containing datetime fields.
             old_aliases (Dict[str, str]): Dictionary mapping alias types to their current names.
 
         Returns:
