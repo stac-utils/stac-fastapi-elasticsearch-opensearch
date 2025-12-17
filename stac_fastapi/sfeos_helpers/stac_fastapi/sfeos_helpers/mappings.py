@@ -143,8 +143,8 @@ ES_ITEMS_MAPPINGS = {
             "properties": {
                 # Common https://github.com/radiantearth/stac-spec/blob/master/item-spec/common-metadata.md
                 "datetime": {"type": "date_nanos"},
-                "start_datetime": {"type": "date"},
-                "end_datetime": {"type": "date"},
+                "start_datetime": {"type": "date_nanos"},
+                "end_datetime": {"type": "date_nanos"},
                 "created": {"type": "date"},
                 "updated": {"type": "date"},
                 # Satellite Extension https://github.com/stac-extensions/sat

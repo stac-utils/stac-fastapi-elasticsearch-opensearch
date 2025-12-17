@@ -354,7 +354,7 @@ def operations_to_script(operations: List, create_nest: bool = False) -> Dict:
                 commands=commands, operation=operation, path=path, params=params
             )
 
-        source = "".join(commands)
+    source = "".join(commands)
 
     return {
         "source": source,

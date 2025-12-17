@@ -811,7 +811,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         token: Optional[str],
         sort: Optional[Dict[str, Dict[str, str]]],
         collection_ids: Optional[List[str]],
-        datetime_search: Dict[str, Optional[str]],
+        datetime_search: str,
         ignore_unavailable: bool = True,
     ) -> Tuple[Iterable[Dict[str, Any]], Optional[int], Optional[str]]:
         """Execute a search query with limit and other optional parameters.
@@ -822,7 +822,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             token (Optional[str]): The token used to return the next set of results.
             sort (Optional[Dict[str, Dict[str, str]]]): Specifies how the results should be sorted.
             collection_ids (Optional[List[str]]): The collection ids to search.
-            datetime_search (Dict[str, Optional[str]]): Datetime range used for index selection.
+            datetime_search (str): Datetime used for index selection.
             ignore_unavailable (bool, optional): Whether to ignore unavailable collections. Defaults to True.
 
         Returns:
@@ -918,7 +918,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         geometry_geohash_grid_precision: int,
         geometry_geotile_grid_precision: int,
         datetime_frequency_interval: str,
-        datetime_search,
+        datetime_search: str,
         ignore_unavailable: Optional[bool] = True,
     ):
         """Return aggregations of STAC Items."""
@@ -1219,6 +1219,10 @@ class DatabaseLogic(BaseDatabaseLogic):
         Returns:
             patched item.
         """
+        for operation in operations:
+            if operation.op in ["add", "replace", "remove"]:
+                self.async_index_inserter.validate_datetime_field_update(operation.path)
+
         new_item_id = None
         new_collection_id = None
         script_operations = []
@@ -1238,8 +1242,6 @@ class DatabaseLogic(BaseDatabaseLogic):
             else:
                 script_operations.append(operation)
 
-        script = operations_to_script(script_operations, create_nest=create_nest)
-
         try:
             search_response = await self.client.search(
                 index=index_alias_by_collection_id(collection_id),
@@ -1252,13 +1254,18 @@ class DatabaseLogic(BaseDatabaseLogic):
                 raise NotFoundError(
                     f"Item {item_id} does not exist inside Collection {collection_id}"
                 )
-            document_index = search_response["hits"]["hits"][0]["_index"]
-            await self.client.update(
-                index=document_index,
-                id=mk_item_id(item_id, collection_id),
-                body={"script": script},
-                refresh=True,
-            )
+
+            if script_operations:
+                script = operations_to_script(
+                    script_operations, create_nest=create_nest
+                )
+                document_index = search_response["hits"]["hits"][0]["_index"]
+                await self.client.update(
+                    index=document_index,
+                    id=mk_item_id(item_id, collection_id),
+                    body={"script": script},
+                    refresh=True,
+                )
         except exceptions.NotFoundError:
             raise NotFoundError(
                 f"Item {item_id} does not exist inside Collection {collection_id}"
@@ -1271,24 +1278,9 @@ class DatabaseLogic(BaseDatabaseLogic):
         item = await self.get_one_item(collection_id, item_id)
 
         if new_collection_id:
-            await self.client.reindex(
-                body={
-                    "dest": {"index": f"{ITEMS_INDEX_PREFIX}{new_collection_id}"},
-                    "source": {
-                        "index": f"{ITEMS_INDEX_PREFIX}{collection_id}",
-                        "query": {"term": {"id": {"value": item_id}}},
-                    },
-                    "script": {
-                        "lang": "painless",
-                        "source": (
-                            f"""ctx._id = ctx._id.replace('{collection_id}', '{new_collection_id}');"""
-                            f"""ctx._source.collection = '{new_collection_id}';"""
-                        ),
-                    },
-                },
-                wait_for_completion=True,
-                refresh=True,
-            )
+            item["collection"] = new_collection_id
+            item = await self.async_prep_create_item(item=item, base_url=base_url)
+            await self.create_item(item=item, refresh=True)
 
             await self.delete_item(
                 item_id=item_id,
@@ -1296,7 +1288,6 @@ class DatabaseLogic(BaseDatabaseLogic):
                 refresh=refresh,
             )
 
-            item["collection"] = new_collection_id
             collection_id = new_collection_id
 
         if new_item_id:
@@ -1657,6 +1648,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         )
         # Delete the item index for the collection
         await delete_item_index(collection_id)
+        await self.async_index_inserter.refresh_cache()
 
     async def bulk_async(
         self,
