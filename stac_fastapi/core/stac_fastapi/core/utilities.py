@@ -4,9 +4,12 @@ This module contains functions for transforming geospatial coordinates,
 such as converting bounding boxes to polygon representations.
 """
 
+import asyncio
 import logging
 import os
-from typing import Any, Dict, List, Optional, Set, Union
+import random
+from functools import wraps
+from typing import Any, Callable, Dict, List, Optional, Set, Union
 
 from stac_fastapi.types.stac import Item
 
@@ -195,3 +198,44 @@ def get_excluded_from_items(obj: dict, field_path: str) -> None:
             return
 
     current.pop(final, None)
+
+
+def datetime_search_retry(func: Callable) -> Callable:
+    """Retry decorator for datetime search queries for NotFoundError/ConnectionError."""
+
+    @wraps(func)
+    async def wrapper(self, *args, **kwargs):
+        datetime_search = kwargs.get("datetime_search")
+
+        is_datetime_query = bool(datetime_search and isinstance(datetime_search, dict))
+
+        if not is_datetime_query:
+            return await func(self, *args, **kwargs)
+
+        base_delay = 0.5
+        max_retries = int(os.getenv("STAC_SEARCH_MAX_RETRIES", "3"))
+
+        # Validate max_retries is between 1 and 10
+        if max_retries < 1 or max_retries > 10:
+            max_retries = 3
+
+        for attempt in range(max_retries):
+            try:
+                return await func(self, *args, **kwargs)
+            except Exception as e:
+                error_name = type(e).__name__.lower()
+                error_msg = str(e).lower()
+
+                retry_error = (
+                    "notfound" in error_name
+                    or "connection" in error_name
+                    or "not found" in error_msg
+                )
+
+                if not retry_error or attempt == max_retries - 1:
+                    raise
+                delay = base_delay * (2**attempt) + random.uniform(0, 0.1)
+                await asyncio.sleep(delay)
+        raise Exception("Search failed after retries")
+
+    return wrapper

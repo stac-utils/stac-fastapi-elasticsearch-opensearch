@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import pytest
 
+from stac_fastapi.core.utilities import datetime_search_retry
 from stac_fastapi.types.errors import ConflictError
 
 from ..conftest import create_collection, create_item
@@ -1722,3 +1723,62 @@ async def test_hide_private_data_from_item(app_client, txn_client, load_test_dat
     assert "private_data" not in item["properties"]
 
     del os.environ["EXCLUDED_FROM_ITEMS"]
+
+
+@pytest.mark.asyncio
+async def test_datetime_search_retry_succeeds_on_retry():
+    """Test retry works for datetime queries with NotFoundError."""
+    call_counter = {"count": 0}
+
+    @datetime_search_retry
+    async def mock_search(self, datetime_search=None):
+        call_counter["count"] += 1
+        if call_counter["count"] < 2:
+            raise Exception("not found: Index not found.")
+        return "success"
+
+    result = await mock_search(None, datetime_search={"datetime": "2025-01-01"})
+
+    assert result == "success"
+    assert call_counter["count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_datetime_search_no_retry_for_none_datetime():
+    """Test that retry is invoked only for datetime queries."""
+    call_counter = {"count": 0}
+
+    @datetime_search_retry
+    async def mock_search(self, datetime_search=None):
+        call_counter["count"] += 1
+        if call_counter["count"] < 2:
+            raise Exception("not found: Index not found.")
+        return "success"
+
+    with pytest.raises(Exception):
+        await mock_search(None, datetime_search={})
+
+    assert call_counter["count"] == 1
+    call_counter["count"] = 0
+
+    with pytest.raises(Exception):
+        await mock_search(None, datetime_search=None)
+
+    assert call_counter["count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_datetime_search_max_retries():
+    """Test that retry stops after max attempts."""
+    call_counter = {"count": 0}
+
+    @datetime_search_retry
+    async def mock_search(self, datetime_search=None):
+        call_counter["count"] += 1
+        raise Exception(f"Not found: Fails, attempt {call_counter['count']}")
+
+    with pytest.raises(Exception) as exc_info:
+        await mock_search(None, datetime_search={"start_datetime": "2025-01-01"})
+
+    assert call_counter["count"] == 3
+    assert "attempt 3" in str(exc_info.value).lower()
