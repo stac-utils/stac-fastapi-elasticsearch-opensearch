@@ -518,7 +518,7 @@ You can customize additional settings in your `.env` file:
 | `PROPERTIES_END_DATETIME_FIELD`                                                                          | Specifies the field used for the upper value of a datetime range for the items in the backend database.                                                          | `properties.end_datetime`                                                        | Optional |                                                                                                                                                                                                                                                                    
 | `COLLECTION_FIELD`                                                                                       | Specifies the field used for the collection an item belongs to in the backend database                | `collection`                                                                     | Optional |
 | `GEOMETRY_FIELD`                                                                                      | Specifies the field containing the geometry of the items in the backend database | `geometry` | Optional |
-
+| `STAC_SEARCH_MAX_RETRIES` | Maximum number of retry attempts for datetime search queries when index is not found | 3 | Optional |
 
 > [!NOTE]
 > The variables `ES_HOST`, `ES_PORT`, `ES_USE_SSL`, `ES_VERIFY_CERTS` and `ES_TIMEOUT` apply to both Elasticsearch and OpenSearch backends, so there is no need to rename the key names to `OS_` even if you're using OpenSearch.
