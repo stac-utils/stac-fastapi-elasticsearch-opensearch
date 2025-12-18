@@ -1,0 +1,41 @@
+{{- if .Values.app.autoscaling.enabled }}
+{{- $hpaApiVersion := (include "stac-fastapi.hpa.apiVersion" . | trim) }}
+apiVersion: {{ $hpaApiVersion }}
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "stac-fastapi.fullname" . }}
+  labels:
+    {{- include "stac-fastapi.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "stac-fastapi.fullname" . }}
+  minReplicas: {{ .Values.app.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.app.autoscaling.maxReplicas }}
+  metrics:
+    {{- if .Values.app.autoscaling.targetCPUUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: cpu
+        {{- if or (eq $hpaApiVersion "autoscaling/v2") (eq $hpaApiVersion "autoscaling/v2beta2") }}
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.app.autoscaling.targetCPUUtilizationPercentage }}
+        {{- else }}
+        targetAverageUtilization: {{ .Values.app.autoscaling.targetCPUUtilizationPercentage }}
+        {{- end }}
+    {{- end }}
+    {{- if .Values.app.autoscaling.targetMemoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        {{- if or (eq $hpaApiVersion "autoscaling/v2") (eq $hpaApiVersion "autoscaling/v2beta2") }}
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.app.autoscaling.targetMemoryUtilizationPercentage }}
+        {{- else }}
+        targetAverageUtilization: {{ .Values.app.autoscaling.targetMemoryUtilizationPercentage }}
+        {{- end }}
+    {{- end }}
+{{- end }}

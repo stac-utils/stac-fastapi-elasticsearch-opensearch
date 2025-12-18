@@ -1,0 +1,89 @@
+1. Get the application URL by running these commands:
+{{- if .Values.app.ingress.enabled }}
+{{- range $host := .Values.app.ingress.hosts }}
+  {{- range .paths }}
+  http{{ if $.Values.app.ingress.tls }}s{{ end }}://{{ $host.host }}{{ .path }}
+  {{- end }}
+{{- end }}
+{{- else if contains "NodePort" .Values.app.service.type }}
+  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "stac-fastapi.fullname" . }})
+  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo http://$NODE_IP:$NODE_PORT
+{{- else if contains "LoadBalancer" .Values.app.service.type }}
+     NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+           You can watch the status of by running 'kubectl get --namespace {{ .Release.Namespace }} svc -w {{ include "stac-fastapi.fullname" . }}'
+  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "stac-fastapi.fullname" . }} --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
+  echo http://$SERVICE_IP:{{ .Values.app.service.port }}
+{{- else if contains "ClusterIP" .Values.app.service.type }}
+  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "{{ include "stac-fastapi.selectorLabels" . }}" -o jsonpath="{.items[0].metadata.name}")
+  export CONTAINER_PORT=$(kubectl get pod --namespace {{ .Release.Namespace }} $POD_NAME -o jsonpath="{.spec.containers[0].ports[0].containerPort}")
+  echo "Visit http://127.0.0.1:8080 to use your application"
+  kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME 8080:$CONTAINER_PORT
+{{- end }}
+
+2. Backend Configuration:
+   - Backend: {{ .Values.backend }}
+   {{- if .Values.externalDatabase.enabled }}
+   - Database: External ({{ .Values.externalDatabase.host }}:{{ .Values.externalDatabase.port }})
+   {{- else if eq .Values.backend "elasticsearch" }}
+   - Database: Bundled Elasticsearch
+   {{- else if eq .Values.backend "opensearch" }}
+   - Database: Bundled OpenSearch
+   {{- end }}
+
+3. API Documentation:
+   Once the application is running, you can access:
+   - OpenAPI documentation: /docs
+   - STAC API landing page: /
+   - Collections endpoint: /collections
+   - Search endpoint: /search
+
+4. Health Checks:
+   - Liveness probe: GET /
+   - Readiness probe: GET /
+
+{{- if and (eq .Values.backend "elasticsearch") .Values.elasticsearch.enabled }}
+
+5. Elasticsearch Access:
+   export ES_POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app={{ .Release.Name }}-elasticsearch-master" -o jsonpath="{.items[0].metadata.name}")
+   kubectl --namespace {{ .Release.Namespace }} port-forward $ES_POD_NAME 9200:9200
+   # Then access Elasticsearch at http://localhost:9200
+{{- end }}
+
+{{- if and (eq .Values.backend "opensearch") .Values.opensearch.enabled }}
+
+5. OpenSearch Access:
+   export OS_POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name=opensearch" -o jsonpath="{.items[0].metadata.name}")
+   kubectl --namespace {{ .Release.Namespace }} port-forward $OS_POD_NAME 9200:9200
+   # Then access OpenSearch at http://localhost:9200
+{{- end }}
+
+{{- if .Values.app.autoscaling.enabled }}
+
+6. Autoscaling:
+   Horizontal Pod Autoscaler is enabled with:
+   - Min replicas: {{ .Values.app.autoscaling.minReplicas }}
+   - Max replicas: {{ .Values.app.autoscaling.maxReplicas }}
+   {{- if .Values.app.autoscaling.targetCPUUtilizationPercentage }}
+   - CPU target: {{ .Values.app.autoscaling.targetCPUUtilizationPercentage }}%
+   {{- end }}
+   {{- if .Values.app.autoscaling.targetMemoryUtilizationPercentage }}
+   - Memory target: {{ .Values.app.autoscaling.targetMemoryUtilizationPercentage }}%
+   {{- end }}
+{{- end }}
+
+{{- if .Values.monitoring.enabled }}
+
+7. Monitoring:
+   {{- if .Values.monitoring.prometheus.enabled }}
+   - Prometheus metrics: /metrics
+   {{- if .Values.monitoring.prometheus.serviceMonitor.enabled }}
+    {{- if .Capabilities.APIVersions.Has "monitoring.coreos.com/v1/ServiceMonitor" }}
+    - ServiceMonitor created for Prometheus Operator
+    {{- else }}
+    - ServiceMonitor requested but CRD monitoring.coreos.com/v1 not found
+       (install Prometheus Operator to enable it)
+    {{- end }}
+   {{- end }}
+   {{- end }}
+{{- end }}
