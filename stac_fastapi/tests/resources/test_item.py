@@ -1163,3 +1163,59 @@ async def test_search_datetime_with_null_datetime(
         await txn_client.delete_collection(test_collection["id"])
     except Exception as e:
         logger.warning(f"Failed to delete collection: {e}")
+
+
+@pytest.mark.asyncio
+async def test_hidden_item_true(app_client, txn_client, load_test_data):
+    """Test item with hidden=true is filtered out."""
+
+    os.environ["HIDE_ITEM_PATH"] = "properties._private.hidden"
+
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = "test-collection-hidden-true"
+    await create_collection(txn_client, collection=test_collection)
+    test_item = load_test_data("test_item.json")
+    test_item["collection"] = test_collection["id"]
+    test_item["id"] = "hidden-item-true"
+    test_item["properties"]["_private"] = {"hidden": True}
+
+    await create_item(txn_client, test_item)
+
+    resp = await app_client.get("/search", params={"ids": test_item["id"]})
+    assert resp.status_code == 200
+    result = resp.json()
+    assert len(result["features"]) == 0
+
+    resp = await app_client.get(
+        f"/collections/{test_item['collection']}/items/{test_item['id']}"
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_hidden_item_false(app_client, txn_client, load_test_data, monkeypatch):
+    """Test that item with hidden=false is not filtered out."""
+
+    os.environ["HIDE_ITEM_PATH"] = "properties._private.hidden"
+
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = "test-collection-hidden-false"
+    await create_collection(txn_client, collection=test_collection)
+
+    test_item = load_test_data("test_item.json")
+    test_item["id"] = "hidden-item-false"
+    test_item["collection"] = test_collection["id"]
+    test_item["properties"]["_private"] = {"hidden": False}
+
+    await create_item(txn_client, test_item)
+    await refresh_indices(txn_client)
+
+    resp = await app_client.get("/search", params={"ids": test_item["id"]})
+    assert resp.status_code == 200
+    result = resp.json()
+    assert len(result["features"]) == 1
+
+    resp = await app_client.get(
+        f"/collections/{test_item['collection']}/items/{test_item['id']}"
+    )
+    assert resp.status_code == 200
