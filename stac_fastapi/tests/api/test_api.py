@@ -177,6 +177,77 @@ async def test_app_fields_extension_query(app_client, ctx, txn_client):
 
 
 @pytest.mark.asyncio
+async def test_app_fields_extension_wildcard_query(app_client, ctx, txn_client):
+    item = ctx.item
+    include = {"include": ["properties.*.lat", "assets.*.href"]}
+    resp = await app_client.post(
+        "/search",
+        json={
+            "query": {"proj:epsg": {"gte": item["properties"]["proj:epsg"]}},
+            "collections": ["test-collection"],
+            "fields": include,
+        },
+    )
+    assert resp.status_code == 200
+    include_resp_json = resp.json()
+    for feature in include_resp_json["features"]:
+        assert len(feature["properties"]) == 1
+        assert feature["properties"]["proj:centroid"].get("lat", None)
+        for assets_values in feature["assets"].values():
+            assert len(assets_values) == 1
+            assert "href" in assets_values
+
+    exclude = {"exclude": ["properties.eo:bands", "properties.*.lat", "assets.*.href"]}
+    resp = await app_client.post(
+        "/search",
+        json={
+            "query": {"proj:epsg": {"gte": item["properties"]["proj:epsg"]}},
+            "collections": ["test-collection"],
+            "fields": exclude,
+        },
+    )
+
+    assert resp.status_code == 200
+    exclude_resp_json = resp.json()
+    for feature in exclude_resp_json["features"]:
+        assert "eo:bands" not in feature["properties"]
+        assert not feature["properties"]["proj:centroid"].get("lat", None)
+        for assets_values in feature["assets"].values():
+            assert "href" not in assets_values
+
+    fields = {"include": ["properties.*.lat"], "exclude": ["properties.*.lat"]}
+
+    resp = await app_client.post(
+        "/search",
+        json={
+            "query": {"proj:epsg": {"gte": item["properties"]["proj:epsg"]}},
+            "collections": ["test-collection"],
+            "fields": fields,
+        },
+    )
+    exclude_resp_json = resp.json()
+    for feature in exclude_resp_json["features"]:
+        assert feature["properties"]["proj:centroid"].get("lat", None)
+
+    fields = {
+        "include": ["properties.proj:centroid.lat"],
+        "exclude": ["properties.*.lat"],
+    }
+
+    resp = await app_client.post(
+        "/search",
+        json={
+            "query": {"proj:epsg": {"gte": item["properties"]["proj:epsg"]}},
+            "collections": ["test-collection"],
+            "fields": fields,
+        },
+    )
+    exclude_resp_json = resp.json()
+    for feature in exclude_resp_json["features"]:
+        assert feature["properties"]["proj:centroid"].get("lat", None)
+
+
+@pytest.mark.asyncio
 async def test_app_fields_extension_no_properties_get(app_client, ctx, txn_client):
     resp = await app_client.get(
         "/search", params={"collections": ["test-collection"], "fields": "-properties"}

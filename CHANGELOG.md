@@ -17,11 +17,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Updated
 
-## [v6.8.1] - 2025-12-15
+## [v6.8.2] - 2025-12-19
 
 ### Changed
 
 - Implemented a safety-first deletion policy for the catalogs endpoint to prevent accidental data loss. Collections are now never deleted through the catalogs route; they are only unlinked and automatically adopted by the root catalog if they become orphans. Collection data can only be permanently deleted via the explicit `/collections/{collection_id}` DELETE endpoint. This ensures a clear separation between container (catalog) deletion and content (collection/item) deletion, with data always being preserved through the catalogs API.
+
+- `filter_fields` supports wildcard declarations (`*`) for including and excluding fields, where `properties.*.lat` include would include any extension's with a `lat` attribute.  The same functionality is included in the exclude fields. If field is explicitly included in the include fields it cannot be explicitly excluded. 
 
 ### Removed
 

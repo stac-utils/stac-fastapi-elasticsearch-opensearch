@@ -6,6 +6,7 @@ such as converting bounding boxes to polygon representations.
 
 import logging
 import os
+import re
 from typing import Any, Dict, List, Optional, Set, Union
 
 from stac_fastapi.types.stac import Item
@@ -70,8 +71,6 @@ def bbox2polygon(b0: float, b1: float, b2: float, b3: float) -> List[List[List[f
     return [[[b0, b1], [b2, b1], [b2, b3], [b0, b3], [b0, b1]]]
 
 
-# copied from stac-fastapi-pgstac
-# https://github.com/stac-utils/stac-fastapi-pgstac/blob/26f6d918eb933a90833f30e69e21ba3b4e8a7151/stac_fastapi/pgstac/utils.py#L10-L116
 def filter_fields(  # noqa: C901
     item: Union[Item, Dict[str, Any]],
     include: Optional[Set[str]] = None,
@@ -87,78 +86,141 @@ def filter_fields(  # noqa: C901
     if not include and not exclude:
         return item
 
-    # Build a shallow copy of included fields on an item, or a sub-tree of an item
+    def match_pattern(pattern: str, key: str) -> bool:
+        """Check if a key matches a wildcard pattern."""
+        regex_pattern = "^" + re.escape(pattern).replace(r"\*", ".*") + "$"
+        return bool(re.match(regex_pattern, key))
+
+    def get_matching_keys(source: Dict[str, Any], pattern: str) -> List[str]:
+        """Get all keys that match the pattern."""
+        if not isinstance(source, dict):
+            return []
+        return [key for key in source.keys() if match_pattern(pattern, key)]
+
     def include_fields(
         source: Dict[str, Any], fields: Optional[Set[str]]
     ) -> Dict[str, Any]:
+        """Include only the specified fields from the source dictionary."""
         if not fields:
             return source
+
+        def recursive_include(
+            source: Dict[str, Any], path_parts: List[str]
+        ) -> Dict[str, Any]:
+            """Recursively include fields matching the pattern path."""
+            if not path_parts:
+                return source
+
+            if not isinstance(source, dict):
+                return {}
+
+            current_pattern = path_parts[0]
+            remaining_parts = path_parts[1:]
+
+            matching_keys = get_matching_keys(source, current_pattern)
+
+            if not matching_keys:
+                return {}
+
+            result: Dict[str, Any] = {}
+            for key in matching_keys:
+                if remaining_parts:
+                    if isinstance(source[key], dict):
+                        value = recursive_include(source[key], remaining_parts)
+                        if value:
+                            result[key] = value
+                else:
+                    result[key] = source[key]
+
+            return result
 
         clean_item: Dict[str, Any] = {}
         for key_path in fields or []:
             key_path_parts = key_path.split(".")
-            key_root = key_path_parts[0]
-            if key_root in source:
-                if isinstance(source[key_root], dict) and len(key_path_parts) > 1:
-                    # The root of this key path on the item is a dict, and the
-                    # key path indicates a sub-key to be included. Walk the dict
-                    # from the root key and get the full nested value to include.
-                    value = include_fields(
-                        source[key_root], fields={".".join(key_path_parts[1:])}
-                    )
+            included_values = recursive_include(source, key_path_parts)
 
-                    if isinstance(clean_item.get(key_root), dict):
-                        # A previously specified key and sub-keys may have been included
-                        # already, so do a deep merge update if the root key already exists.
-                        dict_deep_update(clean_item[key_root], value)
-                    else:
-                        # The root key does not exist, so add it. Fields
-                        # extension only allows nested referencing on dicts, so
-                        # this won't overwrite anything.
-                        clean_item[key_root] = value
+            for key, value in included_values.items():
+                if isinstance(clean_item.get(key), dict) and isinstance(value, dict):
+                    dict_deep_update(clean_item[key], value)
                 else:
-                    # The item value to include is not a dict, or, it is a dict but the
-                    # key path is for the whole value, not a sub-key. Include the entire
-                    # value in the cleaned item.
-                    clean_item[key_root] = source[key_root]
-            else:
-                # The key, or root key of a multi-part key, is not present in the item,
-                # so it is ignored
-                pass
+                    clean_item[key] = value
+
         return clean_item
 
-    # For an item built up for included fields, remove excluded fields. This
-    # modifies `source` in place.
-    def exclude_fields(source: Dict[str, Any], fields: Optional[Set[str]]) -> None:
-        for key_path in fields or []:
-            key_path_part = key_path.split(".")
-            key_root = key_path_part[0]
-            if key_root in source:
-                if isinstance(source[key_root], dict) and len(key_path_part) > 1:
-                    # Walk the nested path of this key to remove the leaf-key
-                    exclude_fields(
-                        source[key_root], fields={".".join(key_path_part[1:])}
-                    )
-                    # If, after removing the leaf-key, the root is now an empty
-                    # dict, remove it entirely
-                    if not source[key_root]:
-                        del source[key_root]
-                else:
-                    # The key's value is not a dict, or there is no sub-key to remove. The
-                    # entire key can be removed from the source.
-                    source.pop(key_root, None)
+    def exclude_fields(
+        source: Dict[str, Any],
+        fields: Optional[Set[str]],
+        included_fields: Optional[Set[str]] = None,
+    ) -> None:
+        """Exclude fields from source, but preserve any fields that were explicitly included."""
 
-    # Coalesce incoming type to a dict
+        def is_path_included(current_path: str) -> bool:
+            """Check if a path matches any of the included field patterns."""
+            if not included_fields:
+                return False
+
+            for include_pattern in included_fields:
+                include_parts = include_pattern.split(".")
+                current_parts = current_path.split(".")
+
+                # Check if current path matches the include pattern
+                if len(include_parts) != len(current_parts):
+                    continue
+
+                match = True
+                for include_part, current_part in zip(include_parts, current_parts):
+                    if not match_pattern(include_part, current_part):
+                        match = False
+                        break
+
+                if match:
+                    return True
+
+            return False
+
+        def recursive_exclude(
+            source: Dict[str, Any], path_parts: List[str], current_path: str = ""
+        ) -> None:
+            """Recursively exclude fields matching the pattern path."""
+            if not path_parts or not isinstance(source, dict):
+                return
+
+            current_pattern = path_parts[0]
+            remaining_parts = path_parts[1:]
+
+            matching_keys = get_matching_keys(source, current_pattern)
+
+            for key in list(matching_keys):
+                if key not in source:
+                    continue
+
+                # Build the full path for this key
+                full_path = f"{current_path}.{key}" if current_path else key
+
+                # Skip exclusion if this path was explicitly included
+                if is_path_included(full_path):
+                    continue
+
+                if remaining_parts:
+                    if isinstance(source[key], dict):
+                        recursive_exclude(source[key], remaining_parts, full_path)
+                        if not source[key]:
+                            del source[key]
+                else:
+                    source.pop(key, None)
+
+        for key_path in fields or []:
+            key_path_parts = key_path.split(".")
+            recursive_exclude(source, key_path_parts)
+
     item = dict(item)
 
     clean_item = include_fields(item, include)
 
-    # If, after including all the specified fields, there are no included properties,
-    # return just id and collection.
     if not clean_item:
         return Item({"id": item["id"], "collection": item["collection"]})
 
-    exclude_fields(clean_item, exclude)
+    exclude_fields(clean_item, exclude, include)
 
     return Item(**clean_item)
 
