@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Added configurable hidden item filtering via HIDE_ITEM_PATH environment variable. [#566](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/566)
+
 ### Changed
 
 ### Fixed

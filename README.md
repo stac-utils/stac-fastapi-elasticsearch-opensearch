@@ -518,6 +518,7 @@ You can customize additional settings in your `.env` file:
 | `PROPERTIES_END_DATETIME_FIELD`                                                                          | Specifies the field used for the upper value of a datetime range for the items in the backend database.                                                          | `properties.end_datetime`                                                        | Optional |                                                                                                                                                                                                                                                                    
 | `COLLECTION_FIELD`                                                                                       | Specifies the field used for the collection an item belongs to in the backend database                | `collection`                                                                     | Optional |
 | `GEOMETRY_FIELD`                                                                                      | Specifies the field containing the geometry of the items in the backend database | `geometry` | Optional |
+| `HIDE_ITEM_PATH` | Path to boolean field that marks items as hidden (excluded from search) or not. If null, the item is returned. | `None` | Optional |
 
 
 > [!NOTE]
