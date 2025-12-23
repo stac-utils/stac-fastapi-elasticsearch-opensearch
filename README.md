@@ -126,6 +126,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
   - [Managing Elasticsearch Indices](#managing-elasticsearch-indices)
     - [Snapshots](#snapshots)
     - [Reindexing](#reindexing)
+  - [Header Filtering](#header-filtering)
   - [Auth](#auth)
   - [Aggregation](#aggregation)
   - [Rate Limiting](#rate-limiting)
@@ -1014,6 +1015,39 @@ pip install stac-fastapi-elasticsearch[redis]
   - If you are happy with the data in the newly created index, you can move the alias items_my-collection to the new index
   - This makes the modified Items with lowercase identifiers visible to users accessing my-collection in the STAC API
   - Using aliases allows you to switch between different index versions without changing the API endpoint
+
+## Header Filtering
+
+SFEOS supports filtering API responses based on HTTP headers. This enables upstream proxies or gateways to restrict access to specific collections and geographic areas.
+
+### Headers
+
+| Header | Format | Description |
+|--------|--------|-------------|
+| `X-Filter-Collections` | Comma-separated IDs | Restricts access to specified collections only |
+| `X-Filter-Geometry` | GeoJSON geometry | Restricts access to items within the specified geometry |
+
+### Affected Endpoints
+
+| Endpoint | Collection Filter | Geometry Filter |
+|----------|:-----------------:|:---------------:|
+| `GET /collections` | ✅ | - |
+| `GET /collections/{id}` | ✅ (404 if denied) | - |
+| `GET /collections/{id}/items` | ✅ | ✅ |
+| `GET /collections/{id}/items/{id}` | ✅ (404 if denied) | ✅* (404 if denied) |
+| `GET/POST /search` | ✅ | ✅ |
+
+*Requires optional `shapely` dependency.
+
+### Optional Dependency
+
+For geometry filtering on single item endpoints (`/collections/{id}/items/{id}`), install with the `geo` extra:
+
+```bash
+pip install stac-fastapi-core[geo]
+```
+
+Without this dependency, geometry filtering on single items is skipped with a warning.
 
 ## Auth
 
