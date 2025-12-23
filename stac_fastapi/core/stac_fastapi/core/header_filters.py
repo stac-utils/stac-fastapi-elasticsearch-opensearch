@@ -112,3 +112,74 @@ def geometry_intersects_filter(
         logger.warning(f"Geometry intersection check failed: {e}")
         # On error, allow access (fail open)
         return True
+
+
+def check_collection_access(
+    request: Request, collection_id: str, resource_type: str = "Collection"
+) -> None:
+    """Check if collection access is allowed by header filter.
+
+    Args:
+        request: FastAPI Request object.
+        collection_id: The ID of the collection to check access for.
+        resource_type: Type of resource for error message ("Collection" or "Item").
+
+    Raises:
+        HTTPException: 404 if collection is not in the allowed list.
+
+    Note:
+        Does nothing if no header filter is present (allows all access).
+    """
+    from fastapi import HTTPException
+
+    header_collections = parse_filter_collections(request)
+    if header_collections is not None and collection_id not in header_collections:
+        raise HTTPException(status_code=404, detail=f"{resource_type} not found")
+
+
+def check_item_geometry_access(
+    request: Request, item_geometry: Optional[Dict[str, Any]]
+) -> None:
+    """Check if item geometry intersects with allowed geometry filter.
+
+    Args:
+        request: FastAPI Request object.
+        item_geometry: GeoJSON geometry dict from the item.
+
+    Raises:
+        HTTPException: 404 if geometries do not intersect.
+
+    Note:
+        Does nothing if no header filter is present or if item has no geometry.
+    """
+    from fastapi import HTTPException
+
+    header_geometry = parse_filter_geometry(request)
+    if header_geometry is not None and item_geometry:
+        if not geometry_intersects_filter(item_geometry, header_geometry):
+            raise HTTPException(status_code=404, detail="Item not found")
+
+
+def create_geometry_filter_object(
+    geometry_dict: Optional[Dict[str, Any]]
+) -> Optional[Any]:
+    """Create a SimpleNamespace geometry object for database filtering.
+
+    Args:
+        geometry_dict: GeoJSON geometry dict from header filter.
+
+    Returns:
+        SimpleNamespace with type and coordinates attributes, or None if input is None.
+
+    Note:
+        The returned object can be passed to database.apply_intersects_filter().
+    """
+    if geometry_dict is None:
+        return None
+
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        type=geometry_dict.get("type", ""),
+        coordinates=geometry_dict.get("coordinates", []),
+    )

@@ -24,6 +24,9 @@ from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.datetime_utils import format_datetime_range
 from stac_fastapi.core.header_filters import (
+    check_collection_access,
+    check_item_geometry_access,
+    create_geometry_filter_object,
     parse_filter_collections,
     parse_filter_geometry,
 )
@@ -593,9 +596,7 @@ class CoreClient(AsyncBaseCoreClient):
         request = kwargs["request"]
 
         # Check if collection is allowed by header filter
-        header_collections = parse_filter_collections(request)
-        if header_collections is not None and collection_id not in header_collections:
-            raise HTTPException(status_code=404, detail="Collection not found")
+        check_collection_access(request, collection_id)
 
         collection = await self.database.find_collection(collection_id=collection_id)
         return self.collection_serializer.db_to_stac(
@@ -685,9 +686,7 @@ class CoreClient(AsyncBaseCoreClient):
         request = kwargs["request"]
 
         # Check if collection is allowed by header filter
-        header_collections = parse_filter_collections(request)
-        if header_collections is not None and collection_id not in header_collections:
-            raise HTTPException(status_code=404, detail="Item not found")
+        check_collection_access(request, collection_id, resource_type="Item")
 
         base_url = str(request.base_url)
         item = await self.database.get_one_item(
@@ -696,14 +695,7 @@ class CoreClient(AsyncBaseCoreClient):
         stac_item = self.item_serializer.db_to_stac(item, base_url)
 
         # Check if item geometry intersects with allowed geometry filter
-        header_geometry = parse_filter_geometry(request)
-        if header_geometry is not None:
-            item_geometry = stac_item.get("geometry")
-            if item_geometry:
-                from stac_fastapi.core.header_filters import geometry_intersects_filter
-
-                if not geometry_intersects_filter(item_geometry, header_geometry):
-                    raise HTTPException(status_code=404, detail="Item not found")
+        check_item_geometry_access(request, stac_item.get("geometry"))
 
         return stac_item
 
@@ -889,13 +881,8 @@ class CoreClient(AsyncBaseCoreClient):
 
         # Apply geometry filter from header
         header_geometry = parse_filter_geometry(request)
-        if header_geometry is not None:
-            from types import SimpleNamespace
-
-            geometry_obj = SimpleNamespace(
-                type=header_geometry.get("type", ""),
-                coordinates=header_geometry.get("coordinates", []),
-            )
+        geometry_obj = create_geometry_filter_object(header_geometry)
+        if geometry_obj is not None:
             search = self.database.apply_intersects_filter(
                 search=search, intersects=geometry_obj
             )
