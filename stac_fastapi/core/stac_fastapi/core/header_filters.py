@@ -183,3 +183,20 @@ def create_geometry_filter_object(
         type=geometry_dict.get("type", ""),
         coordinates=geometry_dict.get("coordinates", []),
     )
+
+
+def get_geometry_filter_from_header(request: Request) -> Optional[Any]:
+    """Get geometry filter object from header if present.
+
+    Convenience function that combines parse_filter_geometry and
+    create_geometry_filter_object into a single call.
+
+    Args:
+        request: FastAPI Request object.
+
+    Returns:
+        SimpleNamespace with type and coordinates attributes, or None if
+        no geometry header is present.
+    """
+    header_geometry = parse_filter_geometry(request)
+    return create_geometry_filter_object(header_geometry)

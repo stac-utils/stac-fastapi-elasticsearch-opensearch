@@ -26,9 +26,8 @@ from stac_fastapi.core.datetime_utils import format_datetime_range
 from stac_fastapi.core.header_filters import (
     check_collection_access,
     check_item_geometry_access,
-    create_geometry_filter_object,
+    get_geometry_filter_from_header,
     parse_filter_collections,
-    parse_filter_geometry,
 )
 from stac_fastapi.core.models.links import PagingLinks
 from stac_fastapi.core.queryables import (
@@ -880,9 +879,7 @@ class CoreClient(AsyncBaseCoreClient):
             search = self.database.apply_bbox_filter(search=search, bbox=bbox)
 
         # Apply geometry filter from header
-        header_geometry = parse_filter_geometry(request)
-        geometry_obj = create_geometry_filter_object(header_geometry)
-        if geometry_obj is not None:
+        if geometry_obj := get_geometry_filter_from_header(request):
             search = self.database.apply_intersects_filter(
                 search=search, intersects=geometry_obj
             )
