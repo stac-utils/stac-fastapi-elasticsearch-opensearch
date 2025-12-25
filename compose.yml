@@ -10,6 +10,14 @@ services:
       - STAC_FASTAPI_TITLE=stac-fastapi-elasticsearch
       - STAC_FASTAPI_DESCRIPTION=A STAC FastAPI with an Elasticsearch backend
       - STAC_FASTAPI_LANDING_PAGE_ID=stac-fastapi-elasticsearch
+
+      # START _cutom_mappings
+      #- STAC_USE_CUSTOM_MAPPINGS=false # default value or delete this line
+      - STAC_USE_CUSTOM_MAPPINGS=true #if true, mappings_custom.py will be used, is located at sfeos_helpers/mappings_custom.py
+      #- COLLECTIONS_SORTABLE_FIELDS=id,extent.temporal.interval #default value or delete this line
+      - COLLECTIONS_SORTABLE_FIELDS=id,extent.temporal.interval,title #list of fields that can be used for sorting in collections endpoint
+      # END _cutom_mappings
+
       - APP_HOST=0.0.0.0
       - APP_PORT=8080
       - RELOAD=true
@@ -36,8 +44,7 @@ services:
     depends_on:
       - elasticsearch
       - redis
-    command:
-      bash -c "./scripts/wait-for-it-es.sh es-container:9200 && python -m stac_fastapi.elasticsearch.app"
+    command: bash -c "./scripts/wait-for-it-es.sh es-container:9200 && python -m stac_fastapi.elasticsearch.app"
 
   app-opensearch:
     container_name: stac-fastapi-os
@@ -50,6 +57,14 @@ services:
       - STAC_FASTAPI_TITLE=stac-fastapi-opensearch
       - STAC_FASTAPI_DESCRIPTION=A STAC FastAPI with an Opensearch backend
       - STAC_FASTAPI_LANDING_PAGE_ID=stac-fastapi-opensearch
+
+      # START _cutom_mappings -
+      #- STAC_USE_CUSTOM_MAPPINGS=false # default value or delete this line
+      - STAC_USE_CUSTOM_MAPPINGS=true #if true, mappings_custom.py will be used, is located at sfeos_helpers/mappings_custom.py
+      #- COLLECTIONS_SORTABLE_FIELDS=id,extent.temporal.interval #default value or delete this line
+      - COLLECTIONS_SORTABLE_FIELDS=id,extent.temporal.interval,title #list of fields that can be used for sorting in collections endpoint
+      # END _cutom_mappings
+
       - APP_HOST=0.0.0.0
       - APP_PORT=8082
       - RELOAD=true
@@ -76,8 +91,7 @@ services:
     depends_on:
       - opensearch
       - redis
-    command:
-      bash -c "./scripts/wait-for-it-es.sh os-container:9202 && python -m stac_fastapi.opensearch.app"
+    command: bash -c "./scripts/wait-for-it-es.sh os-container:9202 && python -m stac_fastapi.opensearch.app"
 
   elasticsearch:
     container_name: es-container
