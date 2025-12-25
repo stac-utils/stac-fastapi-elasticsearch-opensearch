@@ -72,9 +72,6 @@ def pytest_configure(config):
     config.addinivalue_line(
         "filterwarnings", "ignore:Duplicate Operation ID:UserWarning"
     )
-    config.addinivalue_line(
-        "filterwarnings", "ignore::DeprecationWarning:requests"
-    )  # General cleanup if needed
 
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
