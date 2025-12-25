@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Updated
 
+- Reorganized README configuration reference into logical sections for better readability. [#569](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/569)
+
 ## [v6.8.1] - 2025-12-15
 
 ### Changed
