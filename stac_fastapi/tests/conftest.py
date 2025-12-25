@@ -64,6 +64,13 @@ else:
         create_index_templates,
     )
 
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "datetime_filtering: matches datetime_filtering mark"
+    )
+
+
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 
 
