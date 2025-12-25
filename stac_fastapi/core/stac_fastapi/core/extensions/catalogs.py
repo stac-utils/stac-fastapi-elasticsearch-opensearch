@@ -56,6 +56,7 @@ class CatalogsExtension(ApiExtension):
             settings: extension settings (unused for now).
         """
         self.settings = settings or {}
+        self.router = APIRouter()
 
         self.router.add_api_route(
             path="/catalogs",
