@@ -898,9 +898,11 @@ pip install stac-fastapi-elasticsearch[redis]
   - The `sfeos_helpers` package contains shared mapping definitions used by both Elasticsearch and OpenSearch backends
 - **Customization**: Custom mappings can be defined by extending the base mapping templates.
 
-## <font color="red">Custom Mappings
+## Custom Mappings
 
-- Custom mappings can be prepared and used if project requires different mappings for the porpose of sorting and indexing.
+![Fork](https://img.shields.io/badge/Fork-Extended%20Documentation-orange)
+Custom mappings can be prepared and used if project requires different mappings for the porpose of sorting and indexing.
+
 - Existing mappings is replicated and stored as custom_mappings. (find custom_mappings.py)
 - Custom_mappings can be edited. Example, {"type": "text"} is converted to {"type": "keyword"} for "title". This enable sorting by title.
 - Envirnmental variables can be used to switch to new custom_mappings after edit.
@@ -912,7 +914,6 @@ By default, sorting is limited to specific fields. After custom_mappings.py is u
 - If new field should be added here based on custom_mappings, Env var can be used.
   Example: - COLLECTIONS_SORTABLE_FIELDS=id,extent.temporal.interval,title
 - New field can be added from the Env var in the database_logic.py
-  </font>
 
 ## Managing Elasticsearch Indices
 
