@@ -518,7 +518,6 @@ You can customize additional settings in your `.env` file:
 | `ENABLE_TRANSACTIONS_EXTENSIONS` | Enables or disables the Transactions and Bulk Transactions API extensions. This is useful for deployments where mutating the catalog via the API should be prevented. If set to `true`, the POST `/collections` route for search will be unavailable in the API. | `true` | Optional |
 | `ENABLE_CATALOGS_ROUTE` | Enable the **/catalogs** endpoint for hierarchical catalog browsing and navigation. | `false` | Optional |
 | `STAC_INDEX_ASSETS` | Controls if Assets are indexed when added to Elasticsearch/Opensearch. This allows asset fields to be included in search queries. | `false` | Optional |
-| `VALIDATE_QUERYABLES` | Enable validation of query parameters against the collection's queryables. If set to `true`, the API will reject queries containing fields that are not defined in the collection's queryables. | `false` | Optional |
 
 ### 5. Limits & Performance
 
@@ -529,7 +528,6 @@ You can customize additional settings in your `.env` file:
 | `STAC_DEFAULT_COLLECTION_LIMIT` | Configures the default number of STAC collections returned when no limit parameter is specified in the request. | `300` | Optional |
 | `STAC_GLOBAL_ITEM_MAX_LIMIT` | Configures the maximum number of STAC items that can be returned in a single search request. | N/A | Optional |
 | `STAC_DEFAULT_ITEM_LIMIT` | Configures the default number of STAC items returned when no limit parameter is specified in the request. | `10` | Optional |
-| `QUERYABLES_CACHE_TTL` | Time-to-live (in seconds) for the queryables cache. Used when `VALIDATE_QUERYABLES` is enabled. | `1800` | Optional |
 
 ### 6. Database Indexing & Behavior
 
@@ -545,10 +543,12 @@ You can customize additional settings in your `.env` file:
 | `COLLECTION_FIELD` | Specifies the field used for the collection an item belongs to in the backend database | `collection` | Optional |
 | `GEOMETRY_FIELD` | Specifies the field containing the geometry of the items in the backend database | `geometry` | Optional |
 
-### 7. Filtering & Exclusions
+### 7. Filtering, Exclusions & Queryables
 
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
+| `VALIDATE_QUERYABLES` | Enable validation of query parameters against the collection's queryables. If set to `true`, the API will reject queries containing fields that are not defined in the collection's queryables. | `false` | Optional |
+| `QUERYABLES_CACHE_TTL` | Time-to-live (in seconds) for the queryables cache. Used when `VALIDATE_QUERYABLES` is enabled. | `1800` | Optional |
 | `EXCLUDED_FROM_QUERYABLES` | Comma-separated list of fully qualified field names to exclude from the queryables endpoint and filtering. Use full paths like `properties.auth:schemes,properties.storage:schemes`. Excluded fields and their nested children will not be exposed in queryables. | None | Optional |
 | `EXCLUDED_FROM_ITEMS` | Specifies fields to exclude from STAC item responses. Supports comma-separated field names and dot notation for nested fields (e.g., `private_data,properties.confidential,assets.internal`). | `None` | Optional |
 
@@ -559,20 +559,20 @@ You can customize additional settings in your `.env` file:
 ## Redis for Navigation environment variables:
 These Redis configuration variables to enable proper navigation functionality in STAC FastAPI.
 
-| Variable                      | Description                                                                                  | Default                  | Required                                                                                     |
-|-------------------------------|----------------------------------------------------------------------------------------------|--------------------------|---------------------------------------------------------------------------------------------|
-| `REDIS_ENABLE`                | Enables or disables Redis caching for navigation. Set to `true` to use Redis, or `false` to disable. | `false`                  | **Required** (determines whether Redis is used at all)                                      |
-| **Redis Sentinel**            |                                                                                              |                          |                                                                                             |
-| `REDIS_SENTINEL_HOSTS`        | Comma-separated list of Redis Sentinel hostnames/IP addresses.                               | `""`                     | Conditional (required if using Sentinel)                                                    |
-| `REDIS_SENTINEL_PORTS`        | Comma-separated list of Redis Sentinel ports (must match order).                             | `"26379"`                | Conditional (required if using Sentinel)                                                    |
-| `REDIS_SENTINEL_MASTER_NAME`  | Name of the Redis master node in Sentinel configuration.                                     | `"master"`               | Conditional (required if using Sentinel)                                                    |
-| **Redis**                     |                                                                                              |                          |                                                                                             |
-| `REDIS_HOST`                  | Redis server hostname or IP address for Redis configuration.                                 | `""`                     | Conditional (required for standalone Redis)                                                 |
-| `REDIS_PORT`                  | Redis server port for Redis configuration.                                                   | `6379`                   | Conditional (required for standalone Redis)                                                 |
-| **Both**                      |                                                                                              |                          |                                                                                             |
-| `REDIS_DB`                    | Redis database number to use for caching.                                                    | `0` (Sentinel) / `15` (Standalone) | Optional                                                                                    |
-| `REDIS_MAX_CONNECTIONS`       | Maximum number of connections in the Redis connection pool.                                  | `10`                     | Optional                                                                                    |
-| `REDIS_RETRY_TIMEOUT`         | Enable retry on timeout for Redis operations.                                                | `true`                   | Optional                                                                                    |
+| Variable | Description| Default| Required|
+|----------|------------|--------|---------|
+| `REDIS_ENABLE` | Enables or disables Redis caching for navigation. Set to `true` to use Redis, or `false` to disable. | `false` | **Required** (determines whether Redis is used at all) |
+| **Redis Sentinel** |                                                                                              |                          |                                                                                             |
+| `REDIS_SENTINEL_HOSTS` | Comma-separated list of Redis Sentinel hostnames/IP addresses. | `""`                     | Conditional (required if using Sentinel)                                                    |
+| `REDIS_SENTINEL_PORTS` | Comma-separated list of Redis Sentinel ports (must match order). | `"26379"`                | Conditional (required if using Sentinel)                                                    |
+| `REDIS_SENTINEL_MASTER_NAME` | Name of the Redis master node in Sentinel configuration. | `"master"`               | Conditional (required if using Sentinel)                                                    |
+| **Redis** |                                                                                              |                          |                                                                                             |
+| `REDIS_HOST` | Redis server hostname or IP address for Redis configuration. | `""`                     | Conditional (required for standalone Redis)                                                 |
+| `REDIS_PORT` | Redis server port for Redis configuration. | `6379`                   | Conditional (required for standalone Redis)                                                 |
+| **Both** |                                                                                              |                          |                                                                                             |
+| `REDIS_DB` | Redis database number to use for caching.                                                    | `0` (Sentinel) / `15` (Standalone) | Optional                                                                                    |
+| `REDIS_MAX_CONNECTIONS` | Maximum number of connections in the Redis connection pool.                                  | `10`                     | Optional                                                                                    |
+| `REDIS_RETRY_TIMEOUT` | Enable retry on timeout for Redis operations.                                                | `true`                   | Optional                                                                                    |
 | `REDIS_DECODE_RESPONSES`      | Automatically decode Redis responses to strings.                                             | `true`                   | Optional                                                                                    |
 | `REDIS_CLIENT_NAME`           | Client name identifier for Redis connections.                                                | `"stac-fastapi-app"`     | Optional                                                                                    |
 | `REDIS_HEALTH_CHECK_INTERVAL` | Interval in seconds for Redis health checks.                                                 | `30`                     | Optional                                                                                    |
