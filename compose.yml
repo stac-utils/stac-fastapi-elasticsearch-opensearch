@@ -11,11 +11,11 @@ services:
       - STAC_FASTAPI_DESCRIPTION=A STAC FastAPI with an Elasticsearch backend
       - STAC_FASTAPI_LANDING_PAGE_ID=stac-fastapi-elasticsearch
 
-      # START _cutom_mappings
-      #- STAC_USE_CUSTOM_MAPPINGS=false # default value or delete this line
-      - STAC_USE_CUSTOM_MAPPINGS=true #if true, mappings_custom.py will be used, is located at sfeos_helpers/mappings_custom.py
-      #- COLLECTIONS_SORTABLE_FIELDS=id,extent.temporal.interval #default value or delete this line
-      - COLLECTIONS_SORTABLE_FIELDS=id,extent.temporal.interval,title #list of fields that can be used for sorting in collections endpoint
+      # START _cutom_mappings -
+      - STAC_USE_CUSTOM_MAPPINGS=false #default value
+      #- STAC_USE_CUSTOM_MAPPINGS=true #if true, mappings_custom.py will be used, is located at sfeos_helpers/mappings_custom.py
+      - COLLECTIONS_SORTABLE_FIELDS=id,extent.temporal.interval #default value or delete this line- check database_logic.py for default sortable fields
+      #- COLLECTIONS_SORTABLE_FIELDS=id,extent.temporal.interval,title #fields can be added here for sorting in collections endpoint
       # END _cutom_mappings
 
       - APP_HOST=0.0.0.0
@@ -59,10 +59,10 @@ services:
       - STAC_FASTAPI_LANDING_PAGE_ID=stac-fastapi-opensearch
 
       # START _cutom_mappings -
-      #- STAC_USE_CUSTOM_MAPPINGS=false # default value or delete this line
-      - STAC_USE_CUSTOM_MAPPINGS=true #if true, mappings_custom.py will be used, is located at sfeos_helpers/mappings_custom.py
-      #- COLLECTIONS_SORTABLE_FIELDS=id,extent.temporal.interval #default value or delete this line
-      - COLLECTIONS_SORTABLE_FIELDS=id,extent.temporal.interval,title #list of fields that can be used for sorting in collections endpoint
+      - STAC_USE_CUSTOM_MAPPINGS=false #default value
+      #- STAC_USE_CUSTOM_MAPPINGS=true #if true, mappings_custom.py will be used, is located at sfeos_helpers/mappings_custom.py
+      - COLLECTIONS_SORTABLE_FIELDS=id,extent.temporal.interval #default value or delete this line- check database_logic.py for default sortable fields
+      #- COLLECTIONS_SORTABLE_FIELDS=id,extent.temporal.interval,title #fields can be added here for sorting in collections endpoint
       # END _cutom_mappings
 
       - APP_HOST=0.0.0.0
