@@ -127,7 +127,7 @@ class CatalogsExtension(ApiExtension):
             response_class=self.response_class,
             status_code=204,
             summary="Delete Catalog",
-            description="Delete a catalog. Optionally cascade delete all collections in the catalog.",
+            description="Delete a catalog. All linked collections are unlinked and adopted by root if orphaned.",
             tags=["Catalogs"],
         )
 
@@ -338,22 +338,21 @@ class CatalogsExtension(ApiExtension):
                 status_code=404, detail=f"Catalog {catalog_id} not found"
             )
 
-    async def delete_catalog(
-        self,
-        catalog_id: str,
-        request: Request,
-        cascade: bool = Query(
-            False,
-            description="If true, delete all collections linked to this catalog. If false, only delete the catalog.",
-        ),
-    ) -> None:
-        """Delete a catalog.
+    async def delete_catalog(self, catalog_id: str, request: Request) -> None:
+        """Delete a catalog (The Container).
+
+        Deletes the Catalog document itself. All linked Collections are unlinked
+        and adopted by Root if they become orphans. Collection data is NEVER deleted.
+
+        Logic:
+        1. Finds all Collections linked to this Catalog.
+        2. Unlinks them (removes catalog_id from their parent_ids).
+        3. If a Collection becomes an orphan, it is adopted by Root.
+        4. PERMANENTLY DELETES the Catalog document itself.
 
         Args:
             catalog_id: The ID of the catalog to delete.
             request: Request object.
-            cascade: If true, delete all collections linked to this catalog.
-                    If false, only delete the catalog.
 
         Returns:
             None (204 No Content)
@@ -362,58 +361,42 @@ class CatalogsExtension(ApiExtension):
             HTTPException: If the catalog is not found.
         """
         try:
-            # Get the catalog to verify it exists
+            # Verify the catalog exists
             await self.client.database.find_catalog(catalog_id)
 
-            # Use reverse lookup query to find all collections with this catalog in parent_ids.
-            # This is more reliable than parsing links, as it captures all collections
-            # regardless of pagination or link truncation.
+            # Find all collections with this catalog in parent_ids
             query_body = {"query": {"term": {"parent_ids": catalog_id}}}
             search_result = await self.client.database.client.search(
                 index=COLLECTIONS_INDEX, body=query_body, size=10000
             )
             children = [hit["_source"] for hit in search_result["hits"]["hits"]]
 
-            # Process each child collection
+            # Safe Unlink: Remove catalog from all children's parent_ids
+            # If a child becomes an orphan, adopt it to root
+            root_id = self.settings.get("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi")
+
             for child in children:
                 child_id = child.get("id")
                 try:
-                    if cascade:
-                        # DANGER ZONE: User explicitly requested cascade delete.
-                        # Delete the collection entirely, regardless of other parents.
-                        await self.client.database.delete_collection(child_id)
-                        logger.info(
-                            f"Deleted collection {child_id} as part of cascade delete for catalog {catalog_id}"
-                        )
-                    else:
-                        # SAFE ZONE: Smart Unlink - Remove only this catalog from parent_ids.
-                        # The collection survives and becomes a root-level collection if it has no other parents.
-                        parent_ids = child.get("parent_ids", [])
-                        if catalog_id in parent_ids:
-                            parent_ids.remove(catalog_id)
-                            child["parent_ids"] = parent_ids
+                    parent_ids = child.get("parent_ids", [])
+                    if catalog_id in parent_ids:
+                        parent_ids.remove(catalog_id)
 
-                            # Update the collection in the database
-                            # Note: Catalog links are now dynamically generated, so no need to remove them
-                            await self.client.database.update_collection(
-                                collection_id=child_id,
-                                collection=child,
-                                refresh=False,
+                        # If orphan, move to root
+                        if len(parent_ids) == 0:
+                            parent_ids.append(root_id)
+                            logger.info(
+                                f"Collection {child_id} adopted by root after catalog deletion."
                             )
-
-                            # Log the result
-                            if len(parent_ids) == 0:
-                                logger.info(
-                                    f"Collection {child_id} is now a root-level orphan (no parent catalogs)"
-                                )
-                            else:
-                                logger.info(
-                                    f"Removed catalog {catalog_id} from collection {child_id}; still belongs to {len(parent_ids)} other catalog(s)"
-                                )
                         else:
-                            logger.debug(
-                                f"Catalog {catalog_id} not in parent_ids for collection {child_id}"
+                            logger.info(
+                                f"Removed catalog {catalog_id} from collection {child_id}; still belongs to {len(parent_ids)} other catalog(s)"
                             )
+
+                        child["parent_ids"] = parent_ids
+                        await self.client.database.update_collection(
+                            collection_id=child_id, collection=child, refresh=False
+                        )
                 except Exception as e:
                     error_msg = str(e)
                     if "not found" in error_msg.lower():
@@ -930,11 +913,11 @@ class CatalogsExtension(ApiExtension):
     async def delete_catalog_collection(
         self, catalog_id: str, collection_id: str, request: Request
     ) -> None:
-        """Delete a collection from a catalog.
+        """Delete a collection from a catalog (Unlink only).
 
-        If the collection has multiple parent catalogs, only removes this catalog
-        from the parent_ids. If this is the only parent catalog, deletes the
-        collection entirely.
+        Removes the catalog from the collection's parent_ids.
+        If the collection becomes an orphan (no parents), it is adopted by the Root.
+        It NEVER deletes the collection data.
 
         Args:
             catalog_id: The ID of the catalog.
@@ -960,37 +943,39 @@ class CatalogsExtension(ApiExtension):
                     detail=f"Collection {collection_id} does not belong to catalog {catalog_id}",
                 )
 
-            # If the collection has multiple parents, just remove this catalog from parent_ids
-            if len(parent_ids) > 1:
-                parent_ids.remove(catalog_id)
-                collection_db["parent_ids"] = parent_ids
+            # SAFE UNLINK LOGIC
+            parent_ids.remove(catalog_id)
 
-                # Update the collection in the database
-                # Note: Catalog links are now dynamically generated, so no need to remove them
-                await self.client.database.update_collection(
-                    collection_id=collection_id, collection=collection_db, refresh=True
+            # Check if it is now an orphan (empty list)
+            if len(parent_ids) == 0:
+                # Fallback to Root / Landing Page
+                # You can hardcode 'root' or fetch the ID from settings
+                root_id = self.settings.get(
+                    "STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"
                 )
-
+                parent_ids.append(root_id)
                 logger.info(
-                    f"Removed catalog {catalog_id} from collection {collection_id} parent_ids"
+                    f"Collection {collection_id} unlinked from {catalog_id}. Orphaned, so adopted by root ({root_id})."
                 )
             else:
-                # If this is the only parent, delete the collection entirely
-                await self.client.database.delete_collection(
-                    collection_id, refresh=True
-                )
                 logger.info(
-                    f"Deleted collection {collection_id} (only parent was catalog {catalog_id})"
+                    f"Removed catalog {catalog_id} from collection {collection_id}; still belongs to {len(parent_ids)} other catalog(s)"
                 )
+
+            # Update the collection in the database
+            collection_db["parent_ids"] = parent_ids
+            await self.client.database.update_collection(
+                collection_id=collection_id, collection=collection_db, refresh=True
+            )
 
         except HTTPException:
             raise
         except Exception as e:
             logger.error(
-                f"Error deleting collection {collection_id} from catalog {catalog_id}: {e}",
+                f"Error removing collection {collection_id} from catalog {catalog_id}: {e}",
                 exc_info=True,
             )
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to delete collection from catalog: {str(e)}",
+                detail=f"Failed to remove collection from catalog: {str(e)}",
             )

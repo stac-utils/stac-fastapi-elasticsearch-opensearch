@@ -29,7 +29,7 @@ keywords = [
 ]
 dynamic = ["version"]
 dependencies = [
-    "stac-fastapi.core==6.8.0",
+    "stac-fastapi.core==6.8.1",
 ]
 
 [project.urls]
