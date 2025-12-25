@@ -210,6 +210,12 @@ class DatabaseLogic(BaseDatabaseLogic):
         # Define sortable fields based on the ES_COLLECTIONS_MAPPINGS
         sortable_fields = ["id", "extent.temporal.interval", "temporal"]
 
+        # START - Custom Sortable Fields - get sortable fields from env var/ Use this if you edit mappings
+        COLLECTIONS_SORTABLE_FIELDS = os.getenv("COLLECTIONS_SORTABLE_FIELDS","").split(",")
+        if len(COLLECTIONS_SORTABLE_FIELDS) >0:
+            sortable_fields: list = COLLECTIONS_SORTABLE_FIELDS
+        # END - Custom Sortable Fields
+
         # Format the sort parameter
         formatted_sort = []
         if sort:
