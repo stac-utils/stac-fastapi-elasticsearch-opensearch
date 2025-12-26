@@ -1,12 +1,12 @@
 """Client implementation for the STAC API Aggregation Extension."""
 
-from pathlib import Path
+
 from typing import Annotated, Any, Dict, List, Optional, Union
 from urllib.parse import unquote_plus, urljoin
 
 import attr
 import orjson
-from fastapi import HTTPException, Request
+from fastapi import HTTPException, Path, Request
 from pygeofilter.backends.cql2_json import to_cql2
 from pygeofilter.parsers.cql2_text import parse as parse_cql2_text
 from stac_pydantic.shared import BBox

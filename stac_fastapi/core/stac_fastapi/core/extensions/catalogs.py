@@ -56,6 +56,7 @@ class CatalogsExtension(ApiExtension):
             settings: extension settings (unused for now).
         """
         self.settings = settings or {}
+        self.router = APIRouter()
 
         self.router.add_api_route(
             path="/catalogs",
@@ -364,9 +365,9 @@ class CatalogsExtension(ApiExtension):
             await self.client.database.find_catalog(catalog_id)
 
             # Find all collections with this catalog in parent_ids
-            query_body = {"query": {"term": {"parent_ids": catalog_id}}}
+            query_body = {"query": {"term": {"parent_ids": catalog_id}}, "size": 10000}
             search_result = await self.client.database.client.search(
-                index=COLLECTIONS_INDEX, body=query_body, size=10000
+                index=COLLECTIONS_INDEX, body=query_body
             )
             children = [hit["_source"] for hit in search_result["hits"]["hits"]]
 

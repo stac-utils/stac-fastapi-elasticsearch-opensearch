@@ -64,6 +64,16 @@ else:
         create_index_templates,
     )
 
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "datetime_filtering: matches datetime_filtering mark"
+    )
+    config.addinivalue_line(
+        "filterwarnings", "ignore:Duplicate Operation ID:UserWarning"
+    )
+
+
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 
 
