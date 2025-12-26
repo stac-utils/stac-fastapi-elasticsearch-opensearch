@@ -160,9 +160,10 @@ Navigate to the URL above and connect to your SFEOS API instance by providing th
 
 You can also override the default STAC API URL by appending the `stacApiUrl` parameter to the application URL. For example:
 
-https://healy-hyperspatial.github.io/sfeos-web?stacApiUrl=http://localhost:8080
+https://healy-hyperspatial.github.io/sfeos-web?stacApiUrl=https://stac.example.com
 
-**Note**: The parameter name `stacApiUrl` is case-sensitive. This allows you to connect to different STAC API servers without modifying the web app configuration.
+> [!IMPORTANT]
+> To connect to a local SFEOS instance (e.g., `http://localhost:8080`), you must run the [SFEOS STAC Viewer](https://github.com/Healy-Hyperspatial/sfeos-web) locally. Browsers generally block hosted web applications from making requests to `localhost` due to security restrictions.
 
 ## Collection Search Extensions
 
@@ -562,7 +563,7 @@ These Redis configuration variables to enable proper navigation functionality in
 | Variable | Description| Default| Required|
 |----------|------------|--------|---------|
 | `REDIS_ENABLE` | Enables or disables Redis caching for navigation. Set to `true` to use Redis, or `false` to disable. | `false` | **Required** (determines whether Redis is used at all) |
-| **Redis Sentinel** |                                                                                              |                          |                                                                                             |
+| **Redis Sentinel** |    |     |    |
 | `REDIS_SENTINEL_HOSTS` | Comma-separated list of Redis Sentinel hostnames/IP addresses. | `""`                     | Conditional (required if using Sentinel)                                                    |
 | `REDIS_SENTINEL_PORTS` | Comma-separated list of Redis Sentinel ports (must match order). | `"26379"`                | Conditional (required if using Sentinel)                                                    |
 | `REDIS_SENTINEL_MASTER_NAME` | Name of the Redis master node in Sentinel configuration. | `"master"`               | Conditional (required if using Sentinel)                                                    |
