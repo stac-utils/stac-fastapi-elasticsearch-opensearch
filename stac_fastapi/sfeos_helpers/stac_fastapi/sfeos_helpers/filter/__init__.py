@@ -37,8 +37,10 @@ from .client import EsAsyncBaseFiltersClient
 # Re-export the main functions and classes for backward compatibility
 from .cql2 import (
     _replace_like_patterns,
+    build_cql2_filter,
     cql2_like_patterns,
     cql2_like_to_es,
+    resolve_cql2_indexes,
     valid_like_substitutions,
 )
 from .datetime_optimizer import DatetimeOptimizer
@@ -59,4 +61,6 @@ __all__ = [
     "LogicalOp",
     "DatetimeOptimizer",
     "extract_from_ast",
+    "resolve_cql2_indexes",
+    "build_cql2_filter",
 ]

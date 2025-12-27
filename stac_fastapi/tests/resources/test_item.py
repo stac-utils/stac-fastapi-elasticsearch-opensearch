@@ -1167,7 +1167,7 @@ async def test_search_datetime_with_null_datetime(
 
 @pytest.mark.asyncio
 async def test_search_cql2_json_datetime_operators(app_client, ctx):
-    """Test POST search with CQL2-JSON datetime filter operators"""
+    """Test POST /search with CQL2 json datetime filter operators"""
 
     test_item = ctx.item
     item_datetime = test_item["properties"]["datetime"]
@@ -1221,11 +1221,11 @@ async def test_search_cql2_json_datetime_operators(app_client, ctx):
 
 @pytest.mark.asyncio
 async def test_search_cql2_json_start_end_datetime_operators(app_client, ctx):
-    """Test POST search with CQL2-JSON start_datetime and end_datetime filter operators"""
+    """Test POST /search with CQL2 json start_datetime, end_datetime filter operators"""
 
     test_item = ctx.item
-    start_datetime = test_item["properties"]["start_datetime"]  # "2020-02-08T12:30:22Z"
-    end_datetime = test_item["properties"]["end_datetime"]  # "2020-02-16T12:30:22Z"
+    start_datetime = test_item["properties"]["start_datetime"]
+    end_datetime = test_item["properties"]["end_datetime"]
 
     cql2_start_equal = {
         "filter-lang": "cql2-json",

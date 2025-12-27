@@ -11,8 +11,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 - Added CQL2 Abstract Syntax Tree (AST) structure for efficient query parsing and datetime-based indexes. [#560](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/560)
 
-- Environment variable `VALIDATE_QUERYABLES` to enable/disable validation of queryables in search/filter requests. When set to `true`, search requests will be validated against the defined queryables, returning an error for any unsupported fields. Defaults to `false` for backward compatibility.[#532](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/532)
-
 ### Changed
 
 ### Fixed

@@ -17,7 +17,6 @@ from starlette.requests import Request
 
 import stac_fastapi.sfeos_helpers.filter as filter_module
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
-from stac_fastapi.core.datetime_utils import format_datetime_range
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon, get_bool_env
 from stac_fastapi.extensions.core.transaction.request import (
@@ -53,14 +52,7 @@ from stac_fastapi.sfeos_helpers.database.utils import (
     merge_to_operations,
     operations_to_script,
 )
-from stac_fastapi.sfeos_helpers.filter import (
-    Cql2AstParser,
-    DatetimeOptimizer,
-    to_es_via_ast,
-)
-from stac_fastapi.sfeos_helpers.filter.datetime_optimizer import (
-    extract_collection_datetime,
-)
+from stac_fastapi.sfeos_helpers.filter import build_cql2_filter, resolve_cql2_indexes
 from stac_fastapi.sfeos_helpers.mappings import (
     AGGREGATION_MAPPING,
     COLLECTIONS_INDEX,
@@ -775,7 +767,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         self, search: Search, _filter: Optional[Dict[str, Any]]
     ):
         """
-        Apply a CQL2 filter to an OpenSearch Search object.
+        Apply a CQL2 filter to an Opensearch Search object.
 
         This method transforms a CQL2 filter dictionary into an OpenSearch query using
         an AST tree-based approach. If the filter is None, the original Search object is returned
@@ -796,18 +788,9 @@ class DatabaseLogic(BaseDatabaseLogic):
             queryables_mapping = await self.get_queryables_mapping()
 
             try:
-                parser = Cql2AstParser(queryables_mapping)
-                ast = parser.parse(_filter)
-
-                optimizer = DatetimeOptimizer()
-                optimized_ast = optimizer.optimize_query_structure(ast)
-
-                _cql2_collection_datetime = extract_collection_datetime(optimized_ast)
-
-                es_query = to_es_via_ast(queryables_mapping, optimized_ast)
-
+                es_query, metadata = build_cql2_filter(queryables_mapping, _filter)
                 search = search.filter(es_query)
-                search._cql2_collection_datetime = _cql2_collection_datetime
+                search._cql2_metadata = metadata
 
             except Exception:
                 # Fallback to dictionary-based approach
@@ -866,45 +849,16 @@ class DatabaseLogic(BaseDatabaseLogic):
         search_body: Dict[str, Any] = {}
         query = search.query.to_dict() if search.query else None
 
-        cql2_collection_datetime = getattr(search, "_cql2_collection_datetime", None)
+        cql2_metadata = getattr(search, "_cql2_metadata", None)
 
         # Special case for cql2-json index selection
-        if cql2_collection_datetime:
-            all_collections = []
-            collection_index_map: Dict[str, List[str]] = {}
-
-            for collection_item, date_range in cql2_collection_datetime:
-                collections = (
-                    collection_item
-                    if isinstance(collection_item, list)
-                    else [collection_item]
-                )
-                all_collections.extend(collections)
-
-                # Parse datetime for this collection id(s)
-                if date_range:
-                    _, collection_datetime = self.apply_datetime_filter(
-                        search, format_datetime_range(date_str=date_range)
-                    )
-                    for collection in collections:
-                        indexes = await self.async_index_selector.select_indexes(
-                            [collection], collection_datetime
-                        )
-                        collection_index_map.setdefault(collection, []).extend(
-                            idx.strip() for idx in indexes.split(",") if idx.strip()
-                        )
-
-            all_indexes = []
-            seen_indexes = set()
-            for collection in all_collections:
-                if collection in collection_index_map:
-                    for idx in collection_index_map[collection]:
-                        if idx not in seen_indexes:
-                            seen_indexes.add(idx)
-                            all_indexes.append(idx)
-
-            index_param = ",".join(all_indexes)
-            collection_ids = list(set(all_collections))
+        if cql2_metadata:
+            index_param, collection_ids = await resolve_cql2_indexes(
+                cql2_metadata,
+                self.async_index_selector,
+                self.apply_datetime_filter,
+                search,
+            )
         else:
             index_param = await self.async_index_selector.select_indexes(
                 collection_ids, datetime_search
