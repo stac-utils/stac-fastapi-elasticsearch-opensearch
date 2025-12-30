@@ -1,85 +1,7 @@
-"""Shared mappings for stac-fastapi elasticsearch and opensearch backends.
+#Edited: custome mappings to be edited as necessary. This file is imported if the environment variable STAC_USE_CUSTOM_MAPPINGS is set to "true"
 
-This module contains shared constants, mappings, and type definitions used by both
-the Elasticsearch and OpenSearch implementations of STAC FastAPI. It includes:
-
-1. Index name constants and character translation tables
-2. Mapping definitions for Collections and Items
-3. Aggregation mappings for search queries
-4. Type conversion mappings between Elasticsearch/OpenSearch and JSON Schema types
-
-The sfeos_helpers package is organized as follows:
-- database_logic_helpers.py: Shared database operations
-- filter.py: Shared filter extension implementation
-- mappings.py: Shared constants and mapping definitions (this file)
-- utilities.py: Shared utility functions
-
-When adding new functionality to this package, consider:
-1. Will this code be used by both Elasticsearch and OpenSearch implementations?
-2. Is the functionality stable and unlikely to diverge between implementations?
-3. Is the function well-documented with clear input/output contracts?
-
-Function Naming Conventions:
-- All shared functions should end with `_shared` to clearly indicate they're meant to be used by both implementations
-- Function names should be descriptive and indicate their purpose
-- Parameter names should be consistent across similar functions
-"""
-
-import os
-import json
 from typing import Any, Dict, Literal, Protocol
-import stac_fastapi.sfeos_helpers.stac_fastapi.sfeos_helpers.mappings_custom.mappings_custom as mappings_custom
-
 from stac_fastapi.core.utilities import get_bool_env
-
-
-# stac_pydantic classes extend _GeometryBase, which doesn't have a type field,
-# So create our own Protocol for typing
-# Union[ Point, MultiPoint, LineString, MultiLineString, Polygon, MultiPolygon, GeometryCollection]
-class Geometry(Protocol):  # noqa
-    type: str
-    coordinates: Any
-
-
-COLLECTIONS_INDEX = os.getenv("STAC_COLLECTIONS_INDEX", "collections")
-ITEMS_INDEX_PREFIX = os.getenv("STAC_ITEMS_INDEX_PREFIX", "items_")
-
-ES_INDEX_NAME_UNSUPPORTED_CHARS = {
-    "\\",
-    "/",
-    "*",
-    "?",
-    '"',
-    "<",
-    ">",
-    "|",
-    " ",
-    ",",
-    "#",
-    ":",
-}
-
-_ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE = str.maketrans(
-    "", "", "".join(ES_INDEX_NAME_UNSUPPORTED_CHARS)
-)
-
-ITEM_INDICES = f"{ITEMS_INDEX_PREFIX}*,-*kibana*,-{COLLECTIONS_INDEX}*"
-
-DEFAULT_SORT = {
-    "properties.datetime": {"order": "desc"},
-    "id": {"order": "desc"},
-    "collection": {"order": "desc"},
-}
-
-
-ES_ITEMS_SETTINGS = {
-    "index": {
-        "sort.field": list(DEFAULT_SORT.keys()),
-        "sort.order": [v["order"] for v in DEFAULT_SORT.values()],
-    }
-}
-
-
 
 
 ES_MAPPINGS_DYNAMIC_TEMPLATES = [
@@ -95,7 +17,7 @@ ES_MAPPINGS_DYNAMIC_TEMPLATES = [
         "titles": {
             "match_mapping_type": "string",
             "match": "title",
-            #"mapping": {"type": "text"}, #edit_os - changed to keyword to allow sorting on title field
+            #"mapping": {"type": "text"}, #Default  - changed to keyword to allow sorting on title field
             "mapping": {"type": "keyword"},
         }
     },
@@ -136,10 +58,6 @@ ES_MAPPINGS_DYNAMIC_TEMPLATES = [
     },
 ]
 
-#edited: here we check if we want to use custom mappings from mappings_custom.py
-if os.getenv("STAC_USE_CUSTOM_MAPPINGS","false").lower() == "true":
-    ES_MAPPINGS_DYNAMIC_TEMPLATES = mappings_custom.ES_MAPPINGS_DYNAMIC_TEMPLATES
-
 ES_ITEMS_MAPPINGS = {
     "numeric_detection": False,
     "dynamic_templates": ES_MAPPINGS_DYNAMIC_TEMPLATES,
@@ -166,11 +84,6 @@ ES_ITEMS_MAPPINGS = {
     },
 }
 
-
-#edited: here we check if we want to use custom mappings from mappings_custom.py for ES_ITEMS_MAPPINGS
-if os.getenv("STAC_USE_CUSTOM_MAPPINGS","false").lower() == "true":
-    ES_ITEMS_MAPPINGS = mappings_custom.ES_ITEMS_MAPPINGS
-
 ES_COLLECTIONS_MAPPINGS = {
     "numeric_detection": False,
     "dynamic_templates": ES_MAPPINGS_DYNAMIC_TEMPLATES,
@@ -188,10 +101,6 @@ ES_COLLECTIONS_MAPPINGS = {
         "temporal": {"type": "alias", "path": "extent.temporal.interval"},
     },
 }
-
-#edited: here we check if we want to use custom mappings from mappings_custom.py for ES_ITEMS_MAPPINGS
-if os.getenv("STAC_USE_CUSTOM_MAPPINGS","false").lower() == "true":
-    ES_COLLECTIONS_MAPPINGS = mappings_custom.ES_COLLECTIONS_MAPPINGS
 
 # Shared aggregation mapping for both Elasticsearch and OpenSearch
 AGGREGATION_MAPPING: Dict[str, Dict[str, Any]] = {
@@ -265,10 +174,6 @@ AGGREGATION_MAPPING: Dict[str, Dict[str, Any]] = {
     },
 }
 
-#edited: here we check if we want to use custom mappings from mappings_custom.py for AGGREGATION_MAPPING
-if os.getenv("STAC_USE_CUSTOM_MAPPINGS","false").lower() == "true":
-    AGGREGATION_MAPPING = mappings_custom.AGGREGATION_MAPPING
-
 ES_MAPPING_TYPE_TO_JSON: Dict[
     str, Literal["string", "number", "boolean", "object", "array", "null"]
 ] = {
@@ -291,3 +196,6 @@ ES_MAPPING_TYPE_TO_JSON: Dict[
     "geo_shape": "object",
     "nested": "array",
 }
+
+
+   

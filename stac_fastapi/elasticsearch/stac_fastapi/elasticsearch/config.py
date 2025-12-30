@@ -22,7 +22,7 @@ def _es_config() -> Dict[str, Any]:
 
     # Configure the hosts parameter with the correct scheme
     es_hosts = os.getenv(
-        "ES_HOST", "localhost"
+        "ES_HOST", "localhost"       
     ).strip()  # Default to localhost if ES_HOST is not set
     es_port = os.getenv("ES_PORT", "9200")  # Default to 9200 if ES_PORT is not set
 
