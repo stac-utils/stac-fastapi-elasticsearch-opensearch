@@ -1,7 +1,7 @@
 """Database logic."""
-
 import asyncio
 import logging
+import os
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from collections.abc import Iterable
 from copy import deepcopy
@@ -15,6 +15,7 @@ from opensearchpy.helpers.query import Q
 from opensearchpy.helpers.search import Search
 from starlette.requests import Request
 
+import stac_fastapi.sfeos_helpers.filter as filter_module
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon, get_bool_env
@@ -27,7 +28,6 @@ from stac_fastapi.opensearch.config import (
     AsyncOpensearchSettings as AsyncSearchSettings,
 )
 from stac_fastapi.opensearch.config import OpensearchSettings as SyncSearchSettings
-from stac_fastapi.sfeos_helpers import filter as filter_module
 from stac_fastapi.sfeos_helpers.database import (
     add_bbox_shape_to_collection,
     apply_collections_bbox_filter_shared,
@@ -153,6 +153,26 @@ class DatabaseLogic(BaseDatabaseLogic):
     extensions: List[str] = attr.ib(default=attr.Factory(list))
 
     aggregation_mapping: Dict[str, Dict[str, Any]] = AGGREGATION_MAPPING
+
+    # constants for field names
+    # they are used in multiple methods
+    # and could be overwritten in subclasses used with alternate opensearch mappings.
+    PROPERTIES_DATETIME_FIELD = os.getenv(
+        "STAC_FIELD_PROP_DATETIME", "properties.datetime"
+    )
+    PROPERTIES_START_DATETIME_FIELD = os.getenv(
+        "STAC_FIELD_PROP_START_DATETIME", "properties.start_datetime"
+    )
+    PROPERTIES_END_DATETIME_FIELD = os.getenv(
+        "STAC_FIELD_PROP_END_DATETIME", "properties.end_datetime"
+    )
+    COLLECTION_FIELD = os.getenv("STAC_FIELD_COLLECTION", "collection")
+    GEOMETRY_FIELD = os.getenv("STAC_FIELD_GEOMETRY", "geometry")
+
+    @staticmethod
+    def __nested_field__(field: str):
+        """Convert opensearch field to nested field format."""
+        return field.replace(".", "__")
 
     """CORE LOGIC"""
 
@@ -436,7 +456,10 @@ class DatabaseLogic(BaseDatabaseLogic):
     @staticmethod
     def apply_collections_filter(search: Search, collection_ids: List[str]):
         """Database logic to search a list of STAC collection ids."""
-        return search.filter("terms", collection=collection_ids)
+        collection_nested_field = DatabaseLogic.__nested_field__(
+            DatabaseLogic.COLLECTION_FIELD
+        )
+        return search.filter("terms", **{collection_nested_field: collection_ids})
 
     @staticmethod
     def apply_free_text_filter(search: Search, free_text_queries: Optional[List[str]]):
@@ -479,6 +502,16 @@ class DatabaseLogic(BaseDatabaseLogic):
         # False: Always search only by start/end datetime
         USE_DATETIME = get_bool_env("USE_DATETIME", default=True)
 
+        nested_datetime_field = DatabaseLogic.__nested_field__(
+            DatabaseLogic.PROPERTIES_DATETIME_FIELD
+        )
+        nested_start_datetime_field = DatabaseLogic.__nested_field__(
+            DatabaseLogic.PROPERTIES_START_DATETIME_FIELD
+        )
+        nested_end_datetime_field = DatabaseLogic.__nested_field__(
+            DatabaseLogic.PROPERTIES_END_DATETIME_FIELD
+        )
+
         if USE_DATETIME:
             if "eq" in datetime_search:
                 # For exact matches, include:
@@ -488,28 +521,42 @@ class DatabaseLogic(BaseDatabaseLogic):
                     Q(
                         "bool",
                         filter=[
-                            Q("exists", field="properties.datetime"),
+                            Q("exists", field=DatabaseLogic.PROPERTIES_DATETIME_FIELD),
                             Q(
                                 "term",
-                                **{"properties__datetime": datetime_search["eq"]},
+                                **{nested_datetime_field: datetime_search["eq"]},
                             ),
                         ],
                     ),
                     Q(
                         "bool",
-                        must_not=[Q("exists", field="properties.datetime")],
+                        must_not=[
+                            Q("exists", field=DatabaseLogic.PROPERTIES_DATETIME_FIELD)
+                        ],
                         filter=[
-                            Q("exists", field="properties.start_datetime"),
-                            Q("exists", field="properties.end_datetime"),
+                            Q(
+                                "exists",
+                                field=DatabaseLogic.PROPERTIES_START_DATETIME_FIELD,
+                            ),
+                            Q(
+                                "exists",
+                                field=DatabaseLogic.PROPERTIES_END_DATETIME_FIELD,
+                            ),
                             Q(
                                 "range",
-                                properties__start_datetime={
-                                    "lte": datetime_search["eq"]
+                                **{
+                                    nested_start_datetime_field: {
+                                        "lte": datetime_search["eq"]
+                                    }
                                 },
                             ),
                             Q(
                                 "range",
-                                properties__end_datetime={"gte": datetime_search["eq"]},
+                                **{
+                                    nested_end_datetime_field: {
+                                        "gte": datetime_search["eq"]
+                                    }
+                                },
                             ),
                         ],
                     ),
@@ -522,32 +569,46 @@ class DatabaseLogic(BaseDatabaseLogic):
                     Q(
                         "bool",
                         filter=[
-                            Q("exists", field="properties.datetime"),
+                            Q("exists", field=DatabaseLogic.PROPERTIES_DATETIME_FIELD),
                             Q(
                                 "range",
-                                properties__datetime={
-                                    "gte": datetime_search["gte"],
-                                    "lte": datetime_search["lte"],
+                                **{
+                                    nested_datetime_field: {
+                                        "gte": datetime_search["gte"],
+                                        "lte": datetime_search["lte"],
+                                    }
                                 },
                             ),
                         ],
                     ),
                     Q(
                         "bool",
-                        must_not=[Q("exists", field="properties.datetime")],
+                        must_not=[
+                            Q("exists", field=DatabaseLogic.PROPERTIES_DATETIME_FIELD)
+                        ],
                         filter=[
-                            Q("exists", field="properties.start_datetime"),
-                            Q("exists", field="properties.end_datetime"),
+                            Q(
+                                "exists",
+                                field=DatabaseLogic.PROPERTIES_START_DATETIME_FIELD,
+                            ),
+                            Q(
+                                "exists",
+                                field=DatabaseLogic.PROPERTIES_END_DATETIME_FIELD,
+                            ),
                             Q(
                                 "range",
-                                properties__start_datetime={
-                                    "lte": datetime_search["lte"]
+                                **{
+                                    nested_start_datetime_field: {
+                                        "lte": datetime_search["lte"]
+                                    }
                                 },
                             ),
                             Q(
                                 "range",
-                                properties__end_datetime={
-                                    "gte": datetime_search["gte"]
+                                **{
+                                    nested_end_datetime_field: {
+                                        "gte": datetime_search["gte"]
+                                    }
                                 },
                             ),
                         ],
@@ -563,15 +624,26 @@ class DatabaseLogic(BaseDatabaseLogic):
                 filter_query = Q(
                     "bool",
                     filter=[
-                        Q("exists", field="properties.start_datetime"),
-                        Q("exists", field="properties.end_datetime"),
+                        Q(
+                            "exists",
+                            field=DatabaseLogic.PROPERTIES_START_DATETIME_FIELD,
+                        ),
+                        Q("exists", field=DatabaseLogic.PROPERTIES_END_DATETIME_FIELD),
                         Q(
                             "range",
-                            properties__start_datetime={"lte": datetime_search["eq"]},
+                            **{
+                                nested_start_datetime_field: {
+                                    "lte": datetime_search["eq"]
+                                }
+                            },
                         ),
                         Q(
                             "range",
-                            properties__end_datetime={"gte": datetime_search["eq"]},
+                            **{
+                                nested_end_datetime_field: {
+                                    "gte": datetime_search["eq"]
+                                }
+                            },
                         ),
                     ],
                 )
@@ -579,15 +651,26 @@ class DatabaseLogic(BaseDatabaseLogic):
                 filter_query = Q(
                     "bool",
                     filter=[
-                        Q("exists", field="properties.start_datetime"),
-                        Q("exists", field="properties.end_datetime"),
+                        Q(
+                            "exists",
+                            field=DatabaseLogic.PROPERTIES_START_DATETIME_FIELD,
+                        ),
+                        Q("exists", field=DatabaseLogic.PROPERTIES_END_DATETIME_FIELD),
                         Q(
                             "range",
-                            properties__start_datetime={"lte": datetime_search["lte"]},
+                            **{
+                                nested_start_datetime_field: {
+                                    "lte": datetime_search["lte"]
+                                }
+                            },
                         ),
                         Q(
                             "range",
-                            properties__end_datetime={"gte": datetime_search["gte"]},
+                            **{
+                                nested_end_datetime_field: {
+                                    "gte": datetime_search["gte"]
+                                }
+                            },
                         ),
                     ],
                 )
@@ -612,7 +695,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             Q(
                 {
                     "geo_shape": {
-                        "geometry": {
+                        DatabaseLogic.GEOMETRY_FIELD: {
                             "shape": {
                                 "type": "polygon",
                                 "coordinates": bbox2polygon(*bbox),
@@ -1722,4 +1805,133 @@ class DatabaseLogic(BaseDatabaseLogic):
             index=COLLECTIONS_INDEX,
             body={"query": {"match_all": {}}},
             wait_for_completion=True,
+        )
+
+    """CATALOGS LOGIC"""
+
+    async def get_all_catalogs(
+        self,
+        token: Optional[str],
+        limit: int,
+        request: Any = None,
+        sort: Optional[List[Dict[str, Any]]] = None,
+    ) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[int]]:
+        """Retrieve a list of catalogs from OpenSearch, supporting pagination.
+
+        Args:
+            token (Optional[str]): The pagination token.
+            limit (int): The number of results to return.
+            request (Any, optional): The FastAPI request object. Defaults to None.
+            sort (Optional[List[Dict[str, Any]]], optional): Optional sort parameter. Defaults to None.
+
+        Returns:
+            A tuple of (catalogs, next pagination token if any, optional count).
+        """
+        # Define sortable fields for catalogs
+        sortable_fields = ["id"]
+
+        # Format the sort parameter
+        formatted_sort = []
+        if sort:
+            for item in sort:
+                field = item.get("field")
+                direction = item.get("direction", "asc")
+                if field and field in sortable_fields:
+                    formatted_sort.append({field: {"order": direction}})
+
+        if not formatted_sort:
+            formatted_sort = [{"id": {"order": "asc"}}]
+
+        body = {
+            "sort": formatted_sort,
+            "size": limit,
+            "query": {"term": {"type": "Catalog"}},
+        }
+
+        # Handle search_after token
+        search_after = None
+        if token:
+            try:
+                search_after = token.split("|")
+                if len(search_after) != len(formatted_sort):
+                    search_after = None
+            except Exception:
+                search_after = None
+
+            if search_after is not None:
+                body["search_after"] = search_after
+
+        # Search for catalogs in collections index
+        response = await self.client.search(
+            index=COLLECTIONS_INDEX,
+            body=body,
+        )
+
+        hits = response["hits"]["hits"]
+        catalogs = [hit["_source"] for hit in hits]
+
+        next_token = None
+        if len(hits) == limit:
+            next_token_values = hits[-1].get("sort")
+            if next_token_values:
+                next_token = "|".join(str(val) for val in next_token_values)
+
+        # Get the total count
+        matched = (
+            response["hits"]["total"]["value"]
+            if response["hits"]["total"]["relation"] == "eq"
+            else None
+        )
+
+        return catalogs, next_token, matched
+
+    async def create_catalog(self, catalog: Dict, refresh: bool = False) -> None:
+        """Create a catalog in OpenSearch.
+
+        Args:
+            catalog (Dict): The catalog document to create.
+            refresh (bool): Whether to refresh the index after creation.
+        """
+        await self.client.index(
+            index=COLLECTIONS_INDEX,
+            id=catalog.get("id"),
+            body=catalog,
+            refresh=refresh,
+        )
+
+    async def find_catalog(self, catalog_id: str) -> Dict:
+        """Find a catalog in OpenSearch by ID.
+
+        Args:
+            catalog_id (str): The ID of the catalog to find.
+
+        Returns:
+            Dict: The catalog document.
+
+        Raises:
+            NotFoundError: If the catalog is not found.
+        """
+        try:
+            response = await self.client.get(
+                index=COLLECTIONS_INDEX,
+                id=catalog_id,
+            )
+            # Verify it's a catalog
+            if response["_source"].get("type") != "Catalog":
+                raise NotFoundError(f"Catalog {catalog_id} not found")
+            return response["_source"]
+        except exceptions.NotFoundError:
+            raise NotFoundError(f"Catalog {catalog_id} not found")
+
+    async def delete_catalog(self, catalog_id: str, refresh: bool = False) -> None:
+        """Delete a catalog from OpenSearch.
+
+        Args:
+            catalog_id (str): The ID of the catalog to delete.
+            refresh (bool): Whether to refresh the index after deletion.
+        """
+        await self.client.delete(
+            index=COLLECTIONS_INDEX,
+            id=catalog_id,
+            refresh=refresh,
         )

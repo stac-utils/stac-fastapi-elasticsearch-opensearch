@@ -24,7 +24,15 @@ from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.datetime_utils import format_datetime_range
 from stac_fastapi.core.models.links import PagingLinks
-from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
+from stac_fastapi.core.queryables import (
+    QueryablesCache,
+    get_properties_from_cql2_filter,
+)
+from stac_fastapi.core.serializers import (
+    CatalogSerializer,
+    CollectionSerializer,
+    ItemSerializer,
+)
 from stac_fastapi.core.session import Session
 from stac_fastapi.core.utilities import filter_fields, get_bool_env
 from stac_fastapi.extensions.core.transaction import AsyncBaseTransactionsClient
@@ -81,11 +89,27 @@ class CoreClient(AsyncBaseCoreClient):
     collection_serializer: Type[CollectionSerializer] = attr.ib(
         default=CollectionSerializer
     )
+    catalog_serializer: Type[CatalogSerializer] = attr.ib(default=CatalogSerializer)
     post_request_model = attr.ib(default=BaseSearchPostRequest)
     stac_version: str = attr.ib(default=STAC_VERSION)
     landing_page_id: str = attr.ib(default="stac-fastapi")
     title: str = attr.ib(default="stac-fastapi")
     description: str = attr.ib(default="stac-fastapi")
+
+    def __attrs_post_init__(self):
+        """Initialize the queryables cache."""
+        self.queryables_cache = QueryablesCache(self.database)
+
+    def extension_is_enabled(self, extension_name: str) -> bool:
+        """Check if an extension is enabled by checking self.extensions.
+
+        Args:
+            extension_name: Name of the extension class to check for.
+
+        Returns:
+            True if the extension is in self.extensions, False otherwise.
+        """
+        return any(ext.__class__.__name__ == extension_name for ext in self.extensions)
 
     def _landing_page(
         self,
@@ -150,6 +174,7 @@ class CoreClient(AsyncBaseCoreClient):
             API landing page, serving as an entry point to the API.
         """
         request: Request = kwargs["request"]
+
         base_url = get_base_url(request)
         landing_page = self._landing_page(
             base_url=base_url,
@@ -205,6 +230,16 @@ class CoreClient(AsyncBaseCoreClient):
                         "method": "POST",
                     },
                 ]
+            )
+
+        if self.extension_is_enabled("CatalogsExtension"):
+            landing_page["links"].append(
+                {
+                    "rel": "catalogs",
+                    "type": "application/json",
+                    "title": "Catalogs",
+                    "href": urljoin(base_url, "catalogs"),
+                }
             )
 
         # Add OpenAPI URL
@@ -817,6 +852,8 @@ class CoreClient(AsyncBaseCoreClient):
             )
 
         if hasattr(search_request, "query") and getattr(search_request, "query"):
+            query_fields = set(getattr(search_request, "query").keys())
+            await self.queryables_cache.validate(query_fields)
             for field_name, expr in getattr(search_request, "query").items():
                 field = "properties__" + field_name
                 for op, value in expr.items():
@@ -835,7 +872,11 @@ class CoreClient(AsyncBaseCoreClient):
 
         if cql2_filter is not None:
             try:
+                query_fields = get_properties_from_cql2_filter(cql2_filter)
+                await self.queryables_cache.validate(query_fields)
                 search = await self.database.apply_cql2_filter(search, cql2_filter)
+            except HTTPException:
+                raise
             except Exception as e:
                 raise HTTPException(
                     status_code=400, detail=f"Error with cql2 filter: {e}"
