@@ -41,6 +41,8 @@ from stac_fastapi.types.config import Settings
 os.environ.setdefault("ENABLE_COLLECTIONS_SEARCH_ROUTE", "true")
 os.environ.setdefault("ENABLE_CATALOGS_ROUTE", "false")
 
+
+
 if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
     from stac_fastapi.opensearch.app import app_config
     from stac_fastapi.opensearch.config import AsyncOpensearchSettings as AsyncSettings

@@ -68,8 +68,8 @@ jobs:
 
     strategy:
       matrix:
-        python-version: [ "3.11", "3.12", "3.13", "3.14"]
-        backend: [ "elasticsearch8", "opensearch"]
+        python-version: ["3.11"] # python-version: [ "3.11", "3.12", "3.13", "3.14"] #original - elasticsearch and opensearch not ready on python 3.12, 3.13, 3.14 yet
+        backend: ["elasticsearch8", "opensearch"]
 
     name: Python ${{ matrix.python-version }} testing with ${{ matrix.backend }}
 
@@ -81,7 +81,7 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.python-version }}
-          cache: 'pip'
+          cache: "pip"
           cache-dependency-path: |
             **/setup.py
 
@@ -102,7 +102,7 @@ jobs:
       - name: Install helpers library stac-fastapi
         run: |
           pip install ./stac_fastapi/sfeos_helpers
-          
+
       - name: Install elasticsearch stac-fastapi
         run: |
           pip install ./stac_fastapi/elasticsearch[dev,server]
