@@ -64,12 +64,11 @@ QUERY_STRING_BOOLEAN_REGEX = re.compile(r"\b(AND|OR|NOT)\b", re.IGNORECASE)
 def apply_free_text_filter_shared(
     search: Any,
     free_text_queries: Optional[List[str]],
-    fields: Optional[List[str]] = None,
+    fields: List[str],
 ) -> Any:
     if not free_text_queries:
         return search
 
-    fields = fields or []
     or_groups = []
 
     for q in free_text_queries:
