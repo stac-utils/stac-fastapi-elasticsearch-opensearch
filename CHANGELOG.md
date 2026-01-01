@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 
+- `filter_fields` supports wildcard declarations (`*`) for including and excluding fields, where `properties.*.lat` include would include any extension's with a `lat` attribute.  The same functionality is included in the exclude fields. If field is explicitly included in the include fields it cannot be explicitly excluded. [#567](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/567)
+
 ### Fixed
 
 - Fixed various test suite errors, compatibility issues, and deprecation warnings to ensure stable execution. [#569](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/569)
