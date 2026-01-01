@@ -3,7 +3,7 @@ import os
 import uuid
 
 import pytest
-from httpx import AsyncClient
+from httpx import ASGITransport, AsyncClient
 from stac_pydantic import api
 
 from ..conftest import (
@@ -50,7 +50,9 @@ async def test_create_collection_transactions_extension(load_test_data):
 
     os.environ["ENABLE_TRANSACTIONS_EXTENSIONS"] = "false"
     app_disabled = build_test_app()
-    async with AsyncClient(app=app_disabled, base_url="http://test") as client:
+    async with AsyncClient(
+        transport=ASGITransport(app=app_disabled), base_url="http://test"
+    ) as client:
         resp = await client.post("/collections", json=test_collection)
         assert resp.status_code in (
             404,
@@ -60,7 +62,9 @@ async def test_create_collection_transactions_extension(load_test_data):
 
     os.environ["ENABLE_TRANSACTIONS_EXTENSIONS"] = "true"
     app_enabled = build_test_app()
-    async with AsyncClient(app=app_enabled, base_url="http://test") as client:
+    async with AsyncClient(
+        transport=ASGITransport(app=app_enabled), base_url="http://test"
+    ) as client:
         resp = await client.post("/collections", json=test_collection)
         assert resp.status_code == 201
         resp = await client.delete(f"/collections/{test_collection['id']}")
