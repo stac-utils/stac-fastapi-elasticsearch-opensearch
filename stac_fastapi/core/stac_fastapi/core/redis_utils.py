@@ -292,4 +292,4 @@ async def redis_pagination_links(
     except Exception as e:
         logger.warning(f"Redis pagination operation failed: {e}")
     finally:
-        await redis.close()
+        await redis.aclose()  # type: ignore
