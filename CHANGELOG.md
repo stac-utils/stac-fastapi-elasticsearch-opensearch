@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- Added `STAC_FASTAPI_ES_MAPPINGS_FILE` environment variable to support file-based custom mappings configuration.
+- Added configuration-based support for extending Elasticsearch/OpenSearch index mappings via environment variables, allowing users to customize field mappings without code change through `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` environment variable. Also added `STAC_FASTAPI_ES_DYNAMIC_MAPPING` variable to control dynamic mapping behavior. [#546](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/546)
 
 ### Changed
 

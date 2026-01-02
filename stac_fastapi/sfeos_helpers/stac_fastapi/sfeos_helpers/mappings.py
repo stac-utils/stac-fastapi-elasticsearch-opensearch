@@ -25,10 +25,134 @@ Function Naming Conventions:
 - Parameter names should be consistent across similar functions
 """
 
+import copy
+import json
+import logging
 import os
-from typing import Any, Dict, Literal, Protocol
+from typing import Any, Dict, Literal, Optional, Protocol, Union
 
 from stac_fastapi.core.utilities import get_bool_env
+
+logger = logging.getLogger(__name__)
+
+
+def merge_mappings(base: Dict[str, Any], custom: Dict[str, Any]) -> None:
+    """Recursively merge custom mappings into base mappings.
+
+    Custom mappings will overwrite base mappings if keys collide.
+    Nested dictionaries are merged recursively.
+
+    Args:
+        base: The base mapping dictionary to merge into (modified in place).
+        custom: The custom mapping dictionary to merge from.
+    """
+    for key, value in custom.items():
+        if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+            merge_mappings(base[key], value)
+        else:
+            base[key] = value
+
+
+def parse_dynamic_mapping_config(
+    config_value: Optional[str],
+) -> Union[bool, str]:
+    """Parse the dynamic mapping configuration value.
+
+    Args:
+        config_value: The configuration value from environment variable.
+            Can be "true", "false", "strict", or None.
+
+    Returns:
+        True for "true" (default), False for "false", or the string value
+        for other settings like "strict".
+    """
+    if config_value is None:
+        return True
+    config_lower = config_value.lower()
+    if config_lower == "true":
+        return True
+    elif config_lower == "false":
+        return False
+    else:
+        return config_lower
+
+
+def apply_custom_mappings(
+    mappings: Dict[str, Any], custom_mappings_json: Optional[str]
+) -> None:
+    """Apply custom mappings from a JSON string to the mappings dictionary.
+
+    The custom mappings JSON should have the same structure as ES_ITEMS_MAPPINGS.
+    It will be recursively merged at the root level, allowing users to override
+    any part of the mapping including properties, dynamic_templates, etc.
+
+    Args:
+        mappings: The mappings dictionary to modify (modified in place).
+        custom_mappings_json: JSON string containing custom mappings.
+
+    Raises:
+        Logs error if JSON parsing or merging fails.
+    """
+    if not custom_mappings_json:
+        return
+
+    try:
+        custom_mappings = json.loads(custom_mappings_json)
+        merge_mappings(mappings, custom_mappings)
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse STAC_FASTAPI_ES_CUSTOM_MAPPINGS JSON: {e}")
+    except Exception as e:
+        logger.error(f"Failed to merge STAC_FASTAPI_ES_CUSTOM_MAPPINGS: {e}")
+
+
+def get_items_mappings(
+    dynamic_mapping: Optional[str] = None, custom_mappings: Optional[str] = None
+) -> Dict[str, Any]:
+    """Get the ES_ITEMS_MAPPINGS with optional dynamic mapping and custom mappings applied.
+
+    This function creates a fresh copy of the base mappings and applies the
+    specified configuration. Useful for testing or programmatic configuration.
+
+    Args:
+        dynamic_mapping: Override for STAC_FASTAPI_ES_DYNAMIC_MAPPING.
+            If None, reads from environment variable.
+        custom_mappings: Override for STAC_FASTAPI_ES_CUSTOM_MAPPINGS.
+            If None, reads from environment variable.
+
+    Returns:
+        A new dictionary containing the configured mappings.
+    """
+    mappings = copy.deepcopy(_BASE_ITEMS_MAPPINGS)
+
+    # Apply dynamic mapping configuration
+    dynamic_config = (
+        dynamic_mapping
+        if dynamic_mapping is not None
+        else os.getenv("STAC_FASTAPI_ES_DYNAMIC_MAPPING", "true")
+    )
+    mappings["dynamic"] = parse_dynamic_mapping_config(dynamic_config)
+
+    # Apply custom mappings
+    custom_config = (
+        custom_mappings
+        if custom_mappings is not None
+        else os.getenv("STAC_FASTAPI_ES_CUSTOM_MAPPINGS")
+    )
+
+    if custom_config is None:
+        mappings_file = os.getenv("STAC_FASTAPI_ES_MAPPINGS_FILE")
+        if mappings_file:
+            try:
+                with open(mappings_file, "r") as f:
+                    custom_config = f.read()
+            except Exception as e:
+                logger.error(
+                    f"Failed to read STAC_FASTAPI_ES_MAPPINGS_FILE at {mappings_file}: {e}"
+                )
+
+    apply_custom_mappings(mappings, custom_config)
+
+    return mappings
 
 
 # stac_pydantic classes extend _GeometryBase, which doesn't have a type field,
@@ -129,7 +253,8 @@ ES_MAPPINGS_DYNAMIC_TEMPLATES = [
     },
 ]
 
-ES_ITEMS_MAPPINGS = {
+# Base items mappings without dynamic configuration applied
+_BASE_ITEMS_MAPPINGS = {
     "numeric_detection": False,
     "dynamic_templates": ES_MAPPINGS_DYNAMIC_TEMPLATES,
     "properties": {
@@ -154,6 +279,9 @@ ES_ITEMS_MAPPINGS = {
         },
     },
 }
+
+# ES_ITEMS_MAPPINGS with environment-based configuration applied at module load time
+ES_ITEMS_MAPPINGS = get_items_mappings()
 
 ES_COLLECTIONS_MAPPINGS = {
     "numeric_detection": False,
