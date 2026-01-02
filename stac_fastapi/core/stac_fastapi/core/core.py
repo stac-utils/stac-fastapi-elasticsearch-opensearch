@@ -1091,6 +1091,21 @@ class CoreClient(AsyncBaseCoreClient):
 
         now = time.time()
 
+        # SANITY CHECK - are there any items at all in this tile
+        items, _, _ = await self.database.execute_search(
+            search=search,
+            limit=1,
+            sort=None,
+            token=None,
+            collection_ids=[collection_id],
+            datetime_search=None,
+        )
+        items = list(items)
+
+        if not items:
+            self.tile_cache[cache_key] = b""  # cache of empty tile
+            return Response(status_code=204)
+
         items, _, _ = await self.database.execute_search(
             search=search,
             limit=200000,
@@ -1100,9 +1115,6 @@ class CoreClient(AsyncBaseCoreClient):
             datetime_search=None,
         )
         items = list(items)
-
-        if len(items) == 0:
-            return Response(status_code=204)
 
         logger.info(f"Fetched {len(items)} items in {time.time()-now:.2f} seconds")
         now = time.time()
@@ -1210,6 +1222,195 @@ class CoreClient(AsyncBaseCoreClient):
         logger.info(
             f"Generated MVT for {collection_id} at z{z} x{x} y{y} in {time.time()-now:.2f} seconds"
         )
+        return Response(
+            content=compressed,
+            media_type="application/vnd.mapbox-vector-tile",
+            headers={
+                "Cache-Control": f"public, max-age={self.VT_MAX_AGE}",
+                "Content-Encoding": "gzip",
+                "X-Cache": "MISS",
+            },
+        )
+
+    async def get_stac_tile(self, z: int, x: int, y: int, request: Request):
+        """
+        Get a vector tile for all data_types in the STAC catalog and Web Mercator coordinates.
+        Each data_type becomes a separate MVT layer.
+        Uses properties.exposure_point as geometry when available.
+
+        Args:
+            z (int): Zoom level.
+            x (int): X tile coordinate.
+            y (int): Y tile coordinate.
+            request (Request): HTTP request object.
+
+        Returns:
+            Response: Gzipped vector tile (MVT) for all data_types.
+        """
+
+        cache_key = (z, x, y)
+        if "filter" in request.query_params:
+            cache_key += (request.query_params["filter"],)
+
+        if cache_key in self.tile_cache:
+            logger.info(f"cache hit z{z} x{x} y{y}")
+            return Response(
+                content=self.tile_cache[cache_key],
+                media_type="application/vnd.mapbox-vector-tile",
+                headers={
+                    "Cache-Control": f"public, max-age={self.VT_MAX_AGE}",
+                    "Content-Encoding": "gzip",
+                    "X-Cache": "HIT",
+                },
+            )
+
+        # Tile bbox in EPSG:4326
+        minx, miny, maxx, maxy = mercantile.bounds(x, y, z)
+        bbox = [minx, miny, maxx, maxy]
+
+        # Base search
+        search = self.database.make_search()
+        search = self.database.apply_bbox_filter(search, bbox=bbox)
+
+        items, _, _ = await self.database.execute_search(
+            search=search,
+            limit=1,  # only fetch 1 item
+            sort=None,
+            token=None,
+            collection_ids=None,
+            datetime_search=None,
+        )
+        items = list(items)
+        if not items:
+            # Cache empty tile if desired
+            self.tile_cache[cache_key] = b""  # optional
+            return Response(status_code=204)
+
+        # Optional CQL2 filter
+        if "filter" in request.query_params:
+            cql2_text = request.query_params["filter"]
+            try:
+                cql_ast = parse_cql2_text(cql2_text)
+                cql2_json_str = to_cql2(cql_ast)
+                cql2_json = (
+                    orjson.loads(cql2_json_str)
+                    if isinstance(cql2_json_str, str)
+                    else cql2_json_str
+                )
+                search = await self.database.apply_cql2_filter(search, cql2_json)
+            except Exception as e:
+                raise HTTPException(
+                    status_code=400, detail=f"Error with cql2 filter: {e}"
+                )
+
+        items, _, _ = await self.database.execute_search(
+            search=search,
+            limit=200000,
+            sort=None,
+            token=None,
+            collection_ids=None,  # search all collections internally
+            datetime_search=None,
+        )
+        items = list(items)
+
+        if not items:
+            return Response(status_code=204)
+
+        project = PROJECT_4326_TO_3857.transform
+        bounds_merc = mercantile.xy_bounds(x, y, z)
+        tile_bbox_merc = box(
+            bounds_merc.left, bounds_merc.bottom, bounds_merc.right, bounds_merc.top
+        )
+        MVT_EXTENT = 4096
+
+        def scale_coords(x, y):
+            x_scaled = (
+                (x - tile_bbox_merc.bounds[0])
+                * MVT_EXTENT
+                / (tile_bbox_merc.bounds[2] - tile_bbox_merc.bounds[0])
+            )
+            y_scaled = (
+                (y - tile_bbox_merc.bounds[1])
+                * MVT_EXTENT
+                / (tile_bbox_merc.bounds[3] - tile_bbox_merc.bounds[1])
+            )
+            return x_scaled, y_scaled
+
+        # Group features by data_type
+        layers_dict = {}
+        buffer_units = 16
+        tile_size_meters = bounds_merc.right - bounds_merc.left
+        buffer_meters = (buffer_units / 4096) * tile_size_meters
+        tile_bbox_buffer = box(
+            bounds_merc.left - buffer_meters,
+            bounds_merc.bottom - buffer_meters,
+            bounds_merc.right + buffer_meters,
+            bounds_merc.top + buffer_meters,
+        )
+
+        for item in items:
+            # Prefer properties.exposure_point if available
+            geometry = item.get("properties", {}).get("exposure_point") or item.get(
+                "geometry"
+            )
+            if not geometry:
+                continue
+            geom = shape(geometry)
+
+            # Simplify geometry at low zooms
+            if z < 12:
+                tolerance = max(
+                    min((tile_size_meters / 4096) * tile_size_meters, 0.001), 1e-5
+                )
+                geom = geom.simplify(tolerance, preserve_topology=True)
+
+            # Project to Web Mercator and clip to tile bounds
+            geom_merc = transform(project, geom)
+            clipped_geom = geom_merc.intersection(tile_bbox_buffer)
+            if clipped_geom.is_empty:
+                continue
+            geom_tile = transform(scale_coords, clipped_geom)
+
+            # Prepare properties, skip nested dicts
+            raw_props = item.get("properties", {})
+            properties = {}
+            for k, v in raw_props.items():
+                if isinstance(v, dict):
+                    continue
+                if isinstance(v, list) and len(v) > 0 and isinstance(v[0], dict):
+                    continue
+                if isinstance(v, list):
+                    properties[k] = ",".join(str(x).strip() for x in v)
+                else:
+                    properties[k] = v
+            properties["_id"] = item.get("id")
+
+            # Include WKB if exposure_point is used
+            if "exposure_point" in item.get("properties", {}):
+                geom_root = shape(item["geometry"])
+                properties["_wkb"] = geom_root.wkb.hex()
+
+            # Group by data_type
+            data_type = raw_props.get("data_type", "unknown")
+            layers_dict.setdefault(data_type, []).append(
+                {
+                    "geometry": mapping(geom_tile),
+                    "properties": properties,
+                }
+            )
+
+        # Encode all layers into MVT
+        mvt_layers = [
+            {"name": dt, "features": feats} for dt, feats in layers_dict.items()
+        ]
+        if not mvt_layers:
+            return Response(status_code=204)
+
+        mvt_bytes = mapbox_vector_tile.encode(mvt_layers)
+        compressed = gzip.compress(mvt_bytes)
+        # self.tile_cache[cache_key] = compressed
+
+        logger.info(f"Generated MVT z{z} x{x} y{y} with {len(items)} items")
         return Response(
             content=compressed,
             media_type="application/vnd.mapbox-vector-tile",

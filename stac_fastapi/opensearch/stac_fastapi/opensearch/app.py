@@ -309,6 +309,10 @@ async def clear_tile_cache_route():
     return {"message": "Tile cache cleared successfully"}
 
 
+async def stac_tile_route(z: int, x: int, y: int, request: Request):
+    return await core_client.get_stac_tile(z, x, y, request)
+
+
 app.add_api_route(
     "/collections/{collection_id}/tiles/{z}/{x}/{y}.mvt",
     tile_route,
@@ -325,6 +329,12 @@ app.add_api_route(
     "/admin/tiles/vector/cache/clear",
     clear_tile_cache_route,
     methods=["POST"],
+)
+
+app.add_api_route(
+    "/data/tiles/{z}/{x}/{y}.mvt",
+    stac_tile_route,
+    methods=["GET"],
 )
 
 
