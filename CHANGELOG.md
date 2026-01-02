@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
-- Fixed various test suite errors, compatibility issues, and deprecation warnings to ensure stable execution. [#569](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/569)
+- Optimized test execution by implementing single Docker image for both Elasticsearch and OpenSearch. Tests now reuse a single pre-built image instead of rebuilding for each test suite. [#570](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/570)
 
 ### Removed
 
