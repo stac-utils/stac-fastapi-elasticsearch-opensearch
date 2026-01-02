@@ -1219,3 +1219,44 @@ async def test_hidden_item_false(app_client, txn_client, load_test_data, monkeyp
         f"/collections/{test_item['collection']}/items/{test_item['id']}"
     )
     assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_hidden_items_counter(app_client, txn_client, load_test_data):
+    """Test numberReturned/numberMatched for hidden items."""
+
+    os.environ["HIDE_ITEM_PATH"] = "properties._private.hidden"
+
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = "test-collection-count"
+    await create_collection(txn_client, collection=test_collection)
+
+    test_item = load_test_data("test_item.json")
+
+    # Populate 3 hidden items
+    for i in range(3):
+        item = deepcopy(test_item)
+        item["id"] = f"hidden-item-{i}"
+        item["collection"] = test_collection["id"]
+        item["properties"]["_private"] = {"hidden": True}
+
+        await create_item(txn_client, item)
+
+    # Populate 3 visible items
+    for i in range(3):
+        item = deepcopy(test_item)
+        item["id"] = f"visible-item-{i}"
+        item["collection"] = test_collection["id"]
+        item["properties"]["_private"] = {"hidden": False}
+
+        await create_item(txn_client, item)
+
+    resp = await app_client.get(
+        f"/collections/{test_collection['id']}/items", params={"limit": 10}
+    )
+
+    assert resp.status_code == 200
+    result = resp.json()
+
+    assert result["numberReturned"] == 3
+    assert result["numberMatched"] == 3

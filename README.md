@@ -129,6 +129,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
   - [Auth](#auth)
   - [Aggregation](#aggregation)
   - [Rate Limiting](#rate-limiting)
+  - [Hidden Items Filtering](#hidden-items-filtering)
 
 ## Documentation & Resources
 
@@ -1090,3 +1091,25 @@ pip install stac-fastapi-elasticsearch[redis]
   - Ensures fair resource allocation among all clients
   
 - **Examples**: Implementation examples are available in the [examples/rate_limit](examples/rate_limit) directory.
+
+
+## Hidden Items Filtering
+
+SFEOS supports filtering out hidden items using the `HIDE_ITEM_PATH` environment variable. This feature is useful for temporarily removing items from search results without deleting them. To configure it, set `HIDE_ITEM_PATH` to the path of a boolean field in STAC items. Items where this field is `true` will be excluded from all results and counts.
+
+To use this feature, set the environment variable:
+  ```
+  export HIDE_ITEM_PATH="properties._private.hidden"
+  ```
+
+The following item will be excluded from returned results:
+  ```
+  {
+    "id": "item-example",
+    "properties": {
+      "_private": {
+        "hidden": true
+      }
+    }
+  }
+  ```
