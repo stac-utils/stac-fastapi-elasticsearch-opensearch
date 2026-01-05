@@ -792,8 +792,11 @@ class DatabaseLogic(BaseDatabaseLogic):
                 search = search.filter(es_query)
                 search._cql2_metadata = metadata
 
-            except Exception:
-                # Fallback to dictionary-based approach
+            except Exception as e:
+                logger.warning(
+                    "Failed to build CQL2 filter using AST tree approach, falling back to dictionary-based method. "
+                    f"Error: {str(e)}. Filter: {_filter}"
+                )
                 es_query = filter_module.to_es(queryables_mapping, _filter)
                 search = search.filter(es_query)
 

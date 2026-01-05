@@ -38,7 +38,7 @@ def build_get_collections_search_doc(original_endpoint):
         query: Optional[str] = Query(
             None,
             description="Additional filtering expressed as a string (legacy support)",
-            example="platform=landsat AND collection_category=level2",
+            examples=["platform=landsat AND collection_category=level2"],
         ),
         limit: int = Query(
             10,
@@ -83,14 +83,16 @@ def build_get_collections_search_doc(original_endpoint):
             description=(
                 "Structured filter expression in CQL2 JSON or CQL2-text format"
             ),
-            example='{"op": "=", "args": [{"property": "properties.category"}, "level2"]}',
+            examples=[
+                '{"op": "=", "args": [{"property": "properties.category"}, "level2"]}'
+            ],
         ),
         filter_lang: Optional[str] = Query(
             None,
             description=(
                 "Filter language. Must be 'cql2-json' or 'cql2-text' if specified"
             ),
-            example="cql2-json",
+            examples=["cql2-json"],
         ),
     ):
         # Delegate to original endpoint with parameters
@@ -160,24 +162,26 @@ def build_post_collections_search_doc(original_post_endpoint):
                 "- `sortby`: List of sort criteria objects with 'field' and 'direction' (asc/desc)\n"
                 "- `fields`: Object with 'include' and 'exclude' arrays for field selection"
             ),
-            example={
-                "q": "landsat",
-                "query": "platform=landsat AND collection_category=level2",
-                "filter": {
-                    "op": "=",
-                    "args": [{"property": "properties.category"}, "level2"],
-                },
-                "filter_lang": "cql2-json",
-                "limit": 10,
-                "token": "next-page-token",
-                "bbox": [-180, -90, 180, 90],
-                "datetime": "2020-01-01T00:00:00Z/2021-01-01T12:31:12Z",
-                "sortby": [{"field": "id", "direction": "asc"}],
-                "fields": {
-                    "include": ["id", "title", "description"],
-                    "exclude": ["properties"],
-                },
-            },
+            examples=[
+                {
+                    "q": "landsat",
+                    "query": "platform=landsat AND collection_category=level2",
+                    "filter": {
+                        "op": "=",
+                        "args": [{"property": "properties.category"}, "level2"],
+                    },
+                    "filter_lang": "cql2-json",
+                    "limit": 10,
+                    "token": "next-page-token",
+                    "bbox": [-180, -90, 180, 90],
+                    "datetime": "2020-01-01T00:00:00Z/2021-01-01T12:31:12Z",
+                    "sortby": [{"field": "id", "direction": "asc"}],
+                    "fields": {
+                        "include": ["id", "title", "description"],
+                        "exclude": ["properties"],
+                    },
+                }
+            ],
         ),
     ) -> Union[Collections, Response]:
         return await original_post_endpoint(request, body)
