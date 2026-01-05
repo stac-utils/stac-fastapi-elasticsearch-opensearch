@@ -9,7 +9,6 @@ services:
     environment:
       - STAC_FASTAPI_TITLE=stac-fastapi-elasticsearch
       - STAC_FASTAPI_DESCRIPTION=A STAC FastAPI with an Elasticsearch backend
-      - STAC_FASTAPI_VERSION=6.0.0
       - STAC_FASTAPI_LANDING_PAGE_ID=stac-fastapi-elasticsearch
       - APP_HOST=0.0.0.0
       - APP_PORT=8080
@@ -20,6 +19,7 @@ services:
       - ES_PORT=9200
       - ES_USE_SSL=false
       - ES_VERIFY_CERTS=false
+      - ES_TIMEOUT=30
       - BACKEND=elasticsearch
       - DATABASE_REFRESH=true
       - ENABLE_COLLECTIONS_SEARCH_ROUTE=true
@@ -49,7 +49,6 @@ services:
     environment:
       - STAC_FASTAPI_TITLE=stac-fastapi-opensearch
       - STAC_FASTAPI_DESCRIPTION=A STAC FastAPI with an Opensearch backend
-      - STAC_FASTAPI_VERSION=6.0.0
       - STAC_FASTAPI_LANDING_PAGE_ID=stac-fastapi-opensearch
       - APP_HOST=0.0.0.0
       - APP_PORT=8082
@@ -60,6 +59,7 @@ services:
       - ES_PORT=9202
       - ES_USE_SSL=false
       - ES_VERIFY_CERTS=false
+      - ES_TIMEOUT=30
       - BACKEND=opensearch
       - STAC_FASTAPI_RATE_LIMIT=200/minute
       - ENABLE_COLLECTIONS_SEARCH_ROUTE=true

@@ -1,8 +1,8 @@
 """Catalogs extension."""
 
 import logging
-from typing import List, Optional, Type
-from urllib.parse import urlencode, urlparse
+from typing import Any, Dict, List, Optional, Type
+from urllib.parse import parse_qs, urlencode, urlparse
 
 import attr
 from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
@@ -42,7 +42,9 @@ class CatalogsExtension(ApiExtension):
 
     client: BaseCoreClient = attr.ib(default=None)
     settings: dict = attr.ib(default=attr.Factory(dict))
-    conformance_classes: List[str] = attr.ib(default=attr.Factory(list))
+    conformance_classes: List[str] = attr.ib(
+        default=attr.Factory(lambda: ["https://api.stacspec.org/v1.0.0-rc.2/children"])
+    )
     router: APIRouter = attr.ib(default=attr.Factory(APIRouter))
     response_class: Type[Response] = attr.ib(default=JSONResponse)
 
@@ -54,6 +56,7 @@ class CatalogsExtension(ApiExtension):
             settings: extension settings (unused for now).
         """
         self.settings = settings or {}
+        self.router = APIRouter()
 
         self.router.add_api_route(
             path="/catalogs",
@@ -124,7 +127,7 @@ class CatalogsExtension(ApiExtension):
             response_class=self.response_class,
             status_code=204,
             summary="Delete Catalog",
-            description="Delete a catalog. Optionally cascade delete all collections in the catalog.",
+            description="Delete a catalog. All linked collections are unlinked and adopted by root if orphaned.",
             tags=["Catalogs"],
         )
 
@@ -137,6 +140,18 @@ class CatalogsExtension(ApiExtension):
             response_class=self.response_class,
             summary="Get Catalog Collection",
             description="Get a specific collection from a catalog.",
+            tags=["Catalogs"],
+        )
+
+        # Add endpoint for deleting a collection from a catalog
+        self.router.add_api_route(
+            path="/catalogs/{catalog_id}/collections/{collection_id}",
+            endpoint=self.delete_catalog_collection,
+            methods=["DELETE"],
+            response_class=self.response_class,
+            status_code=204,
+            summary="Delete Catalog Collection",
+            description="Delete a collection from a catalog. If the collection has multiple parent catalogs, only removes this catalog from parent_ids. If this is the only parent, deletes the collection entirely.",
             tags=["Catalogs"],
         )
 
@@ -161,6 +176,17 @@ class CatalogsExtension(ApiExtension):
             response_class=self.response_class,
             summary="Get Catalog Collection Item",
             description="Get a specific item from a collection in a catalog.",
+            tags=["Catalogs"],
+        )
+
+        # Add endpoint for Children Extension
+        self.router.add_api_route(
+            path="/catalogs/{catalog_id}/children",
+            endpoint=self.get_catalog_children,
+            methods=["GET"],
+            response_class=self.response_class,
+            summary="Get Catalog Children",
+            description="Retrieve all children (Catalogs and Collections) of this catalog.",
             tags=["Catalogs"],
         )
 
@@ -272,28 +298,61 @@ class CatalogsExtension(ApiExtension):
             # Convert to STAC format
             catalog = self.client.catalog_serializer.db_to_stac(db_catalog, request)
 
-            return catalog
-        except Exception:
+            # DYNAMIC INJECTION: Ensure the 'children' link exists
+            # This link points to the /children endpoint which dynamically lists all children
+            base_url = str(request.base_url)
+            children_link = {
+                "rel": "children",
+                "type": "application/json",
+                "href": f"{base_url}catalogs/{catalog_id}/children",
+                "title": "Child catalogs and collections",
+            }
+
+            # Convert to dict if needed to manipulate links
+            if isinstance(catalog, dict):
+                catalog_dict = catalog
+            else:
+                catalog_dict = (
+                    catalog.model_dump()
+                    if hasattr(catalog, "model_dump")
+                    else dict(catalog)
+                )
+
+            # Ensure catalog has a links array
+            if "links" not in catalog_dict:
+                catalog_dict["links"] = []
+
+            # Add children link if it doesn't already exist
+            if not any(
+                link.get("rel") == "children" for link in catalog_dict.get("links", [])
+            ):
+                catalog_dict["links"].append(children_link)
+
+            # Return as Catalog object
+            return Catalog(**catalog_dict)
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error retrieving catalog {catalog_id}: {e}")
             raise HTTPException(
                 status_code=404, detail=f"Catalog {catalog_id} not found"
             )
 
-    async def delete_catalog(
-        self,
-        catalog_id: str,
-        request: Request,
-        cascade: bool = Query(
-            False,
-            description="If true, delete all collections linked to this catalog. If false, only delete the catalog.",
-        ),
-    ) -> None:
-        """Delete a catalog.
+    async def delete_catalog(self, catalog_id: str, request: Request) -> None:
+        """Delete a catalog (The Container).
+
+        Deletes the Catalog document itself. All linked Collections are unlinked
+        and adopted by Root if they become orphans. Collection data is NEVER deleted.
+
+        Logic:
+        1. Finds all Collections linked to this Catalog.
+        2. Unlinks them (removes catalog_id from their parent_ids).
+        3. If a Collection becomes an orphan, it is adopted by Root.
+        4. PERMANENTLY DELETES the Catalog document itself.
 
         Args:
             catalog_id: The ID of the catalog to delete.
             request: Request object.
-            cascade: If true, delete all collections linked to this catalog.
-                    If false, only delete the catalog.
 
         Returns:
             None (204 No Content)
@@ -302,111 +361,55 @@ class CatalogsExtension(ApiExtension):
             HTTPException: If the catalog is not found.
         """
         try:
-            # Get the catalog to verify it exists and get its collections
-            db_catalog = await self.client.database.find_catalog(catalog_id)
-            catalog = self.client.catalog_serializer.db_to_stac(db_catalog, request)
+            # Verify the catalog exists
+            await self.client.database.find_catalog(catalog_id)
 
-            # Extract collection IDs from catalog links
-            collection_ids = []
-            if hasattr(catalog, "links") and catalog.links:
-                for link in catalog.links:
-                    rel = (
-                        link.get("rel")
-                        if hasattr(link, "get")
-                        else getattr(link, "rel", None)
-                    )
-                    if rel == "child":
-                        href = (
-                            link.get("href", "")
-                            if hasattr(link, "get")
-                            else getattr(link, "href", "")
-                        )
-                        if href and "/collections/" in href:
-                            # Extract collection ID from href
-                            collection_id = href.split("/collections/")[-1].split("/")[
-                                0
-                            ]
-                            if collection_id:
-                                collection_ids.append(collection_id)
+            # Find all collections with this catalog in parent_ids
+            query_body = {"query": {"term": {"parent_ids": catalog_id}}, "size": 10000}
+            search_result = await self.client.database.client.search(
+                index=COLLECTIONS_INDEX, body=query_body
+            )
+            children = [hit["_source"] for hit in search_result["hits"]["hits"]]
 
-            if cascade:
-                # Delete each collection
-                for coll_id in collection_ids:
-                    try:
-                        await self.client.database.delete_collection(coll_id)
-                        logger.info(
-                            f"Deleted collection {coll_id} as part of cascade delete for catalog {catalog_id}"
-                        )
-                    except Exception as e:
-                        error_msg = str(e)
-                        if "not found" in error_msg.lower():
-                            logger.debug(
-                                f"Collection {coll_id} not found, skipping (may have been deleted elsewhere)"
+            # Safe Unlink: Remove catalog from all children's parent_ids
+            # If a child becomes an orphan, adopt it to root
+            root_id = self.settings.get("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi")
+
+            for child in children:
+                child_id = child.get("id")
+                try:
+                    parent_ids = child.get("parent_ids", [])
+                    if catalog_id in parent_ids:
+                        parent_ids.remove(catalog_id)
+
+                        # If orphan, move to root
+                        if len(parent_ids) == 0:
+                            parent_ids.append(root_id)
+                            logger.info(
+                                f"Collection {child_id} adopted by root after catalog deletion."
                             )
                         else:
-                            logger.warning(
-                                f"Failed to delete collection {coll_id}: {e}"
-                            )
-            else:
-                # Remove catalog link from each collection (orphan them)
-                for coll_id in collection_ids:
-                    try:
-                        collection = await self.client.get_collection(
-                            coll_id, request=request
-                        )
-                        # Remove the catalog link from the collection
-                        if hasattr(collection, "links"):
-                            collection.links = [
-                                link
-                                for link in collection.links
-                                if not (
-                                    getattr(link, "rel", None) == "catalog"
-                                    and catalog_id in getattr(link, "href", "")
-                                )
-                            ]
-                        elif isinstance(collection, dict):
-                            collection["links"] = [
-                                link
-                                for link in collection.get("links", [])
-                                if not (
-                                    link.get("rel") == "catalog"
-                                    and catalog_id in link.get("href", "")
-                                )
-                            ]
-
-                        # Update the collection in the database
-                        collection_dict = (
-                            collection.model_dump(mode="json")
-                            if hasattr(collection, "model_dump")
-                            else collection
-                        )
-                        collection_db = (
-                            self.client.database.collection_serializer.stac_to_db(
-                                collection_dict, request
-                            )
-                        )
-                        await self.client.database.client.index(
-                            index=COLLECTIONS_INDEX,
-                            id=coll_id,
-                            body=collection_db.model_dump()
-                            if hasattr(collection_db, "model_dump")
-                            else collection_db,
-                            refresh=True,
-                        )
-                        logger.info(f"Removed catalog link from collection {coll_id}")
-                    except Exception as e:
-                        error_msg = str(e)
-                        if "not found" in error_msg.lower():
-                            logger.debug(
-                                f"Collection {coll_id} not found, skipping (may have been deleted elsewhere)"
-                            )
-                        else:
-                            logger.warning(
-                                f"Failed to remove catalog link from collection {coll_id}: {e}"
+                            logger.info(
+                                f"Removed catalog {catalog_id} from collection {child_id}; still belongs to {len(parent_ids)} other catalog(s)"
                             )
 
-            # Delete the catalog
-            await self.client.database.delete_catalog(catalog_id)
+                        child["parent_ids"] = parent_ids
+                        await self.client.database.update_collection(
+                            collection_id=child_id, collection=child, refresh=False
+                        )
+                except Exception as e:
+                    error_msg = str(e)
+                    if "not found" in error_msg.lower():
+                        logger.debug(
+                            f"Collection {child_id} not found, skipping (may have been deleted elsewhere)"
+                        )
+                    else:
+                        logger.warning(
+                            f"Failed to process collection {child_id} during catalog deletion: {e}"
+                        )
+
+            # Delete the catalog itself
+            await self.client.database.delete_catalog(catalog_id, refresh=True)
             logger.info(f"Deleted catalog {catalog_id}")
 
         except Exception as e:
@@ -434,98 +437,48 @@ class CatalogsExtension(ApiExtension):
             Collections object containing collections linked from the catalog.
         """
         try:
-            # Get the catalog from the database
-            db_catalog = await self.client.database.find_catalog(catalog_id)
+            # Verify the catalog exists
+            await self.client.database.find_catalog(catalog_id)
 
-            # Convert to STAC format to access links
-            catalog = self.client.catalog_serializer.db_to_stac(db_catalog, request)
+            # Query collections by parent_ids field using Elasticsearch directly
+            # This uses the parent_ids field in the collection mapping to find all
+            # collections that have this catalog as a parent
+            query_body = {"query": {"term": {"parent_ids": catalog_id}}}
 
-            # Extract collection IDs from catalog links
-            #
-            # FRAGILE IMPLEMENTATION WARNING:
-            # This approach relies on parsing URL patterns to determine catalog-collection relationships.
-            # This is fragile and will break if:
-            # - URLs don't follow the expected /collections/{id} pattern
-            # - Base URLs contain /collections/ in other segments
-            # - Relative links are used instead of absolute URLs
-            # - Links have trailing slashes or query parameters
-            #
-            # TODO: In a future version, this should be replaced with a proper database relationship
-            # (e.g., parent_catalog_id field on Collection documents)
-            #
+            # Execute the search to get collection IDs
+            try:
+                search_result = await self.client.database.client.search(
+                    index=COLLECTIONS_INDEX, body=query_body
+                )
+            except Exception as e:
+                logger.error(
+                    f"Error searching for collections with parent {catalog_id}: {e}"
+                )
+                search_result = {"hits": {"hits": []}}
+
+            # Extract collection IDs from search results
             collection_ids = []
-            if hasattr(catalog, "links") and catalog.links:
-                base_url = str(request.base_url).rstrip("/")
-                base_path = urlparse(base_url).path.rstrip("/")
-
-                for link in catalog.links:
-                    rel = (
-                        link.get("rel")
-                        if hasattr(link, "get")
-                        else getattr(link, "rel", None)
-                    )
-                    if rel in ["child", "item"]:
-                        # Extract collection ID from href using proper URL parsing
-                        href = (
-                            link.get("href", "")
-                            if hasattr(link, "get")
-                            else getattr(link, "href", "")
-                        )
-                        if href:
-                            try:
-                                parsed_url = urlparse(href)
-                                path = parsed_url.path.rstrip("/")
-
-                                # Resolve relative URLs against base URL
-                                if not href.startswith(("http://", "https://")):
-                                    full_path = (
-                                        f"{base_path}{path}" if path else base_path
-                                    )
-                                else:
-                                    # For absolute URLs, ensure they belong to our base domain
-                                    if parsed_url.netloc != urlparse(base_url).netloc:
-                                        continue
-                                    full_path = path
-
-                                # Look for collections endpoint at the end of the path
-                                # This prevents false positives when /collections/ appears in base URL
-                                collections_pattern = "/collections/"
-                                if collections_pattern in full_path:
-                                    # Find the LAST occurrence of /collections/ to avoid base URL conflicts
-                                    last_collections_pos = full_path.rfind(
-                                        collections_pattern
-                                    )
-                                    if last_collections_pos != -1:
-                                        # Extract everything after the last /collections/
-                                        after_collections = full_path[
-                                            last_collections_pos
-                                            + len(collections_pattern) :
-                                        ]
-
-                                        # Handle cases where there might be additional path segments
-                                        # We only want the immediate collection ID
-                                        collection_id = (
-                                            after_collections.split("/")[0]
-                                            if after_collections
-                                            else None
-                                        )
-
-                                        if (
-                                            collection_id
-                                            and collection_id not in collection_ids
-                                        ):
-                                            collection_ids.append(collection_id)
-
-                            except Exception:
-                                # If URL parsing fails, skip this link
-                                continue
+            hits = search_result.get("hits", {}).get("hits", [])
+            for hit in hits:
+                collection_ids.append(hit.get("_id"))
 
             # Fetch the collections
             collections = []
             for coll_id in collection_ids:
                 try:
-                    collection = await self.client.get_collection(
-                        coll_id, request=request
+                    # Get the collection from database
+                    collection_db = await self.client.database.find_collection(coll_id)
+                    # Serialize with catalog context (sets parent to catalog, injects catalog link)
+                    collection = (
+                        self.client.collection_serializer.db_to_stac_in_catalog(
+                            collection_db,
+                            request,
+                            catalog_id=catalog_id,
+                            extensions=[
+                                type(ext).__name__
+                                for ext in self.client.database.extensions
+                            ],
+                        )
                     )
                     collections.append(collection)
                 except HTTPException as e:
@@ -591,56 +544,87 @@ class CatalogsExtension(ApiExtension):
             # Verify the catalog exists
             await self.client.database.find_catalog(catalog_id)
 
-            # Create the collection using the same pattern as TransactionsClient.create_collection
-            # This handles the Collection model from stac_pydantic correctly
-            collection_dict = collection.model_dump(mode="json")
+            # Check if the collection already exists in the database
+            try:
+                existing_collection_db = await self.client.database.find_collection(
+                    collection.id
+                )
+                # Collection exists, just add the parent ID if not already present
+                existing_collection_dict = existing_collection_db
 
-            # Add a link from the collection back to its parent catalog BEFORE saving to database
-            base_url = str(request.base_url)
-            catalog_link = {
-                "rel": "catalog",
-                "type": "application/json",
-                "href": f"{base_url}catalogs/{catalog_id}",
-                "title": catalog_id,
-            }
+                # Ensure parent_ids field exists
+                if "parent_ids" not in existing_collection_dict:
+                    existing_collection_dict["parent_ids"] = []
 
-            # Add the catalog link to the collection dict
-            if "links" not in collection_dict:
-                collection_dict["links"] = []
+                # Add catalog_id to parent_ids if not already present
+                if catalog_id not in existing_collection_dict["parent_ids"]:
+                    existing_collection_dict["parent_ids"].append(catalog_id)
 
-            # Check if the catalog link already exists
-            catalog_href = catalog_link["href"]
-            link_exists = any(
-                link.get("href") == catalog_href and link.get("rel") == "catalog"
-                for link in collection_dict.get("links", [])
-            )
+                    # Update the collection in the database
+                    await self.client.database.update_collection(
+                        collection_id=collection.id,
+                        collection=existing_collection_dict,
+                        refresh=True,
+                    )
 
-            if not link_exists:
-                collection_dict["links"].append(catalog_link)
+                # Convert back to STAC format for the response
+                updated_collection = (
+                    self.client.database.collection_serializer.db_to_stac(
+                        existing_collection_dict,
+                        request,
+                        extensions=[
+                            type(ext).__name__
+                            for ext in self.client.database.extensions
+                        ],
+                    )
+                )
 
-            # Now convert to database format (this will process the links)
-            collection_db = self.client.database.collection_serializer.stac_to_db(
-                collection_dict, request
-            )
-            await self.client.database.create_collection(
-                collection=collection_db, refresh=True
-            )
+                return updated_collection
 
-            # Convert back to STAC format for the response
-            created_collection = self.client.database.collection_serializer.db_to_stac(
-                collection_db,
-                request,
-                extensions=[
-                    type(ext).__name__ for ext in self.client.database.extensions
-                ],
-            )
+            except Exception as e:
+                # Only proceed to create if collection truly doesn't exist
+                error_msg = str(e)
+                if "not found" not in error_msg.lower():
+                    # Re-raise if it's a different error
+                    raise
+                # Collection doesn't exist, create it
+                # Create the collection using the same pattern as TransactionsClient.create_collection
+                # This handles the Collection model from stac_pydantic correctly
+                collection_dict = collection.model_dump(mode="json")
 
-            # Update the catalog to include a link to the new collection
-            await self._add_collection_to_catalog_links(
-                catalog_id, collection.id, request
-            )
+                # Add the catalog ID to the parent_ids field
+                if "parent_ids" not in collection_dict:
+                    collection_dict["parent_ids"] = []
 
-            return created_collection
+                if catalog_id not in collection_dict["parent_ids"]:
+                    collection_dict["parent_ids"].append(catalog_id)
+
+                # Note: We do NOT store catalog links in the database.
+                # Catalog links are injected dynamically by the serializer based on context.
+                # This allows the same collection to have different catalog links
+                # depending on which catalog it's accessed from.
+
+                # Now convert to database format (this will process the links)
+                collection_db = self.client.database.collection_serializer.stac_to_db(
+                    collection_dict, request
+                )
+                await self.client.database.create_collection(
+                    collection=collection_db, refresh=True
+                )
+
+                # Convert back to STAC format for the response
+                created_collection = (
+                    self.client.database.collection_serializer.db_to_stac(
+                        collection_db,
+                        request,
+                        extensions=[
+                            type(ext).__name__
+                            for ext in self.client.database.extensions
+                        ],
+                    )
+                )
+
+                return created_collection
 
         except HTTPException as e:
             # Re-raise HTTP exceptions (e.g., catalog not found, collection validation errors)
@@ -657,92 +641,6 @@ class CatalogsExtension(ApiExtension):
                 status_code=500,
                 detail=f"Failed to create collection in catalog: {str(e)}",
             )
-
-    async def _add_collection_to_catalog_links(
-        self, catalog_id: str, collection_id: str, request: Request
-    ) -> None:
-        """Add a collection link to a catalog.
-
-        This helper method updates a catalog's links to include a reference
-        to a collection by reindexing the updated catalog document.
-
-        Args:
-            catalog_id: The ID of the catalog to update.
-            collection_id: The ID of the collection to link.
-            request: Request object for base URL construction.
-        """
-        try:
-            # Get the current catalog
-            db_catalog = await self.client.database.find_catalog(catalog_id)
-            catalog = self.client.catalog_serializer.db_to_stac(db_catalog, request)
-
-            # Create the collection link
-            base_url = str(request.base_url)
-            collection_link = {
-                "rel": "child",
-                "href": f"{base_url}collections/{collection_id}",
-                "type": "application/json",
-                "title": collection_id,
-            }
-
-            # Add the link to the catalog if it doesn't already exist
-            catalog_links = (
-                catalog.get("links")
-                if isinstance(catalog, dict)
-                else getattr(catalog, "links", None)
-            )
-            if not catalog_links:
-                catalog_links = []
-                if isinstance(catalog, dict):
-                    catalog["links"] = catalog_links
-                else:
-                    catalog.links = catalog_links
-
-            # Check if the collection link already exists
-            collection_href = collection_link["href"]
-            link_exists = any(
-                (
-                    link.get("href")
-                    if hasattr(link, "get")
-                    else getattr(link, "href", None)
-                )
-                == collection_href
-                for link in catalog_links
-            )
-
-            if not link_exists:
-                catalog_links.append(collection_link)
-
-                # Update the catalog in the database by reindexing it
-                # Convert back to database format
-                updated_db_catalog = self.client.catalog_serializer.stac_to_db(
-                    catalog, request
-                )
-                updated_db_catalog_dict = (
-                    updated_db_catalog.model_dump()
-                    if hasattr(updated_db_catalog, "model_dump")
-                    else updated_db_catalog
-                )
-                updated_db_catalog_dict["type"] = "Catalog"
-
-                # Use the same approach as create_catalog to update the document
-                await self.client.database.client.index(
-                    index=COLLECTIONS_INDEX,
-                    id=catalog_id,
-                    body=updated_db_catalog_dict,
-                    refresh=True,
-                )
-
-                logger.info(
-                    f"Updated catalog {catalog_id} to include link to collection {collection_id}"
-                )
-
-        except Exception as e:
-            logger.error(
-                f"Failed to update catalog {catalog_id} links: {e}", exc_info=True
-            )
-            # Don't fail the entire operation if link update fails
-            # The collection was created successfully, just the catalog link is missing
 
     async def get_catalog_collection(
         self, catalog_id: str, collection_id: str, request: Request
@@ -765,9 +663,31 @@ class CatalogsExtension(ApiExtension):
                 status_code=404, detail=f"Catalog {catalog_id} not found"
             )
 
-        # Delegate to the core client's get_collection method
-        return await self.client.get_collection(
-            collection_id=collection_id, request=request
+        # Verify the collection exists and has the catalog as a parent
+        try:
+            collection_db = await self.client.database.find_collection(collection_id)
+
+            # Check if the catalog_id is in the collection's parent_ids
+            parent_ids = collection_db.get("parent_ids", [])
+            if catalog_id not in parent_ids:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Collection {collection_id} does not belong to catalog {catalog_id}",
+                )
+        except HTTPException:
+            raise
+        except Exception:
+            raise HTTPException(
+                status_code=404, detail=f"Collection {collection_id} not found"
+            )
+
+        # Return the collection with catalog context
+        collection_db = await self.client.database.find_collection(collection_id)
+        return self.client.collection_serializer.db_to_stac_in_catalog(
+            collection_db,
+            request,
+            catalog_id=catalog_id,
+            extensions=[type(ext).__name__ for ext in self.client.database.extensions],
         )
 
     async def get_catalog_collection_items(
@@ -853,3 +773,209 @@ class CatalogsExtension(ApiExtension):
         return await self.client.get_item(
             item_id=item_id, collection_id=collection_id, request=request
         )
+
+    async def get_catalog_children(
+        self,
+        catalog_id: str,
+        request: Request,
+        limit: int = 10,
+        token: str = None,
+        type: Optional[str] = Query(
+            None, description="Filter by resource type (Catalog or Collection)"
+        ),
+    ) -> Dict[str, Any]:
+        """
+        Get all children (Catalogs and Collections) of a specific catalog.
+
+        This is a 'Union' endpoint that returns mixed content types.
+        """
+        # 1. Verify the parent catalog exists
+        await self.client.database.find_catalog(catalog_id)
+
+        # 2. Build the Search Query
+        # We search the COLLECTIONS_INDEX because it holds both Catalogs and Collections
+
+        # Base filter: Parent match
+        # This finds anything where 'parent_ids' contains this catalog_id
+        filter_queries = [{"term": {"parent_ids": catalog_id}}]
+
+        # Optional filter: Type
+        if type:
+            # If user asks for ?type=Catalog, we only return Catalogs
+            filter_queries.append({"term": {"type": type}})
+
+        # 3. Calculate Pagination (Search After)
+        body = {
+            "query": {"bool": {"filter": filter_queries}},
+            "sort": [{"id": {"order": "asc"}}],  # Stable sort for pagination
+            "size": limit,
+        }
+
+        # Handle search_after token - split by '|' to get all sort values
+        search_after: Optional[List[str]] = None
+        if token:
+            try:
+                # The token should be a pipe-separated string of sort values
+                # e.g., "collection-1"
+                from typing import cast
+
+                search_after_parts = cast(List[str], token.split("|"))
+                # If the number of sort fields doesn't match token parts, ignore the token
+                if len(search_after_parts) != len(body["sort"]):  # type: ignore
+                    search_after = None
+                else:
+                    search_after = search_after_parts
+            except Exception:
+                search_after = None
+
+            if search_after is not None:
+                body["search_after"] = search_after
+
+        # 4. Execute Search
+        search_result = await self.client.database.client.search(
+            index=COLLECTIONS_INDEX, body=body
+        )
+
+        # 5. Process Results
+        hits = search_result.get("hits", {}).get("hits", [])
+        total = search_result.get("hits", {}).get("total", {}).get("value", 0)
+
+        children = []
+        for hit in hits:
+            doc = hit["_source"]
+            resource_type = doc.get(
+                "type", "Collection"
+            )  # Default to Collection if missing
+
+            # Serialize based on type
+            # This ensures we hide internal fields like 'parent_ids' correctly
+            if resource_type == "Catalog":
+                child = self.client.catalog_serializer.db_to_stac(doc, request)
+            else:
+                child = self.client.collection_serializer.db_to_stac(doc, request)
+
+            children.append(child)
+
+        # 6. Format Response
+        # The Children extension uses a specific response format
+        response = {
+            "children": children,
+            "links": [
+                {"rel": "self", "type": "application/json", "href": str(request.url)},
+                {
+                    "rel": "root",
+                    "type": "application/json",
+                    "href": str(request.base_url),
+                },
+                {
+                    "rel": "parent",
+                    "type": "application/json",
+                    "href": f"{str(request.base_url)}catalogs/{catalog_id}",
+                },
+            ],
+            "numberReturned": len(children),
+            "numberMatched": total,
+        }
+
+        # 7. Generate Next Link
+        next_token = None
+        if len(hits) == limit:
+            next_token_values = hits[-1].get("sort")
+            if next_token_values:
+                # Join all sort values with '|' to create the token
+                next_token = "|".join(str(val) for val in next_token_values)
+
+        if next_token:
+            # Get existing query params
+            parsed_url = urlparse(str(request.url))
+            params = parse_qs(parsed_url.query)
+
+            # Update params
+            params["token"] = [next_token]
+            params["limit"] = [str(limit)]
+            if type:
+                params["type"] = [type]
+
+            # Flatten params for urlencode (parse_qs returns lists)
+            flat_params = {
+                k: v[0] if isinstance(v, list) else v for k, v in params.items()
+            }
+
+            next_link = {
+                "rel": "next",
+                "type": "application/json",
+                "href": f"{request.base_url}catalogs/{catalog_id}/children?{urlencode(flat_params)}",
+            }
+            response["links"].append(next_link)
+
+        return response
+
+    async def delete_catalog_collection(
+        self, catalog_id: str, collection_id: str, request: Request
+    ) -> None:
+        """Delete a collection from a catalog (Unlink only).
+
+        Removes the catalog from the collection's parent_ids.
+        If the collection becomes an orphan (no parents), it is adopted by the Root.
+        It NEVER deletes the collection data.
+
+        Args:
+            catalog_id: The ID of the catalog.
+            collection_id: The ID of the collection.
+            request: Request object.
+
+        Raises:
+            HTTPException: If the catalog or collection is not found, or if the
+                         collection does not belong to the catalog.
+        """
+        try:
+            # Verify the catalog exists
+            await self.client.database.find_catalog(catalog_id)
+
+            # Get the collection
+            collection_db = await self.client.database.find_collection(collection_id)
+
+            # Check if the catalog_id is in the collection's parent_ids
+            parent_ids = collection_db.get("parent_ids", [])
+            if catalog_id not in parent_ids:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Collection {collection_id} does not belong to catalog {catalog_id}",
+                )
+
+            # SAFE UNLINK LOGIC
+            parent_ids.remove(catalog_id)
+
+            # Check if it is now an orphan (empty list)
+            if len(parent_ids) == 0:
+                # Fallback to Root / Landing Page
+                # You can hardcode 'root' or fetch the ID from settings
+                root_id = self.settings.get(
+                    "STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"
+                )
+                parent_ids.append(root_id)
+                logger.info(
+                    f"Collection {collection_id} unlinked from {catalog_id}. Orphaned, so adopted by root ({root_id})."
+                )
+            else:
+                logger.info(
+                    f"Removed catalog {catalog_id} from collection {collection_id}; still belongs to {len(parent_ids)} other catalog(s)"
+                )
+
+            # Update the collection in the database
+            collection_db["parent_ids"] = parent_ids
+            await self.client.database.update_collection(
+                collection_id=collection_id, collection=collection_db, refresh=True
+            )
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(
+                f"Error removing collection {collection_id} from catalog {catalog_id}: {e}",
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to remove collection from catalog: {str(e)}",
+            )

@@ -11,17 +11,50 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Added `STAC_FASTAPI_ES_MAPPINGS_FILE` environment variable to support file-based custom mappings configuration.
 - Added configuration-based support for extending Elasticsearch/OpenSearch index mappings via environment variables, allowing users to customize field mappings without code change through `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` environment variable. Also added `STAC_FASTAPI_ES_DYNAMIC_MAPPING` variable to control dynamic mapping behavior. [#546](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/546)
 
-- Added catalogs route support to enable federated hierarchical catalog browsing and navigation in the STAC API. [#547](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/547)
-
 ### Changed
 
 ### Fixed
 
-- Fix unawaited coroutine in `stac_fastapi.core.core`. [#551](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/551)
+- Fixed various test suite errors, compatibility issues, and deprecation warnings to ensure stable execution. [#569](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/569)
 
 ### Removed
 
 ### Updated
+
+- Reorganized README configuration reference into logical sections for better readability. [#569](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/569)
+
+## [v6.8.1] - 2025-12-15
+
+### Changed
+
+- Implemented a safety-first deletion policy for the catalogs endpoint to prevent accidental data loss. Collections are now never deleted through the catalogs route; they are only unlinked and automatically adopted by the root catalog if they become orphans. Collection data can only be permanently deleted via the explicit `/collections/{collection_id}` DELETE endpoint. This ensures a clear separation between container (catalog) deletion and content (collection/item) deletion, with data always being preserved through the catalogs API. [#562](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/562)
+
+### Removed
+
+- Removed `cascade` parameter from `DELETE /catalogs/{catalog_id}` endpoint. Collections are no longer deleted when a catalog is deleted; they are unlinked and adopted by root if orphaned. [#562](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/562)
+
+## [v6.8.0] - 2025-12-15
+
+### Added
+
+- Environment variable `VALIDATE_QUERYABLES` to enable/disable validation of queryables in search/filter requests. When set to `true`, search requests will be validated against the defined queryables, returning an error for any unsupported fields. Defaults to `false` for backward compatibility.[#532](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/532)
+- Environment variable `QUERYABLES_CACHE_TTL` to configure the TTL (in seconds) for caching queryables. Default is `1800` seconds (30 minutes) to balance performance and freshness of queryables data. [#532](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/532)
+- Added optional `/catalogs` route support to enable hierarchical catalog browsing and navigation. [#547](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/547)
+- Added DELETE `/catalogs/{catalog_id}/collections/{collection_id}` endpoint to support removing collections from catalogs. When a collection belongs to multiple catalogs, it removes only the specified catalog from the collection's parent_ids. When a collection belongs to only one catalog, the collection is deleted entirely. [#554](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/554)
+- Added `parent_ids` internal field to collections to support multi-catalog hierarchies. Collections can now belong to multiple catalogs, with parent catalog IDs stored in this field for efficient querying and management. [#554](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/554)
+- Added GET `/catalogs/{catalog_id}/children` endpoint implementing the STAC Children extension for efficient hierarchical catalog browsing. Supports type filtering (?type=Catalog|Collection), pagination, and returns numberReturned/numberMatched counts at the top level. [#558](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/558)
+- Implemented context-aware dynamic linking: catalogs use dynamic `rel="children"` links pointing to the `/catalogs/{id}/children` endpoint, and collections have context-dependent `rel="parent"` links (pointing to catalog when accessed via `/catalogs/{id}/collections/{id}`, or root when accessed via `/collections/{id}`). Catalog links are only injected in catalog context. This eliminates race conditions and ensures consistency with parent_ids relationships. [#559](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/559)
+
+### Changed
+
+- Have opensearch datetime, geometry and collections fields defined as constant strings [#553](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/553)
+
+### Fixed
+
+- Fix unawaited coroutine in `stac_fastapi.core.core`. [#551](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/551)
+- Parse `ES_TIMEOUT` environment variable as an integer. [#556](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/556)
+- Implemented "Smart Unlink" logic in delete_catalog: when cascade=False (default), collections are unlinked from the catalog and become root-level orphans if they have no other parents, rather than being deleted. When cascade=True, collections are deleted entirely. This prevents accidental data loss and supports poly-hierarchy scenarios where collections belong to multiple catalogs. [#557](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/557)
+- Fixed delete_catalog to use reverse lookup query on parent_ids field instead of fragile link parsing. This ensures all collections are found and updated correctly, preventing ghost relationships where collections remain tagged with deleted catalogs, especially in large catalogs or pagination scenarios. [#557](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/557)
 
 ## [v6.7.6] - 2025-12-04
 
@@ -672,7 +705,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.6...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.8.1...main
+[v6.8.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.8.0...v6.8.1
+[v6.8.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.6...v6.8.0
 [v6.7.6]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.5...v6.7.6
 [v6.7.5]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.4...v6.7.5
 [v6.7.4]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.3...v6.7.4
@@ -712,3 +747,4 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 [v0.3.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v0.2.0...v0.3.0
 [v0.2.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v0.1.0...v0.2.0
 [v0.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v0.1.0
+
