@@ -226,10 +226,13 @@ def filter_fields(  # noqa: C901
                     # entire key can be removed from the source.
                     source.pop(key_root, None)
 
+    # Coalesce incoming type to a dict
     item = dict(item)
 
     clean_item = include_fields(item, include)
 
+    # If, after including all the specified fields, there are no included properties,
+    # return just id and collection.
     if not clean_item:
         return Item({"id": item["id"], "collection": item["collection"]})
 
