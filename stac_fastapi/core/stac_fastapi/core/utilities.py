@@ -136,47 +136,47 @@ def filter_fields(  # noqa: C901
 
         clean_item: Dict[str, Any] = {}
         for key_path in fields or []:
+            if "*" in key_path:
+                value = recursive_include(source, key_path.split("."))
+                dict_deep_update(clean_item, value)
+                continue
             key_path_parts = key_path.split(".")
-            included_values = recursive_include(source, key_path_parts)
+            key_root = key_path_parts[0]
+            if key_root in source:
+                if isinstance(source[key_root], dict) and len(key_path_parts) > 1:
+                    # The root of this key path on the item is a dict, and the
+                    # key path indicates a sub-key to be included. Walk the dict
+                    # from the root key and get the full nested value to include.
+                    value = include_fields(
+                        source[key_root], fields={".".join(key_path_parts[1:])}
+                    )
 
-            for key, value in included_values.items():
-                if isinstance(clean_item.get(key), dict) and isinstance(value, dict):
-                    dict_deep_update(clean_item[key], value)
+                    if isinstance(clean_item.get(key_root), dict):
+                        # A previously specified key and sub-keys may have been included
+                        # already, so do a deep merge update if the root key already exists.
+                        dict_deep_update(clean_item[key_root], value)
+                    else:
+                        # The root key does not exist, so add it. Fields
+                        # extension only allows nested referencing on dicts, so
+                        # this won't overwrite anything.
+                        clean_item[key_root] = value
                 else:
-                    clean_item[key] = value
+                    # The item value to include is not a dict, or, it is a dict but the
+                    # key path is for the whole value, not a sub-key. Include the entire
+                    # value in the cleaned item.
+                    clean_item[key_root] = source[key_root]
+            else:
+                # The key, or root key of a multi-part key, is not present in the item,
+                # so it is ignored
+                pass
 
         return clean_item
 
     def exclude_fields(
         source: Dict[str, Any],
         fields: Optional[Set[str]],
-        included_fields: Optional[Set[str]] = None,
     ) -> None:
-        """Exclude fields from source, but preserve any fields that were explicitly included."""
-
-        def is_path_included(current_path: str) -> bool:
-            """Check if a path matches any of the included field patterns."""
-            if not included_fields:
-                return False
-
-            for include_pattern in included_fields:
-                include_parts = include_pattern.split(".")
-                current_parts = current_path.split(".")
-
-                # Check if current path matches the include pattern
-                if len(include_parts) != len(current_parts):
-                    continue
-
-                match = True
-                for include_part, current_part in zip(include_parts, current_parts):
-                    if not match_pattern(include_part, current_part):
-                        match = False
-                        break
-
-                if match:
-                    return True
-
-            return False
+        """Exclude fields from source."""
 
         def recursive_exclude(
             source: Dict[str, Any], path_parts: List[str], current_path: str = ""
@@ -197,10 +197,6 @@ def filter_fields(  # noqa: C901
                 # Build the full path for this key
                 full_path = f"{current_path}.{key}" if current_path else key
 
-                # Skip exclusion if this path was explicitly included
-                if is_path_included(full_path):
-                    continue
-
                 if remaining_parts:
                     if isinstance(source[key], dict):
                         recursive_exclude(source[key], remaining_parts, full_path)
@@ -210,8 +206,25 @@ def filter_fields(  # noqa: C901
                     source.pop(key, None)
 
         for key_path in fields or []:
-            key_path_parts = key_path.split(".")
-            recursive_exclude(source, key_path_parts)
+            if "*" in key_path:
+                recursive_exclude(source, key_path.split("."))
+                continue
+            key_path_part = key_path.split(".")
+            key_root = key_path_part[0]
+            if key_root in source:
+                if isinstance(source[key_root], dict) and len(key_path_part) > 1:
+                    # Walk the nested path of this key to remove the leaf-key
+                    exclude_fields(
+                        source[key_root], fields={".".join(key_path_part[1:])}
+                    )
+                    # If, after removing the leaf-key, the root is now an empty
+                    # dict, remove it entirely
+                    if not source[key_root]:
+                        del source[key_root]
+                else:
+                    # The key's value is not a dict, or there is no sub-key to remove. The
+                    # entire key can be removed from the source.
+                    source.pop(key_root, None)
 
     item = dict(item)
 
@@ -220,7 +233,7 @@ def filter_fields(  # noqa: C901
     if not clean_item:
         return Item({"id": item["id"], "collection": item["collection"]})
 
-    exclude_fields(clean_item, exclude, include)
+    exclude_fields(clean_item, exclude)
 
     return Item(**clean_item)
 

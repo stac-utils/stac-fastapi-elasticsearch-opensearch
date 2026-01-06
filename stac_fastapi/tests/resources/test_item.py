@@ -855,9 +855,7 @@ async def test_field_extension_exclude_and_include(app_client, ctx):
 
     resp = await app_client.post("/search", json=body)
     resp_json = resp.json()
-    assert (
-        resp_json["features"][0]["properties"].get("eo:cloud_cover", None) is not None
-    )
+    assert "properties" not in resp_json["features"][0]
 
 
 @pytest.mark.asyncio

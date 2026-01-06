@@ -192,7 +192,7 @@ async def test_app_fields_extension_wildcard_query(app_client, ctx, txn_client):
     include_resp_json = resp.json()
     for feature in include_resp_json["features"]:
         assert len(feature["properties"]) == 1
-        assert feature["properties"]["proj:centroid"].get("lat", None)
+        assert feature["properties"]["proj:centroid"].get("lat", None) is not None
         for assets_values in feature["assets"].values():
             assert len(assets_values) == 1
             assert "href" in assets_values
@@ -227,7 +227,7 @@ async def test_app_fields_extension_wildcard_query(app_client, ctx, txn_client):
     )
     exclude_resp_json = resp.json()
     for feature in exclude_resp_json["features"]:
-        assert feature["properties"]["proj:centroid"].get("lat", None)
+        assert "properties" not in feature
 
     fields = {
         "include": ["properties.proj:centroid.lat"],
@@ -244,7 +244,7 @@ async def test_app_fields_extension_wildcard_query(app_client, ctx, txn_client):
     )
     exclude_resp_json = resp.json()
     for feature in exclude_resp_json["features"]:
-        assert feature["properties"]["proj:centroid"].get("lat", None)
+        assert "properties" not in feature
 
 
 @pytest.mark.asyncio
