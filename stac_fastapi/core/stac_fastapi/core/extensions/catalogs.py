@@ -569,7 +569,16 @@ class CatalogsExtension(ApiExtension):
             # Query catalogs by parent_ids field using Elasticsearch directly
             # This uses the parent_ids field in the catalog mapping to find all
             # catalogs that have this catalog as a parent
-            query_body = {"query": {"term": {"parent_ids": catalog_id}}}
+            query_body = {
+                "query": {
+                    "bool": {
+                        "must": [
+                            {"term": {"parent_ids": catalog_id}},
+                            {"term": {"type": "Catalog"}},
+                        ]
+                    }
+                }
+            }
 
             # Execute the search to get catalog IDs
             try:
@@ -620,9 +629,9 @@ class CatalogsExtension(ApiExtension):
 
             # Return in Catalogs format
             base_url = str(request.base_url)
-            return Catalogs(
-                catalogs=catalogs,
-                links=[
+            return {
+                "catalogs": catalogs,
+                "links": [
                     {"rel": "root", "type": "application/json", "href": base_url},
                     {
                         "rel": "parent",
@@ -635,7 +644,8 @@ class CatalogsExtension(ApiExtension):
                         "href": f"{base_url}catalogs/{catalog_id}/catalogs",
                     },
                 ],
-            )
+                "numberReturned": len(catalogs),
+            }
 
         except HTTPException:
             # Re-raise HTTP exceptions as-is
@@ -668,35 +678,6 @@ class CatalogsExtension(ApiExtension):
         try:
             # Verify the parent catalog exists
             await self.client.database.find_catalog(catalog_id)
-
-            # Check if the catalog already exists in the database
-            try:
-                existing_catalog = await self.client.database.find_catalog(catalog.id)
-                # Catalog exists - add parent_id if not already present
-                parent_ids = existing_catalog.get("parent_ids", [])
-                if catalog_id not in parent_ids:
-                    parent_ids.append(catalog_id)
-                    existing_catalog["parent_ids"] = parent_ids
-                    await self.client.database.update_catalog(
-                        catalog_id=catalog.id,
-                        catalog=existing_catalog,
-                        refresh=True,
-                    )
-                    logger.info(
-                        f"Added catalog {catalog_id} to parent_ids of existing catalog {catalog.id}"
-                    )
-                else:
-                    logger.info(
-                        f"Catalog {catalog.id} already has {catalog_id} in parent_ids"
-                    )
-                # Return the existing catalog
-                return self.client.catalog_serializer.db_to_stac(
-                    existing_catalog, request
-                )
-            except HTTPException as e:
-                if e.status_code != 404:
-                    raise
-                # Catalog doesn't exist - create it with parent_id
 
             # Convert STAC catalog to database format
             db_catalog = self.client.catalog_serializer.stac_to_db(catalog, request)
