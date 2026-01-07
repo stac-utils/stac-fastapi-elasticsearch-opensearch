@@ -118,6 +118,19 @@ class CatalogsExtension(ApiExtension):
             tags=["Catalogs"],
         )
 
+        # Add endpoint for creating sub-catalogs in a catalog
+        self.router.add_api_route(
+            path="/catalogs/{catalog_id}/catalogs",
+            endpoint=self.create_catalog_catalog,
+            methods=["POST"],
+            response_model=Catalog,
+            response_class=self.response_class,
+            status_code=201,
+            summary="Create Catalog Sub-Catalog",
+            description="Create a new catalog and link it as a sub-catalog of a specific catalog.",
+            tags=["Catalogs"],
+        )
+
         # Add endpoint for creating collections in a catalog
         self.router.add_api_route(
             path="/catalogs/{catalog_id}/collections",
@@ -634,6 +647,83 @@ class CatalogsExtension(ApiExtension):
             )
             raise HTTPException(
                 status_code=404, detail=f"Catalog {catalog_id} not found"
+            )
+
+    async def create_catalog_catalog(
+        self, catalog_id: str, catalog: Catalog, request: Request
+    ) -> Catalog:
+        """Create a new catalog and link it as a sub-catalog of a specific catalog.
+
+        Args:
+            catalog_id: The ID of the parent catalog.
+            catalog: The catalog to create.
+            request: Request object.
+
+        Returns:
+            The created catalog.
+
+        Raises:
+            HTTPException: If the parent catalog is not found or creation fails.
+        """
+        try:
+            # Verify the parent catalog exists
+            await self.client.database.find_catalog(catalog_id)
+
+            # Check if the catalog already exists in the database
+            try:
+                existing_catalog = await self.client.database.find_catalog(catalog.id)
+                # Catalog exists - add parent_id if not already present
+                parent_ids = existing_catalog.get("parent_ids", [])
+                if catalog_id not in parent_ids:
+                    parent_ids.append(catalog_id)
+                    existing_catalog["parent_ids"] = parent_ids
+                    await self.client.database.update_catalog(
+                        catalog_id=catalog.id,
+                        catalog=existing_catalog,
+                        refresh=True,
+                    )
+                    logger.info(
+                        f"Added catalog {catalog_id} to parent_ids of existing catalog {catalog.id}"
+                    )
+                else:
+                    logger.info(
+                        f"Catalog {catalog.id} already has {catalog_id} in parent_ids"
+                    )
+                # Return the existing catalog
+                return self.client.catalog_serializer.db_to_stac(
+                    existing_catalog, request
+                )
+            except HTTPException as e:
+                if e.status_code != 404:
+                    raise
+                # Catalog doesn't exist - create it with parent_id
+
+            # Convert STAC catalog to database format
+            db_catalog = self.client.catalog_serializer.stac_to_db(catalog, request)
+
+            # Convert to dict and ensure type is set to Catalog
+            db_catalog_dict = db_catalog.model_dump()
+            db_catalog_dict["type"] = "Catalog"
+            db_catalog_dict["parent_ids"] = [catalog_id]
+
+            # Create the catalog in the database with refresh to ensure immediate availability
+            await self.client.database.create_catalog(db_catalog_dict, refresh=True)
+
+            logger.info(f"Created new catalog {catalog.id} with parent {catalog_id}")
+
+            # Return the created catalog
+            return catalog
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(
+                f"Error creating catalog {catalog.id} in parent catalog {catalog_id}: {e}",
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to create catalog in parent catalog: {str(e)}",
             )
 
     async def create_catalog_collection(
