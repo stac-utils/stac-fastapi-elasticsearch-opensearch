@@ -106,6 +106,18 @@ class CatalogsExtension(ApiExtension):
             tags=["Catalogs"],
         )
 
+        # Add endpoint for getting sub-catalogs of a catalog
+        self.router.add_api_route(
+            path="/catalogs/{catalog_id}/catalogs",
+            endpoint=self.get_catalog_catalogs,
+            methods=["GET"],
+            response_model=Catalogs,
+            response_class=self.response_class,
+            summary="Get Catalog Sub-Catalogs",
+            description="Get sub-catalogs linked from a specific catalog.",
+            tags=["Catalogs"],
+        )
+
         # Add endpoint for creating collections in a catalog
         self.router.add_api_route(
             path="/catalogs/{catalog_id}/collections",
@@ -518,6 +530,106 @@ class CatalogsExtension(ApiExtension):
         except Exception as e:
             logger.error(
                 f"Error retrieving collections for catalog {catalog_id}: {e}",
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=404, detail=f"Catalog {catalog_id} not found"
+            )
+
+    async def get_catalog_catalogs(self, catalog_id: str, request: Request) -> Catalogs:
+        """Get all sub-catalogs of a specific catalog.
+
+        Args:
+            catalog_id: The ID of the parent catalog.
+            request: Request object.
+
+        Returns:
+            A Catalogs response containing all sub-catalogs.
+
+        Raises:
+            HTTPException: If the catalog is not found.
+        """
+        try:
+            # Verify the catalog exists
+            await self.client.database.find_catalog(catalog_id)
+
+            # Query catalogs by parent_ids field using Elasticsearch directly
+            # This uses the parent_ids field in the catalog mapping to find all
+            # catalogs that have this catalog as a parent
+            query_body = {"query": {"term": {"parent_ids": catalog_id}}}
+
+            # Execute the search to get catalog IDs
+            try:
+                search_result = await self.client.database.client.search(
+                    index=COLLECTIONS_INDEX, body=query_body
+                )
+            except Exception as e:
+                logger.error(
+                    f"Error searching for catalogs with parent {catalog_id}: {e}"
+                )
+                search_result = {"hits": {"hits": []}}
+
+            # Extract catalog IDs from search results
+            catalog_ids = []
+            hits = search_result.get("hits", {}).get("hits", [])
+            for hit in hits:
+                catalog_ids.append(hit.get("_id"))
+
+            # Fetch the catalogs
+            catalogs = []
+            for cat_id in catalog_ids:
+                try:
+                    # Get the catalog from database
+                    catalog_db = await self.client.database.find_catalog(cat_id)
+                    # Serialize to STAC format
+                    catalog = self.client.catalog_serializer.db_to_stac(
+                        catalog_db,
+                        request,
+                        extensions=[
+                            type(ext).__name__
+                            for ext in self.client.database.extensions
+                        ],
+                    )
+                    catalogs.append(catalog)
+                except HTTPException as e:
+                    # Only skip catalogs that are not found (404)
+                    if e.status_code == 404:
+                        logger.debug(f"Catalog {cat_id} not found, skipping")
+                        continue
+                    else:
+                        # Re-raise other HTTP exceptions (5xx server errors, etc.)
+                        logger.error(f"HTTP error retrieving catalog {cat_id}: {e}")
+                        raise
+                except Exception as e:
+                    # Log unexpected errors and re-raise them
+                    logger.error(f"Unexpected error retrieving catalog {cat_id}: {e}")
+                    raise
+
+            # Return in Catalogs format
+            base_url = str(request.base_url)
+            return Catalogs(
+                catalogs=catalogs,
+                links=[
+                    {"rel": "root", "type": "application/json", "href": base_url},
+                    {
+                        "rel": "parent",
+                        "type": "application/json",
+                        "href": f"{base_url}catalogs/{catalog_id}",
+                    },
+                    {
+                        "rel": "self",
+                        "type": "application/json",
+                        "href": f"{base_url}catalogs/{catalog_id}/catalogs",
+                    },
+                ],
+            )
+
+        except HTTPException:
+            # Re-raise HTTP exceptions as-is
+            raise
+        except Exception as e:
+            logger.error(
+                f"Error retrieving catalogs for catalog {catalog_id}: {e}",
                 exc_info=True,
             )
             raise HTTPException(
