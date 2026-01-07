@@ -272,6 +272,7 @@ The catalogs extension implements a **safety-first design** that protects collec
 - **GET `/catalogs`**: Retrieve the root catalog and its child catalogs
 - **POST `/catalogs`**: Create a new catalog (requires appropriate permissions)
 - **GET `/catalogs/{catalog_id}`**: Retrieve a specific catalog and its children
+- **PUT `/catalogs/{catalog_id}`**: Update an existing catalog (title, description, etc.)
 - **DELETE `/catalogs/{catalog_id}`**: Delete a catalog (collections and sub-catalogs are unlinked and adopted by root if orphaned)
 
 **Sub-Catalog Hierarchy:**
@@ -297,6 +298,17 @@ curl "http://localhost:8081/catalogs"
 
 # Get specific catalog
 curl "http://localhost:8081/catalogs/earth-observation"
+
+# Update a catalog
+curl -X PUT "http://localhost:8081/catalogs/earth-observation" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "earth-observation",
+    "type": "Catalog",
+    "stac_version": "1.0.0",
+    "description": "Updated description for Earth observation data",
+    "title": "Updated Earth Observation Catalog"
+  }'
 
 # Get sub-catalogs within a catalog
 curl "http://localhost:8081/catalogs/earth-observation/catalogs"

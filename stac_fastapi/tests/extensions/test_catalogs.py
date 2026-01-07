@@ -38,6 +38,53 @@ async def test_create_catalog(catalogs_app_client, load_test_data):
 
 
 @pytest.mark.asyncio
+async def test_update_catalog(catalogs_app_client, load_test_data):
+    """Test updating an existing catalog."""
+    # First create a catalog
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+
+    # Update the catalog
+    catalog_id = test_catalog["id"]
+    updated_catalog = load_test_data("test_catalog.json")
+    updated_catalog["id"] = catalog_id
+    updated_catalog["title"] = "Updated Catalog Title"
+    updated_catalog["description"] = "Updated description for the catalog"
+
+    update_resp = await catalogs_app_client.put(
+        f"/catalogs/{catalog_id}", json=updated_catalog
+    )
+    assert update_resp.status_code == 200
+
+    updated_result = update_resp.json()
+    assert updated_result["id"] == catalog_id
+    assert updated_result["title"] == "Updated Catalog Title"
+    assert updated_result["description"] == "Updated description for the catalog"
+
+    # Verify the update persisted by fetching the catalog
+    get_resp = await catalogs_app_client.get(f"/catalogs/{catalog_id}")
+    assert get_resp.status_code == 200
+    fetched_catalog = get_resp.json()
+    assert fetched_catalog["title"] == "Updated Catalog Title"
+    assert fetched_catalog["description"] == "Updated description for the catalog"
+
+
+@pytest.mark.asyncio
+async def test_update_nonexistent_catalog(catalogs_app_client, load_test_data):
+    """Test updating a catalog that doesn't exist."""
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = "nonexistent-catalog"
+
+    resp = await catalogs_app_client.put(
+        "/catalogs/nonexistent-catalog", json=test_catalog
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_get_catalog(catalogs_app_client, load_test_data):
     """Test getting a specific catalog."""
     # First create a catalog

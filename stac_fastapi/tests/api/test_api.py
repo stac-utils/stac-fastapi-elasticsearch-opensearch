@@ -53,6 +53,7 @@ ROUTES = {
     "GET /catalogs",
     "POST /catalogs",
     "GET /catalogs/{catalog_id}",
+    "PUT /catalogs/{catalog_id}",
     "DELETE /catalogs/{catalog_id}",
     "GET /catalogs/{catalog_id}/catalogs",
     "POST /catalogs/{catalog_id}/catalogs",

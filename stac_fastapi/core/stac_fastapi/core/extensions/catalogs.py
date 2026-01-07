@@ -150,6 +150,18 @@ class CatalogsExtension(ApiExtension):
             tags=["Catalogs"],
         )
 
+        # Add endpoint for updating a catalog
+        self.router.add_api_route(
+            path="/catalogs/{catalog_id}",
+            endpoint=self.update_catalog,
+            methods=["PUT"],
+            response_model=Catalog,
+            response_class=self.response_class,
+            summary="Update Catalog",
+            description="Update an existing STAC catalog.",
+            tags=["Catalogs"],
+        )
+
         # Add endpoint for deleting a catalog
         self.router.add_api_route(
             path="/catalogs/{catalog_id}",
@@ -311,6 +323,55 @@ class CatalogsExtension(ApiExtension):
 
         # Return the created catalog
         return catalog
+
+    async def update_catalog(
+        self, catalog_id: str, catalog: Catalog, request: Request
+    ) -> Catalog:
+        """Update an existing catalog.
+
+        Args:
+            catalog_id: The ID of the catalog to update.
+            catalog: The updated catalog data.
+            request: Request object.
+
+        Returns:
+            The updated catalog.
+
+        Raises:
+            HTTPException: If the catalog is not found.
+        """
+        try:
+            # Verify the catalog exists
+            existing_catalog_db = await self.client.database.find_catalog(catalog_id)
+
+            # Convert STAC catalog to database format
+            db_catalog = self.client.catalog_serializer.stac_to_db(catalog, request)
+            db_catalog_dict = db_catalog.model_dump()
+            db_catalog_dict["type"] = "Catalog"
+
+            # Preserve parent_ids and other internal fields from the existing catalog
+            if "parent_ids" in existing_catalog_db:
+                db_catalog_dict["parent_ids"] = existing_catalog_db["parent_ids"]
+
+            # Update the catalog in the database (upsert via create_catalog)
+            await self.client.database.create_catalog(db_catalog_dict, refresh=True)
+
+            # Return the updated catalog
+            return catalog
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            error_msg = str(e)
+            if "not found" in error_msg.lower():
+                raise HTTPException(
+                    status_code=404, detail=f"Catalog {catalog_id} not found"
+                )
+            logger.error(f"Error updating catalog {catalog_id}: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to update catalog: {str(e)}",
+            )
 
     async def get_catalog(self, catalog_id: str, request: Request) -> Catalog:
         """Get a specific catalog by ID.
