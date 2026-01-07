@@ -15,6 +15,7 @@ from stac_fastapi.core.models import Catalog
 from stac_fastapi.sfeos_helpers.mappings import COLLECTIONS_INDEX
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.core import BaseCoreClient
+from stac_fastapi.types.errors import NotFoundError
 from stac_fastapi.types.extension import ApiExtension
 
 logger = logging.getLogger(__name__)
@@ -690,51 +691,92 @@ class CatalogsExtension(ApiExtension):
     async def create_catalog_catalog(
         self, catalog_id: str, catalog: Catalog, request: Request
     ) -> Catalog:
-        """Create a new catalog and link it as a sub-catalog of a specific catalog.
+        """Create a new catalog or link an existing catalog as a sub-catalog.
+
+        Logic:
+        1. Verifies the parent catalog exists.
+        2. If the sub-catalog already exists: Appends the parent ID to its parent_ids
+           (enabling poly-hierarchy - a catalog can have multiple parents).
+        3. If the sub-catalog is new: Creates it with parent_ids initialized to [catalog_id].
 
         Args:
             catalog_id: The ID of the parent catalog.
-            catalog: The catalog to create.
+            catalog: The catalog to create or link.
             request: Request object.
 
         Returns:
-            The created catalog.
+            The created or linked catalog.
 
         Raises:
-            HTTPException: If the parent catalog is not found or creation fails.
+            HTTPException: If the parent catalog is not found or operation fails.
         """
         try:
-            # Verify the parent catalog exists
+            # 1. Verify the parent catalog exists
             await self.client.database.find_catalog(catalog_id)
 
-            # Convert STAC catalog to database format
-            db_catalog = self.client.catalog_serializer.stac_to_db(catalog, request)
+            # 2. Check if the sub-catalog already exists
+            try:
+                existing_catalog = await self.client.database.find_catalog(catalog.id)
 
-            # Convert to dict and ensure type is set to Catalog
-            db_catalog_dict = db_catalog.model_dump()
-            db_catalog_dict["type"] = "Catalog"
-            # TODO: Future enhancement - Support 'linking' existing catalogs by appending to parent_ids instead of overwriting.
-            # This would enable poly-hierarchy for catalogs (catalogs with multiple parents).
-            db_catalog_dict["parent_ids"] = [catalog_id]
+                # --- UPDATE PATH (Existing Catalog) ---
+                # We are linking an existing catalog to a new parent (poly-hierarchy)
 
-            # Create the catalog in the database with refresh to ensure immediate availability
-            await self.client.database.create_catalog(db_catalog_dict, refresh=True)
+                # Ensure parent_ids list exists
+                if "parent_ids" not in existing_catalog:
+                    existing_catalog["parent_ids"] = []
 
-            logger.info(f"Created new catalog {catalog.id} with parent {catalog_id}")
+                # Append if not already present
+                if catalog_id not in existing_catalog["parent_ids"]:
+                    existing_catalog["parent_ids"].append(catalog_id)
 
-            # Return the created catalog
-            return catalog
+                    # Persist the update using Elasticsearch client directly
+                    await self.client.database.client.index(
+                        index=COLLECTIONS_INDEX,
+                        id=catalog.id,
+                        body=existing_catalog,
+                        refresh=True,
+                    )
+                    logger.info(
+                        f"Linked existing catalog {catalog.id} to parent {catalog_id}"
+                    )
+
+                # Return the STAC object
+                return self.client.catalog_serializer.db_to_stac(
+                    existing_catalog, request
+                )
+
+            except NotFoundError:
+                # --- CREATE PATH (New Catalog) ---
+                # Catalog does not exist, so we create it
+
+                # Convert STAC catalog to database format
+                db_catalog = self.client.catalog_serializer.stac_to_db(catalog, request)
+
+                # Convert to dict
+                db_catalog_dict = db_catalog.model_dump()
+                db_catalog_dict["type"] = "Catalog"
+
+                # Initialize parent_ids
+                db_catalog_dict["parent_ids"] = [catalog_id]
+
+                # Create in DB
+                await self.client.database.create_catalog(db_catalog_dict, refresh=True)
+                logger.info(
+                    f"Created new catalog {catalog.id} with parent {catalog_id}"
+                )
+
+                return catalog
 
         except HTTPException:
             raise
         except Exception as e:
             logger.error(
-                f"Error creating catalog {catalog.id} in parent catalog {catalog_id}: {e}",
+                f"Error processing sub-catalog {catalog.id} in parent {catalog_id}: {e}",
                 exc_info=True,
             )
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to create catalog in parent catalog: {str(e)}",
+                detail=f"Failed to process sub-catalog: {str(e)}",
             )
 
     async def create_catalog_collection(

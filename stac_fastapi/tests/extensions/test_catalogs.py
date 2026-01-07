@@ -1719,6 +1719,51 @@ async def test_delete_sub_catalog_becomes_root_level(
 
 
 @pytest.mark.asyncio
+async def test_catalog_poly_hierarchy(catalogs_app_client, load_test_data):
+    """Test poly-hierarchy: a catalog can belong to multiple parent catalogs."""
+    # Create two parent catalogs
+    parent_ids = []
+    for i in range(2):
+        parent = load_test_data("test_catalog.json")
+        parent_id = f"parent-{uuid.uuid4()}-{i}"
+        parent["id"] = parent_id
+
+        parent_resp = await catalogs_app_client.post("/catalogs", json=parent)
+        assert parent_resp.status_code == 201
+        parent_ids.append(parent_id)
+
+    # Create a sub-catalog under first parent
+    sub_catalog = load_test_data("test_catalog.json")
+    sub_id = f"sub-catalog-{uuid.uuid4()}"
+    sub_catalog["id"] = sub_id
+
+    create_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_ids[0]}/catalogs", json=sub_catalog
+    )
+    assert create_resp.status_code == 201
+
+    # Link the same sub-catalog to second parent (poly-hierarchy)
+    link_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_ids[1]}/catalogs",
+        json=load_test_data("test_catalog.json") | {"id": sub_id},
+    )
+    assert link_resp.status_code == 201
+
+    # Verify sub-catalog appears in both parents' sub-catalogs lists
+    for parent_id in parent_ids:
+        get_resp = await catalogs_app_client.get(f"/catalogs/{parent_id}/catalogs")
+        assert get_resp.status_code == 200
+
+        catalogs_data = get_resp.json()
+        returned_ids = [cat["id"] for cat in catalogs_data["catalogs"]]
+        assert sub_id in returned_ids
+
+    # Verify the sub-catalog itself still exists and is retrievable
+    get_sub_resp = await catalogs_app_client.get(f"/catalogs/{sub_id}")
+    assert get_sub_resp.status_code == 200
+
+
+@pytest.mark.asyncio
 async def test_get_sub_catalogs_pagination(catalogs_app_client, load_test_data):
     """Test pagination of sub-catalogs endpoint."""
     # Create parent catalog
