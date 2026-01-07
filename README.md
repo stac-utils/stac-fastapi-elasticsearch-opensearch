@@ -172,7 +172,7 @@ SFEOS provides enhanced collection search capabilities through two primary route
 - **GET/POST `/collections`**: The standard STAC endpoint with extended query parameters
 - **GET/POST `/collections-search`**: A custom endpoint that supports the same parameters, created to avoid conflicts with the STAC Transactions extension if enabled (which uses POST `/collections` for collection creation)
 
-The `/collections-search` endpoint follows the [STAC API Collection Search Endpoint](https://github.com/Healy-Hyperspatial/stac-api-extensions-collection-search-endpoint) specification, which provides a dedicated, conflict-free mechanism for advanced collection searching.
+The `/collections-search` endpoint follows the [Collection Search with Large Payloads](https://github.com/Healy-Hyperspatial/collection-search-large-payloads) specification, which provides a dedicated, conflict-free mechanism for advanced collection searching.
 
 These endpoints support advanced collection discovery features including:
 
