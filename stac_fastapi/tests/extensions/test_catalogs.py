@@ -1716,3 +1716,132 @@ async def test_delete_sub_catalog_becomes_root_level(
     # Verify parent is deleted
     parent_get_resp = await catalogs_app_client.get(f"/catalogs/{parent_id}")
     assert parent_get_resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_get_sub_catalogs_pagination(catalogs_app_client, load_test_data):
+    """Test pagination of sub-catalogs endpoint."""
+    # Create parent catalog
+    parent_catalog = load_test_data("test_catalog.json")
+    parent_id = f"parent-catalog-{uuid.uuid4()}"
+    parent_catalog["id"] = parent_id
+
+    parent_resp = await catalogs_app_client.post("/catalogs", json=parent_catalog)
+    assert parent_resp.status_code == 201
+
+    # Create 15 sub-catalogs (more than default limit of 10)
+    sub_ids = []
+    for i in range(15):
+        sub_catalog = load_test_data("test_catalog.json")
+        sub_id = f"sub-catalog-{uuid.uuid4()}-{i:02d}"
+        sub_catalog["id"] = sub_id
+
+        sub_resp = await catalogs_app_client.post(
+            f"/catalogs/{parent_id}/catalogs", json=sub_catalog
+        )
+        assert sub_resp.status_code == 201
+        sub_ids.append(sub_id)
+
+    # Get first page with default limit (10)
+    page1_resp = await catalogs_app_client.get(f"/catalogs/{parent_id}/catalogs")
+    assert page1_resp.status_code == 200
+    page1_data = page1_resp.json()
+
+    assert len(page1_data["catalogs"]) == 10
+    assert page1_data["numberReturned"] == 10
+    assert page1_data["numberMatched"] == 15
+    assert "next" in [link["rel"] for link in page1_data["links"]]
+
+    # Get next page using token
+    next_link = next(
+        (link for link in page1_data["links"] if link["rel"] == "next"), None
+    )
+    assert next_link is not None
+
+    # Extract token from next link
+    next_url = next_link["href"]
+    page2_resp = await catalogs_app_client.get(next_url)
+    assert page2_resp.status_code == 200
+    page2_data = page2_resp.json()
+
+    # Second page should have remaining 5 catalogs
+    assert len(page2_data["catalogs"]) == 5
+    assert page2_data["numberReturned"] == 5
+    assert page2_data["numberMatched"] == 15
+
+    # Verify no 'next' link on last page
+    assert "next" not in [link["rel"] for link in page2_data["links"]]
+
+    # Verify all catalogs are unique across pages
+    page1_ids = [cat["id"] for cat in page1_data["catalogs"]]
+    page2_ids = [cat["id"] for cat in page2_data["catalogs"]]
+    assert len(set(page1_ids) & set(page2_ids)) == 0  # No overlap
+    assert len(page1_ids) + len(page2_ids) == 15  # All accounted for
+
+
+@pytest.mark.asyncio
+async def test_get_sub_catalogs_pagination_with_limit(
+    catalogs_app_client, load_test_data
+):
+    """Test pagination of sub-catalogs with custom limit parameter."""
+    # Create parent catalog
+    parent_catalog = load_test_data("test_catalog.json")
+    parent_id = f"parent-catalog-{uuid.uuid4()}"
+    parent_catalog["id"] = parent_id
+
+    parent_resp = await catalogs_app_client.post("/catalogs", json=parent_catalog)
+    assert parent_resp.status_code == 201
+
+    # Create 8 sub-catalogs
+    sub_ids = []
+    for i in range(8):
+        sub_catalog = load_test_data("test_catalog.json")
+        sub_id = f"sub-catalog-{uuid.uuid4()}-{i:02d}"
+        sub_catalog["id"] = sub_id
+
+        sub_resp = await catalogs_app_client.post(
+            f"/catalogs/{parent_id}/catalogs", json=sub_catalog
+        )
+        assert sub_resp.status_code == 201
+        sub_ids.append(sub_id)
+
+    # Get first page with limit=3
+    page1_resp = await catalogs_app_client.get(
+        f"/catalogs/{parent_id}/catalogs?limit=3"
+    )
+    assert page1_resp.status_code == 200
+    page1_data = page1_resp.json()
+
+    assert len(page1_data["catalogs"]) == 3
+    assert page1_data["numberReturned"] == 3
+    assert page1_data["numberMatched"] == 8
+
+    # Get second page
+    next_link = next(
+        (link for link in page1_data["links"] if link["rel"] == "next"), None
+    )
+    assert next_link is not None
+    assert "limit=3" in next_link["href"]
+
+    page2_resp = await catalogs_app_client.get(next_link["href"])
+    assert page2_resp.status_code == 200
+    page2_data = page2_resp.json()
+
+    assert len(page2_data["catalogs"]) == 3
+    assert page2_data["numberReturned"] == 3
+
+    # Get third page
+    next_link = next(
+        (link for link in page2_data["links"] if link["rel"] == "next"), None
+    )
+    assert next_link is not None
+
+    page3_resp = await catalogs_app_client.get(next_link["href"])
+    assert page3_resp.status_code == 200
+    page3_data = page3_resp.json()
+
+    assert len(page3_data["catalogs"]) == 2
+    assert page3_data["numberReturned"] == 2
+
+    # Verify no 'next' link on last page
+    assert "next" not in [link["rel"] for link in page3_data["links"]]

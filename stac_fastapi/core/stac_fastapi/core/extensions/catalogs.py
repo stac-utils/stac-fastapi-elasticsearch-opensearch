@@ -549,15 +549,23 @@ class CatalogsExtension(ApiExtension):
                 status_code=404, detail=f"Catalog {catalog_id} not found"
             )
 
-    async def get_catalog_catalogs(self, catalog_id: str, request: Request) -> Catalogs:
-        """Get all sub-catalogs of a specific catalog.
+    async def get_catalog_catalogs(
+        self,
+        catalog_id: str,
+        request: Request,
+        limit: int = Query(10, ge=1, le=100),
+        token: Optional[str] = Query(None),
+    ) -> Catalogs:
+        """Get all sub-catalogs of a specific catalog with pagination.
 
         Args:
             catalog_id: The ID of the parent catalog.
             request: Request object.
+            limit: Maximum number of results to return (default: 10, max: 100).
+            token: Pagination token for cursor-based pagination.
 
         Returns:
-            A Catalogs response containing all sub-catalogs.
+            A Catalogs response containing sub-catalogs with pagination links.
 
         Raises:
             HTTPException: If the catalog is not found.
@@ -566,10 +574,9 @@ class CatalogsExtension(ApiExtension):
             # Verify the catalog exists
             await self.client.database.find_catalog(catalog_id)
 
-            # Query catalogs by parent_ids field using Elasticsearch directly
-            # This uses the parent_ids field in the catalog mapping to find all
-            # catalogs that have this catalog as a parent
-            query_body = {
+            # Build the search query with pagination support
+            sort_fields: List[Dict[str, Any]] = [{"id": {"order": "asc"}}]
+            query_body: Dict[str, Any] = {
                 "query": {
                     "bool": {
                         "must": [
@@ -577,10 +584,23 @@ class CatalogsExtension(ApiExtension):
                             {"term": {"type": "Catalog"}},
                         ]
                     }
-                }
+                },
+                "sort": sort_fields,  # Stable sort required for pagination
+                "size": limit,
             }
 
-            # Execute the search to get catalog IDs
+            # Handle pagination cursor (token)
+            # Token format: "value1|value2|..." matching the sort fields
+            if token:
+                try:
+                    search_after = token.split("|")
+                    if len(search_after) == len(sort_fields):
+                        query_body["search_after"] = search_after
+                except Exception:
+                    # If token is invalid, just ignore it and return first page
+                    logger.debug(f"Invalid pagination token: {token}")
+
+            # Execute the search
             try:
                 search_result = await self.client.database.client.search(
                     index=COLLECTIONS_INDEX, body=query_body
@@ -591,21 +611,18 @@ class CatalogsExtension(ApiExtension):
                 )
                 search_result = {"hits": {"hits": []}}
 
-            # Extract catalog IDs from search results
-            catalog_ids = []
+            # Process results
             hits = search_result.get("hits", {}).get("hits", [])
-            for hit in hits:
-                catalog_ids.append(hit.get("_id"))
+            total_hits = search_result.get("hits", {}).get("total", {}).get("value", 0)
 
-            # Fetch the catalogs
             catalogs = []
-            for cat_id in catalog_ids:
+            for hit in hits:
                 try:
-                    # Get the catalog from database
-                    catalog_db = await self.client.database.find_catalog(cat_id)
+                    # OPTIMIZATION: Use _source directly instead of fetching from DB again
+                    catalog_data = hit["_source"]
                     # Serialize to STAC format
                     catalog = self.client.catalog_serializer.db_to_stac(
-                        catalog_db,
+                        catalog_data,
                         request,
                         extensions=[
                             type(ext).__name__
@@ -613,38 +630,49 @@ class CatalogsExtension(ApiExtension):
                         ],
                     )
                     catalogs.append(catalog)
-                except HTTPException as e:
-                    # Only skip catalogs that are not found (404)
-                    if e.status_code == 404:
-                        logger.debug(f"Catalog {cat_id} not found, skipping")
-                        continue
-                    else:
-                        # Re-raise other HTTP exceptions (5xx server errors, etc.)
-                        logger.error(f"HTTP error retrieving catalog {cat_id}: {e}")
-                        raise
                 except Exception as e:
-                    # Log unexpected errors and re-raise them
-                    logger.error(f"Unexpected error retrieving catalog {cat_id}: {e}")
-                    raise
+                    logger.error(f"Error serializing catalog {hit.get('_id')}: {e}")
+                    continue
 
-            # Return in Catalogs format
+            # Generate pagination links
             base_url = str(request.base_url)
+            links = [
+                {"rel": "root", "type": "application/json", "href": base_url},
+                {
+                    "rel": "parent",
+                    "type": "application/json",
+                    "href": f"{base_url}catalogs/{catalog_id}",
+                },
+                {
+                    "rel": "self",
+                    "type": "application/json",
+                    "href": str(request.url),
+                },
+            ]
+
+            # Generate 'next' link if more results exist
+            if len(hits) == limit and len(catalogs) > 0:
+                last_hit_sort = hits[-1].get("sort")
+                if last_hit_sort:
+                    # Create the token by joining sort values
+                    next_token = "|".join(str(x) for x in last_hit_sort)
+
+                    # Build the next URL
+                    query_params = {"limit": limit, "token": next_token}
+                    links.append(
+                        {
+                            "rel": "next",
+                            "href": f"{base_url}catalogs/{catalog_id}/catalogs?{urlencode(query_params)}",
+                            "type": "application/json",
+                            "title": "Next page",
+                        }
+                    )
+
             return {
                 "catalogs": catalogs,
-                "links": [
-                    {"rel": "root", "type": "application/json", "href": base_url},
-                    {
-                        "rel": "parent",
-                        "type": "application/json",
-                        "href": f"{base_url}catalogs/{catalog_id}",
-                    },
-                    {
-                        "rel": "self",
-                        "type": "application/json",
-                        "href": f"{base_url}catalogs/{catalog_id}/catalogs",
-                    },
-                ],
+                "links": links,
                 "numberReturned": len(catalogs),
+                "numberMatched": total_hits,
             }
 
         except HTTPException:
@@ -685,6 +713,8 @@ class CatalogsExtension(ApiExtension):
             # Convert to dict and ensure type is set to Catalog
             db_catalog_dict = db_catalog.model_dump()
             db_catalog_dict["type"] = "Catalog"
+            # TODO: Future enhancement - Support 'linking' existing catalogs by appending to parent_ids instead of overwriting.
+            # This would enable poly-hierarchy for catalogs (catalogs with multiple parents).
             db_catalog_dict["parent_ids"] = [catalog_id]
 
             # Create the catalog in the database with refresh to ensure immediate availability
