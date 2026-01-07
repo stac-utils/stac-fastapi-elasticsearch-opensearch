@@ -393,8 +393,52 @@ Catalog responses include:
 
 This feature enables building user interfaces that provide organized, hierarchical browsing of STAC collections and catalogs, making it easier for users to discover and navigate through large datasets organized by theme, provider, region, or any other categorization scheme. The hierarchical structure supports unlimited nesting levels for maximum organizational flexibility.
 
-> **Configuration**: The catalogs route can be enabled or disabled by setting the `ENABLE_CATALOGS_ROUTE` environment variable to `true` or `false`. By default, this endpoint is **disabled**.
+### Poly-Hierarchy & Linking Existing Resources
 
+This extension supports **Poly-Hierarchy**, meaning a single Catalog or Collection can belong to multiple parents simultaneously. This allows you to create "Virtual" views or "Playlists" of data without duplicating content.
+
+To link an **existing** Catalog or Collection to a new parent, simply `POST` it to the new parent's endpoint using its existing `id`. The API implements an **Upsert** (Update or Insert) logic:
+
+1. **Check:** Does a resource with this `id` already exist?
+2. **If YES (Link):** The API adds the new parent to the resource's `parent_ids` list. No data is duplicated.
+3. **If NO (Create):** The API creates a new resource.
+
+#### Example: Creating a "Forestry" Playlist
+
+Imagine you have an existing catalog `sentinel-2` stored under `providers/esa`. You want to create a curated "Forestry" catalog that includes this existing data.
+
+```bash
+# 1. Create the new Forestry catalog
+curl -X POST "http://localhost:8081/catalogs" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "forestry",
+    "type": "Catalog",
+    "stac_version": "1.0.0",
+    "description": "Forestry-related datasets",
+    "title": "Forestry"
+  }'
+
+# 2. Link the EXISTING Sentinel-2 catalog to Forestry
+# Note: We use the existing ID "sentinel-2"
+curl -X POST "http://localhost:8081/catalogs/forestry/catalogs" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "sentinel-2",
+    "type": "Catalog",
+    "stac_version": "1.0.0",
+    "description": "Sentinel-2 satellite imagery",
+    "title": "Sentinel-2"
+  }'
+```
+
+**Result:** The sentinel-2 catalog is now accessible via both paths:
+- `/catalogs/providers/esa/catalogs/sentinel-2`
+- `/catalogs/forestry/catalogs/sentinel-2`
+
+Because you are linking the node (the Catalog), the entire sub-tree attached to that node is automatically shared. If sentinel-2 contains millions of items and sub-catalogs, they are all instantly visible under the new forestry path without needing to re-link individual items.
+
+> **Configuration**: The catalogs route can be enabled or disabled by setting the `ENABLE_CATALOGS_ROUTE` environment variable to `true` or `false`. By default, this endpoint is **disabled**.
 
 ## Package Structure
 
