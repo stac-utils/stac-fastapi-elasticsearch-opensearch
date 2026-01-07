@@ -12,7 +12,12 @@ from starlette.responses import Response
 from typing_extensions import TypedDict
 
 from stac_fastapi.core.models import Catalog
-from stac_fastapi.sfeos_helpers.mappings import COLLECTIONS_INDEX
+from stac_fastapi.sfeos_helpers.database import (
+    search_children_with_pagination_shared,
+    search_collections_by_parent_id_shared,
+    search_sub_catalogs_with_pagination_shared,
+    update_catalog_in_index_shared,
+)
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.core import BaseCoreClient
 from stac_fastapi.types.errors import NotFoundError
@@ -391,11 +396,9 @@ class CatalogsExtension(ApiExtension):
             await self.client.database.find_catalog(catalog_id)
 
             # Find all collections with this catalog in parent_ids
-            query_body = {"query": {"term": {"parent_ids": catalog_id}}, "size": 10000}
-            search_result = await self.client.database.client.search(
-                index=COLLECTIONS_INDEX, body=query_body
+            children = await search_collections_by_parent_id_shared(
+                self.client.database.client, catalog_id
             )
-            children = [hit["_source"] for hit in search_result["hits"]["hits"]]
 
             # Safe Unlink: Remove catalog from all children's parent_ids
             # If a child becomes an orphan, adopt it to root
@@ -466,27 +469,15 @@ class CatalogsExtension(ApiExtension):
             # Verify the catalog exists
             await self.client.database.find_catalog(catalog_id)
 
-            # Query collections by parent_ids field using Elasticsearch directly
+            # Query collections by parent_ids field
             # This uses the parent_ids field in the collection mapping to find all
             # collections that have this catalog as a parent
-            query_body = {"query": {"term": {"parent_ids": catalog_id}}}
+            collections_data = await search_collections_by_parent_id_shared(
+                self.client.database.client, catalog_id
+            )
 
-            # Execute the search to get collection IDs
-            try:
-                search_result = await self.client.database.client.search(
-                    index=COLLECTIONS_INDEX, body=query_body
-                )
-            except Exception as e:
-                logger.error(
-                    f"Error searching for collections with parent {catalog_id}: {e}"
-                )
-                search_result = {"hits": {"hits": []}}
-
-            # Extract collection IDs from search results
-            collection_ids = []
-            hits = search_result.get("hits", {}).get("hits", [])
-            for hit in hits:
-                collection_ids.append(hit.get("_id"))
+            # Extract collection IDs from results
+            collection_ids = [coll.get("id") for coll in collections_data]
 
             # Fetch the collections
             collections = []
@@ -575,53 +566,19 @@ class CatalogsExtension(ApiExtension):
             # Verify the catalog exists
             await self.client.database.find_catalog(catalog_id)
 
-            # Build the search query with pagination support
-            sort_fields: List[Dict[str, Any]] = [{"id": {"order": "asc"}}]
-            query_body: Dict[str, Any] = {
-                "query": {
-                    "bool": {
-                        "must": [
-                            {"term": {"parent_ids": catalog_id}},
-                            {"term": {"type": "Catalog"}},
-                        ]
-                    }
-                },
-                "sort": sort_fields,  # Stable sort required for pagination
-                "size": limit,
-            }
+            # Search for sub-catalogs with pagination
+            (
+                catalogs_data,
+                total_hits,
+                next_token,
+            ) = await search_sub_catalogs_with_pagination_shared(
+                self.client.database.client, catalog_id, limit, token
+            )
 
-            # Handle pagination cursor (token)
-            # Token format: "value1|value2|..." matching the sort fields
-            if token:
-                try:
-                    search_after = token.split("|")
-                    if len(search_after) == len(sort_fields):
-                        query_body["search_after"] = search_after
-                except Exception:
-                    # If token is invalid, just ignore it and return first page
-                    logger.debug(f"Invalid pagination token: {token}")
-
-            # Execute the search
-            try:
-                search_result = await self.client.database.client.search(
-                    index=COLLECTIONS_INDEX, body=query_body
-                )
-            except Exception as e:
-                logger.error(
-                    f"Error searching for catalogs with parent {catalog_id}: {e}"
-                )
-                search_result = {"hits": {"hits": []}}
-
-            # Process results
-            hits = search_result.get("hits", {}).get("hits", [])
-            total_hits = search_result.get("hits", {}).get("total", {}).get("value", 0)
-
+            # Serialize to STAC format
             catalogs = []
-            for hit in hits:
+            for catalog_data in catalogs_data:
                 try:
-                    # OPTIMIZATION: Use _source directly instead of fetching from DB again
-                    catalog_data = hit["_source"]
-                    # Serialize to STAC format
                     catalog = self.client.catalog_serializer.db_to_stac(
                         catalog_data,
                         request,
@@ -632,7 +589,9 @@ class CatalogsExtension(ApiExtension):
                     )
                     catalogs.append(catalog)
                 except Exception as e:
-                    logger.error(f"Error serializing catalog {hit.get('_id')}: {e}")
+                    logger.error(
+                        f"Error serializing catalog {catalog_data.get('id')}: {e}"
+                    )
                     continue
 
             # Generate pagination links
@@ -651,23 +610,17 @@ class CatalogsExtension(ApiExtension):
                 },
             ]
 
-            # Generate 'next' link if more results exist
-            if len(hits) == limit and len(catalogs) > 0:
-                last_hit_sort = hits[-1].get("sort")
-                if last_hit_sort:
-                    # Create the token by joining sort values
-                    next_token = "|".join(str(x) for x in last_hit_sort)
-
-                    # Build the next URL
-                    query_params = {"limit": limit, "token": next_token}
-                    links.append(
-                        {
-                            "rel": "next",
-                            "href": f"{base_url}catalogs/{catalog_id}/catalogs?{urlencode(query_params)}",
-                            "type": "application/json",
-                            "title": "Next page",
-                        }
-                    )
+            # Add next link if more results exist
+            if next_token:
+                query_params = {"limit": limit, "token": next_token}
+                links.append(
+                    {
+                        "rel": "next",
+                        "href": f"{base_url}catalogs/{catalog_id}/catalogs?{urlencode(query_params)}",
+                        "type": "application/json",
+                        "title": "Next page",
+                    }
+                )
 
             return {
                 "catalogs": catalogs,
@@ -729,12 +682,9 @@ class CatalogsExtension(ApiExtension):
                 if catalog_id not in existing_catalog["parent_ids"]:
                     existing_catalog["parent_ids"].append(catalog_id)
 
-                    # Persist the update using Elasticsearch client directly
-                    await self.client.database.client.index(
-                        index=COLLECTIONS_INDEX,
-                        id=catalog.id,
-                        body=existing_catalog,
-                        refresh=True,
+                    # Persist the update
+                    await update_catalog_in_index_shared(
+                        self.client.database.client, catalog.id, existing_catalog
                     )
                     logger.info(
                         f"Linked existing catalog {catalog.id} to parent {catalog_id}"
@@ -1047,57 +997,14 @@ class CatalogsExtension(ApiExtension):
         # 1. Verify the parent catalog exists
         await self.client.database.find_catalog(catalog_id)
 
-        # 2. Build the Search Query
-        # We search the COLLECTIONS_INDEX because it holds both Catalogs and Collections
-
-        # Base filter: Parent match
-        # This finds anything where 'parent_ids' contains this catalog_id
-        filter_queries = [{"term": {"parent_ids": catalog_id}}]
-
-        # Optional filter: Type
-        if type:
-            # If user asks for ?type=Catalog, we only return Catalogs
-            filter_queries.append({"term": {"type": type}})
-
-        # 3. Calculate Pagination (Search After)
-        body = {
-            "query": {"bool": {"filter": filter_queries}},
-            "sort": [{"id": {"order": "asc"}}],  # Stable sort for pagination
-            "size": limit,
-        }
-
-        # Handle search_after token - split by '|' to get all sort values
-        search_after: Optional[List[str]] = None
-        if token:
-            try:
-                # The token should be a pipe-separated string of sort values
-                # e.g., "collection-1"
-                from typing import cast
-
-                search_after_parts = cast(List[str], token.split("|"))
-                # If the number of sort fields doesn't match token parts, ignore the token
-                if len(search_after_parts) != len(body["sort"]):  # type: ignore
-                    search_after = None
-                else:
-                    search_after = search_after_parts
-            except Exception:
-                search_after = None
-
-            if search_after is not None:
-                body["search_after"] = search_after
-
-        # 4. Execute Search
-        search_result = await self.client.database.client.search(
-            index=COLLECTIONS_INDEX, body=body
+        # 2. Search for children with pagination
+        children_data, total, next_token = await search_children_with_pagination_shared(
+            self.client.database.client, catalog_id, limit, token, type
         )
 
-        # 5. Process Results
-        hits = search_result.get("hits", {}).get("hits", [])
-        total = search_result.get("hits", {}).get("total", {}).get("value", 0)
-
+        # 3. Serialize children based on type
         children = []
-        for hit in hits:
-            doc = hit["_source"]
+        for doc in children_data:
             resource_type = doc.get(
                 "type", "Collection"
             )  # Default to Collection if missing
@@ -1111,7 +1018,7 @@ class CatalogsExtension(ApiExtension):
 
             children.append(child)
 
-        # 6. Format Response
+        # 4. Format Response
         # The Children extension uses a specific response format
         response = {
             "children": children,
@@ -1132,14 +1039,7 @@ class CatalogsExtension(ApiExtension):
             "numberMatched": total,
         }
 
-        # 7. Generate Next Link
-        next_token = None
-        if len(hits) == limit:
-            next_token_values = hits[-1].get("sort")
-            if next_token_values:
-                # Join all sort values with '|' to create the token
-                next_token = "|".join(str(val) for val in next_token_values)
-
+        # 5. Generate Next Link
         if next_token:
             # Get existing query params
             parsed_url = urlparse(str(request.url))
