@@ -33,6 +33,7 @@ dependencies = [
     "elasticsearch[async]~=8.19.1",
     "uvicorn~=0.23.0",
     "starlette>=0.35.0,<0.36.0",
+    "opensearch-py~=2.8.0",
 ]
 
 [project.urls]
@@ -48,6 +49,7 @@ dev = [
     "httpx>=0.24.0,<0.28.0",
     "redis~=6.4.0",
     "retry~=0.9.2",
+    "tenacity~=9.1.2",
     "stac-fastapi-core[redis]==6.8.1",
 ]
 docs = [

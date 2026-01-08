@@ -50,6 +50,7 @@ dev = [
     "redis~=6.4.0",
     "retry~=0.9.2",
     "stac-fastapi-core[redis]==6.8.1",
+    "tenacity~=9.1.2",
 ]
 docs = [
     "mkdocs~=1.4.0",

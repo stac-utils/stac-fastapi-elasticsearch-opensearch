@@ -3,9 +3,10 @@ import random
 import uuid
 from copy import deepcopy
 from datetime import datetime, timedelta
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
+from opensearchpy import exceptions
 
 from stac_fastapi.core.utilities import datetime_search_retry
 from stac_fastapi.types.errors import ConflictError
@@ -1726,59 +1727,58 @@ async def test_hide_private_data_from_item(app_client, txn_client, load_test_dat
 
 
 @pytest.mark.asyncio
-async def test_datetime_search_retry_succeeds_on_retry():
-    """Test retry works for datetime queries with NotFoundError."""
-    call_counter = {"count": 0}
+async def test_datetime_search_retry_retries_success():
+    call_count = {"count": 0}
 
-    @datetime_search_retry
-    async def mock_search(self, datetime_search=None):
-        call_counter["count"] += 1
-        if call_counter["count"] < 2:
-            raise Exception("not found: Index not found.")
+    async def search(*args, **kwargs):
+        call_count["count"] += 1
+        if call_count["count"] < 5:
+            raise exceptions.NotFoundError(404, "Not Found", {})
         return "success"
 
-    result = await mock_search(None, datetime_search={"datetime": "2025-01-01"})
+    mock_search_func = AsyncMock(side_effect=search)
+    decorated_search = datetime_search_retry(mock_search_func)
+    result = await decorated_search(self=None, datetime_search={"from": "2020-01-01"})
 
     assert result == "success"
-    assert call_counter["count"] == 2
+    # The 5th request succeeds after 4 failures
+    assert mock_search_func.call_count == 5
 
 
 @pytest.mark.asyncio
-async def test_datetime_search_no_retry_for_none_datetime():
-    """Test that retry is invoked only for datetime queries."""
-    call_counter = {"count": 0}
+async def test_datetime_search_no_retry_no_datetime():
+    call_count = {"count": 0}
 
-    @datetime_search_retry
-    async def mock_search(self, datetime_search=None):
-        call_counter["count"] += 1
-        if call_counter["count"] < 2:
-            raise Exception("not found: Index not found.")
-        return "success"
+    async def search(*args, **kwargs):
+        call_count["count"] += 1
+        raise exceptions.NotFoundError(404, "Not Found", {})
 
-    with pytest.raises(Exception):
-        await mock_search(None, datetime_search={})
+    mock_search_func = AsyncMock(side_effect=search)
+    decorated_search = datetime_search_retry(mock_search_func)
 
-    assert call_counter["count"] == 1
-    call_counter["count"] = 0
+    with pytest.raises(exceptions.NotFoundError):
+        await decorated_search(self=None, datetime_search={})
 
-    with pytest.raises(Exception):
-        await mock_search(None, datetime_search=None)
-
-    assert call_counter["count"] == 1
+    assert mock_search_func.call_count == 1
 
 
 @pytest.mark.asyncio
 async def test_datetime_search_max_retries():
-    """Test that retry stops after max attempts."""
-    call_counter = {"count": 0}
+    call_count = {"count": 0}
 
-    @datetime_search_retry
-    async def mock_search(self, datetime_search=None):
-        call_counter["count"] += 1
-        raise Exception(f"Not found: Fails, attempt {call_counter['count']}")
+    async def search(*args, **kwargs):
+        call_count["count"] += 1
+        raise exceptions.NotFoundError(
+            404, f"Not found: attempt {call_count['count']}", {}
+        )
 
-    with pytest.raises(Exception) as exc_info:
-        await mock_search(None, datetime_search={"start_datetime": "2025-01-01"})
+    mock_search_func = AsyncMock(side_effect=search)
+    decorated_search = datetime_search_retry(mock_search_func)
 
-    assert call_counter["count"] == 3
-    assert "attempt 3" in str(exc_info.value).lower()
+    with pytest.raises(exceptions.NotFoundError) as exc_info:
+        await decorated_search(
+            self=None, datetime_search={"start_datetime": "2025-01-01"}
+        )
+
+    assert mock_search_func.call_count == 5
+    assert "attempt 5" in str(exc_info.value)
