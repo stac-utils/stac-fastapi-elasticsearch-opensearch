@@ -544,7 +544,6 @@ You can customize additional settings in your `.env` file:
 | `PROPERTIES_END_DATETIME_FIELD` | Specifies the field used for the upper value of a datetime range for the items in the backend database. | `properties.end_datetime` | Optional |
 | `COLLECTION_FIELD` | Specifies the field used for the collection an item belongs to in the backend database | `collection` | Optional |
 | `GEOMETRY_FIELD` | Specifies the field containing the geometry of the items in the backend database | `geometry` | Optional |
-| `EXCLUDED_FROM_ITEMS` | Specifies fields to exclude from STAC item responses. Supports comma-separated field names and dot notation for nested fields (e.g., `private_data,properties.confidential,assets.internal`). | `None` | Optional |
 | `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` | JSON string of custom Elasticsearch/OpenSearch property mappings to merge with defaults. See [Custom Index Mappings](#custom-index-mappings). | `None` | Optional |
 | `STAC_FASTAPI_ES_MAPPINGS_FILE` | Path to a JSON file containing custom Elasticsearch/OpenSearch property mappings to merge with defaults. See [Custom Index Mappings](#custom-index-mappings). | `None` | Optional |
 | `STAC_FASTAPI_ES_DYNAMIC_MAPPING` | Controls dynamic mapping behavior for item indices. Values: `true` (default), `false`, or `strict`. See [Custom Index Mappings](#custom-index-mappings). | `true` | Optional |
@@ -556,6 +555,7 @@ You can customize additional settings in your `.env` file:
 | `VALIDATE_QUERYABLES` | Enable validation of query parameters against the collection's queryables. If set to `true`, the API will reject queries containing fields that are not defined in the collection's queryables. | `false` | Optional |
 | `QUERYABLES_CACHE_TTL` | Time-to-live (in seconds) for the queryables cache. Used when `VALIDATE_QUERYABLES` is enabled. | `1800` | Optional |
 | `EXCLUDED_FROM_QUERYABLES` | Comma-separated list of fully qualified field names to exclude from the queryables endpoint and filtering. Use full paths like `properties.auth:schemes,properties.storage:schemes`. Excluded fields and their nested children will not be exposed in queryables. | None | Optional |
+| `EXCLUDED_FROM_ITEMS` | Specifies fields to exclude from STAC item responses. Supports comma-separated field names and dot notation for nested fields (e.g., `private_data,properties.confidential,assets.internal`). | `None` | Optional |
 
 
 
