@@ -10,7 +10,13 @@ from functools import wraps
 from typing import Any, Dict, List, Optional, Set, Union
 
 from opensearchpy.exceptions import NotFoundError
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_fixed
+from tenacity import (
+    before_sleep_log,
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_fixed,
+)
 
 from stac_fastapi.types.stac import Item
 
@@ -215,6 +221,7 @@ def datetime_search_retry(func):
         non-empty dictionary. For non-datetime queries or empty datetime
         dictionaries, the function executes without retry attempts.
     """
+    logger = logging.getLogger(__name__)
     max_attempts = int(os.getenv("RETRY_MAX_ATTEMPTS", "5"))
     wait_seconds = float(os.getenv("RETRY_WAIT_SECONDS", "0.5"))
     reraise = get_bool_env("RETRY_RERAISE", default=True)
@@ -224,6 +231,7 @@ def datetime_search_retry(func):
         wait=wait_fixed(wait_seconds),
         retry=retry_if_exception_type(NotFoundError),
         reraise=reraise,
+        before_sleep=before_sleep_log(logger, logging.WARNING),
     )
     async def retry_wrapped(self, *args, **kwargs):
         return await func(self, *args, **kwargs)

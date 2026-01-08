@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 
+-Added automatic retry for datetime searches on index-not-found errors to resolve cache race conditions. [#564](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/564)
+
 ### Fixed
 
 - Fixed various test suite errors, compatibility issues, and deprecation warnings to ensure stable execution. [#569](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/569)

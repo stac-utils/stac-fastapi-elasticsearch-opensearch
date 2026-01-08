@@ -543,6 +543,10 @@ You can customize additional settings in your `.env` file:
 | `PROPERTIES_END_DATETIME_FIELD` | Specifies the field used for the upper value of a datetime range for the items in the backend database. | `properties.end_datetime` | Optional |
 | `COLLECTION_FIELD` | Specifies the field used for the collection an item belongs to in the backend database | `collection` | Optional |
 | `GEOMETRY_FIELD` | Specifies the field containing the geometry of the items in the backend database | `geometry` | Optional |
+| `RETRY_MAX_ATTEMPTS` | Specifies the maximum number of retry attempts before giving up on a failed operation. | `5` | Optional |
+| `RETRY_WAIT_SECONDS` | Specifies the number of seconds to wait between retry attempts. | `0.5` | Optional |
+| `RETRY_RERAISE` | Specifies whether the original exception should be re-raised after all retry attempts are exhausted. | `true` | Optional |
+
 
 ### 7. Filtering, Exclusions & Queryables
 
