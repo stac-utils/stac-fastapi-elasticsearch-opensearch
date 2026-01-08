@@ -268,7 +268,12 @@ class DatetimeIndexManager:
         new_primary_alias = old_aliases["start_datetime"]
 
         if start_changed:
-            if index_is_closed:
+            if index_is_closed and is_first_index:
+                new_index_start = f"{product_start}-{index_start - timedelta(days=1)}"
+                return await self.index_operations.create_datetime_index(
+                    self.client, collection_id, str(new_index_start),None, str(product_end)
+                )
+            elif index_is_closed:
                 closed_end = extract_last_date_from_index(old_aliases["start_datetime"])
                 new_start_alias = self.index_operations.create_alias_name(
                     collection_id, "start_datetime", f"{product_start}-{closed_end}"
@@ -303,13 +308,19 @@ class DatetimeIndexManager:
         collection_id: str,
         product_datetimes: ProductDatetimes,
         old_aliases: Dict[str, str],
+        is_first_index: bool,
     ) -> str:
         product_dt = extract_date(product_datetimes.datetime)
 
         index_start = extract_first_date_from_index(old_aliases["datetime"])
         index_is_closed = is_index_closed(old_aliases["datetime"])
 
-        if index_is_closed:
+        if is_first_index and index_is_closed:
+            new_index_start = f"{product_dt}-{index_start - timedelta(days=1)}"
+            return await self.index_operations.create_datetime_index(
+                self.client, collection_id, None, str(new_index_start), None
+            )
+        elif index_is_closed:
             index_end = extract_last_date_from_index(old_aliases["datetime"])
             start_changed = product_dt < index_start
 
