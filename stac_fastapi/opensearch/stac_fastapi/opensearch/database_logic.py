@@ -978,6 +978,60 @@ class DatabaseLogic(BaseDatabaseLogic):
         if not await self.client.exists(index=COLLECTIONS_INDEX, id=collection_id):
             raise NotFoundError(f"Collection {collection_id} does not exist")
 
+    async def _check_item_exists_in_collection(
+        self, collection_id: str, item_id: str
+    ) -> bool:
+        """Check if an item exists across all indexes for a collection.
+
+        This method iterates through all indexes associated with the collection alias
+        to ensure items are found even when ENABLE_DATETIME_INDEX_FILTERING is enabled
+        and items may be stored in different datetime-partitioned indexes.
+
+        Args:
+            collection_id (str): The collection identifier.
+            item_id (str): The item identifier.
+
+        Returns:
+            bool: True if the item exists in any index, False otherwise.
+        """
+        alias = index_alias_by_collection_id(collection_id)
+        doc_id = mk_item_id(item_id, collection_id)
+        alias_exists = await self.client.indices.exists_alias(name=alias)
+
+        if alias_exists:
+            alias_info = await self.client.indices.get_alias(name=alias)
+            indices = list(alias_info.keys())
+
+            for index in indices:
+                if await self.client.exists(index=index, id=doc_id):
+                    return True
+        return False
+
+    def _check_item_exists_in_collection_sync(
+        self, collection_id: str, item_id: str
+    ) -> bool:
+        """Synchronous version: Check if an item exists across all indexes for a collection.
+
+        Args:
+            collection_id (str): The collection identifier.
+            item_id (str): The item identifier.
+
+        Returns:
+            bool: True if the item exists in any index, False otherwise.
+        """
+        alias = index_alias_by_collection_id(collection_id)
+        doc_id = mk_item_id(item_id, collection_id)
+        alias_exists = self.sync_client.indices.exists_alias(name=alias)
+
+        if alias_exists:
+            alias_info = self.sync_client.indices.get_alias(name=alias)
+            indices = list(alias_info.keys())
+
+            for index in indices:
+                if self.sync_client.exists(index=index, id=doc_id):
+                    return True
+        return False
+
     async def async_prep_create_item(
         self, item: Item, base_url: str, exist_ok: bool = False
     ) -> Item:
@@ -997,21 +1051,13 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         """
         await self.check_collection_exists(collection_id=item["collection"])
-        alias = index_alias_by_collection_id(item["collection"])
-        doc_id = mk_item_id(item["id"], item["collection"])
 
-        if not exist_ok:
-            alias_exists = await self.client.indices.exists_alias(name=alias)
-
-            if alias_exists:
-                alias_info = await self.client.indices.get_alias(name=alias)
-                indices = list(alias_info.keys())
-
-                for index in indices:
-                    if await self.client.exists(index=index, id=doc_id):
-                        raise ConflictError(
-                            f"Item {item['id']} in collection {item['collection']} already exists"
-                        )
+        if not exist_ok and await self._check_item_exists_in_collection(
+            item["collection"], item["id"]
+        ):
+            raise ConflictError(
+                f"Item {item['id']} in collection {item['collection']} already exists"
+            )
 
         return self.item_serializer.stac_to_db(item, base_url)
 
@@ -1045,10 +1091,9 @@ class DatabaseLogic(BaseDatabaseLogic):
         # Check if the collection exists
         await self.check_collection_exists(collection_id=item["collection"])
 
-        # Check if the item already exists in the database
-        if not exist_ok and await self.client.exists(
-            index=index_alias_by_collection_id(item["collection"]),
-            id=mk_item_id(item["id"], item["collection"]),
+        # Check if the item already exists in the database (across all datetime indexes)
+        if not exist_ok and await self._check_item_exists_in_collection(
+            item["collection"], item["id"]
         ):
             error_message = (
                 f"Item {item['id']} in collection {item['collection']} already exists."
@@ -1095,10 +1140,9 @@ class DatabaseLogic(BaseDatabaseLogic):
         if not self.sync_client.exists(index=COLLECTIONS_INDEX, id=item["collection"]):
             raise NotFoundError(f"Collection {item['collection']} does not exist")
 
-        # Check if the item already exists in the database
-        if not exist_ok and self.sync_client.exists(
-            index=index_alias_by_collection_id(item["collection"]),
-            id=mk_item_id(item["id"], item["collection"]),
+        # Check if the item already exists in the database (across all datetime indexes)
+        if not exist_ok and self._check_item_exists_in_collection_sync(
+            item["collection"], item["id"]
         ):
             error_message = (
                 f"Item {item['id']} in collection {item['collection']} already exists."
