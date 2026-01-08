@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 - Fixed various test suite errors, compatibility issues, and deprecation warnings to ensure stable execution. [#569](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/569)
 
+- Fixed bulk_sync_prep_create_item to properly detect duplicates across indexes. [#575](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/575)
+
 ### Removed
 
 ### Updated
