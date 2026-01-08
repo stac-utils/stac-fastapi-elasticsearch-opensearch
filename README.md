@@ -547,7 +547,6 @@ You can customize additional settings in your `.env` file:
 | `RETRY_WAIT_SECONDS` | Specifies the number of seconds to wait between retry attempts. | `0.5` | Optional |
 | `RETRY_RERAISE` | Specifies whether the original exception should be re-raised after all retry attempts are exhausted. | `true` | Optional |
 
-
 ### 7. Filtering, Exclusions & Queryables
 
 | Variable | Description | Default | Required |
