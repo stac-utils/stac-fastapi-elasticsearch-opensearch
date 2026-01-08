@@ -212,7 +212,9 @@ async def test_feature_collection_insert_duplicate_with_different_datetime(
 
 
 @pytest.mark.asyncio
-async def test_bulk_sync_duplicate_detection(ctx, core_client, txn_client, bulk_txn_client):
+async def test_bulk_sync_duplicate_detection(
+    ctx, core_client, txn_client, bulk_txn_client
+):
     """
     Test that bulk_sync_prep_create_item properly detects duplicates across indexes.
 

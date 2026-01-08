@@ -1010,7 +1010,7 @@ class DatabaseLogic(BaseDatabaseLogic):
     def _check_item_exists_in_collection_sync(
         self, collection_id: str, item_id: str
     ) -> bool:
-        """Synchronous version: Check if an item exists across all indexes for a collection.
+        """Check if an item exists across all indexes for a collection (sync version).
 
         Args:
             collection_id (str): The collection identifier.
