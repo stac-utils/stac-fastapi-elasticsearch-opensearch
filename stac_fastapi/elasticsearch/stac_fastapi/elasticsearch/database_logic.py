@@ -68,7 +68,7 @@ from stac_fastapi.sfeos_helpers.search_engine import (
     BaseIndexInserter,
     BaseIndexSelector,
     IndexInsertionFactory,
-    IndexSelectorFactory,
+    IndexSelectorFactory, DatetimeIndexInserter,
 )
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.links import resolve_links
@@ -1149,6 +1149,23 @@ class DatabaseLogic(BaseDatabaseLogic):
         logger.info(
             f"Creating item {item_id} in collection {collection_id} with refresh={refresh}"
         )
+
+        if exist_ok and isinstance(self.async_index_inserter, DatetimeIndexInserter):
+            existing_item = await self.get_one_item(collection_id, item_id)
+            primary_datetime_name = self.async_index_inserter.primary_datetime_name
+
+            existing_primary_datetime = existing_item.get("properties", {}).get(primary_datetime_name)
+            new_primary_datetime = item.get("properties", {}).get(primary_datetime_name)
+
+            if existing_primary_datetime != new_primary_datetime:
+                self.async_index_inserter.validate_datetime_field_update(f"properties/{primary_datetime_name}")
+
+            if primary_datetime_name == "start_datetime":
+                existing_end_datetime= existing_item.get("properties", {}).get("end_datetime")
+                new_end_datetime = item.get("properties", {}).get("end_datetime")
+
+                if existing_end_datetime != new_end_datetime:
+                    self.async_index_inserter.validate_datetime_field_update(f"properties/end_datetime")
 
         # Prepare the item for insertion
         item = await self.async_prep_create_item(

@@ -189,16 +189,12 @@ class DatetimeIndexInserter(BaseIndexInserter):
         product_datetimes = self.datetime_manager.validate_product_datetimes(
             product, self.use_datetime
         )
-
         primary_datetime_value = (
             product_datetimes.datetime
             if self.use_datetime
             else product_datetimes.start_datetime
         )
 
-        target_index = await self.index_selector.select_indexes(
-            [collection_id], primary_datetime_value, for_insertion=True
-        )
         all_indexes = await self.index_selector.get_collection_indexes(collection_id)
 
         if not all_indexes:
@@ -212,66 +208,78 @@ class DatetimeIndexInserter(BaseIndexInserter):
             all_indexes, key=lambda x: x[0][self.primary_datetime_name]
         )
 
+        target_index = await self.index_selector.select_indexes(
+            [collection_id], primary_datetime_value, for_insertion=True
+        )
+
         start_date = extract_date(primary_datetime_value)
-        end_date = extract_first_date_from_index(
+        earliest_index_date = extract_first_date_from_index(
             all_indexes[0][0][self.primary_datetime_name]
         )
 
-        if start_date < end_date:
-            alias = await self.datetime_manager.handle_early_date(
+        if start_date < earliest_index_date:
+            target_index = await self.datetime_manager.handle_early_date(
                 collection_id,
                 self.primary_datetime_name,
                 product_datetimes,
                 all_indexes[0][0],
+                True
             )
             await self.refresh_cache()
-            return alias
+            return target_index
 
         if not target_index:
             target_index = all_indexes[-1][0][self.primary_datetime_name]
 
+        aliases_dict, is_first_index = self._find_aliases_for_index(all_indexes, target_index)
+
         if target_index != all_indexes[-1][0][self.primary_datetime_name]:
-            for item in all_indexes:
-                aliases_dict = item[0]
-                if target_index in aliases_dict.values():
-                    await self.datetime_manager.handle_early_date(
-                        collection_id,
-                        self.primary_datetime_name,
-                        product_datetimes,
-                        aliases_dict,
-                    )
-                    return target_index
+            await self.datetime_manager.handle_early_date(
+                collection_id,
+                self.primary_datetime_name,
+                product_datetimes,
+                aliases_dict,
+                is_first_index
+            )
+            await self.refresh_cache()
+            return target_index
 
         if check_size and await self.datetime_manager.size_manager.is_index_oversized(
             target_index
         ):
-            for item in all_indexes:
-                aliases_dict = item[0]
-                if target_index in aliases_dict.values():
-                    await self.datetime_manager.handle_oversized_index(
-                        collection_id,
-                        self.primary_datetime_name,
-                        product_datetimes,
-                        aliases_dict,
-                    )
-                    await self.refresh_cache()
-                    target_index = await self.index_selector.select_indexes(
-                        [collection_id], primary_datetime_value, for_insertion=True
-                    )
-                    return target_index
+            await self.datetime_manager.handle_oversized_index(
+                collection_id,
+                self.primary_datetime_name,
+                product_datetimes,
+                aliases_dict,
+            )
+            await self.refresh_cache()
+            return await self.index_selector.select_indexes(
+                [collection_id], primary_datetime_value, for_insertion=True
+            )
 
-        for item in all_indexes:
+        await self.datetime_manager.handle_early_date(
+            collection_id, self.primary_datetime_name, product_datetimes, aliases_dict, is_first_index
+        )
+        await self.refresh_cache()
+        return target_index
+
+    @staticmethod
+    def _find_aliases_for_index(all_indexes: List, target_index: str) -> tuple[Optional[Dict[str, Any]], bool]:
+        """Find aliases for a given index.
+
+        Args:
+            all_indexes: List of index alias dictionaries.
+            target_index: Target index name to find.
+
+        Returns:
+            Tuple of (aliases_dict or None, is_first_element).
+        """
+        for idx, item in enumerate(all_indexes):
             aliases_dict = item[0]
             if target_index in aliases_dict.values():
-                await self.datetime_manager.handle_early_date(
-                    collection_id,
-                    self.primary_datetime_name,
-                    product_datetimes,
-                    aliases_dict,
-                )
-                await self.refresh_cache()
-                return target_index
-        return None
+                return aliases_dict, idx == 0
+        return None, False
 
     async def _ensure_indexes_exist(
         self, collection_id: str, items: List[Dict[str, Any]]
