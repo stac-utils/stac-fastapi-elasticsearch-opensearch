@@ -8,10 +8,21 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Fixed
+
+### Removed
+
+### Updated
+
+## [v6.9.0] - 2026-01-09
+
+### Added
+
 - Added `STAC_FASTAPI_ES_MAPPINGS_FILE` environment variable to support file-based custom mappings configuration.
 - Added configuration-based support for extending Elasticsearch/OpenSearch index mappings via environment variables, allowing users to customize field mappings without code change through `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` environment variable. Also added `STAC_FASTAPI_ES_DYNAMIC_MAPPING` variable to control dynamic mapping behavior. [#546](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/546)
-
-- `filter_fields` supports wildcard declarations (`*`) for including and excluding fields, where `properties.*.lat` include would include any extension's with a `lat` attribute.  The same functionality is included in the exclude declaration.
 
 ### Changed
 
@@ -20,8 +31,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Fixed
 
 - Optimized test execution by implementing single Docker image for both Elasticsearch and OpenSearch. Tests now reuse a single pre-built image instead of rebuilding for each test suite. [#570](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/570)
-
-### Removed
 
 ### Updated
 
@@ -709,7 +718,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.8.1...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.9.0...main
+[v6.9.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.8.1...v6.9.0
 [v6.8.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.8.0...v6.8.1
 [v6.8.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.6...v6.8.0
 [v6.7.6]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.5...v6.7.6
