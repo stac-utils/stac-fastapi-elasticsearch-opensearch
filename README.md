@@ -123,6 +123,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
   - [Ingesting Sample Data CLI Tool](#ingesting-sample-data-cli-tool)
   - [Redis for navigation](#redis-for-navigation)
   - [Elasticsearch Mappings](#elasticsearch-mappings)
+  - [Custom Index Mappings](#custom-index-mappings)
   - [Managing Elasticsearch Indices](#managing-elasticsearch-indices)
     - [Snapshots](#snapshots)
     - [Reindexing](#reindexing)
@@ -543,6 +544,9 @@ You can customize additional settings in your `.env` file:
 | `PROPERTIES_END_DATETIME_FIELD` | Specifies the field used for the upper value of a datetime range for the items in the backend database. | `properties.end_datetime` | Optional |
 | `COLLECTION_FIELD` | Specifies the field used for the collection an item belongs to in the backend database | `collection` | Optional |
 | `GEOMETRY_FIELD` | Specifies the field containing the geometry of the items in the backend database | `geometry` | Optional |
+| `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` | JSON string of custom Elasticsearch/OpenSearch property mappings to merge with defaults. See [Custom Index Mappings](#custom-index-mappings). | `None` | Optional |
+| `STAC_FASTAPI_ES_MAPPINGS_FILE` | Path to a JSON file containing custom Elasticsearch/OpenSearch property mappings to merge with defaults. See [Custom Index Mappings](#custom-index-mappings). | `None` | Optional |
+| `STAC_FASTAPI_ES_DYNAMIC_MAPPING` | Controls dynamic mapping behavior for item indices. Values: `true` (default), `false`, or `strict`. See [Custom Index Mappings](#custom-index-mappings). | `true` | Optional |
 
 ### 7. Filtering, Exclusions & Queryables
 
@@ -552,6 +556,7 @@ You can customize additional settings in your `.env` file:
 | `QUERYABLES_CACHE_TTL` | Time-to-live (in seconds) for the queryables cache. Used when `VALIDATE_QUERYABLES` is enabled. | `1800` | Optional |
 | `EXCLUDED_FROM_QUERYABLES` | Comma-separated list of fully qualified field names to exclude from the queryables endpoint and filtering. Use full paths like `properties.auth:schemes,properties.storage:schemes`. Excluded fields and their nested children will not be exposed in queryables. | None | Optional |
 | `EXCLUDED_FROM_ITEMS` | Specifies fields to exclude from STAC item responses. Supports comma-separated field names and dot notation for nested fields (e.g., `private_data,properties.confidential,assets.internal`). | `None` | Optional |
+
 
 
 > [!NOTE]
@@ -898,6 +903,242 @@ pip install stac-fastapi-elasticsearch[redis]
   - These templates are automatically applied when creating new Collection and Item indices
   - The `sfeos_helpers` package contains shared mapping definitions used by both Elasticsearch and OpenSearch backends
 - **Customization**: Custom mappings can be defined by extending the base mapping templates.
+
+## Custom Index Mappings
+
+SFEOS provides environment variables to customize Elasticsearch/OpenSearch index mappings without modifying source code. This is useful for:
+
+- Adding STAC extension fields (SAR, Cube, etc.) with proper types
+- Optimizing performance by controlling which fields are indexed
+- Ensuring correct field types instead of relying on dynamic mapping inference
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` | JSON string of property mappings to merge with defaults | None |
+| `STAC_FASTAPI_ES_MAPPINGS_FILE` | Path to a JSON file containing property mappings to merge with defaults | None |
+| `STAC_FASTAPI_ES_DYNAMIC_MAPPING` | Controls dynamic mapping: `true`, `false`, or `strict` | `true` |
+
+### Custom Mappings
+
+You can customize the Elasticsearch/OpenSearch mappings by providing a JSON configuration. This can be done via:
+
+1. `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` environment variable (takes precedence)
+2. `STAC_FASTAPI_ES_MAPPINGS_FILE` environment variable (file path)
+
+The configuration should have the same structure as the default ES mappings. The custom mappings are **recursively merged** with the defaults at the root level.
+
+#### Merge Behavior
+
+The merge follows these rules:
+
+| Scenario | Result |
+|----------|--------|
+| Key only in defaults | Preserved |
+| Key only in custom | Added |
+| Key in both, both are dicts | Recursively merged |
+| Key in both, values are not both dicts | **Custom overwrites default** |
+
+**Example - Adding new properties (merged):**
+
+```json
+// Default has: {"geometry": {"type": "geo_shape"}}
+// Custom has:  {"geometry": {"ignore_malformed": true}}
+// Result:      {"geometry": {"type": "geo_shape", "ignore_malformed": true}}
+```
+
+**Example - Overriding a value (replaced):**
+
+```json
+// Default has: {"properties": {"datetime": {"type": "date_nanos"}}}
+// Custom has:  {"properties": {"datetime": {"type": "date"}}}
+// Result:      {"properties": {"datetime": {"type": "date"}}}
+```
+
+#### JSON Structure
+
+The custom JSON should mirror the structure of the default mappings. For STAC item properties, the path is `properties.properties.properties`:
+
+```
+{
+  "numeric_detection": false,
+  "dynamic_templates": [...],
+  "properties": {                    # Top-level ES mapping properties
+    "id": {...},
+    "geometry": {...},
+    "properties": {                  # STAC item "properties" field
+      "type": "object",
+      "properties": {                # Nested properties within STAC properties
+        "datetime": {...},
+        "sar:frequency_band": {...}  # <-- Custom extension fields go here
+      }
+    }
+  }
+}
+```
+
+**Example - Adding SAR Extension Fields:**
+
+```bash
+export STAC_FASTAPI_ES_CUSTOM_MAPPINGS='{
+  "properties": {
+    "properties": {
+      "properties": {
+        "sar:frequency_band": {"type": "keyword"},
+        "sar:center_frequency": {"type": "float"},
+        "sar:polarizations": {"type": "keyword"},
+        "sar:product_type": {"type": "keyword"}
+      }
+    }
+  }
+}'
+```
+
+**Example - Adding Cube Extension Fields:**
+
+```bash
+export STAC_FASTAPI_ES_CUSTOM_MAPPINGS='{
+  "properties": {
+    "properties": {
+      "properties": {
+        "cube:dimensions": {"type": "object", "enabled": false},
+        "cube:variables": {"type": "object", "enabled": false}
+      }
+    }
+  }
+}'
+```
+
+**Example - Adding geometry options:**
+
+```bash
+export STAC_FASTAPI_ES_CUSTOM_MAPPINGS='{
+  "properties": {
+    "geometry": {"ignore_malformed": true}
+  }
+}'
+```
+
+**Example - Using a mappings file (recommended for complex configurations):**
+
+Instead of passing large JSON blobs via environment variables, you can use a file:
+
+```bash
+# Create a mappings file
+cat > custom-mappings.json <<EOF
+{
+  "properties": {
+    "properties": {
+      "properties": {
+        "sar:frequency_band": {"type": "keyword"},
+        "sar:center_frequency": {"type": "float"},
+        "sar:polarizations": {"type": "keyword"},
+        "sar:product_type": {"type": "keyword"},
+        "eo:cloud_cover": {"type": "float"},
+        "platform": {"type": "keyword"}
+      }
+    }
+  }
+}
+EOF
+
+# Reference the file
+export STAC_FASTAPI_ES_MAPPINGS_FILE=/path/to/custom-mappings.json
+```
+
+In Docker Compose, you can mount the file:
+
+```yaml
+services:
+  app-elasticsearch:
+    volumes:
+      - ./custom-mappings.json:/app/mappings.json:ro
+    environment:
+      - STAC_FASTAPI_ES_MAPPINGS_FILE=/app/mappings.json
+```
+
+In Kubernetes, use a ConfigMap:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: stac-mappings
+data:
+  mappings.json: |
+    {
+      "properties": {
+        "properties": {
+          "properties": {
+            "platform": {"type": "keyword"},
+            "eo:cloud_cover": {"type": "float"}
+          }
+        }
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+spec:
+  template:
+    spec:
+      containers:
+      - name: stac-fastapi
+        env:
+        - name: STAC_FASTAPI_ES_MAPPINGS_FILE
+          value: /etc/stac/mappings.json
+        volumeMounts:
+        - name: mappings
+          mountPath: /etc/stac
+      volumes:
+      - name: mappings
+        configMap:
+          name: stac-mappings
+```
+
+> [!TIP]
+> If both `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` and `STAC_FASTAPI_ES_MAPPINGS_FILE` are set, the environment variable takes precedence, allowing quick overrides during testing or troubleshooting.
+
+### Dynamic Mapping Control (`STAC_FASTAPI_ES_DYNAMIC_MAPPING`)
+
+Controls how Elasticsearch/OpenSearch handles fields not defined in the mapping:
+
+| Value | Behavior |
+|-------|----------|
+| `true` (default) | New fields are automatically added to the mapping. Maintains backward compatibility. |
+| `false` | New fields are ignored and not indexed. Documents can still contain these fields, but they won't be searchable. |
+| `strict` | Documents with unmapped fields are rejected. |
+
+### Combining Both Variables for Performance Optimization
+
+For large datasets with extensive metadata that isn't queried, you can disable dynamic mapping and define only the fields you need:
+
+```bash
+# Disable dynamic mapping
+export STAC_FASTAPI_ES_DYNAMIC_MAPPING=false
+
+# Define only queryable fields
+export STAC_FASTAPI_ES_CUSTOM_MAPPINGS='{
+  "properties": {
+    "properties": {
+      "properties": {
+        "platform": {"type": "keyword"},
+        "eo:cloud_cover": {"type": "float"},
+        "view:sun_elevation": {"type": "float"}
+      }
+    }
+  }
+}'
+```
+
+This prevents Elasticsearch from creating mappings for unused metadata fields, reducing index size and improving ingestion performance.
+
+> [!NOTE]
+> These environment variables apply to both Elasticsearch and OpenSearch backends. Changes only affect newly created indices. For existing indices, you'll need to reindex using [SFEOS-tools](https://github.com/Healy-Hyperspatial/sfeos-tools).
+
+> [!WARNING]
+> Use caution when overriding core fields like `geometry`, `datetime`, or `id`. Incorrect types may cause search failures or data loss.
 
 ## Managing Elasticsearch Indices
 
