@@ -6,17 +6,8 @@ such as converting bounding boxes to polygon representations.
 
 import logging
 import os
-from functools import wraps
+import re
 from typing import Any, Dict, List, Optional, Set, Union
-
-from opensearchpy.exceptions import NotFoundError
-from tenacity import (
-    before_sleep_log,
-    retry,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_fixed,
-)
 
 from stac_fastapi.types.stac import Item
 
@@ -80,8 +71,6 @@ def bbox2polygon(b0: float, b1: float, b2: float, b3: float) -> List[List[List[f
     return [[[b0, b1], [b2, b1], [b2, b3], [b0, b3], [b0, b1]]]
 
 
-# copied from stac-fastapi-pgstac
-# https://github.com/stac-utils/stac-fastapi-pgstac/blob/26f6d918eb933a90833f30e69e21ba3b4e8a7151/stac_fastapi/pgstac/utils.py#L10-L116
 def filter_fields(  # noqa: C901
     item: Union[Item, Dict[str, Any]],
     include: Optional[Set[str]] = None,
@@ -97,15 +86,60 @@ def filter_fields(  # noqa: C901
     if not include and not exclude:
         return item
 
-    # Build a shallow copy of included fields on an item, or a sub-tree of an item
+    def match_pattern(pattern: str, key: str) -> bool:
+        """Check if a key matches a wildcard pattern."""
+        regex_pattern = "^" + re.escape(pattern).replace(r"\*", ".*") + "$"
+        return bool(re.match(regex_pattern, key))
+
+    def get_matching_keys(source: Dict[str, Any], pattern: str) -> List[str]:
+        """Get all keys that match the pattern."""
+        if not isinstance(source, dict):
+            return []
+        return [key for key in source.keys() if match_pattern(pattern, key)]
+
     def include_fields(
         source: Dict[str, Any], fields: Optional[Set[str]]
     ) -> Dict[str, Any]:
+        """Include only the specified fields from the source dictionary."""
         if not fields:
             return source
 
+        def recursive_include(
+            source: Dict[str, Any], path_parts: List[str]
+        ) -> Dict[str, Any]:
+            """Recursively include fields matching the pattern path."""
+            if not path_parts:
+                return source
+
+            if not isinstance(source, dict):
+                return {}
+
+            current_pattern = path_parts[0]
+            remaining_parts = path_parts[1:]
+
+            matching_keys = get_matching_keys(source, current_pattern)
+
+            if not matching_keys:
+                return {}
+
+            result: Dict[str, Any] = {}
+            for key in matching_keys:
+                if remaining_parts:
+                    if isinstance(source[key], dict):
+                        value = recursive_include(source[key], remaining_parts)
+                        if value:
+                            result[key] = value
+                else:
+                    result[key] = source[key]
+
+            return result
+
         clean_item: Dict[str, Any] = {}
         for key_path in fields or []:
+            if "*" in key_path:
+                value = recursive_include(source, key_path.split("."))
+                dict_deep_update(clean_item, value)
+                continue
             key_path_parts = key_path.split(".")
             key_root = key_path_parts[0]
             if key_root in source:
@@ -135,12 +169,46 @@ def filter_fields(  # noqa: C901
                 # The key, or root key of a multi-part key, is not present in the item,
                 # so it is ignored
                 pass
+
         return clean_item
 
-    # For an item built up for included fields, remove excluded fields. This
-    # modifies `source` in place.
-    def exclude_fields(source: Dict[str, Any], fields: Optional[Set[str]]) -> None:
+    def exclude_fields(
+        source: Dict[str, Any],
+        fields: Optional[Set[str]],
+    ) -> None:
+        """Exclude fields from source."""
+
+        def recursive_exclude(
+            source: Dict[str, Any], path_parts: List[str], current_path: str = ""
+        ) -> None:
+            """Recursively exclude fields matching the pattern path."""
+            if not path_parts or not isinstance(source, dict):
+                return
+
+            current_pattern = path_parts[0]
+            remaining_parts = path_parts[1:]
+
+            matching_keys = get_matching_keys(source, current_pattern)
+
+            for key in list(matching_keys):
+                if key not in source:
+                    continue
+
+                # Build the full path for this key
+                full_path = f"{current_path}.{key}" if current_path else key
+
+                if remaining_parts:
+                    if isinstance(source[key], dict):
+                        recursive_exclude(source[key], remaining_parts, full_path)
+                        if not source[key]:
+                            del source[key]
+                else:
+                    source.pop(key, None)
+
         for key_path in fields or []:
+            if "*" in key_path:
+                recursive_exclude(source, key_path.split("."))
+                continue
             key_path_part = key_path.split(".")
             key_root = key_path_part[0]
             if key_root in source:
@@ -205,43 +273,3 @@ def get_excluded_from_items(obj: dict, field_path: str) -> None:
             return
 
     current.pop(final, None)
-
-
-def datetime_search_retry(func):
-    """Retries datetime search queries on NotFoundError.
-
-    Args:
-        func: The async function to be decorated.
-
-    Returns:
-        A decorated function with retry logic for datetime-based searches.
-
-    Note:
-        Retry logic is only applied when `datetime_search` is provided as a
-        non-empty dictionary. For non-datetime queries or empty datetime
-        dictionaries, the function executes without retry attempts.
-    """
-    logger = logging.getLogger(__name__)
-    max_attempts = int(os.getenv("RETRY_MAX_ATTEMPTS", "5"))
-    wait_seconds = float(os.getenv("RETRY_WAIT_SECONDS", "0.5"))
-    reraise = get_bool_env("RETRY_RERAISE", default=True)
-
-    @retry(
-        stop=stop_after_attempt(max_attempts),
-        wait=wait_fixed(wait_seconds),
-        retry=retry_if_exception_type(NotFoundError),
-        reraise=reraise,
-        before_sleep=before_sleep_log(logger, logging.WARNING),
-    )
-    async def retry_wrapped(self, *args, **kwargs):
-        return await func(self, *args, **kwargs)
-
-    @wraps(func)
-    async def wrapper(self, *args, **kwargs):
-        datetime_search = kwargs.get("datetime_search")
-        if not isinstance(datetime_search, dict) or not datetime_search:
-            return await func(self, *args, **kwargs)
-
-        return await retry_wrapped(self, *args, **kwargs)
-
-    return wrapper

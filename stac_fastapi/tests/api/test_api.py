@@ -6,9 +6,13 @@ from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from opensearchpy import exceptions
 
-from stac_fastapi.core.utilities import datetime_search_retry
+try:
+    from opensearchpy import exceptions
+except ImportError:
+    from elasticsearch import exceptions
+
+from stac_fastapi.sfeos_helpers.database import datetime_search_retry
 from stac_fastapi.types.errors import ConflictError
 
 from ..conftest import create_collection, create_item
@@ -176,6 +180,77 @@ async def test_app_fields_extension_query(app_client, ctx, txn_client):
     assert resp.status_code == 200
     resp_json = resp.json()
     assert set(resp_json["features"][0]["properties"]) == set(["datetime", "proj:epsg"])
+
+
+@pytest.mark.asyncio
+async def test_app_fields_extension_wildcard_query(app_client, ctx, txn_client):
+    item = ctx.item
+    include = {"include": ["properties.*.lat", "assets.*.href"]}
+    resp = await app_client.post(
+        "/search",
+        json={
+            "query": {"proj:epsg": {"gte": item["properties"]["proj:epsg"]}},
+            "collections": ["test-collection"],
+            "fields": include,
+        },
+    )
+    assert resp.status_code == 200
+    include_resp_json = resp.json()
+    for feature in include_resp_json["features"]:
+        assert len(feature["properties"]) == 1
+        assert feature["properties"]["proj:centroid"].get("lat", None) is not None
+        for assets_values in feature["assets"].values():
+            assert len(assets_values) == 1
+            assert "href" in assets_values
+
+    exclude = {"exclude": ["properties.eo:bands", "properties.*.lat", "assets.*.href"]}
+    resp = await app_client.post(
+        "/search",
+        json={
+            "query": {"proj:epsg": {"gte": item["properties"]["proj:epsg"]}},
+            "collections": ["test-collection"],
+            "fields": exclude,
+        },
+    )
+
+    assert resp.status_code == 200
+    exclude_resp_json = resp.json()
+    for feature in exclude_resp_json["features"]:
+        assert "eo:bands" not in feature["properties"]
+        assert not feature["properties"]["proj:centroid"].get("lat", None)
+        for assets_values in feature["assets"].values():
+            assert "href" not in assets_values
+
+    fields = {"include": ["properties.*.lat"], "exclude": ["properties.*.lat"]}
+
+    resp = await app_client.post(
+        "/search",
+        json={
+            "query": {"proj:epsg": {"gte": item["properties"]["proj:epsg"]}},
+            "collections": ["test-collection"],
+            "fields": fields,
+        },
+    )
+    exclude_resp_json = resp.json()
+    for feature in exclude_resp_json["features"]:
+        assert "properties" not in feature
+
+    fields = {
+        "include": ["properties.proj:centroid.lat"],
+        "exclude": ["properties.*.lat"],
+    }
+
+    resp = await app_client.post(
+        "/search",
+        json={
+            "query": {"proj:epsg": {"gte": item["properties"]["proj:epsg"]}},
+            "collections": ["test-collection"],
+            "fields": fields,
+        },
+    )
+    exclude_resp_json = resp.json()
+    for feature in exclude_resp_json["features"]:
+        assert "properties" not in feature
 
 
 @pytest.mark.asyncio

@@ -18,12 +18,7 @@ from starlette.requests import Request
 import stac_fastapi.sfeos_helpers.filter as filter_module
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
-from stac_fastapi.core.utilities import (
-    MAX_LIMIT,
-    bbox2polygon,
-    datetime_search_retry,
-    get_bool_env,
-)
+from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon, get_bool_env
 from stac_fastapi.extensions.core.transaction.request import (
     PartialCollection,
     PartialItem,
@@ -40,6 +35,7 @@ from stac_fastapi.sfeos_helpers.database import (
     apply_free_text_filter_shared,
     apply_intersects_filter_shared,
     create_index_templates_shared,
+    datetime_search_retry,
     delete_item_index_shared,
     get_queryables_mapping_shared,
     index_alias_by_collection_id,
