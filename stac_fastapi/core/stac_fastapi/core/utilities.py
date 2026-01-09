@@ -7,7 +7,17 @@ such as converting bounding boxes to polygon representations.
 import logging
 import os
 import re
+from functools import wraps
 from typing import Any, Dict, List, Optional, Set, Union
+
+from opensearchpy.exceptions import NotFoundError
+from tenacity import (
+    before_sleep_log,
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_fixed,
+)
 
 from stac_fastapi.types.stac import Item
 
@@ -273,3 +283,43 @@ def get_excluded_from_items(obj: dict, field_path: str) -> None:
             return
 
     current.pop(final, None)
+
+
+def datetime_search_retry(func):
+    """Retries datetime search queries on NotFoundError.
+
+    Args:
+        func: The async function to be decorated.
+
+    Returns:
+        A decorated function with retry logic for datetime-based searches.
+
+    Note:
+        Retry logic is only applied when `datetime_search` is provided as a
+        non-empty dictionary. For non-datetime queries or empty datetime
+        dictionaries, the function executes without retry attempts.
+    """
+    logger = logging.getLogger(__name__)
+    max_attempts = int(os.getenv("RETRY_MAX_ATTEMPTS", "5"))
+    wait_seconds = float(os.getenv("RETRY_WAIT_SECONDS", "0.5"))
+    reraise = get_bool_env("RETRY_RERAISE", default=True)
+
+    @retry(
+        stop=stop_after_attempt(max_attempts),
+        wait=wait_fixed(wait_seconds),
+        retry=retry_if_exception_type(NotFoundError),
+        reraise=reraise,
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+    )
+    async def retry_wrapped(self, *args, **kwargs):
+        return await func(self, *args, **kwargs)
+
+    @wraps(func)
+    async def wrapper(self, *args, **kwargs):
+        datetime_search = kwargs.get("datetime_search")
+        if not isinstance(datetime_search, dict) or not datetime_search:
+            return await func(self, *args, **kwargs)
+
+        return await retry_wrapped(self, *args, **kwargs)
+
+    return wrapper

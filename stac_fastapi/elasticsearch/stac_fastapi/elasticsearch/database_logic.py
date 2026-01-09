@@ -22,7 +22,12 @@ from stac_fastapi.core.serializers import (
     CollectionSerializer,
     ItemSerializer,
 )
-from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon, get_bool_env
+from stac_fastapi.core.utilities import (
+    MAX_LIMIT,
+    bbox2polygon,
+    datetime_search_retry,
+    get_bool_env,
+)
 from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
 from stac_fastapi.elasticsearch.config import (
     ElasticsearchSettings as SyncElasticsearchSettings,
@@ -804,6 +809,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         """
         return populate_sort_shared(sortby=sortby)
 
+    @datetime_search_retry
     async def execute_search(
         self,
         search: Search,
