@@ -26,7 +26,9 @@ from stac_fastapi.core.datetime_utils import format_datetime_range
 from stac_fastapi.core.header_filters import (
     check_collection_access,
     check_item_geometry_access,
-    get_geometry_filter_from_header,
+    collect_geometries_for_intersection,
+    compute_geometry_intersection,
+    create_geometry_filter_object,
     parse_filter_collections,
 )
 from stac_fastapi.core.models.links import PagingLinks
@@ -871,25 +873,51 @@ class CoreClient(AsyncBaseCoreClient):
             logger.error(msg)
             raise HTTPException(status_code=400, detail=msg)
 
-        if search_request.bbox:
-            bbox = search_request.bbox
-            if len(bbox) == 6:
-                bbox = [bbox[0], bbox[1], bbox[3], bbox[4]]
+        # Collect all geometry sources for intersection optimization
+        # CQL2 filter will be parsed later, so get it first if available
+        cql2_filter_for_geom = None
+        if hasattr(search_request, "filter_expr"):
+            cql2_filter_for_geom = getattr(search_request, "filter_expr", None)
+        if cql2_filter_for_geom is None and hasattr(search_request, "filter"):
+            cql2_filter_for_geom = getattr(search_request, "filter", None)
 
-            search = self.database.apply_bbox_filter(search=search, bbox=bbox)
+        # Get intersects geometry from request
+        request_intersects = None
+        if hasattr(search_request, "intersects"):
+            request_intersects = getattr(search_request, "intersects", None)
 
-        # Apply geometry filter from header
-        if geometry_obj := get_geometry_filter_from_header(request):
-            search = self.database.apply_intersects_filter(
-                search=search, intersects=geometry_obj
-            )
+        # Collect all geometries (header, bbox, intersects, cql2)
+        geometries = collect_geometries_for_intersection(
+            request=request,
+            bbox=search_request.bbox,
+            intersects=request_intersects,
+            cql2_filter=cql2_filter_for_geom,
+        )
 
-        if hasattr(search_request, "intersects") and getattr(
-            search_request, "intersects"
-        ):
-            search = self.database.apply_intersects_filter(
-                search=search, intersects=getattr(search_request, "intersects")
-            )
+        # Compute intersection and apply single optimized geometry filter
+        if geometries:
+            intersected_geometry = compute_geometry_intersection(geometries)
+
+            if intersected_geometry is None:
+                # Geometries are disjoint - return empty result without DB query
+                logger.debug(
+                    "Geometry intersection resulted in empty geometry, "
+                    "returning empty result"
+                )
+                return stac_types.ItemCollection(
+                    type="FeatureCollection",
+                    features=[],
+                    links=[],
+                    numberReturned=0,
+                    numberMatched=0,
+                )
+
+            # Apply the intersected geometry filter
+            geometry_filter_obj = create_geometry_filter_object(intersected_geometry)
+            if geometry_filter_obj:
+                search = self.database.apply_intersects_filter(
+                    search=search, intersects=geometry_filter_obj
+                )
 
         collection_ids = getattr(search_request, "collections", None)
 

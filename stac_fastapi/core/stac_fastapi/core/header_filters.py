@@ -200,3 +200,171 @@ def get_geometry_filter_from_header(request: Request) -> Optional[Any]:
     """
     header_geometry = parse_filter_geometry(request)
     return create_geometry_filter_object(header_geometry)
+
+
+def bbox_to_polygon(bbox: List[float]) -> Dict[str, Any]:
+    """Convert bbox to GeoJSON Polygon.
+
+    Args:
+        bbox: Bounding box as [minx, miny, maxx, maxy] or [minx, miny, minz, maxx, maxy, maxz].
+
+    Returns:
+        GeoJSON Polygon geometry dict.
+    """
+    if len(bbox) == 6:
+        # 3D bbox: [minx, miny, minz, maxx, maxy, maxz] - use 2D projection
+        minx, miny, maxx, maxy = bbox[0], bbox[1], bbox[3], bbox[4]
+    else:
+        minx, miny, maxx, maxy = bbox[0], bbox[1], bbox[2], bbox[3]
+
+    return {
+        "type": "Polygon",
+        "coordinates": [
+            [
+                [minx, miny],
+                [maxx, miny],
+                [maxx, maxy],
+                [minx, maxy],
+                [minx, miny],
+            ]
+        ],
+    }
+
+
+def extract_geometry_from_cql2_filter(
+    cql2_filter: Optional[Dict[str, Any]]
+) -> Optional[Dict[str, Any]]:
+    """Extract geometry from CQL2 spatial filter if present.
+
+    Recursively searches the CQL2 filter tree for spatial operations
+    (s_intersects, s_contains, s_within, s_disjoint) and extracts the geometry.
+    Only extracts the first geometry found.
+
+    Args:
+        cql2_filter: CQL2 JSON filter dictionary.
+
+    Returns:
+        GeoJSON geometry dict if spatial operator found, None otherwise.
+    """
+    if cql2_filter is None:
+        return None
+
+    # All CQL2 spatial operators
+    spatial_ops = {"s_intersects", "s_contains", "s_within", "s_disjoint"}
+
+    def _extract_geometry(node: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        if not isinstance(node, dict):
+            return None
+
+        op = node.get("op", "")
+
+        # Check for any spatial operation
+        if op in spatial_ops:
+            args = node.get("args", [])
+            if len(args) >= 2:
+                # Second argument is the geometry
+                geometry = args[1]
+                if isinstance(geometry, dict) and "type" in geometry:
+                    return geometry
+
+        # Recursively search in logical operators
+        if op in ["and", "or", "not"]:
+            for arg in node.get("args", []):
+                result = _extract_geometry(arg)
+                if result:
+                    return result
+
+        return None
+
+    return _extract_geometry(cql2_filter)
+
+
+def compute_geometry_intersection(
+    geometries: List[Dict[str, Any]]
+) -> Optional[Dict[str, Any]]:
+    """Compute intersection of multiple geometries.
+
+    Args:
+        geometries: List of GeoJSON geometry dicts.
+
+    Returns:
+        GeoJSON geometry dict representing the intersection, or None if:
+        - The list is empty
+        - Geometries are disjoint (intersection is empty)
+        - Shapely is not available (returns first geometry as fallback)
+
+    Note:
+        Requires shapely to be installed for actual intersection computation.
+        If shapely is not available, returns the first geometry as fallback.
+    """
+    if not geometries:
+        return None
+
+    if len(geometries) == 1:
+        return geometries[0]
+
+    try:
+        from shapely.geometry import mapping, shape
+    except ImportError:
+        logger.warning(
+            "shapely not installed - geometry intersection skipped. "
+            "Install shapely for full geometry intersection support."
+        )
+        return geometries[0]
+
+    try:
+        result = shape(geometries[0])
+
+        for geom_dict in geometries[1:]:
+            other = shape(geom_dict)
+            result = result.intersection(other)
+
+            if result.is_empty:
+                logger.debug("Geometry intersection resulted in empty geometry")
+                return None
+
+        return mapping(result)
+    except Exception as e:
+        logger.warning(f"Geometry intersection failed: {e}")
+        return geometries[0]
+
+
+def collect_geometries_for_intersection(
+    request: Request,
+    bbox: Optional[List[float]] = None,
+    intersects: Optional[Any] = None,
+    cql2_filter: Optional[Dict[str, Any]] = None,
+) -> List[Dict[str, Any]]:
+    """Collect all geometry sources for intersection computation.
+
+    Args:
+        request: FastAPI Request object (for header geometry).
+        bbox: Optional bounding box from request.
+        intersects: Optional intersects geometry from request.
+        cql2_filter: Optional CQL2 filter that may contain s_intersects.
+
+    Returns:
+        List of GeoJSON geometry dicts to be intersected.
+    """
+    geometries = []
+
+    header_geometry = parse_filter_geometry(request)
+    if header_geometry:
+        geometries.append(header_geometry)
+
+    if bbox:
+        geometries.append(bbox_to_polygon(bbox))
+
+    if intersects:
+        if isinstance(intersects, dict):
+            geometries.append(intersects)
+        elif hasattr(intersects, "type") and hasattr(intersects, "coordinates"):
+            geometries.append(
+                {"type": intersects.type, "coordinates": intersects.coordinates}
+            )
+
+    cql2_geometry = extract_geometry_from_cql2_filter(cql2_filter)
+    if cql2_geometry:
+        geometries.append(cql2_geometry)
+
+    return geometries
