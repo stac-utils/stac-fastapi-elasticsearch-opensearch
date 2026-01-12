@@ -237,8 +237,11 @@ def extract_geometry_from_cql2_filter(
     """Extract geometry from CQL2 spatial filter if present.
 
     Recursively searches the CQL2 filter tree for spatial operations
-    (s_intersects, s_contains, s_within, s_disjoint) and extracts the geometry.
-    Only extracts the first geometry found.
+    that imply intersection (s_intersects, s_contains, s_within) and extracts
+    the geometry. Only extracts the first geometry found.
+
+    Note: s_disjoint is excluded because it has inverse semantics (returns items
+    that do NOT intersect with the geometry).
 
     Args:
         cql2_filter: CQL2 JSON filter dictionary.
@@ -249,8 +252,9 @@ def extract_geometry_from_cql2_filter(
     if cql2_filter is None:
         return None
 
-    # All CQL2 spatial operators
-    spatial_ops = {"s_intersects", "s_contains", "s_within", "s_disjoint"}
+    # CQL2 spatial operators that imply intersection
+    # s_disjoint is excluded as it has inverse semantics
+    spatial_ops = {"s_intersects", "s_contains", "s_within"}
 
     def _extract_geometry(node: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         if not isinstance(node, dict):
