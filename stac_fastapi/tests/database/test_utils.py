@@ -1,6 +1,5 @@
 """Tests for database utility functions."""
 
-import os
 import uuid
 from copy import deepcopy
 
@@ -13,7 +12,7 @@ from stac_fastapi.sfeos_helpers.database import (
     mk_item_id,
 )
 
-from ..conftest import MockRequest, create_item, database
+from ..conftest import create_item, database
 
 
 @pytest.mark.asyncio
@@ -90,7 +89,10 @@ async def test_check_item_exists_in_alias_with_multiple_items(ctx, txn_client):
 
     # Check original item exists
     original_doc_id = mk_item_id(ctx.item["id"], collection_id)
-    assert await check_item_exists_in_alias(database.client, alias, original_doc_id) is True
+    assert (
+        await check_item_exists_in_alias(database.client, alias, original_doc_id)
+        is True
+    )
 
     # Check all additional items exist
     for item_id in additional_item_ids:
@@ -99,7 +101,10 @@ async def test_check_item_exists_in_alias_with_multiple_items(ctx, txn_client):
 
     # Check non-existent item returns False
     non_existent_doc_id = mk_item_id(str(uuid.uuid4()), collection_id)
-    assert await check_item_exists_in_alias(database.client, alias, non_existent_doc_id) is False
+    assert (
+        await check_item_exists_in_alias(database.client, alias, non_existent_doc_id)
+        is False
+    )
 
 
 @pytest.mark.asyncio
@@ -134,5 +139,9 @@ async def test_check_item_exists_with_different_datetime(ctx, txn_client):
     assert await check_item_exists_in_alias(database.client, alias, doc_id_2) is True
 
     # Sync versions should also work
-    assert check_item_exists_in_alias_sync(database.sync_client, alias, doc_id_1) is True
-    assert check_item_exists_in_alias_sync(database.sync_client, alias, doc_id_2) is True
+    assert (
+        check_item_exists_in_alias_sync(database.sync_client, alias, doc_id_1) is True
+    )
+    assert (
+        check_item_exists_in_alias_sync(database.sync_client, alias, doc_id_2) is True
+    )

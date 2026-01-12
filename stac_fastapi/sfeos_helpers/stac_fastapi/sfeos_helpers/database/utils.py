@@ -33,15 +33,14 @@ async def check_item_exists_in_alias(client: Any, alias: str, doc_id: str) -> bo
     Returns:
         bool: True if the item exists in any index under the alias, False otherwise.
     """
-    # Search against the alias checks all underlying indices in one request
     resp = await client.search(
         index=alias,
         body={
             "query": {"ids": {"values": [doc_id]}},
-            "_source": False,  # Don't fetch data, just check existence
+            "_source": False,
         },
-        size=0,  # We only need the count
-        terminate_after=1,  # Stop searching as soon as we find one
+        size=0,
+        terminate_after=1,
     )
     return resp["hits"]["total"]["value"] > 0
 
@@ -61,15 +60,14 @@ def check_item_exists_in_alias_sync(client: Any, alias: str, doc_id: str) -> boo
     Returns:
         bool: True if the item exists in any index under the alias, False otherwise.
     """
-    # Search against the alias checks all underlying indices in one request
     resp = client.search(
         index=alias,
         body={
             "query": {"ids": {"values": [doc_id]}},
-            "_source": False,  # Don't fetch data, just check existence
+            "_source": False,
         },
-        size=0,  # We only need the count
-        terminate_after=1,  # Stop searching as soon as we find one
+        size=0,
+        terminate_after=1,
     )
     return resp["hits"]["total"]["value"] > 0
 
