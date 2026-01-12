@@ -321,7 +321,7 @@ class CoreClient(AsyncBaseCoreClient):
 
         body_limit = None
         try:
-            if request.method == "POST" and request.body():
+            if request.method == "POST" and await request.body():
                 body_data = await request.json()
                 body_limit = body_data.get("limit")
         except Exception:
@@ -891,6 +891,8 @@ class CoreClient(AsyncBaseCoreClient):
                 search=search, intersects=getattr(search_request, "intersects")
             )
 
+        collection_ids = getattr(search_request, "collections", None)
+
         if hasattr(search_request, "query") and getattr(search_request, "query"):
             query_fields = set(getattr(search_request, "query").keys())
             await self.queryables_cache.validate(query_fields)
@@ -947,7 +949,7 @@ class CoreClient(AsyncBaseCoreClient):
             limit=limit,
             token=token_param,
             sort=sort,
-            collection_ids=getattr(search_request, "collections", None),
+            collection_ids=collection_ids,
             datetime_search=datetime_search,
         )
 
