@@ -18,6 +18,62 @@ from stac_fastapi.sfeos_helpers.models.patch import ElasticPath, ESCommandSet
 logger = logging.getLogger(__name__)
 
 
+async def check_item_exists_in_alias(client: Any, alias: str, doc_id: str) -> bool:
+    """Check if an item exists across all indexes for an alias using a single query.
+
+    This function performs a single search query against the alias, which
+    Elasticsearch/OpenSearch handles efficiently by broadcasting to all underlying
+    shards. This avoids the N+1 query problem when datetime partitioning is enabled.
+
+    Args:
+        client: The async Elasticsearch/OpenSearch client.
+        alias: The index alias to search against.
+        doc_id: The document ID to check for existence.
+
+    Returns:
+        bool: True if the item exists in any index under the alias, False otherwise.
+    """
+    # Search against the alias checks all underlying indices in one request
+    resp = await client.search(
+        index=alias,
+        body={
+            "query": {"ids": {"values": [doc_id]}},
+            "_source": False,  # Don't fetch data, just check existence
+        },
+        size=0,  # We only need the count
+        terminate_after=1,  # Stop searching as soon as we find one
+    )
+    return resp["hits"]["total"]["value"] > 0
+
+
+def check_item_exists_in_alias_sync(client: Any, alias: str, doc_id: str) -> bool:
+    """Check if an item exists across all indexes for an alias using a single query (sync).
+
+    This function performs a single search query against the alias, which
+    Elasticsearch/OpenSearch handles efficiently by broadcasting to all underlying
+    shards. This avoids the N+1 query problem when datetime partitioning is enabled.
+
+    Args:
+        client: The sync Elasticsearch/OpenSearch client.
+        alias: The index alias to search against.
+        doc_id: The document ID to check for existence.
+
+    Returns:
+        bool: True if the item exists in any index under the alias, False otherwise.
+    """
+    # Search against the alias checks all underlying indices in one request
+    resp = client.search(
+        index=alias,
+        body={
+            "query": {"ids": {"values": [doc_id]}},
+            "_source": False,  # Don't fetch data, just check existence
+        },
+        size=0,  # We only need the count
+        terminate_after=1,  # Stop searching as soon as we find one
+    )
+    return resp["hits"]["total"]["value"] > 0
+
+
 def add_bbox_shape_to_collection(collection: Dict[str, Any]) -> bool:
     """Add bbox_shape field to a collection document for spatial queries.
 

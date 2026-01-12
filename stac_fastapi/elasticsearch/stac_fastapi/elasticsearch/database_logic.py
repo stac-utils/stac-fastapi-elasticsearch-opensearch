@@ -38,6 +38,8 @@ from stac_fastapi.sfeos_helpers.database import (
     apply_collections_datetime_filter_shared,
     apply_free_text_filter_shared,
     apply_intersects_filter_shared,
+    check_item_exists_in_alias,
+    check_item_exists_in_alias_sync,
     create_index_templates_shared,
     delete_item_index_shared,
     get_queryables_mapping_shared,
@@ -979,9 +981,10 @@ class DatabaseLogic(BaseDatabaseLogic):
     ) -> bool:
         """Check if an item exists across all indexes for a collection.
 
-        This method iterates through all indexes associated with the collection alias
-        to ensure items are found even when ENABLE_DATETIME_INDEX_FILTERING is enabled
-        and items may be stored in different datetime-partitioned indexes.
+        This method performs a single search query against the collection alias,
+        which Elasticsearch handles efficiently by broadcasting to all underlying
+        shards. This avoids the N+1 query problem when ENABLE_DATETIME_INDEX_FILTERING
+        is enabled and items may be stored in different datetime-partitioned indexes.
 
         Args:
             collection_id (str): The collection identifier.
@@ -995,18 +998,17 @@ class DatabaseLogic(BaseDatabaseLogic):
         alias_exists = await self.client.indices.exists_alias(name=alias)
 
         if alias_exists:
-            alias_info = await self.client.indices.get_alias(name=alias)
-            indices = list(alias_info.keys())
-
-            for index in indices:
-                if await self.client.exists(index=index, id=doc_id):
-                    return True
+            return await check_item_exists_in_alias(self.client, alias, doc_id)
         return False
 
     def _check_item_exists_in_collection_sync(
         self, collection_id: str, item_id: str
     ) -> bool:
         """Check if an item exists across all indexes for a collection (sync version).
+
+        This method performs a single search query against the collection alias,
+        which Elasticsearch handles efficiently by broadcasting to all underlying
+        shards. This avoids the N+1 query problem when datetime partitioning is enabled.
 
         Args:
             collection_id (str): The collection identifier.
@@ -1020,12 +1022,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         alias_exists = self.sync_client.indices.exists_alias(name=alias)
 
         if alias_exists:
-            alias_info = self.sync_client.indices.get_alias(name=alias)
-            indices = list(alias_info.keys())
-
-            for index in indices:
-                if self.sync_client.exists(index=index, id=doc_id):
-                    return True
+            return check_item_exists_in_alias_sync(self.sync_client, alias, doc_id)
         return False
 
     async def async_prep_create_item(
