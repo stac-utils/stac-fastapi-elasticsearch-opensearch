@@ -29,6 +29,7 @@ import copy
 import json
 import logging
 import os
+from pathlib import Path
 from typing import Any, Dict, Literal, Optional, Protocol, Union
 
 from stac_fastapi.core.utilities import get_bool_env
@@ -301,6 +302,25 @@ ES_COLLECTIONS_MAPPINGS = {
         "temporal": {"type": "alias", "path": "extent.temporal.interval"},
     },
 }
+
+
+CONFIG_PATH = Path(os.getenv("STAC_CUSTOM_MAPPINGS_PATH", ""))
+try:
+    with CONFIG_PATH.open(encoding="utf-8") as f:
+        config = json.load(f)
+        ES_MAPPINGS_DYNAMIC_TEMPLATES = config.get("ES_MAPPINGS_DYNAMIC_TEMPLATES")
+        ES_ITEMS_MAPPINGS = config.get("ES_ITEMS_MAPPINGS")
+        ES_ITEMS_MAPPINGS["dynamic_templates"] = ES_MAPPINGS_DYNAMIC_TEMPLATES
+        ES_COLLECTIONS_MAPPINGS = config.get("ES_COLLECTIONS_MAPPINGS")
+        ES_COLLECTIONS_MAPPINGS["dynamic_templates"] = ES_MAPPINGS_DYNAMIC_TEMPLATES
+
+except FileNotFoundError:
+    print("Error: The json file was not found.")
+except json.JSONDecodeError as e:
+    print("Error: Could not decode JSON from the file.")
+    print(f"Details: {e.msg} at line {e.lineno}, column {e.colno}")
+except Exception as e:
+    print(f"An unexpected error occurred: {e}")
 
 # Shared aggregation mapping for both Elasticsearch and OpenSearch
 AGGREGATION_MAPPING: Dict[str, Dict[str, Any]] = {

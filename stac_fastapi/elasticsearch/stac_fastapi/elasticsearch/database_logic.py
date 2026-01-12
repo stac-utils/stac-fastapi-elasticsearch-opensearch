@@ -209,6 +209,11 @@ class DatabaseLogic(BaseDatabaseLogic):
         """
         # Define sortable fields based on the ES_COLLECTIONS_MAPPINGS
         sortable_fields = ["id", "extent.temporal.interval", "temporal"]
+        COLLECTIONS_SORTABLE_FIELDS = os.getenv(
+            "COLLECTIONS_SORTABLE_FIELDS", ""
+        ).split(",")
+        if len(COLLECTIONS_SORTABLE_FIELDS) > 0:
+            sortable_fields = COLLECTIONS_SORTABLE_FIELDS
 
         # Format the sort parameter
         formatted_sort = []

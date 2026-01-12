@@ -1,0 +1,97 @@
+{
+  "ES_MAPPINGS_DYNAMIC_TEMPLATES": [
+    {
+      "descriptions": {
+        "match_mapping_type": "string",
+        "match": "description",
+        "mapping": { "type": "text" }
+      }
+    },
+    {
+      "titles": {
+        "match_mapping_type": "string",
+        "match": "title",
+        "mapping": { "type": "text" }
+      }
+    },
+    { "proj_epsg": { "match": "proj:epsg", "mapping": { "type": "integer" } } },
+    {
+      "proj_projjson": {
+        "match": "proj:projjson",
+        "mapping": { "type": "object", "enabled": false }
+      }
+    },
+    {
+      "proj_centroid": {
+        "match": "proj:centroid",
+        "mapping": { "type": "geo_point" }
+      }
+    },
+    {
+      "proj_geometry": {
+        "match": "proj:geometry",
+        "mapping": { "type": "object", "enabled": false }
+      }
+    },
+    {
+      "no_index_href": {
+        "match": "href",
+        "mapping": { "type": "text", "index": "false" }
+      }
+    },
+    {
+      "strings": {
+        "match_mapping_type": "string",
+        "mapping": { "type": "keyword" }
+      }
+    },
+    {
+      "long_to_double": {
+        "match_mapping_type": "long",
+        "mapping": { "type": "double" }
+      }
+    }
+  ],
+
+  "ES_ITEMS_MAPPINGS": {
+    "numeric_detection": false,
+    "dynamic_templates": [],
+    "properties": {
+      "id": { "type": "keyword" },
+      "collection": { "type": "keyword" },
+      "geometry": { "type": "geo_shape" },
+      "assets": { "type": "object", "enabled": false },
+      "links": { "type": "object", "enabled": false },
+      "properties": {
+        "type": "object",
+        "properties": {
+          "datetime": { "type": "date_nanos" },
+          "start_datetime": { "type": "date" },
+          "end_datetime": { "type": "date" },
+          "created": { "type": "date" },
+          "updated": { "type": "date" },
+          "sat:absolute_orbit": { "type": "integer" },
+          "sat:relative_orbit": { "type": "integer" }
+        }
+      }
+    }
+  },
+
+  "ES_COLLECTIONS_MAPPINGS": {
+    "numeric_detection": false,
+    "dynamic_templates": [],
+    "properties": {
+      "id": { "type": "keyword" },
+      "parent_ids": { "type": "keyword" },
+      "bbox_shape": { "type": "geo_shape" },
+      "extent.temporal.interval": {
+        "type": "date",
+        "format": "strict_date_optional_time||epoch_millis"
+      },
+      "providers": { "type": "object", "enabled": false },
+      "links": { "type": "object", "enabled": false },
+      "item_assets": { "type": "object", "enabled": false },
+      "temporal": { "type": "alias", "path": "extent.temporal.interval" }
+    }
+  }
+}
