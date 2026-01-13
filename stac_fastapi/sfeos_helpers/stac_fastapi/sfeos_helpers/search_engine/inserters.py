@@ -247,10 +247,20 @@ class DatetimeIndexInserter(BaseIndexInserter):
         if check_size and await self.datetime_manager.size_manager.is_index_oversized(
             target_index
         ):
+            latest_item = await self.index_operations.find_latest_item_in_index(
+                self.client, target_index
+            )
+            latest_index_datetimes = ProductDatetimes(
+                start_datetime=str(extract_date(latest_item["_source"]["properties"]["start_datetime"])),
+                datetime=str(extract_date(latest_item["_source"]["properties"]["datetime"])),
+                end_datetime=str(extract_date(latest_item["_source"]["properties"]["end_datetime"])),
+            )
+
             await self.datetime_manager.handle_oversized_index(
                 collection_id,
                 self.primary_datetime_name,
                 product_datetimes,
+                latest_index_datetimes,
                 aliases_dict,
             )
             await self.refresh_cache()
@@ -362,6 +372,7 @@ class DatetimeIndexInserter(BaseIndexInserter):
             collection_id,
             self.primary_datetime_name,
             product_datetimes,
+            None,
             all_indexes[-1][0],
         )
         await self.refresh_cache()

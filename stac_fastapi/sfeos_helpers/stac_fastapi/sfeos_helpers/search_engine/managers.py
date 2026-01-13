@@ -2,7 +2,7 @@
 
 import logging
 import os
-from datetime import timedelta
+from datetime import timedelta, date
 from typing import Any, Dict, NamedTuple
 
 from dateutil import parser  # type: ignore
@@ -352,6 +352,7 @@ class DatetimeIndexManager:
         collection_id: str,
         primary_datetime_name: str,
         product_datetimes: ProductDatetimes,
+        latest_index_datetimes: ProductDatetimes | None,
         old_aliases: Dict[str, str],
     ) -> str:
         """Handle index that exceeds size limit asynchronously.
@@ -378,13 +379,13 @@ class DatetimeIndexManager:
             old_end_dt = extract_first_date_from_index(old_aliases["end_datetime"])
 
             if start_dt != old_start_dt:
-                new_start_alias = f"{current_alias}-{str(start_dt)}"
+                new_start_alias = f"{current_alias}-{str(latest_index_datetimes.start_datetime)}"
                 new_aliases.append(new_start_alias)
                 old_alias_names.append(current_alias)
 
             if end_dt > old_end_dt:
                 new_end_alias = self.index_operations.create_alias_name(
-                    collection_id, "end_datetime", str(end_dt)
+                    collection_id, "end_datetime", str(latest_index_datetimes.end_datetime)
                 )
                 new_aliases.append(new_end_alias)
                 old_alias_names.append(old_aliases["end_datetime"])
@@ -398,7 +399,7 @@ class DatetimeIndexManager:
                 return await self.index_operations.create_datetime_index(
                     self.client,
                     collection_id,
-                    start_datetime=str(start_dt + timedelta(days=1)),
+                    start_datetime=str(date.fromisoformat(latest_index_datetimes.start_datetime) + timedelta(days=1)),
                     datetime=None,
                     end_datetime=str(end_dt),
                 )
@@ -407,7 +408,7 @@ class DatetimeIndexManager:
             old_dt = extract_first_date_from_index(current_alias)
 
             if dt != old_dt:
-                new_datetime_alias = f"{current_alias}-{str(dt)}"
+                new_datetime_alias = f"{current_alias}-{str(latest_index_datetimes.datetime)}"
                 await self.index_operations.change_alias_name(
                     self.client, current_alias, [current_alias], [new_datetime_alias]
                 )

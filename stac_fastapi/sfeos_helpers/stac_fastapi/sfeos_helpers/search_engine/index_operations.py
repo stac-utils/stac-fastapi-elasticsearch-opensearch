@@ -139,13 +139,13 @@ class IndexOperations:
         """
         aliases_info = await client.indices.get_alias(name=old_start_datetime_alias)
         index_name = list(aliases_info.keys())[0]
+
         actions = []
+        for old_alias in aliases_to_change:
+            actions.append({"remove": {"index": index_name, "alias": old_alias}})
 
         for new_alias in aliases_to_create:
             actions.append({"add": {"index": index_name, "alias": new_alias}})
-
-        for old_alias in aliases_to_change:
-            actions.append({"remove": {"index": index_name, "alias": old_alias}})
 
         await client.indices.update_aliases(body={"actions": actions})
 
