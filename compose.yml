@@ -38,7 +38,7 @@ services:
     depends_on:
       - elasticsearch
       - redis
-    command: 
+    command:
       bash -c "./scripts/wait-for-it-es.sh es-container:9200 && python -m stac_fastapi.elasticsearch.app"
 
   app-opensearch:
@@ -80,7 +80,7 @@ services:
     depends_on:
       - opensearch
       - redis
-    command: 
+    command:
       bash -c "./scripts/wait-for-it-es.sh os-container:9202 && python -m stac_fastapi.opensearch.app"
 
   elasticsearch:
