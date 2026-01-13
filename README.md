@@ -1132,23 +1132,6 @@ spec:
 > [!TIP]
 > If both `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` and `STAC_FASTAPI_ES_MAPPINGS_FILE` are set, the environment variable takes precedence, allowing quick overrides during testing or troubleshooting.
 
-## Custom Mappings from Config File
-
-![Fork](https://img.shields.io/badge/Fork-Extended%20Documentation-orange)
-
-Custom mappings can be prepared and used if project requires different mappings for the porpose of sorting and indexing. A separte json file with mappings is stored in config folder. This json mappings file can be edited.
-
-- In the config folder there is config_mappings.json
-- config_mappings.json can be edited before reindexing if the project is running or before project build up
-- Envirnmental variables can be used to switch to new custom_mappings after edit.
-
-By default, sorting is limited to specific fields. After custom_mappings.py is used, sortable fields can also be edited.
-
-- Default: sortable_fields = ["id", "extent.temporal.interval", "temporal"]
-- If new field should be added here, based on custom_mappings, Env var can be used.
-  Example: - COLLECTIONS_SORTABLE_FIELDS=id,extent.temporal.interval,title
-- New field can be added from the Envirnmental Variables in the database_logic.py
-
 ### Dynamic Mapping Control (`STAC_FASTAPI_ES_DYNAMIC_MAPPING`)
 
 Controls how Elasticsearch/OpenSearch handles fields not defined in the mapping:
@@ -1188,6 +1171,23 @@ This prevents Elasticsearch from creating mappings for unused metadata fields, r
 
 > [!WARNING]
 > Use caution when overriding core fields like `geometry`, `datetime`, or `id`. Incorrect types may cause search failures or data loss.
+
+## Custom Mappings from Config File
+
+![Fork](https://img.shields.io/badge/Fork-Extended%20Documentation-orange)
+
+Custom mappings can be prepared and used if project requires different mappings for the porpose of sorting and indexing. A separte json file with mappings is stored in config folder. This json mappings file can be edited.
+
+- In the config folder there is config_mappings.json
+- config_mappings.json can be edited before reindexing if the project is running or before project build up
+- Envirnmental variables can be used to switch to new custom_mappings after edit.
+
+By default, sorting is limited to specific fields. After custom_mappings.py is used, sortable fields can also be edited.
+
+- Default: sortable_fields = ["id", "extent.temporal.interval", "temporal"]
+- If new field should be added here, based on custom_mappings, Env var can be used.
+  Example: - COLLECTIONS_SORTABLE_FIELDS=id,extent.temporal.interval,title
+- New field can be added from the Envirnmental Variables in the database_logic.py
 
 ## Managing Elasticsearch Indices
 
