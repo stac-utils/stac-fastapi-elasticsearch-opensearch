@@ -38,7 +38,8 @@ services:
     depends_on:
       - elasticsearch
       - redis
-    command: bash -c "./scripts/wait-for-it-es.sh es-container:9200 && python -m stac_fastapi.elasticsearch.app"
+    command: 
+      bash -c "./scripts/wait-for-it-es.sh es-container:9200 && python -m stac_fastapi.elasticsearch.app"
 
   app-opensearch:
     container_name: stac-fastapi-os
@@ -65,8 +66,8 @@ services:
       - STAC_FASTAPI_RATE_LIMIT=200/minute
       - ENABLE_COLLECTIONS_SEARCH_ROUTE=true
       - ENABLE_CATALOGS_ROUTE=true
-      #- STAC_CUSTOM_MAPPINGS_PATH=/app/stac_fastapi/config/config_mappings.json
-      #- COLLECTIONS_SORTABLE_FIELDS=id,extent.temporal.interval,temporal,title
+      # STAC_CUSTOM_MAPPINGS_PATH=/app/stac_fastapi/config/config_mappings.json
+      # COLLECTIONS_SORTABLE_FIELDS=id,extent.temporal.interval,temporal,title
       - REDIS_ENABLE=true
       - REDIS_HOST=redis
       - REDIS_PORT=6379
@@ -79,7 +80,8 @@ services:
     depends_on:
       - opensearch
       - redis
-    command: bash -c "./scripts/wait-for-it-es.sh os-container:9202 && python -m stac_fastapi.opensearch.app"
+    command: 
+      bash -c "./scripts/wait-for-it-es.sh os-container:9202 && python -m stac_fastapi.opensearch.app"
 
   elasticsearch:
     container_name: es-container
