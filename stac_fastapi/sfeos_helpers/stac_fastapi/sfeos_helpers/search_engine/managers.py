@@ -373,51 +373,38 @@ class DatetimeIndexManager:
         old_alias_names = []
 
         if primary_datetime_name == "start_datetime":
-            start_dt = extract_date(product_datetimes.start_datetime)
-            end_dt = extract_date(product_datetimes.end_datetime)
-            old_start_dt = extract_first_date_from_index(current_alias)
-            old_end_dt = extract_first_date_from_index(old_aliases["end_datetime"])
+            new_start_alias = f"{current_alias}-{str(latest_index_datetimes.start_datetime)}"
+            new_aliases.append(new_start_alias)
+            old_alias_names.append(current_alias)
 
-            if start_dt != old_start_dt:
-                new_start_alias = f"{current_alias}-{str(latest_index_datetimes.start_datetime)}"
-                new_aliases.append(new_start_alias)
-                old_alias_names.append(current_alias)
+            new_end_alias = self.index_operations.create_alias_name(
+                collection_id, "end_datetime", str(latest_index_datetimes.end_datetime)
+            )
+            new_aliases.append(new_end_alias)
+            old_alias_names.append(old_aliases["end_datetime"])
 
-            if end_dt > old_end_dt:
-                new_end_alias = self.index_operations.create_alias_name(
-                    collection_id, "end_datetime", str(latest_index_datetimes.end_datetime)
-                )
-                new_aliases.append(new_end_alias)
-                old_alias_names.append(old_aliases["end_datetime"])
+            await self.index_operations.change_alias_name(
+                self.client, current_alias, old_alias_names, new_aliases
+            )
 
-            if old_alias_names:
-                await self.index_operations.change_alias_name(
-                    self.client, current_alias, old_alias_names, new_aliases
-                )
-
-            if start_dt != old_start_dt:
-                return await self.index_operations.create_datetime_index(
-                    self.client,
-                    collection_id,
-                    start_datetime=str(date.fromisoformat(latest_index_datetimes.start_datetime) + timedelta(days=1)),
-                    datetime=None,
-                    end_datetime=str(end_dt),
-                )
+            return await self.index_operations.create_datetime_index(
+                self.client,
+                collection_id,
+                start_datetime=str(date.fromisoformat(latest_index_datetimes.start_datetime) + timedelta(days=1)),
+                datetime=None,
+                end_datetime=str(date.fromisoformat(latest_index_datetimes.start_datetime) + timedelta(days=1)),
+            )
         else:
             dt = extract_date(product_datetimes.datetime)
-            old_dt = extract_first_date_from_index(current_alias)
 
-            if dt != old_dt:
-                new_datetime_alias = f"{current_alias}-{str(latest_index_datetimes.datetime)}"
-                await self.index_operations.change_alias_name(
-                    self.client, current_alias, [current_alias], [new_datetime_alias]
-                )
-                return await self.index_operations.create_datetime_index(
-                    self.client,
-                    collection_id,
-                    start_datetime=None,
-                    datetime=str(dt + timedelta(days=1)),
-                    end_datetime=None,
-                )
-
-        return current_alias
+            new_datetime_alias = f"{current_alias}-{str(latest_index_datetimes.datetime)}"
+            await self.index_operations.change_alias_name(
+                self.client, current_alias, [current_alias], [new_datetime_alias]
+            )
+            return await self.index_operations.create_datetime_index(
+                self.client,
+                collection_id,
+                start_datetime=None,
+                datetime=str(dt + timedelta(days=1)),
+                end_datetime=None,
+            )

@@ -266,7 +266,7 @@ class DatetimeIndexInserter(BaseIndexInserter):
             await self.refresh_cache()
             return await self.index_selector.select_indexes(
                 [collection_id], primary_datetime_value, for_insertion=True
-            )
+            ) or target_index
 
         await self.datetime_manager.handle_early_date(
             collection_id, self.primary_datetime_name, product_datetimes, aliases_dict, is_first_index
