@@ -210,12 +210,18 @@ def bbox_to_polygon(bbox: List[float]) -> Dict[str, Any]:
 
     Returns:
         GeoJSON Polygon geometry dict.
+
+    Raises:
+        ValueError: If bbox doesn't have exactly 4 or 6 elements.
     """
     if len(bbox) == 6:
-        # 3D bbox: [minx, miny, minz, maxx, maxy, maxz] - use 2D projection
         minx, miny, maxx, maxy = bbox[0], bbox[1], bbox[3], bbox[4]
-    else:
+    elif len(bbox) == 4:
         minx, miny, maxx, maxy = bbox[0], bbox[1], bbox[2], bbox[3]
+    else:
+        raise ValueError(
+            f"Invalid bbox length: expected 4 or 6 elements, got {len(bbox)}"
+        )
 
     return {
         "type": "Polygon",
@@ -252,8 +258,6 @@ def extract_geometry_from_cql2_filter(
     if cql2_filter is None:
         return None
 
-    # CQL2 spatial operators that imply intersection
-    # s_disjoint is excluded as it has inverse semantics
     spatial_ops = {"s_intersects", "s_contains", "s_within"}
 
     def _extract_geometry(node: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -262,16 +266,13 @@ def extract_geometry_from_cql2_filter(
 
         op = node.get("op", "")
 
-        # Check for any spatial operation
         if op in spatial_ops:
             args = node.get("args", [])
             if len(args) >= 2:
-                # Second argument is the geometry
                 geometry = args[1]
                 if isinstance(geometry, dict) and "type" in geometry:
                     return geometry
 
-        # Recursively search in logical operators
         if op in ["and", "or", "not"]:
             for arg in node.get("args", []):
                 result = _extract_geometry(arg)

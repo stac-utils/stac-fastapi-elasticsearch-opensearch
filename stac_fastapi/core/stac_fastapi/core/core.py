@@ -873,20 +873,16 @@ class CoreClient(AsyncBaseCoreClient):
             logger.error(msg)
             raise HTTPException(status_code=400, detail=msg)
 
-        # Collect all geometry sources for intersection optimization
-        # CQL2 filter will be parsed later, so get it first if available
         cql2_filter_for_geom = None
         if hasattr(search_request, "filter_expr"):
             cql2_filter_for_geom = getattr(search_request, "filter_expr", None)
         if cql2_filter_for_geom is None and hasattr(search_request, "filter"):
             cql2_filter_for_geom = getattr(search_request, "filter", None)
 
-        # Get intersects geometry from request
         request_intersects = None
         if hasattr(search_request, "intersects"):
             request_intersects = getattr(search_request, "intersects", None)
 
-        # Collect all geometries (header, bbox, intersects, cql2)
         geometries = collect_geometries_for_intersection(
             request=request,
             bbox=search_request.bbox,
@@ -894,12 +890,10 @@ class CoreClient(AsyncBaseCoreClient):
             cql2_filter=cql2_filter_for_geom,
         )
 
-        # Compute intersection and apply single optimized geometry filter
         if geometries:
             intersected_geometry = compute_geometry_intersection(geometries)
 
             if intersected_geometry is None:
-                # Geometries are disjoint - return empty result without DB query
                 logger.debug(
                     "Geometry intersection resulted in empty geometry, "
                     "returning empty result"
@@ -912,7 +906,6 @@ class CoreClient(AsyncBaseCoreClient):
                     numberMatched=0,
                 )
 
-            # Apply the intersected geometry filter
             geometry_filter_obj = create_geometry_filter_object(intersected_geometry)
             if geometry_filter_obj:
                 search = self.database.apply_intersects_filter(

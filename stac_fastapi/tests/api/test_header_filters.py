@@ -232,7 +232,6 @@ class TestGeometryIntersectionOptimization:
     @pytest.mark.asyncio
     async def test_header_geometry_intersected_with_bbox(self, app_client, ctx):
         """Header geometry is intersected with request bbox."""
-        # Header geometry: large polygon covering Australia
         header_geometry = {
             "type": "Polygon",
             "coordinates": [
@@ -246,8 +245,6 @@ class TestGeometryIntersectionOptimization:
             ],
         }
 
-        # Bbox that overlaps with part of the header geometry
-        # This should intersect with the test item location
         bbox = "148.0,-35.0,152.0,-32.0"
 
         response = await app_client.get(
@@ -256,12 +253,10 @@ class TestGeometryIntersectionOptimization:
             headers={FILTER_GEOMETRY_HEADER: json.dumps(header_geometry)},
         )
         assert response.status_code == 200
-        # Items within the intersection should be returned
 
     @pytest.mark.asyncio
     async def test_header_geometry_and_bbox_disjoint(self, app_client, ctx):
         """Disjoint header geometry and bbox returns empty result."""
-        # Header geometry: polygon in Europe
         header_geometry = {
             "type": "Polygon",
             "coordinates": [
@@ -275,7 +270,6 @@ class TestGeometryIntersectionOptimization:
             ],
         }
 
-        # Bbox in Australia - completely disjoint from header geometry
         bbox = "148.0,-35.0,152.0,-32.0"
 
         response = await app_client.get(
@@ -290,7 +284,6 @@ class TestGeometryIntersectionOptimization:
     @pytest.mark.asyncio
     async def test_header_geometry_intersected_with_intersects(self, app_client, ctx):
         """Header geometry is intersected with request intersects parameter."""
-        # Header geometry covering test item area
         header_geometry = {
             "type": "Polygon",
             "coordinates": [
@@ -304,7 +297,6 @@ class TestGeometryIntersectionOptimization:
             ],
         }
 
-        # Intersects geometry that overlaps with header and test item
         intersects_geometry = {
             "type": "Polygon",
             "coordinates": [
@@ -324,12 +316,10 @@ class TestGeometryIntersectionOptimization:
             headers={FILTER_GEOMETRY_HEADER: json.dumps(header_geometry)},
         )
         assert response.status_code == 200
-        # Items within the intersection should be returned
 
     @pytest.mark.asyncio
     async def test_header_geometry_and_intersects_disjoint(self, app_client, ctx):
         """Disjoint header geometry and intersects returns empty result."""
-        # Header geometry in Europe
         header_geometry = {
             "type": "Polygon",
             "coordinates": [
@@ -343,7 +333,6 @@ class TestGeometryIntersectionOptimization:
             ],
         }
 
-        # Intersects geometry in Australia - completely disjoint
         intersects_geometry = {
             "type": "Polygon",
             "coordinates": [
@@ -371,7 +360,6 @@ class TestGeometryIntersectionOptimization:
         self, app_client, ctx
     ):
         """Header geometry is intersected with CQL2 s_intersects filter."""
-        # Header geometry covering test item area
         header_geometry = {
             "type": "Polygon",
             "coordinates": [
@@ -411,14 +399,12 @@ class TestGeometryIntersectionOptimization:
             headers={FILTER_GEOMETRY_HEADER: json.dumps(header_geometry)},
         )
         assert response.status_code == 200
-        # Items within the intersection should be returned
 
     @pytest.mark.asyncio
     async def test_header_geometry_and_cql2_s_intersects_disjoint(
         self, app_client, ctx
     ):
         """Disjoint header geometry and CQL2 s_intersects returns empty result."""
-        # Header geometry in Europe
         header_geometry = {
             "type": "Polygon",
             "coordinates": [
@@ -432,7 +418,6 @@ class TestGeometryIntersectionOptimization:
             ],
         }
 
-        # CQL2 filter with s_intersects in Australia
         cql2_filter = {
             "op": "s_intersects",
             "args": [
@@ -464,7 +449,6 @@ class TestGeometryIntersectionOptimization:
     @pytest.mark.asyncio
     async def test_multiple_geometry_sources_intersection(self, app_client, ctx):
         """Multiple geometry sources (header, bbox, cql2) are all intersected."""
-        # Header geometry: very large area
         header_geometry = {
             "type": "Polygon",
             "coordinates": [
@@ -478,10 +462,8 @@ class TestGeometryIntersectionOptimization:
             ],
         }
 
-        # Bbox within header geometry
         bbox = [145.0, -38.0, 155.0, -30.0]
 
-        # CQL2 filter with s_intersects that overlaps with both
         cql2_filter = {
             "op": "s_intersects",
             "args": [
@@ -511,4 +493,3 @@ class TestGeometryIntersectionOptimization:
             headers={FILTER_GEOMETRY_HEADER: json.dumps(header_geometry)},
         )
         assert response.status_code == 200
-        # The intersection of all three should still contain test item area
