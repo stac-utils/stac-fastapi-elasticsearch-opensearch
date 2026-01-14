@@ -1384,6 +1384,7 @@ class CoreClient(AsyncBaseCoreClient):
                 else:
                     properties[k] = v
             properties["_id"] = item.get("id")
+            properties["_collection"] = item.get("collection")
 
             # Include WKB if exposure_point is used
             if "exposure_point" in item.get("properties", {}):
