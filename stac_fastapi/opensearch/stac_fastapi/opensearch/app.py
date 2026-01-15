@@ -214,7 +214,7 @@ if ENABLE_CATALOGS_ROUTE:
         ),
         settings=settings,
         conformance_classes=[
-            "https://api.stacspec.org/v1.0.0-beta.1/catalogs-endpoint",
+            "https://api.stacspec.org/v1.0.0-beta.1/multi-tenant-catalogs",
         ],
     )
     extensions.append(catalogs_extension)
