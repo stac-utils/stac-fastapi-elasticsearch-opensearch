@@ -23,10 +23,8 @@ async def test_check_item_exists_in_alias_returns_true_when_exists(ctx, txn_clie
 
     alias = index_alias_by_collection_id(collection_id)
     doc_id = mk_item_id(item_id, collection_id)
-    
-    assert doc_id == f"{collection_id}|{item_id}"
+    assert doc_id == f"{item_id}|{collection_id}"
 
-    # The item from ctx fixture should exist
     result = await check_item_exists_in_alias(database.client, alias, doc_id)
 
     assert result is True
@@ -40,6 +38,7 @@ async def test_check_item_exists_in_alias_returns_false_when_not_exists(ctx):
 
     alias = index_alias_by_collection_id(collection_id)
     doc_id = mk_item_id(non_existent_item_id, collection_id)
+    assert doc_id == f"{non_existent_item_id}|{collection_id}"
 
     result = await check_item_exists_in_alias(database.client, alias, doc_id)
 
@@ -54,8 +53,8 @@ async def test_check_item_exists_in_alias_sync_returns_true_when_exists(ctx):
 
     alias = index_alias_by_collection_id(collection_id)
     doc_id = mk_item_id(item_id, collection_id)
+    assert doc_id == f"{item_id}|{collection_id}"
 
-    # The item from ctx fixture should exist
     result = check_item_exists_in_alias_sync(database.sync_client, alias, doc_id)
 
     assert result is True
@@ -69,6 +68,7 @@ async def test_check_item_exists_in_alias_sync_returns_false_when_not_exists(ctx
 
     alias = index_alias_by_collection_id(collection_id)
     doc_id = mk_item_id(non_existent_item_id, collection_id)
+    assert doc_id == f"{non_existent_item_id}|{collection_id}"
 
     result = check_item_exists_in_alias_sync(database.sync_client, alias, doc_id)
 
@@ -89,20 +89,21 @@ async def test_check_item_exists_in_alias_with_multiple_items(ctx, txn_client):
         await create_item(txn_client, new_item)
         additional_item_ids.append(new_item["id"])
 
-    # Check original item exists
     original_doc_id = mk_item_id(ctx.item["id"], collection_id)
+    assert original_doc_id == f"{ctx.item['id']}|{collection_id}"
     assert (
         await check_item_exists_in_alias(database.client, alias, original_doc_id)
         is True
     )
 
-    # Check all additional items exist
     for item_id in additional_item_ids:
         doc_id = mk_item_id(item_id, collection_id)
+        assert doc_id == f"{item_id}|{collection_id}"
         assert await check_item_exists_in_alias(database.client, alias, doc_id) is True
 
-    # Check non-existent item returns False
-    non_existent_doc_id = mk_item_id(str(uuid.uuid4()), collection_id)
+    non_existent_item_id = str(uuid.uuid4())
+    non_existent_doc_id = mk_item_id(non_existent_item_id, collection_id)
+    assert non_existent_doc_id == f"{non_existent_item_id}|{collection_id}"
     assert (
         await check_item_exists_in_alias(database.client, alias, non_existent_doc_id)
         is False
@@ -133,13 +134,10 @@ async def test_check_item_exists_with_different_datetime(ctx, txn_client):
     another_item["properties"]["datetime"] = "2020-01-01T00:00:00Z"
     await create_item(txn_client, another_item)
 
-    # Both items should be found via the alias search
     doc_id_1 = mk_item_id(new_item["id"], collection_id)
     doc_id_2 = mk_item_id(another_item["id"], collection_id)
-
-    # Verify doc_ids match the expected items
-    assert doc_id_1 == f"{collection_id}|{new_item['id']}"
-    assert doc_id_2 == f"{collection_id}|{another_item['id']}"
+    assert doc_id_1 == f"{new_item['id']}|{collection_id}"
+    assert doc_id_2 == f"{another_item['id']}|{collection_id}"
 
     assert await check_item_exists_in_alias(database.client, alias, doc_id_1) is True
     assert await check_item_exists_in_alias(database.client, alias, doc_id_2) is True
