@@ -36,7 +36,7 @@ class ItemAlreadyExistsError(ConflictError):
 
 
 async def check_item_exists_in_alias(client: Any, alias: str, doc_id: str) -> bool:
-    """Check if an item exists across all indexes for an alias using a single query.
+    """Check if an item exists across all indexes for an alias.
 
     Args:
         client: The async Elasticsearch/OpenSearch client.
@@ -59,7 +59,7 @@ async def check_item_exists_in_alias(client: Any, alias: str, doc_id: str) -> bo
 
 
 def check_item_exists_in_alias_sync(client: Any, alias: str, doc_id: str) -> bool:
-    """Check if an item exists across all indexes for an alias using a single query (sync).
+    """Check if an item exists across all indexes for an alias (sync).
 
     Args:
         client: The sync Elasticsearch/OpenSearch client.
