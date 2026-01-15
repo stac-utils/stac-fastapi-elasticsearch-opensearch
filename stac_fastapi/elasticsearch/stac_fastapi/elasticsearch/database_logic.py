@@ -981,11 +981,6 @@ class DatabaseLogic(BaseDatabaseLogic):
     ) -> bool:
         """Check if an item exists across all indexes for a collection.
 
-        This method performs a single search query against the collection alias,
-        which Elasticsearch handles efficiently by broadcasting to all underlying
-        shards. This avoids the N+1 query problem when ENABLE_DATETIME_INDEX_FILTERING
-        is enabled and items may be stored in different datetime-partitioned indexes.
-
         Args:
             collection_id (str): The collection identifier.
             item_id (str): The item identifier.
@@ -1005,10 +1000,6 @@ class DatabaseLogic(BaseDatabaseLogic):
         self, collection_id: str, item_id: str
     ) -> bool:
         """Check if an item exists across all indexes for a collection (sync version).
-
-        This method performs a single search query against the collection alias,
-        which Elasticsearch handles efficiently by broadcasting to all underlying
-        shards. This avoids the N+1 query problem when datetime partitioning is enabled.
 
         Args:
             collection_id (str): The collection identifier.
@@ -1048,9 +1039,12 @@ class DatabaseLogic(BaseDatabaseLogic):
         if not exist_ok and await self._check_item_exists_in_collection(
             item["collection"], item["id"]
         ):
-            raise ConflictError(
+            error = ConflictError(
                 f"Item {item['id']} in collection {item['collection']} already exists"
             )
+            error.item_id = item["id"]
+            error.collection = item["collection"]
+            raise error
 
         return self.item_serializer.stac_to_db(item, base_url)
 
@@ -1092,7 +1086,10 @@ class DatabaseLogic(BaseDatabaseLogic):
                 f"Item {item['id']} in collection {item['collection']} already exists."
             )
             if self.async_settings.raise_on_bulk_error:
-                raise ConflictError(error_message)
+                error = ConflictError(error_message)
+                error.item_id = item["id"]
+                error.collection = item["collection"]
+                raise error
             else:
                 logger.warning(
                     f"{error_message} Continuing as `RAISE_ON_BULK_ERROR` is set to false."
@@ -1142,7 +1139,10 @@ class DatabaseLogic(BaseDatabaseLogic):
                 f"Item {item['id']} in collection {item['collection']} already exists."
             )
             if self.sync_settings.raise_on_bulk_error:
-                raise ConflictError(error_message)
+                error = ConflictError(error_message)
+                error.item_id = item["id"]
+                error.collection = item["collection"]
+                raise error
             else:
                 logger.warning(
                     f"{error_message} Continuing as `RAISE_ON_BULK_ERROR` is set to false."

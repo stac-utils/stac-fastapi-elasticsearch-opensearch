@@ -23,6 +23,8 @@ async def test_check_item_exists_in_alias_returns_true_when_exists(ctx, txn_clie
 
     alias = index_alias_by_collection_id(collection_id)
     doc_id = mk_item_id(item_id, collection_id)
+    
+    assert doc_id == f"{collection_id}|{item_id}"
 
     # The item from ctx fixture should exist
     result = await check_item_exists_in_alias(database.client, alias, doc_id)
@@ -134,6 +136,10 @@ async def test_check_item_exists_with_different_datetime(ctx, txn_client):
     # Both items should be found via the alias search
     doc_id_1 = mk_item_id(new_item["id"], collection_id)
     doc_id_2 = mk_item_id(another_item["id"], collection_id)
+
+    # Verify doc_ids match the expected items
+    assert doc_id_1 == f"{collection_id}|{new_item['id']}"
+    assert doc_id_2 == f"{collection_id}|{another_item['id']}"
 
     assert await check_item_exists_in_alias(database.client, alias, doc_id_1) is True
     assert await check_item_exists_in_alias(database.client, alias, doc_id_2) is True

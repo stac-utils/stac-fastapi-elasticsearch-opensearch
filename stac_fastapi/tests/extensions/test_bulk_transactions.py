@@ -227,16 +227,18 @@ async def test_bulk_sync_duplicate_detection(
     duplicate_item = deepcopy(ctx.item)
     duplicate_item["properties"]["datetime"] = "2028-07-20T12:00:00Z"
 
-    conflicting_items = {existing_item_id: duplicate_item}
+    conflicting_item = {existing_item_id: duplicate_item}
 
     # Test with RAISE_ON_BULK_ERROR set to true
     os.environ["RAISE_ON_BULK_ERROR"] = "true"
     bulk_txn_client.database.sync_settings = SearchSettings()
 
     with pytest.raises(ConflictError) as exc_info:
-        bulk_txn_client.bulk_item_insert(Items(items=conflicting_items), refresh=True)
+        bulk_txn_client.bulk_item_insert(Items(items=conflicting_item), refresh=True)
 
     assert existing_item_id in str(exc_info.value)
+    assert exc_info.value.item_id == existing_item_id
+    assert exc_info.value.collection == ctx.item["collection"]
 
 
 @pytest.mark.asyncio
