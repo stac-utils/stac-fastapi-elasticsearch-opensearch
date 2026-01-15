@@ -866,7 +866,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         size_limit = min(limit + 1, max_result_window)
 
         HIDE_ITEM_PATH = os.getenv("HIDE_ITEM_PATH", None)
-        if HIDE_ITEM_PATH and query:
+        if HIDE_ITEM_PATH:
             query = add_hidden_filter(query, HIDE_ITEM_PATH)
 
         search_task = asyncio.create_task(
@@ -882,10 +882,9 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         # Apply hidden filter to count query as well
         count_query = search.to_dict(count=True)
-        if HIDE_ITEM_PATH and "query" in count_query:
-            count_query["query"] = add_hidden_filter(
-                count_query["query"], HIDE_ITEM_PATH
-            )
+        if HIDE_ITEM_PATH:
+            q = count_query.get("query")
+            count_query["query"] = add_hidden_filter(q, HIDE_ITEM_PATH)
 
         count_task = asyncio.create_task(
             self.client.count(

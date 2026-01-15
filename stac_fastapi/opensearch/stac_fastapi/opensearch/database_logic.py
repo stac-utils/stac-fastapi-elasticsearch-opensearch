@@ -888,10 +888,9 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         # Ensure hidden item is not counted
         count_query = search.to_dict(count=True)
-        if "query" in count_query:
-            count_query["query"] = add_hidden_filter(
-                count_query["query"], HIDE_ITEM_PATH
-            )
+        if HIDE_ITEM_PATH:
+            q = count_query.get("query")
+            count_query["query"] = add_hidden_filter(q, HIDE_ITEM_PATH)
 
         count_task = asyncio.create_task(
             self.client.count(
