@@ -239,7 +239,7 @@ These extensions make it easier to build user interfaces that display and naviga
 
 SFEOS supports a **Catalog Registry** through the `/catalogs` endpoint. This allows for organized discovery by grouping collections into specific logical catalogs.
 
-This implementation follows the [Virtual Catalogs Endpoint](https://github.com/Healy-Hyperspatial/virtual-catalogs-endpoint) specification, which enables a multi-catalog STAC API architecture. SFEOS supports **hierarchical catalog structures** (Root -> Catalogs -> Sub-Catalogs -> Collections), allowing catalogs to contain other catalogs for flexible organizational hierarchies.
+This implementation follows the [Multi-Tenant Virtual Catalogs Endpoint](https://github.com/Healy-Hyperspatial/multi-tenant-catalogs) specification, which enables a multi-catalog STAC API architecture. SFEOS supports **hierarchical catalog structures** (Root -> Catalogs -> Sub-Catalogs -> Collections), allowing catalogs to contain other catalogs for flexible organizational hierarchies.
 
 ### Features
 
