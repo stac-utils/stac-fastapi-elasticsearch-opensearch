@@ -28,8 +28,9 @@ The following organizations have contributed time and/or funding to support the 
 
 ## Latest News
 
+- **01/11/2026:** Feature: **Hierarchical Catalog Support**. Sub-catalogs are now fully supported! Catalogs can now contain other catalogs for unlimited nesting levels. This enables complex organizational hierarchies with multi-parent support for both catalogs and collections.
 - **01/09/2026:** New Feature: **Custom Index Mappings**. You can now customize Elasticsearch/OpenSearch index mappings directly via environment variables without changing source code. Use `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` to merge custom field definitions (e.g., for STAC extensions like SAR or Cube) or `STAC_FASTAPI_ES_MAPPINGS_FILE` to load mappings from a JSON file. See [Custom Index Mappings](#custom-index-mappings) for details.
-- **12/09/2025:** Feature Merge: **Catalogs Endpoint**. The [`Catalogs Endpoint`](https://github.com/Healy-Hyperspatial/stac-api-extensions-catalogs-endpoint) extension is now in main! This enables a registry of catalogs and supports **poly-hierarchy** (collections belonging to multiple catalogs simultaneously). Enable it via `ENABLE_CATALOGS_EXTENSION`. _Coming next: Support for nested sub-catalogs._
+- **12/09/2025:** Feature Merge: **Multi-Tenant Catalogs**. The [`STAC API - Multi-Tenant Catalogs Endpoint Extension`](https://github.com/stac-api-extensions/multi-tenant-catalogs) is now in main! This enables a registry of catalogs and supports **poly-hierarchy** (collections belonging to multiple catalogs simultaneously). Enable it via `ENABLE_CATALOGS_EXTENSION`. _Coming next: Support for nested sub-catalogs._
 - **11/07/2025:** 🌍 The SFEOS STAC Viewer is now available at: https://healy-hyperspatial.github.io/sfeos-web. Use this site to examine your data and test your STAC API!
 - **10/24/2025:** Added `previous_token` pagination using Redis for efficient navigation. This feature allows users to navigate backwards through large result sets by storing pagination state in Redis. To use this feature, ensure Redis is configured (see [Redis for navigation](#redis-for-navigation)) and set `REDIS_ENABLE=true` in your environment.
 - **10/23/2025:** The `EXCLUDED_FROM_QUERYABLES` environment variable was added to exclude fields from the `queryables` endpoint. See [docs](#excluding-fields-from-queryables).
@@ -173,7 +174,7 @@ SFEOS provides enhanced collection search capabilities through two primary route
 - **GET/POST `/collections`**: The standard STAC endpoint with extended query parameters
 - **GET/POST `/collections-search`**: A custom endpoint that supports the same parameters, created to avoid conflicts with the STAC Transactions extension if enabled (which uses POST `/collections` for collection creation)
 
-The `/collections-search` endpoint follows the [STAC API Collection Search Endpoint](https://github.com/Healy-Hyperspatial/stac-api-extensions-collection-search-endpoint) specification, which provides a dedicated, conflict-free mechanism for advanced collection searching.
+The `/collections-search` endpoint follows the [Collection Search with Large Payloads](https://github.com/Healy-Hyperspatial/collection-search-large-payloads) specification, which provides a dedicated, conflict-free mechanism for advanced collection searching.
 
 These endpoints support advanced collection discovery features including:
 
@@ -238,16 +239,18 @@ These extensions make it easier to build user interfaces that display and naviga
 
 SFEOS supports a **Catalog Registry** through the `/catalogs` endpoint. This allows for organized discovery by grouping collections into specific logical catalogs.
 
-This implementation follows the [STAC API Catalogs Extension](https://github.com/Healy-Hyperspatial/stac-api-extensions-catalogs) specification, which enables a multi-catalog STAC API architecture. Currently, SFEOS supports a single level of catalogs (Root -> Catalogs -> Collections).
+This implementation follows the [Multi-Tenant Virtual Catalogs Endpoint](https://github.com/Healy-Hyperspatial/multi-tenant-catalogs) specification, which enables a multi-catalog STAC API architecture. SFEOS supports **hierarchical catalog structures** (Root -> Catalogs -> Sub-Catalogs -> Collections), allowing catalogs to contain other catalogs for flexible organizational hierarchies.
 
 ### Features
 
 - **Catalog Registry**: Discover and browse a list of available catalogs
+- **Hierarchical Catalogs**: Create nested catalog structures with sub-catalogs for multi-level organization
 - **Multi-Catalog Collections**: Collections can belong to multiple catalogs simultaneously, enabling flexible organizational hierarchies
+- **Multi-Parent Catalogs**: Catalogs can belong to multiple parent catalogs, supporting complex organizational structures
 - **Collection Discovery**: Access collections within specific catalog contexts
 - **STAC API Compliance**: Follows STAC specification for catalog objects and linking
 - **Flexible Querying**: Support for standard STAC API query parameters when browsing collections within catalogs
-- **Safety-First Data Protection**: Collection data is never deleted through the catalogs route; only containers (catalogs) can be destroyed
+- **Safety-First Data Protection**: Collection and catalog data is never deleted through the catalogs route; only containers can be destroyed
 
 ### Safety Architecture
 
@@ -255,7 +258,7 @@ The catalogs extension implements a **safety-first design** that protects collec
 
 | Operation | Route | Behavior | Data Safety |
 |-----------|-------|----------|-------------|
-| Delete Catalog | `DELETE /catalogs/{id}` | Removes the catalog container; all links between catalog and collections are severed; collections are adopted by root if orphaned | 🟢 Safe (structure only) |
+| Delete Catalog | `DELETE /catalogs/{id}` | Removes the catalog container; all links between catalog and collections/sub-catalogs are severed; children are adopted by root if orphaned | 🟢 Safe (structure only) |
 | Unlink Collection | `DELETE /catalogs/{id}/collections/{id}` | Severs the link between collection and this catalog; collection survives at root if it has no other parents | 🟢 Safe (zero data loss) |
 | Destroy Collection | `DELETE /collections/{id}` | Permanently deletes collection and all items (intentional, outside catalogs route) | 🔴 Destructive |
 
@@ -267,15 +270,25 @@ The catalogs extension implements a **safety-first design** that protects collec
 
 ### Endpoints
 
+**Catalog Management:**
 - **GET `/catalogs`**: Retrieve the root catalog and its child catalogs
 - **POST `/catalogs`**: Create a new catalog (requires appropriate permissions)
 - **GET `/catalogs/{catalog_id}`**: Retrieve a specific catalog and its children
-- **DELETE `/catalogs/{catalog_id}`**: Delete a catalog (collections are unlinked and adopted by root if orphaned)
+- **PUT `/catalogs/{catalog_id}`**: Update an existing catalog (title, description, etc.)
+- **DELETE `/catalogs/{catalog_id}`**: Delete a catalog (collections and sub-catalogs are unlinked and adopted by root if orphaned)
+
+**Sub-Catalog Hierarchy:**
+- **GET `/catalogs/{catalog_id}/catalogs`**: Retrieve sub-catalogs within a specific catalog
+- **POST `/catalogs/{catalog_id}/catalogs`**: Create a new sub-catalog within a specific catalog
+
+**Children & Collections:**
 - **GET `/catalogs/{catalog_id}/children`**: Retrieve all children (Catalogs and Collections) of this catalog with optional type filtering
 - **GET `/catalogs/{catalog_id}/collections`**: Retrieve collections within a specific catalog
 - **POST `/catalogs/{catalog_id}/collections`**: Create a new collection within a specific catalog
 - **GET `/catalogs/{catalog_id}/collections/{collection_id}`**: Retrieve a specific collection within a catalog
 - **DELETE `/catalogs/{catalog_id}/collections/{collection_id}`**: Unlink a collection from a catalog (collection survives at root if orphaned)
+
+**Items:**
 - **GET `/catalogs/{catalog_id}/collections/{collection_id}/items`**: Retrieve items within a collection in a catalog context
 - **GET `/catalogs/{catalog_id}/collections/{collection_id}/items/{item_id}`**: Retrieve a specific item within a catalog context
 
@@ -287,6 +300,31 @@ curl "http://localhost:8081/catalogs"
 
 # Get specific catalog
 curl "http://localhost:8081/catalogs/earth-observation"
+
+# Update a catalog
+curl -X PUT "http://localhost:8081/catalogs/earth-observation" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "earth-observation",
+    "type": "Catalog",
+    "stac_version": "1.0.0",
+    "description": "Updated description for Earth observation data",
+    "title": "Updated Earth Observation Catalog"
+  }'
+
+# Get sub-catalogs within a catalog
+curl "http://localhost:8081/catalogs/earth-observation/catalogs"
+
+# Create a new sub-catalog within a catalog
+curl -X POST "http://localhost:8081/catalogs/earth-observation/catalogs" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "sentinel-data",
+    "type": "Catalog",
+    "stac_version": "1.0.0",
+    "description": "Sentinel satellite data catalog",
+    "title": "Sentinel Data"
+  }'
 
 # Get all children (catalogs and collections) of a catalog
 curl "http://localhost:8081/catalogs/earth-observation/children"
@@ -343,33 +381,78 @@ curl -X DELETE "http://localhost:8081/collections/sentinel-2"
 
 The catalogs extension implements a **safety-first deletion policy**:
 
-- **`DELETE /catalogs/{id}`**: Removes the catalog container and severs all links between the catalog and its collections. Collections are automatically adopted by the root catalog if they become orphans. **Collection data is never deleted.**
+- **`DELETE /catalogs/{id}`**: Removes the catalog container and severs all links between the catalog and its collections/sub-catalogs. Children are automatically adopted by the root catalog if they become orphans. **Collection and catalog data is never deleted.**
 - **`DELETE /catalogs/{id}/collections/{id}`**: Severs the link between a collection and this catalog. If the collection has other parent catalogs, it remains linked to them. If it becomes an orphan, it is automatically adopted by root. **Collection data is never deleted.**
 - **`DELETE /collections/{id}`**: Permanently deletes a collection and all its items. This is the only way to destroy collection data and must be done explicitly outside the catalogs route.
 
 **What Gets Removed**:
 - Catalog documents (when deleting a catalog)
-- Relationship links between catalogs and collections (when unlinking)
+- Relationship links between catalogs and collections/sub-catalogs (when unlinking)
 - Collection documents and items (only via `/collections` endpoint)
 
 **What Is Always Preserved**:
 - Collection data (never deleted through catalogs routes)
+- Catalog data (never deleted through catalogs routes)
 - Item data (never deleted through catalogs routes)
 
-> **Note**: The `cascade` parameter has been removed. Collections are never deleted through the catalogs route. If you need to delete collections, use the `/collections` endpoint explicitly.
+> **Note**: The `cascade` parameter has been removed. Collections and catalogs are never deleted through the catalogs route. If you need to delete collections, use the `/collections` endpoint explicitly.
 
 ### Response Structure
 
 Catalog responses include:
 - **Catalog metadata**: ID, title, description, and other catalog properties
-- **Child catalogs**: Links to sub-catalogs for hierarchical navigation
+- **Sub-catalogs**: Links to nested sub-catalogs for multi-level hierarchical navigation
 - **Collections**: Links to collections contained within the catalog
-- **STAC links**: Properly formatted STAC API links for navigation
+- **STAC links**: Properly formatted STAC API links for navigation (parent, root, self, children)
 
-This feature enables building user interfaces that provide organized, hierarchical browsing of STAC collections, making it easier for users to discover and navigate through large collections organized by theme, provider, or any other categorization scheme.
+This feature enables building user interfaces that provide organized, hierarchical browsing of STAC collections and catalogs, making it easier for users to discover and navigate through large datasets organized by theme, provider, region, or any other categorization scheme. The hierarchical structure supports unlimited nesting levels for maximum organizational flexibility.
+
+### Poly-Hierarchy & Linking Existing Resources
+
+This extension supports **Poly-Hierarchy**, meaning a single Catalog or Collection can belong to multiple parents simultaneously. This allows you to create "Virtual" views or "Playlists" of data without duplicating content.
+
+To link an **existing** Catalog or Collection to a new parent, simply `POST` it to the new parent's endpoint using its existing `id`. The API implements an **Upsert** (Update or Insert) logic:
+
+1. **Check:** Does a resource with this `id` already exist?
+2. **If YES (Link):** The API adds the new parent to the resource's `parent_ids` list. No data is duplicated.
+3. **If NO (Create):** The API creates a new resource.
+
+#### Example: Creating a "Forestry" Playlist
+
+Imagine you have an existing catalog `sentinel-2` stored under `providers/esa`. You want to create a curated "Forestry" catalog that includes this existing data.
+
+```bash
+# 1. Create the new Forestry catalog
+curl -X POST "http://localhost:8081/catalogs" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "forestry",
+    "type": "Catalog",
+    "stac_version": "1.0.0",
+    "description": "Forestry-related datasets",
+    "title": "Forestry"
+  }'
+
+# 2. Link the EXISTING Sentinel-2 catalog to Forestry
+# Note: We use the existing ID "sentinel-2"
+curl -X POST "http://localhost:8081/catalogs/forestry/catalogs" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "sentinel-2",
+    "type": "Catalog",
+    "stac_version": "1.0.0",
+    "description": "Sentinel-2 satellite imagery",
+    "title": "Sentinel-2"
+  }'
+```
+
+**Result:** The sentinel-2 catalog is now accessible via both paths:
+- `/catalogs/providers/esa/catalogs/sentinel-2`
+- `/catalogs/forestry/catalogs/sentinel-2`
+
+Because you are linking the node (the Catalog), the entire sub-tree attached to that node is automatically shared. If sentinel-2 contains millions of items and sub-catalogs, they are all instantly visible under the new forestry path without needing to re-link individual items.
 
 > **Configuration**: The catalogs route can be enabled or disabled by setting the `ENABLE_CATALOGS_ROUTE` environment variable to `true` or `false`. By default, this endpoint is **disabled**.
-
 
 ## Package Structure
 

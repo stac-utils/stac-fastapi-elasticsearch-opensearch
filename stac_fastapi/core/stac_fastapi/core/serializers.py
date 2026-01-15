@@ -355,6 +355,9 @@ class CatalogSerializer(Serializer):
         # Avoid modifying the input dict in-place
         catalog = deepcopy(catalog)
 
+        # Remove internal fields (not part of STAC spec)
+        catalog.pop("parent_ids", None)
+
         # Set defaults
         catalog.setdefault("type", "Catalog")
         catalog.setdefault("stac_extensions", [])
