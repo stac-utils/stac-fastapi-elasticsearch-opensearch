@@ -14,16 +14,29 @@ from stac_fastapi.extensions.core.transaction.request import (
     PatchRemove,
 )
 from stac_fastapi.sfeos_helpers.models.patch import ElasticPath, ESCommandSet
+from stac_fastapi.types.errors import ConflictError
 
 logger = logging.getLogger(__name__)
 
 
+class ItemAlreadyExistsError(ConflictError):
+    """Error raised when attempting to create an item that already exists.
+
+    Attributes:
+        item_id: The ID of the item that already exists.
+        collection_id: The ID of the collection containing the item.
+    """
+
+    def __init__(self, item_id: str, collection_id: str):
+        """Initialize the error with item and collection IDs."""
+        self.item_id = item_id
+        self.collection_id = collection_id
+        message = f"Item {item_id} in collection {collection_id} already exists"
+        super().__init__(message)
+
+
 async def check_item_exists_in_alias(client: Any, alias: str, doc_id: str) -> bool:
     """Check if an item exists across all indexes for an alias using a single query.
-
-    This function performs a single search query against the alias, which
-    Elasticsearch/OpenSearch handles efficiently by broadcasting to all underlying
-    shards. This avoids the N+1 query problem when datetime partitioning is enabled.
 
     Args:
         client: The async Elasticsearch/OpenSearch client.
@@ -42,15 +55,11 @@ async def check_item_exists_in_alias(client: Any, alias: str, doc_id: str) -> bo
         size=0,
         terminate_after=1,
     )
-    return resp["hits"]["total"]["value"] > 0
+    return bool(resp["hits"]["total"]["value"])
 
 
 def check_item_exists_in_alias_sync(client: Any, alias: str, doc_id: str) -> bool:
     """Check if an item exists across all indexes for an alias using a single query (sync).
-
-    This function performs a single search query against the alias, which
-    Elasticsearch/OpenSearch handles efficiently by broadcasting to all underlying
-    shards. This avoids the N+1 query problem when datetime partitioning is enabled.
 
     Args:
         client: The sync Elasticsearch/OpenSearch client.
@@ -69,7 +78,7 @@ def check_item_exists_in_alias_sync(client: Any, alias: str, doc_id: str) -> boo
         size=0,
         terminate_after=1,
     )
-    return resp["hits"]["total"]["value"] > 0
+    return bool(resp["hits"]["total"]["value"])
 
 
 def add_bbox_shape_to_collection(collection: Dict[str, Any]) -> bool:

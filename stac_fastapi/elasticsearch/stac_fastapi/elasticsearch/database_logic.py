@@ -33,6 +33,7 @@ from stac_fastapi.extensions.core.transaction.request import (
     PatchOperation,
 )
 from stac_fastapi.sfeos_helpers.database import (
+    ItemAlreadyExistsError,
     add_bbox_shape_to_collection,
     apply_collections_bbox_filter_shared,
     apply_collections_datetime_filter_shared,
@@ -990,11 +991,10 @@ class DatabaseLogic(BaseDatabaseLogic):
         """
         alias = index_alias_by_collection_id(collection_id)
         doc_id = mk_item_id(item_id, collection_id)
-        alias_exists = await self.client.indices.exists_alias(name=alias)
-
-        if alias_exists:
+        try:
             return await check_item_exists_in_alias(self.client, alias, doc_id)
-        return False
+        except Exception:
+            return False
 
     def _check_item_exists_in_collection_sync(
         self, collection_id: str, item_id: str
@@ -1010,11 +1010,10 @@ class DatabaseLogic(BaseDatabaseLogic):
         """
         alias = index_alias_by_collection_id(collection_id)
         doc_id = mk_item_id(item_id, collection_id)
-        alias_exists = self.sync_client.indices.exists_alias(name=alias)
-
-        if alias_exists:
+        try:
             return check_item_exists_in_alias_sync(self.sync_client, alias, doc_id)
-        return False
+        except Exception:
+            return False
 
     async def async_prep_create_item(
         self, item: Item, base_url: str, exist_ok: bool = False
@@ -1031,7 +1030,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             Item: The prepped item.
 
         Raises:
-            ConflictError: If the item already exists in the database.
+            ItemAlreadyExistsError: If the item already exists in the database.
 
         """
         await self.check_collection_exists(collection_id=item["collection"])
@@ -1039,12 +1038,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         if not exist_ok and await self._check_item_exists_in_collection(
             item["collection"], item["id"]
         ):
-            error = ConflictError(
-                f"Item {item['id']} in collection {item['collection']} already exists"
-            )
-            error.item_id = item["id"]
-            error.collection = item["collection"]
-            raise error
+            raise ItemAlreadyExistsError(item["id"], item["collection"])
 
         return self.item_serializer.stac_to_db(item, base_url)
 
@@ -1082,17 +1076,12 @@ class DatabaseLogic(BaseDatabaseLogic):
         if not exist_ok and await self._check_item_exists_in_collection(
             item["collection"], item["id"]
         ):
-            error_message = (
-                f"Item {item['id']} in collection {item['collection']} already exists."
-            )
             if self.async_settings.raise_on_bulk_error:
-                error = ConflictError(error_message)
-                error.item_id = item["id"]
-                error.collection = item["collection"]
-                raise error
+                raise ItemAlreadyExistsError(item["id"], item["collection"])
             else:
                 logger.warning(
-                    f"{error_message} Continuing as `RAISE_ON_BULK_ERROR` is set to false."
+                    f"Item {item['id']} in collection {item['collection']} already exists. "
+                    "Continuing as `RAISE_ON_BULK_ERROR` is set to false."
                 )
 
         # Serialize the item into a database-compatible format
@@ -1135,17 +1124,12 @@ class DatabaseLogic(BaseDatabaseLogic):
         if not exist_ok and self._check_item_exists_in_collection_sync(
             item["collection"], item["id"]
         ):
-            error_message = (
-                f"Item {item['id']} in collection {item['collection']} already exists."
-            )
             if self.sync_settings.raise_on_bulk_error:
-                error = ConflictError(error_message)
-                error.item_id = item["id"]
-                error.collection = item["collection"]
-                raise error
+                raise ItemAlreadyExistsError(item["id"], item["collection"])
             else:
                 logger.warning(
-                    f"{error_message} Continuing as `RAISE_ON_BULK_ERROR` is set to false."
+                    f"Item {item['id']} in collection {item['collection']} already exists. "
+                    "Continuing as `RAISE_ON_BULK_ERROR` is set to false."
                 )
 
         # Serialize the item into a database-compatible format

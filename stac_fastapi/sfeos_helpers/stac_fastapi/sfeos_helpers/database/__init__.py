@@ -49,6 +49,7 @@ from .query import (
     populate_sort_shared,
 )
 from .utils import (
+    ItemAlreadyExistsError,
     add_bbox_shape_to_collection,
     check_item_exists_in_alias,
     check_item_exists_in_alias_sync,
@@ -81,6 +82,8 @@ __all__ = [
     "add_bbox_shape_to_collection",
     "check_item_exists_in_alias",
     "check_item_exists_in_alias_sync",
+    # Errors
+    "ItemAlreadyExistsError",
     # Datetime utilities
     "return_date",
     "extract_date",

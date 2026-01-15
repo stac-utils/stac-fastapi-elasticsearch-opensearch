@@ -6,7 +6,7 @@ import pytest
 from pydantic import ValidationError
 
 from stac_fastapi.extensions.third_party.bulk_transactions import Items
-from stac_fastapi.types.errors import ConflictError
+from stac_fastapi.sfeos_helpers.database import ItemAlreadyExistsError
 
 from ..conftest import MockRequest, create_item
 
@@ -42,7 +42,7 @@ async def test_bulk_item_insert_with_raise_on_error(
     """
     Test bulk_item_insert behavior with RAISE_ON_BULK_ERROR set to true and false.
 
-    This test verifies that when RAISE_ON_BULK_ERROR is set to true, a ConflictError
+    This test verifies that when RAISE_ON_BULK_ERROR is set to true, a ItemAlreadyExistsError
     is raised for conflicting items. When set to false, the operation logs errors
     and continues gracefully.
     """
@@ -63,7 +63,7 @@ async def test_bulk_item_insert_with_raise_on_error(
     os.environ["RAISE_ON_BULK_ERROR"] = "true"
     bulk_txn_client.database.sync_settings = SearchSettings()
 
-    with pytest.raises(ConflictError):
+    with pytest.raises(ItemAlreadyExistsError):
         bulk_txn_client.bulk_item_insert(Items(items=conflicting_items), refresh=True)
 
     # Test with RAISE_ON_BULK_ERROR set to false
@@ -159,7 +159,7 @@ async def test_feature_collection_insert_duplicate_detection(
 
     This test verifies that when an item already exists in the collection,
     attempting to insert the same item ID via FeatureCollection will raise
-    a ConflictError (when RAISE_ON_BULK_ERROR is true).
+    a ItemAlreadyExistsError (when RAISE_ON_BULK_ERROR is true).
     """
     # ctx.item is already created in the fixture
     existing_item_id = ctx.item["id"]
@@ -171,12 +171,12 @@ async def test_feature_collection_insert_duplicate_detection(
 
     feature_collection = {"type": "FeatureCollection", "features": [duplicate_item]}
 
-    # Set RAISE_ON_BULK_ERROR to true to get ConflictError
+    # Set RAISE_ON_BULK_ERROR to true to get ItemAlreadyExistsError
     os.environ["RAISE_ON_BULK_ERROR"] = "true"
     txn_client.database.sync_settings = SearchSettings()
 
-    # Should raise ConflictError because item already exists
-    with pytest.raises(ConflictError) as exc_info:
+    # Should raise ItemAlreadyExistsError because item already exists
+    with pytest.raises(ItemAlreadyExistsError) as exc_info:
         await create_item(txn_client, feature_collection)
 
     assert existing_item_id in str(exc_info.value)
@@ -205,7 +205,7 @@ async def test_feature_collection_insert_duplicate_with_different_datetime(
     txn_client.database.sync_settings = SearchSettings()
 
     # Should still detect the duplicate even with different datetime
-    with pytest.raises(ConflictError) as exc_info:
+    with pytest.raises(ItemAlreadyExistsError) as exc_info:
         await create_item(txn_client, feature_collection)
 
     assert existing_item_id in str(exc_info.value)
@@ -233,12 +233,12 @@ async def test_bulk_sync_duplicate_detection(
     os.environ["RAISE_ON_BULK_ERROR"] = "true"
     bulk_txn_client.database.sync_settings = SearchSettings()
 
-    with pytest.raises(ConflictError) as exc_info:
+    with pytest.raises(ItemAlreadyExistsError) as exc_info:
         bulk_txn_client.bulk_item_insert(Items(items=conflicting_item), refresh=True)
 
     assert existing_item_id in str(exc_info.value)
     assert exc_info.value.item_id == existing_item_id
-    assert exc_info.value.collection == ctx.item["collection"]
+    assert exc_info.value.collection_id == ctx.item["collection"]
 
 
 @pytest.mark.asyncio
@@ -271,7 +271,7 @@ async def test_bulk_insert_multiple_items_with_one_duplicate(
     bulk_txn_client.database.sync_settings = SearchSettings()
 
     # Should fail on the duplicate
-    with pytest.raises(ConflictError) as exc_info:
+    with pytest.raises(ItemAlreadyExistsError) as exc_info:
         bulk_txn_client.bulk_item_insert(Items(items=items), refresh=True)
 
     assert existing_item_id in str(exc_info.value)
