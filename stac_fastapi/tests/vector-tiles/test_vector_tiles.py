@@ -2,7 +2,6 @@ import logging
 
 import pytest
 from httpx import AsyncClient
-from slowapi.errors import RateLimitExceeded
 
 logger = logging.getLogger(__name__)
 
