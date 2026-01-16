@@ -60,6 +60,12 @@ from stac_fastapi.opensearch.database_logic import (
 from stac_fastapi.sfeos_helpers.aggregation import EsAsyncBaseAggregationClient
 from stac_fastapi.sfeos_helpers.filter import EsAsyncBaseFiltersClient
 
+from pydantic import Field
+from stac_pydantic.api import LandingPage
+from stac_fastapi.api.routes import create_async_endpoint
+from stac_fastapi.api.models import EmptyRequest
+from stac_pydantic.shared import MimeTypes
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -275,6 +281,59 @@ if collections_get_request_model:
     app_config["collections_get_request_model"] = collections_get_request_model
 
 api = StacApi(**app_config)
+
+
+class CustomLanding(LandingPage):
+    stac_api_version: str = Field(
+        default=api.app.version,
+        description="Custom STAC FastAPI version",
+    )
+
+
+original_landing_page = api.client.landing_page
+
+
+async def patched_landing_page(**kwargs):
+    # Call the original with all kwargs (including request)
+    result = await original_landing_page(**kwargs)
+
+    result["stac_api_version"] = os.getenv("STAC_FASTAPI_VERSION", "6.0.0")
+    return CustomLanding(**result)
+
+
+# Patch the client method
+api.client.landing_page = patched_landing_page
+
+api.router.routes = [
+    route
+    for route in api.router.routes
+    if not (hasattr(route, "path") and route.path == "/")
+]
+
+api.app.router.routes = [
+    route
+    for route in api.app.router.routes
+    if not (hasattr(route, "path") and route.path == "/")
+]
+
+api.app.add_api_route(
+    name="Landing Page",
+    path="/",
+    response_model=CustomLanding,
+    responses={
+        200: {
+            "content": {
+                MimeTypes.json.value: {},
+            },
+            "model": CustomLanding,
+        },
+    },
+    response_class=api.response_class,
+    response_model_exclude_unset=False,
+    response_model_exclude_none=True,
+    methods=["GET"],
+    endpoint=create_async_endpoint(api.client.landing_page, EmptyRequest),
+)
 
 
 @asynccontextmanager
