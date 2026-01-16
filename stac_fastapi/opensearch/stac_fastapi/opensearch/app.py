@@ -65,6 +65,8 @@ from stac_fastapi.opensearch.database_logic import (
 from stac_fastapi.sfeos_helpers.aggregation import EsAsyncBaseAggregationClient
 from stac_fastapi.sfeos_helpers.filter import EsAsyncBaseFiltersClient
 
+from stac_fastapi.opensearch.version import __version__ as sfos_version
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -296,7 +298,7 @@ async def patched_landing_page(**kwargs):
     # Call the original with all kwargs (including request)
     result = await original_landing_page(**kwargs)
 
-    result["stac_api_version"] = os.getenv("STAC_FASTAPI_VERSION", "6.0.0")
+    result["stac_api_version"] = sfos_version
     return CustomLanding(**result)
 
 
