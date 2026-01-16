@@ -5,6 +5,7 @@ This module provides functions for building and manipulating Elasticsearch/OpenS
 
 import logging
 import re
+
 from typing import Any, Dict, List, Optional, Union
 
 from stac_fastapi.core.utilities import bbox2polygon
@@ -57,22 +58,49 @@ def process_ftq(q: str) -> str:
     return f"(*{escaped_q}* OR *{escaped_q_lower}* OR *{escaped_q_upper}*)"
 
 
+QUERY_STRING_BOOLEAN_REGEX = re.compile(r"\b(AND|OR|NOT)\b", re.IGNORECASE)
+
+
 def apply_free_text_filter_shared(
     search: Any,
     free_text_queries: Optional[List[str]],
-    fields: Optional[List[str]] = [],
+    fields: Optional[List[str]] = None,
 ) -> Any:
-    if free_text_queries:
-        processed_queries = [
-            process_ftq(q.strip()) for q in free_text_queries if q.strip()
-        ]
+    if not free_text_queries:
+        return search
 
-        if processed_queries:
-            free_text_query_string = " AND ".join(processed_queries)
+    or_groups = []
 
-            search = search.query(
-                "query_string", query=free_text_query_string, fields=fields
-            )
+    for q in free_text_queries:
+        q = q.strip()
+        if not q:
+            continue
+
+        # ADVANCED USER QUERY: Contains boolean operators
+        if QUERY_STRING_BOOLEAN_REGEX.search(q):
+            or_groups.append(f"({escape_reserved_chars(q)})")
+            continue
+
+        # SIMPLE USER QUERY: Comma-separated → OR
+        if "," in q:
+            parts = [process_ftq(p.strip()) for p in q.split(",") if p.strip()]
+            if parts:
+                or_groups.append(f"({' OR '.join(parts)})")
+
+        # SIMPLE USER QUERY: Space-separated → AND
+        else:
+            parts = [process_ftq(p) for p in q.split() if p.strip()]
+            if parts:
+                or_groups.append(
+                    parts[0] if len(parts) == 1 else f"({' AND '.join(parts)})"
+                )
+
+    if or_groups:
+        free_text_query_string = " OR ".join(or_groups)
+
+        search = search.query(
+            "query_string", query=free_text_query_string, fields=fields or []
+        )
 
     return search
 

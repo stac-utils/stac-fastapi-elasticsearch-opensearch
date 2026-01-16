@@ -183,6 +183,7 @@ AGGREGATION_MAPPING: Dict[str, Dict[str, Any]] = {
     "sub_type_frequency": {"terms": {"field": "properties.sub_type", "size": 100}},
     "project_frequency": {"terms": {"field": "properties._project", "size": 10000}},
     "program_frequency": {"terms": {"field": "properties._program", "size": 10000}},
+    "inspection_type_frequency": {"terms": {"field": "properties.inspection_type", "size": 10000}},
     "datetime_frequency": {
         "date_histogram": {
             "field": "properties.datetime",

@@ -60,6 +60,11 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
             "frequency_distribution_data_type": "string",
         },
         {
+            "name": "inspection_type_frequency",
+            "data_type": "frequency_distribution",
+            "frequency_distribution_data_type": "string",
+        },
+        {
             "name": "datetime_frequency",
             "data_type": "frequency_distribution",
             "frequency_distribution_data_type": "datetime",
