@@ -65,7 +65,7 @@ from stac_fastapi.opensearch.database_logic import (
 from stac_fastapi.sfeos_helpers.aggregation import EsAsyncBaseAggregationClient
 from stac_fastapi.sfeos_helpers.filter import EsAsyncBaseFiltersClient
 
-from stac_fastapi.opensearch.version import __version__ as sfos_version
+from stac_fastapi.opensearch.am_version import __version__ as sfos_version
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

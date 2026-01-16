@@ -1,3 +1,3 @@
 """library version."""
 
-__version__ = "v6.7.6_AM3.1"
+__version__ = "6.7.6"
