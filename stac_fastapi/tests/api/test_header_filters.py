@@ -493,3 +493,178 @@ class TestGeometryIntersectionOptimization:
             headers={FILTER_GEOMETRY_HEADER: json.dumps(header_geometry)},
         )
         assert response.status_code == 200
+
+
+class TestCollectionIntersection:
+    """Tests for collection intersection between request and header filter."""
+
+    @pytest.mark.asyncio
+    async def test_intersection_request_and_header_collections(
+        self, app_client, multi_collection_ctx
+    ):
+        """Request collections intersected with header collections."""
+        # Header allows collection-a and collection-b
+        # Request asks for collection-a and collection-c
+        # Result should only include collection-a (intersection)
+        response = await app_client.post(
+            "/search",
+            json={"collections": ["test-collection-a", "test-collection-c"]},
+            headers={FILTER_COLLECTIONS_HEADER: "test-collection-a,test-collection-b"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        # Should only return items from collection-a (intersection)
+        for feature in data["features"]:
+            assert feature["collection"] == "test-collection-a"
+
+    @pytest.mark.asyncio
+    async def test_empty_intersection_returns_empty_results(
+        self, app_client, multi_collection_ctx
+    ):
+        """Empty intersection returns empty results (not 403)."""
+        # Header allows collection-a only
+        # Request asks for collection-b only
+        # Intersection is empty -> return empty results
+        response = await app_client.post(
+            "/search",
+            json={"collections": ["test-collection-b"]},
+            headers={FILTER_COLLECTIONS_HEADER: "test-collection-a"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert len(data["features"]) == 0
+
+    @pytest.mark.asyncio
+    async def test_no_request_collections_uses_all_header_collections(
+        self, app_client, multi_collection_ctx
+    ):
+        """When no collections requested, use all allowed (header) collections."""
+        response = await app_client.post(
+            "/search",
+            json={},
+            headers={FILTER_COLLECTIONS_HEADER: "test-collection-a,test-collection-b"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        # Should return items from both allowed collections
+        collections_in_response = {f["collection"] for f in data["features"]}
+        assert "test-collection-a" in collections_in_response
+        assert "test-collection-b" in collections_in_response
+        # But not collection-c (not in header)
+        assert "test-collection-c" not in collections_in_response
+
+    @pytest.mark.asyncio
+    async def test_cql2_collections_intersected_with_header(
+        self, app_client, multi_collection_ctx
+    ):
+        """Collections in CQL2 filter are intersected with header."""
+        # CQL2 filter with collection = test-collection-c
+        # Header allows only test-collection-a
+        # Intersection is empty
+        cql2_filter = {
+            "op": "=",
+            "args": [{"property": "collection"}, "test-collection-c"],
+        }
+        response = await app_client.post(
+            "/search",
+            json={"filter": cql2_filter, "filter-lang": "cql2-json"},
+            headers={FILTER_COLLECTIONS_HEADER: "test-collection-a"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        # Empty intersection -> empty results
+        assert len(data["features"]) == 0
+
+    @pytest.mark.asyncio
+    async def test_cql2_in_collections_intersected_with_header(
+        self, app_client, multi_collection_ctx
+    ):
+        """Collections from CQL2 IN operator intersected with header."""
+        # CQL2 filter: collection IN (test-collection-a, test-collection-c)
+        # Header allows: test-collection-a, test-collection-b
+        # Intersection: test-collection-a
+        cql2_filter = {
+            "op": "in",
+            "args": [
+                {"property": "collection"},
+                ["test-collection-a", "test-collection-c"],
+            ],
+        }
+        response = await app_client.post(
+            "/search",
+            json={"filter": cql2_filter, "filter-lang": "cql2-json"},
+            headers={FILTER_COLLECTIONS_HEADER: "test-collection-a,test-collection-b"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        # Should only return items from collection-a
+        for feature in data["features"]:
+            assert feature["collection"] == "test-collection-a"
+
+    @pytest.mark.asyncio
+    async def test_body_and_cql2_collections_combined(
+        self, app_client, multi_collection_ctx
+    ):
+        """Body collections and CQL2 collections are both considered."""
+        # Body: collections = [test-collection-a]
+        # CQL2: collection = test-collection-b (via AND clause)
+        # Combined requested: {test-collection-a, test-collection-b}
+        # Header allows: test-collection-a, test-collection-c
+        # Intersection: test-collection-a
+        cql2_filter = {
+            "op": "and",
+            "args": [
+                {"op": "=", "args": [{"property": "collection"}, "test-collection-b"]},
+                {"op": ">", "args": [{"property": "datetime"}, "2000-01-01T00:00:00Z"]},
+            ],
+        }
+        response = await app_client.post(
+            "/search",
+            json={
+                "collections": ["test-collection-a"],
+                "filter": cql2_filter,
+                "filter-lang": "cql2-json",
+            },
+            headers={FILTER_COLLECTIONS_HEADER: "test-collection-a,test-collection-c"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        # Should only have items from test-collection-a (the intersection)
+        for feature in data["features"]:
+            assert feature["collection"] == "test-collection-a"
+
+    @pytest.mark.asyncio
+    async def test_get_search_collections_intersected(
+        self, app_client, multi_collection_ctx
+    ):
+        """GET search collections query param intersected with header."""
+        response = await app_client.get(
+            "/search",
+            params={"collections": "test-collection-a,test-collection-c"},
+            headers={FILTER_COLLECTIONS_HEADER: "test-collection-a,test-collection-b"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        # Should only return items from collection-a
+        for feature in data["features"]:
+            assert feature["collection"] == "test-collection-a"
+
+    @pytest.mark.asyncio
+    async def test_empty_header_returns_empty_results(
+        self, app_client, multi_collection_ctx
+    ):
+        """Empty header collections value returns empty results."""
+        response = await app_client.post(
+            "/search",
+            json={"collections": ["test-collection-a"]},
+            headers={FILTER_COLLECTIONS_HEADER: ""},
+        )
+        assert response.status_code == 200
+        data = response.json()
+        # Empty header means no collections allowed
+        assert len(data["features"]) == 0

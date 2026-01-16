@@ -6,7 +6,8 @@ Headers allow stac-auth-proxy to pass collection and geometry filters to sfeos.
 
 import json
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
+from urllib.parse import unquote_plus
 
 from fastapi import Request
 
@@ -373,3 +374,176 @@ def collect_geometries_for_intersection(
         geometries.append(cql2_geometry)
 
     return geometries
+
+
+def extract_collections_from_cql2(
+    filter_expr: Any,
+    filter_lang: Optional[str] = None,
+) -> Set[str]:
+    """Extract collection IDs referenced in a CQL2 filter.
+
+    Handles both cql2-json and cql2-text formats.
+
+    Args:
+        filter_expr: The filter expression (dict for cql2-json, str for cql2-text)
+        filter_lang: Optional filter language hint
+
+    Returns:
+        Set of collection IDs found in the filter
+    """
+    if filter_expr is None:
+        return set()
+
+    try:
+        if isinstance(filter_expr, str):
+            filter_expr = unquote_plus(filter_expr)
+            try:
+                from cql2 import Expr
+
+                expr = Expr(filter_expr)
+                filter_dict = expr.to_json()
+            except ImportError:
+                logger.warning(
+                    "cql2 library not installed - CQL2 text parsing skipped. "
+                    "Install cql2 for full CQL2-text support."
+                )
+                return set()
+            except Exception:
+                return set()
+        elif isinstance(filter_expr, dict):
+            filter_dict = filter_expr
+        else:
+            return set()
+
+        return _extract_collections_recursive(filter_dict)
+    except Exception as e:
+        logger.debug(f"Failed to extract collections from CQL2: {str(e)}")
+        return set()
+
+
+def _extract_collections_recursive(node: Any) -> Set[str]:
+    """Recursively extract collection values from CQL2 JSON AST."""
+    collections: Set[str] = set()
+
+    if not isinstance(node, dict):
+        return collections
+
+    op = node.get("op", "").lower()
+    args = node.get("args", [])
+
+    if op in ("=", "eq"):
+        if len(args) == 2:
+            prop, val = args[0], args[1]
+            if _is_collection_property(prop) and isinstance(val, str):
+                collections.add(val)
+
+    elif op == "in":
+        if len(args) == 2:
+            prop, vals = args[0], args[1]
+            if _is_collection_property(prop) and isinstance(vals, list):
+                for v in vals:
+                    if isinstance(v, str):
+                        collections.add(v)
+
+    elif op in ("and", "or"):
+        for arg in args:
+            collections.update(_extract_collections_recursive(arg))
+
+    elif op == "not":
+        if args:
+            collections.update(_extract_collections_recursive(args[0]))
+
+    return collections
+
+
+def _is_collection_property(prop: Any) -> bool:
+    """Check if a CQL2 property reference is for 'collection'."""
+    if isinstance(prop, dict):
+        return prop.get("property", "").lower() == "collection"
+    return False
+
+
+def collect_request_collections(
+    query_collections: Optional[List[str]] = None,
+    body_collections: Optional[List[str]] = None,
+    cql2_filter: Optional[Dict[str, Any]] = None,
+    filter_lang: Optional[str] = None,
+) -> Set[str]:
+    """Collect all collection IDs from various request sources.
+
+    Args:
+        query_collections: Collections from query params (?collections=a,b)
+        body_collections: Collections from request body ({"collections": ["a", "b"]})
+        cql2_filter: CQL2 filter that may contain collection references
+        filter_lang: Filter language for CQL2 parsing
+
+    Returns:
+        Set of all collection IDs found across all sources.
+        Empty set means no collections were explicitly requested.
+    """
+    all_collections: Set[str] = set()
+
+    if query_collections:
+        all_collections.update(query_collections)
+
+    if body_collections:
+        all_collections.update(body_collections)
+
+    if cql2_filter:
+        cql2_collections = extract_collections_from_cql2(cql2_filter, filter_lang)
+        all_collections.update(cql2_collections)
+
+    return all_collections
+
+
+def compute_collection_intersection(
+    requested_collections: Optional[Set[str]],
+    header_collections: Optional[List[str]],
+) -> Optional[List[str]]:
+    """Compute intersection of requested collections with allowed collections from header.
+
+    Args:
+        requested_collections: Set of collection IDs requested by the user.
+            None or empty means user didn't specify collections (use all allowed).
+        header_collections: List of allowed collection IDs from X-Filter-Collections header.
+            None means no header filter (allow all).
+
+    Returns:
+        List of collection IDs to use for filtering:
+        - None: No filtering needed (no header present and no collections requested)
+        - Empty list: Intersection is empty (return empty results)
+        - Non-empty list: Collections to filter by
+
+    Behavior:
+        - No header, no request collections -> None (no filter)
+        - No header, has request collections -> request collections as list
+        - Has header, no request collections -> header collections (allowed set)
+        - Has header, has request collections -> intersection of both
+    """
+    # No header filter present - authorization not active
+    if header_collections is None:
+        if requested_collections:
+            return list(requested_collections)
+        return None
+
+    # Header present but empty - no collections allowed
+    if len(header_collections) == 0:
+        return []
+
+    allowed_set = set(header_collections)
+
+    # User didn't request specific collections - use all allowed
+    if not requested_collections:
+        return header_collections
+
+    # Compute intersection
+    intersection = requested_collections & allowed_set
+
+    if not intersection:
+        logger.debug(
+            f"Collection intersection is empty. "
+            f"Requested: {requested_collections}, Allowed: {allowed_set}"
+        )
+        return []
+
+    return list(intersection)

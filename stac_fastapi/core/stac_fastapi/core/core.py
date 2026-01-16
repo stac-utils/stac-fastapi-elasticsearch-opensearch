@@ -27,6 +27,8 @@ from stac_fastapi.core.header_filters import (
     check_collection_access,
     check_item_geometry_access,
     collect_geometries_for_intersection,
+    collect_request_collections,
+    compute_collection_intersection,
     compute_geometry_intersection,
     create_geometry_filter_object,
     parse_filter_collections,
@@ -850,16 +852,50 @@ class CoreClient(AsyncBaseCoreClient):
                 search=search, item_ids=search_request.ids
             )
 
-        # Apply collection filter from header or request
+        # Get CQL2 filter for both geometry and collection extraction
+        cql2_filter = None
+        if hasattr(search_request, "filter_expr"):
+            cql2_filter = getattr(search_request, "filter_expr", None)
+        if cql2_filter is None and hasattr(search_request, "filter"):
+            cql2_filter = getattr(search_request, "filter", None)
+
+        filter_lang = getattr(search_request, "filter_lang", None)
+
+        # Collect requested collections from all sources (body, CQL2 filter)
+        requested_collections = collect_request_collections(
+            body_collections=search_request.collections,
+            cql2_filter=cql2_filter,
+            filter_lang=filter_lang,
+        )
+
+        # Get allowed collections from header (set by stac-auth-proxy)
         header_collections = parse_filter_collections(request)
-        if header_collections is not None:
-            # Use header collections (stac-auth-proxy already did intersection)
-            search = self.database.apply_collections_filter(
-                search=search, collection_ids=header_collections
+
+        # Compute intersection of requested and allowed collections
+        final_collections = compute_collection_intersection(
+            requested_collections=requested_collections
+            if requested_collections
+            else None,
+            header_collections=header_collections,
+        )
+
+        # If intersection is empty, return empty results immediately
+        if final_collections is not None and len(final_collections) == 0:
+            logger.debug(
+                "Collection intersection resulted in empty set, returning empty result"
             )
-        elif search_request.collections:
+            return stac_types.ItemCollection(
+                type="FeatureCollection",
+                features=[],
+                links=[],
+                numberReturned=0,
+                numberMatched=0,
+            )
+
+        # Apply collection filter if we have collections to filter by
+        if final_collections is not None:
             search = self.database.apply_collections_filter(
-                search=search, collection_ids=search_request.collections
+                search=search, collection_ids=final_collections
             )
 
         datetime_parsed = format_datetime_range(date_str=search_request.datetime)
@@ -873,12 +909,6 @@ class CoreClient(AsyncBaseCoreClient):
             logger.error(msg)
             raise HTTPException(status_code=400, detail=msg)
 
-        cql2_filter_for_geom = None
-        if hasattr(search_request, "filter_expr"):
-            cql2_filter_for_geom = getattr(search_request, "filter_expr", None)
-        if cql2_filter_for_geom is None and hasattr(search_request, "filter"):
-            cql2_filter_for_geom = getattr(search_request, "filter", None)
-
         request_intersects = None
         if hasattr(search_request, "intersects"):
             request_intersects = getattr(search_request, "intersects", None)
@@ -887,7 +917,7 @@ class CoreClient(AsyncBaseCoreClient):
             request=request,
             bbox=search_request.bbox,
             intersects=request_intersects,
-            cql2_filter=cql2_filter_for_geom,
+            cql2_filter=cql2_filter,
         )
 
         if geometries:
@@ -926,13 +956,7 @@ class CoreClient(AsyncBaseCoreClient):
                         search=search, op=operator, field=field, value=value
                     )
 
-        # Apply CQL2 filter (support both 'filter_expr' and canonical 'filter')
-        cql2_filter = None
-        if hasattr(search_request, "filter_expr"):
-            cql2_filter = getattr(search_request, "filter_expr", None)
-        if cql2_filter is None and hasattr(search_request, "filter"):
-            cql2_filter = getattr(search_request, "filter", None)
-
+        # Apply CQL2 filter (cql2_filter was extracted earlier for collection/geometry)
         if cql2_filter is not None:
             try:
                 query_fields = get_properties_from_cql2_filter(cql2_filter)
