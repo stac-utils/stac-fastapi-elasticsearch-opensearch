@@ -44,7 +44,7 @@ async def test_get_catalog_aggregations(app_client):
     resp = await app_client.get("/aggregations")
 
     assert resp.status_code == 200
-    assert len(resp.json()["aggregations"]) == 7
+    assert len(resp.json()["aggregations"]) == 11
 
 
 @pytest.mark.asyncio
@@ -53,7 +53,7 @@ async def test_post_catalog_aggregations(app_client):
     resp = await app_client.post("/aggregations")
 
     assert resp.status_code == 200
-    assert len(resp.json()["aggregations"]) == 7
+    assert len(resp.json()["aggregations"]) == 11
 
 
 @pytest.mark.asyncio

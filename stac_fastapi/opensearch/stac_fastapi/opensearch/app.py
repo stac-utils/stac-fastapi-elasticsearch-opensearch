@@ -5,16 +5,21 @@ import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from pydantic import Field
+from stac_pydantic.api import LandingPage
+from stac_pydantic.shared import MimeTypes
 from starlette.middleware import Middleware
 
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.middleware import CORSMiddleware
 from stac_fastapi.api.models import (
+    EmptyRequest,
     ItemCollectionUri,
     create_get_request_model,
     create_post_request_model,
     create_request_model,
 )
+from stac_fastapi.api.routes import create_async_endpoint
 from stac_fastapi.core.core import (
     BulkTransactionsClient,
     CoreClient,
@@ -59,12 +64,6 @@ from stac_fastapi.opensearch.database_logic import (
 )
 from stac_fastapi.sfeos_helpers.aggregation import EsAsyncBaseAggregationClient
 from stac_fastapi.sfeos_helpers.filter import EsAsyncBaseFiltersClient
-
-from pydantic import Field
-from stac_pydantic.api import LandingPage
-from stac_fastapi.api.routes import create_async_endpoint
-from stac_fastapi.api.models import EmptyRequest
-from stac_pydantic.shared import MimeTypes
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -286,7 +285,7 @@ api = StacApi(**app_config)
 class CustomLanding(LandingPage):
     stac_api_version: str = Field(
         default=api.app.version,
-        description="Custom STAC FastAPI version",
+        description="API release version",
     )
 
 

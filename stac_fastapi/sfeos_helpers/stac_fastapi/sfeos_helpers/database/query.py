@@ -4,6 +4,7 @@ This module provides functions for building and manipulating Elasticsearch/OpenS
 """
 
 import logging
+import re
 from typing import Any, Dict, List, Optional, Union
 
 from stac_fastapi.core.utilities import bbox2polygon

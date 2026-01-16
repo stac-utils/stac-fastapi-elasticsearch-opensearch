@@ -580,7 +580,7 @@ async def test_item_search_free_text_extension(app_client, txn_client, ctx):
 
 @pytest.mark.asyncio
 async def test_item_search_free_text_extension_or_query(app_client, txn_client, ctx):
-    """Test POST search indexed field with q parameter with multiple terms (free-text)"""
+    """Test POST search indexed field with q parameter with multiple terms (free-text). The query will only match the exact term combination"""
     first_item = ctx.item
 
     second_item = dict(first_item)
@@ -599,7 +599,7 @@ async def test_item_search_free_text_extension_or_query(app_client, txn_client, 
     resp = await app_client.post("/search", json=params)
     assert resp.status_code == 200
     resp_json = resp.json()
-    assert len(resp_json["features"]) == 2
+    assert len(resp_json["features"]) == 1
 
 
 @pytest.mark.asyncio

@@ -1,7 +1,9 @@
 """Core client."""
 
+import gzip
 import logging
 import os
+import time
 from datetime import datetime as datetime_type
 from datetime import timezone
 from enum import Enum
@@ -9,12 +11,20 @@ from typing import List, Optional, Set, Type, Union
 from urllib.parse import unquote_plus, urljoin
 
 import attr
+import mapbox_vector_tile
+
+# VECTOR TILES
+import mercantile
 import orjson
+import pyproj
+from cachetools import TTLCache
 from fastapi import HTTPException, Request, Response
 from overrides import overrides
 from pydantic import TypeAdapter, ValidationError
 from pygeofilter.backends.cql2_json import to_cql2
 from pygeofilter.parsers.cql2_text import parse as parse_cql2_text
+from shapely.geometry import box, mapping, shape
+from shapely.ops import transform
 from stac_pydantic import Collection, Item, ItemCollection
 from stac_pydantic.links import Relations
 from stac_pydantic.shared import BBox, MimeTypes
@@ -48,15 +58,6 @@ from stac_fastapi.types.core import AsyncBaseCoreClient
 from stac_fastapi.types.extension import ApiExtension
 from stac_fastapi.types.requests import get_base_url
 from stac_fastapi.types.search import BaseSearchPostRequest
-
-# VECTOR TILES
-import mercantile, mapbox_vector_tile
-from cachetools import TTLCache
-from shapely.geometry import shape, mapping, box
-from shapely.ops import transform
-import pyproj
-import time
-import gzip
 
 logger = logging.getLogger(__name__)
 
