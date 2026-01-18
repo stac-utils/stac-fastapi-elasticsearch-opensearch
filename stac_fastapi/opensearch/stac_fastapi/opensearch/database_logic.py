@@ -64,8 +64,9 @@ from stac_fastapi.sfeos_helpers.mappings import (
 from stac_fastapi.sfeos_helpers.search_engine import (
     BaseIndexInserter,
     BaseIndexSelector,
+    DatetimeIndexInserter,
     IndexInsertionFactory,
-    IndexSelectorFactory, DatetimeIndexInserter,
+    IndexSelectorFactory,
 )
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.links import resolve_links
@@ -1096,19 +1097,25 @@ class DatabaseLogic(BaseDatabaseLogic):
             raise NotFoundError(f"Collection {item['collection']} does not exist")
 
         # Check if the item already exists in the database
-        if not exist_ok and self.sync_client.exists(
-            index=index_alias_by_collection_id(item["collection"]),
-            id=mk_item_id(item["id"], item["collection"]),
-        ):
-            error_message = (
-                f"Item {item['id']} in collection {item['collection']} already exists."
-            )
-            if self.sync_settings.raise_on_bulk_error:
-                raise ConflictError(error_message)
-            else:
-                logger.warning(
-                    f"{error_message} Continuing as `RAISE_ON_BULK_ERROR` is set to false."
-                )
+        alias = index_alias_by_collection_id(item["collection"])
+        doc_id = mk_item_id(item["id"], item["collection"])
+
+        if not exist_ok:
+            alias_exists = self.sync_client.indices.exists_alias(name=alias)
+
+            if alias_exists:
+                alias_info = self.sync_client.indices.get_alias(name=alias)
+                indices = list(alias_info.keys())
+
+                for index in indices:
+                    if self.sync_client.exists(index=index, id=doc_id):
+                        error_message = f"Item {item['id']} in collection {item['collection']} already exists."
+                        if self.sync_settings.raise_on_bulk_error:
+                            raise ConflictError(error_message)
+                        else:
+                            logger.warning(
+                                f"{error_message} Continuing as `RAISE_ON_BULK_ERROR` is set to false."
+                            )
 
         # Serialize the item into a database-compatible format
         prepped_item = self.item_serializer.stac_to_db(item, base_url)
@@ -1156,18 +1163,26 @@ class DatabaseLogic(BaseDatabaseLogic):
             existing_item = await self.get_one_item(collection_id, item_id)
             primary_datetime_name = self.async_index_inserter.primary_datetime_name
 
-            existing_primary_datetime = existing_item.get("properties", {}).get(primary_datetime_name)
+            existing_primary_datetime = existing_item.get("properties", {}).get(
+                primary_datetime_name
+            )
             new_primary_datetime = item.get("properties", {}).get(primary_datetime_name)
 
             if existing_primary_datetime != new_primary_datetime:
-                self.async_index_inserter.validate_datetime_field_update(f"properties/{primary_datetime_name}")
+                self.async_index_inserter.validate_datetime_field_update(
+                    f"properties/{primary_datetime_name}"
+                )
 
             if primary_datetime_name == "start_datetime":
-                existing_end_datetime= existing_item.get("properties", {}).get("end_datetime")
+                existing_end_datetime = existing_item.get("properties", {}).get(
+                    "end_datetime"
+                )
                 new_end_datetime = item.get("properties", {}).get("end_datetime")
 
                 if existing_end_datetime != new_end_datetime:
-                    self.async_index_inserter.validate_datetime_field_update(f"properties/end_datetime")
+                    self.async_index_inserter.validate_datetime_field_update(
+                        "properties/end_datetime"
+                    )
 
         item = await self.async_prep_create_item(
             item=item, base_url=base_url, exist_ok=exist_ok

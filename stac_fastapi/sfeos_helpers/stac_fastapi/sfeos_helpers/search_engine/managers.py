@@ -2,7 +2,7 @@
 
 import logging
 import os
-from datetime import timedelta, date
+from datetime import timedelta
 from typing import Any, Dict, NamedTuple
 
 from dateutil import parser  # type: ignore
@@ -67,16 +67,33 @@ class IndexSizeManager:
         Returns:
             bool: True if index exceeds size limit, False otherwise.
         """
-        size_gb = await self.get_index_size_in_gb(index_name)
+        stats = await self.client.indices.stats(index=index_name)
+
+        total_size_bytes = 0
+        total_doc_count = 0
+
+        for idx_name, idx_stats in stats["indices"].items():
+            primaries = idx_stats["primaries"]
+            total_size_bytes += primaries["store"]["size_in_bytes"]
+            total_doc_count += primaries["docs"]["count"]
+
+        if total_doc_count == 0:
+            logger.debug(f"Index '{index_name}' is empty (0 documents)")
+            return False
+
+        size_gb = total_size_bytes / (1024**3)
         is_oversized = size_gb > self.max_size_gb
         gb_milestone = int(size_gb)
+
         if gb_milestone > 0:
-            logger.info(f"Index '{index_name}' size: {gb_milestone}GB")
+            logger.info(
+                f"Index '{index_name}' size: {gb_milestone}GB ({total_doc_count} documents)"
+            )
 
         if is_oversized:
             logger.warning(
                 f"Index '{index_name}' is oversized: {size_gb:.2f} GB "
-                f"(limit: {self.max_size_gb} GB)"
+                f"(limit: {self.max_size_gb} GB, documents: {total_doc_count})"
             )
 
         return is_oversized
@@ -234,6 +251,18 @@ class DatetimeIndexManager:
         old_aliases: Dict[str, str],
         is_first_index: bool,
     ) -> str:
+        """Handle product with datetime earlier than current index range.
+
+        Args:
+            collection_id (str): Collection identifier.
+            primary_datetime_name (str): Primary datetime field name.
+            product_datetimes (ProductDatetimes): Product datetime values.
+            old_aliases (Dict[str, str]): Current datetime aliases.
+            is_first_index (bool): Whether this is the first index in the collection.
+
+        Returns:
+            str: Datetime alias to use.
+        """
         if primary_datetime_name == "start_datetime":
             return await self._handle_start_datetime_mode(
                 collection_id, product_datetimes, old_aliases, is_first_index
@@ -250,6 +279,17 @@ class DatetimeIndexManager:
         old_aliases: Dict[str, str],
         is_first_index: bool,
     ) -> str:
+        """Handle early-date logic for start/end datetime indexing.
+
+        Args:
+            collection_id (str): Collection identifier.
+            product_datetimes (ProductDatetimes): Product datetime values.
+            old_aliases (Dict[str, str]): Current start/end datetime aliases.
+            is_first_index (bool): Whether this is the first index in the collection.
+
+        Returns:
+            str: Primary datetime alias.
+        """
         product_start = extract_date(product_datetimes.start_datetime)
         product_end = extract_date(product_datetimes.end_datetime)
 
@@ -271,7 +311,11 @@ class DatetimeIndexManager:
             if index_is_closed and is_first_index:
                 new_index_start = f"{product_start}-{index_start - timedelta(days=1)}"
                 return await self.index_operations.create_datetime_index(
-                    self.client, collection_id, str(new_index_start),None, str(product_end)
+                    self.client,
+                    collection_id,
+                    str(new_index_start),
+                    None,
+                    str(product_end),
                 )
             elif index_is_closed:
                 closed_end = extract_last_date_from_index(old_aliases["start_datetime"])
@@ -310,6 +354,17 @@ class DatetimeIndexManager:
         old_aliases: Dict[str, str],
         is_first_index: bool,
     ) -> str:
+        """Handle early-date logic for single datetime indexing.
+
+        Args:
+            collection_id (str): Collection identifier.
+            product_datetimes (ProductDatetimes): Product datetime values.
+            old_aliases (Dict[str, str]): Current datetime alias.
+            is_first_index (bool): Whether this is the first index in the collection.
+
+        Returns:
+            str: Datetime alias to use.
+        """
         product_dt = extract_date(product_datetimes.datetime)
 
         index_start = extract_first_date_from_index(old_aliases["datetime"])
@@ -362,8 +417,9 @@ class DatetimeIndexManager:
             primary_datetime_name (str): Name of the primary datetime field.
                 If "start_datetime", handles start_datetime and end_datetime fields.
                 If "datetime", handles the datetime field.
-            product_datetimes (ProductDatetimes): Object containing start_datetime, datetime, and end_datetime.
-            old_aliases (Dict[str, str]): Dictionary mapping alias types to their current names.
+            product_datetimes (ProductDatetimes): Product datetime values.
+            latest_index_datetimes (ProductDatetimes | None): Datetime range of the latest index.
+            old_aliases (Dict[str, str]): Current datetime aliases.
 
         Returns:
             str: Updated or newly created datetime alias name.
@@ -373,7 +429,9 @@ class DatetimeIndexManager:
         old_alias_names = []
 
         if primary_datetime_name == "start_datetime":
-            new_start_alias = f"{current_alias}-{str(latest_index_datetimes.start_datetime)}"
+            new_start_alias = (
+                f"{current_alias}-{str(latest_index_datetimes.start_datetime)}"
+            )
             new_aliases.append(new_start_alias)
             old_alias_names.append(current_alias)
 
@@ -386,18 +444,33 @@ class DatetimeIndexManager:
             await self.index_operations.change_alias_name(
                 self.client, current_alias, old_alias_names, new_aliases
             )
+            product_start_datetime = parser.isoparse(
+                product_datetimes.start_datetime
+            ).date()
+            latest_start_datetime_in_index = parser.isoparse(
+                latest_index_datetimes.start_datetime
+            ).date()
+            if product_start_datetime > latest_start_datetime_in_index:
+                end_date = str(parser.isoparse(product_datetimes.end_datetime).date())
+            else:
+                end_date = str(
+                    parser.isoparse(latest_index_datetimes.end_datetime).date()
+                    + timedelta(days=1)
+                )
 
             return await self.index_operations.create_datetime_index(
                 self.client,
                 collection_id,
-                start_datetime=str(date.fromisoformat(latest_index_datetimes.start_datetime) + timedelta(days=1)),
+                start_datetime=str(latest_start_datetime_in_index + timedelta(days=1)),
                 datetime=None,
-                end_datetime=str(date.fromisoformat(latest_index_datetimes.start_datetime) + timedelta(days=1)),
+                end_datetime=end_date,
             )
         else:
             dt = extract_date(product_datetimes.datetime)
 
-            new_datetime_alias = f"{current_alias}-{str(latest_index_datetimes.datetime)}"
+            new_datetime_alias = (
+                f"{current_alias}-{str(latest_index_datetimes.datetime)}"
+            )
             await self.index_operations.change_alias_name(
                 self.client, current_alias, [current_alias], [new_datetime_alias]
             )

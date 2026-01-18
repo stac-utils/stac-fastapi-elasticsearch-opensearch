@@ -152,13 +152,10 @@ class DatetimeIndexInserter(BaseIndexInserter):
 
         items.sort(key=lambda item: item["properties"][self.primary_datetime_name])
 
-        await self._ensure_indexes_exist(collection_id, items)
-        await self._check_and_handle_oversized_index(collection_id, items)
-
         actions = []
         for item in items:
             target_index = await self._get_target_index_internal(
-                collection_id, item, check_size=False
+                collection_id, item, check_size=True
             )
             actions.append(
                 {
@@ -223,7 +220,7 @@ class DatetimeIndexInserter(BaseIndexInserter):
                 self.primary_datetime_name,
                 product_datetimes,
                 all_indexes[0][0],
-                True
+                True,
             )
             await self.refresh_cache()
             return target_index
@@ -231,7 +228,9 @@ class DatetimeIndexInserter(BaseIndexInserter):
         if not target_index:
             target_index = all_indexes[-1][0][self.primary_datetime_name]
 
-        aliases_dict, is_first_index = self._find_aliases_for_index(all_indexes, target_index)
+        aliases_dict, is_first_index = self._find_aliases_for_index(
+            all_indexes, target_index
+        )
 
         if target_index != all_indexes[-1][0][self.primary_datetime_name]:
             await self.datetime_manager.handle_early_date(
@@ -239,7 +238,7 @@ class DatetimeIndexInserter(BaseIndexInserter):
                 self.primary_datetime_name,
                 product_datetimes,
                 aliases_dict,
-                is_first_index
+                is_first_index,
             )
             await self.refresh_cache()
             return target_index
@@ -251,9 +250,15 @@ class DatetimeIndexInserter(BaseIndexInserter):
                 self.client, target_index
             )
             latest_index_datetimes = ProductDatetimes(
-                start_datetime=str(extract_date(latest_item["_source"]["properties"]["start_datetime"])),
-                datetime=str(extract_date(latest_item["_source"]["properties"]["datetime"])),
-                end_datetime=str(extract_date(latest_item["_source"]["properties"]["end_datetime"])),
+                start_datetime=str(
+                    extract_date(latest_item["_source"]["properties"]["start_datetime"])
+                ),
+                datetime=str(
+                    extract_date(latest_item["_source"]["properties"]["datetime"])
+                ),
+                end_datetime=str(
+                    extract_date(latest_item["_source"]["properties"]["end_datetime"])
+                ),
             )
 
             await self.datetime_manager.handle_oversized_index(
@@ -264,18 +269,27 @@ class DatetimeIndexInserter(BaseIndexInserter):
                 aliases_dict,
             )
             await self.refresh_cache()
-            return await self.index_selector.select_indexes(
-                [collection_id], primary_datetime_value, for_insertion=True
-            ) or target_index
+            return (
+                await self.index_selector.select_indexes(
+                    [collection_id], primary_datetime_value, for_insertion=True
+                )
+                or target_index
+            )
 
         await self.datetime_manager.handle_early_date(
-            collection_id, self.primary_datetime_name, product_datetimes, aliases_dict, is_first_index
+            collection_id,
+            self.primary_datetime_name,
+            product_datetimes,
+            aliases_dict,
+            is_first_index,
         )
         await self.refresh_cache()
         return target_index
 
     @staticmethod
-    def _find_aliases_for_index(all_indexes: List, target_index: str) -> tuple[Optional[Dict[str, Any]], bool]:
+    def _find_aliases_for_index(
+        all_indexes: List, target_index: str
+    ) -> tuple[Optional[Dict[str, Any]], bool]:
         """Find aliases for a given index.
 
         Args:
@@ -290,92 +304,6 @@ class DatetimeIndexInserter(BaseIndexInserter):
             if target_index in aliases_dict.values():
                 return aliases_dict, idx == 0
         return None, False
-
-    async def _ensure_indexes_exist(
-        self, collection_id: str, items: List[Dict[str, Any]]
-    ):
-        """Ensure necessary indexes exist for the items.
-
-        Args:
-            collection_id (str): Collection identifier.
-            items (List[Dict[str, Any]]): List of items to process.
-        """
-        all_indexes = await self.index_selector.get_collection_indexes(collection_id)
-
-        if not all_indexes:
-            first_item = items[0]
-            properties = first_item["properties"]
-            index_params = {
-                "start_datetime": str(extract_date(properties["start_datetime"]))
-                if self.primary_datetime_name == "start_datetime"
-                else None,
-                "datetime": str(extract_date(properties["datetime"]))
-                if self.primary_datetime_name == "datetime"
-                else None,
-                "end_datetime": str(extract_date(properties["end_datetime"]))
-                if self.primary_datetime_name == "start_datetime"
-                else None,
-            }
-
-            await self.index_operations.create_datetime_index(
-                self.client,
-                collection_id,
-                **index_params,
-            )
-            await self.refresh_cache()
-
-    async def _check_and_handle_oversized_index(
-        self, collection_id: str, items: List[Dict[str, Any]]
-    ) -> None:
-        """Check if index is oversized and create new index if needed.
-
-        Checks if the index where the first item would be inserted is oversized.
-        If so, creates a new index starting from the next day.
-
-        Args:
-            collection_id (str): Collection identifier.
-            items (List[Dict[str, Any]]): List of items to process.
-
-        Returns:
-            None
-        """
-        first_item = items[0]
-        first_item_index = await self._get_target_index_internal(
-            collection_id, first_item, check_size=False
-        )
-
-        all_indexes = await self.index_selector.get_collection_indexes(collection_id)
-        all_indexes = sorted(
-            all_indexes, key=lambda x: x[0][self.primary_datetime_name]
-        )
-
-        latest_index = all_indexes[-1][0][self.primary_datetime_name]
-
-        if first_item_index != latest_index:
-            return None
-
-        if not await self.datetime_manager.size_manager.is_index_oversized(
-            first_item_index
-        ):
-            return None
-
-        latest_item = await self.index_operations.find_latest_item_in_index(
-            self.client, latest_index
-        )
-        product_datetimes = ProductDatetimes(
-            start_datetime=latest_item["_source"]["properties"]["start_datetime"],
-            datetime=latest_item["_source"]["properties"]["datetime"],
-            end_datetime=latest_item["_source"]["properties"]["end_datetime"],
-        )
-
-        await self.datetime_manager.handle_oversized_index(
-            collection_id,
-            self.primary_datetime_name,
-            product_datetimes,
-            None,
-            all_indexes[-1][0],
-        )
-        await self.refresh_cache()
 
 
 class SimpleIndexInserter(BaseIndexInserter):
