@@ -251,6 +251,27 @@ async def app_client_rate_limit(app_rate_limit):
 
 
 @pytest_asyncio.fixture(scope="session")
+async def app_rate_custom_limit():
+    """Fixture to get the FastAPI app with test-specific rate limiting."""
+    app = StacApi(**app_config).app
+    setup_rate_limit(app, get_rate_limit="3/minute", post_rate_limit="4/minute")
+
+    return app
+
+
+@pytest_asyncio.fixture(scope="session")
+async def app_client_rate_custom_limit(app_rate_custom_limit):
+    await create_index_templates()
+    await create_collection_index()
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app_rate_custom_limit),
+        base_url="http://test-server",
+    ) as c:
+        yield c
+
+
+@pytest_asyncio.fixture(scope="session")
 async def app_basic_auth():
     """Fixture to get the FastAPI app with basic auth configured."""
 

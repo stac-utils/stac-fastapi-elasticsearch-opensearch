@@ -25,6 +25,37 @@ async def test_rate_limit(app_client_rate_limit: AsyncClient, ctx):
 
 
 @pytest.mark.asyncio
+async def test_rate_limit_get_post(app_client_rate_custom_limit: AsyncClient, ctx):
+    get_expected_status_codes = [200, 200, 200, 429, 429]
+
+    for i, expected_status_code in enumerate(get_expected_status_codes):
+        try:
+            response = await app_client_rate_custom_limit.get("/collections")
+            status_code = response.status_code
+        except RateLimitExceeded:
+            status_code = 429
+
+        logger.info(f"GET Request {i + 1}: Status code {status_code}")
+        assert (
+            status_code == expected_status_code
+        ), f"GET request {i + 1}: Expected {expected_status_code}, got {status_code}"
+
+    post_expected_status_codes = [200, 200, 200, 200, 429, 429]
+
+    for i, expected_status_code in enumerate(post_expected_status_codes):
+        try:
+            response = await app_client_rate_custom_limit.post("/search", json={})
+            status_code = response.status_code
+        except RateLimitExceeded:
+            status_code = 429
+
+        logger.info(f"POST Request {i + 1}: Status code {status_code}")
+        assert (
+            status_code == expected_status_code
+        ), f"POST request {i + 1}: Expected {expected_status_code}, got {status_code}"
+
+
+@pytest.mark.asyncio
 async def test_rate_limit_no_limit(app_client: AsyncClient, ctx):
     expected_status_codes = [200, 200, 200, 200, 200]
 

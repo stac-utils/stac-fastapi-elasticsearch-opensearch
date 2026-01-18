@@ -278,7 +278,12 @@ app = api.app
 app.router.lifespan_context = lifespan
 app.root_path = os.getenv("STAC_FASTAPI_ROOT_PATH", "")
 # Add rate limit
-setup_rate_limit(app, rate_limit=os.getenv("STAC_FASTAPI_RATE_LIMIT"))
+setup_rate_limit(
+    app,
+    rate_limit=os.getenv("STAC_FASTAPI_RATE_LIMIT"),
+    get_rate_limit=os.getenv("STAC_FASTAPI_GET_RATE_LIMIT"),
+    post_rate_limit=os.getenv("STAC_FASTAPI_POST_RATE_LIMIT"),
+)
 
 
 def run() -> None:
