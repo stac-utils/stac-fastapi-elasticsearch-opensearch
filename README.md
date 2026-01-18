@@ -610,6 +610,8 @@ You can customize additional settings in your `.env` file:
 | Variable | Description | Default | Required |
 |----------|-------------|---------|----------|
 | `STAC_FASTAPI_RATE_LIMIT` | API rate limit per client. | `200/minute` | Optional |
+| `STAC_FASTAPI_GET_RATE_LIMIT` | Rate limit for GET requests (overrides global for GET if set). | `None` | Optional |
+| `STAC_FASTAPI_POST_RATE_LIMIT` | Rate limit for POST requests (overrides global for POST if set). | `None` | Optional |
 | `STAC_GLOBAL_COLLECTION_MAX_LIMIT` | Configures the maximum number of STAC collections that can be returned in a single search request. | N/A | Optional |
 | `STAC_DEFAULT_COLLECTION_LIMIT` | Configures the default number of STAC collections returned when no limit parameter is specified in the request. | `300` | Optional |
 | `STAC_GLOBAL_ITEM_MAX_LIMIT` | Configures the maximum number of STAC items that can be returned in a single search request. | N/A | Optional |
@@ -1402,11 +1404,14 @@ This prevents Elasticsearch from creating mappings for unused metadata fields, r
 
 ## Rate Limiting
 
-- **Overview**: Rate limiting is an optional security feature that controls API request frequency on a remote address basis.
+- **Overview**: Rate limiting is an optional security feature that controls API request frequency on a remote address basis, with support for method specific limits.
 
-- **Configuration**: Enabled by setting the `STAC_FASTAPI_RATE_LIMIT` environment variable:
+- **Configuration**: Enabled by setting rate limit environment variables:
   ```
   STAC_FASTAPI_RATE_LIMIT=500/minute
+  STAC_FASTAPI_GET_RATE_LIMIT=1000/minute
+  STAC_FASTAPI_POST_RATE_LIMIT=200/minute
+
   ```
 
 - **Functionality**: 
