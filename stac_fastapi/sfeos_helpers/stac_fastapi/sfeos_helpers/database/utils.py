@@ -6,7 +6,7 @@ in Elasticsearch/OpenSearch, such as parameter validation.
 import logging
 import os
 from functools import wraps
-from typing import Any, Dict, List, Union
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from stac_fastapi.core.utilities import bbox2polygon, get_bool_env
 from stac_fastapi.extensions.core.transaction.request import (
@@ -15,6 +15,7 @@ from stac_fastapi.extensions.core.transaction.request import (
     PatchRemove,
 )
 from stac_fastapi.sfeos_helpers.models.patch import ElasticPath, ESCommandSet
+from stac_fastapi.sfeos_helpers.search_engine.inserters import DatetimeIndexInserter
 
 try:
     from opensearchpy.exceptions import (
@@ -38,6 +39,10 @@ from tenacity import (
 )
 
 logger = logging.getLogger(__name__)
+
+RETRY_MAX_ATTEMPTS = int(os.getenv("RETRY_MAX_ATTEMPTS", "5"))
+RETRY_WAIT_SECONDS = float(os.getenv("RETRY_WAIT_SECONDS", "0.5"))
+RETRY_RERAISE = get_bool_env("RETRY_RERAISE", default=True)
 
 
 def add_bbox_shape_to_collection(collection: Dict[str, Any]) -> bool:
@@ -385,7 +390,7 @@ def operations_to_script(operations: List, create_nest: bool = False) -> Dict:
     }
 
 
-def datetime_search_retry(func):
+def retry_on_datetime_not_found(func) -> Callable:
     """Retries datetime search queries on NotFoundError.
 
     Args:
@@ -399,29 +404,85 @@ def datetime_search_retry(func):
         non-empty dictionary. For non-datetime queries or empty datetime
         dictionaries, the function executes without retry attempts.
     """
-    logger = logging.getLogger(__name__)
-    max_attempts = int(os.getenv("RETRY_MAX_ATTEMPTS", "5"))
-    wait_seconds = float(os.getenv("RETRY_WAIT_SECONDS", "0.5"))
-    reraise = get_bool_env("RETRY_RERAISE", default=True)
-
-    @retry(
-        stop=stop_after_attempt(max_attempts),
-        wait=wait_fixed(wait_seconds),
-        retry=retry_if_exception_type(
-            (NotFoundError, ConnectionError, ConnectionTimeout)
-        ),
-        reraise=reraise,
-        before_sleep=before_sleep_log(logger, logging.WARNING),
-    )
-    async def retry_wrapped(self, *args, **kwargs):
-        return await func(self, *args, **kwargs)
 
     @wraps(func)
     async def wrapper(self, *args, **kwargs):
         datetime_search = kwargs.get("datetime_search")
-        if not isinstance(datetime_search, dict) or not datetime_search:
-            return await func(self, *args, **kwargs)
+        if (
+            isinstance(self.async_index_inserter, DatetimeIndexInserter)
+            and datetime_search
+        ):
 
+            @retry(
+                stop=stop_after_attempt(RETRY_MAX_ATTEMPTS),
+                wait=wait_fixed(RETRY_WAIT_SECONDS),
+                retry=retry_if_exception_type(NotFoundError),
+                reraise=RETRY_RERAISE,
+                before_sleep=before_sleep_log(logger, logging.WARNING),
+            )
+            async def retry_wrapped(self, *args, **kwargs):
+                return await func(self, *args, **kwargs)
+
+            return await retry_wrapped(self, *args, **kwargs)
+        return await func(self, *args, **kwargs)
+
+    return wrapper
+
+
+def retry_on_connection_error(func) -> Callable:
+    """Retries on ConnectionError, ConnectionTimeout.
+
+    Args:
+        func: The async function to be decorated.
+
+    Returns:
+        A decorated function with retry logic for connection errors.
+    """
+
+    @retry(
+        stop=stop_after_attempt(RETRY_MAX_ATTEMPTS),
+        wait=wait_fixed(RETRY_WAIT_SECONDS),
+        retry=retry_if_exception_type((ConnectionError, ConnectionTimeout)),
+        reraise=RETRY_RERAISE,
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+    )
+    async def retry_wrapped(*args, **kwargs):
+        return await func(*args, **kwargs)
+
+    @wraps(func)
+    async def wrapper(self, *args, **kwargs):
         return await retry_wrapped(self, *args, **kwargs)
 
     return wrapper
+
+
+def add_hidden_filter(
+    query: Optional[Dict[str, Any]] = None, hide_item_path: Optional[str] = None
+) -> Dict[str, Any]:
+    """Add hidden filter to a query to exclude hidden items.
+
+    Args:
+        query: Optional Elasticsearch query to combine with hidden filter
+        hide_item_path: Path to the hidden field (e.g., "properties._private.hidden")
+                       If None or empty, return original query (no filtering)
+
+    Returns:
+        Query with hidden filter applied
+    """
+    if not hide_item_path:
+        return query or {"match_all": {}}
+
+    hidden_filter = {
+        "bool": {
+            "should": [
+                {"term": {hide_item_path: False}},
+                {"bool": {"must_not": {"exists": {"field": hide_item_path}}}},
+            ],
+            "minimum_should_match": 1,
+        }
+    }
+
+    if query:
+        return {"bool": {"must": [query, hidden_filter]}}
+    else:
+        return hidden_filter
