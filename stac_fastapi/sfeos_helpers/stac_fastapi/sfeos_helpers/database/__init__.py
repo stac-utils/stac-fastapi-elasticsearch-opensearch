@@ -30,6 +30,12 @@ Function Naming Conventions:
 """
 
 # Re-export all functions for backward compatibility
+from .catalogs import (
+    search_children_with_pagination_shared,
+    search_collections_by_parent_id_shared,
+    search_sub_catalogs_with_pagination_shared,
+    update_catalog_in_index_shared,
+)
 from .datetime import (
     extract_date,
     extract_first_date_from_index,
@@ -57,6 +63,11 @@ from .query import (
 from .utils import add_bbox_shape_to_collection, get_bool_env, validate_refresh
 
 __all__ = [
+    # Catalog operations
+    "search_collections_by_parent_id_shared",
+    "search_sub_catalogs_with_pagination_shared",
+    "update_catalog_in_index_shared",
+    "search_children_with_pagination_shared",
     # Index operations
     "create_index_templates_shared",
     "delete_item_index_shared",

@@ -42,11 +42,17 @@ class IndexOperations:
         index_name = f"{index_by_collection_id(collection_id)}-000001"
         alias_name = index_alias_by_collection_id(collection_id)
 
-        await client.indices.create(
-            index=index_name,
-            body=self._create_index_body({alias_name: {}}),
-            params={"ignore": [400]},
-        )
+        if hasattr(client, "options"):
+            await client.options(ignore_status=[400]).indices.create(
+                index=index_name,
+                body=self._create_index_body({alias_name: {}}),
+            )
+        else:
+            await client.indices.create(
+                index=index_name,
+                body=self._create_index_body({alias_name: {}}),
+                params={"ignore": [400]},
+            )
         return index_name
 
     async def create_datetime_index(

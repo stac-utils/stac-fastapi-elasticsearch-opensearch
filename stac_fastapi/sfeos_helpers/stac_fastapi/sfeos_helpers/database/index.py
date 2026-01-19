@@ -224,7 +224,12 @@ async def delete_item_index_shared(settings: Any, collection_id: str) -> None:
     client = settings.create_client
 
     name = index_alias_by_collection_id(collection_id)
-    resolved = await client.indices.resolve_index(name=name, ignore=[404])
+    if hasattr(client, "options"):
+        resolved = await client.options(ignore_status=[404]).indices.resolve_index(
+            name=name
+        )
+    else:
+        resolved = await client.indices.resolve_index(name=name, ignore=[404])
     if "aliases" in resolved and resolved["aliases"]:
         [alias] = resolved["aliases"]
         await client.indices.delete_alias(index=alias["indices"], name=alias["name"])

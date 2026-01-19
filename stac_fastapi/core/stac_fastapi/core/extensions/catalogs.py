@@ -12,9 +12,15 @@ from starlette.responses import Response
 from typing_extensions import TypedDict
 
 from stac_fastapi.core.models import Catalog
-from stac_fastapi.sfeos_helpers.mappings import COLLECTIONS_INDEX
+from stac_fastapi.sfeos_helpers.database import (
+    search_children_with_pagination_shared,
+    search_collections_by_parent_id_shared,
+    search_sub_catalogs_with_pagination_shared,
+    update_catalog_in_index_shared,
+)
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.core import BaseCoreClient
+from stac_fastapi.types.errors import NotFoundError
 from stac_fastapi.types.extension import ApiExtension
 
 logger = logging.getLogger(__name__)
@@ -56,6 +62,7 @@ class CatalogsExtension(ApiExtension):
             settings: extension settings (unused for now).
         """
         self.settings = settings or {}
+        self.router = APIRouter()
 
         self.router.add_api_route(
             path="/catalogs",
@@ -105,6 +112,31 @@ class CatalogsExtension(ApiExtension):
             tags=["Catalogs"],
         )
 
+        # Add endpoint for getting sub-catalogs of a catalog
+        self.router.add_api_route(
+            path="/catalogs/{catalog_id}/catalogs",
+            endpoint=self.get_catalog_catalogs,
+            methods=["GET"],
+            response_model=Catalogs,
+            response_class=self.response_class,
+            summary="Get Catalog Sub-Catalogs",
+            description="Get sub-catalogs linked from a specific catalog.",
+            tags=["Catalogs"],
+        )
+
+        # Add endpoint for creating sub-catalogs in a catalog
+        self.router.add_api_route(
+            path="/catalogs/{catalog_id}/catalogs",
+            endpoint=self.create_catalog_catalog,
+            methods=["POST"],
+            response_model=Catalog,
+            response_class=self.response_class,
+            status_code=201,
+            summary="Create Catalog Sub-Catalog",
+            description="Create a new catalog and link it as a sub-catalog of a specific catalog.",
+            tags=["Catalogs"],
+        )
+
         # Add endpoint for creating collections in a catalog
         self.router.add_api_route(
             path="/catalogs/{catalog_id}/collections",
@@ -118,6 +150,18 @@ class CatalogsExtension(ApiExtension):
             tags=["Catalogs"],
         )
 
+        # Add endpoint for updating a catalog
+        self.router.add_api_route(
+            path="/catalogs/{catalog_id}",
+            endpoint=self.update_catalog,
+            methods=["PUT"],
+            response_model=Catalog,
+            response_class=self.response_class,
+            summary="Update Catalog",
+            description="Update an existing STAC catalog.",
+            tags=["Catalogs"],
+        )
+
         # Add endpoint for deleting a catalog
         self.router.add_api_route(
             path="/catalogs/{catalog_id}",
@@ -126,7 +170,7 @@ class CatalogsExtension(ApiExtension):
             response_class=self.response_class,
             status_code=204,
             summary="Delete Catalog",
-            description="Delete a catalog. Optionally cascade delete all collections in the catalog.",
+            description="Delete a catalog. All linked collections are unlinked and adopted by root if orphaned.",
             tags=["Catalogs"],
         )
 
@@ -280,6 +324,55 @@ class CatalogsExtension(ApiExtension):
         # Return the created catalog
         return catalog
 
+    async def update_catalog(
+        self, catalog_id: str, catalog: Catalog, request: Request
+    ) -> Catalog:
+        """Update an existing catalog.
+
+        Args:
+            catalog_id: The ID of the catalog to update.
+            catalog: The updated catalog data.
+            request: Request object.
+
+        Returns:
+            The updated catalog.
+
+        Raises:
+            HTTPException: If the catalog is not found.
+        """
+        try:
+            # Verify the catalog exists
+            existing_catalog_db = await self.client.database.find_catalog(catalog_id)
+
+            # Convert STAC catalog to database format
+            db_catalog = self.client.catalog_serializer.stac_to_db(catalog, request)
+            db_catalog_dict = db_catalog.model_dump()
+            db_catalog_dict["type"] = "Catalog"
+
+            # Preserve parent_ids and other internal fields from the existing catalog
+            if "parent_ids" in existing_catalog_db:
+                db_catalog_dict["parent_ids"] = existing_catalog_db["parent_ids"]
+
+            # Update the catalog in the database (upsert via create_catalog)
+            await self.client.database.create_catalog(db_catalog_dict, refresh=True)
+
+            # Return the updated catalog
+            return catalog
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            error_msg = str(e)
+            if "not found" in error_msg.lower():
+                raise HTTPException(
+                    status_code=404, detail=f"Catalog {catalog_id} not found"
+                )
+            logger.error(f"Error updating catalog {catalog_id}: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to update catalog: {str(e)}",
+            )
+
     async def get_catalog(self, catalog_id: str, request: Request) -> Catalog:
         """Get a specific catalog by ID.
 
@@ -337,22 +430,21 @@ class CatalogsExtension(ApiExtension):
                 status_code=404, detail=f"Catalog {catalog_id} not found"
             )
 
-    async def delete_catalog(
-        self,
-        catalog_id: str,
-        request: Request,
-        cascade: bool = Query(
-            False,
-            description="If true, delete all collections linked to this catalog. If false, only delete the catalog.",
-        ),
-    ) -> None:
-        """Delete a catalog.
+    async def delete_catalog(self, catalog_id: str, request: Request) -> None:
+        """Delete a catalog (The Container).
+
+        Deletes the Catalog document itself. All linked Collections are unlinked
+        and adopted by Root if they become orphans. Collection data is NEVER deleted.
+
+        Logic:
+        1. Finds all Collections linked to this Catalog.
+        2. Unlinks them (removes catalog_id from their parent_ids).
+        3. If a Collection becomes an orphan, it is adopted by Root.
+        4. PERMANENTLY DELETES the Catalog document itself.
 
         Args:
             catalog_id: The ID of the catalog to delete.
             request: Request object.
-            cascade: If true, delete all collections linked to this catalog.
-                    If false, only delete the catalog.
 
         Returns:
             None (204 No Content)
@@ -361,58 +453,40 @@ class CatalogsExtension(ApiExtension):
             HTTPException: If the catalog is not found.
         """
         try:
-            # Get the catalog to verify it exists
+            # Verify the catalog exists
             await self.client.database.find_catalog(catalog_id)
 
-            # Use reverse lookup query to find all collections with this catalog in parent_ids.
-            # This is more reliable than parsing links, as it captures all collections
-            # regardless of pagination or link truncation.
-            query_body = {"query": {"term": {"parent_ids": catalog_id}}}
-            search_result = await self.client.database.client.search(
-                index=COLLECTIONS_INDEX, body=query_body, size=10000
+            # Find all collections with this catalog in parent_ids
+            children = await search_collections_by_parent_id_shared(
+                self.client.database.client, catalog_id
             )
-            children = [hit["_source"] for hit in search_result["hits"]["hits"]]
 
-            # Process each child collection
+            # Safe Unlink: Remove catalog from all children's parent_ids
+            # If a child becomes an orphan, adopt it to root
+            root_id = self.settings.get("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi")
+
             for child in children:
                 child_id = child.get("id")
                 try:
-                    if cascade:
-                        # DANGER ZONE: User explicitly requested cascade delete.
-                        # Delete the collection entirely, regardless of other parents.
-                        await self.client.database.delete_collection(child_id)
-                        logger.info(
-                            f"Deleted collection {child_id} as part of cascade delete for catalog {catalog_id}"
-                        )
-                    else:
-                        # SAFE ZONE: Smart Unlink - Remove only this catalog from parent_ids.
-                        # The collection survives and becomes a root-level collection if it has no other parents.
-                        parent_ids = child.get("parent_ids", [])
-                        if catalog_id in parent_ids:
-                            parent_ids.remove(catalog_id)
-                            child["parent_ids"] = parent_ids
+                    parent_ids = child.get("parent_ids", [])
+                    if catalog_id in parent_ids:
+                        parent_ids.remove(catalog_id)
 
-                            # Update the collection in the database
-                            # Note: Catalog links are now dynamically generated, so no need to remove them
-                            await self.client.database.update_collection(
-                                collection_id=child_id,
-                                collection=child,
-                                refresh=False,
+                        # If orphan, move to root
+                        if len(parent_ids) == 0:
+                            parent_ids.append(root_id)
+                            logger.info(
+                                f"Collection {child_id} adopted by root after catalog deletion."
                             )
-
-                            # Log the result
-                            if len(parent_ids) == 0:
-                                logger.info(
-                                    f"Collection {child_id} is now a root-level orphan (no parent catalogs)"
-                                )
-                            else:
-                                logger.info(
-                                    f"Removed catalog {catalog_id} from collection {child_id}; still belongs to {len(parent_ids)} other catalog(s)"
-                                )
                         else:
-                            logger.debug(
-                                f"Catalog {catalog_id} not in parent_ids for collection {child_id}"
+                            logger.info(
+                                f"Removed catalog {catalog_id} from collection {child_id}; still belongs to {len(parent_ids)} other catalog(s)"
                             )
+
+                        child["parent_ids"] = parent_ids
+                        await self.client.database.update_collection(
+                            collection_id=child_id, collection=child, refresh=False
+                        )
                 except Exception as e:
                     error_msg = str(e)
                     if "not found" in error_msg.lower():
@@ -456,27 +530,15 @@ class CatalogsExtension(ApiExtension):
             # Verify the catalog exists
             await self.client.database.find_catalog(catalog_id)
 
-            # Query collections by parent_ids field using Elasticsearch directly
+            # Query collections by parent_ids field
             # This uses the parent_ids field in the collection mapping to find all
             # collections that have this catalog as a parent
-            query_body = {"query": {"term": {"parent_ids": catalog_id}}}
+            collections_data = await search_collections_by_parent_id_shared(
+                self.client.database.client, catalog_id
+            )
 
-            # Execute the search to get collection IDs
-            try:
-                search_result = await self.client.database.client.search(
-                    index=COLLECTIONS_INDEX, body=query_body
-                )
-            except Exception as e:
-                logger.error(
-                    f"Error searching for collections with parent {catalog_id}: {e}"
-                )
-                search_result = {"hits": {"hits": []}}
-
-            # Extract collection IDs from search results
-            collection_ids = []
-            hits = search_result.get("hits", {}).get("hits", [])
-            for hit in hits:
-                collection_ids.append(hit.get("_id"))
+            # Extract collection IDs from results
+            collection_ids = [coll.get("id") for coll in collections_data]
 
             # Fetch the collections
             collections = []
@@ -538,6 +600,194 @@ class CatalogsExtension(ApiExtension):
             )
             raise HTTPException(
                 status_code=404, detail=f"Catalog {catalog_id} not found"
+            )
+
+    async def get_catalog_catalogs(
+        self,
+        catalog_id: str,
+        request: Request,
+        limit: int = Query(10, ge=1, le=100),
+        token: Optional[str] = Query(None),
+    ) -> Catalogs:
+        """Get all sub-catalogs of a specific catalog with pagination.
+
+        Args:
+            catalog_id: The ID of the parent catalog.
+            request: Request object.
+            limit: Maximum number of results to return (default: 10, max: 100).
+            token: Pagination token for cursor-based pagination.
+
+        Returns:
+            A Catalogs response containing sub-catalogs with pagination links.
+
+        Raises:
+            HTTPException: If the catalog is not found.
+        """
+        try:
+            # Verify the catalog exists
+            await self.client.database.find_catalog(catalog_id)
+
+            # Search for sub-catalogs with pagination
+            (
+                catalogs_data,
+                total_hits,
+                next_token,
+            ) = await search_sub_catalogs_with_pagination_shared(
+                self.client.database.client, catalog_id, limit, token
+            )
+
+            # Serialize to STAC format
+            catalogs = []
+            for catalog_data in catalogs_data:
+                try:
+                    catalog = self.client.catalog_serializer.db_to_stac(
+                        catalog_data,
+                        request,
+                        extensions=[
+                            type(ext).__name__
+                            for ext in self.client.database.extensions
+                        ],
+                    )
+                    catalogs.append(catalog)
+                except Exception as e:
+                    logger.error(
+                        f"Error serializing catalog {catalog_data.get('id')}: {e}"
+                    )
+                    continue
+
+            # Generate pagination links
+            base_url = str(request.base_url)
+            links = [
+                {"rel": "root", "type": "application/json", "href": base_url},
+                {
+                    "rel": "parent",
+                    "type": "application/json",
+                    "href": f"{base_url}catalogs/{catalog_id}",
+                },
+                {
+                    "rel": "self",
+                    "type": "application/json",
+                    "href": str(request.url),
+                },
+            ]
+
+            # Add next link if more results exist
+            if next_token:
+                query_params = {"limit": limit, "token": next_token}
+                links.append(
+                    {
+                        "rel": "next",
+                        "href": f"{base_url}catalogs/{catalog_id}/catalogs?{urlencode(query_params)}",
+                        "type": "application/json",
+                        "title": "Next page",
+                    }
+                )
+
+            return {
+                "catalogs": catalogs,
+                "links": links,
+                "numberReturned": len(catalogs),
+                "numberMatched": total_hits,
+            }
+
+        except HTTPException:
+            # Re-raise HTTP exceptions as-is
+            raise
+        except Exception as e:
+            logger.error(
+                f"Error retrieving catalogs for catalog {catalog_id}: {e}",
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=404, detail=f"Catalog {catalog_id} not found"
+            )
+
+    async def create_catalog_catalog(
+        self, catalog_id: str, catalog: Catalog, request: Request
+    ) -> Catalog:
+        """Create a new catalog or link an existing catalog as a sub-catalog.
+
+        Logic:
+        1. Verifies the parent catalog exists.
+        2. If the sub-catalog already exists: Appends the parent ID to its parent_ids
+           (enabling poly-hierarchy - a catalog can have multiple parents).
+        3. If the sub-catalog is new: Creates it with parent_ids initialized to [catalog_id].
+
+        Args:
+            catalog_id: The ID of the parent catalog.
+            catalog: The catalog to create or link.
+            request: Request object.
+
+        Returns:
+            The created or linked catalog.
+
+        Raises:
+            HTTPException: If the parent catalog is not found or operation fails.
+        """
+        try:
+            # 1. Verify the parent catalog exists
+            await self.client.database.find_catalog(catalog_id)
+
+            # 2. Check if the sub-catalog already exists
+            try:
+                existing_catalog = await self.client.database.find_catalog(catalog.id)
+
+                # --- UPDATE PATH (Existing Catalog) ---
+                # We are linking an existing catalog to a new parent (poly-hierarchy)
+
+                # Ensure parent_ids list exists
+                if "parent_ids" not in existing_catalog:
+                    existing_catalog["parent_ids"] = []
+
+                # Append if not already present
+                if catalog_id not in existing_catalog["parent_ids"]:
+                    existing_catalog["parent_ids"].append(catalog_id)
+
+                    # Persist the update
+                    await update_catalog_in_index_shared(
+                        self.client.database.client, catalog.id, existing_catalog
+                    )
+                    logger.info(
+                        f"Linked existing catalog {catalog.id} to parent {catalog_id}"
+                    )
+
+                # Return the STAC object
+                return self.client.catalog_serializer.db_to_stac(
+                    existing_catalog, request
+                )
+
+            except NotFoundError:
+                # --- CREATE PATH (New Catalog) ---
+                # Catalog does not exist, so we create it
+
+                # Convert STAC catalog to database format
+                db_catalog = self.client.catalog_serializer.stac_to_db(catalog, request)
+
+                # Convert to dict
+                db_catalog_dict = db_catalog.model_dump()
+                db_catalog_dict["type"] = "Catalog"
+
+                # Initialize parent_ids
+                db_catalog_dict["parent_ids"] = [catalog_id]
+
+                # Create in DB
+                await self.client.database.create_catalog(db_catalog_dict, refresh=True)
+                logger.info(
+                    f"Created new catalog {catalog.id} with parent {catalog_id}"
+                )
+
+                return catalog
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(
+                f"Error processing sub-catalog {catalog.id} in parent {catalog_id}: {e}",
+                exc_info=True,
+            )
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to process sub-catalog: {str(e)}",
             )
 
     async def create_catalog_collection(
@@ -808,57 +1058,14 @@ class CatalogsExtension(ApiExtension):
         # 1. Verify the parent catalog exists
         await self.client.database.find_catalog(catalog_id)
 
-        # 2. Build the Search Query
-        # We search the COLLECTIONS_INDEX because it holds both Catalogs and Collections
-
-        # Base filter: Parent match
-        # This finds anything where 'parent_ids' contains this catalog_id
-        filter_queries = [{"term": {"parent_ids": catalog_id}}]
-
-        # Optional filter: Type
-        if type:
-            # If user asks for ?type=Catalog, we only return Catalogs
-            filter_queries.append({"term": {"type": type}})
-
-        # 3. Calculate Pagination (Search After)
-        body = {
-            "query": {"bool": {"filter": filter_queries}},
-            "sort": [{"id": {"order": "asc"}}],  # Stable sort for pagination
-            "size": limit,
-        }
-
-        # Handle search_after token - split by '|' to get all sort values
-        search_after: Optional[List[str]] = None
-        if token:
-            try:
-                # The token should be a pipe-separated string of sort values
-                # e.g., "collection-1"
-                from typing import cast
-
-                search_after_parts = cast(List[str], token.split("|"))
-                # If the number of sort fields doesn't match token parts, ignore the token
-                if len(search_after_parts) != len(body["sort"]):  # type: ignore
-                    search_after = None
-                else:
-                    search_after = search_after_parts
-            except Exception:
-                search_after = None
-
-            if search_after is not None:
-                body["search_after"] = search_after
-
-        # 4. Execute Search
-        search_result = await self.client.database.client.search(
-            index=COLLECTIONS_INDEX, body=body
+        # 2. Search for children with pagination
+        children_data, total, next_token = await search_children_with_pagination_shared(
+            self.client.database.client, catalog_id, limit, token, type
         )
 
-        # 5. Process Results
-        hits = search_result.get("hits", {}).get("hits", [])
-        total = search_result.get("hits", {}).get("total", {}).get("value", 0)
-
+        # 3. Serialize children based on type
         children = []
-        for hit in hits:
-            doc = hit["_source"]
+        for doc in children_data:
             resource_type = doc.get(
                 "type", "Collection"
             )  # Default to Collection if missing
@@ -872,7 +1079,7 @@ class CatalogsExtension(ApiExtension):
 
             children.append(child)
 
-        # 6. Format Response
+        # 4. Format Response
         # The Children extension uses a specific response format
         response = {
             "children": children,
@@ -893,14 +1100,7 @@ class CatalogsExtension(ApiExtension):
             "numberMatched": total,
         }
 
-        # 7. Generate Next Link
-        next_token = None
-        if len(hits) == limit:
-            next_token_values = hits[-1].get("sort")
-            if next_token_values:
-                # Join all sort values with '|' to create the token
-                next_token = "|".join(str(val) for val in next_token_values)
-
+        # 5. Generate Next Link
         if next_token:
             # Get existing query params
             parsed_url = urlparse(str(request.url))
@@ -929,11 +1129,11 @@ class CatalogsExtension(ApiExtension):
     async def delete_catalog_collection(
         self, catalog_id: str, collection_id: str, request: Request
     ) -> None:
-        """Delete a collection from a catalog.
+        """Delete a collection from a catalog (Unlink only).
 
-        If the collection has multiple parent catalogs, only removes this catalog
-        from the parent_ids. If this is the only parent catalog, deletes the
-        collection entirely.
+        Removes the catalog from the collection's parent_ids.
+        If the collection becomes an orphan (no parents), it is adopted by the Root.
+        It NEVER deletes the collection data.
 
         Args:
             catalog_id: The ID of the catalog.
@@ -959,37 +1159,39 @@ class CatalogsExtension(ApiExtension):
                     detail=f"Collection {collection_id} does not belong to catalog {catalog_id}",
                 )
 
-            # If the collection has multiple parents, just remove this catalog from parent_ids
-            if len(parent_ids) > 1:
-                parent_ids.remove(catalog_id)
-                collection_db["parent_ids"] = parent_ids
+            # SAFE UNLINK LOGIC
+            parent_ids.remove(catalog_id)
 
-                # Update the collection in the database
-                # Note: Catalog links are now dynamically generated, so no need to remove them
-                await self.client.database.update_collection(
-                    collection_id=collection_id, collection=collection_db, refresh=True
+            # Check if it is now an orphan (empty list)
+            if len(parent_ids) == 0:
+                # Fallback to Root / Landing Page
+                # You can hardcode 'root' or fetch the ID from settings
+                root_id = self.settings.get(
+                    "STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"
                 )
-
+                parent_ids.append(root_id)
                 logger.info(
-                    f"Removed catalog {catalog_id} from collection {collection_id} parent_ids"
+                    f"Collection {collection_id} unlinked from {catalog_id}. Orphaned, so adopted by root ({root_id})."
                 )
             else:
-                # If this is the only parent, delete the collection entirely
-                await self.client.database.delete_collection(
-                    collection_id, refresh=True
-                )
                 logger.info(
-                    f"Deleted collection {collection_id} (only parent was catalog {catalog_id})"
+                    f"Removed catalog {catalog_id} from collection {collection_id}; still belongs to {len(parent_ids)} other catalog(s)"
                 )
+
+            # Update the collection in the database
+            collection_db["parent_ids"] = parent_ids
+            await self.client.database.update_collection(
+                collection_id=collection_id, collection=collection_db, refresh=True
+            )
 
         except HTTPException:
             raise
         except Exception as e:
             logger.error(
-                f"Error deleting collection {collection_id} from catalog {catalog_id}: {e}",
+                f"Error removing collection {collection_id} from catalog {catalog_id}: {e}",
                 exc_info=True,
             )
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to delete collection from catalog: {str(e)}",
+                detail=f"Failed to remove collection from catalog: {str(e)}",
             )

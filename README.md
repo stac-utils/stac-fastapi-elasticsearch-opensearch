@@ -28,18 +28,20 @@ The following organizations have contributed time and/or funding to support the 
 
 ## Latest News
 
-- **12/09/2025:** Feature Merge: **Federated Catalogs**. The [`Catalogs Endpoint`](https://github.com/Healy-Hyperspatial/stac-api-extensions-catalogs-endpoint) extension is now in main! This enables a registry of catalogs and supports **poly-hierarchy** (collections belonging to multiple catalogs simultaneously). Enable it via `ENABLE_CATALOGS_EXTENSION`. _Coming next: Support for nested sub-catalogs._
+- **01/11/2026:** Feature: **Hierarchical Catalog Support**. Sub-catalogs are now fully supported! Catalogs can now contain other catalogs for unlimited nesting levels. This enables complex organizational hierarchies with multi-parent support for both catalogs and collections.
+- **01/09/2026:** New Feature: **Custom Index Mappings**. You can now customize Elasticsearch/OpenSearch index mappings directly via environment variables without changing source code. Use `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` to merge custom field definitions (e.g., for STAC extensions like SAR or Cube) or `STAC_FASTAPI_ES_MAPPINGS_FILE` to load mappings from a JSON file. See [Custom Index Mappings](#custom-index-mappings) for details.
+- **12/09/2025:** Feature Merge: **Multi-Tenant Catalogs**. The [`STAC API - Multi-Tenant Catalogs Endpoint Extension`](https://github.com/stac-api-extensions/multi-tenant-catalogs) is now in main! This enables a registry of catalogs and supports **poly-hierarchy** (collections belonging to multiple catalogs simultaneously). Enable it via `ENABLE_CATALOGS_EXTENSION`. _Coming next: Support for nested sub-catalogs._
 - **11/07/2025:** 🌍 The SFEOS STAC Viewer is now available at: https://healy-hyperspatial.github.io/sfeos-web. Use this site to examine your data and test your STAC API!
 - **10/24/2025:** Added `previous_token` pagination using Redis for efficient navigation. This feature allows users to navigate backwards through large result sets by storing pagination state in Redis. To use this feature, ensure Redis is configured (see [Redis for navigation](#redis-for-navigation)) and set `REDIS_ENABLE=true` in your environment.
 - **10/23/2025:** The `EXCLUDED_FROM_QUERYABLES` environment variable was added to exclude fields from the `queryables` endpoint. See [docs](#excluding-fields-from-queryables).
 - **10/15/2025:** 🚀 SFEOS Tools v0.1.0 Released! - The new `sfeos-tools` CLI is now available on [PyPI](https://pypi.org/project/sfeos-tools/)
 - **10/15/2025:** Added `reindex` command to **[SFEOS-tools](https://github.com/Healy-Hyperspatial/sfeos-tools)** for zero-downtime index updates when changing mappings or settings. The new `reindex` command makes it easy to apply mapping changes, update index settings, or migrate to new index structures without any service interruption, ensuring high availability of your STAC API during maintenance operations.
-- **10/12/2025:** Collections search **bbox** functionality added! The collections search extension now supports bbox queries. Collections will need to be updated via the API or with the new **[SFEOS-tools](https://github.com/Healy-Hyperspatial/sfeos-tools)** CLI package to support geospatial discoverability. 🙏 Thanks again to **CloudFerro** for their sponsorship of this work!
 
 <details style="border: 1px solid #eaecef; border-radius: 6px; padding: 10px; margin-bottom: 16px; background-color: #f9f9f9;">
 <summary style="cursor: pointer; font-weight: bold; margin: -10px -10px 0; padding: 10px; background-color: #f0f0f0; border-bottom: 1px solid #eaecef; border-top-left-radius: 6px; border-top-right-radius: 6px;">View Older News (Click to Expand)</summary>
 
 -------------
+- **10/12/2025:** Collections search **bbox** functionality added! The collections search extension now supports bbox queries. Collections will need to be updated via the API or with the new **[SFEOS-tools](https://github.com/Healy-Hyperspatial/sfeos-tools)** CLI package to support geospatial discoverability. 🙏 Thanks again to **CloudFerro** for their sponsorship of this work!
 - **10/04/2025:** The **[CloudFerro](https://cloudferro.com/)** logo has been added to the sponsors and supporters list above. Their sponsorship of the ongoing collections search extension work has been invaluable. This is in addition to the many other important changes and updates their developers have added to the project.
 - **09/25/2025:** v6.5.0 adds a new GET/POST /collections-search endpoint (disabled by default via ENABLE_COLLECTIONS_SEARCH_ROUTE) to avoid conflicts with the Transactions Extension, and enhances collections search with structured filtering (CQL2 JSON/text), query, and datetime filtering. These changes make collection discovery more powerful and configurable while preserving compatibility with transaction-enabled deployments.
 <!-- Add more older news items here in Markdown format; GitHub will parse them thanks to the blank line implicit in this structure -->
@@ -123,6 +125,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
   - [Ingesting Sample Data CLI Tool](#ingesting-sample-data-cli-tool)
   - [Redis for navigation](#redis-for-navigation)
   - [Elasticsearch Mappings](#elasticsearch-mappings)
+  - [Custom Index Mappings](#custom-index-mappings)
   - [Managing Elasticsearch Indices](#managing-elasticsearch-indices)
     - [Snapshots](#snapshots)
     - [Reindexing](#reindexing)
@@ -160,9 +163,10 @@ Navigate to the URL above and connect to your SFEOS API instance by providing th
 
 You can also override the default STAC API URL by appending the `stacApiUrl` parameter to the application URL. For example:
 
-https://healy-hyperspatial.github.io/sfeos-web?stacApiUrl=http://localhost:8080
+https://healy-hyperspatial.github.io/sfeos-web?stacApiUrl=https://stac.example.com
 
-**Note**: The parameter name `stacApiUrl` is case-sensitive. This allows you to connect to different STAC API servers without modifying the web app configuration.
+> [!IMPORTANT]
+> To connect to a local SFEOS instance (e.g., `http://localhost:8080`), you must run the [SFEOS STAC Viewer](https://github.com/Healy-Hyperspatial/sfeos-web) locally. Browsers generally block hosted web applications from making requests to `localhost` due to security restrictions.
 
 ## Collection Search Extensions
 
@@ -170,7 +174,7 @@ SFEOS provides enhanced collection search capabilities through two primary route
 - **GET/POST `/collections`**: The standard STAC endpoint with extended query parameters
 - **GET/POST `/collections-search`**: A custom endpoint that supports the same parameters, created to avoid conflicts with the STAC Transactions extension if enabled (which uses POST `/collections` for collection creation)
 
-The `/collections-search` endpoint follows the [STAC API Collection Search Endpoint](https://github.com/Healy-Hyperspatial/stac-api-extensions-collection-search-endpoint) specification, which provides a dedicated, conflict-free mechanism for advanced collection searching.
+The `/collections-search` endpoint follows the [Collection Search with Large Payloads](https://github.com/Healy-Hyperspatial/collection-search-large-payloads) specification, which provides a dedicated, conflict-free mechanism for advanced collection searching.
 
 These endpoints support advanced collection discovery features including:
 
@@ -233,29 +237,58 @@ These extensions make it easier to build user interfaces that display and naviga
 
 ## Catalogs Route
 
-SFEOS supports federated hierarchical catalog browsing through the `/catalogs` endpoint, enabling users to navigate through STAC catalog structures in a tree-like fashion. This extension allows for organized discovery and browsing of collections and sub-catalogs.
+SFEOS supports a **Catalog Registry** through the `/catalogs` endpoint. This allows for organized discovery by grouping collections into specific logical catalogs.
 
-This implementation follows the [STAC API Catalogs Extension](https://github.com/Healy-Hyperspatial/stac-api-extensions-catalogs) specification, which enables a Federated STAC API architecture with a "Hub and Spoke" structure.
+This implementation follows the [Multi-Tenant Virtual Catalogs Endpoint](https://github.com/Healy-Hyperspatial/multi-tenant-catalogs) specification, which enables a multi-catalog STAC API architecture. SFEOS supports **hierarchical catalog structures** (Root -> Catalogs -> Sub-Catalogs -> Collections), allowing catalogs to contain other catalogs for flexible organizational hierarchies.
 
 ### Features
 
-- **Hierarchical Navigation**: Browse catalogs and sub-catalogs in a parent-child relationship structure
+- **Catalog Registry**: Discover and browse a list of available catalogs
+- **Hierarchical Catalogs**: Create nested catalog structures with sub-catalogs for multi-level organization
 - **Multi-Catalog Collections**: Collections can belong to multiple catalogs simultaneously, enabling flexible organizational hierarchies
+- **Multi-Parent Catalogs**: Catalogs can belong to multiple parent catalogs, supporting complex organizational structures
 - **Collection Discovery**: Access collections within specific catalog contexts
 - **STAC API Compliance**: Follows STAC specification for catalog objects and linking
 - **Flexible Querying**: Support for standard STAC API query parameters when browsing collections within catalogs
+- **Safety-First Data Protection**: Collection and catalog data is never deleted through the catalogs route; only containers can be destroyed
+
+### Safety Architecture
+
+The catalogs extension implements a **safety-first design** that protects collection data:
+
+| Operation | Route | Behavior | Data Safety |
+|-----------|-------|----------|-------------|
+| Delete Catalog | `DELETE /catalogs/{id}` | Removes the catalog container; all links between catalog and collections/sub-catalogs are severed; children are adopted by root if orphaned | 🟢 Safe (structure only) |
+| Unlink Collection | `DELETE /catalogs/{id}/collections/{id}` | Severs the link between collection and this catalog; collection survives at root if it has no other parents | 🟢 Safe (zero data loss) |
+| Destroy Collection | `DELETE /collections/{id}` | Permanently deletes collection and all items (intentional, outside catalogs route) | 🔴 Destructive |
+
+**Key Principle**: The catalogs route is write-safe for creation but read-only for deletion of collections. You can create collections via the catalogs route, but deleting collections is only allowed through the explicit `/collections` endpoint. This prevents accidental data loss while allowing full organizational flexibility.
+
+**Link Removal**: When you delete a catalog or unlink a collection, the relationship links are permanently severed from the database. However, the collection data itself remains intact and is automatically adopted by the root catalog if it becomes an orphan.
+
+**Collection Deletion**: Collections CAN be permanently deleted, but only via the `/collections/{collection_id}` endpoint (outside the catalogs route). This ensures intentional, explicit deletion of collection data and prevents accidental data loss through the catalogs API.
 
 ### Endpoints
 
+**Catalog Management:**
 - **GET `/catalogs`**: Retrieve the root catalog and its child catalogs
 - **POST `/catalogs`**: Create a new catalog (requires appropriate permissions)
 - **GET `/catalogs/{catalog_id}`**: Retrieve a specific catalog and its children
-- **DELETE `/catalogs/{catalog_id}`**: Delete a catalog (optionally cascade delete all collections)
+- **PUT `/catalogs/{catalog_id}`**: Update an existing catalog (title, description, etc.)
+- **DELETE `/catalogs/{catalog_id}`**: Delete a catalog (collections and sub-catalogs are unlinked and adopted by root if orphaned)
+
+**Sub-Catalog Hierarchy:**
+- **GET `/catalogs/{catalog_id}/catalogs`**: Retrieve sub-catalogs within a specific catalog
+- **POST `/catalogs/{catalog_id}/catalogs`**: Create a new sub-catalog within a specific catalog
+
+**Children & Collections:**
 - **GET `/catalogs/{catalog_id}/children`**: Retrieve all children (Catalogs and Collections) of this catalog with optional type filtering
 - **GET `/catalogs/{catalog_id}/collections`**: Retrieve collections within a specific catalog
 - **POST `/catalogs/{catalog_id}/collections`**: Create a new collection within a specific catalog
 - **GET `/catalogs/{catalog_id}/collections/{collection_id}`**: Retrieve a specific collection within a catalog
-- **DELETE `/catalogs/{catalog_id}/collections/{collection_id}`**: Delete a collection from a catalog (removes parent_id if multiple parents exist, deletes collection if it's the only parent)
+- **DELETE `/catalogs/{catalog_id}/collections/{collection_id}`**: Unlink a collection from a catalog (collection survives at root if orphaned)
+
+**Items:**
 - **GET `/catalogs/{catalog_id}/collections/{collection_id}/items`**: Retrieve items within a collection in a catalog context
 - **GET `/catalogs/{catalog_id}/collections/{collection_id}/items/{item_id}`**: Retrieve a specific item within a catalog context
 
@@ -267,6 +300,31 @@ curl "http://localhost:8081/catalogs"
 
 # Get specific catalog
 curl "http://localhost:8081/catalogs/earth-observation"
+
+# Update a catalog
+curl -X PUT "http://localhost:8081/catalogs/earth-observation" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "earth-observation",
+    "type": "Catalog",
+    "stac_version": "1.0.0",
+    "description": "Updated description for Earth observation data",
+    "title": "Updated Earth Observation Catalog"
+  }'
+
+# Get sub-catalogs within a catalog
+curl "http://localhost:8081/catalogs/earth-observation/catalogs"
+
+# Create a new sub-catalog within a catalog
+curl -X POST "http://localhost:8081/catalogs/earth-observation/catalogs" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "sentinel-data",
+    "type": "Catalog",
+    "stac_version": "1.0.0",
+    "description": "Sentinel satellite data catalog",
+    "title": "Sentinel Data"
+  }'
 
 # Get all children (catalogs and collections) of a catalog
 curl "http://localhost:8081/catalogs/earth-observation/children"
@@ -305,38 +363,96 @@ curl "http://localhost:8081/catalogs/earth-observation/collections/sentinel-2/it
 # Get specific item within a catalog
 curl "http://localhost:8081/catalogs/earth-observation/collections/sentinel-2/items/S2A_20231015_123456"
 
-# Delete a collection from a catalog
-# If the collection has multiple parent catalogs, only removes this catalog from parent_ids
-# If this is the only parent catalog, deletes the collection entirely
+# Unlink a collection from a catalog
+# The collection is removed from this catalog but survives in the database
+# If it has no other parent catalogs, it is automatically adopted by root
 curl -X DELETE "http://localhost:8081/catalogs/earth-observation/collections/sentinel-2"
 
-# Delete a catalog (collections remain intact)
+# Delete a catalog
+# All collections are unlinked and adopted by root if they become orphans
+# Collection data is NEVER deleted
 curl -X DELETE "http://localhost:8081/catalogs/earth-observation"
 
-# Delete a catalog and all its collections (cascade delete)
-curl -X DELETE "http://localhost:8081/catalogs/earth-observation?cascade=true"
+# To permanently delete a collection and all its items, use the /collections endpoint
+curl -X DELETE "http://localhost:8081/collections/sentinel-2"
 ```
 
-### Delete Catalog Parameters
+### Delete Behavior
 
-The DELETE endpoint supports the following query parameter:
+The catalogs extension implements a **safety-first deletion policy**:
 
-- **`cascade`** (boolean, default: `false`): 
-  - If `false`: Only deletes the catalog. Collections linked to the catalog remain in the database but lose their catalog link.
-  - If `true`: Deletes the catalog AND all collections linked to it. Use with caution as this is a destructive operation.
+- **`DELETE /catalogs/{id}`**: Removes the catalog container and severs all links between the catalog and its collections/sub-catalogs. Children are automatically adopted by the root catalog if they become orphans. **Collection and catalog data is never deleted.**
+- **`DELETE /catalogs/{id}/collections/{id}`**: Severs the link between a collection and this catalog. If the collection has other parent catalogs, it remains linked to them. If it becomes an orphan, it is automatically adopted by root. **Collection data is never deleted.**
+- **`DELETE /collections/{id}`**: Permanently deletes a collection and all its items. This is the only way to destroy collection data and must be done explicitly outside the catalogs route.
+
+**What Gets Removed**:
+- Catalog documents (when deleting a catalog)
+- Relationship links between catalogs and collections/sub-catalogs (when unlinking)
+- Collection documents and items (only via `/collections` endpoint)
+
+**What Is Always Preserved**:
+- Collection data (never deleted through catalogs routes)
+- Catalog data (never deleted through catalogs routes)
+- Item data (never deleted through catalogs routes)
+
+> **Note**: The `cascade` parameter has been removed. Collections and catalogs are never deleted through the catalogs route. If you need to delete collections, use the `/collections` endpoint explicitly.
 
 ### Response Structure
 
 Catalog responses include:
 - **Catalog metadata**: ID, title, description, and other catalog properties
-- **Child catalogs**: Links to sub-catalogs for hierarchical navigation
+- **Sub-catalogs**: Links to nested sub-catalogs for multi-level hierarchical navigation
 - **Collections**: Links to collections contained within the catalog
-- **STAC links**: Properly formatted STAC API links for navigation
+- **STAC links**: Properly formatted STAC API links for navigation (parent, root, self, children)
 
-This feature enables building user interfaces that provide organized, hierarchical browsing of STAC collections, making it easier for users to discover and navigate through large collections organized by theme, provider, or any other categorization scheme.
+This feature enables building user interfaces that provide organized, hierarchical browsing of STAC collections and catalogs, making it easier for users to discover and navigate through large datasets organized by theme, provider, region, or any other categorization scheme. The hierarchical structure supports unlimited nesting levels for maximum organizational flexibility.
+
+### Poly-Hierarchy & Linking Existing Resources
+
+This extension supports **Poly-Hierarchy**, meaning a single Catalog or Collection can belong to multiple parents simultaneously. This allows you to create "Virtual" views or "Playlists" of data without duplicating content.
+
+To link an **existing** Catalog or Collection to a new parent, simply `POST` it to the new parent's endpoint using its existing `id`. The API implements an **Upsert** (Update or Insert) logic:
+
+1. **Check:** Does a resource with this `id` already exist?
+2. **If YES (Link):** The API adds the new parent to the resource's `parent_ids` list. No data is duplicated.
+3. **If NO (Create):** The API creates a new resource.
+
+#### Example: Creating a "Forestry" Playlist
+
+Imagine you have an existing catalog `sentinel-2` stored under `providers/esa`. You want to create a curated "Forestry" catalog that includes this existing data.
+
+```bash
+# 1. Create the new Forestry catalog
+curl -X POST "http://localhost:8081/catalogs" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "forestry",
+    "type": "Catalog",
+    "stac_version": "1.0.0",
+    "description": "Forestry-related datasets",
+    "title": "Forestry"
+  }'
+
+# 2. Link the EXISTING Sentinel-2 catalog to Forestry
+# Note: We use the existing ID "sentinel-2"
+curl -X POST "http://localhost:8081/catalogs/forestry/catalogs" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "sentinel-2",
+    "type": "Catalog",
+    "stac_version": "1.0.0",
+    "description": "Sentinel-2 satellite imagery",
+    "title": "Sentinel-2"
+  }'
+```
+
+**Result:** The sentinel-2 catalog is now accessible via both paths:
+- `/catalogs/providers/esa/catalogs/sentinel-2`
+- `/catalogs/forestry/catalogs/sentinel-2`
+
+Because you are linking the node (the Catalog), the entire sub-tree attached to that node is automatically shared. If sentinel-2 contains millions of items and sub-catalogs, they are all instantly visible under the new forestry path without needing to re-link individual items.
 
 > **Configuration**: The catalogs route can be enabled or disabled by setting the `ENABLE_CATALOGS_ROUTE` environment variable to `true` or `false`. By default, this endpoint is **disabled**.
-
 
 ## Package Structure
 
@@ -444,50 +560,87 @@ There are two main ways to run the API locally:
 
 You can customize additional settings in your `.env` file:
 
-| Variable                                                                                                 | Description                                                                                                                                                                                                                                                                                                                                 | Default                                                                          | Required                                                                                     |
-|----------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------------|---------------------------------------------------------------------------------------------|
-| `ES_HOST`                                                                                                | Hostname for external Elasticsearch/OpenSearch.                                                                                                                                                                                                                                                                                             | `localhost`                                                                      | Optional                                                                                    |
-| `ES_PORT`                                                                                                | Port for Elasticsearch/OpenSearch.                                                                                                                                                                                                                                                                                                          | `9200` (ES) / `9202` (OS)                                                        | Optional                                                                                    |
-| `ES_USE_SSL`                                                                                             | Use SSL for connecting to Elasticsearch/OpenSearch.                                                                                                                                                                                                                                                                                         | `true`                                                                           | Optional                                                                                    |
-| `ES_VERIFY_CERTS`                                                                                        | Verify SSL certificates when connecting.                                                                                                                                                                                                                                                                                                    | `true`                                                                           | Optional                                                                                    |
-| `ES_API_KEY`                                                                                             | API Key for external Elasticsearch/OpenSearch.                                                                                                                                                                                                                                                                                              | N/A                                                                              | Optional                                                                                    |
-| `ES_TIMEOUT`                                                                                             | Client timeout for Elasticsearch/OpenSearch.                                                                                                                                                                                                                                                                                                | DB client default                                                                | Optional                                                                                    |
-| `STAC_FASTAPI_TITLE`                                                                                     | Title of the API in the documentation.                                                                                                                                                                                                                                                                                                      | `stac-fastapi-<backend>`                                                         | Optional                                                                                    |
-| `STAC_FASTAPI_DESCRIPTION`                                                                               | Description of the API in the documentation.                                                                                                                                                                                                                                                                                                | N/A                                                                              | Optional                                                                                    |
-| `STAC_FASTAPI_VERSION`                                                                                   | API version.                                                                                                                                                                                                                                                                                                                                | `2.1`                                                                            | Optional                                                                                    |
-| `STAC_FASTAPI_LANDING_PAGE_ID`                                                                           | Landing page ID                                                                                                                                                                                                                                                                                                                             | `stac-fastapi`                                                                   | Optional                                                                                    |
-| `APP_HOST`                                                                                               | Server bind address.                                                                                                                                                                                                                                                                                                                        | `0.0.0.0`                                                                        | Optional                                                                                    |
-| `APP_PORT`                                                                                               | Server port.                                                                                                                                                                                                                                                                                                                                | `8000`                                                                           | Optional                                                                                    |
-| `ENVIRONMENT`                                                                                            | Runtime environment.                                                                                                                                                                                                                                                                                                                        | `local`                                                                          | Optional                                                                                    |
-| `WEB_CONCURRENCY`                                                                                        | Number of worker processes.                                                                                                                                                                                                                                                                                                                 | `10`                                                                             | Optional                                                                                    |
-| `RELOAD`                                                                                                 | Enable auto-reload for development.                                                                                                                                                                                                                                                                                                         | `true`                                                                           | Optional                                                                                    |
-| `STAC_FASTAPI_RATE_LIMIT`                                                                                | API rate limit per client.                                                                                                                                                                                                                                                                                                                  | `200/minute`                                                                     | Optional                                                                                    |
-| `BACKEND`                                                                                                | Tests-related variable                                                                                                                                                                                                                                                                                                                      | `elasticsearch` or `opensearch` based on the backend                             | Optional                                                        |
-| `ELASTICSEARCH_VERSION`                                                                                  | Version of Elasticsearch to use.                                                                                                                                                                                                                                                                                                            | `8.11.0`                                                                         | Optional                                                                                    |
-| `OPENSEARCH_VERSION`                                                                                     | OpenSearch version                                                                                                                                                                                                                                                                                                                          | `2.11.1`                                                                         | Optional                                                                                    |
-| `ENABLE_DIRECT_RESPONSE`                                                                                 | Enable direct response for maximum performance (disables all FastAPI dependencies, including authentication, custom status codes, and validation)                                                                                                                                                                                           | `false`                                                                          | Optional                       |
-| `RAISE_ON_BULK_ERROR`                                                                                    | Controls whether bulk insert operations raise exceptions on errors. If set to `true`, the operation will stop and raise an exception when an error occurs. If set to `false`, errors will be logged, and the operation will continue. **Note:** STAC Item and ItemCollection validation errors will always raise, regardless of this flag.  | `false`                                                                          | Optional |
-| `DATABASE_REFRESH`                                                                                       | Controls whether database operations refresh the index immediately after changes. If set to `true`, changes will be immediately searchable. If set to `false`, changes may not be immediately visible but can improve performance for bulk operations. If set to `wait_for`, changes will wait for the next refresh cycle to become visible. | `false`                                                                          | Optional |
-| `ENABLE_COLLECTIONS_SEARCH`                                                                              | Enable collection search extensions (sort, fields, free text search, structured filtering, and datetime filtering) on the core `/collections` endpoint.                                                                                                                                                                                     | `true`                                                                           | Optional                                                                                    |
-| `ENABLE_COLLECTIONS_SEARCH_ROUTE`                                                                        | Enable the custom `/collections-search` endpoint (both GET and POST methods). When disabled, the custom endpoint will not be available, but collection search extensions will still be available on the core `/collections` endpoint if `ENABLE_COLLECTIONS_SEARCH` is true.                                                                | `false`                                                                          | Optional |
-| `ENABLE_TRANSACTIONS_EXTENSIONS`                                                                         | Enables or disables the Transactions and Bulk Transactions API extensions. This is useful for deployments where mutating the catalog via the API should be prevented. If set to `true`, the POST `/collections` route for search will be unavailable in the API.                                                                            | `true`                                                                           | Optional |
-| `ENABLE_CATALOGS_ROUTE`                                                                                  | Enable the `/catalogs` endpoint for federated hierarchical catalog browsing and navigation. When enabled, provides access to federated STAC API architecture with hub-and-spoke pattern.                                                                                                                                                    | `false`                                                                          | Optional |
-| `STAC_GLOBAL_COLLECTION_MAX_LIMIT`                                                                       | Configures the maximum number of STAC collections that can be returned in a single search request.                                                                                                                                                                                                                                          | N/A                                                                              | Optional |
-| `STAC_DEFAULT_COLLECTION_LIMIT`                                                                          | Configures the default number of STAC collections returned when no limit parameter is specified in the request.                                                                                                                                                                                                                             | `300`                                                                            | Optional |
-| `STAC_GLOBAL_ITEM_MAX_LIMIT`                                                                             | Configures the maximum number of STAC items that can be returned in a single search request.                                                                                                                                                                                                                                                | N/A                                                                              | Optional |
-| `STAC_DEFAULT_ITEM_LIMIT`                                                                                | Configures the default number of STAC items returned when no limit parameter is specified in the request.                                                                                                                                                                                                                                   | `10`                                                                             | Optional |
-| `STAC_INDEX_ASSETS`                                                                                      | Controls if Assets are indexed when added to Elasticsearch/Opensearch. This allows asset fields to be included in search queries.                                                                                                                                                                                                           | `false`                                                                          | Optional |
-| `USE_DATETIME`                                                                                           | Configures the datetime search behavior in SFEOS. When enabled, searches both datetime field and falls back to start_datetime/end_datetime range for items with null datetime. When disabled, searches only by start_datetime/end_datetime range.                                                                                           | `true`                                                                           | Optional |
-| `USE_DATETIME_NANOS`                                                                                     | Enables nanosecond precision handling for `datetime` field searches as per the `date_nanos` type. When `False`, it uses 3 millisecond precision as per the type `date`.                                                                                                                                                                     | `true`                                                                           | Optional |
-| `EXCLUDED_FROM_QUERYABLES`                                                                               | Comma-separated list of fully qualified field names to exclude from the queryables endpoint and filtering. Use full paths like `properties.auth:schemes,properties.storage:schemes`. Excluded fields and their nested children will not be exposed in queryables.                                                                           | None                                                                             | Optional |
-| `EXCLUDED_FROM_ITEMS`                                                                                    | Specifies fields to exclude from STAC item responses. Supports comma-separated field names and dot notation for nested fields (e.g., `private_data,properties.confidential,assets.internal`).                                                                                                                                               | `None`                                                                           | Optional |
+
+### 1. Server & Application
+
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `APP_HOST` | Server bind address. | `0.0.0.0` | Optional |
+| `APP_PORT` | Server port. | `8000` | Optional |
+| `ENVIRONMENT` | Runtime environment. | `local` | Optional |
+| `WEB_CONCURRENCY` | Number of worker processes. | `10` | Optional |
+| `RELOAD` | Enable auto-reload for development. | `true` | Optional |
+
+### 2. Backend Connection (Elasticsearch / OpenSearch)
+
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `ES_HOST` | Hostname for external Elasticsearch/OpenSearch. | `localhost` | Optional |
+| `ES_PORT` | Port for Elasticsearch/OpenSearch. | `9200` (ES) / `9202` (OS) | Optional |
+| `ES_USE_SSL` | Use SSL for connecting to Elasticsearch/OpenSearch. | `true` | Optional |
+| `ES_VERIFY_CERTS` | Verify SSL certificates when connecting. | `true` | Optional |
+| `ES_API_KEY` | API Key for external Elasticsearch/OpenSearch. | N/A | Optional |
+| `ES_TIMEOUT` | Client timeout for Elasticsearch/OpenSearch. | DB client default | Optional |
+| `BACKEND` | Tests-related variable | `elasticsearch` or `opensearch` based on the backend | Optional |
+| `ELASTICSEARCH_VERSION` | Version of Elasticsearch to use. | `8.11.0` | Optional |
+| `OPENSEARCH_VERSION` | OpenSearch version | `2.11.1` | Optional |
+
+### 3. API Metadata
+
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `STAC_FASTAPI_TITLE` | Title of the API in the documentation. | `stac-fastapi-<backend>` | Optional |
+| `STAC_FASTAPI_DESCRIPTION` | Description of the API in the documentation. | N/A | Optional |
+| `STAC_FASTAPI_VERSION` | API version. | `2.1` | Optional |
+| `STAC_FASTAPI_LANDING_PAGE_ID` | Landing page ID | `stac-fastapi` | Optional |
+
+### 4. Feature Flags
+
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `ENABLE_DIRECT_RESPONSE` | Enable direct response for maximum performance (disables all FastAPI dependencies, including authentication, custom status codes, and validation) | `false` | Optional |
+| `ENABLE_COLLECTIONS_SEARCH` | Enable collection search extensions (sort, fields, free text search, structured filtering, and datetime filtering) on the core `/collections` endpoint. | `true` | Optional |
+| `ENABLE_COLLECTIONS_SEARCH_ROUTE` | Enable the custom `/collections-search` endpoint (both GET and POST methods). When disabled, the custom endpoint will not be available, but collection search extensions will still be available on the core `/collections` endpoint if `ENABLE_COLLECTIONS_SEARCH` is true. | `false` | Optional |
+| `ENABLE_TRANSACTIONS_EXTENSIONS` | Enables or disables the Transactions and Bulk Transactions API extensions. This is useful for deployments where mutating the catalog via the API should be prevented. If set to `true`, the POST `/collections` route for search will be unavailable in the API. | `true` | Optional |
+| `ENABLE_CATALOGS_ROUTE` | Enable the **/catalogs** endpoint for hierarchical catalog browsing and navigation. | `false` | Optional |
+| `STAC_INDEX_ASSETS` | Controls if Assets are indexed when added to Elasticsearch/Opensearch. This allows asset fields to be included in search queries. | `false` | Optional |
+
+### 5. Limits & Performance
+
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `STAC_FASTAPI_RATE_LIMIT` | API rate limit per client. | `200/minute` | Optional |
+| `STAC_GLOBAL_COLLECTION_MAX_LIMIT` | Configures the maximum number of STAC collections that can be returned in a single search request. | N/A | Optional |
+| `STAC_DEFAULT_COLLECTION_LIMIT` | Configures the default number of STAC collections returned when no limit parameter is specified in the request. | `300` | Optional |
+| `STAC_GLOBAL_ITEM_MAX_LIMIT` | Configures the maximum number of STAC items that can be returned in a single search request. | N/A | Optional |
+| `STAC_DEFAULT_ITEM_LIMIT` | Configures the default number of STAC items returned when no limit parameter is specified in the request. | `10` | Optional |
+
+### 6. Database Indexing & Behavior
+
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
+| `RAISE_ON_BULK_ERROR` | Controls whether bulk insert operations raise exceptions on errors. If set to `true`, the operation will stop and raise an exception when an error occurs. If set to `false`, errors will be logged, and the operation will continue. **Note:** STAC Item and ItemCollection validation errors will always raise, regardless of this flag. | `false` | Optional |
+| `DATABASE_REFRESH` | Controls whether database operations refresh the index immediately after changes. If set to `true`, changes will be immediately searchable. If set to `false`, changes may not be immediately visible but can improve performance for bulk operations. If set to `wait_for`, changes will wait for the next refresh cycle to become visible. | `false` | Optional |
+| `USE_DATETIME` | Configures the datetime search behavior in SFEOS. When enabled, searches both datetime field and falls back to start_datetime/end_datetime range for items with null datetime. When disabled, searches only by start_datetime/end_datetime range. | `true` | Optional |
+| `USE_DATETIME_NANOS` | Enables nanosecond precision handling for `datetime` field searches as per the `date_nanos` type. When `False`, it uses 3 millisecond precision as per the type `date`. | `true` | Optional |
+| `PROPERTIES_DATETIME_FIELD` | Specifies the field used for single datetime of the items in the backend database. | `properties.datetime` | Optional |
+| `PROPERTIES_START_DATETIME_FIELD` | Specifies the field used for the lower value of a datetime range for the items in the backend database. | `properties.start_datetime` | Optional |
+| `PROPERTIES_END_DATETIME_FIELD` | Specifies the field used for the upper value of a datetime range for the items in the backend database. | `properties.end_datetime` | Optional |
+| `COLLECTION_FIELD` | Specifies the field used for the collection an item belongs to in the backend database | `collection` | Optional |
+| `GEOMETRY_FIELD` | Specifies the field containing the geometry of the items in the backend database | `geometry` | Optional |
+| `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` | JSON string of custom Elasticsearch/OpenSearch property mappings to merge with defaults. See [Custom Index Mappings](#custom-index-mappings). | `None` | Optional |
+| `STAC_FASTAPI_ES_MAPPINGS_FILE` | Path to a JSON file containing custom Elasticsearch/OpenSearch property mappings to merge with defaults. See [Custom Index Mappings](#custom-index-mappings). | `None` | Optional |
+| `STAC_FASTAPI_ES_DYNAMIC_MAPPING` | Controls dynamic mapping behavior for item indices. Values: `true` (default), `false`, or `strict`. See [Custom Index Mappings](#custom-index-mappings). | `true` | Optional |
+
+### 7. Filtering, Exclusions & Queryables
+
+| Variable | Description | Default | Required |
+|----------|-------------|---------|----------|
 | `VALIDATE_QUERYABLES` | Enable validation of query parameters against the collection's queryables. If set to `true`, the API will reject queries containing fields that are not defined in the collection's queryables. | `false` | Optional |
 | `QUERYABLES_CACHE_TTL` | Time-to-live (in seconds) for the queryables cache. Used when `VALIDATE_QUERYABLES` is enabled. | `1800` | Optional |
-| `PROPERTIES_DATETIME_FIELD`                                                                              | Specifies the field used for single datetime of the items in the backend database.                                                                                                                                                                                                                                                          | `properties.datetime`                                                            | Optional |
-| `PROPERTIES_START_DATETIME_FIELD`                                                                        | Specifies the field used for the lower value of a datetime range for the items in the backend database.                                                                                                                                                                                                                                     | `properties.start_datetime`                                                      | Optional |
-| `PROPERTIES_END_DATETIME_FIELD`                                                                          | Specifies the field used for the upper value of a datetime range for the items in the backend database.                                                          | `properties.end_datetime`                                                        | Optional |                                                                                                                                                                                                                                                                    
-| `COLLECTION_FIELD`                                                                                       | Specifies the field used for the collection an item belongs to in the backend database                | `collection`                                                                     | Optional |
-| `GEOMETRY_FIELD`                                                                                      | Specifies the field containing the geometry of the items in the backend database | `geometry` | Optional |
+| `EXCLUDED_FROM_QUERYABLES` | Comma-separated list of fully qualified field names to exclude from the queryables endpoint and filtering. Use full paths like `properties.auth:schemes,properties.storage:schemes`. Excluded fields and their nested children will not be exposed in queryables. | None | Optional |
+| `EXCLUDED_FROM_ITEMS` | Specifies fields to exclude from STAC item responses. Supports comma-separated field names and dot notation for nested fields (e.g., `private_data,properties.confidential,assets.internal`). | `None` | Optional |
+
 
 
 > [!NOTE]
@@ -496,20 +649,20 @@ You can customize additional settings in your `.env` file:
 ## Redis for Navigation environment variables:
 These Redis configuration variables to enable proper navigation functionality in STAC FastAPI.
 
-| Variable                      | Description                                                                                  | Default                  | Required                                                                                     |
-|-------------------------------|----------------------------------------------------------------------------------------------|--------------------------|---------------------------------------------------------------------------------------------|
-| `REDIS_ENABLE`                | Enables or disables Redis caching for navigation. Set to `true` to use Redis, or `false` to disable. | `false`                  | **Required** (determines whether Redis is used at all)                                      |
-| **Redis Sentinel**            |                                                                                              |                          |                                                                                             |
-| `REDIS_SENTINEL_HOSTS`        | Comma-separated list of Redis Sentinel hostnames/IP addresses.                               | `""`                     | Conditional (required if using Sentinel)                                                    |
-| `REDIS_SENTINEL_PORTS`        | Comma-separated list of Redis Sentinel ports (must match order).                             | `"26379"`                | Conditional (required if using Sentinel)                                                    |
-| `REDIS_SENTINEL_MASTER_NAME`  | Name of the Redis master node in Sentinel configuration.                                     | `"master"`               | Conditional (required if using Sentinel)                                                    |
-| **Redis**                     |                                                                                              |                          |                                                                                             |
-| `REDIS_HOST`                  | Redis server hostname or IP address for Redis configuration.                                 | `""`                     | Conditional (required for standalone Redis)                                                 |
-| `REDIS_PORT`                  | Redis server port for Redis configuration.                                                   | `6379`                   | Conditional (required for standalone Redis)                                                 |
-| **Both**                      |                                                                                              |                          |                                                                                             |
-| `REDIS_DB`                    | Redis database number to use for caching.                                                    | `0` (Sentinel) / `15` (Standalone) | Optional                                                                                    |
-| `REDIS_MAX_CONNECTIONS`       | Maximum number of connections in the Redis connection pool.                                  | `10`                     | Optional                                                                                    |
-| `REDIS_RETRY_TIMEOUT`         | Enable retry on timeout for Redis operations.                                                | `true`                   | Optional                                                                                    |
+| Variable | Description| Default| Required|
+|----------|------------|--------|---------|
+| `REDIS_ENABLE` | Enables or disables Redis caching for navigation. Set to `true` to use Redis, or `false` to disable. | `false` | **Required** (determines whether Redis is used at all) |
+| **Redis Sentinel** |    |     |    |
+| `REDIS_SENTINEL_HOSTS` | Comma-separated list of Redis Sentinel hostnames/IP addresses. | `""`                     | Conditional (required if using Sentinel)                                                    |
+| `REDIS_SENTINEL_PORTS` | Comma-separated list of Redis Sentinel ports (must match order). | `"26379"`                | Conditional (required if using Sentinel)                                                    |
+| `REDIS_SENTINEL_MASTER_NAME` | Name of the Redis master node in Sentinel configuration. | `"master"`               | Conditional (required if using Sentinel)                                                    |
+| **Redis** |                                                                                              |                          |                                                                                             |
+| `REDIS_HOST` | Redis server hostname or IP address for Redis configuration. | `""`                     | Conditional (required for standalone Redis)                                                 |
+| `REDIS_PORT` | Redis server port for Redis configuration. | `6379`                   | Conditional (required for standalone Redis)                                                 |
+| **Both** |                                                                                              |                          |                                                                                             |
+| `REDIS_DB` | Redis database number to use for caching.                                                    | `0` (Sentinel) / `15` (Standalone) | Optional                                                                                    |
+| `REDIS_MAX_CONNECTIONS` | Maximum number of connections in the Redis connection pool.                                  | `10`                     | Optional                                                                                    |
+| `REDIS_RETRY_TIMEOUT` | Enable retry on timeout for Redis operations.                                                | `true`                   | Optional                                                                                    |
 | `REDIS_DECODE_RESPONSES`      | Automatically decode Redis responses to strings.                                             | `true`                   | Optional                                                                                    |
 | `REDIS_CLIENT_NAME`           | Client name identifier for Redis connections.                                                | `"stac-fastapi-app"`     | Optional                                                                                    |
 | `REDIS_HEALTH_CHECK_INTERVAL` | Interval in seconds for Redis health checks.                                                 | `30`                     | Optional                                                                                    |
@@ -834,6 +987,242 @@ pip install stac-fastapi-elasticsearch[redis]
   - These templates are automatically applied when creating new Collection and Item indices
   - The `sfeos_helpers` package contains shared mapping definitions used by both Elasticsearch and OpenSearch backends
 - **Customization**: Custom mappings can be defined by extending the base mapping templates.
+
+## Custom Index Mappings
+
+SFEOS provides environment variables to customize Elasticsearch/OpenSearch index mappings without modifying source code. This is useful for:
+
+- Adding STAC extension fields (SAR, Cube, etc.) with proper types
+- Optimizing performance by controlling which fields are indexed
+- Ensuring correct field types instead of relying on dynamic mapping inference
+
+### Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` | JSON string of property mappings to merge with defaults | None |
+| `STAC_FASTAPI_ES_MAPPINGS_FILE` | Path to a JSON file containing property mappings to merge with defaults | None |
+| `STAC_FASTAPI_ES_DYNAMIC_MAPPING` | Controls dynamic mapping: `true`, `false`, or `strict` | `true` |
+
+### Custom Mappings
+
+You can customize the Elasticsearch/OpenSearch mappings by providing a JSON configuration. This can be done via:
+
+1. `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` environment variable (takes precedence)
+2. `STAC_FASTAPI_ES_MAPPINGS_FILE` environment variable (file path)
+
+The configuration should have the same structure as the default ES mappings. The custom mappings are **recursively merged** with the defaults at the root level.
+
+#### Merge Behavior
+
+The merge follows these rules:
+
+| Scenario | Result |
+|----------|--------|
+| Key only in defaults | Preserved |
+| Key only in custom | Added |
+| Key in both, both are dicts | Recursively merged |
+| Key in both, values are not both dicts | **Custom overwrites default** |
+
+**Example - Adding new properties (merged):**
+
+```json
+// Default has: {"geometry": {"type": "geo_shape"}}
+// Custom has:  {"geometry": {"ignore_malformed": true}}
+// Result:      {"geometry": {"type": "geo_shape", "ignore_malformed": true}}
+```
+
+**Example - Overriding a value (replaced):**
+
+```json
+// Default has: {"properties": {"datetime": {"type": "date_nanos"}}}
+// Custom has:  {"properties": {"datetime": {"type": "date"}}}
+// Result:      {"properties": {"datetime": {"type": "date"}}}
+```
+
+#### JSON Structure
+
+The custom JSON should mirror the structure of the default mappings. For STAC item properties, the path is `properties.properties.properties`:
+
+```
+{
+  "numeric_detection": false,
+  "dynamic_templates": [...],
+  "properties": {                    # Top-level ES mapping properties
+    "id": {...},
+    "geometry": {...},
+    "properties": {                  # STAC item "properties" field
+      "type": "object",
+      "properties": {                # Nested properties within STAC properties
+        "datetime": {...},
+        "sar:frequency_band": {...}  # <-- Custom extension fields go here
+      }
+    }
+  }
+}
+```
+
+**Example - Adding SAR Extension Fields:**
+
+```bash
+export STAC_FASTAPI_ES_CUSTOM_MAPPINGS='{
+  "properties": {
+    "properties": {
+      "properties": {
+        "sar:frequency_band": {"type": "keyword"},
+        "sar:center_frequency": {"type": "float"},
+        "sar:polarizations": {"type": "keyword"},
+        "sar:product_type": {"type": "keyword"}
+      }
+    }
+  }
+}'
+```
+
+**Example - Adding Cube Extension Fields:**
+
+```bash
+export STAC_FASTAPI_ES_CUSTOM_MAPPINGS='{
+  "properties": {
+    "properties": {
+      "properties": {
+        "cube:dimensions": {"type": "object", "enabled": false},
+        "cube:variables": {"type": "object", "enabled": false}
+      }
+    }
+  }
+}'
+```
+
+**Example - Adding geometry options:**
+
+```bash
+export STAC_FASTAPI_ES_CUSTOM_MAPPINGS='{
+  "properties": {
+    "geometry": {"ignore_malformed": true}
+  }
+}'
+```
+
+**Example - Using a mappings file (recommended for complex configurations):**
+
+Instead of passing large JSON blobs via environment variables, you can use a file:
+
+```bash
+# Create a mappings file
+cat > custom-mappings.json <<EOF
+{
+  "properties": {
+    "properties": {
+      "properties": {
+        "sar:frequency_band": {"type": "keyword"},
+        "sar:center_frequency": {"type": "float"},
+        "sar:polarizations": {"type": "keyword"},
+        "sar:product_type": {"type": "keyword"},
+        "eo:cloud_cover": {"type": "float"},
+        "platform": {"type": "keyword"}
+      }
+    }
+  }
+}
+EOF
+
+# Reference the file
+export STAC_FASTAPI_ES_MAPPINGS_FILE=/path/to/custom-mappings.json
+```
+
+In Docker Compose, you can mount the file:
+
+```yaml
+services:
+  app-elasticsearch:
+    volumes:
+      - ./custom-mappings.json:/app/mappings.json:ro
+    environment:
+      - STAC_FASTAPI_ES_MAPPINGS_FILE=/app/mappings.json
+```
+
+In Kubernetes, use a ConfigMap:
+
+```yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: stac-mappings
+data:
+  mappings.json: |
+    {
+      "properties": {
+        "properties": {
+          "properties": {
+            "platform": {"type": "keyword"},
+            "eo:cloud_cover": {"type": "float"}
+          }
+        }
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+spec:
+  template:
+    spec:
+      containers:
+      - name: stac-fastapi
+        env:
+        - name: STAC_FASTAPI_ES_MAPPINGS_FILE
+          value: /etc/stac/mappings.json
+        volumeMounts:
+        - name: mappings
+          mountPath: /etc/stac
+      volumes:
+      - name: mappings
+        configMap:
+          name: stac-mappings
+```
+
+> [!TIP]
+> If both `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` and `STAC_FASTAPI_ES_MAPPINGS_FILE` are set, the environment variable takes precedence, allowing quick overrides during testing or troubleshooting.
+
+### Dynamic Mapping Control (`STAC_FASTAPI_ES_DYNAMIC_MAPPING`)
+
+Controls how Elasticsearch/OpenSearch handles fields not defined in the mapping:
+
+| Value | Behavior |
+|-------|----------|
+| `true` (default) | New fields are automatically added to the mapping. Maintains backward compatibility. |
+| `false` | New fields are ignored and not indexed. Documents can still contain these fields, but they won't be searchable. |
+| `strict` | Documents with unmapped fields are rejected. |
+
+### Combining Both Variables for Performance Optimization
+
+For large datasets with extensive metadata that isn't queried, you can disable dynamic mapping and define only the fields you need:
+
+```bash
+# Disable dynamic mapping
+export STAC_FASTAPI_ES_DYNAMIC_MAPPING=false
+
+# Define only queryable fields
+export STAC_FASTAPI_ES_CUSTOM_MAPPINGS='{
+  "properties": {
+    "properties": {
+      "properties": {
+        "platform": {"type": "keyword"},
+        "eo:cloud_cover": {"type": "float"},
+        "view:sun_elevation": {"type": "float"}
+      }
+    }
+  }
+}'
+```
+
+This prevents Elasticsearch from creating mappings for unused metadata fields, reducing index size and improving ingestion performance.
+
+> [!NOTE]
+> These environment variables apply to both Elasticsearch and OpenSearch backends. Changes only affect newly created indices. For existing indices, you'll need to reindex using [SFEOS-tools](https://github.com/Healy-Hyperspatial/sfeos-tools).
+
+> [!WARNING]
+> Use caution when overriding core fields like `geometry`, `datetime`, or `id`. Incorrect types may cause search failures or data loss.
 
 ## Managing Elasticsearch Indices
 

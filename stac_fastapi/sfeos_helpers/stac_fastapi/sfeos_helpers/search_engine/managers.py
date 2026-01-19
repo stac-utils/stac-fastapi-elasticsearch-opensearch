@@ -46,18 +46,6 @@ class IndexSizeManager:
         self.client = client
         self.max_size_gb = self._get_max_size_from_env()
 
-    async def get_index_size_in_gb(self, index_name: str) -> float:
-        """Get index size in gigabytes asynchronously.
-
-        Args:
-            index_name (str): Name of the index to check.
-
-        Returns:
-            float: Size of the index in gigabytes.
-        """
-        data = await self.client.indices.stats(index=index_name)
-        return data["_all"]["primaries"]["store"]["size_in_bytes"] / 1e9
-
     async def is_index_oversized(self, index_name: str) -> bool:
         """Check if index exceeds size limit asynchronously.
 

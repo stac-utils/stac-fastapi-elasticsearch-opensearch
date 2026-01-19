@@ -38,6 +38,53 @@ async def test_create_catalog(catalogs_app_client, load_test_data):
 
 
 @pytest.mark.asyncio
+async def test_update_catalog(catalogs_app_client, load_test_data):
+    """Test updating an existing catalog."""
+    # First create a catalog
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+
+    # Update the catalog
+    catalog_id = test_catalog["id"]
+    updated_catalog = load_test_data("test_catalog.json")
+    updated_catalog["id"] = catalog_id
+    updated_catalog["title"] = "Updated Catalog Title"
+    updated_catalog["description"] = "Updated description for the catalog"
+
+    update_resp = await catalogs_app_client.put(
+        f"/catalogs/{catalog_id}", json=updated_catalog
+    )
+    assert update_resp.status_code == 200
+
+    updated_result = update_resp.json()
+    assert updated_result["id"] == catalog_id
+    assert updated_result["title"] == "Updated Catalog Title"
+    assert updated_result["description"] == "Updated description for the catalog"
+
+    # Verify the update persisted by fetching the catalog
+    get_resp = await catalogs_app_client.get(f"/catalogs/{catalog_id}")
+    assert get_resp.status_code == 200
+    fetched_catalog = get_resp.json()
+    assert fetched_catalog["title"] == "Updated Catalog Title"
+    assert fetched_catalog["description"] == "Updated description for the catalog"
+
+
+@pytest.mark.asyncio
+async def test_update_nonexistent_catalog(catalogs_app_client, load_test_data):
+    """Test updating a catalog that doesn't exist."""
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = "nonexistent-catalog"
+
+    resp = await catalogs_app_client.put(
+        "/catalogs/nonexistent-catalog", json=test_catalog
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_get_catalog(catalogs_app_client, load_test_data):
     """Test getting a specific catalog."""
     # First create a catalog
@@ -485,7 +532,7 @@ async def test_create_catalog_collection_nonexistent_catalog(
 
 @pytest.mark.asyncio
 async def test_delete_catalog(catalogs_app_client, load_test_data):
-    """Test deleting a catalog without cascade."""
+    """Test deleting an empty catalog."""
     # Create a catalog
     test_catalog = load_test_data("test_catalog.json")
     test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
@@ -511,51 +558,8 @@ async def test_delete_catalog(catalogs_app_client, load_test_data):
 
 
 @pytest.mark.asyncio
-async def test_delete_catalog_cascade(catalogs_app_client, load_test_data):
-    """Test deleting a catalog with cascade delete of collections."""
-    # Create a catalog
-    test_catalog = load_test_data("test_catalog.json")
-    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
-    test_catalog["links"] = [
-        link for link in test_catalog.get("links", []) if link.get("rel") != "child"
-    ]
-
-    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
-    assert create_resp.status_code == 201
-    catalog_id = test_catalog["id"]
-
-    # Create a collection in the catalog
-    test_collection = load_test_data("test_collection.json")
-    test_collection["id"] = f"test-collection-{uuid.uuid4()}"
-
-    coll_resp = await catalogs_app_client.post(
-        f"/catalogs/{catalog_id}/collections", json=test_collection
-    )
-    assert coll_resp.status_code == 201
-    collection_id = test_collection["id"]
-
-    # Verify collection exists
-    get_coll_resp = await catalogs_app_client.get(f"/collections/{collection_id}")
-    assert get_coll_resp.status_code == 200
-
-    # Delete the catalog with cascade=true
-    delete_resp = await catalogs_app_client.delete(
-        f"/catalogs/{catalog_id}?cascade=true"
-    )
-    assert delete_resp.status_code == 204
-
-    # Verify catalog is deleted
-    get_resp = await catalogs_app_client.get(f"/catalogs/{catalog_id}")
-    assert get_resp.status_code == 404
-
-    # Verify collection is also deleted (cascade delete)
-    get_coll_resp = await catalogs_app_client.get(f"/collections/{collection_id}")
-    assert get_coll_resp.status_code == 404
-
-
-@pytest.mark.asyncio
 async def test_delete_catalog_no_cascade(catalogs_app_client, load_test_data):
-    """Test deleting a catalog without cascade (collections remain)."""
+    """Test deleting a catalog (collections remain and are adopted by root)."""
     # Create a catalog
     test_catalog = load_test_data("test_catalog.json")
     test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
@@ -577,7 +581,7 @@ async def test_delete_catalog_no_cascade(catalogs_app_client, load_test_data):
     assert coll_resp.status_code == 201
     collection_id = test_collection["id"]
 
-    # Delete the catalog with cascade=false (default)
+    # Delete the catalog (cascade is no longer supported)
     delete_resp = await catalogs_app_client.delete(f"/catalogs/{catalog_id}")
     assert delete_resp.status_code == 204
 
@@ -585,7 +589,7 @@ async def test_delete_catalog_no_cascade(catalogs_app_client, load_test_data):
     get_resp = await catalogs_app_client.get(f"/catalogs/{catalog_id}")
     assert get_resp.status_code == 404
 
-    # Verify collection still exists (no cascade delete)
+    # Verify collection still exists (never deleted, only unlinked)
     get_coll_resp = await catalogs_app_client.get(f"/collections/{collection_id}")
     assert get_coll_resp.status_code == 200
 
@@ -643,7 +647,7 @@ async def test_delete_catalog_removes_parent_ids_from_collections(
     for collection_id in collection_ids:
         assert collection_id in returned_ids
 
-    # Delete the catalog without cascade
+    # Delete the catalog
     delete_resp = await catalogs_app_client.delete(f"/catalogs/{catalog_id}")
     assert delete_resp.status_code == 204
 
@@ -815,7 +819,11 @@ async def test_get_catalog_collections_uses_parent_ids(
 async def test_delete_collection_from_catalog_single_parent(
     catalogs_app_client, load_test_data
 ):
-    """Test deleting a collection from a catalog when it's the only parent."""
+    """Test deleting a collection from a catalog when it's the only parent.
+
+    With the "Unlink & Adopt" safety net, the collection should be adopted by root
+    instead of being deleted entirely.
+    """
     # Create a catalog
     test_catalog = load_test_data("test_catalog.json")
     catalog_id = f"test-catalog-{uuid.uuid4()}"
@@ -840,9 +848,15 @@ async def test_delete_collection_from_catalog_single_parent(
     )
     assert delete_resp.status_code == 204
 
-    # Verify the collection is completely deleted
+    # Verify the collection still exists (adopted by root, not deleted)
     get_resp = await catalogs_app_client.get(f"/collections/{collection_id}")
-    assert get_resp.status_code == 404
+    assert get_resp.status_code == 200
+
+    # Verify we cannot get it from the original catalog anymore
+    get_from_catalog_resp = await catalogs_app_client.get(
+        f"/catalogs/{catalog_id}/collections/{collection_id}"
+    )
+    assert get_from_catalog_resp.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -1008,10 +1022,8 @@ async def test_catalog_links_contain_all_collections(
 
 
 @pytest.mark.asyncio
-async def test_delete_catalog_no_cascade_orphans_collections(
-    catalogs_app_client, load_test_data
-):
-    """Test that deleting a catalog without cascade makes collections root-level orphans."""
+async def test_delete_catalog_orphans_collections(catalogs_app_client, load_test_data):
+    """Test that deleting a catalog makes orphaned collections adopt root as parent."""
     # Create a catalog
     test_catalog = load_test_data("test_catalog.json")
     catalog_id = f"test-catalog-{uuid.uuid4()}"
@@ -1065,10 +1077,10 @@ async def test_delete_catalog_no_cascade_orphans_collections(
 
 
 @pytest.mark.asyncio
-async def test_delete_catalog_no_cascade_multi_parent_collection(
+async def test_delete_catalog_preserves_multi_parent_collections(
     catalogs_app_client, load_test_data
 ):
-    """Test that deleting a catalog without cascade preserves collections with other parents."""
+    """Test that deleting a catalog preserves collections with other parents."""
     # Create two catalogs
     catalog_ids = []
     for i in range(2):
@@ -1096,7 +1108,7 @@ async def test_delete_catalog_no_cascade_multi_parent_collection(
     )
     assert add_resp.status_code == 201
 
-    # Delete the first catalog without cascade
+    # Delete the first catalog
     delete_resp = await catalogs_app_client.delete(f"/catalogs/{catalog_ids[0]}")
     assert delete_resp.status_code == 204
 
@@ -1363,3 +1375,565 @@ async def test_get_catalog_children_pagination(catalogs_app_client, load_test_da
     assert len(next_data["children"]) == 2  # Should have remaining 3, but limited to 2
     assert next_data["numberReturned"] == 2
     assert next_data["numberMatched"] == 5
+
+
+# ============================================================================
+# CATALOG-TO-CATALOG HIERARCHY TESTS
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_create_sub_catalog(catalogs_app_client, load_test_data):
+    """Test creating a sub-catalog within a parent catalog."""
+    # Create parent catalog
+    parent_catalog = load_test_data("test_catalog.json")
+    parent_id = f"parent-catalog-{uuid.uuid4()}"
+    parent_catalog["id"] = parent_id
+
+    parent_resp = await catalogs_app_client.post("/catalogs", json=parent_catalog)
+    assert parent_resp.status_code == 201
+
+    # Create sub-catalog
+    sub_catalog = load_test_data("test_catalog.json")
+    sub_id = f"sub-catalog-{uuid.uuid4()}"
+    sub_catalog["id"] = sub_id
+    sub_catalog["title"] = "Sub Catalog"
+
+    sub_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_id}/catalogs", json=sub_catalog
+    )
+    assert sub_resp.status_code == 201
+
+    created_sub = sub_resp.json()
+    assert created_sub["id"] == sub_id
+    assert created_sub["type"] == "Catalog"
+    assert "parent_ids" not in created_sub, "parent_ids should not be exposed"
+
+
+@pytest.mark.asyncio
+async def test_get_sub_catalogs(catalogs_app_client, load_test_data):
+    """Test retrieving sub-catalogs from a parent catalog."""
+    # Create parent catalog
+    parent_catalog = load_test_data("test_catalog.json")
+    parent_id = f"parent-catalog-{uuid.uuid4()}"
+    parent_catalog["id"] = parent_id
+
+    parent_resp = await catalogs_app_client.post("/catalogs", json=parent_catalog)
+    assert parent_resp.status_code == 201
+
+    # Create 3 sub-catalogs
+    sub_ids = []
+    for i in range(3):
+        sub_catalog = load_test_data("test_catalog.json")
+        sub_id = f"sub-catalog-{uuid.uuid4()}-{i}"
+        sub_catalog["id"] = sub_id
+
+        sub_resp = await catalogs_app_client.post(
+            f"/catalogs/{parent_id}/catalogs", json=sub_catalog
+        )
+        assert sub_resp.status_code == 201
+        sub_ids.append(sub_id)
+
+    # Get sub-catalogs
+    get_resp = await catalogs_app_client.get(f"/catalogs/{parent_id}/catalogs")
+    assert get_resp.status_code == 200
+
+    catalogs_data = get_resp.json()
+    assert "catalogs" in catalogs_data
+    assert len(catalogs_data["catalogs"]) == 3
+
+    # Verify all sub-catalog IDs are present
+    returned_ids = [cat["id"] for cat in catalogs_data["catalogs"]]
+    for sub_id in sub_ids:
+        assert sub_id in returned_ids
+
+    # Verify links
+    links = catalogs_data.get("links", [])
+    link_rels = [link["rel"] for link in links]
+    assert "self" in link_rels
+    assert "parent" in link_rels
+    assert "root" in link_rels
+
+
+@pytest.mark.asyncio
+async def test_get_sub_catalogs_empty(catalogs_app_client, load_test_data):
+    """Test retrieving sub-catalogs from a parent with no children."""
+    # Create parent catalog
+    parent_catalog = load_test_data("test_catalog.json")
+    parent_id = f"parent-catalog-{uuid.uuid4()}"
+    parent_catalog["id"] = parent_id
+
+    parent_resp = await catalogs_app_client.post("/catalogs", json=parent_catalog)
+    assert parent_resp.status_code == 201
+
+    # Get sub-catalogs (should be empty)
+    get_resp = await catalogs_app_client.get(f"/catalogs/{parent_id}/catalogs")
+    assert get_resp.status_code == 200
+
+    catalogs_data = get_resp.json()
+    assert len(catalogs_data["catalogs"]) == 0
+    assert catalogs_data.get("numberReturned", 0) == 0
+
+
+@pytest.mark.asyncio
+async def test_nested_catalog_hierarchy(catalogs_app_client, load_test_data):
+    """Test creating a nested hierarchy of catalogs (3 levels)."""
+    # Create root catalog
+    root_catalog = load_test_data("test_catalog.json")
+    root_id = f"root-catalog-{uuid.uuid4()}"
+    root_catalog["id"] = root_id
+
+    root_resp = await catalogs_app_client.post("/catalogs", json=root_catalog)
+    assert root_resp.status_code == 201
+
+    # Create level 1 sub-catalog
+    level1_catalog = load_test_data("test_catalog.json")
+    level1_id = f"level1-catalog-{uuid.uuid4()}"
+    level1_catalog["id"] = level1_id
+
+    level1_resp = await catalogs_app_client.post(
+        f"/catalogs/{root_id}/catalogs", json=level1_catalog
+    )
+    assert level1_resp.status_code == 201
+
+    # Create level 2 sub-catalog
+    level2_catalog = load_test_data("test_catalog.json")
+    level2_id = f"level2-catalog-{uuid.uuid4()}"
+    level2_catalog["id"] = level2_id
+
+    level2_resp = await catalogs_app_client.post(
+        f"/catalogs/{level1_id}/catalogs", json=level2_catalog
+    )
+    assert level2_resp.status_code == 201
+
+    # Verify level 1 appears in root's sub-catalogs
+    root_children = await catalogs_app_client.get(f"/catalogs/{root_id}/catalogs")
+    assert root_children.status_code == 200
+    root_data = root_children.json()
+    assert len(root_data["catalogs"]) == 1
+    assert root_data["catalogs"][0]["id"] == level1_id
+
+    # Verify level 2 appears in level 1's sub-catalogs
+    level1_children = await catalogs_app_client.get(f"/catalogs/{level1_id}/catalogs")
+    assert level1_children.status_code == 200
+    level1_data = level1_children.json()
+    assert len(level1_data["catalogs"]) == 1
+    assert level1_data["catalogs"][0]["id"] == level2_id
+
+
+@pytest.mark.asyncio
+async def test_catalog_children_mixed_catalogs_and_collections(
+    catalogs_app_client, load_test_data
+):
+    """Test that /children endpoint returns both catalogs and collections."""
+    # Create parent catalog
+    parent_catalog = load_test_data("test_catalog.json")
+    parent_id = f"parent-catalog-{uuid.uuid4()}"
+    parent_catalog["id"] = parent_id
+
+    parent_resp = await catalogs_app_client.post("/catalogs", json=parent_catalog)
+    assert parent_resp.status_code == 201
+
+    # Create 2 sub-catalogs
+    sub_cat_ids = []
+    for i in range(2):
+        sub_catalog = load_test_data("test_catalog.json")
+        sub_id = f"sub-catalog-{uuid.uuid4()}-{i}"
+        sub_catalog["id"] = sub_id
+
+        sub_resp = await catalogs_app_client.post(
+            f"/catalogs/{parent_id}/catalogs", json=sub_catalog
+        )
+        assert sub_resp.status_code == 201
+        sub_cat_ids.append(sub_id)
+
+    # Create 2 collections
+    coll_ids = []
+    for i in range(2):
+        collection = load_test_data("test_collection.json")
+        coll_id = f"collection-{uuid.uuid4()}-{i}"
+        collection["id"] = coll_id
+
+        coll_resp = await catalogs_app_client.post(
+            f"/catalogs/{parent_id}/collections", json=collection
+        )
+        assert coll_resp.status_code == 201
+        coll_ids.append(coll_id)
+
+    # Get all children (mixed)
+    children_resp = await catalogs_app_client.get(f"/catalogs/{parent_id}/children")
+    assert children_resp.status_code == 200
+
+    children_data = children_resp.json()
+    assert children_data["numberReturned"] == 4
+    assert children_data["numberMatched"] == 4
+
+    # Verify we have both catalogs and collections
+    children = children_data["children"]
+    catalog_children = [c for c in children if c["type"] == "Catalog"]
+    collection_children = [c for c in children if c["type"] == "Collection"]
+
+    assert len(catalog_children) == 2
+    assert len(collection_children) == 2
+
+    # Verify IDs
+    returned_cat_ids = [c["id"] for c in catalog_children]
+    returned_coll_ids = [c["id"] for c in collection_children]
+
+    for sub_id in sub_cat_ids:
+        assert sub_id in returned_cat_ids
+
+    for coll_id in coll_ids:
+        assert coll_id in returned_coll_ids
+
+
+@pytest.mark.asyncio
+async def test_catalog_children_type_filter_catalog(
+    catalogs_app_client, load_test_data
+):
+    """Test filtering children by type=Catalog."""
+    # Create parent catalog
+    parent_catalog = load_test_data("test_catalog.json")
+    parent_id = f"parent-catalog-{uuid.uuid4()}"
+    parent_catalog["id"] = parent_id
+
+    parent_resp = await catalogs_app_client.post("/catalogs", json=parent_catalog)
+    assert parent_resp.status_code == 201
+
+    # Create 2 sub-catalogs
+    for i in range(2):
+        sub_catalog = load_test_data("test_catalog.json")
+        sub_id = f"sub-catalog-{uuid.uuid4()}-{i}"
+        sub_catalog["id"] = sub_id
+
+        sub_resp = await catalogs_app_client.post(
+            f"/catalogs/{parent_id}/catalogs", json=sub_catalog
+        )
+        assert sub_resp.status_code == 201
+
+    # Create 1 collection
+    collection = load_test_data("test_collection.json")
+    coll_id = f"collection-{uuid.uuid4()}"
+    collection["id"] = coll_id
+
+    coll_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_id}/collections", json=collection
+    )
+    assert coll_resp.status_code == 201
+
+    # Get only catalog children
+    children_resp = await catalogs_app_client.get(
+        f"/catalogs/{parent_id}/children?type=Catalog"
+    )
+    assert children_resp.status_code == 200
+
+    children_data = children_resp.json()
+    assert children_data["numberReturned"] == 2
+    assert children_data["numberMatched"] == 2
+
+    # Verify all are catalogs
+    for child in children_data["children"]:
+        assert child["type"] == "Catalog"
+
+
+@pytest.mark.asyncio
+async def test_delete_catalog_with_sub_catalogs_no_cascade(
+    catalogs_app_client, load_test_data
+):
+    """Test deleting a catalog with sub-catalogs (no cascade)."""
+    # Create parent catalog
+    parent_catalog = load_test_data("test_catalog.json")
+    parent_id = f"parent-catalog-{uuid.uuid4()}"
+    parent_catalog["id"] = parent_id
+
+    parent_resp = await catalogs_app_client.post("/catalogs", json=parent_catalog)
+    assert parent_resp.status_code == 201
+
+    # Create 2 sub-catalogs
+    sub_ids = []
+    for i in range(2):
+        sub_catalog = load_test_data("test_catalog.json")
+        sub_id = f"sub-catalog-{uuid.uuid4()}-{i}"
+        sub_catalog["id"] = sub_id
+
+        sub_resp = await catalogs_app_client.post(
+            f"/catalogs/{parent_id}/catalogs", json=sub_catalog
+        )
+        assert sub_resp.status_code == 201
+        sub_ids.append(sub_id)
+
+    # Delete parent catalog (no cascade)
+    delete_resp = await catalogs_app_client.delete(f"/catalogs/{parent_id}")
+    assert delete_resp.status_code == 204
+
+    # Verify sub-catalogs still exist as root-level catalogs
+    for sub_id in sub_ids:
+        get_resp = await catalogs_app_client.get(f"/catalogs/{sub_id}")
+        assert get_resp.status_code == 200
+
+    # Verify they're no longer in parent's children
+    get_parent_resp = await catalogs_app_client.get(f"/catalogs/{parent_id}")
+    assert get_parent_resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_catalog_parent_ids_not_exposed(catalogs_app_client, load_test_data):
+    """Test that parent_ids field is not exposed in catalog API responses."""
+    # Create parent catalog
+    parent_catalog = load_test_data("test_catalog.json")
+    parent_id = f"parent-catalog-{uuid.uuid4()}"
+    parent_catalog["id"] = parent_id
+
+    parent_resp = await catalogs_app_client.post("/catalogs", json=parent_catalog)
+    assert parent_resp.status_code == 201
+
+    # Create sub-catalog
+    sub_catalog = load_test_data("test_catalog.json")
+    sub_id = f"sub-catalog-{uuid.uuid4()}"
+    sub_catalog["id"] = sub_id
+
+    sub_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_id}/catalogs", json=sub_catalog
+    )
+    assert sub_resp.status_code == 201
+
+    # Verify parent_ids not in creation response
+    created_sub = sub_resp.json()
+    assert "parent_ids" not in created_sub, "parent_ids should not be exposed"
+
+    # Verify parent_ids not in get response
+    get_resp = await catalogs_app_client.get(f"/catalogs/{sub_id}")
+    assert get_resp.status_code == 200
+    sub_data = get_resp.json()
+    assert "parent_ids" not in sub_data, "parent_ids should not be exposed"
+
+    # Verify parent_ids not in sub-catalogs list response
+    list_resp = await catalogs_app_client.get(f"/catalogs/{parent_id}/catalogs")
+    assert list_resp.status_code == 200
+    catalogs_data = list_resp.json()
+    for catalog in catalogs_data.get("catalogs", []):
+        assert (
+            "parent_ids" not in catalog
+        ), "parent_ids should not be exposed in list response"
+
+
+@pytest.mark.asyncio
+async def test_delete_sub_catalog_becomes_root_level(
+    catalogs_app_client, load_test_data
+):
+    """Test that deleting a parent catalog makes sub-catalogs root-level."""
+    # Create parent catalog
+    parent_catalog = load_test_data("test_catalog.json")
+    parent_id = f"parent-catalog-{uuid.uuid4()}"
+    parent_catalog["id"] = parent_id
+
+    parent_resp = await catalogs_app_client.post("/catalogs", json=parent_catalog)
+    assert parent_resp.status_code == 201
+
+    # Create 2 sub-catalogs
+    sub_ids = []
+    for i in range(2):
+        sub_catalog = load_test_data("test_catalog.json")
+        sub_id = f"sub-catalog-{uuid.uuid4()}-{i}"
+        sub_catalog["id"] = sub_id
+
+        sub_resp = await catalogs_app_client.post(
+            f"/catalogs/{parent_id}/catalogs", json=sub_catalog
+        )
+        assert sub_resp.status_code == 201
+        sub_ids.append(sub_id)
+
+    # Verify sub-catalogs are in parent's sub-catalogs list
+    parent_children_resp = await catalogs_app_client.get(
+        f"/catalogs/{parent_id}/catalogs"
+    )
+    assert parent_children_resp.status_code == 200
+    parent_children = parent_children_resp.json()
+    assert len(parent_children["catalogs"]) == 2
+
+    # Delete the parent
+    delete_resp = await catalogs_app_client.delete(f"/catalogs/{parent_id}")
+    assert delete_resp.status_code == 204
+
+    # Verify sub-catalogs still exist as root-level catalogs
+    for sub_id in sub_ids:
+        get_resp = await catalogs_app_client.get(f"/catalogs/{sub_id}")
+        assert get_resp.status_code == 200
+
+    # Verify parent is deleted
+    parent_get_resp = await catalogs_app_client.get(f"/catalogs/{parent_id}")
+    assert parent_get_resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_catalog_poly_hierarchy(catalogs_app_client, load_test_data):
+    """Test poly-hierarchy: a catalog can belong to multiple parent catalogs."""
+    # Create two parent catalogs
+    parent_ids = []
+    for i in range(2):
+        parent = load_test_data("test_catalog.json")
+        parent_id = f"parent-{uuid.uuid4()}-{i}"
+        parent["id"] = parent_id
+
+        parent_resp = await catalogs_app_client.post("/catalogs", json=parent)
+        assert parent_resp.status_code == 201
+        parent_ids.append(parent_id)
+
+    # Create a sub-catalog under first parent
+    sub_catalog = load_test_data("test_catalog.json")
+    sub_id = f"sub-catalog-{uuid.uuid4()}"
+    sub_catalog["id"] = sub_id
+
+    create_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_ids[0]}/catalogs", json=sub_catalog
+    )
+    assert create_resp.status_code == 201
+
+    # Link the same sub-catalog to second parent (poly-hierarchy)
+    link_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_ids[1]}/catalogs",
+        json=load_test_data("test_catalog.json") | {"id": sub_id},
+    )
+    assert link_resp.status_code == 201
+
+    # Verify sub-catalog appears in both parents' sub-catalogs lists
+    for parent_id in parent_ids:
+        get_resp = await catalogs_app_client.get(f"/catalogs/{parent_id}/catalogs")
+        assert get_resp.status_code == 200
+
+        catalogs_data = get_resp.json()
+        returned_ids = [cat["id"] for cat in catalogs_data["catalogs"]]
+        assert sub_id in returned_ids
+
+    # Verify the sub-catalog itself still exists and is retrievable
+    get_sub_resp = await catalogs_app_client.get(f"/catalogs/{sub_id}")
+    assert get_sub_resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_get_sub_catalogs_pagination(catalogs_app_client, load_test_data):
+    """Test pagination of sub-catalogs endpoint."""
+    # Create parent catalog
+    parent_catalog = load_test_data("test_catalog.json")
+    parent_id = f"parent-catalog-{uuid.uuid4()}"
+    parent_catalog["id"] = parent_id
+
+    parent_resp = await catalogs_app_client.post("/catalogs", json=parent_catalog)
+    assert parent_resp.status_code == 201
+
+    # Create 15 sub-catalogs (more than default limit of 10)
+    sub_ids = []
+    for i in range(15):
+        sub_catalog = load_test_data("test_catalog.json")
+        sub_id = f"sub-catalog-{uuid.uuid4()}-{i:02d}"
+        sub_catalog["id"] = sub_id
+
+        sub_resp = await catalogs_app_client.post(
+            f"/catalogs/{parent_id}/catalogs", json=sub_catalog
+        )
+        assert sub_resp.status_code == 201
+        sub_ids.append(sub_id)
+
+    # Get first page with default limit (10)
+    page1_resp = await catalogs_app_client.get(f"/catalogs/{parent_id}/catalogs")
+    assert page1_resp.status_code == 200
+    page1_data = page1_resp.json()
+
+    assert len(page1_data["catalogs"]) == 10
+    assert page1_data["numberReturned"] == 10
+    assert page1_data["numberMatched"] == 15
+    assert "next" in [link["rel"] for link in page1_data["links"]]
+
+    # Get next page using token
+    next_link = next(
+        (link for link in page1_data["links"] if link["rel"] == "next"), None
+    )
+    assert next_link is not None
+
+    # Extract token from next link
+    next_url = next_link["href"]
+    page2_resp = await catalogs_app_client.get(next_url)
+    assert page2_resp.status_code == 200
+    page2_data = page2_resp.json()
+
+    # Second page should have remaining 5 catalogs
+    assert len(page2_data["catalogs"]) == 5
+    assert page2_data["numberReturned"] == 5
+    assert page2_data["numberMatched"] == 15
+
+    # Verify no 'next' link on last page
+    assert "next" not in [link["rel"] for link in page2_data["links"]]
+
+    # Verify all catalogs are unique across pages
+    page1_ids = [cat["id"] for cat in page1_data["catalogs"]]
+    page2_ids = [cat["id"] for cat in page2_data["catalogs"]]
+    assert len(set(page1_ids) & set(page2_ids)) == 0  # No overlap
+    assert len(page1_ids) + len(page2_ids) == 15  # All accounted for
+
+
+@pytest.mark.asyncio
+async def test_get_sub_catalogs_pagination_with_limit(
+    catalogs_app_client, load_test_data
+):
+    """Test pagination of sub-catalogs with custom limit parameter."""
+    # Create parent catalog
+    parent_catalog = load_test_data("test_catalog.json")
+    parent_id = f"parent-catalog-{uuid.uuid4()}"
+    parent_catalog["id"] = parent_id
+
+    parent_resp = await catalogs_app_client.post("/catalogs", json=parent_catalog)
+    assert parent_resp.status_code == 201
+
+    # Create 8 sub-catalogs
+    sub_ids = []
+    for i in range(8):
+        sub_catalog = load_test_data("test_catalog.json")
+        sub_id = f"sub-catalog-{uuid.uuid4()}-{i:02d}"
+        sub_catalog["id"] = sub_id
+
+        sub_resp = await catalogs_app_client.post(
+            f"/catalogs/{parent_id}/catalogs", json=sub_catalog
+        )
+        assert sub_resp.status_code == 201
+        sub_ids.append(sub_id)
+
+    # Get first page with limit=3
+    page1_resp = await catalogs_app_client.get(
+        f"/catalogs/{parent_id}/catalogs?limit=3"
+    )
+    assert page1_resp.status_code == 200
+    page1_data = page1_resp.json()
+
+    assert len(page1_data["catalogs"]) == 3
+    assert page1_data["numberReturned"] == 3
+    assert page1_data["numberMatched"] == 8
+
+    # Get second page
+    next_link = next(
+        (link for link in page1_data["links"] if link["rel"] == "next"), None
+    )
+    assert next_link is not None
+    assert "limit=3" in next_link["href"]
+
+    page2_resp = await catalogs_app_client.get(next_link["href"])
+    assert page2_resp.status_code == 200
+    page2_data = page2_resp.json()
+
+    assert len(page2_data["catalogs"]) == 3
+    assert page2_data["numberReturned"] == 3
+
+    # Get third page
+    next_link = next(
+        (link for link in page2_data["links"] if link["rel"] == "next"), None
+    )
+    assert next_link is not None
+
+    page3_resp = await catalogs_app_client.get(next_link["href"])
+    assert page3_resp.status_code == 200
+    page3_data = page3_resp.json()
+
+    assert len(page3_data["catalogs"]) == 2
+    assert page3_data["numberReturned"] == 2
+
+    # Verify no 'next' link on last page
+    assert "next" not in [link["rel"] for link in page3_data["links"]]
