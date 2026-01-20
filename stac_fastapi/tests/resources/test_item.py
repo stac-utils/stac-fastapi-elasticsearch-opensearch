@@ -1367,6 +1367,7 @@ async def test_select_indexes(txn_client, load_test_data):
     assert result == "items_test-collection-1"
 
 
+@pytest.mark.asyncio
 async def test_hidden_item_true(app_client, txn_client, load_test_data):
     """Test item with hidden=true is filtered out."""
 
