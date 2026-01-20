@@ -52,6 +52,7 @@ async def resolve_cql2_indexes(
     index_selector,
     apply_datetime_filter: Callable[[Any, str], Tuple[Any, Dict[str, Any]]],
     search,
+    datetime_search: Optional[Dict[str, Optional[str]]] = None,
 ) -> Tuple[str, List[str]]:
     """Resolve indexes for CQL2 JSON queries for datetime and collection ids.
 
@@ -60,6 +61,7 @@ async def resolve_cql2_indexes(
         index_selector: The index selector instance
         apply_datetime_filter: Function to apply datetime on search
         search: The search query object
+        datetime_search: Fallback datetime range from standard request parameters
 
     Returns:
         Comma-separated indexes, list of collection ids
@@ -77,6 +79,13 @@ async def resolve_cql2_indexes(
             _, collection_datetime = apply_datetime_filter(
                 search, format_datetime_range(date_str=date_range)
             )
+        elif datetime_search:
+            # Fallback to standard datetime parameter
+            collection_datetime = datetime_search
+        else:
+            collection_datetime = None
+
+        if collection_datetime:
             for collection in collections:
                 indexes = await index_selector.select_indexes(
                     [collection], collection_datetime

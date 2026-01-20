@@ -875,6 +875,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 self.async_index_selector,
                 self.apply_datetime_filter,
                 search,
+                datetime_search,
             )
         else:
             index_param = await self.async_index_selector.select_indexes(

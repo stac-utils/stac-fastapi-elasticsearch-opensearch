@@ -1345,6 +1345,38 @@ async def test_search_cql2_json_start_end_datetime_operators(app_client, ctx):
 
 
 @pytest.mark.asyncio
+async def test_search_cql2_filter_with_datetime_param(app_client, ctx):
+    """Test that datetime param is used when CQL2 filter has no datetime constraint.
+
+    This tests the edge case where a request has both:
+    - A standard datetime parameter in the body
+    - A CQL2 filter that does NOT contain datetime (e.g., proj:epsg filter)
+
+    The datetime param should be used for index selection as a fallback.
+    """
+    test_item = ctx.item
+
+    # CQL2 filter without datetime + datetime param in body
+    request_body = {
+        "datetime": "2020-02-01T00:00:00Z/2020-02-28T23:59:59Z",
+        "filter-lang": "cql2-json",
+        "filter": {
+            "op": "<=",
+            "args": [
+                {"property": "properties.proj:epsg"},
+                test_item["properties"]["proj:epsg"],
+            ],
+        },
+    }
+    resp = await app_client.post("/search", json=request_body)
+    assert (
+        resp.status_code == 200
+    ), f"Expected 200, got {resp.status_code}: {resp.json()}"
+    resp_json = resp.json()
+    assert resp_json["features"][0]["id"] == test_item["id"]
+
+
+@pytest.mark.asyncio
 async def test_select_indexes(txn_client, load_test_data):
     """Run select_indexes test."""
 
