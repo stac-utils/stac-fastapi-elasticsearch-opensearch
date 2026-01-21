@@ -214,7 +214,7 @@ if ENABLE_CATALOGS_ROUTE:
         ),
         settings=settings,
         conformance_classes=[
-            "https://api.stacspec.org/v1.0.0-beta.1/catalogs-endpoint",
+            "https://api.stacspec.org/v1.0.0-beta.1/multi-tenant-catalogs",
         ],
     )
     extensions.append(catalogs_extension)
@@ -243,7 +243,7 @@ items_get_request_model = create_request_model(
 app_config = {
     "title": os.getenv("STAC_FASTAPI_TITLE", "stac-fastapi-opensearch"),
     "description": os.getenv("STAC_FASTAPI_DESCRIPTION", "stac-fastapi-opensearch"),
-    "api_version": os.getenv("STAC_FASTAPI_VERSION", "6.8.1"),
+    "api_version": os.getenv("STAC_FASTAPI_VERSION", "6.9.0"),
     "settings": settings,
     "extensions": extensions,
     "client": CoreClient(

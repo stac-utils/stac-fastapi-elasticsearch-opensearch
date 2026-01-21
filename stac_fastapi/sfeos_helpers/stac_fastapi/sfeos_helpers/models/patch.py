@@ -3,7 +3,7 @@
 import re
 from typing import Any, Dict, Optional, Union
 
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, ConfigDict, model_validator
 
 regex = re.compile(r"([^.' ]*:[^.'[ ]*)\.?")
 replacements = str.maketrans({"/": "", ".": "", ":": "", "[": "", "]": ""})
@@ -84,10 +84,7 @@ class ElasticPath(BaseModel):
     variable_name: Optional[str] = None
     param_key: Optional[str] = None
 
-    class Config:
-        """Class config."""
-
-        frozen = True
+    model_config = ConfigDict(frozen=True)
 
     @model_validator(mode="before")
     @classmethod

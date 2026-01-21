@@ -64,6 +64,16 @@ else:
         create_index_templates,
     )
 
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers", "datetime_filtering: matches datetime_filtering mark"
+    )
+    config.addinivalue_line(
+        "filterwarnings", "ignore:Duplicate Operation ID:UserWarning"
+    )
+
+
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 
 
@@ -419,7 +429,7 @@ def build_test_app_with_catalogs():
         ),
         settings=test_settings,
         conformance_classes=[
-            "https://api.stacspec.org/v1.0.0-beta.1/catalogs-endpoint",
+            "https://api.stacspec.org/v1.0.0-beta.1/multi-tenant-catalogs",
         ],
     )
 

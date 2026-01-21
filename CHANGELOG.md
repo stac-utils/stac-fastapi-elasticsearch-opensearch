@@ -14,7 +14,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - CloudFerro logo to sponsors and supporters list [#485](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/485)
 - Latest news section to README [#485](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/485)
 - Added Helm chart for ES or OS in-cluster deployment [#455](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/455)
+- Added configurable hidden item filtering via HIDE_ITEM_PATH environment variable. [#566](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/566)
+
 ### Changed
+
+- Added `PUT /catalogs/{catalog_id}` endpoint to update existing catalogs. Allows modification of catalog metadata (title, description, etc.) while preserving internal fields like parent_ids and catalog relationships. [#573](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/673)
+- Added catalog poly-hierarchy support with hierarchical catalog endpoints (`GET /catalogs/{catalog_id}/catalogs` and `POST /catalogs/{catalog_id}/catalogs`), enabling unlimited nesting levels and allowing catalogs to belong to multiple parent catalogs simultaneously. Includes cursor-based pagination and performance optimizations. [#573](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/573)
 
 ### Fixed
 
@@ -22,15 +27,34 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Updated
 
+## [v6.9.0] - 2026-01-09
+
+### Added
+
+- Added `STAC_FASTAPI_ES_MAPPINGS_FILE` environment variable to support file-based custom mappings configuration.
+- Added configuration-based support for extending Elasticsearch/OpenSearch index mappings via environment variables, allowing users to customize field mappings without code change through `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` environment variable. Also added `STAC_FASTAPI_ES_DYNAMIC_MAPPING` variable to control dynamic mapping behavior. [#546](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/546)
+
+### Changed
+
+- `filter_fields` supports wildcard declarations (`*`) for including and excluding fields, where `properties.*.lat` include would include any extension's with a `lat` attribute.  The same functionality is included in the exclude fields. If field is explicitly included in the include fields it cannot be explicitly excluded. [#567](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/567)
+
+### Fixed
+
+- Optimized test execution by implementing single Docker image for both Elasticsearch and OpenSearch. Tests now reuse a single pre-built image instead of rebuilding for each test suite. [#570](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/570)
+
+### Updated
+
+- Reorganized README configuration reference into logical sections for better readability. [#569](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/569)
+
 ## [v6.8.1] - 2025-12-15
 
 ### Changed
 
-- Implemented a safety-first deletion policy for the catalogs endpoint to prevent accidental data loss. Collections are now never deleted through the catalogs route; they are only unlinked and automatically adopted by the root catalog if they become orphans. Collection data can only be permanently deleted via the explicit `/collections/{collection_id}` DELETE endpoint. This ensures a clear separation between container (catalog) deletion and content (collection/item) deletion, with data always being preserved through the catalogs API.
+- Implemented a safety-first deletion policy for the catalogs endpoint to prevent accidental data loss. Collections are now never deleted through the catalogs route; they are only unlinked and automatically adopted by the root catalog if they become orphans. Collection data can only be permanently deleted via the explicit `/collections/{collection_id}` DELETE endpoint. This ensures a clear separation between container (catalog) deletion and content (collection/item) deletion, with data always being preserved through the catalogs API. [#562](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/562)
 
 ### Removed
 
-- Removed `cascade` parameter from `DELETE /catalogs/{catalog_id}` endpoint. Collections are no longer deleted when a catalog is deleted; they are unlinked and adopted by root if orphaned.
+- Removed `cascade` parameter from `DELETE /catalogs/{catalog_id}` endpoint. Collections are no longer deleted when a catalog is deleted; they are unlinked and adopted by root if orphaned. [#562](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/562)
 
 ## [v6.8.0] - 2025-12-15
 
@@ -704,7 +728,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.8.1...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.9.0...main
+[v6.9.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.8.1...v6.9.0
 [v6.8.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.8.0...v6.8.1
 [v6.8.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.6...v6.8.0
 [v6.7.6]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.5...v6.7.6
