@@ -5,7 +5,10 @@ in Elasticsearch/OpenSearch, such as parameter validation.
 """
 
 import logging
-from typing import Any, Dict, List, Union
+from typing import Any, Callable, Dict, List, Optional, Union
+
+import sentry_sdk
+from sentry_sdk.integrations.starlette import StarletteIntegration
 
 from stac_fastapi.core.utilities import bbox2polygon, get_bool_env
 from stac_fastapi.extensions.core.transaction.request import (
@@ -361,3 +364,125 @@ def operations_to_script(operations: List, create_nest: bool = False) -> Dict:
         "lang": "painless",
         "params": params,
     }
+
+
+def sentry_initialize(
+    dsn: str,
+    environment: str = "production",
+    traces_sample_rate: float = 1.0,
+    traces_sampler: Optional[Callable] = None,
+    profiles_sample_rate: Optional[float] = 1.0,
+    debug: Optional[bool] = False,
+    send_default_pii: Optional[bool] = None,
+    max_breadcrumbs: Optional[int] = 100,
+    release: Optional[str] = None,
+    dist: Optional[str] = None,
+    server_name: Optional[str] = None,
+    attach_stacktrace: Optional[bool] = False,
+    shutdown_timeout: Optional[int] = 2,
+    before_send: Optional[Callable] = None,
+    before_breadcrumb: Optional[Callable] = None,
+    ignore_errors: Optional[List[Union[type, str]]] = None,
+    ca_certs: Optional[str] = None,
+    transport: Optional[Any] = None,
+    default_integrations: Optional[bool] = True,
+    spotlight: Optional[Union[str, bool]] = None,
+    sample_rate: Optional[float] = 1.0,
+    error_sampler: Optional[Callable] = None,
+    event_scrubber: Optional[Any] = None,
+    include_source_context: Optional[bool] = True,
+    include_local_variables: Optional[bool] = True,
+    add_full_stack: Optional[bool] = False,
+    max_stack_frames: Optional[int] = 100,
+    project_root: Optional[str] = None,
+    max_request_body_size: Optional[str] = "medium",
+    max_value_length: Optional[int] = 100000,
+    send_client_reports: Optional[bool] = True,
+    auto_session_tracking: Optional[bool] = True,
+) -> None:
+    """
+    Initialize Sentry SDK for error and performance monitoring.
+
+    Args:
+        dsn: Data Source Name - The Sentry project DSN URL
+        environment: Deployment environment (e.g., "production", "staging", "development")
+        traces_sample_rate: Sample rate for performance traces (0.0 to 1.0)
+        traces_sampler: Custom function for controlling performance tracing sampling
+        profiles_sample_rate: Sample rate for performance profiling (0.0 to 1.0)
+        debug: Enable debug logging for Sentry SDK
+        send_default_pii: Send personally identifiable information (user data, IPs, etc.)
+        max_breadcrumbs: Maximum number of breadcrumbs to store (default: 100)
+        release: Application version/release identifier
+        dist: Distribution/build identifier for deployment variants
+        server_name: Server/instance identifier
+        attach_stacktrace: Attach stack traces to log messages (default: False)
+        shutdown_timeout: Seconds to wait for events to flush on shutdown
+        before_send: Callback to modify or filter events before sending to Sentry
+        before_breadcrumb: Callback to modify or filter breadcrumbs
+        ignore_errors: List of error classes or strings to ignore
+        ca_certs: Path to custom CA certificate bundle (PEM format)
+        transport: Custom transport implementation
+        default_integrations: Enable default framework integrations
+        sample_rate: Sample rate for error events (0.0 to 1.0, default: 1.0)
+        error_sampler: Custom function for error event sampling (overrides sample_rate)
+        event_scrubber: EventScrubber instance for sensitive data scrubbing
+        include_source_context: Include source code context in events (default: True)
+        include_local_variables: Include local variables in stack traces (default: True)
+        add_full_stack: Include all frames from start of execution (default: False)
+        max_stack_frames: Maximum stack frames when add_full_stack=True (default: 100)
+        project_root: Root directory of your application (default: current directory)
+        max_request_body_size: HTTP request body capture ("never", "small", "medium", "always")
+        max_value_length: Maximum characters before truncating values (default: 100000)
+        send_client_reports: Enable client status reports (default: True)
+        auto_session_tracking: Automatically record and send sessions (default: True)
+
+    Returns:
+        None
+    """
+    sentry_config = {
+        "dsn": dsn,
+        "environment": environment,
+        "traces_sample_rate": traces_sample_rate,
+        "integrations": [StarletteIntegration()],
+    }
+    additional_params = [
+        ("profiles_sample_rate", profiles_sample_rate),
+        ("debug", debug),
+        ("send_default_pii", send_default_pii),
+        ("max_breadcrumbs", max_breadcrumbs),
+        ("attach_stacktrace", attach_stacktrace),
+        ("shutdown_timeout", shutdown_timeout),
+        ("default_integrations", default_integrations),
+        ("traces_sampler", traces_sampler),
+        ("release", release),
+        ("dist", dist),
+        ("server_name", server_name),
+        ("before_send", before_send),
+        ("before_breadcrumb", before_breadcrumb),
+        ("ignore_errors", ignore_errors),
+        ("ca_certs", ca_certs),
+        ("transport", transport),
+        ("spotlight", spotlight),
+        ("sample_rate", sample_rate),
+        ("error_sampler", error_sampler),
+        ("event_scrubber", event_scrubber),
+        ("include_source_context", include_source_context),
+        ("include_local_variables", include_local_variables),
+        ("add_full_stack", add_full_stack),
+        ("max_stack_frames", max_stack_frames),
+        ("project_root", project_root),
+        ("max_request_body_size", max_request_body_size),
+        ("max_value_length", max_value_length),
+        ("send_client_reports", send_client_reports),
+        ("auto_session_tracking", auto_session_tracking),
+    ]
+    for param_name, param_value in additional_params:
+        if param_value is not None:
+            sentry_config[param_name] = param_value
+
+    sentry_sdk.init(**sentry_config)
+
+    if debug:
+        sentry_sdk.capture_message(f"Sentry initialized in {environment} environment")
+
+    logger.info(f"Sentry initialized for environment: {environment}")
