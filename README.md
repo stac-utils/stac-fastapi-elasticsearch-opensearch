@@ -131,6 +131,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
   - [Auth](#auth)
   - [Aggregation](#aggregation)
   - [Rate Limiting](#rate-limiting)
+  - [Error Monitoring with Sentry](#error-monitoring-with-sentry)
 
 ## Documentation & Resources
 
@@ -1332,3 +1333,14 @@ This prevents Elasticsearch from creating mappings for unused metadata fields, r
   - Ensures fair resource allocation among all clients
   
 - **Examples**: Implementation examples are available in the [examples/rate_limit](examples/rate_limit) directory.
+
+## Error Monitoring with Sentry
+
+Optional integration with Sentry for error tracking, performance monitoring, and release tracking. When enabled, Sentry provides real-time insights into application errors, performance bottlenecks, and deployment health.
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SENTRY_ENABLE` | Enable Sentry integration for error tracking and performance monitoring | `false` |
+| `SENTRY_DSN` | Sentry Data Source Name (DSN) for your project | `None` |
+| `SENTRY_ENVIRONMENT` | Deployment environment (production, staging, development) | `staging` |
+| `SENTRY_TRACES_SAMPLE_RATE` | Percentage of transactions to sample for performance monitoring (0.0 to 1.0) | `0.1` |
