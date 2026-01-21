@@ -53,6 +53,7 @@ from stac_fastapi.sfeos_helpers.database.query import (
     add_collections_to_body,
 )
 from stac_fastapi.sfeos_helpers.database.utils import (
+    add_hidden_filter,
     merge_to_operations,
     operations_to_script,
 )
@@ -406,12 +407,22 @@ class DatabaseLogic(BaseDatabaseLogic):
         Notes:
             The Item is retrieved from the Elasticsearch database using the `client.get` method,
             with the index for the Collection as the target index and the combined `mk_item_id` as the document id.
+            Item is hidden if hide_item_path is configured via env var.
         """
         try:
+            base_query = {"term": {"_id": mk_item_id(item_id, collection_id)}}
+
+            HIDE_ITEM_PATH = os.getenv("HIDE_ITEM_PATH", None)
+
+            if HIDE_ITEM_PATH:
+                query = add_hidden_filter(base_query, HIDE_ITEM_PATH)
+            else:
+                query = base_query
+
             response = await self.client.search(
                 index=index_alias_by_collection_id(collection_id),
                 body={
-                    "query": {"term": {"_id": mk_item_id(item_id, collection_id)}},
+                    "query": query,
                     "size": 1,
                 },
             )
@@ -854,6 +865,10 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         size_limit = min(limit + 1, max_result_window)
 
+        HIDE_ITEM_PATH = os.getenv("HIDE_ITEM_PATH", None)
+        if HIDE_ITEM_PATH:
+            query = add_hidden_filter(query, HIDE_ITEM_PATH)
+
         search_task = asyncio.create_task(
             self.client.search(
                 index=index_param,
@@ -865,11 +880,17 @@ class DatabaseLogic(BaseDatabaseLogic):
             )
         )
 
+        # Apply hidden filter to count query as well
+        count_query = search.to_dict(count=True)
+        if HIDE_ITEM_PATH:
+            q = count_query.get("query")
+            count_query["query"] = add_hidden_filter(q, HIDE_ITEM_PATH)
+
         count_task = asyncio.create_task(
             self.client.count(
                 index=index_param,
                 ignore_unavailable=ignore_unavailable,
-                body=search.to_dict(count=True),
+                body=count_query,
             )
         )
 
