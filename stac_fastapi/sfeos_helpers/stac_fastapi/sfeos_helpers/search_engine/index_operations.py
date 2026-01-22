@@ -221,7 +221,6 @@ class IndexOperations:
             "_source": [
                 "properties.start_datetime",
                 "properties.datetime",
-                "properties.end_datetime",
             ],
         }
 

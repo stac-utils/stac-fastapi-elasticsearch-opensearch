@@ -423,8 +423,24 @@ class DatetimeIndexManager:
             new_aliases.append(new_start_alias)
             old_alias_names.append(current_alias)
 
+            product_start_datetime = parser.isoparse(
+                product_datetimes.start_datetime
+            ).date()
+            latest_start_datetime_in_index = parser.isoparse(
+                latest_index_datetimes.start_datetime
+            ).date()
+            product_end_date = parser.isoparse(product_datetimes.end_datetime).date()
+            latest_end_datetime_in_index = parser.isoparse(
+                latest_index_datetimes.end_datetime
+            ).date()
+
+            if product_start_datetime > latest_start_datetime_in_index:
+                end_datetime = latest_end_datetime_in_index
+            else:
+                end_datetime = max(product_end_date, latest_end_datetime_in_index)
+
             new_end_alias = self.index_operations.create_alias_name(
-                collection_id, "end_datetime", str(latest_index_datetimes.end_datetime)
+                collection_id, "end_datetime", str(end_datetime)
             )
             new_aliases.append(new_end_alias)
             old_alias_names.append(old_aliases["end_datetime"])
@@ -432,17 +448,12 @@ class DatetimeIndexManager:
             await self.index_operations.change_alias_name(
                 self.client, current_alias, old_alias_names, new_aliases
             )
-            product_start_datetime = parser.isoparse(
-                product_datetimes.start_datetime
-            ).date()
-            latest_start_datetime_in_index = parser.isoparse(
-                latest_index_datetimes.start_datetime
-            ).date()
+
             if product_start_datetime > latest_start_datetime_in_index:
                 end_date = str(parser.isoparse(product_datetimes.end_datetime).date())
             else:
                 end_date = str(
-                    parser.isoparse(latest_index_datetimes.end_datetime).date()
+                    parser.isoparse(latest_index_datetimes.start_datetime).date()
                     + timedelta(days=1)
                 )
 

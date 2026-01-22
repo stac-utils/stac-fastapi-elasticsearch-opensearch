@@ -269,11 +269,17 @@ class DatetimeIndexInserter(BaseIndexInserter):
                 aliases_dict,
             )
             await self.refresh_cache()
+            all_indexes = await self.index_selector.get_collection_indexes(
+                collection_id
+            )
+            all_indexes = sorted(
+                all_indexes, key=lambda x: x[0][self.primary_datetime_name]
+            )
             return (
                 await self.index_selector.select_indexes(
                     [collection_id], primary_datetime_value, for_insertion=True
                 )
-                or target_index
+                or all_indexes[-1][0][self.primary_datetime_name]
             )
 
         await self.datetime_manager.handle_early_date(
@@ -284,7 +290,11 @@ class DatetimeIndexInserter(BaseIndexInserter):
             is_first_index,
         )
         await self.refresh_cache()
-        return target_index
+        all_indexes = await self.index_selector.get_collection_indexes(collection_id)
+        all_indexes = sorted(
+            all_indexes, key=lambda x: x[0][self.primary_datetime_name]
+        )
+        return all_indexes[-1][0][self.primary_datetime_name]
 
     @staticmethod
     def _find_aliases_for_index(
