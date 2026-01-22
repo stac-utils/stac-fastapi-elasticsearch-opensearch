@@ -23,6 +23,16 @@ from stac_pydantic.version import STAC_VERSION
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.datetime_utils import format_datetime_range
+from stac_fastapi.core.header_filters import (
+    check_collection_access,
+    check_item_geometry_access,
+    collect_geometries_for_intersection,
+    collect_request_collections,
+    compute_collection_intersection,
+    compute_geometry_intersection,
+    create_geometry_filter_object,
+    parse_filter_collections,
+)
 from stac_fastapi.core.models.links import PagingLinks
 from stac_fastapi.core.queryables import (
     QueryablesCache,
@@ -449,6 +459,13 @@ class CoreClient(AsyncBaseCoreClient):
         else:
             filtered_collections = collections
 
+        # Filter by header collections if present
+        header_collections = parse_filter_collections(request)
+        if header_collections is not None:
+            filtered_collections = [
+                c for c in filtered_collections if c.get("id") in header_collections
+            ]
+
         links = [
             {"rel": Relations.root.value, "type": MimeTypes.json, "href": base_url},
             {"rel": Relations.parent.value, "type": MimeTypes.json, "href": base_url},
@@ -582,6 +599,10 @@ class CoreClient(AsyncBaseCoreClient):
             NotFoundError: If the collection with the given id cannot be found in the database.
         """
         request = kwargs["request"]
+
+        # Check if collection is allowed by header filter
+        check_collection_access(request, collection_id)
+
         collection = await self.database.find_collection(collection_id=collection_id)
         return self.collection_serializer.db_to_stac(
             collection=collection,
@@ -667,11 +688,21 @@ class CoreClient(AsyncBaseCoreClient):
             Exception: If any error occurs while getting the item from the database.
             NotFoundError: If the item does not exist in the specified collection.
         """
-        base_url = str(kwargs["request"].base_url)
+        request = kwargs["request"]
+
+        # Check if collection is allowed by header filter
+        check_collection_access(request, collection_id, resource_type="Item")
+
+        base_url = str(request.base_url)
         item = await self.database.get_one_item(
             item_id=item_id, collection_id=collection_id
         )
-        return self.item_serializer.db_to_stac(item, base_url)
+        stac_item = self.item_serializer.db_to_stac(item, base_url)
+
+        # Check if item geometry intersects with allowed geometry filter
+        check_item_geometry_access(request, stac_item.get("geometry"))
+
+        return stac_item
 
     async def get_search(
         self,
@@ -823,9 +854,50 @@ class CoreClient(AsyncBaseCoreClient):
                 search=search, item_ids=search_request.ids
             )
 
-        if search_request.collections:
+        # Get CQL2 filter for both geometry and collection extraction
+        cql2_filter = None
+        if hasattr(search_request, "filter_expr"):
+            cql2_filter = getattr(search_request, "filter_expr", None)
+        if cql2_filter is None and hasattr(search_request, "filter"):
+            cql2_filter = getattr(search_request, "filter", None)
+
+        filter_lang = getattr(search_request, "filter_lang", None)
+
+        # Collect requested collections from all sources (body, CQL2 filter)
+        requested_collections = collect_request_collections(
+            body_collections=search_request.collections,
+            cql2_filter=cql2_filter,
+            filter_lang=filter_lang,
+        )
+
+        # Get allowed collections from header (set by stac-auth-proxy)
+        header_collections = parse_filter_collections(request)
+
+        # Compute intersection of requested and allowed collections
+        final_collections = compute_collection_intersection(
+            requested_collections=requested_collections
+            if requested_collections
+            else None,
+            header_collections=header_collections,
+        )
+
+        # If intersection is empty, return empty results immediately
+        if final_collections is not None and len(final_collections) == 0:
+            logger.debug(
+                "Collection intersection resulted in empty set, returning empty result"
+            )
+            return stac_types.ItemCollection(
+                type="FeatureCollection",
+                features=[],
+                links=[],
+                numberReturned=0,
+                numberMatched=0,
+            )
+
+        # Apply collection filter if we have collections to filter by
+        if final_collections is not None:
             search = self.database.apply_collections_filter(
-                search=search, collection_ids=search_request.collections
+                search=search, collection_ids=final_collections
             )
 
         datetime_parsed = format_datetime_range(date_str=search_request.datetime)
@@ -839,19 +911,40 @@ class CoreClient(AsyncBaseCoreClient):
             logger.error(msg)
             raise HTTPException(status_code=400, detail=msg)
 
-        if search_request.bbox:
-            bbox = search_request.bbox
-            if len(bbox) == 6:
-                bbox = [bbox[0], bbox[1], bbox[3], bbox[4]]
+        request_intersects = None
+        if hasattr(search_request, "intersects"):
+            request_intersects = getattr(search_request, "intersects", None)
 
-            search = self.database.apply_bbox_filter(search=search, bbox=bbox)
+        geometries = collect_geometries_for_intersection(
+            request=request,
+            bbox=search_request.bbox,
+            intersects=request_intersects,
+            cql2_filter=cql2_filter,
+        )
 
-        if hasattr(search_request, "intersects") and getattr(
-            search_request, "intersects"
-        ):
-            search = self.database.apply_intersects_filter(
-                search=search, intersects=getattr(search_request, "intersects")
-            )
+        if geometries:
+            intersected_geometry = compute_geometry_intersection(geometries)
+
+            if intersected_geometry is None:
+                logger.debug(
+                    "Geometry intersection resulted in empty geometry, "
+                    "returning empty result"
+                )
+                return stac_types.ItemCollection(
+                    type="FeatureCollection",
+                    features=[],
+                    links=[],
+                    numberReturned=0,
+                    numberMatched=0,
+                )
+
+            geometry_filter_obj = create_geometry_filter_object(intersected_geometry)
+            if geometry_filter_obj:
+                search = self.database.apply_intersects_filter(
+                    search=search, intersects=geometry_filter_obj
+                )
+
+        collection_ids = getattr(search_request, "collections", None)
 
         if hasattr(search_request, "query") and getattr(search_request, "query"):
             query_fields = set(getattr(search_request, "query").keys())
@@ -865,13 +958,7 @@ class CoreClient(AsyncBaseCoreClient):
                         search=search, op=operator, field=field, value=value
                     )
 
-        # Apply CQL2 filter (support both 'filter_expr' and canonical 'filter')
-        cql2_filter = None
-        if hasattr(search_request, "filter_expr"):
-            cql2_filter = getattr(search_request, "filter_expr", None)
-        if cql2_filter is None and hasattr(search_request, "filter"):
-            cql2_filter = getattr(search_request, "filter", None)
-
+        # Apply CQL2 filter (cql2_filter was extracted earlier for collection/geometry)
         if cql2_filter is not None:
             try:
                 query_fields = get_properties_from_cql2_filter(cql2_filter)
@@ -909,7 +996,7 @@ class CoreClient(AsyncBaseCoreClient):
             limit=limit,
             token=token_param,
             sort=sort,
-            collection_ids=getattr(search_request, "collections", None),
+            collection_ids=collection_ids,
             datetime_search=datetime_search,
         )
 
