@@ -54,7 +54,13 @@ from .query import (
     apply_intersects_filter_shared,
     populate_sort_shared,
 )
-from .utils import add_bbox_shape_to_collection, get_bool_env, validate_refresh
+from .utils import (
+    add_bbox_shape_to_collection,
+    get_bool_env,
+    retry_on_connection_error,
+    retry_on_datetime_not_found,
+    validate_refresh,
+)
 
 __all__ = [
     # Catalog operations
@@ -84,6 +90,8 @@ __all__ = [
     "validate_refresh",
     "get_bool_env",
     "add_bbox_shape_to_collection",
+    "retry_on_datetime_not_found",
+    "retry_on_connection_error",
     # Datetime utilities
     "return_date",
     "extract_date",
