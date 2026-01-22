@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 - Added `PUT /catalogs/{catalog_id}` endpoint to update existing catalogs. Allows modification of catalog metadata (title, description, etc.) while preserving internal fields like parent_ids and catalog relationships. [#573](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/673)
 - Added catalog poly-hierarchy support with hierarchical catalog endpoints (`GET /catalogs/{catalog_id}/catalogs` and `POST /catalogs/{catalog_id}/catalogs`), enabling unlimited nesting levels and allowing catalogs to belong to multiple parent catalogs simultaneously. Includes cursor-based pagination and performance optimizations. [#573](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/573)
+- Added end_datetime alias for datetime-based indexes with use_datetime=false, so that start_datetime/end_datetime queries select a smaller range of indexes (limiting the end)
 
 ### Fixed
 
