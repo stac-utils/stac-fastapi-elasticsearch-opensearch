@@ -56,7 +56,17 @@ from stac_fastapi.opensearch.database_logic import (
     create_index_templates,
 )
 from stac_fastapi.sfeos_helpers.aggregation import EsAsyncBaseAggregationClient
+from stac_fastapi.sfeos_helpers.database.utils import sentry_initialize
 from stac_fastapi.sfeos_helpers.filter import EsAsyncBaseFiltersClient
+
+sentry_enable = get_bool_env("SENTRY_ENABLE", default=False)
+
+if sentry_enable:
+    sentry_initialize(
+        dsn=os.getenv("SENTRY_DSN"),
+        environment=os.getenv("SENTRY_ENVIRONMENT", "staging"),
+        traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "1.0")),
+    )
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
