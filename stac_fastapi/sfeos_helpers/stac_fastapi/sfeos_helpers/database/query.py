@@ -130,7 +130,7 @@ def apply_collections_datetime_filter_shared(
 
 
 def apply_collections_bbox_filter_shared(
-    bbox: Union[str, List[float], None]
+    bbox: Union[str, List[float], None],
 ) -> Optional[Dict[str, Dict]]:
     """Create a geo_shape filter for collections bbox search.
 
