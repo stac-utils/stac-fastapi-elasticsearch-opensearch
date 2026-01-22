@@ -5,99 +5,99 @@ from unittest.mock import patch
 
 import pytest
 
-# @pytest.mark.datetime_filtering
-# @pytest.mark.asyncio
-# async def test_create_item_in_past_date_change_alias_name_for_datetime_index(
-#     mock_datetime_env, app_client, ctx, load_test_data, txn_client
-# ):
-#     if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-#         pytest.skip()
-#
-#     item = load_test_data("test_item.json")
-#     item["id"] = str(uuid.uuid4())
-#     item["properties"]["start_datetime"] = "2012-02-12T12:30:22Z"
-#
-#     response = await app_client.post(
-#         f"/collections/{item['collection']}/items", json=item
-#     )
-#     assert response.status_code == 201
-#     indices = await txn_client.database.client.indices.get_alias(
-#         index="items_test-collection"
-#     )
-#     expected_aliases = [
-#         "items_start_datetime_test-collection_2012-02-12",
-#         "items_end_datetime_test-collection_2020-02-16",
-#     ]
-#     all_aliases = set()
-#     for index_info in indices.values():
-#         all_aliases.update(index_info.get("aliases", {}).keys())
-#
-#     assert all(alias in all_aliases for alias in expected_aliases)
-#
-#
-# @pytest.mark.datetime_filtering
-# @pytest.mark.asyncio
-# async def test_create_item_uses_existing_datetime_index_for_datetime_index(
-#     mock_datetime_env, app_client, ctx, load_test_data, txn_client, monkeypatch
-# ):
-#     if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-#         pytest.skip()
-#
-#     item = load_test_data("test_item.json")
-#     item["id"] = str(uuid.uuid4())
-#
-#     response = await app_client.post(
-#         f"/collections/{item['collection']}/items", json=item
-#     )
-#
-#     assert response.status_code == 201
-#
-#     indices = await txn_client.database.client.indices.get_alias(
-#         index="items_test-collection"
-#     )
-#     expected_aliases = [
-#         "items_start_datetime_test-collection_2020-02-08",
-#         "items_end_datetime_test-collection_2020-02-16",
-#     ]
-#     all_aliases = set()
-#     for index_info in indices.values():
-#         all_aliases.update(index_info.get("aliases", {}).keys())
-#     assert all(alias in all_aliases for alias in expected_aliases)
-#
-#
-# @pytest.mark.datetime_filtering
-# @pytest.mark.asyncio
-# async def test_create_item_with_different_date_same_index_for_datetime_index(
-#     mock_datetime_env,
-#     app_client,
-#     load_test_data,
-#     txn_client,
-#     ctx,
-# ):
-#     if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-#         pytest.skip()
-#
-#     item = load_test_data("test_item.json")
-#     item["id"] = str(uuid.uuid4())
-#     item["properties"]["start_datetime"] = "2020-02-11T12:30:22Z"
-#
-#     response = await app_client.post(
-#         f"/collections/{item['collection']}/items", json=item
-#     )
-#
-#     assert response.status_code == 201
-#
-#     indices = await txn_client.database.client.indices.get_alias(
-#         index="items_test-collection"
-#     )
-#     expected_aliases = [
-#         "items_start_datetime_test-collection_2020-02-08",
-#         "items_end_datetime_test-collection_2020-02-16",
-#     ]
-#     all_aliases = set()
-#     for index_info in indices.values():
-#         all_aliases.update(index_info.get("aliases", {}).keys())
-#     assert all(alias in all_aliases for alias in expected_aliases)
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_create_item_in_past_date_change_alias_name_for_datetime_index(
+    mock_datetime_env, app_client, ctx, load_test_data, txn_client
+):
+    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip()
+
+    item = load_test_data("test_item.json")
+    item["id"] = str(uuid.uuid4())
+    item["properties"]["start_datetime"] = "2012-02-12T12:30:22Z"
+
+    response = await app_client.post(
+        f"/collections/{item['collection']}/items", json=item
+    )
+    assert response.status_code == 201
+    indices = await txn_client.database.client.indices.get_alias(
+        index="items_test-collection"
+    )
+    expected_aliases = [
+        "items_start_datetime_test-collection_2012-02-12",
+        "items_end_datetime_test-collection_2020-02-16",
+    ]
+    all_aliases = set()
+    for index_info in indices.values():
+        all_aliases.update(index_info.get("aliases", {}).keys())
+
+    assert all(alias in all_aliases for alias in expected_aliases)
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_create_item_uses_existing_datetime_index_for_datetime_index(
+    mock_datetime_env, app_client, ctx, load_test_data, txn_client, monkeypatch
+):
+    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip()
+
+    item = load_test_data("test_item.json")
+    item["id"] = str(uuid.uuid4())
+
+    response = await app_client.post(
+        f"/collections/{item['collection']}/items", json=item
+    )
+
+    assert response.status_code == 201
+
+    indices = await txn_client.database.client.indices.get_alias(
+        index="items_test-collection"
+    )
+    expected_aliases = [
+        "items_start_datetime_test-collection_2020-02-08",
+        "items_end_datetime_test-collection_2020-02-16",
+    ]
+    all_aliases = set()
+    for index_info in indices.values():
+        all_aliases.update(index_info.get("aliases", {}).keys())
+    assert all(alias in all_aliases for alias in expected_aliases)
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_create_item_with_different_date_same_index_for_datetime_index(
+    mock_datetime_env,
+    app_client,
+    load_test_data,
+    txn_client,
+    ctx,
+):
+    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip()
+
+    item = load_test_data("test_item.json")
+    item["id"] = str(uuid.uuid4())
+    item["properties"]["start_datetime"] = "2020-02-11T12:30:22Z"
+
+    response = await app_client.post(
+        f"/collections/{item['collection']}/items", json=item
+    )
+
+    assert response.status_code == 201
+
+    indices = await txn_client.database.client.indices.get_alias(
+        index="items_test-collection"
+    )
+    expected_aliases = [
+        "items_start_datetime_test-collection_2020-02-08",
+        "items_end_datetime_test-collection_2020-02-16",
+    ]
+    all_aliases = set()
+    for index_info in indices.values():
+        all_aliases.update(index_info.get("aliases", {}).keys())
+    assert all(alias in all_aliases for alias in expected_aliases)
 
 
 @pytest.mark.datetime_filtering
@@ -350,7 +350,7 @@ async def test_bulk_create_items_with_early_date_in_second_batch_for_datetime_in
     expected_aliases = [
         "items_start_datetime_test-collection_2008-01-15-2010-02-09",
         "items_start_datetime_test-collection_2020-02-09",
-        "items_start_datetime_test-collection_2010-02-10-2020-02-08",
+        "items_start_datetime_test-collection_2010-02-10-2020-02-08"
     ]
 
     all_aliases = set()
@@ -841,9 +841,7 @@ async def test_update_item_with_changed_end_datetime(
         f"/collections/new-collection/items/{item['id']}", json=updated_item
     )
 
-    assert response.json() == {
-        "detail": "Updating 'properties/end_datetime' is not yet supported for datetime-based indexing. This feature will be available in a future release, enabling automatic index and time-based alias updates when datetime values change."
-    }
+    assert response.json() == {'detail': "Updating 'properties/end_datetime' is not yet supported for datetime-based indexing. This feature will be available in a future release, enabling automatic index and time-based alias updates when datetime values change."}
 
 
 @pytest.mark.datetime_filtering
