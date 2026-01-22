@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
+
 @pytest.mark.datetime_filtering
 @pytest.mark.asyncio
 async def test_create_item_in_past_date_change_alias_name_for_datetime_index(
@@ -350,7 +351,7 @@ async def test_bulk_create_items_with_early_date_in_second_batch_for_datetime_in
     expected_aliases = [
         "items_start_datetime_test-collection_2008-01-15-2010-02-09",
         "items_start_datetime_test-collection_2020-02-09",
-        "items_start_datetime_test-collection_2010-02-10-2020-02-08"
+        "items_start_datetime_test-collection_2010-02-10-2020-02-08",
     ]
 
     all_aliases = set()
@@ -841,7 +842,9 @@ async def test_update_item_with_changed_end_datetime(
         f"/collections/new-collection/items/{item['id']}", json=updated_item
     )
 
-    assert response.json() == {'detail': "Updating 'properties/end_datetime' is not yet supported for datetime-based indexing. This feature will be available in a future release, enabling automatic index and time-based alias updates when datetime values change."}
+    assert response.json() == {
+        "detail": "Updating 'properties/end_datetime' is not yet supported for datetime-based indexing. This feature will be available in a future release, enabling automatic index and time-based alias updates when datetime values change."
+    }
 
 
 @pytest.mark.datetime_filtering
