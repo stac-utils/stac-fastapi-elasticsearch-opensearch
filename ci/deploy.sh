@@ -3,12 +3,9 @@
 set -e
 
 if [ -z "$1" ]; then
-    echo "Environment name is required. Possible options are: 'production-creo', 'production-lta'..."
+    echo "Environment name is required. Possible options are: 'prod/waw3-2-general-01', 'staging/waw3-2-general-01-staging', 'dev/waw3-2-general-01-staging'..."
     exit 1
 fi
-
-
-ENV=$1;
 
 # Download operations repo and prepare for changes.
 apk add --no-cache git
@@ -21,8 +18,25 @@ git clone https://oauth2:"${GITLAB_PUSH_TOKEN}"@gitlab.cloudferro.com/stac/opera
 cd operations
 git checkout -B master
 
-# Change deployment configuration operations.
-sed -i "s~'registry.cloudferro.com/stac/sfeos.*~'${DOCKER_IMAGE}',~" environments/"${ENV}"/stac-fastapi-os/main.jsonnet
-git add environments/"${ENV}"/stac-fastapi-os/main.jsonnet
-git commit -m "[${ENV}] stac-fastapi-os ${APP_VERSION}"
+# Iterate over arguments/envs
+for var in "$@"
+do
+  # Check for special deployments (DEV QA)
+  if [  $var == "dev/waw3-2-general-01-staging-qa"  ]; then
+    ENV="dev/waw3-2-general-01-staging"
+    DEPLOYMENT_NAME="stac-fastapi-os-qa"
+  elif [  $var == "dev/waw3-2-general-01-staging-qa2"  ]; then
+    ENV="dev/waw3-2-general-01-staging"
+    DEPLOYMENT_NAME="stac-fastapi-os-qa2"
+  else
+    ENV=$var
+    DEPLOYMENT_NAME="stac-fastapi-os"
+  fi
+
+  # Change deployment configuration operations.
+  sed -i "s~'registry.cloudferro.com/stac/sfeos.*~'${DOCKER_IMAGE}',~" environments/"${ENV}"/"${DEPLOYMENT_NAME}"/main.jsonnet
+  git add environments/"${ENV}"/"${DEPLOYMENT_NAME}"/main.jsonnet
+  git commit -m "[${ENV}] ${DEPLOYMENT_NAME} ${APP_VERSION}"
+done
+
 git push origin master
