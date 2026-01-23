@@ -1,30 +1,22 @@
-# helm-chart/values-elasticsearch-ci.yaml
-
+# Lightweight values for CI testing with Elasticsearch backend
 backend: elasticsearch
 
 app:
   replicaCount: 1
-  env:
-    # 1. Force App to use HTTPS to match the Database's secure default
-    ES_USE_SSL: "true"
-    ES_VERIFY_CERTS: "false"
-    ES_USER: "elastic"
-  
-  # 2. Wire up the auto-generated credentials
+  # No SSL or Auth needed since we are forcefully disabling it below
   databaseAuth:
-    existingSecret: "stac-elasticsearch-ci-master-credentials"
-    passwordKey: "password"
+    existingSecret: ""
+    username: ""
+    password: ""
 
 elasticsearch:
   enabled: true
   clusterName: "stac-elasticsearch-ci"
   replicas: 1
   minimumMasterNodes: 1
+  singleNode: true
   
-  # 3. CRITICAL FIX: Allow "yellow" status.
-  # By default, the chart waits for "green". In a single-node CI setup, 
-  # the cluster stays "yellow" (missing replicas), causing the Readiness Probe 
-  # to fail forever. This line fixes the timeout.
+  # 1. Allow Yellow status (Critical for single-node CI)
   clusterHealthCheckParams: "wait_for_status=yellow&timeout=1s"
 
   resources:
@@ -35,17 +27,24 @@ elasticsearch:
       cpu: "500m"
       memory: "1Gi"
   esJavaOpts: "-Xmx512m -Xms512m"
-  
+
+  # 2. Forcefully disable security via Environment Variables
+  # This overrides the Helm chart's default behavior which was ignoring esConfig
+  extraEnvs:
+    - name: "xpack.security.enabled"
+      value: "false"
+    - name: "xpack.security.transport.ssl.enabled"
+      value: "false"
+    - name: "xpack.security.http.ssl.enabled"
+      value: "false"
+    - name: "xpack.security.http.ssl.client_authentication"
+      value: "none"
+
   esConfig:
     elasticsearch.yml: |
       cluster.name: "stac-elasticsearch-ci"
       network.host: 0.0.0.0
       action.destructive_requires_name: false
-      # Note: The settings below are likely overridden by the chart's defaults,
-      # which is why we configured the App to expect SSL/Auth above.
-      xpack.security.enabled: false
-      xpack.security.transport.ssl.enabled: false
-      xpack.security.http.ssl.enabled: false
 
   volumeClaimTemplate:
     accessModes: ["ReadWriteOnce"]
