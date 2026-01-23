@@ -3,6 +3,9 @@ backend: elasticsearch
 
 app:
   replicaCount: 1
+  env:
+    ES_USE_SSL: "true"
+    ES_VERIFY_CERTS: "false"
   databaseAuth:
     existingSecret: ""
     username: ""
