@@ -3,7 +3,10 @@ backend: elasticsearch
 
 app:
   replicaCount: 1
-  # No SSL or Auth needed since we are forcefully disabling it below
+  # SSL Config to match the server
+  env:
+    ES_USE_SSL: "true"
+    ES_VERIFY_CERTS: "false"
   databaseAuth:
     existingSecret: ""
     username: ""
@@ -14,37 +17,38 @@ elasticsearch:
   clusterName: "stac-elasticsearch-ci"
   replicas: 1
   minimumMasterNodes: 1
-  singleNode: true
   
-  # 1. Allow Yellow status (Critical for single-node CI)
-  clusterHealthCheckParams: "wait_for_status=yellow&timeout=1s"
+  # Help the chart understand roles
+  roles:
+    - master
+    - data
+    - ingest
 
+  # Increased resources for startup reliability
   resources:
     requests:
-      cpu: "200m"
-      memory: "1Gi"
-    limits:
       cpu: "500m"
       memory: "1Gi"
-  esJavaOpts: "-Xmx512m -Xms512m"
-
-  # 2. Forcefully disable security via Environment Variables
-  # This overrides the Helm chart's default behavior which was ignoring esConfig
-  extraEnvs:
-    - name: "xpack.security.enabled"
-      value: "false"
-    - name: "xpack.security.transport.ssl.enabled"
-      value: "false"
-    - name: "xpack.security.http.ssl.enabled"
-      value: "false"
-    - name: "xpack.security.http.ssl.client_authentication"
-      value: "none"
+    limits:
+      cpu: "2000m"  # Give it burst capacity for startup
+      memory: "2Gi"
+  
+  # Match Heap to Memory Limit (50% rule not strictly needed for CI, but good practice)
+  esJavaOpts: "-Xmx1g -Xms1g"
 
   esConfig:
     elasticsearch.yml: |
       cluster.name: "stac-elasticsearch-ci"
       network.host: 0.0.0.0
+      
+      # THE CRITICAL FIX:
+      discovery.type: single-node
+      
+      # Security settings (which the chart might override, hence our app env vars above)
       action.destructive_requires_name: false
+      xpack.security.enabled: false
+      xpack.security.transport.ssl.enabled: false
+      xpack.security.http.ssl.enabled: false
 
   volumeClaimTemplate:
     accessModes: ["ReadWriteOnce"]
