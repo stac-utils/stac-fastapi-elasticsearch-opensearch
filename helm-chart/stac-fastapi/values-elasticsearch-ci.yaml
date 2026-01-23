@@ -4,7 +4,7 @@ backend: elasticsearch
 
 app:
   replicaCount: 1
-  # App is now configured for plain HTTP to match the DB below
+  # App is configured for plain HTTP to match the DB
   databaseAuth:
     existingSecret: ""
     username: ""
@@ -13,15 +13,16 @@ app:
 elasticsearch:
   enabled: true
   clusterName: "stac-elasticsearch-ci"
-  # CI Optimization: Run minimal resources
   replicas: 1
   minimumMasterNodes: 1
   singleNode: true
   
-  # CI Fix: Stop waiting for "green" status (impossible with 1 node)
+  # 1. Critical for Helm Chart logic: Generates the probe with "http://" instead of "https://"
+  protocol: http
+
+  # 2. Critical for single-node CI: Allows the pod to be Ready even if status is Yellow
   clusterHealthCheckParams: "wait_for_status=yellow&timeout=1s"
 
-  # CI Optimization: Fit inside GitHub Runner RAM
   resources:
     requests:
       cpu: "200m"
@@ -31,7 +32,7 @@ elasticsearch:
       memory: "1Gi"
   esJavaOpts: "-Xmx512m -Xms512m"
 
-  # CI Fix: Override Helm Chart's secure-by-default logic
+  # 3. Critical for Server logic: Forces the actual process to disable SSL
   extraEnvs:
     - name: "xpack.security.enabled"
       value: "false"
