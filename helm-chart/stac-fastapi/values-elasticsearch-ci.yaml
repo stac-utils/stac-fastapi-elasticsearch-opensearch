@@ -3,13 +3,18 @@ backend: elasticsearch
 
 app:
   replicaCount: 1
+  
   env:
+    # 1. Force App to use HTTPS to match the Database
     ES_USE_SSL: "true"
-    ES_VERIFY_CERTS: "false"
+    ES_VERIFY_CERTS: "false"  # Ignore self-signed certs in CI
+    # 2. Set the default Elasticsearch username
+    ES_USER: "elastic"
+
   databaseAuth:
-    existingSecret: ""
-    username: ""
-    password: ""
+    # 3. Read the auto-generated password from the secret created by the Elastic chart
+    existingSecret: "stac-elasticsearch-ci-master-credentials"
+    passwordKey: "password"
 
 elasticsearch:
   enabled: true
@@ -29,8 +34,10 @@ elasticsearch:
     elasticsearch.yml: |
       cluster.name: "stac-elasticsearch-ci"
       network.host: 0.0.0.0
+      # Even though we try to disable security here, the Elastic Chart overrides it.
+      # The app settings above (ES_USE_SSL/ES_USER) adapt to this reality.
       action.destructive_requires_name: false
-      xpack.security.enabled: false
+      xpack.security.enabled: false 
       xpack.security.transport.ssl.enabled: false
       xpack.security.http.ssl.enabled: false
   volumeClaimTemplate:
