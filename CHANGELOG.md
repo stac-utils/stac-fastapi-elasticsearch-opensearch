@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Added Helm chart for ES or OS in-cluster deployment [#455](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/455)
 - Added configurable hidden item filtering via HIDE_ITEM_PATH environment variable. [#566](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/566)
 
 ### Changed

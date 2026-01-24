@@ -1,0 +1,425 @@
+# Default values for stac-fastapi.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Backend configuration - choose 'elasticsearch' or 'opensearch'
+backend: elasticsearch
+
+# Global configuration
+global:
+  imageRegistry: ""
+  storageClass: ""
+  clusterDomain: "cluster.local"
+
+# STAC FastAPI application configuration
+app:
+  # Number of replicas for the application
+  replicaCount: 2
+
+  image:
+    # Repository for the STAC FastAPI image
+    repository: ghcr.io/stac-utils/stac-fastapi
+    # Image pull policy
+    pullPolicy: IfNotPresent
+    # Overrides the image tag whose default is the chart appVersion
+    tag: ""
+
+  # Image pull secrets
+  imagePullSecrets: []
+
+  # Override the name of the chart
+  nameOverride: ""
+  # Override the full name of the chart
+  fullnameOverride: ""
+
+  # Service account configuration
+  serviceAccount:
+    # Specifies whether a service account should be created
+    create: true
+    # Annotations to add to the service account
+    annotations: {}
+    # The name of the service account to use.
+    # If not set and create is true, a name is generated using the fullname template
+    name: ""
+
+  # Pod annotations
+  podAnnotations: {}
+
+  # Pod security context
+  podSecurityContext: {}
+    # fsGroup: 2000
+
+  # Security context
+  securityContext: {}
+    # capabilities:
+    #   drop:
+    #   - ALL
+    # readOnlyRootFilesystem: true
+    # runAsNonRoot: true
+    # runAsUser: 1000
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    port: 80
+    targetPort: 8080
+
+  # Wait for bundled database before starting the app (similar to docker-compose setup)
+  waitForDatabase:
+    enabled: true
+    image: busybox:1.36.1
+    pullPolicy: IfNotPresent
+    intervalSeconds: 2
+    maxAttempts: 120
+    resources: {}
+
+  # Ingress configuration
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+      # kubernetes.io/ingress.class: nginx
+      # kubernetes.io/tls-acme: "true"
+    hosts:
+      - host: stac-fastapi.local
+        paths:
+          - path: /
+            pathType: Prefix
+    tls: []
+    #  - secretName: stac-fastapi-tls
+    #    hosts:
+    #      - stac-fastapi.local
+
+  # Resource limits and requests
+  resources:
+    requests:
+      cpu: 250m
+      memory: 512Mi
+    limits:
+      cpu: 1000m
+      memory: 1Gi
+
+  # Horizontal Pod Autoscaler
+  autoscaling:
+    enabled: false
+    minReplicas: 1
+    maxReplicas: 100
+    targetCPUUtilizationPercentage: 80
+    # targetMemoryUtilizationPercentage: 80
+
+  # Node selector
+  nodeSelector: {}
+
+  # Tolerations
+  tolerations: []
+
+  # Affinity
+  affinity: {}
+
+  # Liveness probe configuration
+  livenessProbe:
+    httpGet:
+      path: /
+      port: http
+    initialDelaySeconds: 30
+    periodSeconds: 10
+    timeoutSeconds: 5
+    failureThreshold: 6
+
+  # Readiness probe configuration
+  readinessProbe:
+    httpGet:
+      path: /
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 3
+
+  # Environment variables for STAC FastAPI
+  env:
+    # Application configuration
+    STAC_FASTAPI_TITLE: "stac-fastapi"
+    STAC_FASTAPI_DESCRIPTION: "A STAC FastAPI with configurable backend"
+    STAC_FASTAPI_VERSION: "6.0.0"
+    STAC_FASTAPI_LANDING_PAGE_ID: "stac-fastapi"
+    APP_HOST: "0.0.0.0"
+    APP_PORT: "8080"
+    ENVIRONMENT: "production"
+    WEB_CONCURRENCY: "10"
+    RELOAD: "false"
+
+    # Database configuration
+    DATABASE_REFRESH: "false"
+    ENABLE_TRANSACTIONS_EXTENSIONS: "true"
+    STAC_ITEM_LIMIT: "10"
+    ENV_MAX_LIMIT: "10000"
+    STAC_INDEX_ASSETS: "false"
+    RAISE_ON_BULK_ERROR: "false"
+
+    # Performance configuration
+    ENABLE_DIRECT_RESPONSE: "false"
+
+    # Rate limiting
+    STAC_FASTAPI_RATE_LIMIT: "200/minute"
+
+    # Datetime index filtering
+    ENABLE_DATETIME_INDEX_FILTERING: "false"
+    DATETIME_INDEX_MAX_SIZE_GB: "25"
+    STAC_ITEMS_INDEX_PREFIX: "items_"
+
+    # SSL configuration
+    ES_USE_SSL: "false"
+    ES_VERIFY_CERTS: "false"
+
+  # Additional environment variables from secrets
+  envFromSecret: {}
+    # ES_API_KEY: "es-api-key-secret"
+
+  # Database authentication configuration for bundled backends
+  databaseAuth:
+    # Plain username to connect to Elasticsearch/OpenSearch. Leave empty to skip.
+    username: ""
+    # Plain password to connect to Elasticsearch/OpenSearch. Leave empty to skip.
+    password: ""
+    # Reference an existing secret containing credentials. When set, the
+    # username/password keys below will be looked up from this secret instead of
+    # using the plain values above.
+    existingSecret: ""
+    # Secret key that stores the username. Defaults to "username" when empty.
+    usernameKey: "username"
+    # Secret key that stores the password. Defaults to "password" when empty.
+    passwordKey: "password"
+
+# OpenSearch security helper
+opensearchSecurity:
+  generateAdminPassword: false
+  username: "admin"
+  usernameKey: "username"
+  passwordKey: "password"
+  passwordLength: 32
+  secretName: ""
+  annotations: {}
+
+# Elasticsearch configuration
+# Note: This will be automatically set based on 'backend' value
+elasticsearch:
+  # Enable/disable Elasticsearch deployment
+  enabled: true
+
+  # Elasticsearch cluster name
+  clusterName: "stac-elasticsearch"
+
+  # Node group configuration
+  nodeGroup: "master"
+
+  # Number of masters eligible nodes
+  masterService: "stac-elasticsearch-master"
+
+  # Elasticsearch roles
+  roles:
+    - master
+    - ingest
+    - data
+    - remote_cluster_client
+
+  # Number of replicas
+  replicas: 1
+
+  # Minimum master nodes
+  minimumMasterNodes: 1
+
+  # Elasticsearch configuration
+  esConfig:
+    elasticsearch.yml: |
+      cluster.name: "stac-elasticsearch"
+      network.host: 0.0.0.0
+      action.destructive_requires_name: false
+      xpack.security.enabled: false
+      xpack.security.transport.ssl.enabled: false
+      xpack.security.http.ssl.enabled: false
+
+  # JVM configuration
+  esJavaOpts: "-Xmx1g -Xms1g"
+
+  # Resource configuration
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "2Gi"
+    limits:
+      cpu: "1000m"
+      memory: "2Gi"
+
+  # Volume claim template
+  volumeClaimTemplate:
+    accessModes: ["ReadWriteOnce"]
+    # storageClassName: ""  # Leave empty to use cluster default
+    resources:
+      requests:
+        storage: 1Gi
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    nodePort: ""
+    annotations: {}
+    httpPortName: http
+    transportPortName: transport
+    labels: {}
+    labelsHeadless: {}
+    httpPort: 9200
+    transportPort: 9300
+
+# OpenSearch configuration
+opensearch:
+  # Enable/disable OpenSearch deployment
+  enabled: false
+
+  # OpenSearch cluster name
+  clusterName: "stac-opensearch"
+
+  # Service name used to expose the master nodes
+  masterService: "opensearch-cluster-master"
+
+  # Node group configuration
+  nodeGroup: "master"
+
+  # OpenSearch roles
+  roles:
+    - master
+    - ingest
+    - data
+    - remote_cluster_client
+
+  # Number of replicas
+  replicas: 1
+
+  # Minimum master nodes
+  majorVersion: ""
+
+  # OpenSearch configuration
+  config:
+    opensearch.yml: |
+      cluster.name: stac-opensearch
+      network.host: 0.0.0.0
+      discovery.type: single-node
+      plugins.security.disabled: true
+      action.destructive_requires_name: false
+
+  # JVM configuration
+  opensearchJavaOpts: "-Xmx1g -Xms1g"
+
+  # Resource configuration
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "2Gi"
+    limits:
+      cpu: "1000m"
+      memory: "2Gi"
+
+  # Persistence configuration
+  persistence:
+    enabled: true
+    storageClass: ""
+    accessModes:
+      - ReadWriteOnce
+    size: 10Gi
+    annotations: {}
+
+  # Service configuration
+  service:
+    type: ClusterIP
+    nodePort: ""
+    annotations: {}
+    httpPortName: http
+    transportPortName: transport
+    labels: {}
+    httpPort: 9200
+    transportPort: 9300
+
+# External database configuration (when not using bundled ES/OS)
+externalDatabase:
+  # Whether to use external database instead of bundled one
+  enabled: false
+  # Database host
+  host: ""
+  # Database port
+  port: 9200
+  # Whether to use SSL
+  ssl: false
+  # Whether to verify certificates
+  verifyCerts: false
+  # Connection timeout
+  timeout: 30
+  # API key for authentication (reference to secret)
+  apiKeySecret: ""
+  # API key field in the secret
+  apiKeySecretKey: "api-key"
+
+# Redis cache configuration
+redis:
+  # Deploy an in-cluster Redis when enabled
+  enabled: false
+  # Optional override for the generated Redis fullname
+  fullnameOverride: ""
+  # Default Redis database index used by the application
+  database: 0
+  architecture: standalone
+  master:
+    service:
+      ports:
+        redis: 6379
+  auth:
+    enabled: false
+    # Provide an existing secret containing the Redis password when auth is enabled
+    existingSecret: ""
+    existingSecretPasswordKey: "redis-password"
+  # Configure connection details for an externally managed Redis instance
+  external:
+    enabled: false
+    host: ""
+    port: 6379
+    # Optional secret that stores the Redis password for the external instance
+    passwordSecret: ""
+    passwordKey: "redis-password"
+
+# Configuration for monitoring and observability
+monitoring:
+  # Enable monitoring
+  enabled: false
+
+  # Prometheus monitoring
+  prometheus:
+    enabled: false
+    serviceMonitor:
+      enabled: false
+      interval: 30s
+      scrapeTimeout: 10s
+      labels: {}
+
+  # Grafana dashboards
+  grafana:
+    enabled: false
+    dashboards: {}
+
+# Network policies
+networkPolicy:
+  enabled: false
+  allowNamespaceCommunication: true
+  allowDNS: true
+  ingress: []
+  egress: []
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: false
+  minAvailable: 1
+  # maxUnavailable: 1
+
+# Security policies
+securityPolicy:
+  enabled: false
+  psp:
+    enabled: false
