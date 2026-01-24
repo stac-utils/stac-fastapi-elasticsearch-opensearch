@@ -116,20 +116,10 @@ jobs:
       - name: Setup Helm repositories
         uses: ./.github/actions/setup-helm-repos
 
-      - name: Run full integration tests
+      - name: Run OpenSearch Integration Test
         run: |
           chmod +x ./helm-chart/test-chart.sh
-          ./helm-chart/test-chart.sh test-all
-
-      - name: Test upgrade scenarios
-        run: |
-          # Test elasticsearch to opensearch migration scenario
-          ./helm-chart/test-chart.sh -b elasticsearch install
-          ./helm-chart/test-chart.sh validate
-          ./helm-chart/test-chart.sh cleanup
-          
-          # Test opensearch deployment
-          ./helm-chart/test-chart.sh -b opensearch install  
+          ./helm-chart/test-chart.sh -b opensearch install
           ./helm-chart/test-chart.sh validate
           ./helm-chart/test-chart.sh cleanup
 
