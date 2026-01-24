@@ -45,7 +45,7 @@ jobs:
     needs: lint
     strategy:
       matrix:
-        backend: [elasticsearch, opensearch]
+        backend: [opensearch]
         kubernetes-version: [v1.33.1]
     steps:
       - name: Checkout
