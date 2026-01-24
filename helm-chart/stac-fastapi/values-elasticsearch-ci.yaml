@@ -16,8 +16,7 @@ elasticsearch:
   minimumMasterNodes: 1
   singleNode: true
   
-  # 1. FIX: Increase timeout to 5s. 
-  # A throttled CPU cannot respond in 1s during startup.
+  # Keep the HTTP protocol and relaxed health check
   protocol: http
   clusterHealthCheckParams: "wait_for_status=yellow&timeout=5s"
 
@@ -26,18 +25,16 @@ elasticsearch:
       cpu: "500m"
       memory: "1Gi"
     limits:
-      # 2. FIX: Increase CPU limit. 
-      # 500m is too low for ES 8.x startup.
-      cpu: "1500m"
+      cpu: "1500m"  # Keep high CPU limit for startup
       memory: "2Gi"
   
-  esJavaOpts: "-Xmx1g -Xms1g"
+  # Lower heap size to be safer on shared runners
+  esJavaOpts: "-Xmx512m -Xms512m"
 
   extraEnvs:
-    # 3. FIX: Explicitly set single-node discovery mode
-    - name: "discovery.type"
-      value: "single-node"
-    # Security overrides
+    # REMOVED: discovery.type - let the chart handle this
+    
+    # Security overrides (Keep these!)
     - name: "xpack.security.enabled"
       value: "false"
     - name: "xpack.security.transport.ssl.enabled"
