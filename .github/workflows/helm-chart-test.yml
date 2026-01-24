@@ -87,42 +87,6 @@ jobs:
           name: test-report-${{ matrix.backend }}-k8s-${{ matrix.kubernetes-version }}
           path: test-report-*.json
 
-  integration-test:
-    name: Integration Tests
-    runs-on: ubuntu-latest
-    needs: test-matrix
-    if: github.event_name == 'pull_request'
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Helm
-        uses: azure/setup-helm@v3
-        with:
-          version: ${{ env.HELM_VERSION }}
-
-      - name: Set up kubectl
-        uses: azure/setup-kubectl@v3
-        with:
-          version: ${{ env.KUBECTL_VERSION }}
-
-      - name: Set up Kind
-        uses: helm/kind-action@v1.8.0
-        with:
-          version: ${{ env.KIND_VERSION }}
-          cluster_name: stac-fastapi-integration
-          config: .github/kind/multi-node.yaml
-
-      - name: Setup Helm repositories
-        uses: ./.github/actions/setup-helm-repos
-
-      - name: Run OpenSearch Integration Test
-        run: |
-          chmod +x ./helm-chart/test-chart.sh
-          ./helm-chart/test-chart.sh -b opensearch install
-          ./helm-chart/test-chart.sh validate
-          ./helm-chart/test-chart.sh cleanup
-
   security-scan:
     name: Security Scan
     runs-on: ubuntu-latest
