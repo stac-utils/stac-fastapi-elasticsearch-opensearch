@@ -1012,9 +1012,20 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 )
                 for feature in features
             ]
-            # Filter out None values (skipped duplicates)
+            # Filter out None values (skipped duplicates from DB check)
             processed_items = [item for item in all_prepped if item is not None]
-            skipped = len(all_prepped) - len(processed_items)
+            skipped_db_duplicates = len(all_prepped) - len(processed_items)
+
+            # Deduplicate items within the batch by ID (keep last occurrence)
+            # This matches ES behavior where later items overwrite earlier ones
+            seen_ids: dict = {}
+            for item in processed_items:
+                seen_ids[item["id"]] = item
+            unique_items = list(seen_ids.values())
+            skipped_batch_duplicates = len(processed_items) - len(unique_items)
+            processed_items = unique_items
+
+            skipped = skipped_db_duplicates + skipped_batch_duplicates
             attempted = len(processed_items)
 
             if not processed_items:
@@ -1346,7 +1357,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
             base_url = ""
 
         processed_items = []
-        skipped = 0
+        skipped_db_duplicates = 0
         for item in items.items.values():
             try:
                 validated = Item(**item) if not isinstance(item, Item) else item
@@ -1356,10 +1367,21 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
                 if prepped is not None:
                     processed_items.append(prepped)
                 else:
-                    skipped += 1
+                    skipped_db_duplicates += 1
             except ValidationError:
                 # Immediately raise on the first invalid item (strict mode)
                 raise
+
+        # Deduplicate items within the batch by ID (keep last occurrence)
+        # This matches ES behavior where later items overwrite earlier ones
+        seen_ids: dict = {}
+        for item in processed_items:
+            seen_ids[item["id"]] = item
+        unique_items = list(seen_ids.values())
+        skipped_batch_duplicates = len(processed_items) - len(unique_items)
+        processed_items = unique_items
+
+        skipped = skipped_db_duplicates + skipped_batch_duplicates
 
         if not processed_items:
             return f"No items to insert. {skipped} items were skipped (duplicates)."
