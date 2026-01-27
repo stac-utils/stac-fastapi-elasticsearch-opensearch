@@ -102,6 +102,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
   - [Examples](#examples)
   - [Performance](#performance)
     - [Direct Response Mode](#direct-response-mode)
+    - [CQL2 JSON Search with AST-based Parsing](#cql2-json-search-with-ast-based-parsing)
   - [Quick Start](#quick-start)
     - [Installation](#installation)
     - [Running Locally](#running-locally)
@@ -129,6 +130,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
   - [Managing Elasticsearch Indices](#managing-elasticsearch-indices)
     - [Snapshots](#snapshots)
     - [Reindexing](#reindexing)
+  - [Header Filtering](#header-filtering)
   - [Auth](#auth)
   - [Aggregation](#aggregation)
   - [Rate Limiting](#rate-limiting)
@@ -495,6 +497,31 @@ These examples provide practical reference implementations for various deploymen
 - **Best use case**: This mode is best suited for public or read-only APIs where authentication and custom logic are not required.
 - **Default setting**: `false` for safety.
 - **More information**: See [issue #347](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/347) for background and implementation details.
+
+
+### CQL2 JSON Search with AST-based Parsing
+
+SFEOS now uses an Abstract Syntax Tree (AST) in CQL2-JSON search queries for efficient query parsing and datetime extraction, enabling the selection and management of the appropriate searchable indexes.
+
+#### AST-based Query Processing
+
+The CQL2 implementation uses an Abstract Syntax Tree (AST) structure that replaces the previous dictionary-based processing. This enables:
+
+1. **Structured Query Representation**: Queries are parsed into a tree structure with different node types
+2. **Efficient Parameter Access**: Easy traversal and extraction of query parameters
+3. **Optimized Index Selection**: Selection of appropriate fields for selection and management of indexes
+
+#### AST Node Types
+
+The AST supports various node types representing different query operations:
+
+- **Logical Nodes**: `AND`, `OR`, `NOT` operators for combining conditions
+- **Comparison Nodes**: `=`, `<>`, `<`, `<=`, `>`, `>=`, `isNull` operations
+- **Advanced Comparison Nodes**: `LIKE`, `BETWEEN`, `IN` operations
+- **Spatial Nodes**: `s_intersects`, `s_contains`, `s_within`, `s_disjoint` for geospatial queries
+- **Datetime Nodes**: Special handling for datetime range and exact value queries
+
+The AST-based approach enables efficient extraction of datetime parameters (`datetime`, `start_datetime`, `end_datetime`) from complex queries.
 
 ## Quick Start
 
@@ -1373,6 +1400,39 @@ This prevents Elasticsearch from creating mappings for unused metadata fields, r
   - If you are happy with the data in the newly created index, you can move the alias items_my-collection to the new index
   - This makes the modified Items with lowercase identifiers visible to users accessing my-collection in the STAC API
   - Using aliases allows you to switch between different index versions without changing the API endpoint
+
+## Header Filtering
+
+SFEOS supports filtering API responses based on HTTP headers. This enables upstream proxies or gateways to restrict access to specific collections and geographic areas.
+
+### Headers
+
+| Header | Format | Description |
+|--------|--------|-------------|
+| `X-Filter-Collections` | Comma-separated IDs | Restricts access to specified collections only |
+| `X-Filter-Geometry` | GeoJSON geometry | Restricts access to items within the specified geometry |
+
+### Affected Endpoints
+
+| Endpoint | Collection Filter | Geometry Filter |
+|----------|:-----------------:|:---------------:|
+| `GET /collections` | ✅ | - |
+| `GET /collections/{id}` | ✅ (404 if denied) | - |
+| `GET /collections/{id}/items` | ✅ | ✅ |
+| `GET /collections/{id}/items/{id}` | ✅ (404 if denied) | ✅* (404 if denied) |
+| `GET/POST /search` | ✅ | ✅ |
+
+*Requires optional `shapely` dependency.
+
+### Optional Dependency
+
+For geometry filtering on single item endpoints (`/collections/{id}/items/{id}`), install with the `geo` extra:
+
+```bash
+pip install stac-fastapi-core[geo]
+```
+
+Without this dependency, geometry filtering on single items is skipped with a warning.
 
 ## Auth
 

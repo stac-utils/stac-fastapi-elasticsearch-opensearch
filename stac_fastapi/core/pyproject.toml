@@ -49,6 +49,9 @@ redis = [
     "redis~=6.4.0",
     "retry~=0.9.2",
 ]
+geo = [
+    "shapely>=2.0.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch"
