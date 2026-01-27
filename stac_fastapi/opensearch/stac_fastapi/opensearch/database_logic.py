@@ -1048,7 +1048,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     async def bulk_async_prep_create_item(
         self, item: Item, base_url: str, exist_ok: bool = False
-    ) -> Item:
+    ) -> Optional[Item]:
         """
         Prepare an item for insertion into the database.
 
@@ -1085,8 +1085,10 @@ class DatabaseLogic(BaseDatabaseLogic):
             else:
                 logger.warning(
                     f"Item {item['id']} in collection {item['collection']} already exists. "
-                    "Continuing as `RAISE_ON_BULK_ERROR` is set to false."
+                    "Skipping as `RAISE_ON_BULK_ERROR` is set to false."
                 )
+                return None
+
         # Serialize the item into a database-compatible format
         prepped_item = self.item_serializer.stac_to_db(item, base_url)
         logger.debug(f"Item {item['id']} prepared successfully.")
@@ -1094,7 +1096,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     def bulk_sync_prep_create_item(
         self, item: Item, base_url: str, exist_ok: bool = False
-    ) -> Item:
+    ) -> Optional[Item]:
         """
         Prepare an item for insertion into the database.
 
@@ -1132,8 +1134,9 @@ class DatabaseLogic(BaseDatabaseLogic):
             else:
                 logger.warning(
                     f"Item {item['id']} in collection {item['collection']} already exists. "
-                    "Continuing as `RAISE_ON_BULK_ERROR` is set to false."
+                    "Skipping as `RAISE_ON_BULK_ERROR` is set to false."
                 )
+                return None
 
         # Serialize the item into a database-compatible format
         prepped_item = self.item_serializer.stac_to_db(item, base_url)
