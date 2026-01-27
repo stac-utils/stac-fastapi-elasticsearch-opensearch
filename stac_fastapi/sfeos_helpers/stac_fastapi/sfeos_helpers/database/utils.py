@@ -5,7 +5,7 @@ in Elasticsearch/OpenSearch, such as parameter validation.
 """
 
 import logging
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Optional, Union
 
 from stac_fastapi.core.utilities import bbox2polygon, get_bool_env
 from stac_fastapi.extensions.core.transaction.request import (
@@ -417,10 +417,42 @@ def operations_to_script(operations: List, create_nest: bool = False) -> Dict:
                 commands=commands, operation=operation, path=path, params=params
             )
 
-        source = "".join(commands)
+    source = "".join(commands)
 
     return {
         "source": source,
         "lang": "painless",
         "params": params,
     }
+
+
+def add_hidden_filter(
+    query: Optional[Dict[str, Any]] = None, hide_item_path: Optional[str] = None
+) -> Dict[str, Any]:
+    """Add hidden filter to a query to exclude hidden items.
+
+    Args:
+        query: Optional Elasticsearch query to combine with hidden filter
+        hide_item_path: Path to the hidden field (e.g., "properties._private.hidden")
+                       If None or empty, return original query (no filtering)
+
+    Returns:
+        Query with hidden filter applied
+    """
+    if not hide_item_path:
+        return query or {"match_all": {}}
+
+    hidden_filter = {
+        "bool": {
+            "should": [
+                {"term": {hide_item_path: False}},
+                {"bool": {"must_not": {"exists": {"field": hide_item_path}}}},
+            ],
+            "minimum_should_match": 1,
+        }
+    }
+
+    if query:
+        return {"bool": {"must": [query, hidden_filter]}}
+    else:
+        return hidden_filter

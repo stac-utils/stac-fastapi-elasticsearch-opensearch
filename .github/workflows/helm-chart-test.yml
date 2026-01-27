@@ -1,0 +1,118 @@
+name: Helm Chart Tests
+
+on:
+  push:
+    branches: [ main, develop, feat/* ]
+    paths:
+      - 'helm-chart/**'
+      - '.github/workflows/helm-chart-test.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'helm-chart/**'
+      - '.github/workflows/helm-chart-test.yml'
+
+env:
+  HELM_VERSION: v4.0.0
+  KUBECTL_VERSION: v1.34.0
+  KIND_VERSION: v0.30.0
+
+jobs:
+  lint:
+    name: Lint Helm Chart
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Setup Helm repositories
+        uses: ./.github/actions/setup-helm-repos
+
+      - name: Lint Helm chart
+        run: |
+          cd helm-chart/stac-fastapi
+          helm dependency update
+          helm lint .
+
+  test-matrix:
+    name: Test Chart
+    runs-on: ubuntu-latest
+    needs: lint
+    strategy:
+      matrix:
+        backend: [opensearch]
+        kubernetes-version: [v1.33.1]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v4
+        with:
+          version: ${{ env.KUBECTL_VERSION }}
+
+      - name: Set up Kind
+        uses: helm/kind-action@v1.13.0
+        with:
+          version: ${{ env.KIND_VERSION }}
+          node_image: kindest/node:${{ matrix.kubernetes-version }}
+          cluster_name: stac-fastapi-${{ matrix.kubernetes-version }}
+          config: .github/kind/multi-node.yaml
+
+      - name: Setup Helm repositories
+        uses: ./.github/actions/setup-helm-repos
+
+      - name: Run matrix tests
+        env:
+          BACKEND: ${{ matrix.backend }}
+          MATRIX_MODE: true
+        run: |
+          chmod +x ./helm-chart/test-chart.sh
+          ./helm-chart/test-chart.sh -m -b ${{ matrix.backend }} ci
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report-${{ matrix.backend }}-k8s-${{ matrix.kubernetes-version }}
+          path: test-report-*.json
+
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: ${{ env.HELM_VERSION }}
+
+      - name: Setup Helm repositories
+        uses: ./.github/actions/setup-helm-repos
+
+      - name: Run Checkov security scan
+        uses: bridgecrewio/checkov-action@master
+        with:
+          directory: helm-chart/
+          framework: kubernetes
+          output_format: sarif
+          output_file_path: reports/results.sarif
+
+      - name: Upload Checkov results
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: reports/results.sarif

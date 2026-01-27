@@ -1,0 +1,33 @@
+# Chart Testing Configuration
+# This configuration is used by the chart-testing (ct) tool
+
+# Chart directories relative to repository root
+chart-dirs:
+  - helm-chart
+
+# Target branch for pull request testing
+target-branch: main
+
+# Chart repositories to add
+chart-repos:
+  - elasticsearch=https://helm.elastic.co
+  - opensearch=https://opensearch-project.github.io/helm-charts/
+
+# Helm version to use
+helm-version: v3.13.0
+
+# Additional configurations
+validate-chart-schema: true
+validate-maintainers: false
+check-version-increment: true
+process-skipped-charts: false
+
+# Test configuration
+upgrade: false
+skip-missing-values: true
+
+# Linting configuration
+lint-conf: .github/ct-lint.yaml
+
+# Additional Helm lint settings
+helm-lint-extra-args: --set app.image.tag=latest
