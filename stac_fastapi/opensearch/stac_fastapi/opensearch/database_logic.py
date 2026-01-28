@@ -29,11 +29,14 @@ from stac_fastapi.opensearch.config import (
 )
 from stac_fastapi.opensearch.config import OpensearchSettings as SyncSearchSettings
 from stac_fastapi.sfeos_helpers.database import (
+    ItemAlreadyExistsError,
     add_bbox_shape_to_collection,
     apply_collections_bbox_filter_shared,
     apply_collections_datetime_filter_shared,
     apply_free_text_filter_shared,
     apply_intersects_filter_shared,
+    check_item_exists_in_alias,
+    check_item_exists_in_alias_sync,
     create_index_templates_shared,
     delete_item_index_shared,
     get_queryables_mapping_shared,
@@ -1000,6 +1003,44 @@ class DatabaseLogic(BaseDatabaseLogic):
         if not await self.client.exists(index=COLLECTIONS_INDEX, id=collection_id):
             raise NotFoundError(f"Collection {collection_id} does not exist")
 
+    async def _check_item_exists_in_collection(
+        self, collection_id: str, item_id: str
+    ) -> bool:
+        """Check if an item exists across all indexes for a collection.
+
+        Args:
+            collection_id (str): The collection identifier.
+            item_id (str): The item identifier.
+
+        Returns:
+            bool: True if the item exists in any index, False otherwise.
+        """
+        alias = index_alias_by_collection_id(collection_id)
+        doc_id = mk_item_id(item_id, collection_id)
+        try:
+            return await check_item_exists_in_alias(self.client, alias, doc_id)
+        except Exception:
+            return False
+
+    def _check_item_exists_in_collection_sync(
+        self, collection_id: str, item_id: str
+    ) -> bool:
+        """Check if an item exists across all indexes for a collection (sync version).
+
+        Args:
+            collection_id (str): The collection identifier.
+            item_id (str): The item identifier.
+
+        Returns:
+            bool: True if the item exists in any index, False otherwise.
+        """
+        alias = index_alias_by_collection_id(collection_id)
+        doc_id = mk_item_id(item_id, collection_id)
+        try:
+            return check_item_exists_in_alias_sync(self.sync_client, alias, doc_id)
+        except Exception:
+            return False
+
     async def async_prep_create_item(
         self, item: Item, base_url: str, exist_ok: bool = False
     ) -> Item:
@@ -1015,31 +1056,21 @@ class DatabaseLogic(BaseDatabaseLogic):
             Item: The prepped item.
 
         Raises:
-            ConflictError: If the item already exists in the database.
+            ItemAlreadyExistsError: If the item already exists in the database.
 
         """
         await self.check_collection_exists(collection_id=item["collection"])
-        alias = index_alias_by_collection_id(item["collection"])
-        doc_id = mk_item_id(item["id"], item["collection"])
 
-        if not exist_ok:
-            alias_exists = await self.client.indices.exists_alias(name=alias)
-
-            if alias_exists:
-                alias_info = await self.client.indices.get_alias(name=alias)
-                indices = list(alias_info.keys())
-
-                for index in indices:
-                    if await self.client.exists(index=index, id=doc_id):
-                        raise ConflictError(
-                            f"Item {item['id']} in collection {item['collection']} already exists"
-                        )
+        if not exist_ok and await self._check_item_exists_in_collection(
+            item["collection"], item["id"]
+        ):
+            raise ItemAlreadyExistsError(item["id"], item["collection"])
 
         return self.item_serializer.stac_to_db(item, base_url)
 
     async def bulk_async_prep_create_item(
         self, item: Item, base_url: str, exist_ok: bool = False
-    ) -> Item:
+    ) -> Optional[Item]:
         """
         Prepare an item for insertion into the database.
 
@@ -1067,20 +1098,19 @@ class DatabaseLogic(BaseDatabaseLogic):
         # Check if the collection exists
         await self.check_collection_exists(collection_id=item["collection"])
 
-        # Check if the item already exists in the database
-        if not exist_ok and await self.client.exists(
-            index=index_alias_by_collection_id(item["collection"]),
-            id=mk_item_id(item["id"], item["collection"]),
+        # Check if the item already exists in the database (across all datetime indexes)
+        if not exist_ok and await self._check_item_exists_in_collection(
+            item["collection"], item["id"]
         ):
-            error_message = (
-                f"Item {item['id']} in collection {item['collection']} already exists."
-            )
             if self.async_settings.raise_on_bulk_error:
-                raise ConflictError(error_message)
+                raise ItemAlreadyExistsError(item["id"], item["collection"])
             else:
                 logger.warning(
-                    f"{error_message} Continuing as `RAISE_ON_BULK_ERROR` is set to false."
+                    f"Item {item['id']} in collection {item['collection']} already exists. "
+                    "Skipping as `RAISE_ON_BULK_ERROR` is set to false."
                 )
+                return None
+
         # Serialize the item into a database-compatible format
         prepped_item = self.item_serializer.stac_to_db(item, base_url)
         logger.debug(f"Item {item['id']} prepared successfully.")
@@ -1088,7 +1118,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     def bulk_sync_prep_create_item(
         self, item: Item, base_url: str, exist_ok: bool = False
-    ) -> Item:
+    ) -> Optional[Item]:
         """
         Prepare an item for insertion into the database.
 
@@ -1117,26 +1147,18 @@ class DatabaseLogic(BaseDatabaseLogic):
         if not self.sync_client.exists(index=COLLECTIONS_INDEX, id=item["collection"]):
             raise NotFoundError(f"Collection {item['collection']} does not exist")
 
-        # Check if the item already exists in the database
-        alias = index_alias_by_collection_id(item["collection"])
-        doc_id = mk_item_id(item["id"], item["collection"])
-
-        if not exist_ok:
-            alias_exists = self.sync_client.indices.exists_alias(name=alias)
-
-            if alias_exists:
-                alias_info = self.sync_client.indices.get_alias(name=alias)
-                indices = list(alias_info.keys())
-
-                for index in indices:
-                    if self.sync_client.exists(index=index, id=doc_id):
-                        error_message = f"Item {item['id']} in collection {item['collection']} already exists."
-                        if self.sync_settings.raise_on_bulk_error:
-                            raise ConflictError(error_message)
-                        else:
-                            logger.warning(
-                                f"{error_message} Continuing as `RAISE_ON_BULK_ERROR` is set to false."
-                            )
+        # Check if the item already exists in the database (across all datetime indexes)
+        if not exist_ok and self._check_item_exists_in_collection_sync(
+            item["collection"], item["id"]
+        ):
+            if self.sync_settings.raise_on_bulk_error:
+                raise ItemAlreadyExistsError(item["id"], item["collection"])
+            else:
+                logger.warning(
+                    f"Item {item['id']} in collection {item['collection']} already exists. "
+                    "Skipping as `RAISE_ON_BULK_ERROR` is set to false."
+                )
+                return None
 
         # Serialize the item into a database-compatible format
         prepped_item = self.item_serializer.stac_to_db(item, base_url)

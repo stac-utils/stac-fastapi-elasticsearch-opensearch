@@ -60,7 +60,14 @@ from .query import (
     apply_intersects_filter_shared,
     populate_sort_shared,
 )
-from .utils import add_bbox_shape_to_collection, get_bool_env, validate_refresh
+from .utils import (
+    ItemAlreadyExistsError,
+    add_bbox_shape_to_collection,
+    check_item_exists_in_alias,
+    check_item_exists_in_alias_sync,
+    get_bool_env,
+    validate_refresh,
+)
 
 __all__ = [
     # Catalog operations
@@ -90,6 +97,10 @@ __all__ = [
     "validate_refresh",
     "get_bool_env",
     "add_bbox_shape_to_collection",
+    "check_item_exists_in_alias",
+    "check_item_exists_in_alias_sync",
+    # Errors
+    "ItemAlreadyExistsError",
     # Datetime utilities
     "return_date",
     "extract_date",

@@ -1006,13 +1006,30 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 database=self.database, settings=self.settings
             )
             features = item_dict["features"]
-            processed_items = [
+            all_prepped = [
                 bulk_client.preprocess_item(
                     feature, base_url, BulkTransactionMethod.INSERT
                 )
                 for feature in features
             ]
+            # Filter out None values (skipped duplicates from DB check)
+            processed_items = [item for item in all_prepped if item is not None]
+            skipped_db_duplicates = len(all_prepped) - len(processed_items)
+
+            # Deduplicate items within the batch by ID (keep last occurrence)
+            # This matches ES behavior where later items overwrite earlier ones
+            seen_ids: dict = {}
+            for item in processed_items:
+                seen_ids[item["id"]] = item
+            unique_items = list(seen_ids.values())
+            skipped_batch_duplicates = len(processed_items) - len(unique_items)
+            processed_items = unique_items
+
+            skipped = skipped_db_duplicates + skipped_batch_duplicates
             attempted = len(processed_items)
+
+            if not processed_items:
+                return f"No items to insert. {skipped} items were skipped (duplicates)."
 
             success, errors = await self.database.bulk_async(
                 collection_id=collection_id,
@@ -1027,7 +1044,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 logger.info(
                     f"Bulk async operation succeeded with {success} actions for collection {collection_id}."
                 )
-            return f"Successfully added {success} Items. {attempted - success} errors occurred."
+            return f"Successfully added {success} Items. {skipped} skipped (duplicates). {attempted - success} errors occurred."
 
         # Handle single item
         await self.database.create_item(
@@ -1340,17 +1357,34 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
             base_url = ""
 
         processed_items = []
+        skipped_db_duplicates = 0
         for item in items.items.values():
             try:
                 validated = Item(**item) if not isinstance(item, Item) else item
-                processed_items.append(
-                    self.preprocess_item(
-                        validated.model_dump(mode="json"), base_url, items.method
-                    )
+                prepped = self.preprocess_item(
+                    validated.model_dump(mode="json"), base_url, items.method
                 )
+                if prepped is not None:
+                    processed_items.append(prepped)
+                else:
+                    skipped_db_duplicates += 1
             except ValidationError:
                 # Immediately raise on the first invalid item (strict mode)
                 raise
+
+        # Deduplicate items within the batch by ID (keep last occurrence)
+        # This matches ES behavior where later items overwrite earlier ones
+        seen_ids: dict = {}
+        for item in processed_items:
+            seen_ids[item["id"]] = item
+        unique_items = list(seen_ids.values())
+        skipped_batch_duplicates = len(processed_items) - len(unique_items)
+        processed_items = unique_items
+
+        skipped = skipped_db_duplicates + skipped_batch_duplicates
+
+        if not processed_items:
+            return f"No items to insert. {skipped} items were skipped (duplicates)."
 
         collection_id = processed_items[0]["collection"]
         attempted = len(processed_items)
@@ -1364,4 +1398,4 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         else:
             logger.info(f"Bulk sync operation succeeded with {success} actions.")
 
-        return f"Successfully added/updated {success} Items. {attempted - success} errors occurred."
+        return f"Successfully added/updated {success} Items. {skipped} skipped (duplicates). {attempted - success} errors occurred."
