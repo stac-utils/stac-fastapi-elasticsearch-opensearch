@@ -281,6 +281,7 @@ class DatetimeIndexInserter(BaseIndexInserter):
                 )
                 if aliases_dict.get("end_datetime")
                 else None,
+                ) if aliases_dict.get("end_datetime") else None,
             )
 
             is_first_split = not any(
