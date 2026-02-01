@@ -1,5 +1,5 @@
 """Async index selectors with datetime-based filtering."""
-
+import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 from stac_fastapi.core.utilities import get_bool_env
@@ -9,6 +9,9 @@ from stac_fastapi.sfeos_helpers.mappings import ITEM_INDICES
 from ...database import indices
 from .base import BaseIndexSelector
 from .cache_manager import IndexAliasLoader, IndexCacheManager
+
+
+logger = logging.getLogger(__name__)
 
 
 class DatetimeBasedIndexSelector(BaseIndexSelector):
@@ -104,7 +107,11 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
                 )
                 selected_indexes.extend(filtered_indexes)
 
-            return ",".join(selected_indexes) if selected_indexes else ""
+            if selected_indexes:
+                return ",".join(selected_indexes)
+            else:
+                logger.error("No indexes found matching the datetime criteria.")
+                return ITEM_INDICES
 
         return ITEM_INDICES
 
