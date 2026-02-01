@@ -261,7 +261,6 @@ class DatetimeIndexInserter(BaseIndexInserter):
                 )
                 if aliases_dict.get("end_datetime")
                 else None,
-                ) if aliases_dict.get("end_datetime") else None,
             )
 
             await self.datetime_manager.handle_oversized_index(
