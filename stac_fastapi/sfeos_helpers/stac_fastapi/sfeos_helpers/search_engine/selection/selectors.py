@@ -10,7 +10,6 @@ from ...database import indices
 from .base import BaseIndexSelector
 from .cache_manager import IndexAliasLoader, IndexCacheManager
 
-
 logger = logging.getLogger(__name__)
 
 
