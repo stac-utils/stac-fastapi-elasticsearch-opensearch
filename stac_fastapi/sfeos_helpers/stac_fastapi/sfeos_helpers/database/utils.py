@@ -5,7 +5,7 @@ in Elasticsearch/OpenSearch, such as parameter validation.
 """
 
 import logging
-from typing import Any, Dict, List, Union
+from typing import Any, Dict, List, Optional, Union
 
 from stac_fastapi.core.utilities import bbox2polygon, get_bool_env
 from stac_fastapi.extensions.core.transaction.request import (
@@ -14,8 +14,71 @@ from stac_fastapi.extensions.core.transaction.request import (
     PatchRemove,
 )
 from stac_fastapi.sfeos_helpers.models.patch import ElasticPath, ESCommandSet
+from stac_fastapi.types.errors import ConflictError
 
 logger = logging.getLogger(__name__)
+
+
+class ItemAlreadyExistsError(ConflictError):
+    """Error raised when attempting to create an item that already exists.
+
+    Attributes:
+        item_id: The ID of the item that already exists.
+        collection_id: The ID of the collection containing the item.
+    """
+
+    def __init__(self, item_id: str, collection_id: str):
+        """Initialize the error with item and collection IDs."""
+        self.item_id = item_id
+        self.collection_id = collection_id
+        message = f"Item {item_id} in collection {collection_id} already exists"
+        super().__init__(message)
+
+
+async def check_item_exists_in_alias(client: Any, alias: str, doc_id: str) -> bool:
+    """Check if an item exists across all indexes for an alias.
+
+    Args:
+        client: The async Elasticsearch/OpenSearch client.
+        alias: The index alias to search against.
+        doc_id: The document ID to check for existence.
+
+    Returns:
+        bool: True if the item exists in any index under the alias, False otherwise.
+    """
+    resp = await client.search(
+        index=alias,
+        body={
+            "query": {"ids": {"values": [doc_id]}},
+            "_source": False,
+        },
+        size=0,
+        terminate_after=1,
+    )
+    return bool(resp["hits"]["total"]["value"])
+
+
+def check_item_exists_in_alias_sync(client: Any, alias: str, doc_id: str) -> bool:
+    """Check if an item exists across all indexes for an alias (sync).
+
+    Args:
+        client: The sync Elasticsearch/OpenSearch client.
+        alias: The index alias to search against.
+        doc_id: The document ID to check for existence.
+
+    Returns:
+        bool: True if the item exists in any index under the alias, False otherwise.
+    """
+    resp = client.search(
+        index=alias,
+        body={
+            "query": {"ids": {"values": [doc_id]}},
+            "_source": False,
+        },
+        size=0,
+        terminate_after=1,
+    )
+    return bool(resp["hits"]["total"]["value"])
 
 
 def add_bbox_shape_to_collection(collection: Dict[str, Any]) -> bool:
@@ -354,10 +417,42 @@ def operations_to_script(operations: List, create_nest: bool = False) -> Dict:
                 commands=commands, operation=operation, path=path, params=params
             )
 
-        source = "".join(commands)
+    source = "".join(commands)
 
     return {
         "source": source,
         "lang": "painless",
         "params": params,
     }
+
+
+def add_hidden_filter(
+    query: Optional[Dict[str, Any]] = None, hide_item_path: Optional[str] = None
+) -> Dict[str, Any]:
+    """Add hidden filter to a query to exclude hidden items.
+
+    Args:
+        query: Optional Elasticsearch query to combine with hidden filter
+        hide_item_path: Path to the hidden field (e.g., "properties._private.hidden")
+                       If None or empty, return original query (no filtering)
+
+    Returns:
+        Query with hidden filter applied
+    """
+    if not hide_item_path:
+        return query or {"match_all": {}}
+
+    hidden_filter = {
+        "bool": {
+            "should": [
+                {"term": {hide_item_path: False}},
+                {"bool": {"must_not": {"exists": {"field": hide_item_path}}}},
+            ],
+            "minimum_should_match": 1,
+        }
+    }
+
+    if query:
+        return {"bool": {"must": [query, hidden_filter]}}
+    else:
+        return hidden_filter

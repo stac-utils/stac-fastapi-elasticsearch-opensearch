@@ -1,0 +1,36 @@
+apiVersion: v2
+name: stac-fastapi
+description: A Helm chart for STAC FastAPI with Elasticsearch and OpenSearch backends
+type: application
+version: 0.1.0
+appVersion: "latest"
+
+keywords:
+  - stac
+  - fastapi
+  - elasticsearch
+  - opensearch
+  - geospatial
+  - api
+
+home: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch
+sources:
+  - https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch
+
+maintainers:
+  - name: STAC Utils
+    url: https://github.com/stac-utils
+
+dependencies:
+  - name: elasticsearch
+    version: 8.5.1
+    repository: https://helm.elastic.co
+    condition: elasticsearch.enabled
+  - name: opensearch
+    version: 3.2.1
+    repository: https://opensearch-project.github.io/helm-charts/
+    condition: opensearch.enabled
+  - name: redis
+    version: 19.6.2
+    repository: https://charts.bitnami.com/bitnami
+    condition: redis.enabled

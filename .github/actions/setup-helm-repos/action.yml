@@ -1,0 +1,13 @@
+name: 'Setup Helm Repositories'
+description: 'Add required Helm repositories for STAC FastAPI'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Add Helm repositories
+      shell: bash
+      run: |
+        helm repo add elasticsearch https://helm.elastic.co
+        helm repo add opensearch https://opensearch-project.github.io/helm-charts/
+        helm repo add bitnami https://charts.bitnami.com/bitnami
+        helm repo update

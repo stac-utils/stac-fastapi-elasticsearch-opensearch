@@ -33,11 +33,14 @@ from stac_fastapi.extensions.core.transaction.request import (
     PatchOperation,
 )
 from stac_fastapi.sfeos_helpers.database import (
+    ItemAlreadyExistsError,
     add_bbox_shape_to_collection,
     apply_collections_bbox_filter_shared,
     apply_collections_datetime_filter_shared,
     apply_free_text_filter_shared,
     apply_intersects_filter_shared,
+    check_item_exists_in_alias,
+    check_item_exists_in_alias_sync,
     create_index_templates_shared,
     delete_item_index_shared,
     get_queryables_mapping_shared,
@@ -53,6 +56,7 @@ from stac_fastapi.sfeos_helpers.database.query import (
     add_collections_to_body,
 )
 from stac_fastapi.sfeos_helpers.database.utils import (
+    add_hidden_filter,
     merge_to_operations,
     operations_to_script,
 )
@@ -68,6 +72,7 @@ from stac_fastapi.sfeos_helpers.mappings import (
 from stac_fastapi.sfeos_helpers.search_engine import (
     BaseIndexInserter,
     BaseIndexSelector,
+    DatetimeIndexInserter,
     IndexInsertionFactory,
     IndexSelectorFactory,
 )
@@ -407,12 +412,22 @@ class DatabaseLogic(BaseDatabaseLogic):
         Notes:
             The Item is retrieved from the Elasticsearch database using the `client.get` method,
             with the index for the Collection as the target index and the combined `mk_item_id` as the document id.
+            Item is hidden if hide_item_path is configured via env var.
         """
         try:
+            base_query = {"term": {"_id": mk_item_id(item_id, collection_id)}}
+
+            HIDE_ITEM_PATH = os.getenv("HIDE_ITEM_PATH", None)
+
+            if HIDE_ITEM_PATH:
+                query = add_hidden_filter(base_query, HIDE_ITEM_PATH)
+            else:
+                query = base_query
+
             response = await self.client.search(
                 index=index_alias_by_collection_id(collection_id),
                 body={
-                    "query": {"term": {"_id": mk_item_id(item_id, collection_id)}},
+                    "query": query,
                     "size": 1,
                 },
             )
@@ -657,7 +672,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                         ),
                     ],
                 )
-            return search.query(filter_query), datetime_search
+        return search.query(filter_query), datetime_search
 
     @staticmethod
     def apply_bbox_filter(search: Search, bbox: List):
@@ -824,7 +839,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         token: Optional[str],
         sort: Optional[Dict[str, Dict[str, str]]],
         collection_ids: Optional[List[str]],
-        datetime_search: Dict[str, Optional[str]],
+        datetime_search: str,
         ignore_unavailable: bool = True,
     ) -> Tuple[Iterable[Dict[str, Any]], Optional[int], Optional[str]]:
         """Execute a search query with limit and other optional parameters.
@@ -835,7 +850,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             token (Optional[str]): The token used to return the next set of results.
             sort (Optional[Dict[str, Dict[str, str]]]): Specifies how the results should be sorted.
             collection_ids (Optional[List[str]]): The collection ids to search.
-            datetime_search (Dict[str, Optional[str]]): Datetime range used for index selection.
+            datetime_search (str): Datetime used for index selection.
             ignore_unavailable (bool, optional): Whether to ignore unavailable collections. Defaults to True.
 
         Returns:
@@ -877,6 +892,10 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         size_limit = min(limit + 1, max_result_window)
 
+        HIDE_ITEM_PATH = os.getenv("HIDE_ITEM_PATH", None)
+        if HIDE_ITEM_PATH:
+            query = add_hidden_filter(query, HIDE_ITEM_PATH)
+
         search_task = asyncio.create_task(
             self.client.search(
                 index=index_param,
@@ -888,11 +907,17 @@ class DatabaseLogic(BaseDatabaseLogic):
             )
         )
 
+        # Apply hidden filter to count query as well
+        count_query = search.to_dict(count=True)
+        if HIDE_ITEM_PATH:
+            q = count_query.get("query")
+            count_query["query"] = add_hidden_filter(q, HIDE_ITEM_PATH)
+
         count_task = asyncio.create_task(
             self.client.count(
                 index=index_param,
                 ignore_unavailable=ignore_unavailable,
-                body=search.to_dict(count=True),
+                body=count_query,
             )
         )
 
@@ -935,7 +960,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         geometry_geohash_grid_precision: int,
         geometry_geotile_grid_precision: int,
         datetime_frequency_interval: str,
-        datetime_search,
+        datetime_search: str,
         ignore_unavailable: Optional[bool] = True,
     ):
         """Return aggregations of STAC Items."""
@@ -997,6 +1022,44 @@ class DatabaseLogic(BaseDatabaseLogic):
         if not await self.client.exists(index=COLLECTIONS_INDEX, id=collection_id):
             raise NotFoundError(f"Collection {collection_id} does not exist")
 
+    async def _check_item_exists_in_collection(
+        self, collection_id: str, item_id: str
+    ) -> bool:
+        """Check if an item exists across all indexes for a collection.
+
+        Args:
+            collection_id (str): The collection identifier.
+            item_id (str): The item identifier.
+
+        Returns:
+            bool: True if the item exists in any index, False otherwise.
+        """
+        alias = index_alias_by_collection_id(collection_id)
+        doc_id = mk_item_id(item_id, collection_id)
+        try:
+            return await check_item_exists_in_alias(self.client, alias, doc_id)
+        except Exception:
+            return False
+
+    def _check_item_exists_in_collection_sync(
+        self, collection_id: str, item_id: str
+    ) -> bool:
+        """Check if an item exists across all indexes for a collection (sync version).
+
+        Args:
+            collection_id (str): The collection identifier.
+            item_id (str): The item identifier.
+
+        Returns:
+            bool: True if the item exists in any index, False otherwise.
+        """
+        alias = index_alias_by_collection_id(collection_id)
+        doc_id = mk_item_id(item_id, collection_id)
+        try:
+            return check_item_exists_in_alias_sync(self.sync_client, alias, doc_id)
+        except Exception:
+            return False
+
     async def async_prep_create_item(
         self, item: Item, base_url: str, exist_ok: bool = False
     ) -> Item:
@@ -1012,31 +1075,21 @@ class DatabaseLogic(BaseDatabaseLogic):
             Item: The prepped item.
 
         Raises:
-            ConflictError: If the item already exists in the database.
+            ItemAlreadyExistsError: If the item already exists in the database.
 
         """
         await self.check_collection_exists(collection_id=item["collection"])
-        alias = index_alias_by_collection_id(item["collection"])
-        doc_id = mk_item_id(item["id"], item["collection"])
 
-        if not exist_ok:
-            alias_exists = await self.client.indices.exists_alias(name=alias)
-
-            if alias_exists:
-                alias_info = await self.client.indices.get_alias(name=alias)
-                indices = list(alias_info.keys())
-
-                for index in indices:
-                    if await self.client.exists(index=index, id=doc_id):
-                        raise ConflictError(
-                            f"Item {item['id']} in collection {item['collection']} already exists"
-                        )
+        if not exist_ok and await self._check_item_exists_in_collection(
+            item["collection"], item["id"]
+        ):
+            raise ItemAlreadyExistsError(item["id"], item["collection"])
 
         return self.item_serializer.stac_to_db(item, base_url)
 
     async def bulk_async_prep_create_item(
         self, item: Item, base_url: str, exist_ok: bool = False
-    ) -> Item:
+    ) -> Optional[Item]:
         """
         Prepare an item for insertion into the database.
 
@@ -1064,20 +1117,18 @@ class DatabaseLogic(BaseDatabaseLogic):
         # Check if the collection exists
         await self.check_collection_exists(collection_id=item["collection"])
 
-        # Check if the item already exists in the database
-        if not exist_ok and await self.client.exists(
-            index=index_alias_by_collection_id(item["collection"]),
-            id=mk_item_id(item["id"], item["collection"]),
+        # Check if the item already exists in the database (across all datetime indexes)
+        if not exist_ok and await self._check_item_exists_in_collection(
+            item["collection"], item["id"]
         ):
-            error_message = (
-                f"Item {item['id']} in collection {item['collection']} already exists."
-            )
             if self.async_settings.raise_on_bulk_error:
-                raise ConflictError(error_message)
+                raise ItemAlreadyExistsError(item["id"], item["collection"])
             else:
                 logger.warning(
-                    f"{error_message} Continuing as `RAISE_ON_BULK_ERROR` is set to false."
+                    f"Item {item['id']} in collection {item['collection']} already exists. "
+                    "Skipping as `RAISE_ON_BULK_ERROR` is set to false."
                 )
+                return None
 
         # Serialize the item into a database-compatible format
         prepped_item = self.item_serializer.stac_to_db(item, base_url)
@@ -1086,7 +1137,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     def bulk_sync_prep_create_item(
         self, item: Item, base_url: str, exist_ok: bool = False
-    ) -> Item:
+    ) -> Optional[Item]:
         """
         Prepare an item for insertion into the database.
 
@@ -1115,20 +1166,18 @@ class DatabaseLogic(BaseDatabaseLogic):
         if not self.sync_client.exists(index=COLLECTIONS_INDEX, id=item["collection"]):
             raise NotFoundError(f"Collection {item['collection']} does not exist")
 
-        # Check if the item already exists in the database
-        if not exist_ok and self.sync_client.exists(
-            index=index_alias_by_collection_id(item["collection"]),
-            id=mk_item_id(item["id"], item["collection"]),
+        # Check if the item already exists in the database (across all datetime indexes)
+        if not exist_ok and self._check_item_exists_in_collection_sync(
+            item["collection"], item["id"]
         ):
-            error_message = (
-                f"Item {item['id']} in collection {item['collection']} already exists."
-            )
             if self.sync_settings.raise_on_bulk_error:
-                raise ConflictError(error_message)
+                raise ItemAlreadyExistsError(item["id"], item["collection"])
             else:
                 logger.warning(
-                    f"{error_message} Continuing as `RAISE_ON_BULK_ERROR` is set to false."
+                    f"Item {item['id']} in collection {item['collection']} already exists. "
+                    "Skipping as `RAISE_ON_BULK_ERROR` is set to false."
                 )
+                return None
 
         # Serialize the item into a database-compatible format
         prepped_item = self.item_serializer.stac_to_db(item, base_url)
@@ -1172,6 +1221,31 @@ class DatabaseLogic(BaseDatabaseLogic):
         logger.info(
             f"Creating item {item_id} in collection {collection_id} with refresh={refresh}"
         )
+
+        if exist_ok and isinstance(self.async_index_inserter, DatetimeIndexInserter):
+            existing_item = await self.get_one_item(collection_id, item_id)
+            primary_datetime_name = self.async_index_inserter.primary_datetime_name
+
+            existing_primary_datetime = existing_item.get("properties", {}).get(
+                primary_datetime_name
+            )
+            new_primary_datetime = item.get("properties", {}).get(primary_datetime_name)
+
+            if existing_primary_datetime != new_primary_datetime:
+                self.async_index_inserter.validate_datetime_field_update(
+                    f"properties/{primary_datetime_name}"
+                )
+
+            if primary_datetime_name == "start_datetime":
+                existing_end_datetime = existing_item.get("properties", {}).get(
+                    "end_datetime"
+                )
+                new_end_datetime = item.get("properties", {}).get("end_datetime")
+
+                if existing_end_datetime != new_end_datetime:
+                    self.async_index_inserter.validate_datetime_field_update(
+                        "properties/end_datetime"
+                    )
 
         # Prepare the item for insertion
         item = await self.async_prep_create_item(
@@ -1241,6 +1315,10 @@ class DatabaseLogic(BaseDatabaseLogic):
         Returns:
             patched item.
         """
+        for operation in operations:
+            if operation.op in ["add", "replace", "remove"]:
+                self.async_index_inserter.validate_datetime_field_update(operation.path)
+
         new_item_id = None
         new_collection_id = None
         script_operations = []
@@ -1261,8 +1339,6 @@ class DatabaseLogic(BaseDatabaseLogic):
             else:
                 script_operations.append(operation)
 
-        script = operations_to_script(script_operations, create_nest=create_nest)
-
         try:
             search_response = await self.client.search(
                 index=index_alias_by_collection_id(collection_id),
@@ -1275,13 +1351,18 @@ class DatabaseLogic(BaseDatabaseLogic):
                 raise NotFoundError(
                     f"Item {item_id} does not exist inside Collection {collection_id}"
                 )
-            document_index = search_response["hits"]["hits"][0]["_index"]
-            await self.client.update(
-                index=document_index,
-                id=mk_item_id(item_id, collection_id),
-                script=script,
-                refresh=True,
-            )
+
+            if script_operations:
+                script = operations_to_script(
+                    script_operations, create_nest=create_nest
+                )
+                document_index = search_response["hits"]["hits"][0]["_index"]
+                await self.client.update(
+                    index=document_index,
+                    id=mk_item_id(item_id, collection_id),
+                    script=script,
+                    refresh=True,
+                )
         except ESNotFoundError:
             raise NotFoundError(
                 f"Item {item_id} does not exist inside Collection {collection_id}"
@@ -1294,26 +1375,9 @@ class DatabaseLogic(BaseDatabaseLogic):
         item = await self.get_one_item(collection_id, item_id)
 
         if new_collection_id:
-            await self.client.reindex(
-                body={
-                    "dest": {
-                        "index": f"{ITEMS_INDEX_PREFIX}{new_collection_id}"
-                    },  # # noqa
-                    "source": {
-                        "index": f"{ITEMS_INDEX_PREFIX}{collection_id}",
-                        "query": {"term": {"id": {"value": item_id}}},
-                    },
-                    "script": {
-                        "lang": "painless",
-                        "source": (
-                            f"""ctx._id = ctx._id.replace('{collection_id}', '{new_collection_id}');"""  # noqa
-                            f"""ctx._source.collection = '{new_collection_id}';"""  # noqa
-                        ),
-                    },
-                },
-                wait_for_completion=True,
-                refresh=True,
-            )
+            item["collection"] = new_collection_id
+            item = await self.async_prep_create_item(item=item, base_url=base_url)
+            await self.create_item(item=item, refresh=True)
 
             await self.delete_item(
                 item_id=item_id,
@@ -1321,7 +1385,6 @@ class DatabaseLogic(BaseDatabaseLogic):
                 refresh=refresh,
             )
 
-            item["collection"] = new_collection_id
             collection_id = new_collection_id
 
         if new_item_id:
@@ -1707,6 +1770,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             index=COLLECTIONS_INDEX, id=collection_id, refresh=refresh
         )
         await delete_item_index(collection_id)
+        await self.async_index_inserter.refresh_cache()
 
     async def bulk_async(
         self,
