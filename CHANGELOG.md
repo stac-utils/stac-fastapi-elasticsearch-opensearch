@@ -9,8 +9,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
-- Added configurable hidden item filtering via HIDE_ITEM_PATH environment variable. [#566](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/566)
-
 ### Changed
 
 -Added retry for datetime searches on `NotFoundError` error retry for database connection errors `ConnectionError`, `ConnectionTimeout` to resolve cache race conditions. [#564](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/564)
@@ -20,9 +18,24 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- Fixed bulk_sync_prep_create_item to properly detect duplicates across indexes. [#575](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/575)
+
 ### Removed
 
 ### Updated
+
+## [v6.10.0] - 2026-01-22
+
+### Added
+
+- Added Helm chart for ES or OS in-cluster deployment [#455](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/455)
+- Added configurable hidden item filtering via HIDE_ITEM_PATH environment variable. [#566](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/566)
+
+### Changed
+
+- Added `PUT /catalogs/{catalog_id}` endpoint to update existing catalogs. Allows modification of catalog metadata (title, description, etc.) while preserving internal fields like parent_ids and catalog relationships. [#573](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/573)
+- Added catalog poly-hierarchy support with hierarchical catalog endpoints (`GET /catalogs/{catalog_id}/catalogs` and `POST /catalogs/{catalog_id}/catalogs`), enabling unlimited nesting levels and allowing catalogs to belong to multiple parent catalogs simultaneously. Includes cursor-based pagination and performance optimizations. [#573](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/573)
+- Added end_datetime alias for datetime-based indexes with use_datetime=false, so that start_datetime/end_datetime queries select a smaller range of indexes (limiting the end) [#537](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/537)
 
 ## [v6.9.0] - 2026-01-09
 
@@ -725,7 +738,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.9.0...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.10.0...main
+[v6.10.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.9.0...v6.10.0
 [v6.9.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.8.1...v6.9.0
 [v6.8.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.8.0...v6.8.1
 [v6.8.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.6...v6.8.0
