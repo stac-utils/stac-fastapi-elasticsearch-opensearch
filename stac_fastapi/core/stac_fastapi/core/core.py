@@ -1199,7 +1199,14 @@ class CoreClient(AsyncBaseCoreClient):
                 if isinstance(v, list) and len(v) > 0 and isinstance(v[0], dict):
                     continue
                 if isinstance(v, list):
-                    properties[k] = ",".join(str(x).strip() for x in v)
+                    if len(v) == 0:
+                        continue
+                    if len(v) == 1:
+                        properties[k] = v[0]
+                        continue
+                    properties[k] = ",".join(
+                        str(x).strip() if isinstance(x, str) else str(x) for x in v
+                    )
                 else:
                     properties[k] = v
 
@@ -1358,7 +1365,7 @@ class CoreClient(AsyncBaseCoreClient):
             geom = shape(geometry)
 
             # Simplify geometry at low zooms
-            if z < 12:
+            if z < 10:
                 tolerance = max(
                     min((tile_size_meters / 4096) * tile_size_meters, 0.001), 1e-5
                 )
@@ -1380,7 +1387,14 @@ class CoreClient(AsyncBaseCoreClient):
                 if isinstance(v, list) and len(v) > 0 and isinstance(v[0], dict):
                     continue
                 if isinstance(v, list):
-                    properties[k] = ",".join(str(x).strip() for x in v)
+                    if len(v) == 0:
+                        continue
+                    if len(v) == 1:
+                        properties[k] = v[0]
+                        continue
+                    properties[k] = ",".join(
+                        str(x).strip() if isinstance(x, str) else str(x) for x in v
+                    )
                 else:
                     properties[k] = v
             properties["_id"] = item.get("id")
