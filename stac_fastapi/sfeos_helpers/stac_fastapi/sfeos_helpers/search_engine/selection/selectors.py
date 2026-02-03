@@ -101,24 +101,12 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
             selected_indexes = []
             for collection_id in collection_ids:
                 collection_indexes = await self.get_collection_indexes(collection_id)
-                try:
-                    filtered_indexes = filter_indexes_by_datetime(
-                        collection_indexes, datetime_filters, self.use_datetime
-                    )
-                except Exception as e:
-                    logger.error(
-                        f"Error filtering indexes for collection {collection_id}: {e}"
-                    )
-                    return ITEM_INDICES
+                filtered_indexes = filter_indexes_by_datetime(
+                    collection_indexes, datetime_filters, self.use_datetime
+                )
                 selected_indexes.extend(filtered_indexes)
 
-            if for_insertion:
-                return ",".join(selected_indexes) if selected_indexes else ""
-
-            if not selected_indexes:
-                return ITEM_INDICES
-
-            return ",".join(selected_indexes)
+            return ",".join(selected_indexes) if selected_indexes else ""
 
         return ITEM_INDICES
 
