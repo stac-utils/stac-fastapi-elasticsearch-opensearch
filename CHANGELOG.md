@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Fixed
 
 - Fixed bulk_sync_prep_create_item to properly detect duplicates across indexes. [#575](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/575)
+- Fixed end_datetime selection when splitting indices in a datetime-based indexing strategy. [#591](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/591)
 
 ### Removed
 

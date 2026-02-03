@@ -1,5 +1,5 @@
 """Async index selectors with datetime-based filtering."""
-
+import logging
 from typing import Any, Dict, List, Optional, Tuple
 
 from stac_fastapi.core.utilities import get_bool_env
@@ -9,6 +9,8 @@ from stac_fastapi.sfeos_helpers.mappings import ITEM_INDICES
 from ...database import indices
 from .base import BaseIndexSelector
 from .cache_manager import IndexAliasLoader, IndexCacheManager
+
+logger = logging.getLogger(__name__)
 
 
 class DatetimeBasedIndexSelector(BaseIndexSelector):
@@ -99,12 +101,24 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
             selected_indexes = []
             for collection_id in collection_ids:
                 collection_indexes = await self.get_collection_indexes(collection_id)
-                filtered_indexes = filter_indexes_by_datetime(
-                    collection_indexes, datetime_filters, self.use_datetime
-                )
+                try:
+                    filtered_indexes = filter_indexes_by_datetime(
+                        collection_indexes, datetime_filters, self.use_datetime
+                    )
+                except Exception as e:
+                    logger.error(
+                        f"Error filtering indexes for collection {collection_id}: {e}"
+                    )
+                    return ITEM_INDICES
                 selected_indexes.extend(filtered_indexes)
 
-            return ",".join(selected_indexes) if selected_indexes else ""
+            if for_insertion:
+                return ",".join(selected_indexes) if selected_indexes else ""
+
+            if not selected_indexes:
+                return ITEM_INDICES
+
+            return ",".join(selected_indexes)
 
         return ITEM_INDICES
 
