@@ -106,11 +106,14 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
                 )
                 selected_indexes.extend(filtered_indexes)
 
-            if selected_indexes:
-                return ",".join(selected_indexes)
-            else:
-                logger.error("No indexes found matching the datetime criteria.")
+            if for_insertion:
+                return ",".join(selected_indexes) if selected_indexes else ""
+
+            if not selected_indexes:
+                logger.warning("No indexes found matching the datetime criteria.")
                 return ITEM_INDICES
+
+            return ",".join(selected_indexes)
 
         return ITEM_INDICES
 
