@@ -1,0 +1,11 @@
+{{- /*
+     This template doesn't create resources; it mutates values so the
+     OpenSearch subchart receives the generated admin credentials.
+*/ -}}
+{{- include "stac-fastapi.configureOpensearchSecurity" . -}}
+{{- if (and (eq .Values.backend "opensearch") (.Values.opensearch.enabled) (.Values.opensearchSecurity.generateAdminPassword | default false)) }}
+# debug-extraEnvs-count: {{ len (default (list) .Values.opensearch.extraEnvs) }}
+{{- range $env := (default (list) .Values.opensearch.extraEnvs) }}
+# debug-extraEnv: {{ toYaml $env | replace "\n" " " | trim }}
+{{- end }}
+{{- end }}

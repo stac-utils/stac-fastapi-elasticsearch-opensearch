@@ -1,0 +1,48 @@
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "stac-fastapi.fullname" . }}
+  labels:
+    {{- include "stac-fastapi.labels" . | nindent 4 }}
+{{- $ingressRules := list }}
+{{- if .Values.networkPolicy.allowNamespaceCommunication }}
+  {{- $ingressRules = append $ingressRules (dict "from" (list (dict "podSelector" (dict)))) }}
+{{- end }}
+{{- range $_, $rule := .Values.networkPolicy.ingress }}
+  {{- $ingressRules = append $ingressRules $rule }}
+{{- end }}
+{{- $egressRules := list }}
+{{- if .Values.networkPolicy.allowNamespaceCommunication }}
+  {{- $egressRules = append $egressRules (dict "to" (list (dict "podSelector" (dict)))) }}
+{{- end }}
+{{- if .Values.networkPolicy.allowDNS }}
+  {{- $dnsTo := dict "namespaceSelector" (dict "matchLabels" (dict "kubernetes.io/metadata.name" "kube-system")) "podSelector" (dict "matchLabels" (dict "k8s-app" "kube-dns")) }}
+  {{- $dnsPorts := list (dict "protocol" "UDP" "port" 53) (dict "protocol" "TCP" "port" 53) }}
+  {{- $egressRules = append $egressRules (dict "to" (list $dnsTo) "ports" $dnsPorts) }}
+{{- end }}
+{{- range $_, $rule := .Values.networkPolicy.egress }}
+  {{- $egressRules = append $egressRules $rule }}
+{{- end }}
+{{- $hasIngress := gt (len $ingressRules) 0 }}
+{{- $hasEgress := gt (len $egressRules) 0 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "stac-fastapi.selectorLabels" . | nindent 6 }}
+  policyTypes:
+  {{- if $hasIngress }}
+    - Ingress
+  {{- end }}
+  {{- if $hasEgress }}
+    - Egress
+  {{- end }}
+  {{- if $hasIngress }}
+  ingress:
+    {{- toYaml $ingressRules | nindent 4 }}
+  {{- end }}
+  {{- if $hasEgress }}
+  egress:
+    {{- toYaml $egressRules | nindent 4 }}
+  {{- end }}
+{{- end }}
