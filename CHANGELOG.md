@@ -11,7 +11,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 
-- Updated catalog documentation to clarify that all catalogs use flat canonical endpoints (`/catalogs/{catalog_id}`) regardless of hierarchy depth. Nested routes like `/catalogs/id1/catalogs/id2` are not supported. Child discovery uses `/catalogs/{catalog_id}/catalogs` which returns links to canonical endpoints.
+- Updated catalog documentation to clarify that all catalogs use flat canonical endpoints (`/catalogs/{catalog_id}`) regardless of hierarchy depth. Nested routes like `/catalogs/id1/catalogs/id2` are not supported. Child discovery uses `/catalogs/{catalog_id}/catalogs` which returns links to canonical endpoints. [#596](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/596)
 
 ### Fixed
 
