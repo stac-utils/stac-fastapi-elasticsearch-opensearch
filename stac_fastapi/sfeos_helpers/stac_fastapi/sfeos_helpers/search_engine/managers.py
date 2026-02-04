@@ -211,15 +211,21 @@ class DatetimeIndexManager:
             str: Created datetime index name.
         """
         index_params = {
-            "start_datetime": str(extract_date(product_datetimes.start_datetime))
-            if primary_datetime_name == "start_datetime"
-            else None,
-            "datetime": str(extract_date(product_datetimes.datetime))
-            if primary_datetime_name == "datetime"
-            else None,
-            "end_datetime": str(extract_date(product_datetimes.end_datetime))
-            if primary_datetime_name == "start_datetime"
-            else None,
+            "start_datetime": (
+                str(extract_date(product_datetimes.start_datetime))
+                if primary_datetime_name == "start_datetime"
+                else None
+            ),
+            "datetime": (
+                str(extract_date(product_datetimes.datetime))
+                if primary_datetime_name == "datetime"
+                else None
+            ),
+            "end_datetime": (
+                str(extract_date(product_datetimes.end_datetime))
+                if primary_datetime_name == "start_datetime"
+                else None
+            ),
         }
 
         target_index = await self.index_operations.create_datetime_index(

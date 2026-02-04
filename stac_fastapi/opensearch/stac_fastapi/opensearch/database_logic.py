@@ -1,4 +1,5 @@
 """Database logic."""
+
 import asyncio
 import logging
 import os
@@ -877,9 +878,21 @@ class DatabaseLogic(BaseDatabaseLogic):
                 self.apply_datetime_filter,
                 search,
             )
+            logger.debug(
+                f"Resolve indexes from CQL2 metadata: {index_param} for collections {collection_ids} and cql2 metadata {cql2_metadata}"
+            )
+            print(
+                f"Resolve indexes from CQL2 metadata: {index_param} for collections {collection_ids} and cql2 metadata {cql2_metadata}"
+            )
         else:
             index_param = await self.async_index_selector.select_indexes(
                 collection_ids, datetime_search
+            )
+            logger.debug(
+                f"Selecte indexes: {index_param} for collections {collection_ids} and datetime search {datetime_search}"
+            )
+            print(
+                f"Selecte indexes: {index_param} for collections {collection_ids} and datetime search {datetime_search}"
             )
         if len(index_param) > ES_MAX_URL_LENGTH - 300:
             index_param = ITEM_INDICES
