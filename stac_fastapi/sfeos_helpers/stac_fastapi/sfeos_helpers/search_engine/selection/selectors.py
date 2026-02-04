@@ -1,4 +1,5 @@
 """Async index selectors with datetime-based filtering."""
+
 from typing import Any, Dict, List, Optional, Tuple
 
 from stac_fastapi.core.utilities import get_bool_env

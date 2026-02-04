@@ -1,6 +1,5 @@
 """Client implementation for the STAC API Aggregation Extension."""
 
-
 from typing import Annotated, Any, Dict, List, Optional, Union
 from urllib.parse import unquote_plus, urljoin
 
