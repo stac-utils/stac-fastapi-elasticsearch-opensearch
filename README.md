@@ -585,6 +585,9 @@ You can customize additional settings in your `.env` file:
 | `BACKEND` | Tests-related variable | `elasticsearch` or `opensearch` based on the backend | Optional |
 | `ELASTICSEARCH_VERSION` | Version of Elasticsearch to use. | `8.11.0` | Optional |
 | `OPENSEARCH_VERSION` | OpenSearch version | `2.11.1` | Optional |
+| `RETRY_MAX_ATTEMPTS` | Specifies the maximum number of retry attempts before giving up on a failed operation. | `5` | Optional |
+| `RETRY_WAIT_SECONDS` | Specifies the number of seconds to wait between retry attempts. | `0.5` | Optional |
+| `RETRY_RERAISE` | Specifies whether the original exception should be re-raised after all retry attempts are exhausted. | `true` | Optional |
 
 ### 3. API Metadata
 

@@ -3,9 +3,10 @@
 This module provides utility functions for working with database operations
 in Elasticsearch/OpenSearch, such as parameter validation.
 """
-
 import logging
-from typing import Any, Dict, List, Optional, Union
+import os
+from functools import wraps
+from typing import Any, Callable, Dict, List, Optional, Union
 
 from stac_fastapi.core.utilities import bbox2polygon, get_bool_env
 from stac_fastapi.extensions.core.transaction.request import (
@@ -14,9 +15,36 @@ from stac_fastapi.extensions.core.transaction.request import (
     PatchRemove,
 )
 from stac_fastapi.sfeos_helpers.models.patch import ElasticPath, ESCommandSet
+from stac_fastapi.sfeos_helpers.search_engine.inserters import DatetimeIndexInserter
+
+try:
+    from opensearchpy.exceptions import (
+        ConnectionError,
+        ConnectionTimeout,
+        NotFoundError,
+    )
+except ImportError:
+    from elasticsearch.exceptions import (
+        NotFoundError,
+        ConnectionError,
+        ConnectionTimeout,
+    )
+
+from tenacity import (
+    before_sleep_log,
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_fixed,
+)
+
 from stac_fastapi.types.errors import ConflictError
 
 logger = logging.getLogger(__name__)
+
+RETRY_MAX_ATTEMPTS = int(os.getenv("RETRY_MAX_ATTEMPTS", "5"))
+RETRY_WAIT_SECONDS = float(os.getenv("RETRY_WAIT_SECONDS", "0.5"))
+RETRY_RERAISE = get_bool_env("RETRY_RERAISE", default=True)
 
 
 class ItemAlreadyExistsError(ConflictError):
@@ -424,6 +452,72 @@ def operations_to_script(operations: List, create_nest: bool = False) -> Dict:
         "lang": "painless",
         "params": params,
     }
+
+
+def retry_on_datetime_not_found(func) -> Callable:
+    """Retries datetime search queries on NotFoundError.
+
+    Args:
+        func: The async function to be decorated.
+
+    Returns:
+        A decorated function with retry logic for datetime-based searches.
+
+    Note:
+        Retry logic is only applied when `datetime_search` is provided as a
+        non-empty dictionary. For non-datetime queries or empty datetime
+        dictionaries, the function executes without retry attempts.
+    """
+
+    @wraps(func)
+    async def wrapper(self, *args, **kwargs):
+        datetime_search = kwargs.get("datetime_search")
+        if (
+            isinstance(self.async_index_inserter, DatetimeIndexInserter)
+            and datetime_search
+        ):
+
+            @retry(
+                stop=stop_after_attempt(RETRY_MAX_ATTEMPTS),
+                wait=wait_fixed(RETRY_WAIT_SECONDS),
+                retry=retry_if_exception_type(NotFoundError),
+                reraise=RETRY_RERAISE,
+                before_sleep=before_sleep_log(logger, logging.WARNING),
+            )
+            async def retry_wrapped(self, *args, **kwargs):
+                return await func(self, *args, **kwargs)
+
+            return await retry_wrapped(self, *args, **kwargs)
+        return await func(self, *args, **kwargs)
+
+    return wrapper
+
+
+def retry_on_connection_error(func) -> Callable:
+    """Retries on ConnectionError, ConnectionTimeout.
+
+    Args:
+        func: The async function to be decorated.
+
+    Returns:
+        A decorated function with retry logic for connection errors.
+    """
+
+    @retry(
+        stop=stop_after_attempt(RETRY_MAX_ATTEMPTS),
+        wait=wait_fixed(RETRY_WAIT_SECONDS),
+        retry=retry_if_exception_type((ConnectionError, ConnectionTimeout)),
+        reraise=RETRY_RERAISE,
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+    )
+    async def retry_wrapped(*args, **kwargs):
+        return await func(*args, **kwargs)
+
+    @wraps(func)
+    async def wrapper(self, *args, **kwargs):
+        return await retry_wrapped(self, *args, **kwargs)
+
+    return wrapper
 
 
 def add_hidden_filter(
