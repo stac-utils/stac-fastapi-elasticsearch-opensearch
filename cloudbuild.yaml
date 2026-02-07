@@ -1,0 +1,60 @@
+steps:
+  # Build and push Docker image
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-and-push'
+    script: |
+      #!/usr/bin/env bash
+      set -e
+
+      IMAGE_URI="${_AR_HOSTNAME}/${PROJECT_ID}/${_REPOSITORY}/sfeos:${TAG_NAME}"
+      CACHE_IMAGE="${_AR_HOSTNAME}/${PROJECT_ID}/${_REPOSITORY}/sfeos:latest"
+
+      echo "Building SFEOS image: $IMAGE_URI"
+
+      # Pull cache
+      docker pull "$CACHE_IMAGE" || true
+
+      # Build with cache
+      docker build \
+        --platform linux/amd64 \
+        --build-arg BUILDKIT_INLINE_CACHE=1 \
+        --cache-from "$CACHE_IMAGE" \
+        -f dockerfiles/Dockerfile.ci.es \
+        -t "$IMAGE_URI" \
+        -t "$CACHE_IMAGE" \
+        .
+
+      # Push both tags
+      docker push "$IMAGE_URI"
+      docker push "$CACHE_IMAGE"
+    automapSubstitutions: true
+
+  # Deploy to Cloud Run
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk:slim'
+    id: 'deploy'
+    script: |
+      #!/usr/bin/env bash
+      set -e
+
+      IMAGE_URI="${_AR_HOSTNAME}/${PROJECT_ID}/${_REPOSITORY}/sfeos:${TAG_NAME}"
+
+      echo "Deploying ${_SERVICE_NAME} from $IMAGE_URI"
+
+      gcloud run deploy "${_SERVICE_NAME}" \
+        --image="$IMAGE_URI" \
+        --platform=managed \
+        --region="${_REGION}" \
+        --update-labels=commit-sha=$SHORT_SHA,build-id=$BUILD_ID \
+        --quiet
+    automapSubstitutions: true
+
+substitutions:
+  _AR_HOSTNAME: us-east1-docker.pkg.dev
+  _SERVICE_NAME: aquaview-sfeos
+  _REGION: us-east1
+  _REPOSITORY: aquaview
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  env:
+    - 'DOCKER_BUILDKIT=1'
