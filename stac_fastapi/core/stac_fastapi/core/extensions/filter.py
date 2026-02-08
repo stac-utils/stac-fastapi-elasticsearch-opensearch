@@ -13,8 +13,9 @@
 # defines spatial operators (S_INTERSECTS, S_CONTAINS, S_WITHIN, S_DISJOINT).
 # """
 
+from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 DEFAULT_QUERYABLES: Dict[str, Dict[str, Any]] = {
     "id": {
@@ -90,3 +91,62 @@ class SpatialOp(str, Enum):
     S_CONTAINS = "s_contains"
     S_WITHIN = "s_within"
     S_DISJOINT = "s_disjoint"
+
+
+@dataclass
+class CqlNode:
+    """Base class."""
+
+    pass
+
+
+@dataclass
+class LogicalNode(CqlNode):
+    """Logical operators (AND, OR, NOT)."""
+
+    op: LogicalOp
+    children: List["CqlNode"]
+
+
+@dataclass
+class ComparisonNode(CqlNode):
+    """Comparison operators (=, <>, <, <=, >, >=, is null)."""
+
+    op: ComparisonOp
+    field: str
+    value: Any
+
+
+@dataclass
+class AdvancedComparisonNode(CqlNode):
+    """Advanced comparison operators (like, between, in)."""
+
+    op: AdvancedComparisonOp
+    field: str
+    value: Any
+
+
+@dataclass
+class SpatialNode(CqlNode):
+    """Spatial operators."""
+
+    op: SpatialOp
+    field: str
+    geometry: Dict[str, Any]
+
+
+@dataclass
+class DateTimeRangeNode(CqlNode):
+    """Datetime range queries."""
+
+    field: str = "properties.datetime"
+    start: Optional[str] = None
+    end: Optional[str] = None
+
+
+@dataclass
+class DateTimeExactNode(CqlNode):
+    """Exact datetime queries."""
+
+    field: str = "properties.datetime"
+    value: Optional[str] = None

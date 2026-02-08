@@ -56,6 +56,7 @@ from stac_fastapi.sfeos_helpers.database.utils import (
     merge_to_operations,
     operations_to_script,
 )
+from stac_fastapi.sfeos_helpers.filter import build_cql2_filter, resolve_cql2_indexes
 from stac_fastapi.sfeos_helpers.mappings import (
     AGGREGATION_MAPPING,
     COLLECTIONS_INDEX,
@@ -783,9 +784,9 @@ class DatabaseLogic(BaseDatabaseLogic):
         """
         Apply a CQL2 filter to an Opensearch Search object.
 
-        This method transforms a dictionary representing a CQL2 filter into an Opensearch query
-        and applies it to the provided Search object. If the filter is None, the original Search
-        object is returned unmodified.
+        This method transforms a CQL2 filter dictionary into an OpenSearch query using
+        an AST tree-based approach. If the filter is None, the original Search object is returned
+        unmodified.
 
         Args:
             search (Search): The Opensearch Search object to which the filter will be applied.
@@ -799,8 +800,20 @@ class DatabaseLogic(BaseDatabaseLogic):
                     otherwise the original Search object.
         """
         if _filter is not None:
-            es_query = filter_module.to_es(await self.get_queryables_mapping(), _filter)
-            search = search.filter(es_query)
+            queryables_mapping = await self.get_queryables_mapping()
+
+            try:
+                es_query, metadata = build_cql2_filter(queryables_mapping, _filter)
+                search = search.filter(es_query)
+                search._cql2_metadata = metadata
+
+            except Exception as e:
+                logger.warning(
+                    "Failed to build CQL2 filter using AST tree approach, falling back to dictionary-based method. "
+                    f"Error: {str(e)}. Filter: {_filter}"
+                )
+                es_query = filter_module.to_es(queryables_mapping, _filter)
+                search = search.filter(es_query)
 
         return search
 
@@ -854,9 +867,20 @@ class DatabaseLogic(BaseDatabaseLogic):
         search_body: Dict[str, Any] = {}
         query = search.query.to_dict() if search.query else None
 
-        index_param = await self.async_index_selector.select_indexes(
-            collection_ids, datetime_search
-        )
+        cql2_metadata = getattr(search, "_cql2_metadata", None)
+
+        # Special case for cql2-json index selection
+        if cql2_metadata:
+            index_param, collection_ids = await resolve_cql2_indexes(
+                cql2_metadata,
+                self.async_index_selector,
+                self.apply_datetime_filter,
+                search,
+            )
+        else:
+            index_param = await self.async_index_selector.select_indexes(
+                collection_ids, datetime_search
+            )
         if len(index_param) > ES_MAX_URL_LENGTH - 300:
             index_param = ITEM_INDICES
             query = add_collections_to_body(collection_ids, query)
