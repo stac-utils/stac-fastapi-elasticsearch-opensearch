@@ -64,6 +64,11 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
             "data_type": "frequency_distribution",
             "frequency_distribution_data_type": "string",
         },
+        {
+            "name": "centroid_geohex_grid_frequency",
+            "data_type": "frequency_distribution",
+            "frequency_distribution_data_type": "string",
+        },
     ]
 
     # Geo point aggregations
