@@ -1033,6 +1033,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         centroid_geohex_grid_precision: int,
         centroid_geotile_grid_precision: int,
         geometry_geohash_grid_precision: int,
+        geometry_geohex_grid_precision: int,
         geometry_geotile_grid_precision: int,
         datetime_frequency_interval: str,
         datetime_search: str,
@@ -1051,6 +1052,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 "centroid_geohex_grid_frequency": centroid_geohex_grid_precision,
                 "centroid_geotile_grid_frequency": centroid_geotile_grid_precision,
                 "geometry_geohash_grid_frequency": geometry_geohash_grid_precision,
+                "geometry_geohex_grid_frequency": geometry_geohex_grid_precision,
                 "geometry_geotile_grid_frequency": geometry_geotile_grid_precision,
             }
             if name in agg_precision:
