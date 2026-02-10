@@ -2,19 +2,36 @@
 
 import logging
 import os
-from datetime import datetime, timedelta
-from typing import Any, Dict
+from datetime import timedelta
+from typing import Any, Dict, NamedTuple
 
+from dateutil import parser  # type: ignore
 from fastapi import HTTPException, status
 
 from stac_fastapi.sfeos_helpers.database import (
     extract_date,
     extract_first_date_from_index,
+    extract_last_date_from_index,
+    is_index_closed,
 )
 
 from .index_operations import IndexOperations
 
 logger = logging.getLogger(__name__)
+
+
+class ProductDatetimes(NamedTuple):
+    """Named tuple representing product datetime fields.
+
+    Attributes:
+        start_datetime (str | None): ISO format start datetime string or None.
+        datetime (str | None): ISO format datetime string or None.
+        end_datetime (str | None): ISO format end datetime string or None.
+    """
+
+    start_datetime: str | None
+    datetime: str | None
+    end_datetime: str | None
 
 
 class IndexSizeManager:
@@ -29,18 +46,6 @@ class IndexSizeManager:
         self.client = client
         self.max_size_gb = self._get_max_size_from_env()
 
-    async def get_index_size_in_gb(self, index_name: str) -> float:
-        """Get index size in gigabytes asynchronously.
-
-        Args:
-            index_name (str): Name of the index to check.
-
-        Returns:
-            float: Size of the index in gigabytes.
-        """
-        data = await self.client.indices.stats(index=index_name)
-        return data["_all"]["primaries"]["store"]["size_in_bytes"] / 1e9
-
     async def is_index_oversized(self, index_name: str) -> bool:
         """Check if index exceeds size limit asynchronously.
 
@@ -50,16 +55,33 @@ class IndexSizeManager:
         Returns:
             bool: True if index exceeds size limit, False otherwise.
         """
-        size_gb = await self.get_index_size_in_gb(index_name)
+        stats = await self.client.indices.stats(index=index_name)
+
+        total_size_bytes = 0
+        total_doc_count = 0
+
+        for idx_name, idx_stats in stats["indices"].items():
+            primaries = idx_stats["primaries"]
+            total_size_bytes += primaries["store"]["size_in_bytes"]
+            total_doc_count += primaries["docs"]["count"]
+
+        if total_doc_count == 0:
+            logger.debug(f"Index '{index_name}' is empty (0 documents)")
+            return False
+
+        size_gb = total_size_bytes / (1024**3)
         is_oversized = size_gb > self.max_size_gb
         gb_milestone = int(size_gb)
+
         if gb_milestone > 0:
-            logger.info(f"Index '{index_name}' size: {gb_milestone}GB")
+            logger.info(
+                f"Index '{index_name}' size: {gb_milestone}GB ({total_doc_count} documents)"
+            )
 
         if is_oversized:
             logger.warning(
                 f"Index '{index_name}' is oversized: {size_gb:.2f} GB "
-                f"(limit: {self.max_size_gb} GB)"
+                f"(limit: {self.max_size_gb} GB, documents: {total_doc_count})"
             )
 
         return is_oversized
@@ -108,91 +130,353 @@ class DatetimeIndexManager:
         self.size_manager = IndexSizeManager(client)
 
     @staticmethod
-    def validate_product_datetime(product: Dict[str, Any]) -> str:
-        """Validate and extract datetime from product.
+    def validate_product_datetimes(
+        product: Dict[str, Any], use_datetime
+    ) -> ProductDatetimes:
+        """Validate and extract datetime fields from product.
+
+        Validation rules depend on USE_DATETIME:
+        - USE_DATETIME=True: 'datetime' is required, optional start/end
+        - USE_DATETIME=False: both 'start_datetime' and 'end_datetime' required, start <= end
 
         Args:
             product (Dict[str, Any]): Product data containing datetime information.
+            use_datetime (bool): Flag determining validation mode.
+            - True: validates against 'datetime' field.
+            - False: validates against 'start_datetime' and 'end_datetime' fields.
 
         Returns:
-            str: Validated product datetime.
+            ProductDatetimes: Named tuple containing parsed datetime values:
+                - start_datetime (str | None): ISO 8601 start datetime string or None.
+                - datetime (str | None): ISO 8601 datetime string or None.
+                - end_datetime (str | None): ISO 8601 end datetime string or None.
 
         Raises:
-            HTTPException: If product datetime is missing or invalid.
+            HTTPException: If validation fails based on USE_DATETIME configuration.
         """
-        product_datetime = product["properties"]["datetime"]
-        if not product_datetime:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Product datetime is required for indexing",
-            )
-        return product_datetime
+        properties = product.get("properties", {})
+        start_str = properties.get("start_datetime")
+        dt_str = properties.get("datetime")
+        end_str = properties.get("end_datetime")
+
+        start = parser.isoparse(start_str) if start_str else None
+        dt = parser.isoparse(dt_str) if dt_str else None
+        end = parser.isoparse(end_str) if end_str else None
+
+        if use_datetime:
+            if not dt:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="'datetime' field is required",
+                )
+        else:
+            if not start or not end:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Both 'start_datetime' and 'end_datetime' fields are required",
+                )
+            if not (start <= end):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="'start_datetime' must be <= 'end_datetime'",
+                )
+            if dt and not (start <= dt <= end):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="'start_datetime' <= 'datetime' <= 'end_datetime' is required",
+                )
+
+        return ProductDatetimes(
+            start_datetime=start_str,
+            datetime=dt_str,
+            end_datetime=end_str,
+        )
 
     async def handle_new_collection(
-        self, collection_id: str, product_datetime: str
+        self,
+        collection_id: str,
+        primary_datetime_name: str,
+        product_datetimes: ProductDatetimes,
     ) -> str:
         """Handle index creation for new collection asynchronously.
 
         Args:
             collection_id (str): Collection identifier.
-            product_datetime (str): Product datetime for index naming.
-
+            primary_datetime_name (str): Name of the primary datetime field.
+                If "start_datetime", indexes are created on start_datetime and end_datetime fields.
+                If "datetime", indexes are created on the datetime field.
+            product_datetimes (ProductDatetimes): Object containing start_datetime, datetime, and end_datetime.
 
         Returns:
-            str: Created index name.
+            str: Created datetime index name.
         """
+        index_params = {
+            "start_datetime": str(extract_date(product_datetimes.start_datetime))
+            if primary_datetime_name == "start_datetime"
+            else None,
+            "datetime": str(extract_date(product_datetimes.datetime))
+            if primary_datetime_name == "datetime"
+            else None,
+            "end_datetime": str(extract_date(product_datetimes.end_datetime))
+            if primary_datetime_name == "start_datetime"
+            else None,
+        }
+
         target_index = await self.index_operations.create_datetime_index(
-            self.client, collection_id, extract_date(product_datetime)
+            self.client, collection_id, **index_params
         )
+
         logger.info(
             f"Successfully created index '{target_index}' for collection '{collection_id}'"
         )
         return target_index
 
     async def handle_early_date(
-        self, collection_id: str, start_date: datetime, end_date: datetime
+        self,
+        collection_id: str,
+        primary_datetime_name: str,
+        product_datetimes: ProductDatetimes,
+        old_aliases: Dict[str, str],
+        is_first_index: bool,
     ) -> str:
-        """Handle product with date earlier than existing indexes asynchronously.
+        """Handle product with datetime earlier than current index range.
 
         Args:
             collection_id (str): Collection identifier.
-            start_date (datetime): Start date for the new index.
-            end_date (datetime): End date for alias update.
+            primary_datetime_name (str): Primary datetime field name.
+            product_datetimes (ProductDatetimes): Product datetime values.
+            old_aliases (Dict[str, str]): Current datetime aliases.
+            is_first_index (bool): Whether this is the first index in the collection.
 
         Returns:
-            str: Updated alias name.
+            str: Datetime alias to use.
         """
-        old_alias = self.index_operations.create_alias_name(
-            collection_id, str(end_date)
+        if primary_datetime_name == "start_datetime":
+            return await self._handle_start_datetime_mode(
+                collection_id, product_datetimes, old_aliases, is_first_index
+            )
+        else:
+            return await self._handle_datetime_mode(
+                collection_id, product_datetimes, old_aliases, is_first_index
+            )
+
+    async def _handle_start_datetime_mode(
+        self,
+        collection_id: str,
+        product_datetimes: ProductDatetimes,
+        old_aliases: Dict[str, str],
+        is_first_index: bool,
+    ) -> str:
+        """Handle early-date logic for start/end datetime indexing.
+
+        Args:
+            collection_id (str): Collection identifier.
+            product_datetimes (ProductDatetimes): Product datetime values.
+            old_aliases (Dict[str, str]): Current start/end datetime aliases.
+            is_first_index (bool): Whether this is the first index in the collection.
+
+        Returns:
+            str: Primary datetime alias.
+        """
+        product_start = extract_date(product_datetimes.start_datetime)
+        product_end = extract_date(product_datetimes.end_datetime)
+
+        index_start = extract_first_date_from_index(old_aliases["start_datetime"])
+        index_end = extract_first_date_from_index(old_aliases["end_datetime"])
+        index_is_closed = is_index_closed(old_aliases["start_datetime"])
+
+        start_changed = product_start < index_start
+        end_changed = product_end > index_end
+
+        if not start_changed and not end_changed:
+            return old_aliases["start_datetime"]
+
+        new_aliases = []
+        old_alias_names = []
+        new_primary_alias = old_aliases["start_datetime"]
+
+        if start_changed:
+            if index_is_closed and is_first_index:
+                new_index_start = f"{product_start}-{index_start - timedelta(days=1)}"
+                return await self.index_operations.create_datetime_index(
+                    self.client,
+                    collection_id,
+                    str(new_index_start),
+                    None,
+                    str(product_end),
+                )
+            elif index_is_closed:
+                closed_end = extract_last_date_from_index(old_aliases["start_datetime"])
+                new_start_alias = self.index_operations.create_alias_name(
+                    collection_id, "start_datetime", f"{product_start}-{closed_end}"
+                )
+            else:
+                new_start_alias = self.index_operations.create_alias_name(
+                    collection_id, "start_datetime", str(product_start)
+                )
+            new_aliases.append(new_start_alias)
+            old_alias_names.append(old_aliases["start_datetime"])
+            new_primary_alias = new_start_alias
+
+        if end_changed:
+            new_end_alias = self.index_operations.create_alias_name(
+                collection_id, "end_datetime", str(product_end)
+            )
+            new_aliases.append(new_end_alias)
+            old_alias_names.append(old_aliases["end_datetime"])
+
+        if old_alias_names:
+            await self.index_operations.change_alias_name(
+                self.client,
+                old_aliases["start_datetime"],
+                old_alias_names,
+                new_aliases,
+            )
+
+        return new_primary_alias
+
+    async def _handle_datetime_mode(
+        self,
+        collection_id: str,
+        product_datetimes: ProductDatetimes,
+        old_aliases: Dict[str, str],
+        is_first_index: bool,
+    ) -> str:
+        """Handle early-date logic for single datetime indexing.
+
+        Args:
+            collection_id (str): Collection identifier.
+            product_datetimes (ProductDatetimes): Product datetime values.
+            old_aliases (Dict[str, str]): Current datetime alias.
+            is_first_index (bool): Whether this is the first index in the collection.
+
+        Returns:
+            str: Datetime alias to use.
+        """
+        product_dt = extract_date(product_datetimes.datetime)
+
+        index_start = extract_first_date_from_index(old_aliases["datetime"])
+        index_is_closed = is_index_closed(old_aliases["datetime"])
+
+        if is_first_index and index_is_closed:
+            new_index_start = f"{product_dt}-{index_start - timedelta(days=1)}"
+            return await self.index_operations.create_datetime_index(
+                self.client, collection_id, None, str(new_index_start), None
+            )
+        elif index_is_closed:
+            index_end = extract_last_date_from_index(old_aliases["datetime"])
+            start_changed = product_dt < index_start
+
+            if not start_changed:
+                return old_aliases["datetime"]
+
+            new_alias = self.index_operations.create_alias_name(
+                collection_id, "datetime", f"{product_dt}-{index_end}"
+            )
+        else:
+            if product_dt >= index_start:
+                return old_aliases["datetime"]
+
+            new_alias = self.index_operations.create_alias_name(
+                collection_id, "datetime", str(product_dt)
+            )
+
+        await self.index_operations.change_alias_name(
+            self.client,
+            old_aliases["datetime"],
+            [old_aliases["datetime"]],
+            [new_alias],
         )
-        new_alias = self.index_operations.create_alias_name(
-            collection_id, str(start_date)
-        )
-        await self.index_operations.change_alias_name(self.client, old_alias, new_alias)
+
         return new_alias
 
     async def handle_oversized_index(
-        self, collection_id: str, target_index: str, product_datetime: str
+        self,
+        collection_id: str,
+        primary_datetime_name: str,
+        product_datetimes: ProductDatetimes,
+        latest_index_datetimes: ProductDatetimes | None,
+        old_aliases: Dict[str, str],
     ) -> str:
         """Handle index that exceeds size limit asynchronously.
 
         Args:
             collection_id (str): Collection identifier.
-            target_index (str): Current target index name.
-            product_datetime (str): Product datetime for new index.
+            primary_datetime_name (str): Name of the primary datetime field.
+                If "start_datetime", handles start_datetime and end_datetime fields.
+                If "datetime", handles the datetime field.
+            product_datetimes (ProductDatetimes): Product datetime values.
+            latest_index_datetimes (ProductDatetimes | None): Datetime range of the latest index.
+            old_aliases (Dict[str, str]): Current datetime aliases.
 
         Returns:
-            str: New or updated index name.
+            str: Updated or newly created datetime alias name.
         """
-        end_date = extract_date(product_datetime)
-        latest_index_start = extract_first_date_from_index(target_index)
+        current_alias = old_aliases[primary_datetime_name]
+        new_aliases = []
+        old_alias_names = []
 
-        if end_date != latest_index_start:
-            await self.index_operations.update_index_alias(
-                self.client, str(end_date), target_index
+        if primary_datetime_name == "start_datetime":
+            new_start_alias = (
+                f"{current_alias}-{str(latest_index_datetimes.start_datetime)}"
             )
-            target_index = await self.index_operations.create_datetime_index(
-                self.client, collection_id, str(end_date + timedelta(days=1))
+            new_aliases.append(new_start_alias)
+            old_alias_names.append(current_alias)
+
+            product_start_datetime = parser.isoparse(
+                product_datetimes.start_datetime
+            ).date()
+            latest_start_datetime_in_index = parser.isoparse(
+                latest_index_datetimes.start_datetime
+            ).date()
+            product_end_date = parser.isoparse(product_datetimes.end_datetime).date()
+            latest_end_datetime_in_index = parser.isoparse(
+                latest_index_datetimes.end_datetime
+            ).date()
+
+            if product_start_datetime > latest_start_datetime_in_index:
+                end_datetime = latest_end_datetime_in_index
+            else:
+                end_datetime = max(product_end_date, latest_end_datetime_in_index)
+
+            new_end_alias = self.index_operations.create_alias_name(
+                collection_id, "end_datetime", str(end_datetime)
+            )
+            new_aliases.append(new_end_alias)
+            old_alias_names.append(old_aliases["end_datetime"])
+
+            await self.index_operations.change_alias_name(
+                self.client, current_alias, old_alias_names, new_aliases
             )
 
-        return target_index
+            if product_start_datetime > latest_start_datetime_in_index:
+                end_date = str(parser.isoparse(product_datetimes.end_datetime).date())
+            else:
+                end_date = str(
+                    parser.isoparse(latest_index_datetimes.start_datetime).date()
+                    + timedelta(days=1)
+                )
+
+            return await self.index_operations.create_datetime_index(
+                self.client,
+                collection_id,
+                start_datetime=str(latest_start_datetime_in_index + timedelta(days=1)),
+                datetime=None,
+                end_datetime=end_date,
+            )
+        else:
+            dt = extract_date(product_datetimes.datetime)
+
+            new_datetime_alias = (
+                f"{current_alias}-{str(latest_index_datetimes.datetime)}"
+            )
+            await self.index_operations.change_alias_name(
+                self.client, current_alias, [current_alias], [new_datetime_alias]
+            )
+            return await self.index_operations.create_datetime_index(
+                self.client,
+                collection_id,
+                start_datetime=None,
+                datetime=str(dt + timedelta(days=1)),
+                end_datetime=None,
+            )

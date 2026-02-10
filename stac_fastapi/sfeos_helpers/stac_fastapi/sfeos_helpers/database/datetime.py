@@ -145,7 +145,7 @@ def extract_date(date_str: str) -> date:
         date_str: ISO format date string
 
     Returns:
-        A date object extracted from the input string.
+        A date object extracted from the input string or None.
     """
     date_str = date_str.replace("Z", "+00:00")
     return datetime_type.fromisoformat(date_str).date()
@@ -174,6 +174,59 @@ def extract_first_date_from_index(index_name: str) -> date:
         )
 
     date_string = match.group(0)
+
+    try:
+        extracted_date = datetime_type.strptime(date_string, "%Y-%m-%d").date()
+        return extracted_date
+    except ValueError as e:
+        logger.error(
+            f"Invalid date format found in index name '{index_name}': "
+            f"'{date_string}' - {str(e)}"
+        )
+        raise ValueError(
+            f"Invalid date format in index name '{index_name}': '{date_string}'"
+        ) from e
+
+
+def is_index_closed(alias_name: str) -> bool:
+    """Check if an index alias is closed (has two dates indicating a date range).
+
+    A closed index has an alias like 'items_start_datetime_collection_2025-11-06-2025-11-08'
+    indicating a fixed date range that should not be modified.
+
+    Args:
+        alias_name: The alias name to check.
+
+    Returns:
+        True if the alias contains two dates (closed), False if it has one date (open).
+    """
+    date_pattern = r"\d{4}-\d{2}-\d{2}"
+    matches = re.findall(date_pattern, alias_name)
+    return len(matches) >= 2
+
+
+def extract_last_date_from_index(index_name: str) -> date:
+    """Extract the last date from an index name containing date patterns.
+
+    Searches for date patterns (YYYY-MM-DD) within the index name string
+    and returns the last found date as a date object.
+
+    Args:
+        index_name: Index name containing date patterns.
+
+    Returns:
+        A date object extracted from the last date pattern found in the index name.
+    """
+    date_pattern = r"\d{4}-\d{2}-\d{2}"
+    matches = re.findall(date_pattern, index_name)
+
+    if not matches:
+        logger.error(f"No date pattern found in index name: '{index_name}'")
+        raise ValueError(
+            f"No date pattern (YYYY-MM-DD) found in index name: '{index_name}'"
+        )
+
+    date_string = matches[-1]
 
     try:
         extracted_date = datetime_type.strptime(date_string, "%Y-%m-%d").date()
