@@ -2,6 +2,7 @@
 
 import json
 import logging
+from datetime import datetime as dt_datetime
 from functools import wraps
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union, cast
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
@@ -27,6 +28,7 @@ class RedisCommonSettings(BaseSettings):
     REDIS_CLIENT_NAME: str = "stac-fastapi-app"
     REDIS_HEALTH_CHECK_INTERVAL: int = Field(default=30, gt=0)
     REDIS_SELF_LINK_TTL: int = 1800
+    REDIS_INDEX_CACHE_TTL: int = Field(default=1800, gt=0)
 
     REDIS_QUERY_RETRIES_NUM: int = Field(default=3, gt=0)
     REDIS_QUERY_INITIAL_DELAY: float = Field(default=1.0, gt=0)
@@ -297,7 +299,7 @@ async def redis_pagination_links(
 class ItemQueueSettings(BaseSettings):
     """Configuration for item queue behavior."""
 
-    QUEUE_BATCH_SIZE: int = Field(default=50, gt=0)
+    QUEUE_BATCH_SIZE: int = Field(default=10, gt=0)
     QUEUE_FLUSH_INTERVAL: int = Field(default=30, gt=0)
     QUEUE_KEY_PREFIX: str = "item_queue"
     WORKER_POLL_INTERVAL: float = Field(default=1.0, gt=0)
@@ -307,7 +309,18 @@ class ItemQueueSettings(BaseSettings):
 
 
 class AsyncRedisQueueManager:
-    """Asynchronous Redis queue manager."""
+    """Asynchronous Redis queue manager.
+
+    Items are segregated by the primary datetime field (determined by
+    USE_DATETIME env variable: properties.datetime when True,
+    properties.start_datetime when False) using a Redis sorted set (ZSET)
+    for ordering and a hash (HASH) for item data storage.
+
+    Redis key layout per collection:
+        {prefix}:{collection_id}:zset  — ZSET where score = primary datetime timestamp
+        {prefix}:{collection_id}:data  — HASH  item_id → JSON payload
+        {prefix}:collections           — SET   collection IDs with pending items
+    """
 
     def __init__(self, redis: aioredis.Redis) -> None:
         """Initialize with an existing async Redis connection."""
@@ -346,9 +359,42 @@ class AsyncRedisQueueManager:
                 decode_responses=True,
             )
 
-    def _get_queue_key(self, collection_id: str) -> str:
-        """Get Redis key for collection's item queue (HASH)."""
-        return f"{self.queue_settings.QUEUE_KEY_PREFIX}:{collection_id}"
+    @staticmethod
+    def _extract_score(item: dict) -> float:
+        """Extract the primary datetime from item properties and convert to timestamp.
+
+        Uses the USE_DATETIME env variable to determine the field:
+        - USE_DATETIME=True  -> properties.datetime
+        - USE_DATETIME=False -> properties.start_datetime
+
+        Args:
+            item: Item dict with properties containing datetime fields.
+
+        Returns:
+            float: Unix timestamp used as ZSET score, 0.0 on parse failure.
+        """
+        from stac_fastapi.core.utilities import get_bool_env
+
+        use_datetime = get_bool_env("USE_DATETIME", default=True)
+        field_name = "datetime" if use_datetime else "start_datetime"
+
+        props = item.get("properties", {})
+        dt_value = props.get(field_name, "")
+        if not dt_value:
+            return 0.0
+        try:
+            dt = dt_datetime.fromisoformat(str(dt_value).replace("Z", "+00:00"))
+            return dt.timestamp()
+        except (ValueError, AttributeError):
+            return 0.0
+
+    def _get_zset_key(self, collection_id: str) -> str:
+        """Get Redis key for collection's sorted set (ordered by primary datetime)."""
+        return f"{self.queue_settings.QUEUE_KEY_PREFIX}:{collection_id}:zset"
+
+    def _get_data_key(self, collection_id: str) -> str:
+        """Get Redis key for collection's item data hash."""
+        return f"{self.queue_settings.QUEUE_KEY_PREFIX}:{collection_id}:data"
 
     def _get_collections_set_key(self) -> str:
         """Get Redis key for set of collections with pending items."""
@@ -356,6 +402,9 @@ class AsyncRedisQueueManager:
 
     async def queue_items(self, collection_id: str, items: Union[dict, List[dict]]) -> int:
         """Queue one or more items for a collection. Deduplicates by item ID.
+
+        Items are scored by the primary datetime field so that pending items
+        are always returned in chronological order.
 
         If an item with the same ID already exists in the queue, it will be replaced.
 
@@ -372,26 +421,30 @@ class AsyncRedisQueueManager:
         if not items:
             return 0
 
-        queue_key = self._get_queue_key(collection_id)
+        zset_key = self._get_zset_key(collection_id)
+        data_key = self._get_data_key(collection_id)
         collections_key = self._get_collections_set_key()
 
         await self.redis.sadd(collections_key, collection_id)
 
-        items_mapping = {}
+        zset_mapping: Dict[str, float] = {}
+        data_mapping: Dict[str, str] = {}
         for item in items:
             item_id = item.get("id")
             if not item_id:
                 logger.warning(f"Item without 'id' field skipped: {item}")
                 continue
-            items_mapping[item_id] = json.dumps(item)
+            zset_mapping[item_id] = self._extract_score(item)
+            data_mapping[item_id] = json.dumps(item)
 
-        if items_mapping:
-            await self.redis.hset(queue_key, mapping=items_mapping)
+        if data_mapping:
+            await self.redis.hset(data_key, mapping=data_mapping)
+            await self.redis.zadd(zset_key, zset_mapping)
 
-        queue_length = await self.redis.hlen(queue_key)
+        queue_length = await self.redis.zcard(zset_key)
 
         logger.debug(
-            f"Queued {len(items_mapping)} item(s) for collection '{collection_id}', "
+            f"Queued {len(data_mapping)} item(s) for collection '{collection_id}', "
             f"queue length: {queue_length}"
         )
         return queue_length
@@ -403,66 +456,51 @@ class AsyncRedisQueueManager:
     async def get_pending_items(
         self, collection_id: str, limit: Optional[int] = None
     ) -> List[dict]:
-        """Get pending items from the queue.
+        """Get pending items from the queue ordered by primary datetime (ascending).
 
         Args:
             collection_id: The collection identifier.
             limit: Maximum number of items to return. If None, returns all.
 
         Returns:
-            List of item dicts ready for processing.
+            List of item dicts ordered by primary datetime.
         """
-        queue_key = self._get_queue_key(collection_id)
+        zset_key = self._get_zset_key(collection_id)
+        data_key = self._get_data_key(collection_id)
 
         if limit is None:
-            items_dict = await self.redis.hgetall(queue_key)
-            return [json.loads(item_json) for item_json in items_dict.values()]
+            item_ids = await self.redis.zrange(zset_key, 0, -1)
         else:
-            items: List[Dict[str, Any]] = []
-            cursor = 0
-            while len(items) < limit:
-                cursor, data = await self.redis.hscan(
-                    queue_key, cursor, count=min(limit, 100)
-                )
-                for item_json in data.values():
-                    items.append(json.loads(item_json))
-                    if len(items) >= limit:
-                        break
-                if cursor == 0:
-                    break
-            return items[:limit]
+            item_ids = await self.redis.zrange(zset_key, 0, limit - 1)
+
+        if not item_ids:
+            return []
+
+        items_json = await self.redis.hmget(data_key, *item_ids)
+        return [json.loads(item_json) for item_json in items_json if item_json]
 
     async def get_pending_item_ids(
         self, collection_id: str, limit: Optional[int] = None
     ) -> List[str]:
-        """Get IDs of pending items (useful for batch processing).
+        """Get IDs of pending items ordered by primary datetime (ascending).
 
         Args:
             collection_id: The collection identifier.
             limit: Maximum number of IDs to return.
 
         Returns:
-            List of item IDs.
+            List of item IDs ordered by primary datetime.
         """
-        queue_key = self._get_queue_key(collection_id)
+        zset_key = self._get_zset_key(collection_id)
 
         if limit is None:
-            return list(await self.redis.hkeys(queue_key))
+            return list(await self.redis.zrange(zset_key, 0, -1))
         else:
-            item_ids: List[str] = []
-            cursor = 0
-            while len(item_ids) < limit:
-                cursor, data = await self.redis.hscan(
-                    queue_key, cursor, count=min(limit, 100)
-                )
-                item_ids.extend(data.keys())
-                if cursor == 0:
-                    break
-            return item_ids[:limit]
+            return list(await self.redis.zrange(zset_key, 0, limit - 1))
 
     async def get_queue_length(self, collection_id: str) -> int:
         """Get number of items in the queue."""
-        return await self.redis.hlen(self._get_queue_key(collection_id))
+        return await self.redis.zcard(self._get_zset_key(collection_id))
 
     async def mark_items_processed(self, collection_id: str, item_ids: List[str]) -> int:
         """Remove processed items from the queue by their IDs.
@@ -477,14 +515,17 @@ class AsyncRedisQueueManager:
         if not item_ids:
             return await self.get_queue_length(collection_id)
 
-        queue_key = self._get_queue_key(collection_id)
+        zset_key = self._get_zset_key(collection_id)
+        data_key = self._get_data_key(collection_id)
 
-        await self.redis.hdel(queue_key, *item_ids)
+        await self.redis.zrem(zset_key, *item_ids)
+        await self.redis.hdel(data_key, *item_ids)
 
-        remaining = await self.redis.hlen(queue_key)
+        remaining = await self.redis.zcard(zset_key)
 
         if remaining == 0:
             await self.redis.srem(self._get_collections_set_key(), collection_id)
+            await self.redis.delete(data_key)
 
         return remaining
 
@@ -498,11 +539,15 @@ class AsyncRedisQueueManager:
         Returns:
             bool: True if item was removed, False if it didn't exist.
         """
-        queue_key = self._get_queue_key(collection_id)
-        removed = await self.redis.hdel(queue_key, item_id)
+        zset_key = self._get_zset_key(collection_id)
+        data_key = self._get_data_key(collection_id)
 
-        if await self.redis.hlen(queue_key) == 0:
+        removed = await self.redis.zrem(zset_key, item_id)
+        await self.redis.hdel(data_key, item_id)
+
+        if await self.redis.zcard(zset_key) == 0:
             await self.redis.srem(self._get_collections_set_key(), collection_id)
+            await self.redis.delete(data_key)
 
         return removed > 0
 

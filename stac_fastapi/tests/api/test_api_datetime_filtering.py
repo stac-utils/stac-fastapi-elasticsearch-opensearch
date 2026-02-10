@@ -627,7 +627,7 @@ async def test_patch_item_datetime_field_blocked_use_datetime_true(
 
     monkeypatch.setenv("USE_DATETIME", "true")
     if hasattr(txn_client.database.async_index_selector, "cache_manager"):
-        txn_client.database.async_index_selector.cache_manager.clear_cache()
+        await txn_client.database.async_index_selector.cache_manager.clear_cache()
 
     base_item = load_test_data("test_item.json")
     collection_id = base_item["collection"]
