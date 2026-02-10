@@ -172,6 +172,7 @@ async def delete_collections_and_items(txn_client: TransactionsClient) -> None:
     await txn_client.database.delete_items()
     await txn_client.database.delete_collections()
     await txn_client.database.client.indices.delete(index=f"{ITEMS_INDEX_PREFIX}*")
+    await txn_client.database.async_index_selector.refresh_cache()
 
 
 async def refresh_indices(txn_client: TransactionsClient) -> None:
