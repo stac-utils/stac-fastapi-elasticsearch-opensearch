@@ -24,7 +24,7 @@ class IndexCacheManager:
             cache_ttl_seconds (int): Time-to-live for cache entries in seconds.
         """
         self._ttl = cache_ttl_seconds
-        self._redis = None
+        self._redis: Optional[Any] = None
         self._init_lock = asyncio.Lock()
 
     async def _ensure_redis(self):
@@ -36,9 +36,7 @@ class IndexCacheManager:
 
                     redis = await connect_redis()
                     if redis is None:
-                        raise RuntimeError(
-                            "Redis is required for index alias caching."
-                        )
+                        raise RuntimeError("Redis is required for index alias caching.")
                     self._redis = redis
 
     async def get_cache(self) -> Optional[Dict[str, List[Tuple[Dict[str, str]]]]]:
@@ -84,7 +82,9 @@ class IndexCacheManager:
         await self._redis.delete(REDIS_LOCK_KEY)
 
 
-def _serialize_cache(data: Dict[str, List[Tuple[Dict[str, str]]]]) -> Dict[str, List[List[Dict[str, str]]]]:
+def _serialize_cache(
+    data: Dict[str, List[Tuple[Dict[str, str]]]]
+) -> Dict[str, List[List[Dict[str, str]]]]:
     """Convert tuple values to lists for JSON serialization."""
     result = {}
     for key, value in data.items():
@@ -92,11 +92,13 @@ def _serialize_cache(data: Dict[str, List[Tuple[Dict[str, str]]]]) -> Dict[str, 
     return result
 
 
-def _deserialize_cache(data: Dict[str, List[List[Dict[str, str]]]]) -> Dict[str, List[Tuple[Dict[str, str]]]]:
+def _deserialize_cache(
+    data: Dict[str, List[List[Dict[str, str]]]]
+) -> Dict[str, List[Tuple[Dict[str, str]]]]:
     """Convert list values back to tuples after JSON deserialization."""
-    result = {}
+    result: Dict[str, List[Tuple[Dict[str, str]]]] = {}
     for key, value in data.items():
-        result[key] = [tuple(item) for item in value]
+        result[key] = [tuple(item) for item in value]  # type: ignore[misc]
     return result
 
 
@@ -189,7 +191,9 @@ class IndexAliasLoader:
 
         return aliases_dict
 
-    async def get_aliases(self, use_cache: bool = True) -> Dict[str, List[Tuple[Dict[str, str]]]]:
+    async def get_aliases(
+        self, use_cache: bool = True
+    ) -> Dict[str, List[Tuple[Dict[str, str]]]]:
         """Get aliases from cache or load from search engine.
 
         When use_cache is False (insertion mode), always loads fresh data from

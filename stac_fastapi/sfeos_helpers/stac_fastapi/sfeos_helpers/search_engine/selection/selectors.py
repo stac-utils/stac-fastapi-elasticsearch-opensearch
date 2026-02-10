@@ -68,7 +68,9 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
             List[tuple[dict[str, str]]]: List of index aliases associated with the collection.
                 Returns empty list if collection is not found in cache.
         """
-        return await self.alias_loader.get_collection_indexes(collection_id, use_cache=use_cache)
+        return await self.alias_loader.get_collection_indexes(
+            collection_id, use_cache=use_cache
+        )
 
     async def select_indexes(
         self,

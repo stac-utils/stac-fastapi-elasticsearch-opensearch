@@ -1077,7 +1077,9 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
             queue_manager = await AsyncRedisQueueManager.create()
             try:
-                queue_len = await queue_manager.queue_items(collection_id, processed_item)
+                queue_len = await queue_manager.queue_items(
+                    collection_id, processed_item
+                )
                 logger.info(
                     f"Queued item '{item_dict.get('id')}' for collection '{collection_id}'. "
                     f"Queue length: {queue_len}"
@@ -1132,7 +1134,9 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
             queue_manager = await AsyncRedisQueueManager.create()
             try:
-                queue_len = await queue_manager.queue_items(collection_id, processed_item)
+                queue_len = await queue_manager.queue_items(
+                    collection_id, processed_item
+                )
                 logger.info(
                     f"Queued update for item '{item_id}' in collection '{collection_id}'. "
                     f"Queue length: {queue_len}"

@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import datetime as dt_datetime
 from functools import wraps
-from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union, cast
+from typing import Callable, List, Literal, Optional, Tuple, Union, cast
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from pydantic import Field, field_validator
@@ -400,7 +400,9 @@ class AsyncRedisQueueManager:
         """Get Redis key for set of collections with pending items."""
         return f"{self.queue_settings.QUEUE_KEY_PREFIX}:collections"
 
-    async def queue_items(self, collection_id: str, items: Union[dict, List[dict]]) -> int:
+    async def queue_items(
+        self, collection_id: str, items: Union[dict, List[dict]]
+    ) -> int:
         """Queue one or more items for a collection. Deduplicates by item ID.
 
         Items are scored by the primary datetime field so that pending items
@@ -427,8 +429,8 @@ class AsyncRedisQueueManager:
 
         await self.redis.sadd(collections_key, collection_id)
 
-        zset_mapping: Dict[str, float] = {}
-        data_mapping: Dict[str, str] = {}
+        zset_mapping = {}
+        data_mapping = {}
         for item in items:
             item_id = item.get("id")
             if not item_id:
@@ -502,7 +504,9 @@ class AsyncRedisQueueManager:
         """Get number of items in the queue."""
         return await self.redis.zcard(self._get_zset_key(collection_id))
 
-    async def mark_items_processed(self, collection_id: str, item_ids: List[str]) -> int:
+    async def mark_items_processed(
+        self, collection_id: str, item_ids: List[str]
+    ) -> int:
         """Remove processed items from the queue by their IDs.
 
         Args:
