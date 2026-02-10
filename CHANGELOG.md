@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Added CQL2 Abstract Syntax Tree (AST) structure for efficient query parsing and datetime-based indexes. [#560](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/560)
+
 ### Changed
 
 ### Fixed
