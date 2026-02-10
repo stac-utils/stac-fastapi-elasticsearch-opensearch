@@ -776,6 +776,25 @@ ENABLE_DATETIME_INDEX_FILTERING=true
 | `ENABLE_DATETIME_INDEX_FILTERING` | Enables time-based index partitioning | `false` | `true` |
 | `DATETIME_INDEX_MAX_SIZE_GB` | Maximum size limit for datetime indexes (GB) - note: add +20% to target size due to ES/OS compression | `25` | `50` |
 | `STAC_ITEMS_INDEX_PREFIX` | Prefix for item indexes | `items_` | `stac_items_` |
+| `ENABLE_REDIS_QUEUE` | Enables Redis queue for async item processing | `false` | `true` |
+| `QUEUE_BATCH_SIZE` | Number of items to process in a single batch | `50` | `100` |
+| `QUEUE_FLUSH_INTERVAL` | Maximum seconds to wait before flushing queue (even if batch not full) | `30` | `60` |
+| `QUEUE_KEY_PREFIX` | Redis key prefix for queue data | `item_queue` | `stac_queue` |
+| `WORKER_POLL_INTERVAL` | Seconds between worker polls for new items | `1.0` | `0.5` |
+| `WORKER_MAX_THREADS` | Maximum concurrent threads for processing collections | `4` | `8` |
+
+### Redis Queue for Item Processing
+
+When datetime-based indexing is enabled, you can use Redis-based queue processing to avoid race conditions. Without the queue, concurrent requests adding items to the same collection may cause conflicts when modifying index aliases. The queue serializes item processing per collection, ensuring safe alias management.
+
+When `ENABLE_REDIS_QUEUE=true`, you **must** run the Item Queue Worker process to process queued items. The worker reads items from the Redis queue and inserts them into Elasticsearch/OpenSearch.
+
+**Start the worker:**
+```bash
+python scripts/item_queue_worker.py
+```
+
+**Important:** Without the worker running, items will remain in the Redis queue and will not be indexed in Elasticsearch/OpenSearch.
 
 ## How Datetime-Based Indexing Works
 

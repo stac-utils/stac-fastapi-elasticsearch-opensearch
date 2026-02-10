@@ -55,7 +55,7 @@ class IndexOperations:
             )
         return index_name
 
-    async def create_datetime_index(
+    def create_datetime_index(
         self,
         client: Any,
         collection_id: str,
@@ -96,14 +96,14 @@ class IndexOperations:
             created_alias = self.create_alias_name(collection_id, "datetime", datetime)
             aliases[created_alias] = {}
 
-        await client.indices.create(
+        client.indices.create(
             index=index_name,
             body=self._create_index_body(aliases),
         )
         return created_alias
 
     @staticmethod
-    async def update_index_alias(client: Any, end_date: str, old_alias: str) -> str:
+    def update_index_alias(client: Any, end_date: str, old_alias: str) -> str:
         """Update index alias with new end date.
 
         Args:
@@ -115,18 +115,18 @@ class IndexOperations:
             str: New alias name.
         """
         new_alias = f"{old_alias}-{end_date}"
-        aliases_info = await client.indices.get_alias(name=old_alias)
+        aliases_info = client.indices.get_alias(name=old_alias)
         actions = []
 
         for index_name in aliases_info.keys():
             actions.append({"remove": {"index": index_name, "alias": old_alias}})
             actions.append({"add": {"index": index_name, "alias": new_alias}})
 
-        await client.indices.update_aliases(body={"actions": actions})
+        client.indices.update_aliases(body={"actions": actions})
         return new_alias
 
     @staticmethod
-    async def change_alias_name(
+    def change_alias_name(
         client: Any,
         old_start_datetime_alias: str,
         aliases_to_change: List[str],
@@ -143,7 +143,7 @@ class IndexOperations:
         Returns:
             None
         """
-        aliases_info = await client.indices.get_alias(name=old_start_datetime_alias)
+        aliases_info = client.indices.get_alias(name=old_start_datetime_alias)
         index_name = list(aliases_info.keys())[0]
 
         actions = []
@@ -153,7 +153,7 @@ class IndexOperations:
         for new_alias in aliases_to_create:
             actions.append({"add": {"index": index_name, "alias": new_alias}})
 
-        await client.indices.update_aliases(body={"actions": actions})
+        client.indices.update_aliases(body={"actions": actions})
 
     @staticmethod
     def create_index_name(collection_id: str) -> str:
@@ -203,9 +203,7 @@ class IndexOperations:
             "settings": ES_ITEMS_SETTINGS,
         }
 
-    async def find_latest_item_in_index(
-        self, client: Any, index_name: str
-    ) -> dict[str, Any]:
+    def find_latest_item_in_index(self, client: Any, index_name: str) -> dict[str, Any]:
         """Find the latest item in the specified index.
 
         Args:
@@ -224,5 +222,5 @@ class IndexOperations:
             ],
         }
 
-        response = await client.search(index=index_name, body=query)
+        response = client.search(index=index_name, body=query)
         return response["hits"]["hits"][0]

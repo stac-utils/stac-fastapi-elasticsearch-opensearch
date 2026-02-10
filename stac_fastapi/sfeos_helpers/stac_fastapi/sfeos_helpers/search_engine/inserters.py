@@ -1,4 +1,4 @@
-"""Async index insertion strategies."""
+"""Index insertion strategies."""
 
 import logging
 from typing import Any, Dict, List, Optional
@@ -16,25 +16,29 @@ from stac_fastapi.sfeos_helpers.database import (
 from .base import BaseIndexInserter
 from .index_operations import IndexOperations
 from .managers import DatetimeIndexManager, ProductDatetimes
-from .selection import DatetimeBasedIndexSelector
+from .selection import SyncDatetimeBasedIndexSelector
 
 logger = logging.getLogger(__name__)
 
 
 class DatetimeIndexInserter(BaseIndexInserter):
-    """Async datetime-based index insertion strategy."""
+    """Synchronous datetime-based index insertion strategy.
+
+    This class processes items synchronously to avoid race conditions
+    when multiple requests try to modify ES/OS aliases concurrently.
+    """
 
     def __init__(self, client: Any, index_operations: IndexOperations):
-        """Initialize the async datetime index inserter.
+        """Initialize the sync datetime index inserter.
 
         Args:
-            client: Async search engine client instance.
+            client: Synchronous search engine client instance.
             index_operations (IndexOperations): Search engine adapter instance.
         """
         self.client = client
         self.index_operations = index_operations
         self.datetime_manager = DatetimeIndexManager(client, index_operations)
-        self.index_selector = DatetimeBasedIndexSelector(client)
+        self.index_selector = SyncDatetimeBasedIndexSelector(client)
 
     @property
     def use_datetime(self) -> bool:
@@ -62,26 +66,6 @@ class DatetimeIndexInserter(BaseIndexInserter):
             bool: False, as datetime strategy doesn't create collection indexes.
         """
         return False
-
-    async def create_simple_index(self, client: Any, collection_id: str) -> str:
-        """Create a simple index asynchronously.
-
-        Args:
-            client: Search engine client instance.
-            collection_id (str): Collection identifier.
-
-        Returns:
-            str: Created index name.
-        """
-        return await self.index_operations.create_simple_index(client, collection_id)
-
-    async def refresh_cache(self) -> None:
-        """Refresh the index selector cache.
-
-        This method refreshes the cached index information used for
-        datetime-based index selection.
-        """
-        await self.index_selector.refresh_cache()
 
     def validate_datetime_field_update(self, field_path: str) -> None:
         """Validate if a datetime field can be updated.
@@ -117,9 +101,7 @@ class DatetimeIndexInserter(BaseIndexInserter):
                     ),
                 )
 
-    async def get_target_index(
-        self, collection_id: str, product: Dict[str, Any]
-    ) -> str:
+    def get_target_index(self, collection_id: str, product: Dict[str, Any]) -> str:
         """Get target index for a single product.
 
         Args:
@@ -129,14 +111,16 @@ class DatetimeIndexInserter(BaseIndexInserter):
         Returns:
             str: Target index name for the product.
         """
-        return await self._get_target_index_internal(
-            collection_id, product, check_size=True
-        )
+        return self._get_target_index_internal(collection_id, product, check_size=True)
 
-    async def prepare_bulk_actions(
+    def prepare_bulk_actions(
         self, collection_id: str, items: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
         """Prepare bulk actions for multiple items.
+
+        Index size is checked only for the first item (after sorting by datetime).
+        This avoids redundant size checks for all items in the bulk operation,
+        as index splitting decision is based on the first item only.
 
         Args:
             collection_id (str): Collection identifier.
@@ -152,10 +136,22 @@ class DatetimeIndexInserter(BaseIndexInserter):
 
         items.sort(key=lambda item: item["properties"][self.primary_datetime_name])
 
-        actions = []
-        for item in items:
-            target_index = await self._get_target_index_internal(
-                collection_id, item, check_size=True
+        first_item = items[0]
+        first_target_index = self._get_target_index_internal(
+            collection_id, first_item, check_size=True
+        )
+
+        actions = [
+            {
+                "_index": first_target_index,
+                "_id": mk_item_id(first_item["id"], first_item["collection"]),
+                "_source": first_item,
+            }
+        ]
+
+        for item in items[1:]:
+            target_index = self._get_target_index_internal(
+                collection_id, item, check_size=False
             )
             actions.append(
                 {
@@ -167,7 +163,7 @@ class DatetimeIndexInserter(BaseIndexInserter):
 
         return actions
 
-    async def _get_target_index_internal(
+    def _get_target_index_internal(
         self,
         collection_id: str,
         product: Dict[str, Any],
@@ -178,7 +174,7 @@ class DatetimeIndexInserter(BaseIndexInserter):
         Args:
             collection_id (str): Collection identifier.
             product (Dict[str, Any]): Product data.
-            check_size (bool): Whetheru to check index size limits.
+            check_size (bool): Whether to check index size limits.
 
         Returns:
             str: Target index name.
@@ -192,20 +188,20 @@ class DatetimeIndexInserter(BaseIndexInserter):
             else product_datetimes.start_datetime
         )
 
-        all_indexes = await self.index_selector.get_collection_indexes(collection_id)
+        all_indexes = self.index_selector.get_collection_indexes(collection_id)
 
         if not all_indexes:
-            target_index = await self.datetime_manager.handle_new_collection(
+            target_index = self.datetime_manager.handle_new_collection(
                 collection_id, self.primary_datetime_name, product_datetimes
             )
-            await self.refresh_cache()
+
             return target_index
 
         all_indexes = sorted(
             all_indexes, key=lambda x: x[0][self.primary_datetime_name]
         )
 
-        target_index = await self.index_selector.select_indexes(
+        target_index = self.index_selector.select_indexes(
             [collection_id], primary_datetime_value, for_insertion=True
         )
 
@@ -215,14 +211,14 @@ class DatetimeIndexInserter(BaseIndexInserter):
         )
 
         if start_date < earliest_index_date:
-            target_index = await self.datetime_manager.handle_early_date(
+            target_index = self.datetime_manager.handle_early_date(
                 collection_id,
                 self.primary_datetime_name,
                 product_datetimes,
                 all_indexes[0][0],
                 True,
             )
-            await self.refresh_cache()
+
             return target_index
 
         if not target_index:
@@ -233,20 +229,20 @@ class DatetimeIndexInserter(BaseIndexInserter):
         )
 
         if target_index != all_indexes[-1][0][self.primary_datetime_name]:
-            await self.datetime_manager.handle_early_date(
+            self.datetime_manager.handle_early_date(
                 collection_id,
                 self.primary_datetime_name,
                 product_datetimes,
                 aliases_dict,
                 is_first_index,
             )
-            await self.refresh_cache()
+
             return target_index
 
-        if check_size and await self.datetime_manager.size_manager.is_index_oversized(
+        if check_size and self.datetime_manager.size_manager.is_index_oversized(
             target_index
         ):
-            latest_item = await self.index_operations.find_latest_item_in_index(
+            latest_item = self.index_operations.find_latest_item_in_index(
                 self.client, target_index
             )
             latest_index_datetimes = ProductDatetimes(
@@ -263,36 +259,33 @@ class DatetimeIndexInserter(BaseIndexInserter):
                 else None,
             )
 
-            await self.datetime_manager.handle_oversized_index(
+            self.datetime_manager.handle_oversized_index(
                 collection_id,
                 self.primary_datetime_name,
                 product_datetimes,
                 latest_index_datetimes,
                 aliases_dict,
             )
-            await self.refresh_cache()
-            all_indexes = await self.index_selector.get_collection_indexes(
-                collection_id
-            )
+
+            all_indexes = self.index_selector.get_collection_indexes(collection_id)
             all_indexes = sorted(
                 all_indexes, key=lambda x: x[0][self.primary_datetime_name]
             )
             return (
-                await self.index_selector.select_indexes(
+                self.index_selector.select_indexes(
                     [collection_id], primary_datetime_value, for_insertion=True
                 )
                 or all_indexes[-1][0][self.primary_datetime_name]
             )
 
-        await self.datetime_manager.handle_early_date(
+        self.datetime_manager.handle_early_date(
             collection_id,
             self.primary_datetime_name,
             product_datetimes,
             aliases_dict,
             is_first_index,
         )
-        await self.refresh_cache()
-        all_indexes = await self.index_selector.get_collection_indexes(collection_id)
+        all_indexes = self.index_selector.get_collection_indexes(collection_id)
         all_indexes = sorted(
             all_indexes, key=lambda x: x[0][self.primary_datetime_name]
         )
@@ -352,9 +345,7 @@ class SimpleIndexInserter(BaseIndexInserter):
         """
         return await self.search_adapter.create_simple_index(client, collection_id)
 
-    async def get_target_index(
-        self, collection_id: str, product: Dict[str, Any]
-    ) -> str:
+    def get_target_index(self, collection_id: str, product: Dict[str, Any]) -> str:
         """Get target index (always the collection alias).
 
         Args:
@@ -366,7 +357,7 @@ class SimpleIndexInserter(BaseIndexInserter):
         """
         return index_alias_by_collection_id(collection_id)
 
-    async def prepare_bulk_actions(
+    def prepare_bulk_actions(
         self, collection_id: str, items: List[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
         """Prepare bulk actions for simple indexing.

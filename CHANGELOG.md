@@ -9,7 +9,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Added Redis queue for async item processing (`ENABLE_REDIS_QUEUE`) to avoid race conditions when concurrent requests modify index aliases during datetime-based indexing. Includes `item_queue_worker.py` script for processing queued items.
+- Added configuration variables for Redis queue: `QUEUE_BATCH_SIZE`, `QUEUE_FLUSH_INTERVAL`, `QUEUE_KEY_PREFIX`, `WORKER_POLL_INTERVAL`, `WORKER_MAX_THREADS`.
+
 ### Changed
+
+- Optimized `prepare_bulk_actions` to check index size only for the first item in a batch instead of all items, reducing redundant size checks.
+- Added index refresh before size check in `is_index_oversized` to ensure recently inserted documents are visible, preventing race conditions.
 
 ### Fixed
 

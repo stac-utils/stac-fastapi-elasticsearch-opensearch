@@ -3,15 +3,17 @@
 import json
 import logging
 from functools import wraps
-from typing import Callable, List, Optional, Tuple, cast
+from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union, cast
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
+from redis import Redis as SyncRedis
 from redis import asyncio as aioredis
 from redis.asyncio.sentinel import Sentinel
 from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import TimeoutError as RedisTimeoutError
+from redis.sentinel import Sentinel as SyncSentinel
 from retry import retry  # type: ignore
 
 logger = logging.getLogger(__name__)
@@ -123,7 +125,6 @@ class RedisSettings(RedisCommonSettings):
         return v
 
 
-# Configure only one Redis configuration
 sentinel_settings = RedisSentinelSettings()
 settings: RedisCommonSettings = cast(
     RedisCommonSettings,
@@ -293,3 +294,214 @@ async def redis_pagination_links(
         logger.warning(f"Redis pagination operation failed: {e}")
     finally:
         await redis.aclose()  # type: ignore
+
+
+class ItemQueueSettings(BaseSettings):
+    """Configuration for item queue behavior."""
+
+    QUEUE_BATCH_SIZE: int = Field(default=50, gt=0)
+    QUEUE_FLUSH_INTERVAL: int = Field(default=30, gt=0)
+    QUEUE_KEY_PREFIX: str = "item_queue"
+    WORKER_POLL_INTERVAL: float = Field(default=1.0, gt=0)
+    WORKER_MAX_THREADS: int = Field(default=4, gt=0)
+    BACKEND: Literal["opensearch", "elasticsearch"] = "opensearch"
+    LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+
+
+class SyncRedisQueueManager:
+    """Synchronous Redis queue manager for the worker."""
+
+    def __init__(self):
+        """Initialize sync Redis connection using existing settings."""
+        self.queue_settings = ItemQueueSettings()
+        self.redis = self._connect()
+
+    @staticmethod
+    def _connect() -> SyncRedis:
+        """Create sync Redis connection using RedisSentinelSettings."""
+        sentinel_settings = RedisSentinelSettings()
+        sentinel_nodes = sentinel_settings.get_sentinel_nodes()
+
+        if sentinel_nodes:
+            logger.info(f"Connecting to Redis Sentinel: {sentinel_nodes}")
+            sentinel = SyncSentinel(sentinel_nodes, socket_timeout=5.0)
+            return sentinel.master_for(
+                sentinel_settings.REDIS_SENTINEL_MASTER_NAME,
+                db=sentinel_settings.REDIS_DB,
+                decode_responses=True,
+            )
+        else:
+            standalone_settings = RedisSettings()
+            logger.info(
+                f"Connecting to standalone Redis: {standalone_settings.REDIS_HOST}:{standalone_settings.REDIS_PORT}"
+            )
+            return SyncRedis(
+                host=standalone_settings.REDIS_HOST,
+                port=standalone_settings.REDIS_PORT,
+                db=standalone_settings.REDIS_DB,
+                decode_responses=True,
+            )
+
+    def _get_queue_key(self, collection_id: str) -> str:
+        """Get Redis key for collection's item queue (HASH)."""
+        return f"{self.queue_settings.QUEUE_KEY_PREFIX}:{collection_id}"
+
+    def _get_collections_set_key(self) -> str:
+        """Get Redis key for set of collections with pending items."""
+        return f"{self.queue_settings.QUEUE_KEY_PREFIX}:collections"
+
+    def queue_items(self, collection_id: str, items: Union[dict, List[dict]]) -> int:
+        """Queue one or more items for a collection. Deduplicates by item ID.
+
+        If an item with the same ID already exists in the queue, it will be replaced.
+
+        Args:
+            collection_id: The collection identifier.
+            items: Single item dict or list of item dicts to queue.
+
+        Returns:
+            int: The total number of items in the queue after operation.
+        """
+        if isinstance(items, dict):
+            items = [items]
+
+        if not items:
+            return 0
+
+        queue_key = self._get_queue_key(collection_id)
+        collections_key = self._get_collections_set_key()
+
+        self.redis.sadd(collections_key, collection_id)
+
+        items_mapping = {}
+        for item in items:
+            item_id = item.get("id")
+            if not item_id:
+                logger.warning(f"Item without 'id' field skipped: {item}")
+                continue
+            items_mapping[item_id] = json.dumps(item)
+
+        if items_mapping:
+            self.redis.hset(queue_key, mapping=items_mapping)
+
+        queue_length = self.redis.hlen(queue_key)
+
+        logger.debug(
+            f"Queued {len(items_mapping)} item(s) for collection '{collection_id}', "
+            f"queue length: {queue_length}"
+        )
+        return queue_length
+
+    def get_pending_collections(self) -> List[str]:
+        """Get list of collections with pending items."""
+        return list(self.redis.smembers(self._get_collections_set_key()))
+
+    def get_pending_items(
+        self, collection_id: str, limit: Optional[int] = None
+    ) -> List[dict]:
+        """Get pending items from the queue.
+
+        Args:
+            collection_id: The collection identifier.
+            limit: Maximum number of items to return. If None, returns all.
+
+        Returns:
+            List of item dicts ready for processing.
+        """
+        queue_key = self._get_queue_key(collection_id)
+
+        if limit is None:
+            items_dict = self.redis.hgetall(queue_key)
+            return [json.loads(item_json) for item_json in items_dict.values()]
+        else:
+            items: List[Dict[str, Any]] = []
+            cursor = 0
+            while len(items) < limit:
+                cursor, data = self.redis.hscan(
+                    queue_key, cursor, count=min(limit, 100)
+                )
+                for item_json in data.values():
+                    items.append(json.loads(item_json))
+                    if len(items) >= limit:
+                        break
+                if cursor == 0:
+                    break
+            return items[:limit]
+
+    def get_pending_item_ids(
+        self, collection_id: str, limit: Optional[int] = None
+    ) -> List[str]:
+        """Get IDs of pending items (useful for batch processing).
+
+        Args:
+            collection_id: The collection identifier.
+            limit: Maximum number of IDs to return.
+
+        Returns:
+            List of item IDs.
+        """
+        queue_key = self._get_queue_key(collection_id)
+
+        if limit is None:
+            return list(self.redis.hkeys(queue_key))
+        else:
+            item_ids: List[str] = []
+            cursor = 0
+            while len(item_ids) < limit:
+                cursor, data = self.redis.hscan(
+                    queue_key, cursor, count=min(limit, 100)
+                )
+                item_ids.extend(data.keys())
+                if cursor == 0:
+                    break
+            return item_ids[:limit]
+
+    def get_queue_length(self, collection_id: str) -> int:
+        """Get number of items in the queue."""
+        return self.redis.hlen(self._get_queue_key(collection_id))
+
+    def mark_items_processed(self, collection_id: str, item_ids: List[str]) -> int:
+        """Remove processed items from the queue by their IDs.
+
+        Args:
+            collection_id: The collection identifier.
+            item_ids: List of item IDs to remove.
+
+        Returns:
+            int: Number of remaining items in the queue.
+        """
+        if not item_ids:
+            return self.get_queue_length(collection_id)
+
+        queue_key = self._get_queue_key(collection_id)
+
+        self.redis.hdel(queue_key, *item_ids)
+
+        remaining = self.redis.hlen(queue_key)
+
+        if remaining == 0:
+            self.redis.srem(self._get_collections_set_key(), collection_id)
+
+        return remaining
+
+    def remove_item(self, collection_id: str, item_id: str) -> bool:
+        """Remove a specific item from the queue.
+
+        Args:
+            collection_id: The collection identifier.
+            item_id: The item ID to remove.
+
+        Returns:
+            bool: True if item was removed, False if it didn't exist.
+        """
+        queue_key = self._get_queue_key(collection_id)
+        removed = self.redis.hdel(queue_key, item_id)
+
+        if self.redis.hlen(queue_key) == 0:
+            self.redis.srem(self._get_collections_set_key(), collection_id)
+
+        return removed > 0
+
+    def close(self):
+        """Close Redis connection."""
+        self.redis.close()

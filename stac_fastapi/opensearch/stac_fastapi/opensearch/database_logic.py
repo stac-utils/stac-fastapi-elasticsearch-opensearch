@@ -41,7 +41,6 @@ from stac_fastapi.sfeos_helpers.database import (
     delete_item_index_shared,
     get_queryables_mapping_shared,
     index_alias_by_collection_id,
-    mk_actions,
     mk_item_id,
     populate_sort_shared,
     return_date,
@@ -146,7 +145,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         self.client = self.async_settings.create_client
         self.sync_client = self.sync_settings.create_client
         self.async_index_inserter = IndexInsertionFactory.create_insertion_strategy(
-            self.client
+            self.sync_client
         )
         self.async_index_selector = IndexSelectorFactory.create_selector(self.client)
 
@@ -1231,9 +1230,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             item=item, base_url=base_url, exist_ok=exist_ok
         )
 
-        target_index = await self.async_index_inserter.get_target_index(
-            collection_id, item
-        )
+        target_index = self.async_index_inserter.get_target_index(collection_id, item)
 
         await self.client.index(
             index=target_index,
@@ -1723,7 +1720,6 @@ class DatabaseLogic(BaseDatabaseLogic):
         )
         # Delete the item index for the collection
         await delete_item_index(collection_id)
-        await self.async_index_inserter.refresh_cache()
 
     async def bulk_async(
         self,
@@ -1776,7 +1772,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             return 0, []
 
         raise_on_error = self.async_settings.raise_on_bulk_error
-        actions = await self.async_index_inserter.prepare_bulk_actions(
+        actions = self.async_index_inserter.prepare_bulk_actions(
             collection_id, processed_items
         )
 
@@ -1847,10 +1843,14 @@ class DatabaseLogic(BaseDatabaseLogic):
             logger.warning(f"No items to insert for collection {collection_id}")
             return 0, []
 
+        actions = self.async_index_inserter.prepare_bulk_actions(
+            collection_id, processed_items
+        )
+
         raise_on_error = self.sync_settings.raise_on_bulk_error
         success, errors = helpers.bulk(
             self.sync_client,
-            mk_actions(collection_id, processed_items),
+            actions,
             refresh=refresh,
             raise_on_error=raise_on_error,
         )
