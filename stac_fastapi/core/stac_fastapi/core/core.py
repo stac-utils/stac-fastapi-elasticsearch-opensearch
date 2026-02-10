@@ -1035,11 +1035,11 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 return f"No items to insert. {skipped} items were skipped (duplicates)."
 
             if use_queue:
-                from stac_fastapi.core.redis_utils import SyncRedisQueueManager
+                from stac_fastapi.core.redis_utils import AsyncRedisQueueManager
 
-                queue_manager = SyncRedisQueueManager()
+                queue_manager = await AsyncRedisQueueManager.create()
                 try:
-                    queue_len = queue_manager.queue_items(
+                    queue_len = await queue_manager.queue_items(
                         collection_id, processed_items
                     )
                     logger.info(
@@ -1048,7 +1048,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                     )
                     return f"Successfully queued {len(processed_items)} items for processing."
                 finally:
-                    queue_manager.close()
+                    await queue_manager.close()
 
             success, errors = await self.database.bulk_async(
                 collection_id=collection_id,
@@ -1066,7 +1066,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             return f"Successfully added {success} Items. {skipped} skipped (duplicates). {attempted - success} errors occurred."
 
         if use_queue:
-            from stac_fastapi.core.redis_utils import SyncRedisQueueManager
+            from stac_fastapi.core.redis_utils import AsyncRedisQueueManager
 
             bulk_client = BulkTransactionsClient(
                 database=self.database, settings=self.settings
@@ -1075,9 +1075,9 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 item_dict, base_url, BulkTransactionMethod.INSERT
             )
 
-            queue_manager = SyncRedisQueueManager()
+            queue_manager = await AsyncRedisQueueManager.create()
             try:
-                queue_len = queue_manager.queue_items(collection_id, processed_item)
+                queue_len = await queue_manager.queue_items(collection_id, processed_item)
                 logger.info(
                     f"Queued item '{item_dict.get('id')}' for collection '{collection_id}'. "
                     f"Queue length: {queue_len}"
@@ -1086,7 +1086,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                     f"Successfully queued item '{item_dict.get('id')}' for processing."
                 )
             finally:
-                queue_manager.close()
+                await queue_manager.close()
 
         await self.database.create_item(
             item_dict, base_url=base_url, exist_ok=False, **kwargs
@@ -1121,7 +1121,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         use_queue = get_bool_env("ENABLE_REDIS_QUEUE", default=False)
 
         if use_queue:
-            from stac_fastapi.core.redis_utils import SyncRedisQueueManager
+            from stac_fastapi.core.redis_utils import AsyncRedisQueueManager
 
             bulk_client = BulkTransactionsClient(
                 database=self.database, settings=self.settings
@@ -1130,15 +1130,15 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 item_dict, base_url, BulkTransactionMethod.UPSERT
             )
 
-            queue_manager = SyncRedisQueueManager()
+            queue_manager = await AsyncRedisQueueManager.create()
             try:
-                queue_len = queue_manager.queue_items(collection_id, processed_item)
+                queue_len = await queue_manager.queue_items(collection_id, processed_item)
                 logger.info(
                     f"Queued update for item '{item_id}' in collection '{collection_id}'. "
                     f"Queue length: {queue_len}"
                 )
             finally:
-                queue_manager.close()
+                await queue_manager.close()
 
             return ItemSerializer.db_to_stac(item_dict, base_url)
 

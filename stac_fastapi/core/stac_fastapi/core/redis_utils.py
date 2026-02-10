@@ -8,12 +8,10 @@ from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
-from redis import Redis as SyncRedis
 from redis import asyncio as aioredis
 from redis.asyncio.sentinel import Sentinel
 from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import TimeoutError as RedisTimeoutError
-from redis.sentinel import Sentinel as SyncSentinel
 from retry import retry  # type: ignore
 
 logger = logging.getLogger(__name__)
@@ -308,26 +306,32 @@ class ItemQueueSettings(BaseSettings):
     LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
 
 
-class SyncRedisQueueManager:
-    """Synchronous Redis queue manager for the worker."""
+class AsyncRedisQueueManager:
+    """Asynchronous Redis queue manager."""
 
-    def __init__(self):
-        """Initialize sync Redis connection using existing settings."""
+    def __init__(self, redis: aioredis.Redis) -> None:
+        """Initialize with an existing async Redis connection."""
         self.queue_settings = ItemQueueSettings()
-        self.redis = self._connect()
+        self.redis = redis
+
+    @classmethod
+    async def create(cls) -> "AsyncRedisQueueManager":
+        """Create and connect an AsyncRedisQueueManager."""
+        redis = await cls._connect()
+        return cls(redis)
 
     @staticmethod
-    def _connect() -> SyncRedis:
-        """Create sync Redis connection using RedisSentinelSettings."""
-        sentinel_settings = RedisSentinelSettings()
-        sentinel_nodes = sentinel_settings.get_sentinel_nodes()
+    async def _connect() -> aioredis.Redis:
+        """Create async Redis connection using RedisSentinelSettings."""
+        _sentinel_settings = RedisSentinelSettings()
+        sentinel_nodes = _sentinel_settings.get_sentinel_nodes()
 
         if sentinel_nodes:
             logger.info(f"Connecting to Redis Sentinel: {sentinel_nodes}")
-            sentinel = SyncSentinel(sentinel_nodes, socket_timeout=5.0)
+            sentinel = Sentinel(sentinel_nodes, socket_timeout=5.0)
             return sentinel.master_for(
-                sentinel_settings.REDIS_SENTINEL_MASTER_NAME,
-                db=sentinel_settings.REDIS_DB,
+                _sentinel_settings.REDIS_SENTINEL_MASTER_NAME,
+                db=_sentinel_settings.REDIS_DB,
                 decode_responses=True,
             )
         else:
@@ -335,7 +339,7 @@ class SyncRedisQueueManager:
             logger.info(
                 f"Connecting to standalone Redis: {standalone_settings.REDIS_HOST}:{standalone_settings.REDIS_PORT}"
             )
-            return SyncRedis(
+            return aioredis.Redis(
                 host=standalone_settings.REDIS_HOST,
                 port=standalone_settings.REDIS_PORT,
                 db=standalone_settings.REDIS_DB,
@@ -350,7 +354,7 @@ class SyncRedisQueueManager:
         """Get Redis key for set of collections with pending items."""
         return f"{self.queue_settings.QUEUE_KEY_PREFIX}:collections"
 
-    def queue_items(self, collection_id: str, items: Union[dict, List[dict]]) -> int:
+    async def queue_items(self, collection_id: str, items: Union[dict, List[dict]]) -> int:
         """Queue one or more items for a collection. Deduplicates by item ID.
 
         If an item with the same ID already exists in the queue, it will be replaced.
@@ -371,7 +375,7 @@ class SyncRedisQueueManager:
         queue_key = self._get_queue_key(collection_id)
         collections_key = self._get_collections_set_key()
 
-        self.redis.sadd(collections_key, collection_id)
+        await self.redis.sadd(collections_key, collection_id)
 
         items_mapping = {}
         for item in items:
@@ -382,9 +386,9 @@ class SyncRedisQueueManager:
             items_mapping[item_id] = json.dumps(item)
 
         if items_mapping:
-            self.redis.hset(queue_key, mapping=items_mapping)
+            await self.redis.hset(queue_key, mapping=items_mapping)
 
-        queue_length = self.redis.hlen(queue_key)
+        queue_length = await self.redis.hlen(queue_key)
 
         logger.debug(
             f"Queued {len(items_mapping)} item(s) for collection '{collection_id}', "
@@ -392,11 +396,11 @@ class SyncRedisQueueManager:
         )
         return queue_length
 
-    def get_pending_collections(self) -> List[str]:
+    async def get_pending_collections(self) -> List[str]:
         """Get list of collections with pending items."""
-        return list(self.redis.smembers(self._get_collections_set_key()))
+        return list(await self.redis.smembers(self._get_collections_set_key()))
 
-    def get_pending_items(
+    async def get_pending_items(
         self, collection_id: str, limit: Optional[int] = None
     ) -> List[dict]:
         """Get pending items from the queue.
@@ -411,13 +415,13 @@ class SyncRedisQueueManager:
         queue_key = self._get_queue_key(collection_id)
 
         if limit is None:
-            items_dict = self.redis.hgetall(queue_key)
+            items_dict = await self.redis.hgetall(queue_key)
             return [json.loads(item_json) for item_json in items_dict.values()]
         else:
             items: List[Dict[str, Any]] = []
             cursor = 0
             while len(items) < limit:
-                cursor, data = self.redis.hscan(
+                cursor, data = await self.redis.hscan(
                     queue_key, cursor, count=min(limit, 100)
                 )
                 for item_json in data.values():
@@ -428,7 +432,7 @@ class SyncRedisQueueManager:
                     break
             return items[:limit]
 
-    def get_pending_item_ids(
+    async def get_pending_item_ids(
         self, collection_id: str, limit: Optional[int] = None
     ) -> List[str]:
         """Get IDs of pending items (useful for batch processing).
@@ -443,12 +447,12 @@ class SyncRedisQueueManager:
         queue_key = self._get_queue_key(collection_id)
 
         if limit is None:
-            return list(self.redis.hkeys(queue_key))
+            return list(await self.redis.hkeys(queue_key))
         else:
             item_ids: List[str] = []
             cursor = 0
             while len(item_ids) < limit:
-                cursor, data = self.redis.hscan(
+                cursor, data = await self.redis.hscan(
                     queue_key, cursor, count=min(limit, 100)
                 )
                 item_ids.extend(data.keys())
@@ -456,11 +460,11 @@ class SyncRedisQueueManager:
                     break
             return item_ids[:limit]
 
-    def get_queue_length(self, collection_id: str) -> int:
+    async def get_queue_length(self, collection_id: str) -> int:
         """Get number of items in the queue."""
-        return self.redis.hlen(self._get_queue_key(collection_id))
+        return await self.redis.hlen(self._get_queue_key(collection_id))
 
-    def mark_items_processed(self, collection_id: str, item_ids: List[str]) -> int:
+    async def mark_items_processed(self, collection_id: str, item_ids: List[str]) -> int:
         """Remove processed items from the queue by their IDs.
 
         Args:
@@ -471,20 +475,20 @@ class SyncRedisQueueManager:
             int: Number of remaining items in the queue.
         """
         if not item_ids:
-            return self.get_queue_length(collection_id)
+            return await self.get_queue_length(collection_id)
 
         queue_key = self._get_queue_key(collection_id)
 
-        self.redis.hdel(queue_key, *item_ids)
+        await self.redis.hdel(queue_key, *item_ids)
 
-        remaining = self.redis.hlen(queue_key)
+        remaining = await self.redis.hlen(queue_key)
 
         if remaining == 0:
-            self.redis.srem(self._get_collections_set_key(), collection_id)
+            await self.redis.srem(self._get_collections_set_key(), collection_id)
 
         return remaining
 
-    def remove_item(self, collection_id: str, item_id: str) -> bool:
+    async def remove_item(self, collection_id: str, item_id: str) -> bool:
         """Remove a specific item from the queue.
 
         Args:
@@ -495,13 +499,13 @@ class SyncRedisQueueManager:
             bool: True if item was removed, False if it didn't exist.
         """
         queue_key = self._get_queue_key(collection_id)
-        removed = self.redis.hdel(queue_key, item_id)
+        removed = await self.redis.hdel(queue_key, item_id)
 
-        if self.redis.hlen(queue_key) == 0:
-            self.redis.srem(self._get_collections_set_key(), collection_id)
+        if await self.redis.hlen(queue_key) == 0:
+            await self.redis.srem(self._get_collections_set_key(), collection_id)
 
         return removed > 0
 
-    def close(self):
+    async def close(self):
         """Close Redis connection."""
-        self.redis.close()
+        await self.redis.aclose()  # type: ignore

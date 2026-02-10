@@ -13,13 +13,12 @@ Configuration via environment variables (managed by ItemQueueSettings):
     LOG_LEVEL (str): Logging level (default: "INFO").
 """
 
+import asyncio
 import logging
 import time
-from concurrent.futures import Future, ThreadPoolExecutor
-from threading import Lock
-from typing import Dict
+from typing import Dict, Set
 
-from stac_fastapi.core.redis_utils import ItemQueueSettings, SyncRedisQueueManager
+from stac_fastapi.core.redis_utils import AsyncRedisQueueManager, ItemQueueSettings
 
 logger = logging.getLogger(__name__)
 
@@ -37,18 +36,23 @@ class CollectionFlushState:
 class ItemQueueWorker:
     """Worker that drains Redis item queues into the search engine in batches.
 
-    Collections are processed concurrently via a thread pool. Within a single
+    Collections are processed concurrently via asyncio tasks. Within a single
     collection, batches are processed sequentially (one batch finishes before
     the next starts).
     """
 
     def __init__(self) -> None:
         self.settings = ItemQueueSettings()
-        self.queue_manager = SyncRedisQueueManager()
+        self.queue_manager: AsyncRedisQueueManager = None  # type: ignore[assignment]
         self.db = self._create_database_logic()
         self._states: Dict[str, CollectionFlushState] = {}
-        self._lock = Lock()
+        self._lock = asyncio.Lock()
+        self._semaphore = asyncio.Semaphore(self.settings.WORKER_MAX_THREADS)
         self.running = True
+
+    async def _init_queue_manager(self) -> None:
+        """Initialize the async Redis queue manager."""
+        self.queue_manager = await AsyncRedisQueueManager.create()
 
     def _create_database_logic(self):  # type: ignore[no-untyped-def]
         """Create the appropriate DatabaseLogic based on BACKEND setting."""
@@ -59,18 +63,17 @@ class ItemQueueWorker:
         return DatabaseLogic()
 
     def _get_state(self, collection_id: str) -> CollectionFlushState:
-        with self._lock:
-            if collection_id not in self._states:
-                self._states[collection_id] = CollectionFlushState()
-            return self._states[collection_id]
+        if collection_id not in self._states:
+            self._states[collection_id] = CollectionFlushState()
+        return self._states[collection_id]
 
-    def _should_flush(self, collection_id: str) -> bool:
+    async def _should_flush(self, collection_id: str) -> bool:
         """Determine whether a collection's queue should be flushed.
 
         Returns True when the queue length >= batch size, or when the flush
         interval has elapsed and there are items waiting.
         """
-        queue_length = self.queue_manager.get_queue_length(collection_id)
+        queue_length = await self.queue_manager.get_queue_length(collection_id)
         if queue_length == 0:
             return False
 
@@ -87,7 +90,7 @@ class ItemQueueWorker:
             f"{self.queue_manager.queue_settings.QUEUE_KEY_PREFIX}:lock:{collection_id}"
         )
 
-    def _flush_collection(self, collection_id: str) -> None:
+    async def _flush_collection(self, collection_id: str) -> None:
         """Flush pending items for a collection in sequential batches.
 
         Acquires a Redis distributed lock per collection to prevent concurrent
@@ -96,7 +99,7 @@ class ItemQueueWorker:
         """
         state = self._get_state(collection_id)
 
-        with self._lock:
+        async with self._lock:
             if state.processing:
                 return
             state.processing = True
@@ -109,7 +112,7 @@ class ItemQueueWorker:
         )
 
         try:
-            if not redis_lock.acquire(blocking=True):
+            if not await redis_lock.acquire(blocking=True):
                 logger.info(
                     "Collection '%s': skipping flush, another worker holds the lock",
                     collection_id,
@@ -120,7 +123,7 @@ class ItemQueueWorker:
             batch_num = 0
 
             while self.running:
-                items = self.queue_manager.get_pending_items(
+                items = await self.queue_manager.get_pending_items(
                     collection_id, limit=batch_size
                 )
                 if not items:
@@ -137,20 +140,20 @@ class ItemQueueWorker:
                 )
 
                 try:
-                    success, errors = self.db.bulk_sync(
+                    success, errors = await self.db.bulk_async(
                         collection_id=collection_id,
                         processed_items=items,
                     )
                 except Exception:
                     logger.exception(
-                        "Collection '%s' batch #%d: bulk_sync failed (%d items)",
+                        "Collection '%s' batch #%d: bulk_async failed (%d items)",
                         collection_id,
                         batch_num,
                         len(items),
                     )
                     break
 
-                self.queue_manager.mark_items_processed(collection_id, item_ids)
+                await self.queue_manager.mark_items_processed(collection_id, item_ids)
 
                 logger.info(
                     "Collection '%s' batch #%d: %d succeeded, %d errors",
@@ -176,61 +179,73 @@ class ItemQueueWorker:
             logger.exception("Unexpected error flushing collection '%s'", collection_id)
         finally:
             try:
-                redis_lock.release()
+                await redis_lock.release()
             except Exception:
                 pass
-            with self._lock:
+            async with self._lock:
                 state.processing = False
 
-    def run(self) -> None:
+    async def _flush_with_semaphore(self, collection_id: str) -> None:
+        """Flush a collection while respecting the concurrency limit."""
+        async with self._semaphore:
+            await self._flush_collection(collection_id)
+
+    async def run(self) -> None:
         """Main worker loop — polls Redis and dispatches collection flushes."""
+        await self._init_queue_manager()
+
         logger.info(
             "Starting item queue worker "
-            "(batch_size=%d, flush_interval=%ds, poll_interval=%.1fs, max_workers=%d)",
+            "(batch_size=%d, flush_interval=%ds, poll_interval=%.1fs, max_concurrent=%d)",
             self.settings.QUEUE_BATCH_SIZE,
             self.settings.QUEUE_FLUSH_INTERVAL,
             self.settings.WORKER_POLL_INTERVAL,
             self.settings.WORKER_MAX_THREADS,
         )
 
-        with ThreadPoolExecutor(
-            max_workers=self.settings.WORKER_MAX_THREADS
-        ) as executor:
-            futures: Dict[str, Future] = {}
+        active_tasks: Dict[str, asyncio.Task] = {}
 
-            while self.running:
-                try:
-                    collections = self.queue_manager.get_pending_collections()
+        while self.running:
+            try:
+                collections = await self.queue_manager.get_pending_collections()
 
-                    for collection_id in collections:
-                        if not self.running:
-                            break
+                done_keys: Set[str] = set()
+                for cid, task in active_tasks.items():
+                    if task.done():
+                        done_keys.add(cid)
+                for cid in done_keys:
+                    del active_tasks[cid]
 
-                        # Clean up completed futures
-                        if collection_id in futures and futures[collection_id].done():
-                            del futures[collection_id]
+                for collection_id in collections:
+                    if not self.running:
+                        break
 
-                        # Skip if already submitted and still running
-                        if collection_id in futures:
-                            continue
+                    if collection_id in active_tasks:
+                        continue
 
-                        if self._should_flush(collection_id):
-                            futures[collection_id] = executor.submit(
-                                self._flush_collection, collection_id
-                            )
+                    if await self._should_flush(collection_id):
+                        active_tasks[collection_id] = asyncio.create_task(
+                            self._flush_with_semaphore(collection_id)
+                        )
 
-                except Exception:
-                    logger.exception("Error in worker poll loop")
+            except Exception:
+                logger.exception("Error in worker poll loop")
 
-                time.sleep(self.settings.WORKER_POLL_INTERVAL)
+            await asyncio.sleep(self.settings.WORKER_POLL_INTERVAL)
+
+        for task in active_tasks.values():
+            task.cancel()
+        if active_tasks:
+            await asyncio.gather(*active_tasks.values(), return_exceptions=True)
 
         logger.info("Worker stopped.")
 
-    def stop(self) -> None:
+    async def stop(self) -> None:
         """Signal the worker to shut down gracefully."""
         logger.info("Shutting down worker...")
         self.running = False
-        self.queue_manager.close()
+        if self.queue_manager:
+            await self.queue_manager.close()
 
 
 def main() -> None:
@@ -243,7 +258,7 @@ def main() -> None:
     )
 
     worker = ItemQueueWorker()
-    worker.run()
+    asyncio.run(worker.run())
 
 
 if __name__ == "__main__":
