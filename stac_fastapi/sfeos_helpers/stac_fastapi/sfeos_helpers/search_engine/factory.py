@@ -16,13 +16,13 @@ class IndexInsertionFactory:
     def create_insertion_strategy(
         client: Any,
     ) -> BaseIndexInserter:
-        """Create insertion strategy based on configuration.
+        """Create async insertion strategy based on configuration.
 
         Args:
-            client: search engine client instance.
+            client: Async search engine client instance.
 
         Returns:
-            BaseIndexInserter: Configured insertion strategy.
+            BaseIndexInserter: Configured async insertion strategy.
         """
         index_operations = IndexOperations()
 

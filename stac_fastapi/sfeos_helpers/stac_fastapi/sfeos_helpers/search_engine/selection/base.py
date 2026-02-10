@@ -28,27 +28,7 @@ class BaseIndexSelector(ABC):
         """
         pass
 
-
-class SyncBaseIndexSelector(ABC):
-    """Base class for synchronous index selectors."""
-
     @abstractmethod
-    def select_indexes(
-        self,
-        collection_ids: Optional[List[str]],
-        datetime_search: str,
-        for_insertion: bool = False,
-    ) -> str:
-        """Select appropriate indexes synchronously.
-
-        Args:
-            collection_ids (Optional[List[str]]): List of collection IDs to filter by.
-            datetime_search (str): Datetime search criteria.
-            for_insertion (bool): If True, selects indexes for inserting items into
-                the database. If False, selects indexes for searching/querying items.
-                Defaults to False (search mode).
-
-        Returns:
-            str: Comma-separated string of selected index names.
-        """
+    async def refresh_cache(self):
+        """Refresh cache (no-op for unfiltered selector)."""
         pass

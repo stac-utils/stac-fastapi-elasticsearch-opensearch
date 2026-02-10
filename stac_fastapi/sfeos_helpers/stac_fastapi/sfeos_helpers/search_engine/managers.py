@@ -46,8 +46,8 @@ class IndexSizeManager:
         self.client = client
         self.max_size_gb = self._get_max_size_from_env()
 
-    def is_index_oversized(self, index_name: str) -> bool:
-        """Check if index exceeds size limit.
+    async def is_index_oversized(self, index_name: str) -> bool:
+        """Check if index exceeds size limit asynchronously.
 
         Args:
             index_name (str): Name of the index to check.
@@ -55,8 +55,8 @@ class IndexSizeManager:
         Returns:
             bool: True if index exceeds size limit, False otherwise.
         """
-        self.client.indices.refresh(index=index_name)
-        stats = self.client.indices.stats(index=index_name)
+        await self.client.indices.refresh(index=index_name)
+        stats = await self.client.indices.stats(index=index_name)
 
         total_size_bytes = 0
         total_doc_count = 0
@@ -193,13 +193,13 @@ class DatetimeIndexManager:
             end_datetime=end_str,
         )
 
-    def handle_new_collection(
+    async def handle_new_collection(
         self,
         collection_id: str,
         primary_datetime_name: str,
         product_datetimes: ProductDatetimes,
     ) -> str:
-        """Handle index creation for new collection.
+        """Handle index creation for new collection asynchronously.
 
         Args:
             collection_id (str): Collection identifier.
@@ -223,7 +223,7 @@ class DatetimeIndexManager:
             else None,
         }
 
-        target_index = self.index_operations.create_datetime_index(
+        target_index = await self.index_operations.create_datetime_index(
             self.client, collection_id, **index_params
         )
 
@@ -232,7 +232,7 @@ class DatetimeIndexManager:
         )
         return target_index
 
-    def handle_early_date(
+    async def handle_early_date(
         self,
         collection_id: str,
         primary_datetime_name: str,
@@ -253,15 +253,15 @@ class DatetimeIndexManager:
             str: Datetime alias to use.
         """
         if primary_datetime_name == "start_datetime":
-            return self._handle_start_datetime_mode(
+            return await self._handle_start_datetime_mode(
                 collection_id, product_datetimes, old_aliases, is_first_index
             )
         else:
-            return self._handle_datetime_mode(
+            return await self._handle_datetime_mode(
                 collection_id, product_datetimes, old_aliases, is_first_index
             )
 
-    def _handle_start_datetime_mode(
+    async def _handle_start_datetime_mode(
         self,
         collection_id: str,
         product_datetimes: ProductDatetimes,
@@ -299,7 +299,7 @@ class DatetimeIndexManager:
         if start_changed:
             if index_is_closed and is_first_index:
                 new_index_start = f"{product_start}-{index_start - timedelta(days=1)}"
-                return self.index_operations.create_datetime_index(
+                return await self.index_operations.create_datetime_index(
                     self.client,
                     collection_id,
                     str(new_index_start),
@@ -327,7 +327,7 @@ class DatetimeIndexManager:
             old_alias_names.append(old_aliases["end_datetime"])
 
         if old_alias_names:
-            self.index_operations.change_alias_name(
+            await self.index_operations.change_alias_name(
                 self.client,
                 old_aliases["start_datetime"],
                 old_alias_names,
@@ -336,7 +336,7 @@ class DatetimeIndexManager:
 
         return new_primary_alias
 
-    def _handle_datetime_mode(
+    async def _handle_datetime_mode(
         self,
         collection_id: str,
         product_datetimes: ProductDatetimes,
@@ -361,7 +361,7 @@ class DatetimeIndexManager:
 
         if is_first_index and index_is_closed:
             new_index_start = f"{product_dt}-{index_start - timedelta(days=1)}"
-            return self.index_operations.create_datetime_index(
+            return await self.index_operations.create_datetime_index(
                 self.client, collection_id, None, str(new_index_start), None
             )
         elif index_is_closed:
@@ -382,7 +382,7 @@ class DatetimeIndexManager:
                 collection_id, "datetime", str(product_dt)
             )
 
-        self.index_operations.change_alias_name(
+        await self.index_operations.change_alias_name(
             self.client,
             old_aliases["datetime"],
             [old_aliases["datetime"]],
@@ -391,7 +391,7 @@ class DatetimeIndexManager:
 
         return new_alias
 
-    def handle_oversized_index(
+    async def handle_oversized_index(
         self,
         collection_id: str,
         primary_datetime_name: str,
@@ -446,7 +446,7 @@ class DatetimeIndexManager:
             new_aliases.append(new_end_alias)
             old_alias_names.append(old_aliases["end_datetime"])
 
-            self.index_operations.change_alias_name(
+            await self.index_operations.change_alias_name(
                 self.client, current_alias, old_alias_names, new_aliases
             )
 
@@ -458,7 +458,7 @@ class DatetimeIndexManager:
                     + timedelta(days=1)
                 )
 
-            return self.index_operations.create_datetime_index(
+            return await self.index_operations.create_datetime_index(
                 self.client,
                 collection_id,
                 start_datetime=str(latest_start_datetime_in_index + timedelta(days=1)),
@@ -471,10 +471,10 @@ class DatetimeIndexManager:
             new_datetime_alias = (
                 f"{current_alias}-{str(latest_index_datetimes.datetime)}"
             )
-            self.index_operations.change_alias_name(
+            await self.index_operations.change_alias_name(
                 self.client, current_alias, [current_alias], [new_datetime_alias]
             )
-            return self.index_operations.create_datetime_index(
+            return await self.index_operations.create_datetime_index(
                 self.client,
                 collection_id,
                 start_datetime=None,

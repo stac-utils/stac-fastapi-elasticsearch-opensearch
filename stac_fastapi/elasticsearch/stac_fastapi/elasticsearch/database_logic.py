@@ -145,7 +145,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         self.client = self.async_settings.create_client
         self.sync_client = self.sync_settings.create_client
         self.async_index_inserter = IndexInsertionFactory.create_insertion_strategy(
-            self.sync_client
+            self.client
         )
         self.async_index_selector = IndexSelectorFactory.create_selector(self.client)
 
@@ -1229,7 +1229,9 @@ class DatabaseLogic(BaseDatabaseLogic):
             item=item, base_url=base_url, exist_ok=exist_ok
         )
 
-        target_index = self.async_index_inserter.get_target_index(collection_id, item)
+        target_index = await self.async_index_inserter.get_target_index(
+            collection_id, item
+        )
         # Index the item in the database
         await self.client.index(
             index=target_index,
@@ -1745,6 +1747,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             index=COLLECTIONS_INDEX, id=collection_id, refresh=refresh
         )
         await delete_item_index(collection_id)
+        await self.async_index_inserter.refresh_cache()
 
     async def bulk_async(
         self,
@@ -1798,7 +1801,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         # Perform the bulk insert
         raise_on_error = self.async_settings.raise_on_bulk_error
-        actions = self.async_index_inserter.prepare_bulk_actions(
+        actions = await self.async_index_inserter.prepare_bulk_actions(
             collection_id, processed_items
         )
         success, errors = await helpers.async_bulk(
