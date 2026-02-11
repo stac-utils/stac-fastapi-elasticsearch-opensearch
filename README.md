@@ -769,6 +769,9 @@ Enable datetime-based indexing by setting the following environment variable:
 ENABLE_DATETIME_INDEX_FILTERING=true
 ```
 
+> [!IMPORTANT]
+> **Redis is required** when datetime-based indexing is enabled. The system uses Redis to cache index alias mappings from Elasticsearch/OpenSearch, which significantly speeds up search queries by avoiding repeated alias lookups. Insert operations always fetch fresh aliases directly from ES/OS and then refresh the Redis cache, ensuring that search queries always see up-to-date alias data. Configure Redis using the connection variables described in the [Redis for Navigation](#redis-for-navigation-environment-variables) section (`REDIS_HOST`/`REDIS_PORT` or `REDIS_SENTINEL_HOSTS`).
+
 ### Related Configuration Variables
 
 | Variable | Description | Default | Example |

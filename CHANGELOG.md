@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 
+- Redis is now required when datetime-based indexing (`ENABLE_DATETIME_INDEX_FILTERING=true`) is enabled. Index alias mappings from ES/OS are cached in Redis, search queries read from cache, while insert operations always fetch fresh aliases from ES/OS and refresh the cache.
 - Optimized `prepare_bulk_actions` to check index size only for the first item in a batch instead of all items, reducing redundant size checks.
 - Added index refresh before size check in `is_index_oversized` to ensure recently inserted documents are visible, preventing race conditions.
 
