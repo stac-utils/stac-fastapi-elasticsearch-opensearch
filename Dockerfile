@@ -11,7 +11,7 @@ COPY README.md .
 COPY stac_fastapi/core/pyproject.toml stac_fastapi/core/
 COPY stac_fastapi/sfeos_helpers/pyproject.toml stac_fastapi/sfeos_helpers/
 COPY stac_fastapi/opensearch/pyproject.toml stac_fastapi/opensearch/
-COPY stac_fastapi/scripts/
+COPY stac_fastapi/scripts/ stac_fastapi/scripts/
 
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
