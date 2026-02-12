@@ -107,6 +107,7 @@ pytest-datetime:
 deploy-dev:
   <<: *deploy_configuration
   stage: deploy_dev
+  allow_failure: true
   script: ./ci/deploy.sh dev/waw3-2-general-01-staging
 
 reload-dev:
@@ -166,6 +167,17 @@ deploy-staging:
 #  only:
 #    - tags
   script: ./ci/deploy.sh staging/waw3-2-general-01-staging
+
+reload-staging:
+  <<: *reload_configuration
+  stage: deploy_staging
+  except:
+    - tags
+    - master
+  variables:
+    ARGOCD_APP_NAME: "waw3-2-gen-01-staging-catalogue-stac-stac-fastapi-os"
+  needs:
+    - job: deploy-staging
 
 deploy-prod-creo:
   <<: *deploy_configuration
