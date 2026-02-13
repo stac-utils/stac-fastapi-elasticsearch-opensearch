@@ -1166,6 +1166,207 @@ async def test_search_datetime_with_null_datetime(
 
 
 @pytest.mark.asyncio
+async def test_search_cql2_json_datetime_operators(app_client, ctx):
+    """Test POST /search with CQL2 json datetime filter operators"""
+
+    test_item = ctx.item
+    item_datetime = test_item["properties"]["datetime"]
+
+    cql2_equal = {
+        "filter-lang": "cql2-json",
+        "filter": {"op": "=", "args": [{"property": "datetime"}, item_datetime]},
+    }
+    resp = await app_client.post("/search", json=cql2_equal)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert resp_json["features"][0]["id"] == test_item["id"]
+
+    later_datetime = "2020-02-13T12:30:22Z"
+    cql2_lte = {
+        "filter-lang": "cql2-json",
+        "filter": {"op": "<=", "args": [{"property": "datetime"}, later_datetime]},
+    }
+    resp = await app_client.post("/search", json=cql2_lte)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert resp_json["features"][0]["id"] == test_item["id"]
+
+    earlier_datetime = "2020-02-11T12:30:22Z"
+    cql2_gte = {
+        "filter-lang": "cql2-json",
+        "filter": {"op": ">=", "args": [{"property": "datetime"}, earlier_datetime]},
+    }
+    resp = await app_client.post("/search", json=cql2_gte)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert resp_json["features"][0]["id"] == test_item["id"]
+
+    range_start = "2020-02-12T00:00:00Z"
+    range_end = "2020-02-13T00:00:00Z"
+    cql2_between = {
+        "filter-lang": "cql2-json",
+        "filter": {
+            "op": "and",
+            "args": [
+                {"op": ">=", "args": [{"property": "datetime"}, range_start]},
+                {"op": "<=", "args": [{"property": "datetime"}, range_end]},
+            ],
+        },
+    }
+    resp = await app_client.post("/search", json=cql2_between)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert resp_json["features"][0]["id"] == test_item["id"]
+
+
+@pytest.mark.asyncio
+async def test_search_cql2_json_start_end_datetime_operators(app_client, ctx):
+    """Test POST /search with CQL2 json start_datetime, end_datetime filter operators"""
+
+    test_item = ctx.item
+    start_datetime = test_item["properties"]["start_datetime"]
+    end_datetime = test_item["properties"]["end_datetime"]
+
+    cql2_start_equal = {
+        "filter-lang": "cql2-json",
+        "filter": {"op": "=", "args": [{"property": "start_datetime"}, start_datetime]},
+    }
+    resp = await app_client.post("/search", json=cql2_start_equal)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert resp_json["features"][0]["id"] == test_item["id"]
+
+    later_start = "2020-02-09T12:30:22Z"
+    cql2_start_lte = {
+        "filter-lang": "cql2-json",
+        "filter": {"op": "<=", "args": [{"property": "start_datetime"}, later_start]},
+    }
+    resp = await app_client.post("/search", json=cql2_start_lte)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert resp_json["features"][0]["id"] == test_item["id"]
+
+    earlier_start = "2020-02-07T12:30:22Z"
+    cql2_start_gte = {
+        "filter-lang": "cql2-json",
+        "filter": {"op": ">=", "args": [{"property": "start_datetime"}, earlier_start]},
+    }
+    resp = await app_client.post("/search", json=cql2_start_gte)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert resp_json["features"][0]["id"] == test_item["id"]
+
+    start_range_start = "2020-02-08T00:00:00Z"
+    start_range_end = "2020-02-09T00:00:00Z"
+    cql2_start_between = {
+        "filter-lang": "cql2-json",
+        "filter": {
+            "op": "and",
+            "args": [
+                {
+                    "op": ">=",
+                    "args": [{"property": "start_datetime"}, start_range_start],
+                },
+                {"op": "<=", "args": [{"property": "start_datetime"}, start_range_end]},
+            ],
+        },
+    }
+    resp = await app_client.post("/search", json=cql2_start_between)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert resp_json["features"][0]["id"] == test_item["id"]
+
+    cql2_end_equal = {
+        "filter-lang": "cql2-json",
+        "filter": {"op": "=", "args": [{"property": "end_datetime"}, end_datetime]},
+    }
+    resp = await app_client.post("/search", json=cql2_end_equal)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert resp_json["features"][0]["id"] == test_item["id"]
+
+    later_end = "2020-02-17T12:30:22Z"
+    cql2_end_lte = {
+        "filter-lang": "cql2-json",
+        "filter": {"op": "<=", "args": [{"property": "end_datetime"}, later_end]},
+    }
+    resp = await app_client.post("/search", json=cql2_end_lte)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert resp_json["features"][0]["id"] == test_item["id"]
+
+    earlier_end = "2020-02-15T12:30:22Z"
+    cql2_end_gte = {
+        "filter-lang": "cql2-json",
+        "filter": {"op": ">=", "args": [{"property": "end_datetime"}, earlier_end]},
+    }
+    resp = await app_client.post("/search", json=cql2_end_gte)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert resp_json["features"][0]["id"] == test_item["id"]
+
+    end_range_start = "2020-02-16T00:00:00Z"
+    end_range_end = "2020-02-17T00:00:00Z"
+    cql2_end_between = {
+        "filter-lang": "cql2-json",
+        "filter": {
+            "op": "and",
+            "args": [
+                {"op": ">=", "args": [{"property": "end_datetime"}, end_range_start]},
+                {"op": "<=", "args": [{"property": "end_datetime"}, end_range_end]},
+            ],
+        },
+    }
+    resp = await app_client.post("/search", json=cql2_end_between)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert resp_json["features"][0]["id"] == test_item["id"]
+
+    cql2_start_end_range = {
+        "filter-lang": "cql2-json",
+        "filter": {
+            "op": "and",
+            "args": [
+                {
+                    "op": ">=",
+                    "args": [{"property": "start_datetime"}, "2020-02-07T12:30:22Z"],
+                },
+                {
+                    "op": "<=",
+                    "args": [{"property": "end_datetime"}, "2020-02-17T12:30:22Z"],
+                },
+            ],
+        },
+    }
+    resp = await app_client.post("/search", json=cql2_start_end_range)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert resp_json["features"][0]["id"] == test_item["id"]
+
+
+@pytest.mark.asyncio
+async def test_select_indexes(txn_client, load_test_data):
+    """Run select_indexes test."""
+
+    database = txn_client.database
+    index_selector = database.async_index_selector
+
+    collection = load_test_data("test_collection.json")
+    collection_id = "test-collection-1"
+    collection["id"] = collection_id
+
+    test_item = load_test_data("test_item.json")
+    test_item["id"] = "test-item-1"
+
+    result = await index_selector.select_indexes(
+        ["test-collection-1"],
+        {"gte": "2024-01-01T00:00:00Z", "lte": "2024-12-31T23:59:59Z"},
+    )
+
+    assert result is not None
+    assert result == "items_test-collection-1"
+
+
 async def test_hidden_item_true(app_client, txn_client, load_test_data):
     """Test item with hidden=true is filtered out."""
 
