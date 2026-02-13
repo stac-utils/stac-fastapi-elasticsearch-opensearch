@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional, Tuple, Type
 import attr
 import orjson
 from fastapi import HTTPException
-from opensearchpy import exceptions, helpers
+from opensearchpy import RequestError, exceptions, helpers
 from opensearchpy.helpers.query import Q
 from opensearchpy.helpers.search import Search
 from starlette.requests import Request
@@ -332,23 +332,24 @@ class DatabaseLogic(BaseDatabaseLogic):
                 else {"bool": {"must": query_parts}}
             )
 
-        # Create async tasks for both search and count
-        search_task = asyncio.create_task(
-            self.client.search(
-                index=COLLECTIONS_INDEX,
-                body=body,
+        # Wait for search task to complete
+        try:
+            response = await self.client.search(index=COLLECTIONS_INDEX, body=body)
+        except RequestError as e:
+            # Catch ES 400 errors and return HTTP 400 with the actual DB reason
+            # e.g., "Fielddata is disabled on text fields in [title]"
+            raise HTTPException(
+                status_code=400,
+                detail=f"Search request error: {e.info.get('error', {}).get('reason', str(e))}",
             )
-        )
 
+        # Create async tasks for count
         count_task = asyncio.create_task(
             self.client.count(
                 index=COLLECTIONS_INDEX,
                 body={"query": body.get("query", {"match_all": {}})},
             )
         )
-
-        # Wait for search task to complete
-        response = await search_task
 
         hits = response["hits"]["hits"]
         collections = [
