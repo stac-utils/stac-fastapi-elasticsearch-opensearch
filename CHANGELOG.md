@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Added Sentry SDK integration for error tracking, performance monitoring, and release tracking with configuration via environment variables. [#601](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/601)
+
 ### Changed
 
 ### Fixed
