@@ -55,18 +55,22 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
         return await self.alias_loader.refresh_aliases()
 
     async def get_collection_indexes(
-        self, collection_id: str
+        self, collection_id: str, use_cache: bool = True
     ) -> List[tuple[dict[str, str]]]:
         """Get all index aliases for a specific collection.
 
         Args:
             collection_id (str): The ID of the collection to retrieve indexes for.
+            use_cache (bool): If True, use Redis cache (search path).
+                If False, load fresh from search engine (insertion path).
 
         Returns:
             List[tuple[dict[str, str]]]: List of index aliases associated with the collection.
                 Returns empty list if collection is not found in cache.
         """
-        return await self.alias_loader.get_collection_indexes(collection_id)
+        return await self.alias_loader.get_collection_indexes(
+            collection_id, use_cache=use_cache
+        )
 
     async def select_indexes(
         self,
@@ -97,7 +101,9 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
         if collection_ids:
             selected_indexes = []
             for collection_id in collection_ids:
-                collection_indexes = await self.get_collection_indexes(collection_id)
+                collection_indexes = await self.get_collection_indexes(
+                    collection_id, use_cache=not for_insertion
+                )
                 filtered_indexes = filter_indexes_by_datetime(
                     collection_indexes, datetime_filters, self.use_datetime
                 )

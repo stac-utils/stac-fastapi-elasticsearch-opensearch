@@ -1000,6 +1000,9 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         # Convert Pydantic model to dict for uniform processing
         item_dict = item.model_dump(mode="json")
 
+        # Check if Redis queue is enabled for async item processing
+        use_queue = get_bool_env("ENABLE_REDIS_QUEUE", default=False)
+
         # Handle FeatureCollection (bulk insert)
         if item_dict["type"] == "FeatureCollection":
             bulk_client = BulkTransactionsClient(
@@ -1031,6 +1034,22 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             if not processed_items:
                 return f"No items to insert. {skipped} items were skipped (duplicates)."
 
+            if use_queue:
+                from stac_fastapi.core.redis_utils import AsyncRedisQueueManager
+
+                queue_manager = await AsyncRedisQueueManager.create()
+                try:
+                    queue_len = await queue_manager.queue_items(
+                        collection_id, processed_items
+                    )
+                    logger.info(
+                        f"Queued {len(processed_items)} items for collection '{collection_id}'. "
+                        f"Queue length: {queue_len}"
+                    )
+                    return f"Successfully queued {len(processed_items)} items for processing."
+                finally:
+                    await queue_manager.close()
+
             success, errors = await self.database.bulk_async(
                 collection_id=collection_id,
                 processed_items=processed_items,
@@ -1046,7 +1065,31 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 )
             return f"Successfully added {success} Items. {skipped} skipped (duplicates). {attempted - success} errors occurred."
 
-        # Handle single item
+        if use_queue:
+            from stac_fastapi.core.redis_utils import AsyncRedisQueueManager
+
+            bulk_client = BulkTransactionsClient(
+                database=self.database, settings=self.settings
+            )
+            processed_item = bulk_client.preprocess_item(
+                item_dict, base_url, BulkTransactionMethod.INSERT
+            )
+
+            queue_manager = await AsyncRedisQueueManager.create()
+            try:
+                queue_len = await queue_manager.queue_items(
+                    collection_id, processed_item
+                )
+                logger.info(
+                    f"Queued item '{item_dict.get('id')}' for collection '{collection_id}'. "
+                    f"Queue length: {queue_len}"
+                )
+                return (
+                    f"Successfully queued item '{item_dict.get('id')}' for processing."
+                )
+            finally:
+                await queue_manager.close()
+
         await self.database.create_item(
             item_dict, base_url=base_url, exist_ok=False, **kwargs
         )
@@ -1071,17 +1114,42 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             NotFound: If the specified collection is not found in the database.
 
         """
-        item = item.model_dump(mode="json")
+        item_dict = item.model_dump(mode="json")
         base_url = str(kwargs["request"].base_url)
 
         now = datetime_type.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        item["properties"]["updated"] = now
+        item_dict["properties"]["updated"] = now
+
+        use_queue = get_bool_env("ENABLE_REDIS_QUEUE", default=False)
+
+        if use_queue:
+            from stac_fastapi.core.redis_utils import AsyncRedisQueueManager
+
+            bulk_client = BulkTransactionsClient(
+                database=self.database, settings=self.settings
+            )
+            processed_item = bulk_client.preprocess_item(
+                item_dict, base_url, BulkTransactionMethod.UPSERT
+            )
+
+            queue_manager = await AsyncRedisQueueManager.create()
+            try:
+                queue_len = await queue_manager.queue_items(
+                    collection_id, processed_item
+                )
+                logger.info(
+                    f"Queued update for item '{item_id}' in collection '{collection_id}'. "
+                    f"Queue length: {queue_len}"
+                )
+            finally:
+                await queue_manager.close()
+
+            return ItemSerializer.db_to_stac(item_dict, base_url)
 
         await self.database.create_item(
-            item, base_url=base_url, exist_ok=True, **kwargs
+            item_dict, base_url=base_url, exist_ok=True, **kwargs
         )
-
-        return ItemSerializer.db_to_stac(item, base_url)
+        return ItemSerializer.db_to_stac(item_dict, base_url)
 
     @overrides
     async def patch_item(

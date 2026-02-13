@@ -55,6 +55,7 @@ class IndexSizeManager:
         Returns:
             bool: True if index exceeds size limit, False otherwise.
         """
+        await self.client.indices.refresh(index=index_name)
         stats = await self.client.indices.stats(index=index_name)
 
         total_size_bytes = 0
