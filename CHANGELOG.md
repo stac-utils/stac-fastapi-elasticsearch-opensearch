@@ -15,8 +15,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
-- Fixed `ES_API_KEY` authentication, which was non-functional. The previous implementation set an `x-api-key` header, which is not recognized by Elasticsearch. Now uses the native `api_key` parameter in elasticsearch-py, which correctly sends the `Authorization: ApiKey` header. Also prevents `ValueError` when both API key and basic auth environment variables are set.
-
 ### Removed
 
 ### Updated
