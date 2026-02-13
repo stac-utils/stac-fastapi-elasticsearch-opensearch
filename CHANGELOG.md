@@ -13,11 +13,15 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
-- Fixed `ES_API_KEY` authentication, which was non-functional. The previous implementation set an `x-api-key` header, which is not recognized by Elasticsearch. Now uses the native `api_key` parameter in elasticsearch-py, which correctly sends the `Authorization: ApiKey` header. Also prevents `ValueError` when both API key and basic auth environment variables are set.
-
 ### Removed
 
 ### Updated
+
+[v6.10.2] - 2026-02-10
+
+### Fixed
+
+- Fixed `ES_API_KEY` authentication, which was non-functional. The previous implementation set an `x-api-key` header, which is not recognized by Elasticsearch. Now uses the native `api_key` parameter in elasticsearch-py, which correctly sends the `Authorization: ApiKey` header. Also prevents `ValueError` when both API key and basic auth environment variables are set. [#598](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/598)
 
 ## [v6.10.1] - 2026-02-04
 
@@ -744,7 +748,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.10.1...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.10.2...main
+[v6.10.2]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.10.1...v6.10.2
 [v6.10.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.10.0...v6.10.1
 [v6.10.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.9.0...v6.10.0
 [v6.9.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.8.1...v6.9.0
