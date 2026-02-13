@@ -66,6 +66,7 @@ if sentry_enable:
         dsn=os.getenv("SENTRY_DSN"),
         environment=os.getenv("SENTRY_ENVIRONMENT", "staging"),
         traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "1.0")),
+        ca_certs=os.getenv("SENTRY_CA_CERTS"),
     )
 
 logging.basicConfig(level=logging.INFO)
