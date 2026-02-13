@@ -14,14 +14,41 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 
-- Added `PUT /catalogs/{catalog_id}` endpoint to update existing catalogs. Allows modification of catalog metadata (title, description, etc.) while preserving internal fields like parent_ids and catalog relationships. [#573](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/673)
-- Added catalog poly-hierarchy support with hierarchical catalog endpoints (`GET /catalogs/{catalog_id}/catalogs` and `POST /catalogs/{catalog_id}/catalogs`), enabling unlimited nesting levels and allowing catalogs to belong to multiple parent catalogs simultaneously. Includes cursor-based pagination and performance optimizations. [#573](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/573)
-
 ### Fixed
 
 ### Removed
 
 ### Updated
+
+[v6.10.2] - 2026-02-10
+
+### Fixed
+
+- Fixed `ES_API_KEY` authentication, which was non-functional. The previous implementation set an `x-api-key` header, which is not recognized by Elasticsearch. Now uses the native `api_key` parameter in elasticsearch-py, which correctly sends the `Authorization: ApiKey` header. Also prevents `ValueError` when both API key and basic auth environment variables are set. [#598](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/598)
+
+## [v6.10.1] - 2026-02-04
+
+### Changed
+
+- Updated catalog documentation to clarify that all catalogs use flat canonical endpoints (`/catalogs/{catalog_id}`) regardless of hierarchy depth. Nested routes like `/catalogs/id1/catalogs/id2` are not supported. Child discovery uses `/catalogs/{catalog_id}/catalogs` which returns links to canonical endpoints. [#596](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/596)
+
+### Fixed
+
+- Fixed bulk_sync_prep_create_item to properly detect duplicates across indexes. [#575](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/575)
+- Fixed end_datetime selection when splitting indices in a datetime-based indexing strategy. [#591](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/591)
+
+## [v6.10.0] - 2026-01-22
+
+### Added
+
+- Added Helm chart for ES or OS in-cluster deployment [#455](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/455)
+- Added configurable hidden item filtering via HIDE_ITEM_PATH environment variable. [#566](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/566)
+
+### Changed
+
+- Added `PUT /catalogs/{catalog_id}` endpoint to update existing catalogs. Allows modification of catalog metadata (title, description, etc.) while preserving internal fields like parent_ids and catalog relationships. [#573](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/573)
+- Added catalog poly-hierarchy support with hierarchical catalog endpoints (`GET /catalogs/{catalog_id}/catalogs` and `POST /catalogs/{catalog_id}/catalogs`), enabling unlimited nesting levels and allowing catalogs to belong to multiple parent catalogs simultaneously. Includes cursor-based pagination and performance optimizations. [#573](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/573)
+- Added end_datetime alias for datetime-based indexes with use_datetime=false, so that start_datetime/end_datetime queries select a smaller range of indexes (limiting the end) [#537](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/537)
 
 ## [v6.9.0] - 2026-01-09
 
@@ -724,7 +751,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.9.0...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.10.2...main
+[v6.10.2]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.10.1...v6.10.2
+[v6.10.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.10.0...v6.10.1
+[v6.10.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.9.0...v6.10.0
 [v6.9.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.8.1...v6.9.0
 [v6.8.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.8.0...v6.8.1
 [v6.8.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.7.6...v6.8.0

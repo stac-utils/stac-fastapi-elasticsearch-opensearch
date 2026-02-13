@@ -36,7 +36,13 @@ from .catalogs import (
     search_sub_catalogs_with_pagination_shared,
     update_catalog_in_index_shared,
 )
-from .datetime import extract_date, extract_first_date_from_index, return_date
+from .datetime import (
+    extract_date,
+    extract_first_date_from_index,
+    extract_last_date_from_index,
+    is_index_closed,
+    return_date,
+)
 from .document import mk_actions, mk_item_id
 from .index import (
     create_index_templates_shared,
@@ -54,7 +60,14 @@ from .query import (
     apply_intersects_filter_shared,
     populate_sort_shared,
 )
-from .utils import add_bbox_shape_to_collection, get_bool_env, validate_refresh
+from .utils import (
+    ItemAlreadyExistsError,
+    add_bbox_shape_to_collection,
+    check_item_exists_in_alias,
+    check_item_exists_in_alias_sync,
+    get_bool_env,
+    validate_refresh,
+)
 
 __all__ = [
     # Catalog operations
@@ -84,8 +97,14 @@ __all__ = [
     "validate_refresh",
     "get_bool_env",
     "add_bbox_shape_to_collection",
+    "check_item_exists_in_alias",
+    "check_item_exists_in_alias_sync",
+    # Errors
+    "ItemAlreadyExistsError",
     # Datetime utilities
     "return_date",
     "extract_date",
     "extract_first_date_from_index",
+    "extract_last_date_from_index",
+    "is_index_closed",
 ]
