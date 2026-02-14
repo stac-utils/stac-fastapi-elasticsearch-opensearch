@@ -133,6 +133,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
   - [Aggregation](#aggregation)
   - [Rate Limiting](#rate-limiting)
   - [Hidden Items Filtering](#hidden-items-filtering)
+  - [Error Monitoring with Sentry](#error-monitoring-with-sentry)
 
 ## Documentation & Resources
 
@@ -1452,3 +1453,15 @@ The following item will be excluded from returned results:
     }
   }
   ```
+
+## Error Monitoring with Sentry
+
+Optional integration with Sentry for error tracking, performance monitoring, and release tracking. When enabled, Sentry provides real-time insights into application errors, performance bottlenecks, and deployment health.
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SENTRY_ENABLE` | Enable Sentry integration for error tracking and performance monitoring | `false` |
+| `SENTRY_DSN` | Sentry Data Source Name (DSN) for your project | `None` |
+| `SENTRY_ENVIRONMENT` | Deployment environment (production, staging, development) | `staging` |
+| `SENTRY_TRACES_SAMPLE_RATE` | Percentage of transactions to sample for performance monitoring (0.0 to 1.0) | `0.1` |
+| `SENTRY_CA_CERTS` | Path to a certificate used to validate SSL/TLS connections to Sentry (useful in private networks or when using internal certificate authorities) | `None` |
