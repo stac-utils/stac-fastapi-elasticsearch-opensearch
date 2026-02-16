@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 
+- Updated database_logic by removing the hard coded sortable_fields and delegating schema validation to the database. Error handling is included if sorting is requested with invalid fields or bad query syntax is used. [#582](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/582)
+
 ### Fixed
 
 ### Removed
@@ -796,4 +798,3 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 [v0.3.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v0.2.0...v0.3.0
 [v0.2.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v0.1.0...v0.2.0
 [v0.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v0.1.0
-
