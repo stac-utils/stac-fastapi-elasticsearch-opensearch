@@ -60,17 +60,13 @@ def to_es(queryables_mapping: dict[str, Any], query: dict[str, Any]) -> dict[str
             LogicalOp.OR: "should",
             LogicalOp.NOT: "must_not",
         }[query["op"]]
-        queries = [
-            {
-                "bool": {
-                    bool_type: [
-                        sq
-                        for sub_query in query["args"]
-                        for sq in to_es(queryables_mapping, sub_query)
-                    ]
-                }
+        return {
+            "bool": {
+                bool_type: [
+                    to_es(queryables_mapping, sub_query) for sub_query in query["args"]
+                ]
             }
-        ]
+        }
 
     elif query["op"] in [
         ComparisonOp.EQ,
