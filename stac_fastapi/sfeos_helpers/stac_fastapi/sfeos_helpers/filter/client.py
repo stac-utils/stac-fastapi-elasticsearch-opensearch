@@ -150,6 +150,7 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
             # and not require expressions to prefix them with properties,
             # e.g., eo:cloud_cover instead of properties.eo:cloud_cover.
             field_name = field_fqn.removeprefix("properties.")
+            field_name = field_fqn.removeprefix("assets.")
 
             # Generate field properties
             field_result = ALL_QUERYABLES.get(field_name, {}).copy()

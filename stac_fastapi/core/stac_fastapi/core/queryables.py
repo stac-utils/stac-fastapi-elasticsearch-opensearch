@@ -3,7 +3,7 @@
 import asyncio
 import os
 import time
-from typing import Any, Dict, List, Set
+from typing import Any
 
 from fastapi import HTTPException
 
@@ -19,8 +19,8 @@ class QueryablesCache:
             database_logic: An instance of a class with a `get_queryables_mapping` method.
         """
         self._db_logic = database_logic
-        self._cache: Dict[str, List[str]] = {}
-        self._all_queryables: Set[str] = set()
+        self._cache: dict[str, list[str]] = {}
+        self._all_queryables: set[str] = set()
         self._last_updated: float = 0
         self._lock = asyncio.Lock()
         self.validation_enabled: bool = False
@@ -51,7 +51,7 @@ class QueryablesCache:
             self._cache = {"*": list(all_queryables_set)}
             self._last_updated = time.time()
 
-    async def get_all_queryables(self) -> Set[str]:
+    async def get_all_queryables(self) -> set[str]:
         """
         Return a set of all queryable attributes across all collections.
 
@@ -64,7 +64,7 @@ class QueryablesCache:
             await self._update_cache()
         return self._all_queryables
 
-    async def validate(self, fields: Set[str]) -> None:
+    async def validate(self, fields: set[str]) -> None:
         """
         Validate if the provided fields are queryable.
 
@@ -84,13 +84,13 @@ class QueryablesCache:
             )
 
 
-def get_properties_from_cql2_filter(cql2_filter: Dict[str, Any]) -> Set[str]:
+def get_properties_from_cql2_filter(cql2_filter: dict[str, Any]) -> set[str]:
     """Recursively extract property names from a CQL2 filter.
 
-    Property names are normalized by stripping the 'properties.' prefix
-    if present, to match queryables stored without the prefix.
+    Property names are normalized by stripping the 'properties.' and 'assets.'
+    prefix if present, to match queryables stored without the prefix.
     """
-    props: Set[str] = set()
+    props: set[str] = set()
     if "op" in cql2_filter and "args" in cql2_filter:
         for arg in cql2_filter["args"]:
             if isinstance(arg, dict):
@@ -98,8 +98,8 @@ def get_properties_from_cql2_filter(cql2_filter: Dict[str, Any]) -> Set[str]:
                     props.update(get_properties_from_cql2_filter(arg))
                 elif "property" in arg:
                     prop_name = arg["property"]
-                    # Strip 'properties.' prefix if present
-                    if prop_name.startswith("properties."):
-                        prop_name = prop_name[11:]
+                    # Strip 'properties.' and 'assets.' prefix if present
+                    prop_name = prop_name.removeprefix("properties.")
+                    prop_name = prop_name.removeprefix("assets.")
                     props.add(prop_name)
     return props
