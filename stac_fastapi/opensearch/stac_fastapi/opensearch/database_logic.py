@@ -332,6 +332,14 @@ class DatabaseLogic(BaseDatabaseLogic):
                 else {"bool": {"must": query_parts}}
             )
 
+        # Create async tasks for count
+        count_task = asyncio.create_task(
+            self.client.count(
+                index=COLLECTIONS_INDEX,
+                body={"query": body.get("query", {"match_all": {}})},
+            )
+        )
+
         # Wait for search task to complete
         try:
             response = await self.client.search(index=COLLECTIONS_INDEX, body=body)
@@ -342,14 +350,6 @@ class DatabaseLogic(BaseDatabaseLogic):
                 status_code=400,
                 detail=f"Search request error: {e.info.get('error', {}).get('reason', str(e))}",
             )
-
-        # Create async tasks for count
-        count_task = asyncio.create_task(
-            self.client.count(
-                index=COLLECTIONS_INDEX,
-                body={"query": body.get("query", {"match_all": {}})},
-            )
-        )
 
         hits = response["hits"]["hits"]
         collections = [
