@@ -9,15 +9,23 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Added Sentry SDK integration for error tracking, performance monitoring, and release tracking with configuration via environment variables. [#601](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/601)
+
 ### Changed
 
-### Fixed
+- Updated database_logic by removing the hard coded sortable_fields and delegating schema validation to the database. Error handling is included if sorting is requested with invalid fields or bad query syntax is used. [#582](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/582)
 
-- Fixed `ES_API_KEY` authentication, which was non-functional. The previous implementation set an `x-api-key` header, which is not recognized by Elasticsearch. Now uses the native `api_key` parameter in elasticsearch-py, which correctly sends the `Authorization: ApiKey` header. Also prevents `ValueError` when both API key and basic auth environment variables are set.
+### Fixed
 
 ### Removed
 
 ### Updated
+
+[v6.10.2] - 2026-02-10
+
+### Fixed
+
+- Fixed `ES_API_KEY` authentication, which was non-functional. The previous implementation set an `x-api-key` header, which is not recognized by Elasticsearch. Now uses the native `api_key` parameter in elasticsearch-py, which correctly sends the `Authorization: ApiKey` header. Also prevents `ValueError` when both API key and basic auth environment variables are set. [#598](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/598)
 
 ## [v6.10.1] - 2026-02-04
 
@@ -744,7 +752,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.10.1...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.10.2...main
+[v6.10.2]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.10.1...v6.10.2
 [v6.10.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.10.0...v6.10.1
 [v6.10.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.9.0...v6.10.0
 [v6.9.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.8.1...v6.9.0
@@ -789,4 +798,3 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 [v0.3.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v0.2.0...v0.3.0
 [v0.2.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v0.1.0...v0.2.0
 [v0.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v0.1.0
-
