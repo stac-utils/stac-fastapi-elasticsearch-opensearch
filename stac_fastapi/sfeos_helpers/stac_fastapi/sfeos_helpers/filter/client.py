@@ -53,6 +53,11 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
             else:
                 result.add(f"properties.{field}")
 
+            if field.startswith("assets."):
+                result.add(field.removeprefix("assets."))
+            else:
+                result.add(f"assets.{field}")
+
         return result
 
     @staticmethod
@@ -146,11 +151,10 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
             if not field_type or not field_def.get("enabled", True):
                 continue
 
-            # Fields in Item Properties should be exposed with their un-prefixed names,
-            # and not require expressions to prefix them with properties,
-            # e.g., eo:cloud_cover instead of properties.eo:cloud_cover.
-            field_name = field_fqn.removeprefix("properties.")
-            field_name = field_fqn.removeprefix("assets.")
+            # Fields in Item Properties or assets should be exposed with their
+            # un-prefixed names, and not require expressions to prefixthem ,e.g.,
+            # eo:cloud_cover instead of properties.eo:cloud_cover or assets.eo:cloud_cover.
+            field_name = field_fqn.removeprefix("properties.").removeprefix("assets.")
 
             # Generate field properties
             field_result = ALL_QUERYABLES.get(field_name, {}).copy()

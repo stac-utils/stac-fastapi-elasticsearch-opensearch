@@ -29,13 +29,15 @@ def to_es_field(queryables_mapping: dict[str, Any], field: str) -> list[str]:
     # If field has 'properties.' prefix, try without it
     # This handles cases where users specify 'properties.eo:cloud_cover'
     # but queryables_mapping uses 'eo:cloud_cover' as the key
-    if normalized_field := field.removeprefix("properties."):
+    if field.startswith("properties."):
+        normalized_field = field.removeprefix("properties.")
         if normalized_field in queryables_mapping:
-            return queryables_mapping[normalized_field]
+            return [field]
 
-    if normalized_field := field.removeprefix("assets."):
+    if field.startswith("assets."):
+        normalized_field = field.removeprefix("assets.")
         if normalized_field in queryables_mapping:
-            return queryables_mapping[normalized_field]
+            return [field]
 
     # If not found, return the original field
     return [field]

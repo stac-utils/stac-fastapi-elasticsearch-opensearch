@@ -18,6 +18,13 @@ async def test_get_queryables_mapping_shared_simple():
                         "properties": {
                             "datetime": {"type": "date"},
                             "eo:cloud_cover": {"type": "float"},
+                            "eo:snow_cover": {"type": "float"},
+                        }
+                    },
+                    "assets": {
+                        "properties": {
+                            "role": {"type": "keyword"},
+                            "eo:snow_cover": {"type": "float"},
                         }
                     },
                 }
@@ -28,13 +35,19 @@ async def test_get_queryables_mapping_shared_simple():
     result = await get_queryables_mapping_shared(mappings)
 
     assert "id" in result
-    assert result["id"] == "id"
+    assert result["id"] == ["id"]
     assert "collection" in result
-    assert result["collection"] == "collection"
+    assert result["collection"] == ["collection"]
     assert "datetime" in result
-    assert result["datetime"] == "properties.datetime"
+    assert result["datetime"] == ["properties.datetime"]
     assert "eo:cloud_cover" in result
-    assert result["eo:cloud_cover"] == "properties.eo:cloud_cover"
+    assert result["eo:cloud_cover"] == ["properties.eo:cloud_cover"]
+    assert "eo:snow_cover" in result
+    assert result["role"] == ["assets.role"]
+    assert "eo:snow_cover" in result
+    assert len(result["eo:snow_cover"]) == 2
+    assert "properties.eo:snow_cover" in result["eo:snow_cover"]
+    assert "properties.eo:snow_cover" in result["eo:snow_cover"]
 
 
 @pytest.mark.asyncio
@@ -69,19 +82,17 @@ async def test_get_queryables_mapping_shared_nested_properties():
 
     # Check that nested properties are properly traversed
     assert "processing:software.eometadatatool" in result
-    assert (
-        result["processing:software.eometadatatool"]
-        == "properties.processing:software.eometadatatool"
-    )
+    assert result["processing:software.eometadatatool"] == [
+        "properties.processing:software.eometadatatool"
+    ]
     assert "processing:software.version" in result
-    assert (
-        result["processing:software.version"]
-        == "properties.processing:software.version"
-    )
+    assert result["processing:software.version"] == [
+        "properties.processing:software.version"
+    ]
 
     # Regular properties should still work
     assert "eo:cloud_cover" in result
-    assert result["eo:cloud_cover"] == "properties.eo:cloud_cover"
+    assert result["eo:cloud_cover"] == ["properties.eo:cloud_cover"]
 
 
 @pytest.mark.asyncio
@@ -110,7 +121,7 @@ async def test_get_queryables_mapping_shared_deeply_nested():
     result = await get_queryables_mapping_shared(mappings)
 
     assert "level1.level2.level3" in result
-    assert result["level1.level2.level3"] == "properties.level1.level2.level3"
+    assert result["level1.level2.level3"] == ["properties.level1.level2.level3"]
 
 
 @pytest.mark.asyncio

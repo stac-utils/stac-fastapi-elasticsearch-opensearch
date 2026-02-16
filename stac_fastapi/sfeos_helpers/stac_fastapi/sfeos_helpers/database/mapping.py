@@ -47,6 +47,11 @@ def _get_excluded_from_queryables() -> set[str]:
         else:
             result.add(f"properties.{field}")
 
+        if field.startswith("assets."):
+            result.add(field.removeprefix("assets."))
+        else:
+            result.add(f"assets.{field}")
+
     return result
 
 
@@ -104,8 +109,7 @@ async def get_queryables_mapping_shared(
             ):
                 continue
 
-            field_name = field_fqn.removeprefix("properties.")
-            field_name = field_fqn.removeprefix("assets.")
+            field_name = field_fqn.removeprefix("properties.").removeprefix("assets.")
 
             queryables_mapping[field_name].append(field_fqn)
 
