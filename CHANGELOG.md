@@ -7,17 +7,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
-### Changed
-
-- Updated database_logic by removing the hard coded sortable_fields and delegating schema validation to the database. Error handling is included if sorting is requested with invalid fields or bad query syntax is used. [#582](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/582)
-
-## [Unreleased]
-
 ### Added
 
 - Added Sentry SDK integration for error tracking, performance monitoring, and release tracking with configuration via environment variables. [#601](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/601)
 
 ### Changed
+
+- Updated database_logic by removing the hard coded sortable_fields and delegating schema validation to the database. Error handling is included if sorting is requested with invalid fields or bad query syntax is used. [#582](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/582)
 
 ### Fixed
 
