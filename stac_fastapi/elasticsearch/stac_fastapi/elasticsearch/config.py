@@ -40,21 +40,17 @@ def _es_config() -> Dict[str, Any]:
 
     # Handle API key
     if api_key := os.getenv("ES_API_KEY"):
-        if isinstance(config["headers"], dict):
-            headers = {**config["headers"], "x-api-key": api_key}
-
-        else:
-            config["headers"] = {"x-api-key": api_key}
-
-        config["headers"] = headers
+        config["api_key"] = api_key
 
     http_compress = get_bool_env("ES_HTTP_COMPRESS", default=True)
     if http_compress:
         config["http_compress"] = True
 
-    # Handle authentication
-    if (u := os.getenv("ES_USER")) and (p := os.getenv("ES_PASS")):
-        config["http_auth"] = (u, p)
+    # Handle basic authentication (skip when API key is configured to avoid
+    # ValueError from elasticsearch-py which rejects multiple auth methods)
+    if "api_key" not in config:
+        if (u := os.getenv("ES_USER")) and (p := os.getenv("ES_PASS")):
+            config["http_auth"] = (u, p)
 
     # Include timeout setting if set
     if request_timeout := os.getenv("ES_TIMEOUT"):

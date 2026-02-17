@@ -1,0 +1,188 @@
+stages:
+  - build
+  - tests
+#  - tag_check
+  - deploy_dev
+  - deploy_staging
+  - deploy_prod
+
+variables:
+  VAULT_ADDR: https://vault.intra.cloudferro.com
+  VAULT_ROLE: stac-gitlab-role
+  ARGOCD_URL: "argocd.apps.general-01.waw3-2.staging.intra.cloudferro.com"
+  ARGOCD_APP_TIMEOUT: "300"
+
+include:
+  - project: devops/CD/vault-integration
+    ref: master
+    file: template.yml
+  - project: devops/GitlabCI-Templates
+    ref: k8s-argocd-1.2.1
+    file: templates/kubernetes/argocd/.argocd-cli.yml
+
+build:
+  stage: build
+  script: ./ci/build.sh
+  tags:
+    - kubernetes
+  image:
+    name: registry-public.cloudferro.com/kaniko-project/executor:v1.9.2-debug
+    entrypoint: [ "" ]
+
+.test_job_template: &test_job_configuration
+  stage: tests
+  allow_failure: false
+  tags:
+    - kubernetes
+  when: on_success
+  before_script:
+    - ./ci/before_tests.sh
+
+.test_svc_template: &test_svc_configuration
+  <<: *test_job_configuration
+  services:
+    - name: opensearchproject/opensearch:2.19.3
+      alias: opensearch
+      variables:
+        cluster.name: "stac-cluster"
+        node.name: "os01"
+        network.host: "0.0.0.0"
+        transport.host: "0.0.0.0"
+        discovery.type: "single-node"
+        http.port: "9202"
+        http.cors.enabled: "true"
+        DISABLE_SECURITY_PLUGIN: "true"
+        DISABLE_INSTALL_DEMO_CONFIG: "true"
+        OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+        action.destructive_requires_name: "false"
+    - name: redis:7-alpine
+      alias: redis
+  variables:
+    ENVIRONMENT: "testing"
+    ES_HOST: "opensearch"
+    ES_PORT: "9202"
+    ES_USE_SSL: "false"
+    ES_VERIFY_CERTS: "false"
+    BACKEND: "opensearch"
+    DATABASE_REFRESH: "true"
+    REDIS_ENABLE: "true"
+    REDIS_HOST: "localhost"
+    REDIS_PORT: "6379"
+
+compliance:
+  <<: *test_job_configuration
+  image: python:3.11-slim
+  script: ./ci/compliance.sh
+
+pytest:
+  <<: *test_svc_configuration
+  image: python:3.14-slim
+  script:
+    - ./ci/pytest.sh
+
+pytest-datetime:
+  <<: *test_svc_configuration
+  image: python:3.14-slim
+  script:
+    - ./ci/pytest-datetime.sh
+
+.deploy_template: &deploy_configuration
+  image: registry.cloudferro.com/utils/docker_cache:alpine-latest
+  when: manual
+  allow_failure: false
+  tags:
+    - kubernetes
+
+.reload_template: &reload_configuration
+  <<: *deploy_configuration
+  id_tokens:
+    !reference [.id_tokens]
+  when: on_success
+  allow_failure: true
+  script:
+    - !reference [.vault_secrets, before_script]
+    - export ARGOCD_TOKEN=$(vault kv get -tls-skip-verify -field=ARGOCD_WAW3_2_STAGING_TOKEN secrets/stac/prod/argocd_staging)
+    - !reference [.argocd_cli, sync_and_wait_argocd_app]
+
+deploy-dev:
+  <<: *deploy_configuration
+  stage: deploy_dev
+  allow_failure: true
+  script: ./ci/deploy.sh dev/waw3-2-general-01-staging
+
+reload-dev:
+  <<: *reload_configuration
+  stage: deploy_dev
+  except:
+    - tags
+    - master
+  variables:
+    ARGOCD_APP_NAME: "waw3-2-gen-01-staging-dev-catalogue-stac-fastapi-os"
+  needs:
+    - job: deploy-dev
+
+deploy-qa:
+  <<: *deploy_configuration
+  stage: deploy_dev
+  except:
+    - tags
+    - master
+  allow_failure: true
+  script: ./ci/deploy.sh dev/waw3-2-general-01-staging-qa
+
+reload-qa:
+  <<: *reload_configuration
+  stage: deploy_dev
+  except:
+    - tags
+    - master
+  variables:
+    ARGOCD_APP_NAME: "waw3-2-gen-01-staging-dev-catalogue-stac-fastapi-os-qa"
+  needs:
+    - job: deploy-qa
+
+deploy-qa2:
+  <<: *deploy_configuration
+  stage: deploy_dev
+  except:
+    - tags
+    - master
+  allow_failure: true
+  script: ./ci/deploy.sh dev/waw3-2-general-01-staging-qa2
+
+reload-qa2:
+  <<: *reload_configuration
+  stage: deploy_dev
+  except:
+    - tags
+    - master
+  variables:
+    ARGOCD_APP_NAME: "waw3-2-gen-01-staging-dev-catalogue-stac-fastapi-os-qa2"
+  needs:
+    - job: deploy-qa2
+
+deploy-staging:
+  <<: *deploy_configuration
+  stage: deploy_staging
+#  only:
+#    - tags
+  script: ./ci/deploy.sh staging/waw3-2-general-01-staging
+
+reload-staging:
+  <<: *reload_configuration
+  stage: deploy_staging
+  except:
+    - tags
+    - master
+  variables:
+    ARGOCD_APP_NAME: "waw3-2-gen-01-staging-catalogue-stac-stac-fastapi-os"
+  needs:
+    - job: deploy-staging
+
+deploy-prod-creo:
+  <<: *deploy_configuration
+  stage: deploy_prod
+#  only:
+#    - tags
+  script:
+    - ./ci/deploy.sh prod/waw3-2-general-01 staging/staging-endure

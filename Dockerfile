@@ -1,4 +1,4 @@
-FROM python:3.13-slim
+FROM python:3.14-slim
 
 RUN apt-get update && apt-get install -y \
     build-essential \
@@ -11,12 +11,13 @@ COPY README.md .
 COPY stac_fastapi/core/pyproject.toml stac_fastapi/core/
 COPY stac_fastapi/sfeos_helpers/pyproject.toml stac_fastapi/sfeos_helpers/
 COPY stac_fastapi/opensearch/pyproject.toml stac_fastapi/opensearch/
+COPY scripts/ scripts/
 
 RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 
 COPY stac_fastapi/ stac_fastapi/
 
-RUN pip install --no-cache-dir ./stac_fastapi/core[redis]
+RUN pip install --no-cache-dir ./stac_fastapi/core[redis,sentry]
 RUN pip install --no-cache-dir ./stac_fastapi/sfeos_helpers
 RUN pip install --no-cache-dir ./stac_fastapi/opensearch[server,redis]
 

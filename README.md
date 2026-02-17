@@ -418,9 +418,15 @@ To link an **existing** Catalog or Collection to a new parent, simply `POST` it 
 2. **If YES (Link):** The API adds the new parent to the resource's `parent_ids` list. No data is duplicated.
 3. **If NO (Create):** The API creates a new resource.
 
+#### Important: Flat Catalog URL Structure
+
+All catalogs are accessed via the **flat canonical endpoint** `/catalogs/{catalog_id}`, regardless of their position in the hierarchy. Nested routes like `/catalogs/id1/catalogs/id2` are **not supported**. This ensures consistent, cacheable URLs regardless of catalog depth or parent relationships.
+
+To discover a catalog's children, use `/catalogs/{catalog_id}/catalogs` or `/catalogs/{catalog_id}/children`, which returns links to the child catalogs' canonical endpoints.
+
 #### Example: Creating a "Forestry" Playlist
 
-Imagine you have an existing catalog `sentinel-2` stored under `providers/esa`. You want to create a curated "Forestry" catalog that includes this existing data.
+Imagine you have an existing catalog `sentinel-2`. You want to create a curated "Forestry" catalog that includes this existing data.
 
 ```bash
 # 1. Create the new Forestry catalog
@@ -445,13 +451,22 @@ curl -X POST "http://localhost:8081/catalogs/forestry/catalogs" \
     "description": "Sentinel-2 satellite imagery",
     "title": "Sentinel-2"
   }'
+
+# 3. Access the sentinel-2 catalog via its canonical endpoint
+curl "http://localhost:8081/catalogs/sentinel-2"
+
+# 4. Discover sentinel-2 as a child of forestry
+curl "http://localhost:8081/catalogs/forestry/catalogs"
+# This returns links to /catalogs/sentinel-2 (canonical endpoint)
 ```
 
-**Result:** The sentinel-2 catalog is now accessible via both paths:
-- `/catalogs/providers/esa/catalogs/sentinel-2`
-- `/catalogs/forestry/catalogs/sentinel-2`
+**Result:** The sentinel-2 catalog now has multiple parents (including forestry). It is always accessed via its canonical endpoint:
+- `/catalogs/sentinel-2`
 
-Because you are linking the node (the Catalog), the entire sub-tree attached to that node is automatically shared. If sentinel-2 contains millions of items and sub-catalogs, they are all instantly visible under the new forestry path without needing to re-link individual items.
+You can discover it as a child of forestry via:
+- `/catalogs/forestry/catalogs` (lists sentinel-2 with a link to `/catalogs/sentinel-2`)
+
+Because you are linking the node (the Catalog), the entire sub-tree attached to that node is automatically shared. If sentinel-2 contains millions of items and sub-catalogs, they are all instantly visible under the new forestry parent without needing to re-link individual items.
 
 > **Configuration**: The catalogs route can be enabled or disabled by setting the `ENABLE_CATALOGS_ROUTE` environment variable to `true` or `false`. By default, this endpoint is **disabled**.
 

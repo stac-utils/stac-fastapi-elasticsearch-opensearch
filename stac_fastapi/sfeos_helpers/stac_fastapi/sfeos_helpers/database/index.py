@@ -165,7 +165,8 @@ def filter_indexes_by_datetime(
             datetime_alias if use_datetime else start_datetime_alias
         )
 
-        filtered_indexes.append(primary_datetime_alias)
+        if primary_datetime_alias is not None:
+            filtered_indexes.append(primary_datetime_alias)
 
     return filtered_indexes
 
