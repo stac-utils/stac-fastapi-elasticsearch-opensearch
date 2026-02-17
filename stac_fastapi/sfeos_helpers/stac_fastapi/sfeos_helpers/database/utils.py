@@ -494,7 +494,7 @@ def retry_on_datetime_not_found(func) -> Callable:
 
 
 def retry_on_connection_error(func) -> Callable:
-    """Retries on ConnectionError, ConnectionTimeout.
+    """Retries on ConnectionError, ConnectionTimeout etc.
 
     Args:
         func: The async function to be decorated.
