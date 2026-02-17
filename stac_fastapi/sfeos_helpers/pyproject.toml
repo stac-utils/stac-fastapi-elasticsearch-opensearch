@@ -30,7 +30,7 @@ keywords = [
 dynamic = ["version"]
 dependencies = [
     "tenacity~=9.1.2",
-    "stac-fastapi.core==6.10.0",
+    "stac-fastapi.core==6.10.1",
 ]
 
 [project.urls]
