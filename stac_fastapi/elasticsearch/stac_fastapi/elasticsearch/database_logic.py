@@ -212,13 +212,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         Returns:
             A tuple of (collections, next pagination token if any).
-
-        Raises:
-            HTTPException: If sorting is requested on a field that is not sortable.
         """
-        # Define sortable fields based on the ES_COLLECTIONS_MAPPINGS
-        sortable_fields = ["id", "extent.temporal.interval", "temporal"]
-
         # Format the sort parameter
         formatted_sort = []
         if sort:
@@ -226,14 +220,6 @@ class DatabaseLogic(BaseDatabaseLogic):
                 field = item.get("field")
                 direction = item.get("direction", "asc")
                 if field:
-                    # Validate that the field is sortable
-                    if field not in sortable_fields:
-                        raise HTTPException(
-                            status_code=400,
-                            detail=f"Field '{field}' is not sortable. Sortable fields are: {', '.join(sortable_fields)}. "
-                            + "Text fields are not sortable by default in Elasticsearch. "
-                            + "To make a field sortable, update the mapping to use 'keyword' type or add a '.keyword' subfield. ",
-                        )
                     formatted_sort.append({field: {"order": direction}})
             # Always include id as a secondary sort to ensure consistent pagination
             if not any("id" in item for item in formatted_sort):
@@ -350,14 +336,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 else {"bool": {"must": query_parts}}
             )
 
-        # Create async tasks for both search and count
-        search_task = asyncio.create_task(
-            self.client.search(
-                index=COLLECTIONS_INDEX,
-                body=body,
-            )
-        )
-
+        # Create async tasks for count
         count_task = asyncio.create_task(
             self.client.count(
                 index=COLLECTIONS_INDEX,
@@ -366,7 +345,15 @@ class DatabaseLogic(BaseDatabaseLogic):
         )
 
         # Wait for search task to complete
-        response = await search_task
+        try:
+            response = await self.client.search(index=COLLECTIONS_INDEX, body=body)
+        except BadRequestError as e:
+            # Catch ES 400 errors and return HTTP 400 with the actual DB reason
+            # e.g., "Fielddata is disabled on text fields in [title]"
+            raise HTTPException(
+                status_code=400,
+                detail=f"Search request error: {e.info.get('error', {}).get('reason', str(e))}",
+            )
 
         hits = response["hits"]["hits"]
         collections = [

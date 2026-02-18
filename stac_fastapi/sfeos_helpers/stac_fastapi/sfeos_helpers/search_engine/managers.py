@@ -2,7 +2,7 @@
 
 import logging
 import os
-from datetime import timedelta
+from datetime import date, timedelta
 from typing import Any, Dict, NamedTuple
 
 from dateutil import parser  # type: ignore
@@ -55,6 +55,7 @@ class IndexSizeManager:
         Returns:
             bool: True if index exceeds size limit, False otherwise.
         """
+        await self.client.indices.refresh(index=index_name)
         stats = await self.client.indices.stats(index=index_name)
 
         total_size_bytes = 0
@@ -397,6 +398,7 @@ class DatetimeIndexManager:
         product_datetimes: ProductDatetimes,
         latest_index_datetimes: ProductDatetimes | None,
         old_aliases: Dict[str, str],
+        is_first_split: bool = False,
     ) -> str:
         """Handle index that exceeds size limit asynchronously.
 
@@ -457,13 +459,32 @@ class DatetimeIndexManager:
                     + timedelta(days=1)
                 )
 
-            return await self.index_operations.create_datetime_index(
+            new_index_alias = await self.index_operations.create_datetime_index(
                 self.client,
                 collection_id,
                 start_datetime=str(latest_start_datetime_in_index + timedelta(days=1)),
                 datetime=None,
                 end_datetime=end_date,
             )
+
+            if is_first_split:
+                epoch_date = date(1970, 1, 11)
+                closed_start = extract_first_date_from_index(current_alias)
+                historical_end = closed_start - timedelta(days=1)
+
+                await self.index_operations.create_datetime_index(
+                    self.client,
+                    collection_id,
+                    start_datetime=f"{epoch_date}-{historical_end}",
+                    datetime=None,
+                    end_datetime=str(epoch_date),
+                )
+                logger.info(
+                    f"Created historical index for collection '{collection_id}' "
+                    f"covering {epoch_date} to {historical_end}"
+                )
+
+            return new_index_alias
         else:
             dt = extract_date(product_datetimes.datetime)
 

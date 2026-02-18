@@ -56,7 +56,18 @@ from stac_fastapi.opensearch.database_logic import (
     create_index_templates,
 )
 from stac_fastapi.sfeos_helpers.aggregation import EsAsyncBaseAggregationClient
+from stac_fastapi.sfeos_helpers.database.utils import sentry_initialize
 from stac_fastapi.sfeos_helpers.filter import EsAsyncBaseFiltersClient
+
+sentry_enable = get_bool_env("SENTRY_ENABLE", default=False)
+
+if sentry_enable:
+    sentry_initialize(
+        dsn=os.getenv("SENTRY_DSN"),
+        environment=os.getenv("SENTRY_ENVIRONMENT", "staging"),
+        traces_sample_rate=float(os.getenv("SENTRY_TRACES_SAMPLE_RATE", "0.1")),
+        ca_certs=os.getenv("SENTRY_CA_CERTS", None),
+    )
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -243,7 +254,7 @@ items_get_request_model = create_request_model(
 app_config = {
     "title": os.getenv("STAC_FASTAPI_TITLE", "stac-fastapi-opensearch"),
     "description": os.getenv("STAC_FASTAPI_DESCRIPTION", "stac-fastapi-opensearch"),
-    "api_version": os.getenv("STAC_FASTAPI_VERSION", "6.10.1"),
+    "api_version": os.getenv("STAC_FASTAPI_VERSION", "6.11.0"),
     "settings": settings,
     "extensions": extensions,
     "client": CoreClient(

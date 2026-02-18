@@ -521,6 +521,37 @@ def retry_on_connection_error(func) -> Callable:
     return wrapper
 
 
+def sentry_initialize(
+    dsn: str,
+    environment: str = "production",
+    traces_sample_rate: float = 1.0,
+    **kwargs,
+) -> None:
+    """
+    Initialize Sentry SDK for error and performance monitoring.
+
+    Args:
+        dsn: Data Source Name - The Sentry project DSN URL
+        environment: Deployment environment (e.g., "production", "staging", "development")
+        traces_sample_rate: Sample rate for performance traces (0.0 to 1.0)
+        Additional Sentry SDK configuration parameters.
+    """
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+
+    sentry_config = {
+        "dsn": dsn,
+        "environment": environment,
+        "traces_sample_rate": traces_sample_rate,
+        "integrations": [FastApiIntegration()],
+    }
+    sentry_config.update(kwargs)
+
+    sentry_sdk.init(**sentry_config)
+
+    logger.info(f"Sentry initialized for environment: {environment}")
+
+
 def add_hidden_filter(
     query: Optional[Dict[str, Any]] = None, hide_item_path: Optional[str] = None
 ) -> Dict[str, Any]:
