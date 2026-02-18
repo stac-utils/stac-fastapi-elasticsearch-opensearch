@@ -31,10 +31,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Optimized `prepare_bulk_actions` to check index size only for the first item in a batch instead of all items, reducing redundant size checks. [#599](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/599)
 - Added index refresh before size check in `is_index_oversized` to ensure recently inserted documents are visible, preventing race conditions. [#599](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/599)
 
-### Removed
-
-### Updated
-
 ## [v6.10.2] - 2026-02-10
 
 ### Fixed
