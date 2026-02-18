@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Retry for datetime searches on `NotFoundError` error retry for database connection errors `ConnectionError`, `ConnectionTimeout` to resolve cache race conditions. [#605](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/605)
+
 ### Changed
 
 ### Removed
