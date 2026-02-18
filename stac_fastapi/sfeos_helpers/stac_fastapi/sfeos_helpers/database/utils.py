@@ -15,7 +15,6 @@ from stac_fastapi.extensions.core.transaction.request import (
     PatchRemove,
 )
 from stac_fastapi.sfeos_helpers.models.patch import ElasticPath, ESCommandSet
-from stac_fastapi.sfeos_helpers.search_engine.inserters import DatetimeIndexInserter
 
 try:
     from opensearchpy.exceptions import (
@@ -31,8 +30,9 @@ except ImportError:
     )
 
 from tenacity import (
+    AsyncRetrying,
     before_sleep_log,
-    retry,
+    retry_if_exception,
     retry_if_exception_type,
     stop_after_attempt,
     wait_fixed,
@@ -42,9 +42,32 @@ from stac_fastapi.types.errors import ConflictError
 
 logger = logging.getLogger(__name__)
 
-RETRY_MAX_ATTEMPTS = int(os.getenv("RETRY_MAX_ATTEMPTS", "5"))
+RETRY_MAX_ATTEMPTS_CONNECTION_ERROR = int(
+    os.getenv("RETRY_MAX_ATTEMPTS_CONNECTION_ERROR", "5")
+)
+RETRY_MAX_ATTEMPTS_NOT_FOUND_ERROR = int(
+    os.getenv("RETRY_MAX_ATTEMPTS_NOT_FOUND_ERROR", "3")
+)
 RETRY_WAIT_SECONDS = float(os.getenv("RETRY_WAIT_SECONDS", "0.5"))
 RETRY_RERAISE = get_bool_env("RETRY_RERAISE", default=True)
+
+CONNECTION_RETRY_STRATEGY = AsyncRetrying(
+    stop=stop_after_attempt(RETRY_MAX_ATTEMPTS_CONNECTION_ERROR),
+    wait=wait_fixed(RETRY_WAIT_SECONDS),
+    retry=retry_if_exception_type((ConnectionError, ConnectionTimeout)),
+    reraise=RETRY_RERAISE,
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+)
+
+DATETIME_RETRY_STRATEGY = AsyncRetrying(
+    stop=stop_after_attempt(RETRY_MAX_ATTEMPTS_NOT_FOUND_ERROR),
+    wait=wait_fixed(RETRY_WAIT_SECONDS),
+    retry=retry_if_exception(
+        lambda e: isinstance(e, NotFoundError) and "index_not_found_exception" in str(e)
+    ),
+    reraise=RETRY_RERAISE,
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+)
 
 
 class ItemAlreadyExistsError(ConflictError):
@@ -502,24 +525,20 @@ def retry_on_datetime_not_found(func) -> Callable:
 
     @wraps(func)
     async def wrapper(self, *args, **kwargs):
+        from stac_fastapi.sfeos_helpers.search_engine.inserters import (
+            DatetimeIndexInserter,
+        )
+
         datetime_search = kwargs.get("datetime_search")
         if (
             isinstance(self.async_index_inserter, DatetimeIndexInserter)
             and datetime_search
         ):
-            await self.async_index_inserter.refresh_cache()
+            async for attempt in DATETIME_RETRY_STRATEGY:
+                with attempt:
+                    await self.async_index_inserter.refresh_cache()
+                    return await func(self, *args, **kwargs)
 
-            @retry(
-                stop=stop_after_attempt(RETRY_MAX_ATTEMPTS),
-                wait=wait_fixed(RETRY_WAIT_SECONDS),
-                retry=retry_if_exception_type(NotFoundError),
-                reraise=RETRY_RERAISE,
-                before_sleep=before_sleep_log(logger, logging.WARNING),
-            )
-            async def retry_wrapped(self, *args, **kwargs):
-                return await func(self, *args, **kwargs)
-
-            return await retry_wrapped(self, *args, **kwargs)
         return await func(self, *args, **kwargs)
 
     return wrapper
@@ -535,19 +554,11 @@ def retry_on_connection_error(func) -> Callable:
         A decorated function with retry logic for connection errors.
     """
 
-    @retry(
-        stop=stop_after_attempt(RETRY_MAX_ATTEMPTS),
-        wait=wait_fixed(RETRY_WAIT_SECONDS),
-        retry=retry_if_exception_type((ConnectionError, ConnectionTimeout)),
-        reraise=RETRY_RERAISE,
-        before_sleep=before_sleep_log(logger, logging.WARNING),
-    )
-    async def retry_wrapped(*args, **kwargs):
-        return await func(*args, **kwargs)
-
     @wraps(func)
-    async def wrapper(self, *args, **kwargs):
-        return await retry_wrapped(self, *args, **kwargs)
+    async def wrapper(*args, **kwargs):
+        async for attempt in CONNECTION_RETRY_STRATEGY:
+            with attempt:
+                return await func(*args, **kwargs)
 
     return wrapper
 
