@@ -47,7 +47,7 @@ async def test_get_queryables_mapping_shared_simple():
     assert "eo:snow_cover" in result
     assert len(result["eo:snow_cover"]) == 2
     assert "properties.eo:snow_cover" in result["eo:snow_cover"]
-    assert "properties.eo:snow_cover" in result["eo:snow_cover"]
+    assert "assets.eo:snow_cover" in result["eo:snow_cover"]
 
 
 @pytest.mark.asyncio

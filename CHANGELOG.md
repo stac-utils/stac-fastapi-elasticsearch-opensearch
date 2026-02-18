@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 
 - Added Sentry SDK integration for error tracking, performance monitoring, and release tracking with configuration via environment variables. [#601](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/601)
+- Added code to remove `assets.` prefix from queryables, as is done with `properties.`. [#602](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/602)
 
 ### Changed
 
