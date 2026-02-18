@@ -476,6 +476,7 @@ def retry_on_datetime_not_found(func) -> Callable:
             isinstance(self.async_index_inserter, DatetimeIndexInserter)
             and datetime_search
         ):
+            await self.async_index_inserter.refresh_cache()
 
             @retry(
                 stop=stop_after_attempt(RETRY_MAX_ATTEMPTS),

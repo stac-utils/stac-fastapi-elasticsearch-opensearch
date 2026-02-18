@@ -1196,6 +1196,7 @@ async def test_datetime_search_retry_retries_success():
     mock_self = MagicMock()
     mock_inserter = MagicMock()
     mock_inserter.__class__ = DatetimeIndexInserter
+    mock_inserter.refresh_cache = AsyncMock()
     mock_self.async_index_inserter = mock_inserter
 
     result = await decorated_search(
@@ -1260,6 +1261,7 @@ async def test_datetime_search_max_retries():
     mock_self = MagicMock()
     mock_inserter = MagicMock()
     mock_inserter.__class__ = DatetimeIndexInserter
+    mock_inserter.refresh_cache = AsyncMock()
     mock_self.async_index_inserter = mock_inserter
 
     with pytest.raises(exceptions.NotFoundError) as exc_info:
