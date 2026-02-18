@@ -10,10 +10,16 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 
 - Added Sentry SDK integration for error tracking, performance monitoring, and release tracking with configuration via environment variables. [#601](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/601)
+- Added Redis queue for async item processing (`ENABLE_REDIS_QUEUE`) to avoid race conditions when concurrent requests modify index aliases during datetime-based indexing. Includes `item_queue_worker.py` script for processing queued items.
+- Added configuration variables for Redis queue: `QUEUE_BATCH_SIZE`, `QUEUE_FLUSH_INTERVAL`, `QUEUE_KEY_PREFIX`, `WORKER_POLL_INTERVAL`, `WORKER_MAX_THREADS`.
+- Moved alias cache from in-memory to Redis for consistency across multiple worker instances.
 
 ### Changed
 
 - Updated database_logic by removing the hard coded sortable_fields and delegating schema validation to the database. Error handling is included if sorting is requested with invalid fields or bad query syntax is used. [#582](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/582)
+- **Breaking Change:** Redis is now required when datetime-based indexing (`ENABLE_DATETIME_INDEX_FILTERING=true`) is enabled. Index alias mappings from ES/OS are cached in Redis, search queries read from cache, while insert operations always fetch fresh aliases from ES/OS and refresh the cache.
+- Optimized `prepare_bulk_actions` to check index size only for the first item in a batch instead of all items, reducing redundant size checks.
+- Added index refresh before size check in `is_index_oversized` to ensure recently inserted documents are visible, preventing race conditions.
 
 ### Fixed
 

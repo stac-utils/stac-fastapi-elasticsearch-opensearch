@@ -126,6 +126,8 @@ async def test_create_new_index_when_size_limit_exceeded_for_datetime_index(
     indices = await txn_client.database.client.indices.get_alias(index="*")
     expected_aliases = [
         "items_start_datetime_test-collection_2020-02-08-2020-02-08",
+        "items_start_datetime_test-collection_1970-01-11-2020-02-07",
+        "items_end_datetime_test-collection_1970-01-11",
     ]
     all_aliases = set()
 
@@ -349,9 +351,7 @@ async def test_bulk_create_items_with_early_date_in_second_batch_for_datetime_in
 
     indices = await txn_client.database.client.indices.get_alias(index="*")
     expected_aliases = [
-        "items_start_datetime_test-collection_2008-01-15-2010-02-09",
-        "items_start_datetime_test-collection_2020-02-09",
-        "items_start_datetime_test-collection_2010-02-10-2020-02-08",
+        "items_start_datetime_test-collection_2008-01-15",
     ]
 
     all_aliases = set()
@@ -629,7 +629,7 @@ async def test_patch_item_datetime_field_blocked_use_datetime_true(
 
     monkeypatch.setenv("USE_DATETIME", "true")
     if hasattr(txn_client.database.async_index_selector, "cache_manager"):
-        txn_client.database.async_index_selector.cache_manager.clear_cache()
+        await txn_client.database.async_index_selector.cache_manager.clear_cache()
 
     base_item = load_test_data("test_item.json")
     collection_id = base_item["collection"]
