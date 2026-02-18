@@ -3,9 +3,21 @@ import random
 import uuid
 from copy import deepcopy
 from datetime import datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from stac_fastapi.sfeos_helpers.search_engine import DatetimeIndexInserter
+
+try:
+    from opensearchpy import exceptions
+except ImportError:
+    from elasticsearch import exceptions
+
+from stac_fastapi.sfeos_helpers.database import (
+    retry_on_connection_error,
+    retry_on_datetime_not_found,
+)
 from stac_fastapi.types.errors import ConflictError
 
 from ..conftest import create_collection, create_item
@@ -1166,3 +1178,116 @@ async def test_hide_private_data_from_item(app_client, txn_client, load_test_dat
     assert "private_data" not in item["properties"]
 
     del os.environ["EXCLUDED_FROM_ITEMS"]
+
+
+@pytest.mark.asyncio
+async def test_datetime_search_retry_retries_success():
+    call_count = {"count": 0}
+
+    async def search(*args, **kwargs):
+        call_count["count"] += 1
+        if call_count["count"] < 5:
+            raise exceptions.NotFoundError(404, "Not Found", {})
+        return "success"
+
+    mock_search_func = AsyncMock(side_effect=search)
+    decorated_search = retry_on_datetime_not_found(mock_search_func)
+
+    mock_self = MagicMock()
+    mock_inserter = MagicMock()
+    mock_inserter.__class__ = DatetimeIndexInserter
+    mock_inserter.refresh_cache = AsyncMock()
+    mock_self.async_index_inserter = mock_inserter
+
+    result = await decorated_search(
+        self=mock_self, datetime_search={"from": "2020-01-01"}
+    )
+
+    assert result == "success"
+    # The 5th request succeeds after 4 failures
+    assert call_count["count"] == 5
+
+
+@pytest.mark.asyncio
+async def test_connection_error_retry_retries_success():
+    call_count = {"count": 0}
+
+    async def search(*args, **kwargs):
+        call_count["count"] += 1
+        if call_count["count"] < 5:
+            raise exceptions.ConnectionError(500, "Connection failed", {})
+        return "success"
+
+    mock_search_func = AsyncMock(side_effect=search)
+    decorated_search = retry_on_connection_error(mock_search_func)
+    result = await decorated_search(self=None)
+
+    assert result == "success"
+    assert mock_search_func.call_count == 5
+
+
+@pytest.mark.asyncio
+async def test_datetime_search_no_retry_no_datetime():
+    call_count = {"count": 0}
+
+    async def search(*args, **kwargs):
+        call_count["count"] += 1
+        raise exceptions.NotFoundError(404, "Not Found", {})
+
+    mock_search_func = AsyncMock(side_effect=search)
+    decorated_search = retry_on_datetime_not_found(mock_search_func)
+    mock_self = MagicMock()
+    mock_self.async_index_inserter = None
+
+    with pytest.raises(exceptions.NotFoundError):
+        await decorated_search(self=mock_self, datetime_search={})
+
+    assert mock_search_func.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_datetime_search_max_retries():
+    call_count = {"count": 0}
+
+    async def search(*args, **kwargs):
+        call_count["count"] += 1
+        raise exceptions.NotFoundError(
+            404, f"Not found: attempt {call_count['count']}", {}
+        )
+
+    mock_search_func = AsyncMock(side_effect=search)
+    decorated_search = retry_on_datetime_not_found(mock_search_func)
+
+    mock_self = MagicMock()
+    mock_inserter = MagicMock()
+    mock_inserter.__class__ = DatetimeIndexInserter
+    mock_inserter.refresh_cache = AsyncMock()
+    mock_self.async_index_inserter = mock_inserter
+
+    with pytest.raises(exceptions.NotFoundError) as exc_info:
+        await decorated_search(
+            self=mock_self, datetime_search={"start_datetime": "2025-01-01"}
+        )
+
+    assert call_count["count"] == 5
+    assert "attempt 5" in str(exc_info.value)
+
+
+@pytest.mark.asyncio
+async def test_connection_error_max_retries():
+    call_count = {"count": 0}
+
+    async def search(*args, **kwargs):
+        call_count["count"] += 1
+        raise exceptions.ConnectionError(
+            500, f"Connection error: attempt {call_count['count']}", {}
+        )
+
+    mock_search_func = AsyncMock(side_effect=search)
+    decorated_search = retry_on_connection_error(mock_search_func)
+
+    with pytest.raises(exceptions.ConnectionError) as exc_info:
+        await decorated_search(self=None)
+
+    assert mock_search_func.call_count == 5
+    assert "attempt 5" in str(exc_info.value)
