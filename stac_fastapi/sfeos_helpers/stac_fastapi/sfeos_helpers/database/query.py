@@ -13,7 +13,7 @@ ES_MAX_URL_LENGTH = 4096
 
 
 def apply_free_text_filter_shared(
-    search: Any, free_text_queries: Optional[List[str]]
+    search: Any, free_text_queries: Optional[list[str]]
 ) -> Any:
     """Create a free text query for Elasticsearch/OpenSearch.
 
@@ -70,7 +70,7 @@ def apply_intersects_filter_shared(
 
 def apply_collections_datetime_filter_shared(
     datetime_str: Optional[str],
-) -> Optional[Dict[str, Any]]:
+) -> Optional[dict[str, Any]]:
     """Create a temporal filter for collections based on their extent.
 
     Args:
@@ -201,7 +201,7 @@ def apply_collections_bbox_filter_shared(
     }
 
 
-def populate_sort_shared(sortby: List) -> Optional[Dict[str, Dict[str, str]]]:
+def populate_sort_shared(sortby: list) -> Optional[dict[str, dict[str, str]]]:
     """Create a sort configuration for Elasticsearch/OpenSearch queries.
 
     Args:
@@ -226,8 +226,8 @@ def populate_sort_shared(sortby: List) -> Optional[Dict[str, Dict[str, str]]]:
 
 
 def add_collections_to_body(
-    collection_ids: List[str], query: Optional[Dict[str, Any]]
-) -> Dict[str, Any]:
+    collection_ids: list[str], query: Optional[dict[str, Any]]
+) -> dict[str, Any]:
     """Add a list of collection ids to the body of a query.
 
     Args:

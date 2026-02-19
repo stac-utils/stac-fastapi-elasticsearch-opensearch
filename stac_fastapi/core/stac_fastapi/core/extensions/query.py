@@ -8,7 +8,7 @@ import operator
 from dataclasses import dataclass
 from enum import auto
 from types import DynamicClassAttribute
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable, Optional
 
 from pydantic import BaseModel, model_validator
 from stac_pydantic.utils import AutoValueEnum
@@ -61,10 +61,10 @@ class QueryExtensionPostRequest(BaseModel):
     to raise errors for unsupported querys.
     """
 
-    query: Optional[Dict[str, Dict[Operator, Any]]] = None
+    query: Optional[dict[str, dict[Operator, Any]]] = None
 
     @model_validator(mode="before")
-    def validate_query_fields(cls, values: Dict) -> Dict:
+    def validate_query_fields(cls, values: dict) -> dict:
         """Validate query fields."""
         ...
 

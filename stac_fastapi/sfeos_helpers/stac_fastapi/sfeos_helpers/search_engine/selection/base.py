@@ -1,7 +1,7 @@
 """Base classes for index selection strategies."""
 
 from abc import ABC, abstractmethod
-from typing import List, Optional
+from typing import Optional
 
 
 class BaseIndexSelector(ABC):
@@ -10,7 +10,7 @@ class BaseIndexSelector(ABC):
     @abstractmethod
     async def select_indexes(
         self,
-        collection_ids: Optional[List[str]],
+        collection_ids: Optional[list[str]],
         datetime_search: str,
         for_insertion: bool = False,
     ) -> str:

@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 
 async def search_collections_by_parent_id_shared(
     es_client: Any, catalog_id: str, size: int = 10000
-) -> List[Dict[str, Any]]:
+) -> list[dict[str, Any]]:
     """Search for collections that have a specific catalog as a parent.
 
     Args:

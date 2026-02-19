@@ -36,7 +36,7 @@ from stac_fastapi.core.utilities import get_bool_env
 logger = logging.getLogger(__name__)
 
 
-def merge_mappings(base: Dict[str, Any], custom: Dict[str, Any]) -> None:
+def merge_mappings(base: dict[str, Any], custom: dict[str, Any]) -> None:
     """Recursively merge custom mappings into base mappings.
 
     Custom mappings will overwrite base mappings if keys collide.
@@ -107,7 +107,7 @@ def apply_custom_mappings(
 
 def get_items_mappings(
     dynamic_mapping: Optional[str] = None, custom_mappings: Optional[str] = None
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Get the ES_ITEMS_MAPPINGS with optional dynamic mapping and custom mappings applied.
 
     This function creates a fresh copy of the base mappings and applies the

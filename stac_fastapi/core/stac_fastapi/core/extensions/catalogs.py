@@ -1,7 +1,7 @@
 """Catalogs extension."""
 
 import logging
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, List, Optional, Type
 from urllib.parse import parse_qs, urlencode, urlparse
 
 import attr
@@ -32,8 +32,8 @@ class Catalogs(TypedDict, total=False):
     Similar to Collections but for catalogs.
     """
 
-    catalogs: List[Catalog]
-    links: List[dict]
+    catalogs: list[Catalog]
+    links: list[dict]
     numberMatched: Optional[int]
     numberReturned: Optional[int]
 
@@ -48,7 +48,7 @@ class CatalogsExtension(ApiExtension):
 
     client: BaseCoreClient = attr.ib(default=None)
     settings: dict = attr.ib(default=attr.Factory(dict))
-    conformance_classes: List[str] = attr.ib(
+    conformance_classes: list[str] = attr.ib(
         default=attr.Factory(lambda: ["https://api.stacspec.org/v1.0.0-rc.2/children"])
     )
     router: APIRouter = attr.ib(default=attr.Factory(APIRouter))
@@ -1049,7 +1049,7 @@ class CatalogsExtension(ApiExtension):
         type: Optional[str] = Query(
             None, description="Filter by resource type (Catalog or Collection)"
         ),
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get all children (Catalogs and Collections) of a specific catalog.
 

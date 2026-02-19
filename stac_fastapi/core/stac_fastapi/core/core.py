@@ -5,7 +5,7 @@ import os
 from datetime import datetime as datetime_type
 from datetime import timezone
 from enum import Enum
-from typing import List, Optional, Set, Type, Union
+from typing import Any, Optional, Type, Union
 from urllib.parse import unquote_plus, urljoin
 
 import attr
@@ -79,10 +79,10 @@ class CoreClient(AsyncBaseCoreClient):
     """
 
     database: BaseDatabaseLogic = attr.ib()
-    base_conformance_classes: List[str] = attr.ib(
+    base_conformance_classes: list[str] = attr.ib(
         factory=lambda: BASE_CONFORMANCE_CLASSES
     )
-    extensions: List[ApiExtension] = attr.ib(default=attr.Factory(list))
+    extensions: list[ApiExtension] = attr.ib(default=attr.Factory(list))
 
     session: Session = attr.ib(default=attr.Factory(Session.create_from_env))
     item_serializer: Type[ItemSerializer] = attr.ib(default=ItemSerializer)
@@ -114,9 +114,9 @@ class CoreClient(AsyncBaseCoreClient):
     def _landing_page(
         self,
         base_url: str,
-        conformance_classes: List[str],
-        extension_schemas: List[str],
-    ) -> stac_types.LandingPage:
+        conformance_classes: list[str],
+        extension_schemas: list[str],
+    ) -> dict[str, Any]:
         landing_page = stac_types.LandingPage(
             type="Catalog",
             id=self.landing_page_id,
@@ -165,7 +165,7 @@ class CoreClient(AsyncBaseCoreClient):
         )
         return landing_page
 
-    async def landing_page(self, **kwargs) -> stac_types.LandingPage:
+    async def landing_page(self, **kwargs) -> dict[str, Any]:
         """Landing page.
 
         Called with `GET /`.
@@ -273,16 +273,16 @@ class CoreClient(AsyncBaseCoreClient):
         limit: Optional[int] = None,
         bbox: Optional[BBox] = None,
         datetime: Optional[str] = None,
-        fields: Optional[List[str]] = None,
-        sortby: Optional[Union[str, List[str]]] = None,
+        fields: Optional[list[str]] = None,
+        sortby: Optional[Union[str, list[str]]] = None,
         filter_expr: Optional[str] = None,
         filter_lang: Optional[str] = None,
-        q: Optional[Union[str, List[str]]] = None,
+        q: Optional[Union[str, list[str]]] = None,
         query: Optional[str] = None,
         request: Request = None,
         token: Optional[str] = None,
         **kwargs,
-    ) -> stac_types.Collections:
+    ) -> dict[str, Any]:
         """Read all collections from the database.
 
         Args:
@@ -473,16 +473,16 @@ class CoreClient(AsyncBaseCoreClient):
             next_link = PagingLinks(next=next_token, request=request).link_next()
             links.append(next_link)
 
-        return stac_types.Collections(
-            collections=filtered_collections,
-            links=links,
-            numberMatched=maybe_count,
-            numberReturned=len(filtered_collections),
-        )
+        return {
+            "collections": filtered_collections,
+            "links": links,
+            "numberMatched": maybe_count,
+            "numberReturned": len(filtered_collections),
+        }
 
     async def post_all_collections(
         self, search_request: BaseSearchPostRequest, request: Request, **kwargs
-    ) -> stac_types.Collections:
+    ) -> dict[str, Any]:
         """Search collections with POST request.
 
         Args:
@@ -566,9 +566,7 @@ class CoreClient(AsyncBaseCoreClient):
             **kwargs,
         )
 
-    async def get_collection(
-        self, collection_id: str, **kwargs
-    ) -> stac_types.Collection:
+    async def get_collection(self, collection_id: str, **kwargs) -> dict[str, Any]:
         """Get a collection from the database by its id.
 
         Args:
@@ -601,9 +599,9 @@ class CoreClient(AsyncBaseCoreClient):
         filter_lang: Optional[str] = None,
         token: Optional[str] = None,
         query: Optional[str] = None,
-        fields: Optional[List[str]] = None,
+        fields: Optional[list[str]] = None,
         **kwargs,
-    ) -> stac_types.ItemCollection:
+    ) -> dict[str, Any]:
         """List items within a specific collection.
 
         This endpoint delegates to ``get_search`` under the hood with
@@ -653,7 +651,7 @@ class CoreClient(AsyncBaseCoreClient):
 
     async def get_item(
         self, item_id: str, collection_id: str, **kwargs
-    ) -> stac_types.Item:
+    ) -> dict[str, Any]:
         """Get an item from the database based on its id and collection id.
 
         Args:
@@ -676,21 +674,21 @@ class CoreClient(AsyncBaseCoreClient):
     async def get_search(
         self,
         request: Request,
-        collections: Optional[List[str]] = None,
-        ids: Optional[List[str]] = None,
+        collections: Optional[list[str]] = None,
+        ids: Optional[list[str]] = None,
         bbox: Optional[BBox] = None,
         datetime: Optional[str] = None,
         limit: Optional[int] = None,
         query: Optional[str] = None,
         token: Optional[str] = None,
-        fields: Optional[List[str]] = None,
+        fields: Optional[list[str]] = None,
         sortby: Optional[str] = None,
-        q: Optional[List[str]] = None,
+        q: Optional[list[str]] = None,
         intersects: Optional[str] = None,
         filter_expr: Optional[str] = None,
         filter_lang: Optional[str] = None,
         **kwargs,
-    ) -> stac_types.ItemCollection:
+    ) -> dict[str, Any]:
         """Get search results from the database.
 
         Args:
@@ -772,7 +770,7 @@ class CoreClient(AsyncBaseCoreClient):
 
     async def post_search(
         self, search_request: BaseSearchPostRequest, request: Request
-    ) -> stac_types.ItemCollection:
+    ) -> dict[str, Any]:
         """
         Perform a POST search on the catalog.
 
@@ -914,8 +912,8 @@ class CoreClient(AsyncBaseCoreClient):
         )
 
         fields = getattr(search_request, "fields", None)
-        include: Set[str] = fields.include if fields and fields.include else set()
-        exclude: Set[str] = fields.exclude if fields and fields.exclude else set()
+        include: set[str] = fields.include if fields and fields.include else set()
+        exclude: set[str] = fields.exclude if fields and fields.exclude else set()
 
         items = [
             filter_fields(
@@ -957,13 +955,13 @@ class CoreClient(AsyncBaseCoreClient):
                 links=links,
             )
 
-        return stac_types.ItemCollection(
-            type="FeatureCollection",
-            features=items,
-            links=links,
-            numberReturned=len(items),
-            numberMatched=maybe_count,
-        )
+        return {
+            "type": "FeatureCollection",
+            "features": items,
+            "links": links,
+            "numberReturned": len(items),
+            "numberMatched": maybe_count,
+        }
 
 
 @attr.s
@@ -977,7 +975,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     @overrides
     async def create_item(
         self, collection_id: str, item: Union[Item, ItemCollection], **kwargs
-    ) -> Union[stac_types.Item, str]:
+    ) -> Union[dict[str, Any], str]:
         """
         Create an item or a feature collection of items in the specified collection.
 
@@ -1098,7 +1096,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     @overrides
     async def update_item(
         self, collection_id: str, item_id: str, item: Item, **kwargs
-    ) -> stac_types.Item:
+    ) -> dict[str, Any]:
         """Update an item in the collection.
 
         Args:
@@ -1156,7 +1154,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         self,
         collection_id: str,
         item_id: str,
-        patch: Union[PartialItem, List[PatchOperation]],
+        patch: Union[PartialItem, list[PatchOperation]],
         **kwargs,
     ):
         """Patch an item in the collection.
@@ -1227,7 +1225,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     @overrides
     async def create_collection(
         self, collection: Collection, **kwargs
-    ) -> stac_types.Collection:
+    ) -> dict[str, Any]:
         """Create a new collection in the database.
 
         Args:
@@ -1254,7 +1252,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     @overrides
     async def update_collection(
         self, collection_id: str, collection: Collection, **kwargs
-    ) -> stac_types.Collection:
+    ) -> dict[str, Any]:
         """
         Update a collection.
 
@@ -1293,7 +1291,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     async def patch_collection(
         self,
         collection_id: str,
-        patch: Union[PartialCollection, List[PatchOperation]],
+        patch: Union[PartialCollection, list[PatchOperation]],
         **kwargs,
     ):
         """Update a collection.
@@ -1381,7 +1379,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
 
     def preprocess_item(
         self, item: stac_types.Item, base_url, method: BulkTransactionMethod
-    ) -> stac_types.Item:
+    ) -> dict[str, Any]:
         """Preprocess an item to match the data model.
 
         Args:

@@ -9,7 +9,7 @@ import re
 from datetime import date
 from datetime import datetime as datetime_type
 from datetime import timezone
-from typing import Dict, Optional, Union
+from typing import Optional, Union
 
 from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.types.rfc3339 import DateTimeType
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 def return_date(
     interval: Optional[Union[DateTimeType, str]],
-) -> Dict[str, Optional[str]]:
+) -> dict[str, Optional[str]]:
     """
     Convert a date interval to an Elasticsearch/OpenSearch query format.
 
@@ -38,7 +38,7 @@ def return_date(
         dict: A dictionary representing the date interval for use in filtering search results,
             always containing 'gte' and 'lte' keys.
     """
-    result: Dict[str, Optional[str]] = {"gte": None, "lte": None}
+    result: dict[str, Optional[str]] = {"gte": None, "lte": None}
     use_datetime_nanos = get_bool_env("USE_DATETIME_NANOS", default=True)
     if interval is None:
         return result

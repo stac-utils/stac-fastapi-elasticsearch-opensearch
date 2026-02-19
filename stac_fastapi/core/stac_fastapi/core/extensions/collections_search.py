@@ -1,6 +1,6 @@
 """Collections search extension."""
 
-from typing import Any, Dict, List, Optional, Type, Union
+from typing import Any, List, Optional, Type, Union
 
 from fastapi import APIRouter, Body, FastAPI, Query, Request
 from fastapi.responses import JSONResponse
@@ -17,7 +17,7 @@ from stac_fastapi.types.stac import Collections
 class CollectionsSearchRequest(ExtendedSearch):
     """Extended search model for collections with free text search support."""
 
-    q: Optional[Union[str, List[str]]] = None
+    q: Optional[Union[str, list[str]]] = None
     token: Optional[str] = None
     query: Optional[
         str
@@ -31,7 +31,7 @@ def build_get_collections_search_doc(original_endpoint):
 
     async def documented_endpoint(
         request: Request,
-        q: Optional[Union[str, List[str]]] = Query(
+        q: Optional[Union[str, list[str]]] = Query(
             None,
             description="Free text search query",
         ),
@@ -71,7 +71,7 @@ def build_get_collections_search_doc(original_endpoint):
                 "Sorting criteria in the format 'field' or '-field' for descending order"
             ),
         ),
-        fields: Optional[List[str]] = Query(
+        fields: Optional[list[str]] = Query(
             None,
             description=(
                 "Comma-separated list of fields to include or exclude (use -field to exclude)"
@@ -147,7 +147,7 @@ def build_post_collections_search_doc(original_post_endpoint):
 
     async def documented_post_endpoint(
         request: Request,
-        body: Dict[str, Any] = Body(
+        body: dict[str, Any] = Body(
             ...,
             description=(
                 "Search parameters for collections.\n\n"

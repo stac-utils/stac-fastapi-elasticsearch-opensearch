@@ -3,7 +3,7 @@
 import logging
 import os
 import ssl
-from typing import Any, Dict, Set, Union
+from typing import Any, Set, Union
 
 import certifi
 from elasticsearch._async.client import AsyncElasticsearch
@@ -15,7 +15,7 @@ from stac_fastapi.sfeos_helpers.database import validate_refresh
 from stac_fastapi.types.config import ApiSettings
 
 
-def _es_config() -> Dict[str, Any]:
+def _es_config() -> dict[str, Any]:
     # Determine the scheme (http or https)
     use_ssl = get_bool_env("ES_USE_SSL", default=True)
     scheme = "https" if use_ssl else "http"
@@ -33,7 +33,7 @@ def _es_config() -> Dict[str, Any]:
     hosts = [f"{scheme}://{host.strip()}:{es_port}" for host in es_hosts.split(",")]
 
     # Initialize the configuration dictionary
-    config: Dict[str, Any] = {
+    config: dict[str, Any] = {
         "hosts": hosts,
         "headers": {"accept": "application/vnd.elasticsearch+json; compatible-with=8"},
     }

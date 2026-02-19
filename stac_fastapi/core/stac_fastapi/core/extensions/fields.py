@@ -1,6 +1,6 @@
 """Fields extension."""
 
-from typing import Optional, Set
+from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -25,8 +25,8 @@ class PostFieldsExtension(request.PostFieldsExtension):
     #         "collection",
     #     }
     # )
-    include: Optional[Set[str]] = set()
-    exclude: Optional[Set[str]] = set()
+    include: Optional[set[str]] = set()
+    exclude: Optional[set[str]] = set()
 
 
 class FieldsExtensionPostRequest(BaseModel):

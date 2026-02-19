@@ -1,7 +1,7 @@
 """patch helpers."""
 
 import re
-from typing import Any, Dict, Optional, Union
+from typing import Any, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
@@ -16,7 +16,7 @@ class ESCommandSet:
         str: Elasticsearch commands
     """
 
-    dict_: Dict[str, None] = {}
+    dict_: dict[str, Any] = {}
 
     def __init__(self):
         """Initialise ESCommandSet instance."""

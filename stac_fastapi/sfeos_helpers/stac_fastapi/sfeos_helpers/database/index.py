@@ -91,7 +91,7 @@ def filter_indexes_by_datetime(
             - False: Filters using 'start_datetime' and 'end_datetime' aliases.
 
     Returns:
-        List[str]: A list of start_datetime aliases that match all provided search criteria.
+        list[str]: A list of start_datetime aliases that match all provided search criteria.
     """
 
     def extract_date_from_alias(alias: str) -> Optional[tuple[datetime, datetime]]:

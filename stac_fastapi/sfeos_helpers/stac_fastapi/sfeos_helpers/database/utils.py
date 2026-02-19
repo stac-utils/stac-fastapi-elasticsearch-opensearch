@@ -5,7 +5,7 @@ in Elasticsearch/OpenSearch, such as parameter validation.
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Optional, Union
 
 from stac_fastapi.core.utilities import bbox2polygon, get_bool_env
 from stac_fastapi.extensions.core.transaction.request import (
@@ -81,7 +81,7 @@ def check_item_exists_in_alias_sync(client: Any, alias: str, doc_id: str) -> boo
     return bool(resp["hits"]["total"]["value"])
 
 
-def add_bbox_shape_to_collection(collection: Dict[str, Any]) -> bool:
+def add_bbox_shape_to_collection(collection: dict[str, Any]) -> bool:
     """Add bbox_shape field to a collection document for spatial queries.
 
     This function extracts the bounding box from a collection's spatial extent
@@ -197,14 +197,14 @@ def validate_refresh(value: Union[str, bool]) -> str:
     return "false"
 
 
-def merge_to_operations(data: Dict) -> List:
+def merge_to_operations(data: dict) -> list:
     """Convert merge operation to list of RF6902 operations.
 
     Args:
         data: dictionary to convert.
 
     Returns:
-        List: list of RF6902 operations.
+        list: list of RF6902 operations.
     """
     operations = []
 
@@ -308,7 +308,7 @@ def add_commands(
     operation: PatchOperation,
     path: ElasticPath,
     from_path: ElasticPath,
-    params: Dict,
+    params: dict,
 ) -> None:
     """Add value at path.
 
@@ -341,7 +341,7 @@ def add_commands(
 
 
 def test_commands(
-    commands: ESCommandSet, operation: PatchOperation, path: ElasticPath, params: Dict
+    commands: ESCommandSet, operation: PatchOperation, path: ElasticPath, params: dict
 ) -> None:
     """Test value at path.
 
@@ -369,17 +369,17 @@ def test_commands(
     )
 
 
-def operations_to_script(operations: List, create_nest: bool = False) -> Dict:
+def operations_to_script(operations: list, create_nest: bool = False) -> dict:
     """Convert list of operation to painless script.
 
     Args:
         operations: List of RF6902 operations.
 
     Returns:
-        Dict: elasticsearch update script.
+        dict: elasticsearch update script.
     """
     commands: ESCommandSet = ESCommandSet()
-    params: Dict = {}
+    params: dict = {}
 
     for operation in operations:
         path = ElasticPath(path=operation.path)
@@ -458,8 +458,8 @@ def sentry_initialize(
 
 
 def add_hidden_filter(
-    query: Optional[Dict[str, Any]] = None, hide_item_path: Optional[str] = None
-) -> Dict[str, Any]:
+    query: Optional[dict[str, Any]] = None, hide_item_path: Optional[str] = None
+) -> dict[str, Any]:
     """Add hidden filter to a query to exclude hidden items.
 
     Args:

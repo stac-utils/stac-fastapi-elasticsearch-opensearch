@@ -4,7 +4,7 @@ import abc
 import logging
 import os
 from copy import deepcopy
-from typing import Any, List, Optional
+from typing import Any, Optional
 
 import attr
 from starlette.requests import Request
@@ -136,9 +136,7 @@ class CollectionSerializer(Serializer):
     """Serialization methods for STAC collections."""
 
     @classmethod
-    def stac_to_db(
-        cls, collection: stac_types.Collection, request: Request
-    ) -> stac_types.Collection:
+    def stac_to_db(cls, collection: stac_types.Collection, request: Request) -> dict:
         """
         Transform STAC Collection to database-ready STAC collection.
 
@@ -147,7 +145,7 @@ class CollectionSerializer(Serializer):
             starlette.requests.Request: the API request
 
         Returns:
-            stac_types.Collection: The database-ready STAC Collection object.
+            dict: The database-ready STAC Collection object.
         """
         collection = deepcopy(collection)
         collection["links"] = resolve_links(
@@ -166,8 +164,8 @@ class CollectionSerializer(Serializer):
 
     @classmethod
     def db_to_stac(
-        cls, collection: dict, request: Request, extensions: Optional[List[str]] = []
-    ) -> stac_types.Collection:
+        cls, collection: dict, request: Request, extensions: Optional[list[str]] = []
+    ) -> dict:
         """Transform database model to STAC collection.
 
         Args:
@@ -176,7 +174,7 @@ class CollectionSerializer(Serializer):
             extensions: A list of the extension class names (`ext.__name__`) or all enabled STAC API extensions.
 
         Returns:
-            stac_types.Collection: The STAC collection object.
+            dict: The STAC collection object.
         """
         # Avoid modifying the input dict in-place ... doing so breaks some tests
         collection = deepcopy(collection)
@@ -227,7 +225,7 @@ class CollectionSerializer(Serializer):
                 collection["item_assets"] = item_assets
 
         # Return the stac_types.Collection object
-        return stac_types.Collection(**collection)
+        return collection
 
     @classmethod
     def db_to_stac_in_catalog(
@@ -235,8 +233,8 @@ class CollectionSerializer(Serializer):
         collection: dict,
         request: Request,
         catalog_id: str,
-        extensions: Optional[List[str]] = [],
-    ) -> stac_types.Collection:
+        extensions: Optional[list[str]] = [],
+    ) -> dict:
         """Transform database model to STAC collection within a catalog context.
 
         This method is used when a collection is accessed via /catalogs/{id}/collections/{id}.
@@ -340,17 +338,17 @@ class CatalogSerializer(Serializer):
 
     @classmethod
     def db_to_stac(
-        cls, catalog: dict, request: Request, extensions: Optional[List[str]] = []
-    ) -> Catalog:
-        """Transform database model to STAC catalog.
+        cls, catalog: dict, request: Request, extensions: Optional[list[str]] = []
+    ) -> list[dict[str, Any]]:
+        """Transform database model to STAC catalogs.
 
         Args:
-            catalog (dict): The catalog data in dictionary form, extracted from the database.
+            catalogs (list[dict]): The catalogs data in dictionary form, extracted from the database.
             request (Request): the API request
             extensions: A list of the extension class names (`ext.__name__`) or all enabled STAC API extensions.
 
         Returns:
-            Catalog: The STAC catalog object.
+            list[dict[str, Any]]: The STAC catalog object.
         """
         # Avoid modifying the input dict in-place
         catalog = deepcopy(catalog)

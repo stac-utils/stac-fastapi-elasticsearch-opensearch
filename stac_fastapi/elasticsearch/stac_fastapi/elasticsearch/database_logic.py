@@ -4,7 +4,7 @@ import logging
 import os
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from copy import deepcopy
-from typing import Any, Dict, Iterable, List, Optional, Tuple, Type
+from typing import Any, Iterable, Optional, Type
 
 import attr
 import elasticsearch.helpers as helpers
@@ -155,9 +155,9 @@ class DatabaseLogic(BaseDatabaseLogic):
     )
     catalog_serializer: Type[CatalogSerializer] = attr.ib(default=CatalogSerializer)
 
-    extensions: List[str] = attr.ib(default=attr.Factory(list))
+    extensions: list[str] = attr.ib(default=attr.Factory(list))
 
-    aggregation_mapping: Dict[str, Dict[str, Any]] = AGGREGATION_MAPPING
+    aggregation_mapping: dict[str, dict[str, Any]] = AGGREGATION_MAPPING
 
     # constants for field names
     # they are used in multiple methods
@@ -186,24 +186,24 @@ class DatabaseLogic(BaseDatabaseLogic):
         token: Optional[str],
         limit: int,
         request: Request,
-        sort: Optional[List[Dict[str, Any]]] = None,
-        bbox: Optional[List[float]] = None,
-        q: Optional[List[str]] = None,
-        filter: Optional[Dict[str, Any]] = None,
-        query: Optional[Dict[str, Dict[str, Any]]] = None,
+        sort: Optional[list[dict[str, Any]]] = None,
+        bbox: Optional[list[float]] = None,
+        q: Optional[list[str]] = None,
+        filter: Optional[dict[str, Any]] = None,
+        query: Optional[dict[str, dict[str, Any]]] = None,
         datetime: Optional[str] = None,
-    ) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[int]]:
+    ) -> tuple[list[dict[str, Any]], Optional[str], Optional[int]]:
         """Retrieve a list of collections from Elasticsearch, supporting pagination.
 
         Args:
             token (Optional[str]): The pagination token.
             limit (int): The number of results to return.
             request (Request): The FastAPI request object.
-            sort (Optional[List[Dict[str, Any]]]): Optional sort parameter from the request.
-            bbox (Optional[List[float]]): Bounding box to filter collections by spatial extent.
-            q (Optional[List[str]]): Free text search terms.
-            query (Optional[Dict[str, Dict[str, Any]]]): Query extension parameters.
-            filter (Optional[Dict[str, Any]]): Structured query in CQL2 format.
+            sort (Optional[list[dict[str, Any]]]): Optional sort parameter from the request.
+            bbox (Optional[list[float]]): Bounding box to filter collections by spatial extent.
+            q (Optional[list[str]]): Free text search terms.
+            query (Optional[dict[str, dict[str, Any]]]): Query extension parameters.
+            filter (Optional[dict[str, Any]]): Structured query in CQL2 format.
             datetime (Optional[str]): Temporal filter.
 
         Returns:
@@ -382,7 +382,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         return collections, next_token, matched
 
-    async def get_one_item(self, collection_id: str, item_id: str) -> Dict:
+    async def get_one_item(self, collection_id: str, item_id: str) -> dict:
         """Retrieve a single item from the database.
 
         Args:
@@ -390,7 +390,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             item_id (str): The id of the Item.
 
         Returns:
-            item (Dict): A dictionary containing the source data for the Item.
+            item (dict): A dictionary containing the source data for the Item.
 
         Raises:
             NotFoundError: If the specified Item does not exist in the Collection.
@@ -451,12 +451,12 @@ class DatabaseLogic(BaseDatabaseLogic):
         return Search().sort(*DEFAULT_SORT)
 
     @staticmethod
-    def apply_ids_filter(search: Search, item_ids: List[str]):
+    def apply_ids_filter(search: Search, item_ids: list[str]):
         """Database logic to search a list of STAC item ids."""
         return search.filter("terms", id=item_ids)
 
     @staticmethod
-    def apply_collections_filter(search: Search, collection_ids: List[str]):
+    def apply_collections_filter(search: Search, collection_ids: list[str]):
         """Database logic to search a list of STAC collection ids."""
         collection_nested_field = DatabaseLogic.__nested_field__(
             DatabaseLogic.COLLECTION_FIELD
@@ -466,7 +466,7 @@ class DatabaseLogic(BaseDatabaseLogic):
     @staticmethod
     def apply_datetime_filter(
         search: Search, datetime: Optional[str]
-    ) -> Tuple[Search, Dict[str, Optional[str]]]:
+    ) -> tuple[Search, dict[str, Optional[str]]]:
         """Apply a filter to search on datetime, start_datetime, and end_datetime fields.
 
         Args:
@@ -661,12 +661,12 @@ class DatabaseLogic(BaseDatabaseLogic):
         return search.query(filter_query), datetime_search
 
     @staticmethod
-    def apply_bbox_filter(search: Search, bbox: List):
+    def apply_bbox_filter(search: Search, bbox: list):
         """Filter search results based on bounding box.
 
         Args:
             search (Search): The search object to apply the filter to.
-            bbox (List): The bounding box coordinates, represented as a list of four values [minx, miny, maxx, maxy].
+            bbox (list): The bounding box coordinates, represented as a list of four values [minx, miny, maxx, maxy].
 
         Returns:
             search (Search): The search object with the bounding box filter applied.
@@ -747,14 +747,14 @@ class DatabaseLogic(BaseDatabaseLogic):
         return search
 
     @staticmethod
-    def apply_free_text_filter(search: Search, free_text_queries: Optional[List[str]]):
+    def apply_free_text_filter(search: Search, free_text_queries: Optional[list[str]]):
         """Create a free text query for Elasticsearch queries.
 
         This method delegates to the shared implementation in apply_free_text_filter_shared.
 
         Args:
             search (Search): The search object to apply the query to.
-            free_text_queries (Optional[List[str]]): A list of text strings to search for in the properties.
+            free_text_queries (Optional[list[str]]): A list of text strings to search for in the properties.
 
         Returns:
             Search: The search object with the free text query applied, or the original search
@@ -765,7 +765,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         )
 
     async def apply_cql2_filter(
-        self, search: Search, _filter: Optional[Dict[str, Any]]
+        self, search: Search, _filter: Optional[dict[str, Any]]
     ):
         """
         Apply a CQL2 filter to an Elasticsearch Search object.
@@ -776,7 +776,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         Args:
             search (Search): The Elasticsearch Search object to which the filter will be applied.
-            _filter (Optional[Dict[str, Any]]): The filter in dictionary form that needs to be applied
+            _filter (Optional[dict[str, Any]]): The filter in dictionary form that needs to be applied
                                                 to the search. The dictionary should follow the structure
                                                 required by the `to_es` function which converts it
                                                 to an Elasticsearch query.
@@ -792,16 +792,16 @@ class DatabaseLogic(BaseDatabaseLogic):
         return search
 
     @staticmethod
-    def populate_sort(sortby: List) -> Optional[Dict[str, Dict[str, str]]]:
+    def populate_sort(sortby: list) -> Optional[dict[str, dict[str, str]]]:
         """Create a sort configuration for Elasticsearch queries.
 
         This method delegates to the shared implementation in populate_sort_shared.
 
         Args:
-            sortby (List): A list of sort specifications, each containing a field and direction.
+            sortby (list): A list of sort specifications, each containing a field and direction.
 
         Returns:
-            Optional[Dict[str, Dict[str, str]]]: A dictionary mapping field names to sort direction
+            Optional[dict[str, dict[str, str]]]: A dictionary mapping field names to sort direction
                 configurations, or None if no sort was specified.
         """
         return populate_sort_shared(sortby=sortby)
@@ -811,24 +811,24 @@ class DatabaseLogic(BaseDatabaseLogic):
         search: Search,
         limit: int,
         token: Optional[str],
-        sort: Optional[Dict[str, Dict[str, str]]],
-        collection_ids: Optional[List[str]],
+        sort: Optional[dict[str, dict[str, str]]],
+        collection_ids: Optional[list[str]],
         datetime_search: str,
         ignore_unavailable: bool = True,
-    ) -> Tuple[Iterable[Dict[str, Any]], Optional[int], Optional[str]]:
+    ) -> tuple[Iterable[dict[str, Any]], Optional[int], Optional[str]]:
         """Execute a search query with limit and other optional parameters.
 
         Args:
             search (Search): The search query to be executed.
             limit (int): The maximum number of results to be returned.
             token (Optional[str]): The token used to return the next set of results.
-            sort (Optional[Dict[str, Dict[str, str]]]): Specifies how the results should be sorted.
-            collection_ids (Optional[List[str]]): The collection ids to search.
+            sort (Optional[dict[str, dict[str, str]]]): Specifies how the results should be sorted.
+            collection_ids (Optional[list[str]]): The collection ids to search.
             datetime_search (str): Datetime used for index selection.
             ignore_unavailable (bool, optional): Whether to ignore unavailable collections. Defaults to True.
 
         Returns:
-            Tuple[Iterable[Dict[str, Any]], Optional[int], Optional[str]]: A tuple containing:
+            tuple[Iterable[dict[str, Any]], Optional[int], Optional[str]]: A tuple containing:
                 - An iterable of search results, where each result is a dictionary with keys and values representing the
                 fields and values of each document.
                 - The total number of results (if the count could be computed), or None if the count could not be
@@ -915,8 +915,8 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     async def aggregate(
         self,
-        collection_ids: Optional[List[str]],
-        aggregations: List[str],
+        collection_ids: Optional[list[str]],
+        aggregations: list[str],
         search: Search,
         centroid_geohash_grid_precision: int,
         centroid_geohex_grid_precision: int,
@@ -928,7 +928,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         ignore_unavailable: Optional[bool] = True,
     ):
         """Return aggregations of STAC Items."""
-        search_body: Dict[str, Any] = {}
+        search_body: dict[str, Any] = {}
         query = search.query.to_dict() if search.query else None
         if query:
             search_body["query"] = query
@@ -1262,7 +1262,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         self,
         collection_id: str,
         item_id: str,
-        operations: List[PatchOperation],
+        operations: list[PatchOperation],
         base_url: str,
         create_nest: bool = False,
         refresh: bool = True,
@@ -1272,7 +1272,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         Args:
             collection_id(str): Collection that item belongs to.
             item_id(str): Id of item to be patched.
-            operations (list): List of operations to run.
+            operations (list): list of operations to run.
             base_url (str): The base URL used for constructing URLs for the item.
             refresh (bool, optional): Refresh the index after performing the operation. Defaults to True.
 
@@ -1405,14 +1405,14 @@ class DatabaseLogic(BaseDatabaseLogic):
                 f"Item {item_id} in collection {collection_id} not found"
             )
 
-    async def get_items_mapping(self, collection_id: str) -> Dict[str, Any]:
+    async def get_items_mapping(self, collection_id: str) -> dict[str, Any]:
         """Get the mapping for the specified collection's items index.
 
         Args:
             collection_id (str): The ID of the collection to get items mapping for.
 
         Returns:
-            Dict[str, Any]: The mapping information.
+            dict[str, Any]: The mapping information.
         """
         index_name = index_alias_by_collection_id(collection_id)
         try:
@@ -1425,7 +1425,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     async def get_items_unique_values(
         self, collection_id: str, field_names: Iterable[str], *, limit: int = 100
-    ) -> Dict[str, List[str]]:
+    ) -> dict[str, list[str]]:
         """Get the unique values for the given fields in the collection."""
         limit_plus_one = limit + 1
         index_name = index_alias_by_collection_id(collection_id)
@@ -1441,7 +1441,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             },
         )
 
-        result: Dict[str, List[str]] = {}
+        result: dict[str, list[str]] = {}
         for field, agg in query["aggregations"].items():
             if len(agg["buckets"]) > limit:
                 logger.warning(
@@ -1643,7 +1643,7 @@ class DatabaseLogic(BaseDatabaseLogic):
     async def json_patch_collection(
         self,
         collection_id: str,
-        operations: List[PatchOperation],
+        operations: list[PatchOperation],
         base_url: str,
         create_nest: bool = False,
         refresh: bool = True,
@@ -1652,7 +1652,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         Args:
             collection_id(str): Id of collection to be patched.
-            operations (list): List of operations to run.
+            operations (list): list of operations to run.
             base_url (str): The base URL used for constructing links.
             refresh (bool, optional): Refresh the index after performing the operation. Defaults to True.
 
@@ -1739,15 +1739,15 @@ class DatabaseLogic(BaseDatabaseLogic):
     async def bulk_async(
         self,
         collection_id: str,
-        processed_items: List[Item],
+        processed_items: list[Item],
         **kwargs: Any,
-    ) -> Tuple[int, List[Dict[str, Any]]]:
+    ) -> tuple[int, list[dict[str, Any]]]:
         """
         Perform a bulk insert of items into the database asynchronously.
 
         Args:
             collection_id (str): The ID of the collection to which the items belong.
-            processed_items (List[Item]): A list of `Item` objects to be inserted into the database.
+            processed_items (list[Item]): A list of `Item` objects to be inserted into the database.
             **kwargs (Any): Additional keyword arguments, including:
                 - refresh (str, optional): Whether to refresh the index after the bulk insert.
                 Can be "true", "false", or "wait_for". Defaults to the value of `self.sync_settings.database_refresh`.
@@ -1756,7 +1756,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 Defaults to the value of `self.async_settings.raise_on_bulk_error`.
 
         Returns:
-            Tuple[int, List[Dict[str, Any]]]: A tuple containing:
+            tuple[int, list[dict[str, Any]]]: A tuple containing:
                 - The number of successfully processed actions (`success`).
                 - A list of errors encountered during the bulk operation (`errors`).
 
@@ -1808,15 +1808,15 @@ class DatabaseLogic(BaseDatabaseLogic):
     def bulk_sync(
         self,
         collection_id: str,
-        processed_items: List[Item],
+        processed_items: list[Item],
         **kwargs: Any,
-    ) -> Tuple[int, List[Dict[str, Any]]]:
+    ) -> tuple[int, list[dict[str, Any]]]:
         """
         Perform a bulk insert of items into the database synchronously.
 
         Args:
             collection_id (str): The ID of the collection to which the items belong.
-            processed_items (List[Item]): A list of `Item` objects to be inserted into the database.
+            processed_items (list[Item]): A list of `Item` objects to be inserted into the database.
             **kwargs (Any): Additional keyword arguments, including:
                 - refresh (str, optional): Whether to refresh the index after the bulk insert.
                 Can be "true", "false", or "wait_for". Defaults to the value of `self.sync_settings.database_refresh`.
@@ -1825,7 +1825,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 Defaults to the value of `self.async_settings.raise_on_bulk_error`.
 
         Returns:
-            Tuple[int, List[Dict[str, Any]]]: A tuple containing:
+            tuple[int, list[dict[str, Any]]]: A tuple containing:
                 - The number of successfully processed actions (`success`).
                 - A list of errors encountered during the bulk operation (`errors`).
 
@@ -1896,15 +1896,15 @@ class DatabaseLogic(BaseDatabaseLogic):
         token: Optional[str],
         limit: int,
         request: Any = None,
-        sort: Optional[List[Dict[str, Any]]] = None,
-    ) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[int]]:
+        sort: Optional[list[dict[str, Any]]] = None,
+    ) -> tuple[list[dict[str, Any]], Optional[str], Optional[int]]:
         """Retrieve a list of catalogs from Elasticsearch, supporting pagination.
 
         Args:
             token (Optional[str]): The pagination token.
             limit (int): The number of results to return.
             request (Any, optional): The FastAPI request object. Defaults to None.
-            sort (Optional[List[Dict[str, Any]]], optional): Optional sort parameter. Defaults to None.
+            sort (Optional[list[dict[str, Any]]], optional): Optional sort parameter. Defaults to None.
 
         Returns:
             A tuple of (catalogs, next pagination token if any, optional count).
@@ -1967,11 +1967,11 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         return catalogs, next_token, matched
 
-    async def create_catalog(self, catalog: Dict, refresh: bool = False) -> None:
+    async def create_catalog(self, catalog: dict, refresh: bool = False) -> None:
         """Create a catalog in Elasticsearch.
 
         Args:
-            catalog (Dict): The catalog document to create.
+            catalog (dict): The catalog document to create.
             refresh (bool): Whether to refresh the index after creation.
         """
         await self.client.index(
@@ -1981,14 +1981,14 @@ class DatabaseLogic(BaseDatabaseLogic):
             refresh=refresh,
         )
 
-    async def find_catalog(self, catalog_id: str) -> Dict:
+    async def find_catalog(self, catalog_id: str) -> dict:
         """Find a catalog in Elasticsearch by ID.
 
         Args:
             catalog_id (str): The ID of the catalog to find.
 
         Returns:
-            Dict: The catalog document.
+            dict: The catalog document.
 
         Raises:
             NotFoundError: If the catalog is not found.

@@ -1,7 +1,7 @@
 """Base database logic."""
 
 import abc
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Iterable, Optional
 
 from stac_pydantic.shared import BBox
 
@@ -20,13 +20,13 @@ class BaseDatabaseLogic(abc.ABC):
         token: Optional[str],
         limit: int,
         request: Any = None,
-        sort: Optional[List[Dict[str, Any]]] = None,
+        sort: Optional[list[dict[str, Any]]] = None,
         bbox: Optional[BBox] = None,
-        q: Optional[List[str]] = None,
-        filter: Optional[Dict[str, Any]] = None,
-        query: Optional[Dict[str, Dict[str, Any]]] = None,
+        q: Optional[list[str]] = None,
+        filter: Optional[dict[str, Any]] = None,
+        query: Optional[dict[str, dict[str, Any]]] = None,
         datetime: Optional[str] = None,
-    ) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[int]]:
+    ) -> tuple[list[dict[str, Any]], Optional[str], Optional[int]]:
         """Retrieve a list of collections from the database, supporting pagination.
 
         Args:
@@ -46,12 +46,12 @@ class BaseDatabaseLogic(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def get_one_item(self, collection_id: str, item_id: str) -> Dict:
+    async def get_one_item(self, collection_id: str, item_id: str) -> dict:
         """Retrieve a single item from the database."""
         pass
 
     @abc.abstractmethod
-    async def create_item(self, item: Dict, refresh: bool = False) -> None:
+    async def create_item(self, item: dict, refresh: bool = False) -> None:
         """Create an item in the database."""
         pass
 
@@ -60,10 +60,10 @@ class BaseDatabaseLogic(abc.ABC):
         self,
         collection_id: str,
         item_id: str,
-        item: Dict,
+        item: dict,
         base_url: str,
         refresh: bool = True,
-    ) -> Dict:
+    ) -> dict:
         """Patch a item in the database follows RF7396."""
         pass
 
@@ -72,11 +72,11 @@ class BaseDatabaseLogic(abc.ABC):
         self,
         collection_id: str,
         item_id: str,
-        operations: List,
+        operations: list,
         base_url: str,
         create_nest: bool = False,
         refresh: bool = True,
-    ) -> Dict:
+    ) -> dict:
         """Patch a item in the database follows RF6902."""
         pass
 
@@ -88,19 +88,19 @@ class BaseDatabaseLogic(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def get_items_mapping(self, collection_id: str) -> Dict[str, Dict[str, Any]]:
+    async def get_items_mapping(self, collection_id: str) -> dict[str, dict[str, Any]]:
         """Get the mapping for the items in the collection."""
         pass
 
     @abc.abstractmethod
     async def get_items_unique_values(
         self, collection_id: str, field_names: Iterable[str], *, limit: int = ...
-    ) -> Dict[str, List[str]]:
+    ) -> dict[str, list[str]]:
         """Get the unique values for the given fields in the collection."""
         pass
 
     @abc.abstractmethod
-    async def create_collection(self, collection: Dict, refresh: bool = False) -> None:
+    async def create_collection(self, collection: dict, refresh: bool = False) -> None:
         """Create a collection in the database."""
         pass
 
@@ -108,10 +108,10 @@ class BaseDatabaseLogic(abc.ABC):
     async def merge_patch_collection(
         self,
         collection_id: str,
-        collection: Dict,
+        collection: dict,
         base_url: str,
         refresh: bool = True,
-    ) -> Dict:
+    ) -> dict:
         """Patch a collection in the database follows RF7396."""
         pass
 
@@ -119,16 +119,16 @@ class BaseDatabaseLogic(abc.ABC):
     async def json_patch_collection(
         self,
         collection_id: str,
-        operations: List,
+        operations: list,
         base_url: str,
         create_nest: bool = False,
         refresh: bool = True,
-    ) -> Dict:
+    ) -> dict:
         """Patch a collection in the database follows RF6902."""
         pass
 
     @abc.abstractmethod
-    async def find_collection(self, collection_id: str) -> Dict:
+    async def find_collection(self, collection_id: str) -> dict:
         """Find a collection in the database."""
         pass
 
@@ -140,7 +140,7 @@ class BaseDatabaseLogic(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def get_queryables_mapping(self, collection_id: str = "*") -> Dict[str, Any]:
+    async def get_queryables_mapping(self, collection_id: str = "*") -> dict[str, Any]:
         """Retrieve mapping of Queryables for search."""
         pass
 
@@ -149,8 +149,8 @@ class BaseDatabaseLogic(abc.ABC):
         token: Optional[str],
         limit: int,
         request: Any = None,
-        sort: Optional[List[Dict[str, Any]]] = None,
-    ) -> Tuple[List[Dict[str, Any]], Optional[str], Optional[int]]:
+        sort: Optional[list[dict[str, Any]]] = None,
+    ) -> tuple[list[dict[str, Any]], Optional[str], Optional[int]]:
         """Retrieve a list of catalogs from the database, supporting pagination.
 
         Args:
@@ -165,12 +165,12 @@ class BaseDatabaseLogic(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def create_catalog(self, catalog: Dict, refresh: bool = False) -> None:
+    async def create_catalog(self, catalog: dict, refresh: bool = False) -> None:
         """Create a catalog in the database."""
         pass
 
     @abc.abstractmethod
-    async def find_catalog(self, catalog_id: str) -> Dict:
+    async def find_catalog(self, catalog_id: str) -> dict:
         """Find a catalog in the database."""
         pass
 
