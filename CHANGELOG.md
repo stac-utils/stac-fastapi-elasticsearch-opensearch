@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Added code to remove `assets.` prefix from queryables, as is done with `properties.`. [#602](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/602)
+
 ### Changed
 
 ### Removed
