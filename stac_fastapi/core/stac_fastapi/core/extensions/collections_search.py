@@ -17,7 +17,7 @@ from stac_fastapi.types.stac import Collections
 class CollectionsSearchRequest(ExtendedSearch):
     """Extended search model for collections with free text search support."""
 
-    q: Optional[Union[str, list[str]]] = None
+    q: Optional[str | list[str]] = None
     token: Optional[str] = None
     query: Optional[
         str
@@ -31,7 +31,7 @@ def build_get_collections_search_doc(original_endpoint):
 
     async def documented_endpoint(
         request: Request,
-        q: Optional[Union[str, list[str]]] = Query(
+        q: Optional[str | list[str]] = Query(
             None,
             description="Free text search query",
         ),
@@ -200,8 +200,8 @@ class CollectionsSearchEndpointExtension(ApiExtension):
         self,
         client: Optional[BaseCoreClient] = None,
         settings: dict = None,
-        GET: Optional[Type[Union[BaseModel, APIRequest]]] = None,
-        POST: Optional[Type[Union[BaseModel, APIRequest]]] = None,
+        GET: Optional[Type[BaseModel | APIRequest]] = None,
+        POST: Optional[Type[BaseModel | APIRequest]] = None,
         conformance_classes: Optional[List[str]] = None,
     ):
         """Initialize the extension.
@@ -279,7 +279,7 @@ class CollectionsSearchEndpointExtension(ApiExtension):
 
     async def collections_search_get_endpoint(
         self, request: Request
-    ) -> Union[Collections, Response]:
+    ) -> Collections | Response:
         """GET /collections-search endpoint.
 
         Args:
@@ -323,7 +323,7 @@ class CollectionsSearchEndpointExtension(ApiExtension):
 
     async def collections_search_post_endpoint(
         self, request: Request, body: dict
-    ) -> Union[Collections, Response]:
+    ) -> Collections | Response:
         """POST /collections-search endpoint.
 
         Args:

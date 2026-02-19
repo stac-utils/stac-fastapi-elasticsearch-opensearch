@@ -7,19 +7,20 @@ such as converting bounding boxes to polygon representations.
 import logging
 import os
 import re
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Any, List, Optional, Set
 
 from stac_fastapi.types.stac import Item
 
 MAX_LIMIT = 10000
 
 
-def get_bool_env(name: str, default: Union[bool, str] = False) -> bool:
+def get_bool_env(name: str, default: bool | str = False) -> bool:
     """
     Retrieve a boolean value from an environment variable.
 
     Args:
         name (str): The name of the environment variable.
+        default (bool | str, optional): The default value to use if the variable is not set or unrecognized. Defaults to False.
         default (Union[bool, str], optional): The default value to use if the variable is not set or unrecognized. Defaults to False.
 
     Returns:
@@ -72,7 +73,7 @@ def bbox2polygon(b0: float, b1: float, b2: float, b3: float) -> List[List[List[f
 
 
 def filter_fields(  # noqa: C901
-    item: Union[Item, Dict[str, Any]],
+    item: Item | dict[str, Any],
     include: Optional[set[str]] = None,
     exclude: Optional[set[str]] = None,
 ) -> Item:

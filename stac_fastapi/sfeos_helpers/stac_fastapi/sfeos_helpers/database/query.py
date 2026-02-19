@@ -4,7 +4,7 @@ This module provides functions for building and manipulating Elasticsearch/OpenS
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, Optional
 
 from stac_fastapi.core.utilities import bbox2polygon
 from stac_fastapi.sfeos_helpers.mappings import Geometry
@@ -70,7 +70,7 @@ def apply_intersects_filter_shared(
 
 def apply_collections_datetime_filter_shared(
     datetime_str: Optional[str],
-) -> Optional[dict[str, Any]]:
+) -> dict[str, Any] | None:
     """Create a temporal filter for collections based on their extent.
 
     Args:
@@ -130,8 +130,8 @@ def apply_collections_datetime_filter_shared(
 
 
 def apply_collections_bbox_filter_shared(
-    bbox: Union[str, List[float], None],
-) -> Optional[Dict[str, Dict]]:
+    bbox: str | list[float] | None,
+) -> dict[str, dict] | None:
     """Create a geo_shape filter for collections bbox search.
 
     This function handles bbox parsing from both GET requests (string format) and POST requests

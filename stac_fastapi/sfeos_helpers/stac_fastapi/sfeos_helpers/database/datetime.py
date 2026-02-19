@@ -9,7 +9,7 @@ import re
 from datetime import date
 from datetime import datetime as datetime_type
 from datetime import timezone
-from typing import Optional, Union
+from typing import Optional
 
 from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.types.rfc3339 import DateTimeType
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 def return_date(
-    interval: Optional[Union[DateTimeType, str]],
+    interval: Optional[DateTimeType | str],
 ) -> dict[str, Optional[str]]:
     """
     Convert a date interval to an Elasticsearch/OpenSearch query format.

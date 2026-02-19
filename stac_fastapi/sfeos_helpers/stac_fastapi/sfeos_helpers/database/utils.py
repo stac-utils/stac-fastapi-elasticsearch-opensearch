@@ -5,7 +5,7 @@ in Elasticsearch/OpenSearch, such as parameter validation.
 """
 
 import logging
-from typing import Any, Optional, Union
+from typing import Any, Optional
 
 from stac_fastapi.core.utilities import bbox2polygon, get_bool_env
 from stac_fastapi.extensions.core.transaction.request import (
@@ -157,7 +157,7 @@ def add_bbox_shape_to_collection(collection: dict[str, Any]) -> bool:
     return True
 
 
-def validate_refresh(value: Union[str, bool]) -> str:
+def validate_refresh(value: str | bool) -> str:
     """
     Validate the `refresh` parameter value.
 

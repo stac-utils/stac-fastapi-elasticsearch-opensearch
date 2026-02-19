@@ -29,7 +29,7 @@ import copy
 import json
 import logging
 import os
-from typing import Any, Dict, Literal, Optional, Protocol, Union
+from typing import Any, Dict, Literal, Optional, Protocol
 
 from stac_fastapi.core.utilities import get_bool_env
 
@@ -55,7 +55,7 @@ def merge_mappings(base: dict[str, Any], custom: dict[str, Any]) -> None:
 
 def parse_dynamic_mapping_config(
     config_value: Optional[str],
-) -> Union[bool, str]:
+) -> bool | str:
     """Parse the dynamic mapping configuration value.
 
     Args:

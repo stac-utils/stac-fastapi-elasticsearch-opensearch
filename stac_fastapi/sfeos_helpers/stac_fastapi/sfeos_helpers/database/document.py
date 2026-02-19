@@ -23,7 +23,9 @@ def mk_item_id(item_id: str, collection_id: str) -> str:
     return f"{item_id}|{collection_id}"
 
 
-def mk_actions(collection_id: str, processed_items: List[Item]) -> list[dict[str, Any]]:
+def mk_actions(
+    collection_id: str, processed_items: List[Item]
+) -> list[dict[str, Any] | dict[str, str | dict]]:
     """Create Elasticsearch bulk actions for a list of processed items.
 
     Args:
@@ -31,7 +33,7 @@ def mk_actions(collection_id: str, processed_items: List[Item]) -> list[dict[str
         processed_items (List[Item]): The list of processed items to be bulk indexed.
 
     Returns:
-        List[Dict[str, Union[str, Dict]]]: The list of bulk actions to be executed,
+        list[dict[str, Any] | dict[str, str | dict]]: The list of bulk actions to be executed,
         each action being a dictionary with the following keys:
         - `_index`: the index to store the document in.
         - `_id`: the document's identifier.

@@ -3,7 +3,7 @@
 import logging
 import os
 import ssl
-from typing import Any, Union
+from typing import Any
 
 import certifi
 from opensearchpy import AsyncOpenSearch, OpenSearch
@@ -92,12 +92,12 @@ class OpensearchSettings(ApiSettings, ApiBaseSettings):
     raise_on_bulk_error: bool = get_bool_env("RAISE_ON_BULK_ERROR", default=False)
 
     @property
-    def database_refresh(self) -> Union[bool, str]:
+    def database_refresh(self) -> bool | str:
         """
         Get the value of the DATABASE_REFRESH environment variable.
 
         Returns:
-            Union[bool, str]: The value of DATABASE_REFRESH, which can be True, False, or "wait_for".
+            bool | str: The value of DATABASE_REFRESH, which can be True, False, or "wait_for".
         """
         value = os.getenv("DATABASE_REFRESH", "false")
         return validate_refresh(value)
@@ -124,12 +124,12 @@ class AsyncOpensearchSettings(ApiSettings, ApiBaseSettings):
     raise_on_bulk_error: bool = get_bool_env("RAISE_ON_BULK_ERROR", default=False)
 
     @property
-    def database_refresh(self) -> Union[bool, str]:
+    def database_refresh(self) -> bool | str:
         """
         Get the value of the DATABASE_REFRESH environment variable.
 
         Returns:
-            Union[bool, str]: The value of DATABASE_REFRESH, which can be True, False, or "wait_for".
+            bool | str: The value of DATABASE_REFRESH, which can be True, False, or "wait_for".
         """
         value = os.getenv("DATABASE_REFRESH", "false")
         return validate_refresh(value)

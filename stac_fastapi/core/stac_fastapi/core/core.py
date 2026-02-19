@@ -5,7 +5,7 @@ import os
 from datetime import datetime as datetime_type
 from datetime import timezone
 from enum import Enum
-from typing import Any, Optional, Type, Union
+from typing import Any, Optional, Type
 from urllib.parse import unquote_plus, urljoin
 
 import attr
@@ -274,10 +274,10 @@ class CoreClient(AsyncBaseCoreClient):
         bbox: Optional[BBox] = None,
         datetime: Optional[str] = None,
         fields: Optional[list[str]] = None,
-        sortby: Optional[Union[str, list[str]]] = None,
+        sortby: Optional[str | list[str]] = None,
         filter_expr: Optional[str] = None,
         filter_lang: Optional[str] = None,
-        q: Optional[Union[str, list[str]]] = None,
+        q: Optional[str | list[str]] = None,
         query: Optional[str] = None,
         request: Request = None,
         token: Optional[str] = None,
@@ -974,18 +974,18 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def create_item(
-        self, collection_id: str, item: Union[Item, ItemCollection], **kwargs
-    ) -> Union[dict[str, Any], str]:
+        self, collection_id: str, item: Item | ItemCollection, **kwargs
+    ) -> dict[str, Any] | str:
         """
         Create an item or a feature collection of items in the specified collection.
 
         Args:
             collection_id (str): The ID of the collection to add the item(s) to.
-            item (Union[Item, ItemCollection]): A single item or a collection of items to be added.
+            item (Item | ItemCollection): A single item or a collection of items to be added.
             **kwargs: Additional keyword arguments, such as `request` and `refresh`.
 
         Returns:
-            Union[stac_types.Item, str]: The created item if a single item is added, or a summary string
+            dict[str, Any] | str: The created item if a single item is added, or a summary string
             indicating the number of items successfully added and errors if a collection of items is added.
 
         Raises:
@@ -1154,7 +1154,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         self,
         collection_id: str,
         item_id: str,
-        patch: Union[PartialItem, list[PatchOperation]],
+        patch: PartialItem | list[PatchOperation],
         **kwargs,
     ):
         """Patch an item in the collection.
@@ -1291,7 +1291,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     async def patch_collection(
         self,
         collection_id: str,
-        patch: Union[PartialCollection, list[PatchOperation]],
+        patch: PartialCollection | list[PatchOperation],
         **kwargs,
     ):
         """Update a collection.
