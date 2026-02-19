@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Updated
 
+- stac-fastapi libraries to v6.2.1. [#606](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/606)
+
 ## [v6.11.0] - 2026-02-18
 
 ### Added
