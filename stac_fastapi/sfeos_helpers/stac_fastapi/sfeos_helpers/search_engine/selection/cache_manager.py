@@ -34,10 +34,10 @@ class IndexCacheManager:
                 if self._redis is None:
                     from stac_fastapi.core.redis_utils import connect_redis
 
-                    redis = await connect_redis()
-                    if redis is None:
-                        raise RuntimeError("Redis is required for index alias caching.")
-                    self._redis = redis
+                    # redis = await connect_redis()
+                    # if redis is None:
+                    #     raise RuntimeError("Redis is required for index alias caching.")
+                    # self._redis = redis
 
     async def get_cache(self) -> Optional[Dict[str, List[Tuple[Dict[str, str]]]]]:
         """Get the current cache from Redis.
@@ -45,12 +45,13 @@ class IndexCacheManager:
         Returns:
             Optional[Dict[str, List[Tuple[Dict[str, str]]]]]: Cache data if valid, None if missing.
         """
-        await self._ensure_redis()
-        raw = await self._redis.get(REDIS_DATA_KEY)
-        if raw is None:
-            return None
-        data = json.loads(raw)
-        return _deserialize_cache(data)
+        pass
+        # await self._ensure_redis()
+        # raw = await self._redis.get(REDIS_DATA_KEY)
+        # if raw is None:
+        #     return None
+        # data = json.loads(raw)
+        # return _deserialize_cache(data)
 
     async def set_cache(self, data: Dict[str, List[Tuple[Dict[str, str]]]]) -> None:
         """Set cache data in Redis with TTL.
@@ -58,9 +59,10 @@ class IndexCacheManager:
         Args:
             data (Dict[str, List[Tuple[Dict[str, str]]]]): Cache data to store.
         """
-        await self._ensure_redis()
-        serialized = json.dumps(_serialize_cache(data))
-        await self._redis.setex(REDIS_DATA_KEY, self._ttl, serialized)
+        # await self._ensure_redis()
+        # serialized = json.dumps(_serialize_cache(data))
+        # await self._redis.setex(REDIS_DATA_KEY, self._ttl, serialized)
+        pass
 
     async def clear_cache(self) -> None:
         """Clear the cache in Redis."""
@@ -73,8 +75,9 @@ class IndexCacheManager:
         Returns:
             bool: True if lock was acquired, False otherwise.
         """
-        await self._ensure_redis()
-        return await self._redis.set(REDIS_LOCK_KEY, "1", nx=True, ex=30)
+        # await self._ensure_redis()
+        # return await self._redis.set(REDIS_LOCK_KEY, "1", nx=True, ex=30)
+        pass
 
     async def release_refresh_lock(self) -> None:
         """Release the distributed refresh lock."""

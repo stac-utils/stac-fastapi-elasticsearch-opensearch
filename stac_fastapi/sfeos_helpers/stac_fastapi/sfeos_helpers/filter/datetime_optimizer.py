@@ -178,116 +178,154 @@ def extract_collection_datetime(node: CqlNode) -> List[Tuple[List[str], str]]:
         - collections: List[str] collection id(s)
         - datetime_range: str or empty string if no datetime constraint
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    logger.info(f"Extracting collection datetime from AST: {node}")
+    print(f"\n=== EXTRACTING COLLECTION DATETIME FROM AST ===")
+    print(f"AST Node type: {type(node).__name__}")
+    
     pairs = []
     processed_nodes = set()
 
     def extract_datetime_constraints(child: CqlNode) -> List[Tuple]:
-        """Extract datetime constraints from a node.
-        Returns list of (start, end, is_exclude, op_type, comp_type) tuples."""
+        """Extract datetime constraints from a node."""
         constraints = []
+        node_type = type(child).__name__
+        print(f"  Processing node: {node_type}")
         
         if isinstance(child, ComparisonNode):
+            print(f"    ComparisonNode: field={child.field}, op={child.op}, value={child.value}")
             if child.field in ["datetime", "start_datetime", "end_datetime"]:
                 if child.op == ComparisonOp.EQ:
                     constraints.append((child.value, child.value, False, 'eq', None))
+                    print(f"      Added EQ constraint: {child.value}")
                 elif child.op == ComparisonOp.GT:
                     constraints.append((child.value, None, False, 'range', 'gt'))
+                    print(f"      Added GT constraint: {child.value}")
                 elif child.op == ComparisonOp.GTE:
                     constraints.append((child.value, None, False, 'range', 'gte'))
+                    print(f"      Added GTE constraint: {child.value}")
                 elif child.op == ComparisonOp.LT:
                     constraints.append((None, child.value, False, 'range', 'lt'))
+                    print(f"      Added LT constraint: {child.value}")
                 elif child.op == ComparisonOp.LTE:
                     constraints.append((None, child.value, False, 'range', 'lte'))
+                    print(f"      Added LTE constraint: {child.value}")
                 elif child.op == ComparisonOp.NEQ:
                     constraints.append((None, child.value, True, 'neq', None))
                     constraints.append((child.value, None, True, 'neq', None))
-                    
-        elif isinstance(child, AdvancedComparisonNode):
-            if child.field in ["datetime", "start_datetime", "end_datetime"]:
-                if child.op == AdvancedComparisonOp.BETWEEN:
-                    if isinstance(child.value, (list, tuple)) and len(child.value) == 2:
-                        constraints.append((child.value[0], child.value[1], False, 'range', None))
+                    print(f"      Added NEQ constraints: before and after {child.value}")
         
         elif isinstance(child, LogicalNode):
+            print(f"    LogicalNode: op={child.op}")
             if child.op == LogicalOp.OR:
+                print(f"      Processing OR with {len(child.children)} children")
                 or_constraints = []
-                for or_child in child.children:
+                for i, or_child in enumerate(child.children):
+                    print(f"        OR branch {i+1}:")
                     branch_constraints = extract_datetime_constraints(or_child)
-                    or_constraints.extend(branch_constraints)
+                    if branch_constraints:
+                        or_constraints.extend(branch_constraints)
                 if or_constraints:
                     constraints.append((None, None, False, 'or', None, or_constraints))
+                    print(f"      Added OR with {len(or_constraints)} total constraints")
             
             elif child.op == LogicalOp.AND:
+                print(f"      Processing AND with {len(child.children)} children")
                 and_constraints = []
-                for and_child in child.children:
+                for i, and_child in enumerate(child.children):
+                    print(f"        AND child {i+1}:")
                     branch_constraints = extract_datetime_constraints(and_child)
-                    and_constraints.extend(branch_constraints)
+                    if branch_constraints:
+                        and_constraints.extend(branch_constraints)
                 if and_constraints:
-                    constraints.append((None, None, False, 'and', None, and_constraints))
-            
-            elif child.op == LogicalOp.NOT:
-                for inner_child in child.children:
-                    inner_constraints = extract_datetime_constraints(inner_child)
-                    for constraint in inner_constraints:
-                        if len(constraint) > 5 and constraint[3] == 'and':
-                            and_constraints = constraint[5]
-                            earliest_start = None
-                            latest_end = None
-                            for and_cons in and_constraints:
-                                start, end, is_exclude, op_type, comp_type = and_cons[:5]
-                                if op_type == 'range':
-                                    if comp_type in ['gt', 'gte'] and start:
-                                        if earliest_start is None or start < earliest_start:
-                                            earliest_start = start
-                                    elif comp_type in ['lt', 'lte'] and end:
-                                        if latest_end is None or end > latest_end:
-                                            latest_end = end
-                            
-                            or_branches = []
-                            if earliest_start:
-                                or_branches.append((None, earliest_start, False, 'range', 'lt'))
-                            if latest_end:
-                                or_branches.append((latest_end, None, False, 'range', 'gt'))
-                            if or_branches:
-                                constraints.append((None, None, False, 'or', None, or_branches))
-                        
-                        elif len(constraint) > 5 and constraint[3] == 'or':
-                            or_constraints = constraint[5]
-                            and_branches = []
-                            for or_cons in or_constraints:
-                                start, end, is_exclude, op_type, comp_type = or_cons[:5]
-                                if op_type == 'eq':
-                                    and_branches.append((None, start, True, 'neq', None))
-                                    and_branches.append((start, None, True, 'neq', None))
-                                elif op_type == 'range':
-                                    if comp_type in ['gt', 'gte']:
-                                        and_branches.append((None, start, False, 'range', 'lte'))
-                                    elif comp_type in ['lt', 'lte']:
-                                        and_branches.append((start, None, False, 'range', 'gte'))
-                            if and_branches:
-                                constraints.append((None, None, False, 'and', None, and_branches))
-                        else:
-                            start, end, is_exclude, op_type, comp_type = constraint[:5]
-                            if op_type == 'eq':
-                                or_branches = [
-                                    (None, start, False, 'range', 'lt'),
-                                    (start, None, False, 'range', 'gt')
-                                ]
-                                constraints.append((None, None, False, 'or', None, or_branches))
-                            elif op_type == 'range':
-                                if comp_type in ['gt', 'gte']:
-                                    constraints.append((None, start, False, 'range', 'lte'))
-                                elif comp_type in ['lt', 'lte']:
-                                    constraints.append((start, None, False, 'range', 'gte'))
+                    if len(and_constraints) == 1:
+                        constraints.append(and_constraints[0])
+                        print(f"      Added single AND constraint")
+                    else:
+                        constraints.append((None, None, False, 'and', None, and_constraints))
+                        print(f"      Added AND with {len(and_constraints)} constraints")
         
         return constraints
 
+    def expand_constraints(constraints_list: List) -> List[List]:
+        """Expand complex constraints into lists of simple constraints."""
+        expanded = []
+        
+        for constraint in constraints_list:
+            if len(constraint) > 5 and constraint[3] in ['or', 'and']:
+                if constraint[3] == 'or':
+                    # For OR, each branch becomes a separate result
+                    branches = constraint[5]
+                    for branch in branches:
+                        branch_expanded = expand_constraints([branch])
+                        expanded.extend(branch_expanded)
+                elif constraint[3] == 'and':
+                    # For AND, we need to combine all branches into a single constraint set
+                    branches = constraint[5]
+                    
+                    # Collect all simple constraints from this AND
+                    all_simple = []
+                    for branch in branches:
+                        if len(branch) > 5 and branch[3] in ['or', 'and']:
+                            # Recursively expand nested complex constraints
+                            branch_expanded = expand_constraints([branch])
+                            for be in branch_expanded:
+                                all_simple.extend(be)
+                        else:
+                            # Simple constraint
+                            all_simple.append(branch)
+                    
+                    # Now combine start and end constraints from this AND
+                    start_vals = []
+                    end_vals = []
+                    other_constraints = []
+                    is_exclude = False
+                    
+                    for c in all_simple:
+                        start, end, ie, op_type, comp_type = c[:5]
+                        is_exclude = is_exclude or ie
+                        if op_type == 'range':
+                            if start is not None and end is None:
+                                start_vals.append((start, comp_type))
+                            elif start is None and end is not None:
+                                end_vals.append((end, comp_type))
+                            else:
+                                other_constraints.append(c)
+                        else:
+                            other_constraints.append(c)
+                    
+                    # Take the most restrictive values
+                    combined = []
+                    if start_vals:
+                        # For start, take the maximum value (most restrictive)
+                        max_start = max(start_vals, key=lambda x: x[0])
+                        combined.append((max_start[0], None, is_exclude, 'range', max_start[1]))
+                    
+                    if end_vals:
+                        # For end, take the minimum value (most restrictive)
+                        min_end = min(end_vals, key=lambda x: x[0])
+                        combined.append((None, min_end[0], is_exclude, 'range', min_end[1]))
+                    
+                    combined.extend(other_constraints)
+                    
+                    # For AND, all constraints go into ONE result set
+                    if combined:
+                        # If we have both start and end in the same set, they should be combined later
+                        expanded.append(combined)
+            else:
+                # Simple constraint
+                expanded.append([constraint])
+        
+        return expanded
+
     def collect_from_node(n: CqlNode) -> List[Tuple[List[str], List]]:
-        """Recursively collect collections and datetime constraints from node.
-        Returns a list of (collections, constraints_list) tuples."""
+        """Recursively collect collections and datetime constraints from node."""
         results = []
         
         if isinstance(n, LogicalNode) and n.op == LogicalOp.AND:
+            print(f"\n  Collecting from AND node:")
             current_collections = []
             all_constraints = []
             
@@ -298,6 +336,7 @@ def extract_collection_datetime(node: CqlNode) -> List[Tuple[List[str], str]]:
                             current_collections.extend(child.value)
                         else:
                             current_collections.append(child.value)
+                        print(f"    Found collection: {child.value}")
                     else:
                         constraints = extract_datetime_constraints(child)
                         all_constraints.extend(constraints)
@@ -314,34 +353,23 @@ def extract_collection_datetime(node: CqlNode) -> List[Tuple[List[str], str]]:
                             all_constraints.extend(nested_constraints)
             
             if current_collections:
+                print(f"    Current collections: {current_collections}")
+                print(f"    All constraints count: {len(all_constraints)}")
+                
                 if all_constraints:
-                    complex_constraints = [c for c in all_constraints if len(c) > 5 and c[3] in ['or', 'and']]
-                    other_constraints = [c for c in all_constraints if not (len(c) > 5 and c[3] in ['or', 'and'])]
+                    # Expand all constraints
+                    expanded_constraints = expand_constraints(all_constraints)
+                    print(f"    Expanded into {len(expanded_constraints)} constraint sets")
                     
-                    if complex_constraints:
-                        for complex_item in complex_constraints:
-                            if complex_item[3] == 'or':
-                                or_branches = complex_item[5]
-                                for branch in or_branches:
-                                    branch_list = [branch]
-                                    if other_constraints:
-                                        branch_list.extend(other_constraints)
-                                    results.append((current_collections.copy(), branch_list))
-                            elif complex_item[3] == 'and':
-                                and_branches = complex_item[5]
-                                combined = list(and_branches)
-                                if other_constraints:
-                                    combined.extend(other_constraints)
-                                results.append((current_collections.copy(), combined))
-                    else:
-                        results.append((current_collections.copy(), all_constraints))
+                    for constraint_set in expanded_constraints:
+                        results.append((current_collections.copy(), constraint_set))
                 else:
+                    print(f"    No datetime constraints, just collections")
                     results.append((current_collections, []))
         
         return results
 
     def should_process_node(n: CqlNode) -> bool:
-        """Determine if this node should be processed based on its parent context."""
         if id(n) in processed_nodes:
             return False
         processed_nodes.add(id(n))
@@ -350,27 +378,32 @@ def extract_collection_datetime(node: CqlNode) -> List[Tuple[List[str], str]]:
     def recurse(n: CqlNode, parent_is_and: bool = False):
         if isinstance(n, LogicalNode):
             if n.op == LogicalOp.AND and not parent_is_and and should_process_node(n):
+                print(f"\n=== PROCESSING TOP-LEVEL AND NODE ===")
                 results = collect_from_node(n)
                 
-                for collections, constraints in results:
+                print(f"Results from collect_from_node: {len(results)}")
+                for i, (collections, constraints) in enumerate(results):
+                    print(f"  Result {i+1}: collections={collections}, constraints={len(constraints)}")
+                    
                     if not collections:
                         continue
                         
                     if constraints:
-                        for constraint in constraints:
-                            if len(constraint) > 5 and constraint[3] in ['or', 'and']:
-                                continue
-                            
+                        for j, constraint in enumerate(constraints):
                             start, end, is_exclude, op_type, comp_type = constraint[:5]
+                            print(f"    Constraint {j+1}: start={start}, end={end}, is_exclude={is_exclude}, op_type={op_type}")
                             
                             if is_exclude or op_type == 'neq':
                                 if start is None and end is not None:
                                     date_range = f"../{end}"
+                                    print(f"      Adding exclude range before: {date_range}")
                                     pairs.append((collections, date_range))
                                 elif start is not None and end is None:
                                     date_range = f"{start}/.."
+                                    print(f"      Adding exclude range after: {date_range}")
                                     pairs.append((collections, date_range))
                                 elif start is not None and end is not None and start == end:
+                                    print(f"      Adding both exclude ranges for {start}")
                                     pairs.append((collections, f"../{start}"))
                                     pairs.append((collections, f"{start}/.."))
                             else:
@@ -378,6 +411,7 @@ def extract_collection_datetime(node: CqlNode) -> List[Tuple[List[str], str]]:
                                     if start and end:
                                         if start == end and op_type == 'eq':
                                             date_range = start
+                                            print(f"      Adding exact date: {date_range}")
                                         else:
                                             if comp_type in ['gt', 'lt', 'gte', 'lte']:
                                                 if comp_type in ['gt', 'gte']:
@@ -388,21 +422,31 @@ def extract_collection_datetime(node: CqlNode) -> List[Tuple[List[str], str]]:
                                                     date_range = f"{start}/{end}"
                                             else:
                                                 date_range = f"{start}/{end}"
+                                            print(f"      Adding range: {date_range}")
                                     elif start:
                                         date_range = f"{start}/.."
+                                        print(f"      Adding start range: {date_range}")
                                     elif end:
                                         date_range = f"../{end}"
+                                        print(f"      Adding end range: {date_range}")
                                     else:
                                         date_range = ""
                                     pairs.append((collections, date_range))
                     else:
+                        print(f"    No constraints, adding collections only")
                         pairs.append((collections, ""))
             
             for child in n.children:
                 recurse(child, parent_is_and=(n.op == LogicalOp.AND))
 
+    print("\n=== STARTING RECURSION ===")
     recurse(node)
     
+    print(f"\n=== FINAL PAIRS BEFORE DEDUP: {len(pairs)} ===")
+    for i, (collections, date_range) in enumerate(pairs):
+        print(f"  {i+1}: collections={collections}, range='{date_range}'")
+    
+    # Remove duplicates and filter out entries without collections
     unique_pairs = []
     seen = set()
     for collections, date_range in pairs:
@@ -412,5 +456,9 @@ def extract_collection_datetime(node: CqlNode) -> List[Tuple[List[str], str]]:
         if key not in seen:
             seen.add(key)
             unique_pairs.append((collections, date_range))
+    
+    print(f"\n=== UNIQUE FINAL PAIRS: {len(unique_pairs)} ===")
+    for i, (collections, date_range) in enumerate(unique_pairs):
+        print(f"  {i+1}: collections={collections}, range='{date_range}'")
     
     return unique_pairs

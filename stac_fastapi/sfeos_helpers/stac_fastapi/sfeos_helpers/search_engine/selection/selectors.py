@@ -147,12 +147,12 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
                 "lte": parsed_datetime.get("lte") if self.use_datetime else None,
             },
             "start_datetime": {
-                "gte": parsed_datetime.get("gte") if not self.use_datetime else None,
+                "gte": datetime.get("gte") if not self.use_datetime else None,
                 "lte": None,
             },
             "end_datetime": {
                 "gte": None,
-                "lte": parsed_datetime.get("lte") if not self.use_datetime else None,
+                "lte": datetime.get("lte") if not self.use_datetime else None,
             },
         }
 
