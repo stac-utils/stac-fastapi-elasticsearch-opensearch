@@ -5,7 +5,7 @@ import os
 from datetime import datetime as datetime_type
 from datetime import timezone
 from enum import Enum
-from typing import List, Optional, Set, Type, Union
+from typing import Type
 from urllib.parse import unquote_plus, urljoin
 
 import attr
@@ -79,10 +79,10 @@ class CoreClient(AsyncBaseCoreClient):
     """
 
     database: BaseDatabaseLogic = attr.ib()
-    base_conformance_classes: List[str] = attr.ib(
+    base_conformance_classes: list[str] = attr.ib(
         factory=lambda: BASE_CONFORMANCE_CLASSES
     )
-    extensions: List[ApiExtension] = attr.ib(default=attr.Factory(list))
+    extensions: list[ApiExtension] = attr.ib(default=attr.Factory(list))
 
     session: Session = attr.ib(default=attr.Factory(Session.create_from_env))
     item_serializer: Type[ItemSerializer] = attr.ib(default=ItemSerializer)
@@ -114,8 +114,8 @@ class CoreClient(AsyncBaseCoreClient):
     def _landing_page(
         self,
         base_url: str,
-        conformance_classes: List[str],
-        extension_schemas: List[str],
+        conformance_classes: list[str],
+        extension_schemas: list[str],
     ) -> stac_types.LandingPage:
         landing_page = stac_types.LandingPage(
             type="Catalog",
@@ -270,33 +270,33 @@ class CoreClient(AsyncBaseCoreClient):
 
     async def all_collections(
         self,
-        limit: Optional[int] = None,
-        bbox: Optional[BBox] = None,
-        datetime: Optional[str] = None,
-        fields: Optional[List[str]] = None,
-        sortby: Optional[Union[str, List[str]]] = None,
-        filter_expr: Optional[str] = None,
-        filter_lang: Optional[str] = None,
-        q: Optional[Union[str, List[str]]] = None,
-        query: Optional[str] = None,
+        limit: int | None = None,
+        bbox: BBox | None = None,
+        datetime: str | None = None,
+        fields: list[str] | None = None,
+        sortby: str | list[str] | None = None,
+        filter_expr: str | None = None,
+        filter_lang: str | None = None,
+        q: str | list[str] | None = None,
+        query: str | None = None,
         request: Request = None,
-        token: Optional[str] = None,
+        token: str | None = None,
         **kwargs,
     ) -> stac_types.Collections:
         """Read all collections from the database.
 
         Args:
-            limit (Optional[int]): Maximum number of collections to return.
-            bbox (Optional[BBox]): Bounding box to filter collections by spatial extent.
-            datetime (Optional[str]): Filter collections by datetime range.
-            fields (Optional[List[str]]): Fields to include or exclude from the results.
-            sortby (Optional[Union[str, List[str]]]): Sorting options for the results.
-            filter_expr (Optional[str]): Structured filter expression in CQL2 JSON or CQL2-text format.
-            filter_lang (Optional[str]): Must be 'cql2-json' or 'cql2-text' if specified, other values will result in an error.
-            q (Optional[Union[str, List[str]]]): Free text search terms.
-            query (Optional[str]): Legacy query parameter (deprecated).
+            limit (int | None): Maximum number of collections to return.
+            bbox (BBox | None): Bounding box to filter collections by spatial extent.
+            datetime (str | None): Filter collections by datetime range.
+            fields (list[str] | None): Fields to include or exclude from the results.
+            sortby (str | list[str] | None): Sorting options for the results.
+            filter_expr (str | None): Structured filter expression in CQL2 JSON or CQL2-text format.
+            filter_lang (str | None): Must be 'cql2-json' or 'cql2-text' if specified, other values will result in an error.
+            q (str | list[str] | None): Free text search terms.
+            query (str | None): Legacy query parameter (deprecated).
             request (Request): FastAPI Request object.
-            token (Optional[str]): Pagination token for retrieving the next page of results.
+            token (str | None): Pagination token for retrieving the next page of results.
             **kwargs: Keyword arguments from the request.
 
         Returns:
@@ -593,15 +593,15 @@ class CoreClient(AsyncBaseCoreClient):
         self,
         collection_id: str,
         request: Request,
-        bbox: Optional[BBox] = None,
-        datetime: Optional[str] = None,
-        limit: Optional[int] = None,
-        sortby: Optional[str] = None,
-        filter_expr: Optional[str] = None,
-        filter_lang: Optional[str] = None,
-        token: Optional[str] = None,
-        query: Optional[str] = None,
-        fields: Optional[List[str]] = None,
+        bbox: BBox | None = None,
+        datetime: str | None = None,
+        limit: int | None = None,
+        sortby: str | None = None,
+        filter_expr: str | None = None,
+        filter_lang: str | None = None,
+        token: str | None = None,
+        query: str | None = None,
+        fields: list[str] | None = None,
         **kwargs,
     ) -> stac_types.ItemCollection:
         """List items within a specific collection.
@@ -613,17 +613,17 @@ class CoreClient(AsyncBaseCoreClient):
         Args:
             collection_id (str): ID of the collection to list items from.
             request (Request): FastAPI Request object.
-            bbox (Optional[BBox]): Optional bounding box filter.
-            datetime (Optional[str]): Optional datetime or interval filter.
-            limit (Optional[int]): Optional page size. Defaults to env `STAC_DEFAULT_ITEM_LIMIT` when unset.
-            sortby (Optional[str]): Optional sort specification. Accepts repeated values
+            bbox (BBox | None): Optional bounding box filter.
+            datetime (str | None): Optional datetime or interval filter.
+            limit (int | None): Optional page size. Defaults to env `STAC_DEFAULT_ITEM_LIMIT` when unset.
+            sortby (str | None): Optional sort specification. Accepts repeated values
                 like ``sortby=-properties.datetime`` or ``sortby=+id``. Bare fields (e.g. ``sortby=id``)
                 imply ascending order.
-            token (Optional[str]): Optional pagination token.
-            query (Optional[str]): Optional query string.
-            filter_expr (Optional[str]): Optional filter expression.
-            filter_lang (Optional[str]): Optional filter language.
-            fields (Optional[List[str]]): Fields to include or exclude from the results.
+            token (str | None): Optional pagination token.
+            query (str | None): Optional query string.
+            filter_expr (str | None): Optional filter expression.
+            filter_lang (str | None): Optional filter language.
+            fields (list[str] | None): Fields to include or exclude from the results.
 
         Returns:
             ItemCollection: Feature collection with items, paging links, and counts.
@@ -676,35 +676,35 @@ class CoreClient(AsyncBaseCoreClient):
     async def get_search(
         self,
         request: Request,
-        collections: Optional[List[str]] = None,
-        ids: Optional[List[str]] = None,
-        bbox: Optional[BBox] = None,
-        datetime: Optional[str] = None,
-        limit: Optional[int] = None,
-        query: Optional[str] = None,
-        token: Optional[str] = None,
-        fields: Optional[List[str]] = None,
-        sortby: Optional[str] = None,
-        q: Optional[List[str]] = None,
-        intersects: Optional[str] = None,
-        filter_expr: Optional[str] = None,
-        filter_lang: Optional[str] = None,
+        collections: list[str] | None = None,
+        ids: list[str] | None = None,
+        bbox: BBox | None = None,
+        datetime: str | None = None,
+        limit: int | None = None,
+        query: str | None = None,
+        token: str | None = None,
+        fields: list[str] | None = None,
+        sortby: str | None = None,
+        q: list[str] | None = None,
+        intersects: str | None = None,
+        filter_expr: str | None = None,
+        filter_lang: str | None = None,
         **kwargs,
     ) -> stac_types.ItemCollection:
         """Get search results from the database.
 
         Args:
-            collections (Optional[List[str]]): List of collection IDs to search in.
-            ids (Optional[List[str]]): List of item IDs to search for.
-            bbox (Optional[BBox]): Bounding box to search in.
-            datetime (Optional[str]): Filter items based on the datetime field.
-            limit (Optional[int]): Maximum number of results to return.
-            query (Optional[str]): Query string to filter the results.
-            token (Optional[str]): Access token to use when searching the catalog.
-            fields (Optional[List[str]]): Fields to include or exclude from the results.
-            sortby (Optional[str]): Sorting options for the results.
-            q (Optional[List[str]]): Free text query to filter the results.
-            intersects (Optional[str]): GeoJSON geometry to search in.
+            collections (list[str] | None): List of collection IDs to search in.
+            ids (list[str] | None): List of item IDs to search for.
+            bbox (BBox | None): Bounding box to search in.
+            datetime (str | None): Filter items based on the datetime field.
+            limit (int | None): Maximum number of results to return.
+            query (str | None): Query string to filter the results.
+            token (str | None): Access token to use when searching the catalog.
+            fields (list[str] | None): Fields to include or exclude from the results.
+            sortby (str | None): Sorting options for the results.
+            q (list[str] | None): Free text query to filter the results.
+            intersects (str | None): GeoJSON geometry to search in.
             kwargs: Additional parameters to be passed to the API.
         Returns:
             ItemCollection: Collection of `Item` objects representing the search results.
@@ -914,8 +914,8 @@ class CoreClient(AsyncBaseCoreClient):
         )
 
         fields = getattr(search_request, "fields", None)
-        include: Set[str] = fields.include if fields and fields.include else set()
-        exclude: Set[str] = fields.exclude if fields and fields.exclude else set()
+        include: set[str] = fields.include if fields and fields.include else set()
+        exclude: set[str] = fields.exclude if fields and fields.exclude else set()
 
         items = [
             filter_fields(
@@ -976,18 +976,18 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def create_item(
-        self, collection_id: str, item: Union[Item, ItemCollection], **kwargs
-    ) -> Union[stac_types.Item, str]:
+        self, collection_id: str, item: Item | ItemCollection, **kwargs
+    ) -> stac_types.Item | str:
         """
         Create an item or a feature collection of items in the specified collection.
 
         Args:
             collection_id (str): The ID of the collection to add the item(s) to.
-            item (Union[Item, ItemCollection]): A single item or a collection of items to be added.
+            item (Item | ItemCollection): A single item or a collection of items to be added.
             **kwargs: Additional keyword arguments, such as `request` and `refresh`.
 
         Returns:
-            Union[stac_types.Item, str]: The created item if a single item is added, or a summary string
+            stac_types.Item | str: The created item if a single item is added, or a summary string
             indicating the number of items successfully added and errors if a collection of items is added.
 
         Raises:
@@ -1156,7 +1156,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         self,
         collection_id: str,
         item_id: str,
-        patch: Union[PartialItem, List[PatchOperation]],
+        patch: PartialItem | list[PatchOperation],
         **kwargs,
     ):
         """Patch an item in the collection.
@@ -1164,7 +1164,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         Args:
             collection_id (str): The ID of the collection the item belongs to.
             item_id (str): The ID of the item to be updated.
-            patch (Union[PartialItem, List[PatchOperation]]): The item data or operations.
+            patch (PartialItem | list[PatchOperation]): The item data or operations.
             kwargs: Other optional arguments, including the request object.
 
         Returns:
@@ -1293,7 +1293,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     async def patch_collection(
         self,
         collection_id: str,
-        patch: Union[PartialCollection, List[PatchOperation]],
+        patch: PartialCollection | list[PatchOperation],
         **kwargs,
     ):
         """Update a collection.
@@ -1399,7 +1399,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
 
     @overrides
     def bulk_item_insert(
-        self, items: Items, chunk_size: Optional[int] = None, **kwargs
+        self, items: Items, chunk_size: int | None = None, **kwargs
     ) -> str:
         """Perform a bulk insertion of items into the database using Elasticsearch.
 

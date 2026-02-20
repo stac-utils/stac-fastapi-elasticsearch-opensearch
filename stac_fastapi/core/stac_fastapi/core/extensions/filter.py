@@ -14,9 +14,9 @@
 # """
 
 from enum import Enum
-from typing import Any, Dict
+from typing import Any
 
-DEFAULT_QUERYABLES: Dict[str, Dict[str, Any]] = {
+DEFAULT_QUERYABLES: dict[str, dict[str, Any]] = {
     "id": {
         "description": "ID",
         "$ref": "https://schemas.stacspec.org/v1.0.0/item-spec/json-schema/item.json#/definitions/core/allOf/2/properties/id",
@@ -44,7 +44,7 @@ DEFAULT_QUERYABLES: Dict[str, Dict[str, Any]] = {
 }
 """Queryables that are present in all collections."""
 
-OPTIONAL_QUERYABLES: Dict[str, Dict[str, Any]] = {
+OPTIONAL_QUERYABLES: dict[str, dict[str, Any]] = {
     "platform": {
         "$enum": True,
         "description": "Satellite platform identifier",
@@ -52,7 +52,7 @@ OPTIONAL_QUERYABLES: Dict[str, Dict[str, Any]] = {
 }
 """Queryables that are present in some collections."""
 
-ALL_QUERYABLES: Dict[str, Dict[str, Any]] = DEFAULT_QUERYABLES | OPTIONAL_QUERYABLES
+ALL_QUERYABLES: dict[str, dict[str, Any]] = DEFAULT_QUERYABLES | OPTIONAL_QUERYABLES
 
 
 class LogicalOp(str, Enum):

@@ -3,7 +3,7 @@
 import logging
 import os
 import ssl
-from typing import Any, Dict, Set, Union
+from typing import Any, Set
 
 import certifi
 from elasticsearch._async.client import AsyncElasticsearch
@@ -15,7 +15,7 @@ from stac_fastapi.sfeos_helpers.database import validate_refresh
 from stac_fastapi.types.config import ApiSettings
 
 
-def _es_config() -> Dict[str, Any]:
+def _es_config() -> dict[str, Any]:
     # Determine the scheme (http or https)
     use_ssl = get_bool_env("ES_USE_SSL", default=True)
     scheme = "https" if use_ssl else "http"
@@ -33,7 +33,7 @@ def _es_config() -> Dict[str, Any]:
     hosts = [f"{scheme}://{host.strip()}:{es_port}" for host in es_hosts.split(",")]
 
     # Initialize the configuration dictionary
-    config: Dict[str, Any] = {
+    config: dict[str, Any] = {
         "hosts": hosts,
         "headers": {"accept": "application/vnd.elasticsearch+json; compatible-with=8"},
     }
@@ -90,12 +90,12 @@ class ElasticsearchSettings(ApiSettings, ApiBaseSettings):
     raise_on_bulk_error: bool = get_bool_env("RAISE_ON_BULK_ERROR", default=False)
 
     @property
-    def database_refresh(self) -> Union[bool, str]:
+    def database_refresh(self) -> bool | str:
         """
         Get the value of the DATABASE_REFRESH environment variable.
 
         Returns:
-            Union[bool, str]: The value of DATABASE_REFRESH, which can be True, False, or "wait_for".
+            bool | str: The value of DATABASE_REFRESH, which can be True, False, or "wait_for".
         """
         value = os.getenv("DATABASE_REFRESH", "false")
         return validate_refresh(value)
@@ -122,12 +122,12 @@ class AsyncElasticsearchSettings(ApiSettings, ApiBaseSettings):
     raise_on_bulk_error: bool = get_bool_env("RAISE_ON_BULK_ERROR", default=False)
 
     @property
-    def database_refresh(self) -> Union[bool, str]:
+    def database_refresh(self) -> bool | str:
         """
         Get the value of the DATABASE_REFRESH environment variable.
 
         Returns:
-            Union[bool, str]: The value of DATABASE_REFRESH, which can be True, False, or "wait_for".
+            bool | str: The value of DATABASE_REFRESH, which can be True, False, or "wait_for".
         """
         value = os.getenv("DATABASE_REFRESH", "false")
         return validate_refresh(value)

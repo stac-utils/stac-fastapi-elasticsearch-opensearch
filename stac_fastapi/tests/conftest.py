@@ -2,7 +2,7 @@ import asyncio
 import copy
 import json
 import os
-from typing import Any, Callable, Dict, Optional
+from typing import Any, Callable
 
 import pytest
 import pytest_asyncio
@@ -93,15 +93,15 @@ class MockRequest:
         self,
         method: str = "GET",
         url: str = "XXXX",
-        app: Optional[Any] = None,
-        query_params: Dict[str, Any] = {"limit": "10"},
-        headers: Dict[str, Any] = {"content-type": "application/json"},
+        app: Any | None = None,
+        query_params: dict[str, Any] | None = None,
+        headers: dict[str, Any] | None = None,
     ):
         self.method = method
         self.url = url
         self.app = app
-        self.query_params = query_params
-        self.headers = headers
+        self.query_params = query_params or {"limit": "10"}
+        self.headers = headers or {"content-type": "application/json"}
 
 
 class TestSettings(AsyncSettings):
@@ -120,7 +120,7 @@ def event_loop():
     loop.close()
 
 
-def _load_file(filename: str) -> Dict:
+def _load_file(filename: str) -> dict:
     with open(os.path.join(DATA_DIR, filename)) as file:
         return json.load(file)
 
@@ -130,27 +130,27 @@ _test_collection_prototype = _load_file("test_collection.json")
 
 
 @pytest.fixture
-def load_test_data() -> Callable[[str], Dict]:
+def load_test_data() -> Callable[[str], dict]:
     return _load_file
 
 
 @pytest.fixture
-def test_item() -> Dict:
+def test_item() -> dict:
     return copy.deepcopy(_test_item_prototype)
 
 
 @pytest.fixture
-def test_collection() -> Dict:
+def test_collection() -> dict:
     return copy.deepcopy(_test_collection_prototype)
 
 
-async def create_collection(txn_client: TransactionsClient, collection: Dict) -> None:
+async def create_collection(txn_client: TransactionsClient, collection: dict) -> None:
     await txn_client.create_collection(
         api.Collection(**dict(collection)), request=MockRequest, refresh=True
     )
 
 
-async def create_item(txn_client: TransactionsClient, item: Dict) -> None:
+async def create_item(txn_client: TransactionsClient, item: dict) -> None:
     if "collection" in item:
         await txn_client.create_item(
             collection_id=item["collection"],

@@ -4,7 +4,7 @@ import importlib
 import inspect
 import logging
 import os
-from typing import List
+from typing import Any  # noqa: F401
 
 import orjson
 from fastapi import Depends
@@ -157,7 +157,7 @@ def get_route_dependencies(route_dependencies_env: str = "") -> list:
     route_dependencies_env = os.environ.get(
         "STAC_FASTAPI_ROUTE_DEPENDENCIES", route_dependencies_env
     )
-    route_dependencies: List[tuple] = []
+    route_dependencies: list[tuple] = []
 
     if not route_dependencies_env:
         _LOGGER.info("Authentication skipped.")

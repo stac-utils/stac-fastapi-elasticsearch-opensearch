@@ -1,5 +1,5 @@
 """Async index selectors with datetime-based filtering."""
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.sfeos_helpers.database import filter_indexes_by_datetime, return_date
@@ -45,18 +45,18 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
         """Get USE_DATETIME setting dynamically."""
         return get_bool_env("USE_DATETIME", default=True)
 
-    async def refresh_cache(self) -> Dict[str, List[Tuple[Dict[str, str]]]]:
+    async def refresh_cache(self) -> dict[str, list[tuple[dict[str, str]]]]:
         """Force refresh of the aliases cache.
 
         Returns:
-            Dict[str, List[Tuple[Dict[str, str]]]]: Refreshed dictionary mapping base collection aliases
+            dict[str, list[tuple[dict[str, str]]]]: Refreshed dictionary mapping base collection aliases
                 to lists of their corresponding item index aliases.
         """
         return await self.alias_loader.refresh_aliases()
 
     async def get_collection_indexes(
         self, collection_id: str, use_cache: bool = True
-    ) -> List[tuple[dict[str, str]]]:
+    ) -> list[tuple[dict[str, str]]]:
         """Get all index aliases for a specific collection.
 
         Args:
@@ -65,7 +65,7 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
                 If False, load fresh from search engine (insertion path).
 
         Returns:
-            List[tuple[dict[str, str]]]: List of index aliases associated with the collection.
+            list[tuple[dict[str, str]]]: List of index aliases associated with the collection.
                 Returns empty list if collection is not found in cache.
         """
         return await self.alias_loader.get_collection_indexes(
@@ -74,7 +74,7 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
 
     async def select_indexes(
         self,
-        collection_ids: Optional[List[str]],
+        collection_ids: list[str] | None,
         datetime_search: str,
         for_insertion: bool = False,
     ) -> str:
@@ -85,7 +85,7 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
         all item indices.
 
         Args:
-            collection_ids (Optional[List[str]]): List of collection IDs to filter by.
+            collection_ids (list[str] | None): List of collection IDs to filter by.
                 If None or empty, returns all item indices.
             datetime_search (str): Datetime search criteria.
             for_insertion (bool): If True, selects indexes for inserting items into
@@ -115,7 +115,7 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
 
     def parse_datetime_filters(
         self, datetime: str, for_insertion: bool
-    ) -> Dict[str, Dict[str, Optional[str]]]:
+    ) -> dict[str, dict[str, str | None]]:
         """Parse datetime string into structured filter criteria.
 
         Args:
@@ -162,14 +162,14 @@ class UnfilteredIndexSelector(BaseIndexSelector):
 
     async def select_indexes(
         self,
-        collection_ids: Optional[List[str]],
+        collection_ids: list[str] | None,
         datetime_search: str,
         for_insertion: bool = False,
     ) -> str:
         """Select all indices for given collections without datetime filtering.
 
         Args:
-            collection_ids (Optional[List[str]]): List of collection IDs to filter by.
+            collection_ids (list[str] | None): List of collection IDs to filter by.
                 If None, all collections are considered.
             datetime_search (str): Datetime search criteria
                 (ignored by this implementation).

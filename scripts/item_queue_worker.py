@@ -16,7 +16,6 @@ Configuration via environment variables (managed by ItemQueueSettings):
 import asyncio
 import logging
 import time
-from typing import Dict, List, Set
 
 from stac_fastapi.core.redis_utils import AsyncRedisQueueManager, ItemQueueSettings
 
@@ -45,7 +44,7 @@ class ItemQueueWorker:
         self.settings = ItemQueueSettings()
         self.queue_manager: AsyncRedisQueueManager = None  # type: ignore[assignment]
         self.db = self._create_database_logic()
-        self._states: Dict[str, CollectionFlushState] = {}
+        self._states: dict[str, CollectionFlushState] = {}
         self._lock = asyncio.Lock()
         self._semaphore = asyncio.Semaphore(self.settings.WORKER_MAX_THREADS)
         self.running = True
@@ -68,7 +67,7 @@ class ItemQueueWorker:
         return self._states[collection_id]
 
     @staticmethod
-    def _extract_failed_item_ids(errors: List[dict]) -> Set[str]:
+    def _extract_failed_item_ids(errors: list[dict]) -> set[str]:
         """Extract item IDs from bulk_async error responses.
 
         Each error dict has the shape:
@@ -77,7 +76,7 @@ class ItemQueueWorker:
         Returns:
             Set of failed item IDs.
         """
-        failed: Set[str] = set()
+        failed: set[str] = set()
         for error in errors:
             index_info = error.get("index", {})
             doc_id = index_info.get("_id", "")
@@ -222,13 +221,13 @@ class ItemQueueWorker:
             f"poll_interval={self.settings.WORKER_POLL_INTERVAL:.1f}s, max_concurrent={self.settings.WORKER_MAX_THREADS})"
         )
 
-        active_tasks: Dict[str, asyncio.Task] = {}
+        active_tasks: dict[str, asyncio.Task] = {}
 
         while self.running:
             try:
                 collections = await self.queue_manager.get_pending_collections()
 
-                done_keys: Set[str] = set()
+                done_keys: set[str] = set()
                 for cid, task in active_tasks.items():
                     if task.done():
                         done_keys.add(cid)
