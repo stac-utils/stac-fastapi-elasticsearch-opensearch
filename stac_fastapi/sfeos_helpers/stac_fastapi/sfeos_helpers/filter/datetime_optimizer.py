@@ -391,7 +391,14 @@ def extract_collection_datetime(node: CqlNode) -> List[Tuple[List[str], str]]:
                     child_results = extract_from_node(child, current_collections.copy())
                     for coll, rng in child_results:
                         if rng:
-                            if "/" in rng:
+                            if "/" in rng and ".." not in rng:
+                                parts = rng.split("/")
+                                if len(parts) == 2:
+                                    start_val = parts[0]
+                                    end_val = parts[1]
+                                    results.append((coll, f"../{start_val}"))
+                                    results.append((coll, f"{end_val}/.."))
+                            elif "/" in rng:
                                 parts = rng.split("/")
                                 if len(parts) == 2:
                                     if parts[0] == "..":

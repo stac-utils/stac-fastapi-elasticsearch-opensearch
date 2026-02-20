@@ -874,10 +874,10 @@ class DatabaseLogic(BaseDatabaseLogic):
                 collection_ids, datetime_search
             )
             logger.debug(
-                f"Selecte indexes: {index_param} for collections {collection_ids} and datetime search {datetime_search}"
+                f"Selected indexes: {index_param} for collections {collection_ids} and datetime search {datetime_search}"
             )
             print(
-                f"Selecte indexes: {index_param} for collections {collection_ids} and datetime search {datetime_search}"
+                f"Selected indexes: {index_param} for collections {collection_ids} and datetime search {datetime_search}"
             )
         if len(index_param) > ES_MAX_URL_LENGTH - 300:
             index_param = ITEM_INDICES

@@ -864,7 +864,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 search,
             )
             logger.debug(
-                f"Resolve indexes from CQL2 metadata: {index_param} for collections {collection_ids} and cql2 metadata {cql2_metadata}"
+                f"Resolve indexes from CQL2 metadata : {index_param} for collections {collection_ids} and cql2 metadata {cql2_metadata}"
             )
             print(
                 f"Resolve indexes from CQL2 metadata: {index_param} for collections {collection_ids} and cql2 metadata {cql2_metadata}"
