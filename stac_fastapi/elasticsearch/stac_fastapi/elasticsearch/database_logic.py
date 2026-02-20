@@ -874,7 +874,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 datetime_search,
             )
             logger.debug(
-                f"Resolve indexes from CQL2 metadata: {index_param} for collections {collection_ids} and cql2 metadata {cql2_metadata}"
+                f"Resolve indexes from CQL2 metadata : {index_param} for collections {collection_ids} and cql2 metadata {cql2_metadata}"
             )
         else:
             index_param = await self.async_index_selector.select_indexes(
