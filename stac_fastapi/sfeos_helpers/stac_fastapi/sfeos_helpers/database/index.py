@@ -83,7 +83,7 @@ def filter_indexes_by_datetime(
     Args:
         collection_indexes (List[Tuple[Dict[str, str], ...]]): A list of tuples containing dictionaries
             with 'datetime', 'start_datetime', and 'end_datetime' aliases.
-        datetime_search (Dict[str, Dict[str, Optional[str]]]): A dictionary with keys 'datetime',
+        datetime_search (dict[str, dict[str, str | None]]): A dictionary with keys 'datetime',
             'start_datetime', and 'end_datetime', each containing 'gte' and 'lte' criteria as ISO format
             datetime strings or None.
         use_datetime (bool): Flag determining which datetime field to filter on:

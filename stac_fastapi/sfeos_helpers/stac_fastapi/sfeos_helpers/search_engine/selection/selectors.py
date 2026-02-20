@@ -1,5 +1,5 @@
 """Async index selectors with datetime-based filtering."""
-from typing import Any, Optional
+from typing import Any
 
 from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.sfeos_helpers.database import filter_indexes_by_datetime, return_date
@@ -74,7 +74,7 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
 
     async def select_indexes(
         self,
-        collection_ids: Optional[list[str]],
+        collection_ids: list[str] | None,
         datetime_search: str,
         for_insertion: bool = False,
     ) -> str:
@@ -85,7 +85,7 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
         all item indices.
 
         Args:
-            collection_ids (Optional[List[str]]): List of collection IDs to filter by.
+            collection_ids (list[str] | None): List of collection IDs to filter by.
                 If None or empty, returns all item indices.
             datetime_search (str): Datetime search criteria.
             for_insertion (bool): If True, selects indexes for inserting items into
@@ -115,7 +115,7 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
 
     def parse_datetime_filters(
         self, datetime: str, for_insertion: bool
-    ) -> dict[str, dict[str, Optional[str]]]:
+    ) -> dict[str, dict[str, str | None]]:
         """Parse datetime string into structured filter criteria.
 
         Args:
@@ -162,14 +162,14 @@ class UnfilteredIndexSelector(BaseIndexSelector):
 
     async def select_indexes(
         self,
-        collection_ids: Optional[list[str]],
+        collection_ids: list[str] | None,
         datetime_search: str,
         for_insertion: bool = False,
     ) -> str:
         """Select all indices for given collections without datetime filtering.
 
         Args:
-            collection_ids (Optional[List[str]]): List of collection IDs to filter by.
+            collection_ids (list[str] | None): List of collection IDs to filter by.
                 If None, all collections are considered.
             datetime_search (str): Datetime search criteria
                 (ignored by this implementation).

@@ -19,7 +19,7 @@ def apply_free_text_filter_shared(
 
     Args:
         search (Any): The search object to apply the query to.
-        free_text_queries (Optional[List[str]]): A list of text strings to search for in the properties.
+        free_text_queries (list[str] | None): A list of text strings to search for in the properties.
 
     Returns:
         Any: The search object with the free text query applied, or the original search
@@ -81,7 +81,7 @@ def apply_collections_datetime_filter_shared(
             - None if no datetime filter is provided
 
     Returns:
-        Optional[Dict[str, Any]]: A dictionary containing the temporal filter configuration
+        dict[str, Any] | None: A dictionary containing the temporal filter configuration
             that can be used with Elasticsearch/OpenSearch queries, or None if datetime_str is None.
             Example return value:
             {
@@ -144,7 +144,7 @@ def apply_collections_bbox_filter_shared(
             - None if no bbox filter is provided
 
     Returns:
-        Optional[Dict[str, Dict]]: A dictionary containing the geo_shape filter configuration
+        dict[str, dict] | None: A dictionary containing the geo_shape filter configuration
             that can be used with Elasticsearch/OpenSearch queries, or None if bbox is invalid.
             Example return value:
             {
@@ -208,7 +208,7 @@ def populate_sort_shared(sortby: list) -> dict[str, dict[str, str]] | None:
         sortby (List): A list of sort specifications, each containing a field and direction.
 
     Returns:
-        Optional[Dict[str, Dict[str, str]]]: A dictionary mapping field names to sort direction
+        dict[str, dict[str, str]] | None: A dictionary mapping field names to sort direction
             configurations, or None if no sort was specified.
 
     Notes:
@@ -232,7 +232,7 @@ def add_collections_to_body(
 
     Args:
         collection_ids (List[str]): A list of collections ids.
-        query (Optional[Dict[str, Any]]): The query to add collections to. If none, create a query that filters
+        query (dict[str, Any] | None): The query to add collections to. If none, create a query that filters
         the collection ids.
 
     Returns:

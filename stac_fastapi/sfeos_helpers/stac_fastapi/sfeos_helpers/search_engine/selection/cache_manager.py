@@ -3,7 +3,7 @@
 import asyncio
 import json
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from stac_fastapi.sfeos_helpers.database import index_alias_by_collection_id
 from stac_fastapi.sfeos_helpers.mappings import ITEMS_INDEX_PREFIX
@@ -24,7 +24,7 @@ class IndexCacheManager:
             cache_ttl_seconds (int): Time-to-live for cache entries in seconds.
         """
         self._ttl = cache_ttl_seconds
-        self._redis: Optional[Any] = None
+        self._redis: Any | None = None
         self._init_lock = asyncio.Lock()
 
     async def _ensure_redis(self):
@@ -39,11 +39,11 @@ class IndexCacheManager:
                         raise RuntimeError("Redis is required for index alias caching.")
                     self._redis = redis
 
-    async def get_cache(self) -> Optional[dict[str, list[tuple[dict[str, str]]]]]:
+    async def get_cache(self) -> dict[str, list[tuple[dict[str, str]]]] | None:
         """Get the current cache from Redis.
 
         Returns:
-            Optional[Dict[str, List[tuple[Dict[str, str]]]]]: Cache data if valid, None if missing.
+            dict[str, list[tuple[dict[str, str]]]] | None: Cache data if valid, None if missing.
         """
         await self._ensure_redis()
         raw = await self._redis.get(REDIS_DATA_KEY)
