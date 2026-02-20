@@ -1,7 +1,6 @@
 """Client implementation for the STAC API Aggregation Extension."""
 
-
-from typing import Annotated, Any, Dict, List, Optional, Union
+from typing import Annotated, Any, Optional, Union
 from urllib.parse import unquote_plus, urljoin
 
 import attr
@@ -92,7 +91,7 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
 
     async def get_aggregations(
         self, collection_id: Optional[str] = None, **kwargs
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Get the available aggregations for a catalog or collection defined in the STAC JSON.
 
         If no aggregations are defined, default aggregations are used.
@@ -102,7 +101,7 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
             **kwargs: Additional keyword arguments
 
         Returns:
-            Dict[str, Any]: A dictionary containing the available aggregations
+            dict[str, Any]: A dictionary containing the available aggregations
         """
         request: Request = kwargs.get("request")
         base_url = str(request.base_url) if request else ""
@@ -229,13 +228,13 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
         collection_id: Optional[
             Annotated[str, Path(description="Collection ID")]
         ] = None,
-        collections: Optional[List[str]] = [],
+        collections: Optional[list[str]] = [],
         datetime: Optional[DateTimeType] = None,
         intersects: Optional[str] = None,
         filter_lang: Optional[str] = None,
         filter_expr: Optional[str] = None,
         aggregations: Optional[str] = None,
-        ids: Optional[List[str]] = None,
+        ids: Optional[list[str]] = None,
         bbox: Optional[BBox] = None,
         centroid_geohash_grid_frequency_precision: Optional[int] = None,
         centroid_geohex_grid_frequency_precision: Optional[int] = None,
@@ -244,7 +243,7 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
         geometry_geotile_grid_frequency_precision: Optional[int] = None,
         datetime_frequency_interval: Optional[str] = None,
         **kwargs,
-    ) -> Union[Dict, Exception]:
+    ) -> Union[dict, Exception]:
         """Get aggregations from the database."""
         request: Request = kwargs["request"]
         base_url = str(request.base_url)
@@ -419,7 +418,7 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
         except Exception as error:
             if not isinstance(error, IndexError):
                 raise error
-        aggs: List[Aggregation] = []
+        aggs: list[Aggregation] = []
         if db_response:
             result_aggs = db_response.get("aggregations", {})
             for agg in {

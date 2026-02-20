@@ -9,7 +9,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
-- Retry for datetime searches on `NotFoundError` error retry for database connection errors `ConnectionError`, `ConnectionTimeout` to resolve cache race conditions. [#605](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/605)
+- Retry for datetime searches on `IndexNotFoundException` exception error retry for database connection errors `ConnectionError`, `ConnectionTimeout` to resolve cache race conditions. [#605](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/605)
+- Added code to remove `assets.` prefix from queryables, as is done with `properties.`. [#602](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/602)
 
 ### Changed
 
