@@ -1,6 +1,6 @@
 """link helpers."""
 
-from typing import Any, Dict, Optional
+from typing import Any
 from urllib.parse import ParseResult, parse_qs, urlencode, urljoin, urlparse
 
 import attr
@@ -15,7 +15,7 @@ from starlette.requests import Request
 INFERRED_LINK_RELS = {"self", "item", "parent", "collection", "root"}
 
 
-def merge_params(url: str, newparams: Dict) -> str:
+def merge_params(url: str, newparams: dict) -> str:
     """Merge url parameters."""
     u = urlparse(url)
     params = parse_qs(u.query)
@@ -74,7 +74,7 @@ class BaseLinks:
         return links
 
     async def get_links(
-        self, extra_links: Optional[list[dict[str, Any]]] = None
+        self, extra_links: list[dict[str, Any]] | None = None
     ) -> list[dict[str, Any]]:
         """
         Generate all the links.
@@ -113,7 +113,7 @@ class CollectionLinks(BaseLinks):
 
     collection_id: str = attr.ib()
     extensions: list[str] = attr.ib(default=attr.Factory(list))
-    parent_url: Optional[str] = attr.ib(default=None, kw_only=True)
+    parent_url: str | None = attr.ib(default=None, kw_only=True)
 
     def link_self(self) -> dict:
         """Return the self link."""
@@ -185,9 +185,9 @@ class CollectionLinks(BaseLinks):
 class PagingLinks(BaseLinks):
     """Create links for paging."""
 
-    next: Optional[str] = attr.ib(kw_only=True, default=None)
+    next: str | None = attr.ib(kw_only=True, default=None)
 
-    def link_next(self) -> Optional[dict[str, Any]]:
+    def link_next(self) -> dict[str, Any] | None:
         """Create link for next page."""
         if self.next is not None:
             method = self.request.method

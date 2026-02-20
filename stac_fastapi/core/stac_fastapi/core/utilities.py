@@ -7,7 +7,7 @@ such as converting bounding boxes to polygon representations.
 import logging
 import os
 import re
-from typing import Any, List, Optional, Set
+from typing import Any
 
 from stac_fastapi.types.stac import Item
 
@@ -56,7 +56,7 @@ def get_bool_env(name: str, default: bool | str = False) -> bool:
         return default_str in true_values
 
 
-def bbox2polygon(b0: float, b1: float, b2: float, b3: float) -> List[List[List[float]]]:
+def bbox2polygon(b0: float, b1: float, b2: float, b3: float) -> list[list[list[float]]]:
     """Transform a bounding box represented by its four coordinates `b0`, `b1`, `b2`, and `b3` into a polygon.
 
     Args:
@@ -73,8 +73,8 @@ def bbox2polygon(b0: float, b1: float, b2: float, b3: float) -> List[List[List[f
 
 def filter_fields(  # noqa: C901
     item: Item | dict[str, Any],
-    include: Optional[set[str]] = None,
-    exclude: Optional[set[str]] = None,
+    include: set[str] | None = None,
+    exclude: set[str] | None = None,
 ) -> Item:
     """Preserve and remove fields as indicated by the fields extension include/exclude sets.
 
@@ -98,7 +98,7 @@ def filter_fields(  # noqa: C901
         return [key for key in source.keys() if match_pattern(pattern, key)]
 
     def include_fields(
-        source: dict[str, Any], fields: Optional[set[str]]
+        source: dict[str, Any], fields: set[str] | None
     ) -> dict[str, Any]:
         """Include only the specified fields from the source dictionary."""
         if not fields:
@@ -174,7 +174,7 @@ def filter_fields(  # noqa: C901
 
     def exclude_fields(
         source: dict[str, Any],
-        fields: Optional[Set[str]],
+        fields: set[str] | None,
     ) -> None:
         """Exclude fields from source."""
 

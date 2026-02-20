@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import datetime as dt_datetime
 from functools import wraps
-from typing import Callable, Literal, Optional, cast
+from typing import Callable, Literal, cast
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from pydantic import Field, field_validator
@@ -22,7 +22,7 @@ class RedisCommonSettings(BaseSettings):
     """Common configuration for Redis Sentinel and Redis Standalone."""
 
     REDIS_DB: int = 15
-    REDIS_MAX_CONNECTIONS: Optional[int] = None
+    REDIS_MAX_CONNECTIONS: int | None = None
     REDIS_RETRY_TIMEOUT: bool = True
     REDIS_DECODE_RESPONSES: bool = True
     REDIS_CLIENT_NAME: str = "stac-fastapi-app"
@@ -150,7 +150,7 @@ def redis_retry(func: Callable) -> Callable:
 
 
 @redis_retry
-async def _connect_redis_internal() -> Optional[aioredis.Redis]:
+async def _connect_redis_internal() -> aioredis.Redis | None:
     """Return a Redis connection Redis or Redis Sentinel."""
     if sentinel_settings.REDIS_SENTINEL_HOSTS:
         sentinel_nodes = settings.get_sentinel_nodes()
@@ -191,7 +191,7 @@ async def _connect_redis_internal() -> Optional[aioredis.Redis]:
     return redis
 
 
-async def connect_redis() -> Optional[aioredis.Redis]:
+async def connect_redis() -> aioredis.Redis | None:
     """Handle Redis connection."""
     try:
         return await _connect_redis_internal()
@@ -256,7 +256,7 @@ async def save_prev_link(
 @redis_retry
 async def get_prev_link(
     redis: aioredis.Redis, current_url: str, current_token: str
-) -> Optional[str]:
+) -> str | None:
     """Get the previous page link for the current token."""
     if not current_url or not current_token:
         return None
@@ -454,7 +454,7 @@ class AsyncRedisQueueManager:
         return list(await self.redis.smembers(self._get_collections_set_key()))
 
     async def get_pending_items(
-        self, collection_id: str, limit: Optional[int] = None
+        self, collection_id: str, limit: int | None = None
     ) -> list[dict]:
         """Get pending items from the queue ordered by primary datetime (ascending).
 
@@ -480,7 +480,7 @@ class AsyncRedisQueueManager:
         return [json.loads(item_json) for item_json in items_json if item_json]
 
     async def get_pending_item_ids(
-        self, collection_id: str, limit: Optional[int] = None
+        self, collection_id: str, limit: int | None = None
     ) -> list[str]:
         """Get IDs of pending items ordered by primary datetime (ascending).
 

@@ -1,6 +1,6 @@
 """STAC models."""
 
-from typing import Any, Optional
+from typing import Any
 
 from pydantic import BaseModel
 
@@ -11,17 +11,17 @@ class Catalog(BaseModel):
     type: str = "Catalog"
     stac_version: str
     id: str
-    title: Optional[str] = None
-    description: Optional[str] = None
+    title: str | None = None
+    description: str | None = None
     links: list[dict[str, Any]]
-    stac_extensions: Optional[list[str]] = None
+    stac_extensions: list[str] | None = None
 
 
 class PartialCatalog(BaseModel):
     """Partial STAC Catalog model for updates."""
 
     id: str
-    title: Optional[str] = None
-    description: Optional[str] = None
-    links: Optional[list[dict[str, Any]]] = None
-    stac_extensions: Optional[list[str]] = None
+    title: str | None = None
+    description: str | None = None
+    links: list[dict[str, Any]] | None = None
+    stac_extensions: list[str] | None = None

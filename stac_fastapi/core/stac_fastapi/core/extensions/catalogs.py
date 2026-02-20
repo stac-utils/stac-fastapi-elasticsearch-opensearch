@@ -1,7 +1,7 @@
 """Catalogs extension."""
 
 import logging
-from typing import Any, List, Optional, Type
+from typing import Any, Type
 from urllib.parse import parse_qs, urlencode, urlparse
 
 import attr
@@ -34,8 +34,8 @@ class Catalogs(TypedDict, total=False):
 
     catalogs: list[Catalog]
     links: list[dict]
-    numberMatched: Optional[int]
-    numberReturned: Optional[int]
+    numberMatched: int | None
+    numberReturned: int | None
 
 
 @attr.s
@@ -238,14 +238,16 @@ class CatalogsExtension(ApiExtension):
     async def catalogs(
         self,
         request: Request,
-        limit: Optional[int] = Query(
+        limit: int
+        | None = Query(
             10,
             ge=1,
             description=(
                 "The maximum number of catalogs to return (page size). Defaults to 10."
             ),
         ),
-        token: Optional[str] = Query(
+        token: str
+        | None = Query(
             None,
             description="Pagination token for the next page of results",
         ),
@@ -607,7 +609,7 @@ class CatalogsExtension(ApiExtension):
         catalog_id: str,
         request: Request,
         limit: int = Query(10, ge=1, le=100),
-        token: Optional[str] = Query(None),
+        token: str | None = Query(None),
     ) -> Catalogs:
         """Get all sub-catalogs of a specific catalog with pagination.
 
@@ -961,15 +963,15 @@ class CatalogsExtension(ApiExtension):
         catalog_id: str,
         collection_id: str,
         request: Request,
-        bbox: Optional[List[float]] = None,
-        datetime: Optional[str] = None,
-        limit: Optional[int] = None,
-        sortby: Optional[str] = None,
-        filter_expr: Optional[str] = None,
-        filter_lang: Optional[str] = None,
-        token: Optional[str] = None,
-        query: Optional[str] = None,
-        fields: Optional[List[str]] = None,
+        bbox: list[float] | None = None,
+        datetime: str | None = None,
+        limit: int | None = None,
+        sortby: str | None = None,
+        filter_expr: str | None = None,
+        filter_lang: str | None = None,
+        token: str | None = None,
+        query: str | None = None,
+        fields: list[str] | None = None,
     ) -> stac_types.ItemCollection:
         """Get items from a collection in a catalog.
 
@@ -1046,7 +1048,8 @@ class CatalogsExtension(ApiExtension):
         request: Request,
         limit: int = 10,
         token: str = None,
-        type: Optional[str] = Query(
+        type: str
+        | None = Query(
             None, description="Filter by resource type (Catalog or Collection)"
         ),
     ) -> dict[str, Any]:
