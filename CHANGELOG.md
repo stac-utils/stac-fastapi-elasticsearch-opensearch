@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 - Added code to remove `assets.` prefix from queryables, as is done with `properties.`. [#602](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/602)
 
+### Fixed
+
+- Fixed application logs not being visible when running via uvicorn by adding `force=True` to `logging.basicConfig`, preventing uvicorn's logging configuration from overriding the application's log setup.
+- Fixed datetime-based index selection returning too many indexes when filtering by `end_datetime`, which could cause unnecessary indexes to be included in search queries.
+
 ### Changed
 
 ### Removed

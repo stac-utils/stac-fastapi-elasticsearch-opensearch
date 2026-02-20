@@ -1,5 +1,6 @@
 """Async index selectors with datetime-based filtering."""
-from typing import Any, Dict, List, Optional, Tuple
+import logging
+from typing import Any, Dict, List, Optional, Tuple, Union, cast
 
 from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.sfeos_helpers.database import filter_indexes_by_datetime, return_date
@@ -8,6 +9,8 @@ from stac_fastapi.sfeos_helpers.mappings import ITEM_INDICES
 from ...database import indices
 from .base import BaseIndexSelector
 from .cache_manager import IndexAliasLoader, IndexCacheManager
+
+logger = logging.getLogger(__name__)
 
 
 class DatetimeBasedIndexSelector(BaseIndexSelector):
@@ -109,17 +112,20 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
                 )
                 selected_indexes.extend(filtered_indexes)
 
-            return ",".join(selected_indexes) if selected_indexes else ""
+            result = ",".join(selected_indexes) if selected_indexes else ""
+            logger.info(f"Selected indexes: {result}")
+            return result
 
+        logger.info(f"Selected indexes: {ITEM_INDICES}")
         return ITEM_INDICES
 
     def parse_datetime_filters(
-        self, datetime: str, for_insertion: bool
-    ) -> Dict[str, Dict[str, Optional[str]]]:
+        self, datetime: Union[str, Dict], for_insertion: bool
+    ) -> Dict[str, Dict[str, Any]]:
         """Parse datetime string into structured filter criteria.
 
         Args:
-            datetime: Datetime search criteria string
+            datetime: Datetime search criteria string or dict with gte/lte keys.
             for_insertion (bool): If True, generates filters for inserting items.
                 If False, generates filters for searching items. Defaults to False.
 
@@ -129,22 +135,24 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
         parsed_datetime = return_date(datetime)
 
         if for_insertion:
+            dt_str = cast(str, datetime)
             return {
                 "datetime": {
-                    "gte": datetime if self.use_datetime else None,
-                    "lte": datetime if self.use_datetime else None,
+                    "gte": dt_str if self.use_datetime else None,
+                    "lte": dt_str if self.use_datetime else None,
                 },
                 "start_datetime": {
-                    "gte": datetime if not self.use_datetime else None,
-                    "lte": datetime if not self.use_datetime else None,
+                    "gte": dt_str if not self.use_datetime else None,
+                    "lte": dt_str if not self.use_datetime else None,
                 },
                 "end_datetime": {"gte": None, "lte": None},
             }
 
+        dt_dict = cast(Dict, datetime)
         return {
             "datetime": {
-                "gte": parsed_datetime.get("gte") if self.use_datetime else None,
-                "lte": parsed_datetime.get("lte") if self.use_datetime else None,
+                "gte": dt_dict.get("gte") if self.use_datetime else None,
+                "lte": dt_dict.get("lte") if self.use_datetime else None,
             },
             "start_datetime": {
                 "gte": parsed_datetime.get("gte") if not self.use_datetime else None,

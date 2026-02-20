@@ -4,7 +4,7 @@ This module provides functions for creating and managing indices in Elasticsearc
 """
 
 import re
-from datetime import date, datetime
+from datetime import datetime
 from functools import lru_cache
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -103,31 +103,42 @@ def filter_indexes_by_datetime(
                 return None
 
             if len(dates) >= 2:
-                return datetime.strptime(dates[-2], "%Y-%m-%d"), datetime.strptime(
-                    dates[-1], "%Y-%m-%d"
+                start = datetime.strptime(dates[-2], "%Y-%m-%d")
+                end = datetime.strptime(dates[-1], "%Y-%m-%d").replace(
+                    hour=23, minute=59, second=59, microsecond=999999
                 )
+                return start, end
             else:
-                date = datetime.strptime(dates[-1], "%Y-%m-%d")
-                return date, date
+                start = datetime.strptime(dates[-1], "%Y-%m-%d")
+                end = start.replace(hour=23, minute=59, second=59, microsecond=999999)
+                return start, end
         except (ValueError, IndexError):
             return None
 
-    def parse_search_date(date_str: Optional[str]) -> Optional[date]:
+    def parse_search_date(date_str: Optional[str]) -> Optional[datetime]:
         if not date_str:
             return None
-        date_str = date_str.rstrip("Z")
-        return datetime.fromisoformat(date_str).date()
+        return datetime.fromisoformat(date_str.replace("Z", "+00:00")).replace(
+            tzinfo=None
+        )
 
     def check_criteria(
-        value_begin: datetime, value_end: datetime, criteria: Dict
+        value_begin: datetime,
+        value_end: datetime,
+        criteria: Dict,
+        start_value_begin: Optional[datetime] = None,
     ) -> bool:
         gte = parse_search_date(criteria.get("gte"))
         lte = parse_search_date(criteria.get("lte"))
 
-        if gte and value_end.date() < gte:
+        if gte and value_end < gte:
             return False
-        if lte and value_begin.date() > lte:
-            return False
+        if start_value_begin:
+            if lte and start_value_begin > lte:
+                return False
+        else:
+            if lte and value_begin > lte:
+                return False
 
         return True
 
@@ -150,8 +161,12 @@ def filter_indexes_by_datetime(
                 continue
         if end_datetime_alias:
             end_date = extract_date_from_alias(end_datetime_alias)
+            start_begin = start_date[0] if start_datetime_alias else None
             if not check_criteria(
-                end_date[0], end_date[1], datetime_search.get("end_datetime", {})
+                end_date[0],
+                end_date[1],
+                datetime_search.get("end_datetime", {}),
+                start_begin,
             ):
                 continue
         if datetime_alias:
