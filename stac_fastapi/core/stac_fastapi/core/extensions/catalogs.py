@@ -470,7 +470,7 @@ class CatalogsExtension(ApiExtension):
             for child in children:
                 child_id = child.get("id")
                 try:
-                    parent_ids = child.get("parent_ids", [])
+                    parent_ids = child.get("parent_ids") or []
                     if catalog_id in parent_ids:
                         parent_ids.remove(catalog_id)
 
@@ -936,7 +936,7 @@ class CatalogsExtension(ApiExtension):
             collection_db = await self.client.database.find_collection(collection_id)
 
             # Check if the catalog_id is in the collection's parent_ids
-            parent_ids = collection_db.get("parent_ids", [])
+            parent_ids = collection_db.get("parent_ids") or []
             if catalog_id not in parent_ids:
                 raise HTTPException(
                     status_code=404,
@@ -1047,7 +1047,7 @@ class CatalogsExtension(ApiExtension):
         catalog_id: str,
         request: Request,
         limit: int = 10,
-        token: str = None,
+        token: str | None = None,
         type: str
         | None = Query(
             None, description="Filter by resource type (Catalog or Collection)"
@@ -1155,7 +1155,7 @@ class CatalogsExtension(ApiExtension):
             collection_db = await self.client.database.find_collection(collection_id)
 
             # Check if the catalog_id is in the collection's parent_ids
-            parent_ids = collection_db.get("parent_ids", [])
+            parent_ids = collection_db.get("parent_ids") or []
             if catalog_id not in parent_ids:
                 raise HTTPException(
                     status_code=404,
@@ -1163,6 +1163,7 @@ class CatalogsExtension(ApiExtension):
                 )
 
             # SAFE UNLINK LOGIC
+            parent_ids = list(parent_ids)  # Make a copy to avoid modifying the original
             parent_ids.remove(catalog_id)
 
             # Check if it is now an orphan (empty list)
