@@ -212,89 +212,170 @@ def extract_collection_datetime(node: CqlNode) -> List[Tuple[List[str], str]]:
                 # For each subsequent child, combine with existing results
                 for next_child_results in child_results_list[1:]:
                     new_combined = []
-                    for existing_coll, existing_range in combined_results:
-                        for new_coll, new_range in next_child_results:
-                            # Merge collections
-                            merged_coll = list(set(existing_coll + new_coll))
-                            merged_coll.sort()
 
-                            # Merge ranges based on type
-                            if not existing_range and not new_range:
-                                # No ranges, just collections
-                                new_combined.append((merged_coll, ""))
-                            elif existing_range and not new_range:
-                                # Only existing has range
-                                new_combined.append((merged_coll, existing_range))
-                            elif not existing_range and new_range:
-                                # Only new has range
-                                new_combined.append((merged_coll, new_range))
+                    # Special handling for combining two ranges in an AND
+                    # This is the most common case: GTE and LTE
+                    if len(combined_results) == 1 and len(next_child_results) == 1:
+                        coll1, range1 = combined_results[0]
+                        coll2, range2 = next_child_results[0]
+
+                        # Merge collections
+                        merged_coll = list(set(coll1 + coll2))
+                        merged_coll.sort()
+
+                        # Check if we have one start range and one end range
+                        is_start1 = range1.endswith("/..")
+                        is_end1 = range1.startswith("../")
+                        is_start2 = range2.endswith("/..")
+                        is_end2 = range2.startswith("../")
+
+                        # If we have both a start and end range, combine them
+                        if (is_start1 and is_end2) or (is_start2 and is_end1):
+                            if is_start1 and is_end2:
+                                start_value = range1[:-3]  # Remove "/.."
+                                end_value = range2[3:]  # Remove "../"
                             else:
-                                # Both have ranges - need to combine with AND logic
-                                if ".." in existing_range or ".." in new_range:
-                                    # Handle NEQ ranges - keep them separate as they represent exclusions
-                                    if ".." in existing_range:
+                                start_value = range2[:-3]  # Remove "/.."
+                                end_value = range1[3:]  # Remove "../"
+
+                            new_combined.append(
+                                (merged_coll, f"{start_value}/{end_value}")
+                            )
+                        else:
+                            # Fall back to normal processing
+                            for existing_coll, existing_range in combined_results:
+                                for new_coll, new_range in next_child_results:
+                                    # Merge collections
+                                    merged_coll = list(set(existing_coll + new_coll))
+                                    merged_coll.sort()
+
+                                    # Merge ranges based on type
+                                    if not existing_range and not new_range:
+                                        # No ranges, just collections
+                                        new_combined.append((merged_coll, ""))
+                                    elif existing_range and not new_range:
+                                        # Only existing has range
                                         new_combined.append(
                                             (merged_coll, existing_range)
                                         )
-                                    if ".." in new_range:
+                                    elif not existing_range and new_range:
+                                        # Only new has range
                                         new_combined.append((merged_coll, new_range))
-                                else:
-                                    # Both are regular ranges or exact dates
-                                    if "/" in existing_range:
-                                        e_parts = existing_range.split("/")
-                                        e_start = (
-                                            None if e_parts[0] == ".." else e_parts[0]
-                                        )
-                                        e_end = (
-                                            None if e_parts[1] == ".." else e_parts[1]
-                                        )
                                     else:
-                                        e_start = e_end = existing_range
-
-                                    if "/" in new_range:
-                                        n_parts = new_range.split("/")
-                                        n_start = (
-                                            None if n_parts[0] == ".." else n_parts[0]
-                                        )
-                                        n_end = (
-                                            None if n_parts[1] == ".." else n_parts[1]
-                                        )
-                                    else:
-                                        n_start = n_end = new_range
-
-                                    # Take the most restrictive
-                                    start = None
-                                    end = None
-                                    if e_start and n_start:
-                                        start = max(e_start, n_start)
-                                    elif e_start:
-                                        start = e_start
-                                    elif n_start:
-                                        start = n_start
-
-                                    if e_end and n_end:
-                                        end = min(e_end, n_end)
-                                    elif e_end:
-                                        end = e_end
-                                    elif n_end:
-                                        end = n_end
-
-                                    if start and end:
-                                        if start <= end:
-                                            if start == end:
+                                        # Both have ranges - need to combine with AND logic
+                                        if ".." in existing_range or ".." in new_range:
+                                            # Handle NEQ ranges - keep them separate as they represent exclusions
+                                            if ".." in existing_range:
                                                 new_combined.append(
-                                                    (merged_coll, start)
+                                                    (merged_coll, existing_range)
+                                                )
+                                            if ".." in new_range:
+                                                new_combined.append(
+                                                    (merged_coll, new_range)
+                                                )
+                                        else:
+                                            # Both are regular ranges or exact dates
+                                            if "/" in existing_range:
+                                                e_parts = existing_range.split("/")
+                                                e_start = (
+                                                    None
+                                                    if e_parts[0] == ".."
+                                                    else e_parts[0]
+                                                )
+                                                e_end = (
+                                                    None
+                                                    if e_parts[1] == ".."
+                                                    else e_parts[1]
                                                 )
                                             else:
-                                                new_combined.append(
-                                                    (merged_coll, f"{start}/{end}")
+                                                e_start = e_end = existing_range
+
+                                            if "/" in new_range:
+                                                n_parts = new_range.split("/")
+                                                n_start = (
+                                                    None
+                                                    if n_parts[0] == ".."
+                                                    else n_parts[0]
                                                 )
-                                    elif start:
+                                                n_end = (
+                                                    None
+                                                    if n_parts[1] == ".."
+                                                    else n_parts[1]
+                                                )
+                                            else:
+                                                n_start = n_end = new_range
+
+                                            # Take the most restrictive
+                                            start = None
+                                            end = None
+                                            if e_start and n_start:
+                                                start = max(e_start, n_start)
+                                            elif e_start:
+                                                start = e_start
+                                            elif n_start:
+                                                start = n_start
+
+                                            if e_end and n_end:
+                                                end = min(e_end, n_end)
+                                            elif e_end:
+                                                end = e_end
+                                            elif n_end:
+                                                end = n_end
+
+                                            if start and end:
+                                                if start <= end:
+                                                    if start == end:
+                                                        new_combined.append(
+                                                            (merged_coll, start)
+                                                        )
+                                                    else:
+                                                        new_combined.append(
+                                                            (
+                                                                merged_coll,
+                                                                f"{start}/{end}",
+                                                            )
+                                                        )
+                                            elif start:
+                                                new_combined.append(
+                                                    (merged_coll, f"{start}/..")
+                                                )
+                                            elif end:
+                                                new_combined.append(
+                                                    (merged_coll, f"../{end}")
+                                                )
+                    else:
+                        # Multiple results case - use the existing logic
+                        for existing_coll, existing_range in combined_results:
+                            for new_coll, new_range in next_child_results:
+                                # Merge collections
+                                merged_coll = list(set(existing_coll + new_coll))
+                                merged_coll.sort()
+
+                                # Merge ranges based on type
+                                if not existing_range and not new_range:
+                                    new_combined.append((merged_coll, ""))
+                                elif existing_range and not new_range:
+                                    new_combined.append((merged_coll, existing_range))
+                                elif not existing_range and new_range:
+                                    new_combined.append((merged_coll, new_range))
+                                else:
+                                    if ".." in existing_range or ".." in new_range:
+                                        if ".." in existing_range:
+                                            new_combined.append(
+                                                (merged_coll, existing_range)
+                                            )
+                                        if ".." in new_range:
+                                            new_combined.append(
+                                                (merged_coll, new_range)
+                                            )
+                                    else:
                                         new_combined.append(
-                                            (merged_coll, f"{start}/..")
+                                            (
+                                                merged_coll,
+                                                f"{existing_range}/{new_range}",
+                                            )
                                         )
-                                    elif end:
-                                        new_combined.append((merged_coll, f"../{end}"))
+
                     combined_results = new_combined
 
                 results.extend(combined_results)

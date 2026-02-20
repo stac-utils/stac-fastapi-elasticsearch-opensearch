@@ -239,6 +239,7 @@ async def test_bulk_create_items_with_different_date_ranges_for_datetime_index(
         all_aliases.update(index_info.get("aliases", {}).keys())
     assert all(alias in all_aliases for alias in expected_aliases)
 
+
 # removed temporary
 # @pytest.mark.datetime_filtering
 # @pytest.mark.asyncio
