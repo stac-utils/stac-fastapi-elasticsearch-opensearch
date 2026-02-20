@@ -103,15 +103,12 @@ def filter_indexes_by_datetime(
                 return None
 
             if len(dates) >= 2:
-                start = datetime.strptime(dates[-2], "%Y-%m-%d")
-                end = datetime.strptime(dates[-1], "%Y-%m-%d").replace(
-                    hour=23, minute=59, second=59, microsecond=999999
+                return datetime.strptime(dates[-2], "%Y-%m-%d"), datetime.strptime(
+                    dates[-1], "%Y-%m-%d"
                 )
-                return start, end
             else:
-                start = datetime.strptime(dates[-1], "%Y-%m-%d")
-                end = start.replace(hour=23, minute=59, second=59, microsecond=999999)
-                return start, end
+                date = datetime.strptime(dates[-1], "%Y-%m-%d")
+                return date, date
         except (ValueError, IndexError):
             return None
 
