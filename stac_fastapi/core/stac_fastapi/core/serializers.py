@@ -176,6 +176,7 @@ class CollectionSerializer(Serializer):
         Returns:
             stac_types.Collection: The STAC collection object.
         """
+        extensions = extensions or []
         # Avoid modifying the input dict in-place ... doing so breaks some tests
         collection = deepcopy(collection)
 
@@ -249,6 +250,7 @@ class CollectionSerializer(Serializer):
         Returns:
             stac_types.Collection: The STAC collection object with catalog context.
         """
+        extensions = extensions or []
         # Avoid modifying the input dict in-place
         collection = deepcopy(collection)
 
@@ -350,6 +352,7 @@ class CatalogSerializer(Serializer):
         Returns:
             stac_types.Catalog: The STAC catalog object.
         """
+        extensions = extensions or []
         # Avoid modifying the input dict in-place
         catalog = deepcopy(catalog)
 
