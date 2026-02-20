@@ -119,14 +119,19 @@ def filter_indexes_by_datetime(
         return datetime.fromisoformat(date_str).date()
 
     def check_criteria(
-        value_begin: datetime, value_end: datetime, criteria: Dict
+        value_begin: datetime,
+        value_end: datetime,
+        criteria: Dict,
+        start_value_begin: Optional[datetime] = None,
     ) -> bool:
         gte = parse_search_date(criteria.get("gte"))
         lte = parse_search_date(criteria.get("lte"))
 
         if gte and value_end.date() < gte:
             return False
-        if lte and value_begin.date() > lte:
+        if lte and value_begin.date() < lte:
+            return False
+        if lte and start_value_begin and start_value_begin.date() >= lte:
             return False
 
         return True
@@ -150,8 +155,12 @@ def filter_indexes_by_datetime(
                 continue
         if end_datetime_alias:
             end_date = extract_date_from_alias(end_datetime_alias)
+            start_begin = start_date[0] if start_datetime_alias else None
             if not check_criteria(
-                end_date[0], end_date[1], datetime_search.get("end_datetime", {})
+                end_date[0],
+                end_date[1],
+                datetime_search.get("end_datetime", {}),
+                start_begin,
             ):
                 continue
         if datetime_alias:

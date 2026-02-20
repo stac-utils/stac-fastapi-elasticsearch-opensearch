@@ -212,15 +212,21 @@ class DatetimeIndexManager:
             str: Created datetime index name.
         """
         index_params = {
-            "start_datetime": str(extract_date(product_datetimes.start_datetime))
-            if primary_datetime_name == "start_datetime"
-            else None,
-            "datetime": str(extract_date(product_datetimes.datetime))
-            if primary_datetime_name == "datetime"
-            else None,
-            "end_datetime": str(extract_date(product_datetimes.end_datetime))
-            if primary_datetime_name == "start_datetime"
-            else None,
+            "start_datetime": (
+                str(extract_date(product_datetimes.start_datetime))
+                if primary_datetime_name == "start_datetime"
+                else None
+            ),
+            "datetime": (
+                str(extract_date(product_datetimes.datetime))
+                if primary_datetime_name == "datetime"
+                else None
+            ),
+            "end_datetime": (
+                str(extract_date(product_datetimes.end_datetime))
+                if primary_datetime_name == "start_datetime"
+                else None
+            ),
         }
 
         target_index = await self.index_operations.create_datetime_index(
@@ -459,7 +465,7 @@ class DatetimeIndexManager:
                     + timedelta(days=1)
                 )
 
-            new_index_alias = await self.index_operations.create_datetime_index(
+            result_alias = await self.index_operations.create_datetime_index(
                 self.client,
                 collection_id,
                 start_datetime=str(latest_start_datetime_in_index + timedelta(days=1)),
@@ -484,7 +490,7 @@ class DatetimeIndexManager:
                     f"covering {epoch_date} to {historical_end}"
                 )
 
-            return new_index_alias
+            return result_alias
         else:
             dt = extract_date(product_datetimes.datetime)
 
