@@ -196,15 +196,15 @@ class DatabaseLogic(BaseDatabaseLogic):
         """Retrieve a list of collections from Elasticsearch, supporting pagination.
 
         Args:
-            token (Optional[str]): The pagination token.
+            token (str | None): The pagination token.
             limit (int): The number of results to return.
             request (Request): The FastAPI request object.
-            sort (Optional[list[dict[str, Any]]]): Optional sort parameter from the request.
-            bbox (Optional[list[float]]): Bounding box to filter collections by spatial extent.
-            q (Optional[list[str]]): Free text search terms.
-            query (Optional[dict[str, dict[str, Any]]]): Query extension parameters.
-            filter (Optional[dict[str, Any]]): Structured query in CQL2 format.
-            datetime (Optional[str]): Temporal filter.
+            sort (list[dict[str, Any]] | None): Optional sort parameter from the request.
+            bbox (list[float] | None): Bounding box to filter collections by spatial extent.
+            q (list[str] | None): Free text search terms.
+            query (dict[str, dict[str, Any]] | None): Query extension parameters.
+            filter (dict[str, Any] | None): Structured query in CQL2 format.
+            datetime (str | None): Temporal filter.
 
         Returns:
             A tuple of (collections, next pagination token if any).
@@ -471,7 +471,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         Args:
             search: The search object to filter.
-            datetime: Optional[str]
+            datetime: str | None
 
         Returns:
             The filtered search object.
@@ -754,7 +754,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         Args:
             search (Search): The search object to apply the query to.
-            free_text_queries (Optional[list[str]]): A list of text strings to search for in the properties.
+            free_text_queries (list[str] | None): A list of text strings to search for in the properties.
 
         Returns:
             Search: The search object with the free text query applied, or the original search
@@ -774,7 +774,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         Args:
             search (Search): The Elasticsearch Search object to which the filter will be applied.
-            _filter (Optional[dict[str, Any]]): The filter in dictionary form that needs to be applied
+            _filter (dict[str, Any] | None): The filter in dictionary form that needs to be applied
                                                 to the search. The dictionary should follow the structure
                                                 required by the `to_es` function which converts it
                                                 to an Elasticsearch query.
@@ -799,7 +799,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             sortby (list): A list of sort specifications, each containing a field and direction.
 
         Returns:
-            Optional[dict[str, dict[str, str]]]: A dictionary mapping field names to sort direction
+            dict[str, dict[str, str]] | None: A dictionary mapping field names to sort direction
                 configurations, or None if no sort was specified.
         """
         return populate_sort_shared(sortby=sortby)
@@ -819,14 +819,14 @@ class DatabaseLogic(BaseDatabaseLogic):
         Args:
             search (Search): The search query to be executed.
             limit (int): The maximum number of results to be returned.
-            token (Optional[str]): The token used to return the next set of results.
-            sort (Optional[dict[str, dict[str, str]]]): Specifies how the results should be sorted.
-            collection_ids (Optional[list[str]]): The collection ids to search.
+            token (str | None): The token used to return the next set of results.
+            sort (dict[str, dict[str, str]] | None): Specifies how the results should be sorted.
+            collection_ids (list[str] | None): The collection ids to search.
             datetime_search (str): Datetime used for index selection.
             ignore_unavailable (bool, optional): Whether to ignore unavailable collections. Defaults to True.
 
         Returns:
-            tuple[Iterable[dict[str, Any]], Optional[int], Optional[str]]: A tuple containing:
+            tuple[Iterable[dict[str, Any]], int | None, str | None]: A tuple containing:
                 - An iterable of search results, where each result is a dictionary with keys and values representing the
                 fields and values of each document.
                 - The total number of results (if the count could be computed), or None if the count could not be
@@ -1899,10 +1899,10 @@ class DatabaseLogic(BaseDatabaseLogic):
         """Retrieve a list of catalogs from Elasticsearch, supporting pagination.
 
         Args:
-            token (Optional[str]): The pagination token.
+            token (str | None): The pagination token.
             limit (int): The number of results to return.
             request (Any, optional): The FastAPI request object. Defaults to None.
-            sort (Optional[list[dict[str, Any]]], optional): Optional sort parameter. Defaults to None.
+            sort (list[dict[str, Any]] | None, optional): Optional sort parameter. Defaults to None.
 
         Returns:
             A tuple of (catalogs, next pagination token if any, optional count).
