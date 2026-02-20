@@ -1,6 +1,6 @@
 """Collections search extension."""
 
-from typing import Any, List, Optional, Type, Union
+from typing import Any, List, Optional, Type
 
 from fastapi import APIRouter, Body, FastAPI, Query, Request
 from fastapi.responses import JSONResponse
@@ -183,7 +183,7 @@ def build_post_collections_search_doc(original_post_endpoint):
                 }
             ],
         ),
-    ) -> Union[Collections, Response]:
+    ) -> Collections | Response:
         return await original_post_endpoint(request, body)
 
     documented_post_endpoint.__name__ = original_post_endpoint.__name__

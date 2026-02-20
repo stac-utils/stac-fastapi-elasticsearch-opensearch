@@ -162,7 +162,7 @@ def validate_refresh(value: str | bool) -> str:
     Validate the `refresh` parameter value.
 
     Args:
-        value (Union[str, bool]): The `refresh` parameter value, which can be a string or a boolean.
+        value (str | bool): The `refresh` parameter value, which can be a string or a boolean.
 
     Returns:
         str: The validated value of the `refresh` parameter, which can be "true", "false", or "wait_for".

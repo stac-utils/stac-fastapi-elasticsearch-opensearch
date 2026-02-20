@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import datetime as dt_datetime
 from functools import wraps
-from typing import Callable, Literal, Optional, Union, cast
+from typing import Callable, Literal, Optional, cast
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from pydantic import Field, field_validator
@@ -400,9 +400,7 @@ class AsyncRedisQueueManager:
         """Get Redis key for set of collections with pending items."""
         return f"{self.queue_settings.QUEUE_KEY_PREFIX}:collections"
 
-    async def queue_items(
-        self, collection_id: str, items: Union[dict, list[dict]]
-    ) -> int:
+    async def queue_items(self, collection_id: str, items: dict | list[dict]) -> int:
         """Queue one or more items for a collection. Deduplicates by item ID.
 
         Items are scored by the primary datetime field so that pending items

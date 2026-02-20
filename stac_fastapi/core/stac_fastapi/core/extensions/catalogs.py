@@ -1053,7 +1053,7 @@ class CatalogsExtension(ApiExtension):
         """
         Get all children (Catalogs and Collections) of a specific catalog.
 
-        This is a 'Union' endpoint that returns mixed content types.
+        This is a mixed content endpoint that returns both Catalogs and Collections.
         """
         # 1. Verify the parent catalog exists
         await self.client.database.find_catalog(catalog_id)

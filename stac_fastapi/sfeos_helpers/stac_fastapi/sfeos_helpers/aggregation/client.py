@@ -1,6 +1,6 @@
 """Client implementation for the STAC API Aggregation Extension."""
 
-from typing import Annotated, Any, Optional, Union
+from typing import Annotated, Any, Optional
 from urllib.parse import unquote_plus, urljoin
 
 import attr
@@ -147,7 +147,7 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
         }
 
     def extract_precision(
-        self, precision: Union[int, None], min_value: int, max_value: int
+        self, precision: int | None, min_value: int, max_value: int
     ) -> int:
         """Ensure that the aggregation precision value is within a valid range.
 
@@ -243,7 +243,7 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
         geometry_geotile_grid_frequency_precision: Optional[int] = None,
         datetime_frequency_interval: Optional[str] = None,
         **kwargs,
-    ) -> Union[dict, Exception]:
+    ) -> dict | Exception:
         """Get aggregations from the database."""
         request: Request = kwargs["request"]
         base_url = str(request.base_url)

@@ -21,7 +21,6 @@ def get_bool_env(name: str, default: bool | str = False) -> bool:
     Args:
         name (str): The name of the environment variable.
         default (bool | str, optional): The default value to use if the variable is not set or unrecognized. Defaults to False.
-        default (Union[bool, str], optional): The default value to use if the variable is not set or unrecognized. Defaults to False.
 
     Returns:
         bool: The boolean value parsed from the environment variable.

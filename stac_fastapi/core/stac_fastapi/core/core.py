@@ -290,10 +290,10 @@ class CoreClient(AsyncBaseCoreClient):
             bbox (Optional[BBox]): Bounding box to filter collections by spatial extent.
             datetime (Optional[str]): Filter collections by datetime range.
             fields (Optional[List[str]]): Fields to include or exclude from the results.
-            sortby (Optional[Union[str, List[str]]]): Sorting options for the results.
+            sortby (Optional[str | list[str]]): Sorting options for the results.
             filter_expr (Optional[str]): Structured filter expression in CQL2 JSON or CQL2-text format.
             filter_lang (Optional[str]): Must be 'cql2-json' or 'cql2-text' if specified, other values will result in an error.
-            q (Optional[Union[str, List[str]]]): Free text search terms.
+            q (Optional[str | list[str]]): Free text search terms.
             query (Optional[str]): Legacy query parameter (deprecated).
             request (Request): FastAPI Request object.
             token (Optional[str]): Pagination token for retrieving the next page of results.
@@ -1162,7 +1162,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         Args:
             collection_id (str): The ID of the collection the item belongs to.
             item_id (str): The ID of the item to be updated.
-            patch (Union[PartialItem, List[PatchOperation]]): The item data or operations.
+            patch (PartialItem | list[PatchOperation]): The item data or operations.
             kwargs: Other optional arguments, including the request object.
 
         Returns:

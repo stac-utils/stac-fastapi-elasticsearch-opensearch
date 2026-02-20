@@ -31,7 +31,7 @@ def return_date(
     even if they are set to None, to prevent KeyError in the consuming logic.
 
     Args:
-        interval (Optional[Union[DateTimeType, str]]): The date interval, which might be a single datetime,
+        interval (Optional[DateTimeType | str]): The date interval, which might be a single datetime,
             a tuple with one or two datetimes, a string, or None.
 
     Returns:

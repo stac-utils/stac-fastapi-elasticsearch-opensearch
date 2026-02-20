@@ -157,7 +157,7 @@ def get_items_mappings(
 
 # stac_pydantic classes extend _GeometryBase, which doesn't have a type field,
 # So create our own Protocol for typing
-# Union[ Point, MultiPoint, LineString, MultiLineString, Polygon, MultiPolygon, GeometryCollection]
+# Point | MultiPoint | LineString | MultiLineString | Polygon | MultiPolygon | GeometryCollection
 class Geometry(Protocol):  # noqa
     type: str
     coordinates: Any
