@@ -987,7 +987,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             **kwargs: Additional keyword arguments, such as `request` and `refresh`.
 
         Returns:
-            dict[str, Any] | str: The created item if a single item is added, or a summary string
+            stac_types.Item | str: The created item if a single item is added, or a summary string
             indicating the number of items successfully added and errors if a collection of items is added.
 
         Raises:

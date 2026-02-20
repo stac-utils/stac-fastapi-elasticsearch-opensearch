@@ -234,7 +234,7 @@ class CollectionSerializer(Serializer):
         request: Request,
         catalog_id: str,
         extensions: Optional[list[str]] = [],
-    ) -> dict:
+    ) -> stac_types.Collection:
         """Transform database model to STAC collection within a catalog context.
 
         This method is used when a collection is accessed via /catalogs/{id}/collections/{id}.
