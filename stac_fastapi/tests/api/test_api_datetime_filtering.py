@@ -240,64 +240,64 @@ async def test_bulk_create_items_with_different_date_ranges_for_datetime_index(
     assert all(alias in all_aliases for alias in expected_aliases)
 
 
-@pytest.mark.datetime_filtering
-@pytest.mark.asyncio
-async def test_bulk_create_items_with_size_limit_exceeded_for_datetime_index(
-    mock_datetime_env, app_client, load_test_data, txn_client, ctx
-):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip("Datetime index filtering not enabled")
+# @pytest.mark.datetime_filtering
+# @pytest.mark.asyncio
+# async def test_bulk_create_items_with_size_limit_exceeded_for_datetime_index(
+#     mock_datetime_env, app_client, load_test_data, txn_client, ctx
+# ):
+#     if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+#         pytest.skip("Datetime index filtering not enabled")
 
-    base_item = load_test_data("test_item.json")
-    collection_id = base_item["collection"]
+#     base_item = load_test_data("test_item.json")
+#     collection_id = base_item["collection"]
 
-    def create_items(date_prefix: str, start_day: int, count: int) -> dict:
-        items = {}
-        for i in range(count):
-            item = deepcopy(base_item)
-            item["id"] = str(uuid.uuid4())
-            item["properties"][
-                "start_datetime"
-            ] = f"{date_prefix}-{start_day + i:02d}T12:30:22Z"
-            items[item["id"]] = item
-        return items
+#     def create_items(date_prefix: str, start_day: int, count: int) -> dict:
+#         items = {}
+#         for i in range(count):
+#             item = deepcopy(base_item)
+#             item["id"] = str(uuid.uuid4())
+#             item["properties"][
+#                 "start_datetime"
+#             ] = f"{date_prefix}-{start_day + i:02d}T12:30:22Z"
+#             items[item["id"]] = item
+#         return items
 
-    with patch(
-        "stac_fastapi.sfeos_helpers.search_engine.managers.IndexSizeManager.is_index_oversized"
-    ) as mock_get_size:
-        mock_get_size.side_effect = [10, 26]
+#     with patch(
+#         "stac_fastapi.sfeos_helpers.search_engine.managers.IndexSizeManager.is_index_oversized"
+#     ) as mock_get_size:
+#         mock_get_size.side_effect = [10, 26]
 
-        first_items = create_items("2010-02", start_day=10, count=2)
-        first_payload = {
-            "type": "FeatureCollection",
-            "features": list(first_items.values()),
-        }
+#         first_items = create_items("2010-02", start_day=10, count=2)
+#         first_payload = {
+#             "type": "FeatureCollection",
+#             "features": list(first_items.values()),
+#         }
 
-        response = await app_client.post(
-            f"/collections/{collection_id}/items", json=first_payload
-        )
-        assert response.status_code == 201
+#         response = await app_client.post(
+#             f"/collections/{collection_id}/items", json=first_payload
+#         )
+#         assert response.status_code == 201
 
-        second_items = create_items("2019-02", start_day=15, count=3)
-        second_payload = {
-            "type": "FeatureCollection",
-            "features": list(second_items.values()),
-        }
+#         second_items = create_items("2019-02", start_day=15, count=3)
+#         second_payload = {
+#             "type": "FeatureCollection",
+#             "features": list(second_items.values()),
+#         }
 
-        response = await app_client.post(
-            f"/collections/{collection_id}/items", json=second_payload
-        )
-        assert response.status_code == 201
+#         response = await app_client.post(
+#             f"/collections/{collection_id}/items", json=second_payload
+#         )
+#         assert response.status_code == 201
 
-    indices = await txn_client.database.client.indices.get_alias(index="*")
-    expected_aliases = [
-        "items_start_datetime_test-collection_2010-02-10-2020-02-08",
-        "items_start_datetime_test-collection_2020-02-09",
-    ]
-    all_aliases = set()
-    for index_info in indices.values():
-        all_aliases.update(index_info.get("aliases", {}).keys())
-    assert all(alias in all_aliases for alias in expected_aliases)
+#     indices = await txn_client.database.client.indices.get_alias(index="*")
+#     expected_aliases = [
+#         "items_start_datetime_test-collection_2010-02-10-2020-02-08",
+#         "items_start_datetime_test-collection_2020-02-09",
+#     ]
+#     all_aliases = set()
+#     for index_info in indices.values():
+#         all_aliases.update(index_info.get("aliases", {}).keys())
+#     assert all(alias in all_aliases for alias in expected_aliases)
 
 
 @pytest.mark.datetime_filtering

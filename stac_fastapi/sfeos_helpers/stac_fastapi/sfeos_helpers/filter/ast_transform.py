@@ -15,11 +15,8 @@ from stac_fastapi.core.extensions.filter import (
     SpatialOp,
 )
 
-
 # Field path constants (should match those in database_logic.py)
-PROPERTIES_DATETIME_FIELD = os.getenv(
-    "STAC_FIELD_PROP_DATETIME", "properties.datetime"
-)
+PROPERTIES_DATETIME_FIELD = os.getenv("STAC_FIELD_PROP_DATETIME", "properties.datetime")
 PROPERTIES_START_DATETIME_FIELD = os.getenv(
     "STAC_FIELD_PROP_START_DATETIME", "properties.start_datetime"
 )
@@ -66,18 +63,11 @@ def _transform_ast_node(node: Any) -> Dict[str, Any]:
         }[node.op]
 
         if node.op == LogicalOp.NOT:
-            return {
-                "bool": {
-                    bool_type: _transform_ast_node(node.children[0])
-                }
-            }
+            return {"bool": {bool_type: _transform_ast_node(node.children[0])}}
         else:
             return {
                 "bool": {
-                    bool_type: [
-                        _transform_ast_node(child)
-                        for child in node.children
-                    ]
+                    bool_type: [_transform_ast_node(child) for child in node.children]
                 }
             }
 

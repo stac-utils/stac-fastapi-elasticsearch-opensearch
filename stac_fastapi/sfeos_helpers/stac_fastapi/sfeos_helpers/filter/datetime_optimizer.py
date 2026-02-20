@@ -170,6 +170,7 @@ def extract_from_ast(node: CqlNode, field_name: str) -> List[Any]:
     recurse(node)
     return values if values else None
 
+
 def extract_collection_datetime(node: CqlNode) -> List[Tuple[List[str], str]]:
     """Extract collections, datetime range from CQL AST.
 
@@ -178,16 +179,17 @@ def extract_collection_datetime(node: CqlNode) -> List[Tuple[List[str], str]]:
         - collections: List[str] collection id(s)
         - datetime_range: str or empty string if no datetime constraint
     """
-    pairs: List[Tuple[List[str], str]] = []
+    # pairs: List[Tuple[List[str], str]] = []
 
-    def extract_from_node(n: CqlNode, current_collections: List[str] = None) -> List[Tuple[List[str], str]]:
+    def extract_from_node(
+        n: CqlNode, current_collections: List[str] = None
+    ) -> List[Tuple[List[str], str]]:
         """Recursively extract collections and datetime ranges from node."""
         if current_collections is None:
             current_collections = []
-        
+
         results: List[Tuple[List[str], str]] = []
 
-        
         if isinstance(n, LogicalNode):
             if n.op == LogicalOp.AND:
                 # For AND, collect all child results first
@@ -195,18 +197,18 @@ def extract_collection_datetime(node: CqlNode) -> List[Tuple[List[str], str]]:
                 for child in n.children:
                     child_results = extract_from_node(child, current_collections.copy())
                     child_results_list.append(child_results)
-                
+
                 if not child_results_list:
                     return results
-                
+
                 # If there's only one child, just return its results
                 if len(child_results_list) == 1:
                     return child_results_list[0]
-                
+
                 # Combine results from multiple children
                 # Start with results from first child
                 combined_results = child_results_list[0]
-                
+
                 # For each subsequent child, combine with existing results
                 for next_child_results in child_results_list[1:]:
                     new_combined = []
@@ -215,7 +217,7 @@ def extract_collection_datetime(node: CqlNode) -> List[Tuple[List[str], str]]:
                             # Merge collections
                             merged_coll = list(set(existing_coll + new_coll))
                             merged_coll.sort()
-                            
+
                             # Merge ranges based on type
                             if not existing_range and not new_range:
                                 # No ranges, just collections
@@ -231,25 +233,35 @@ def extract_collection_datetime(node: CqlNode) -> List[Tuple[List[str], str]]:
                                 if ".." in existing_range or ".." in new_range:
                                     # Handle NEQ ranges - keep them separate as they represent exclusions
                                     if ".." in existing_range:
-                                        new_combined.append((merged_coll, existing_range))
+                                        new_combined.append(
+                                            (merged_coll, existing_range)
+                                        )
                                     if ".." in new_range:
                                         new_combined.append((merged_coll, new_range))
                                 else:
                                     # Both are regular ranges or exact dates
                                     if "/" in existing_range:
                                         e_parts = existing_range.split("/")
-                                        e_start = None if e_parts[0] == ".." else e_parts[0]
-                                        e_end = None if e_parts[1] == ".." else e_parts[1]
+                                        e_start = (
+                                            None if e_parts[0] == ".." else e_parts[0]
+                                        )
+                                        e_end = (
+                                            None if e_parts[1] == ".." else e_parts[1]
+                                        )
                                     else:
                                         e_start = e_end = existing_range
-                                    
+
                                     if "/" in new_range:
                                         n_parts = new_range.split("/")
-                                        n_start = None if n_parts[0] == ".." else n_parts[0]
-                                        n_end = None if n_parts[1] == ".." else n_parts[1]
+                                        n_start = (
+                                            None if n_parts[0] == ".." else n_parts[0]
+                                        )
+                                        n_end = (
+                                            None if n_parts[1] == ".." else n_parts[1]
+                                        )
                                     else:
                                         n_start = n_end = new_range
-                                    
+
                                     # Take the most restrictive
                                     start = None
                                     end = None
@@ -259,33 +271,39 @@ def extract_collection_datetime(node: CqlNode) -> List[Tuple[List[str], str]]:
                                         start = e_start
                                     elif n_start:
                                         start = n_start
-                                    
+
                                     if e_end and n_end:
                                         end = min(e_end, n_end)
                                     elif e_end:
                                         end = e_end
                                     elif n_end:
                                         end = n_end
-                                    
+
                                     if start and end:
                                         if start <= end:
                                             if start == end:
-                                                new_combined.append((merged_coll, start))
+                                                new_combined.append(
+                                                    (merged_coll, start)
+                                                )
                                             else:
-                                                new_combined.append((merged_coll, f"{start}/{end}"))
+                                                new_combined.append(
+                                                    (merged_coll, f"{start}/{end}")
+                                                )
                                     elif start:
-                                        new_combined.append((merged_coll, f"{start}/.."))
+                                        new_combined.append(
+                                            (merged_coll, f"{start}/..")
+                                        )
                                     elif end:
                                         new_combined.append((merged_coll, f"../{end}"))
                     combined_results = new_combined
-                
+
                 results.extend(combined_results)
-            
+
             elif n.op == LogicalOp.OR:
                 for child in n.children:
                     child_results = extract_from_node(child, current_collections.copy())
                     results.extend(child_results)
-            
+
             elif n.op == LogicalOp.NOT:
                 # Handle NOT operator by inverting the meaning of the child results
                 for child in n.children:
@@ -312,7 +330,7 @@ def extract_collection_datetime(node: CqlNode) -> List[Tuple[List[str], str]]:
                         else:
                             # If the child had no range (just collections), NOT doesn't change that
                             results.append((coll, ""))
-        
+
         elif isinstance(n, ComparisonNode):
             if n.field == "collection":
                 new_collections = current_collections.copy()
@@ -321,7 +339,7 @@ def extract_collection_datetime(node: CqlNode) -> List[Tuple[List[str], str]]:
                 else:
                     new_collections.append(n.value)
                 results.append((new_collections, ""))
-            
+
             elif n.field in ["datetime", "start_datetime", "end_datetime"]:
                 if n.op == ComparisonOp.EQ:
                     results.append((current_collections.copy(), n.value))
@@ -336,36 +354,38 @@ def extract_collection_datetime(node: CqlNode) -> List[Tuple[List[str], str]]:
                 elif n.op == ComparisonOp.NEQ:
                     results.append((current_collections.copy(), f"../{n.value}"))
                     results.append((current_collections.copy(), f"{n.value}/.."))
-        
+
         elif isinstance(n, AdvancedComparisonNode):
             if n.field in ["datetime", "start_datetime", "end_datetime"]:
                 if n.op == AdvancedComparisonOp.BETWEEN:
                     if isinstance(n.value, (list, tuple)) and len(n.value) == 2:
-                        results.append((current_collections.copy(), f"{n.value[0]}/{n.value[1]}"))
+                        results.append(
+                            (current_collections.copy(), f"{n.value[0]}/{n.value[1]}")
+                        )
                 elif n.op == AdvancedComparisonOp.IN:
                     if isinstance(n.value, list):
                         for date_value in n.value:
                             results.append((current_collections.copy(), date_value))
-        
+
         return results
 
     all_results = extract_from_node(node)
-    
+
     # Process results
     final_results = []
     seen = set()
-    
+
     for collections, date_range in all_results:
         if not collections:
             continue
 
         unique_collections = list(set(collections))
         unique_collections.sort()
-        
+
         if date_range is not None:
             key = (tuple(unique_collections), date_range)
             if key not in seen:
                 seen.add(key)
                 final_results.append((unique_collections, date_range))
-    
+
     return final_results
