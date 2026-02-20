@@ -1,7 +1,7 @@
 """Base database logic."""
 
 import abc
-from typing import Any, Iterable, Optional
+from typing import Any, Iterable
 
 from stac_pydantic.shared import BBox
 
@@ -17,16 +17,16 @@ class BaseDatabaseLogic(abc.ABC):
     @abc.abstractmethod
     async def get_all_collections(
         self,
-        token: Optional[str],
+        token: str | None,
         limit: int,
         request: Any = None,
-        sort: Optional[list[dict[str, Any]]] = None,
-        bbox: Optional[BBox] = None,
-        q: Optional[list[str]] = None,
-        filter: Optional[dict[str, Any]] = None,
-        query: Optional[dict[str, dict[str, Any]]] = None,
-        datetime: Optional[str] = None,
-    ) -> tuple[list[dict[str, Any]], Optional[str], Optional[int]]:
+        sort: list[dict[str, Any]] | None = None,
+        bbox: BBox | None = None,
+        q: list[str] | None = None,
+        filter: dict[str, Any] | None = None,
+        query: dict[str, dict[str, Any]] | None = None,
+        datetime: str | None = None,
+    ) -> tuple[list[dict[str, Any]], str | None, int | None]:
         """Retrieve a list of collections from the database, supporting pagination.
 
         Args:
@@ -146,11 +146,11 @@ class BaseDatabaseLogic(abc.ABC):
 
     async def get_all_catalogs(
         self,
-        token: Optional[str],
+        token: str | None,
         limit: int,
         request: Any = None,
-        sort: Optional[list[dict[str, Any]]] = None,
-    ) -> tuple[list[dict[str, Any]], Optional[str], Optional[int]]:
+        sort: list[dict[str, Any]] | None = None,
+    ) -> tuple[list[dict[str, Any]], str | None, int | None]:
         """Retrieve a list of catalogs from the database, supporting pagination.
 
         Args:

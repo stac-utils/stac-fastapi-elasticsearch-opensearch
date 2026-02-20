@@ -4,7 +4,7 @@ import abc
 import logging
 import os
 from copy import deepcopy
-from typing import Any, Optional
+from typing import Any
 
 import attr
 from starlette.requests import Request
@@ -164,7 +164,7 @@ class CollectionSerializer(Serializer):
 
     @classmethod
     def db_to_stac(
-        cls, collection: dict, request: Request, extensions: Optional[list[str]] = []
+        cls, collection: dict, request: Request, extensions: list[str] | None = None
     ) -> stac_types.Collection:
         """Transform database model to STAC collection.
 
@@ -233,7 +233,7 @@ class CollectionSerializer(Serializer):
         collection: dict,
         request: Request,
         catalog_id: str,
-        extensions: Optional[list[str]] = [],
+        extensions: list[str] | None = None,
     ) -> stac_types.Collection:
         """Transform database model to STAC collection within a catalog context.
 
@@ -338,7 +338,7 @@ class CatalogSerializer(Serializer):
 
     @classmethod
     def db_to_stac(
-        cls, catalog: dict, request: Request, extensions: Optional[list[str]] = []
+        cls, catalog: dict, request: Request, extensions: list[str] | None = None
     ) -> stac_types.Catalog:
         """Transform database model to STAC catalog.
 

@@ -5,7 +5,7 @@ import os
 from datetime import datetime as datetime_type
 from datetime import timezone
 from enum import Enum
-from typing import Optional, Type
+from typing import Type
 from urllib.parse import unquote_plus, urljoin
 
 import attr
@@ -270,17 +270,17 @@ class CoreClient(AsyncBaseCoreClient):
 
     async def all_collections(
         self,
-        limit: Optional[int] = None,
-        bbox: Optional[BBox] = None,
-        datetime: Optional[str] = None,
-        fields: Optional[list[str]] = None,
-        sortby: Optional[str | list[str]] = None,
-        filter_expr: Optional[str] = None,
-        filter_lang: Optional[str] = None,
-        q: Optional[str | list[str]] = None,
-        query: Optional[str] = None,
+        limit: int | None = None,
+        bbox: BBox | None = None,
+        datetime: str | None = None,
+        fields: list[str] | None = None,
+        sortby: str | list[str] | None = None,
+        filter_expr: str | None = None,
+        filter_lang: str | None = None,
+        q: str | list[str] | None = None,
+        query: str | None = None,
         request: Request = None,
-        token: Optional[str] = None,
+        token: str | None = None,
         **kwargs,
     ) -> stac_types.Collections:
         """Read all collections from the database.
@@ -593,15 +593,15 @@ class CoreClient(AsyncBaseCoreClient):
         self,
         collection_id: str,
         request: Request,
-        bbox: Optional[BBox] = None,
-        datetime: Optional[str] = None,
-        limit: Optional[int] = None,
-        sortby: Optional[str] = None,
-        filter_expr: Optional[str] = None,
-        filter_lang: Optional[str] = None,
-        token: Optional[str] = None,
-        query: Optional[str] = None,
-        fields: Optional[list[str]] = None,
+        bbox: BBox | None = None,
+        datetime: str | None = None,
+        limit: int | None = None,
+        sortby: str | None = None,
+        filter_expr: str | None = None,
+        filter_lang: str | None = None,
+        token: str | None = None,
+        query: str | None = None,
+        fields: list[str] | None = None,
         **kwargs,
     ) -> stac_types.ItemCollection:
         """List items within a specific collection.
@@ -676,19 +676,19 @@ class CoreClient(AsyncBaseCoreClient):
     async def get_search(
         self,
         request: Request,
-        collections: Optional[list[str]] = None,
-        ids: Optional[list[str]] = None,
-        bbox: Optional[BBox] = None,
-        datetime: Optional[str] = None,
-        limit: Optional[int] = None,
-        query: Optional[str] = None,
-        token: Optional[str] = None,
-        fields: Optional[list[str]] = None,
-        sortby: Optional[str] = None,
-        q: Optional[list[str]] = None,
-        intersects: Optional[str] = None,
-        filter_expr: Optional[str] = None,
-        filter_lang: Optional[str] = None,
+        collections: list[str] | None = None,
+        ids: list[str] | None = None,
+        bbox: BBox | None = None,
+        datetime: str | None = None,
+        limit: int | None = None,
+        query: str | None = None,
+        token: str | None = None,
+        fields: list[str] | None = None,
+        sortby: str | None = None,
+        q: list[str] | None = None,
+        intersects: str | None = None,
+        filter_expr: str | None = None,
+        filter_lang: str | None = None,
         **kwargs,
     ) -> stac_types.ItemCollection:
         """Get search results from the database.
@@ -1399,7 +1399,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
 
     @overrides
     def bulk_item_insert(
-        self, items: Items, chunk_size: Optional[int] = None, **kwargs
+        self, items: Items, chunk_size: int | None = None, **kwargs
     ) -> str:
         """Perform a bulk insertion of items into the database using Elasticsearch.
 
