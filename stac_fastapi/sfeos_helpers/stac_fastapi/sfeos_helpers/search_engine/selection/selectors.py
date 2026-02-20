@@ -135,15 +135,14 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
         parsed_datetime = return_date(datetime)
 
         if for_insertion:
-            dt_str = cast(str, datetime)
             return {
                 "datetime": {
-                    "gte": dt_str if self.use_datetime else None,
-                    "lte": dt_str if self.use_datetime else None,
+                    "gte": datetime if self.use_datetime else None,
+                    "lte": datetime if self.use_datetime else None,
                 },
                 "start_datetime": {
-                    "gte": dt_str if not self.use_datetime else None,
-                    "lte": dt_str if not self.use_datetime else None,
+                    "gte": datetime if not self.use_datetime else None,
+                    "lte": datetime if not self.use_datetime else None,
                 },
                 "end_datetime": {"gte": None, "lte": None},
             }
@@ -151,16 +150,16 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
         dt_dict = cast(Dict, datetime)
         return {
             "datetime": {
-                "gte": dt_dict.get("gte") if self.use_datetime else None,
-                "lte": dt_dict.get("lte") if self.use_datetime else None,
+                "gte": parsed_datetime.get("gte") if self.use_datetime else None,
+                "lte": parsed_datetime.get("lte") if self.use_datetime else None,
             },
             "start_datetime": {
-                "gte": parsed_datetime.get("gte") if not self.use_datetime else None,
+                "gte": dt_dict.get("gte") if not self.use_datetime else None,
                 "lte": None,
             },
             "end_datetime": {
                 "gte": None,
-                "lte": parsed_datetime.get("lte") if not self.use_datetime else None,
+                "lte": dt_dict.get("lte") if not self.use_datetime else None,
             },
         }
 
