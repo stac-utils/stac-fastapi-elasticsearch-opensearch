@@ -4,7 +4,7 @@ import logging
 import os
 from base64 import urlsafe_b64decode, urlsafe_b64encode
 from copy import deepcopy
-from typing import Any, Iterable, Optional, Type
+from typing import Any, Iterable, Type
 
 import attr
 import orjson
@@ -182,16 +182,16 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     async def get_all_collections(
         self,
-        token: Optional[str],
+        token: str | None,
         limit: int,
         request: Request,
-        sort: Optional[list[dict[str, Any]]] = None,
-        bbox: Optional[list[float]] = None,
-        q: Optional[list[str]] = None,
-        filter: Optional[dict[str, Any]] = None,
-        query: Optional[dict[str, dict[str, Any]]] = None,
-        datetime: Optional[str] = None,
-    ) -> tuple[list[dict[str, Any]], Optional[str], Optional[int]]:
+        sort: list[dict[str, Any]] | None = None,
+        bbox: list[float] | None = None,
+        q: list[str] | None = None,
+        filter: dict[str, Any] | None = None,
+        query: dict[str, dict[str, Any]] | None = None,
+        datetime: str | None = None,
+    ) -> tuple[list[dict[str, Any]], str | None, int | None]:
         """Retrieve a list of collections from OpenSearch, supporting pagination.
 
         Args:
@@ -463,7 +463,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         return search.filter("terms", **{collection_nested_field: collection_ids})
 
     @staticmethod
-    def apply_free_text_filter(search: Search, free_text_queries: Optional[list[str]]):
+    def apply_free_text_filter(search: Search, free_text_queries: list[str] | None):
         """Create a free text query for OpenSearch queries.
 
         This method delegates to the shared implementation in apply_free_text_filter_shared.
@@ -482,8 +482,8 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     @staticmethod
     def apply_datetime_filter(
-        search: Search, datetime: Optional[str]
-    ) -> tuple[Search, dict[str, Optional[str]]]:
+        search: Search, datetime: str | None
+    ) -> tuple[Search, dict[str, str | None]]:
         """Apply a filter to search on datetime, start_datetime, and end_datetime fields.
 
         Args:
@@ -763,9 +763,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         return search
 
-    async def apply_cql2_filter(
-        self, search: Search, _filter: Optional[dict[str, Any]]
-    ):
+    async def apply_cql2_filter(self, search: Search, _filter: dict[str, Any] | None):
         """
         Apply a CQL2 filter to an Opensearch Search object.
 
@@ -791,7 +789,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         return search
 
     @staticmethod
-    def populate_sort(sortby: list) -> Optional[dict[str, dict[str, str]]]:
+    def populate_sort(sortby: list) -> dict[str, dict[str, str]] | None:
         """Create a sort configuration for OpenSearch queries.
 
         This method delegates to the shared implementation in populate_sort_shared.
@@ -809,12 +807,12 @@ class DatabaseLogic(BaseDatabaseLogic):
         self,
         search: Search,
         limit: int,
-        token: Optional[str],
-        sort: Optional[dict[str, dict[str, str]]],
-        collection_ids: Optional[list[str]],
+        token: str | None,
+        sort: dict[str, dict[str, str]] | None,
+        collection_ids: list[str] | None,
         datetime_search: str,
         ignore_unavailable: bool = True,
-    ) -> tuple[Iterable[dict[str, Any]], Optional[int], Optional[str]]:
+    ) -> tuple[Iterable[dict[str, Any]], int | None, str | None]:
         """Execute a search query with limit and other optional parameters.
 
         Args:
@@ -920,17 +918,16 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     async def aggregate(
         self,
-        collection_ids: Optional[list[str]],
+        collection_ids: list[str] | None,
         aggregations: list[str],
         search: Search,
         centroid_geohash_grid_precision: int,
         centroid_geohex_grid_precision: int,
-        centroid_geotile_grid_precision: int,
         geometry_geohash_grid_precision: int,
         geometry_geotile_grid_precision: int,
         datetime_frequency_interval: str,
         datetime_search: str,
-        ignore_unavailable: Optional[bool] = True,
+        ignore_unavailable: bool | None = True,
     ):
         """Return aggregations of STAC Items."""
         search_body: dict[str, Any] = {}
@@ -943,7 +940,6 @@ class DatabaseLogic(BaseDatabaseLogic):
             agg_precision = {
                 "centroid_geohash_grid_frequency": centroid_geohash_grid_precision,
                 "centroid_geohex_grid_frequency": centroid_geohex_grid_precision,
-                "centroid_geotile_grid_frequency": centroid_geotile_grid_precision,
                 "geometry_geohash_grid_frequency": geometry_geohash_grid_precision,
                 "geometry_geotile_grid_frequency": geometry_geotile_grid_precision,
             }
@@ -1056,7 +1052,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     async def bulk_async_prep_create_item(
         self, item: Item, base_url: str, exist_ok: bool = False
-    ) -> Optional[Item]:
+    ) -> Item | None:
         """
         Prepare an item for insertion into the database.
 
@@ -1104,7 +1100,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     def bulk_sync_prep_create_item(
         self, item: Item, base_url: str, exist_ok: bool = False
-    ) -> Optional[Item]:
+    ) -> Item | None:
         """
         Prepare an item for insertion into the database.
 
@@ -1864,11 +1860,11 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     async def get_all_catalogs(
         self,
-        token: Optional[str],
+        token: str | None,
         limit: int,
         request: Any = None,
-        sort: Optional[list[dict[str, Any]]] = None,
-    ) -> tuple[list[dict[str, Any]], Optional[str], Optional[int]]:
+        sort: list[dict[str, Any]] | None = None,
+    ) -> tuple[list[dict[str, Any]], str | None, int | None]:
         """Retrieve a list of catalogs from OpenSearch, supporting pagination.
 
         Args:

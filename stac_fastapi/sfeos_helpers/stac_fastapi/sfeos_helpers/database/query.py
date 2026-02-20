@@ -4,7 +4,7 @@ This module provides functions for building and manipulating Elasticsearch/OpenS
 """
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 from stac_fastapi.core.utilities import bbox2polygon
 from stac_fastapi.sfeos_helpers.mappings import Geometry
@@ -13,7 +13,7 @@ ES_MAX_URL_LENGTH = 4096
 
 
 def apply_free_text_filter_shared(
-    search: Any, free_text_queries: Optional[list[str]]
+    search: Any, free_text_queries: list[str] | None
 ) -> Any:
     """Create a free text query for Elasticsearch/OpenSearch.
 
@@ -40,7 +40,7 @@ def apply_free_text_filter_shared(
 
 def apply_intersects_filter_shared(
     intersects: Geometry,
-) -> Dict[str, Dict]:
+) -> dict[str, dict]:
     """Create a geo_shape filter for intersecting geometry.
 
     Args:
@@ -69,7 +69,7 @@ def apply_intersects_filter_shared(
 
 
 def apply_collections_datetime_filter_shared(
-    datetime_str: Optional[str],
+    datetime_str: str | None,
 ) -> dict[str, Any] | None:
     """Create a temporal filter for collections based on their extent.
 
@@ -201,7 +201,7 @@ def apply_collections_bbox_filter_shared(
     }
 
 
-def populate_sort_shared(sortby: list) -> Optional[dict[str, dict[str, str]]]:
+def populate_sort_shared(sortby: list) -> dict[str, dict[str, str]] | None:
     """Create a sort configuration for Elasticsearch/OpenSearch queries.
 
     Args:
@@ -226,7 +226,7 @@ def populate_sort_shared(sortby: list) -> Optional[dict[str, dict[str, str]]]:
 
 
 def add_collections_to_body(
-    collection_ids: list[str], query: Optional[dict[str, Any]]
+    collection_ids: list[str], query: dict[str, Any] | None
 ) -> dict[str, Any]:
     """Add a list of collection ids to the body of a query.
 

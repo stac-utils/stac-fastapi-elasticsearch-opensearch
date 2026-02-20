@@ -6,7 +6,7 @@ the CatalogsExtension to maintain database-agnostic code in the core module.
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from stac_fastapi.sfeos_helpers.mappings import COLLECTIONS_INDEX
 
@@ -39,8 +39,8 @@ async def search_sub_catalogs_with_pagination_shared(
     es_client: Any,
     catalog_id: str,
     limit: int = 10,
-    token: Optional[str] = None,
-) -> tuple[List[Dict[str, Any]], int, Optional[str]]:
+    token: str | None = None,
+) -> tuple[list[dict[str, Any]], int, str | None]:
     """Search for sub-catalogs with pagination support.
 
     Args:
@@ -52,8 +52,8 @@ async def search_sub_catalogs_with_pagination_shared(
     Returns:
         Tuple of (catalogs, total_count, next_token).
     """
-    sort_fields: List[Dict[str, Any]] = [{"id": {"order": "asc"}}]
-    query_body: Dict[str, Any] = {
+    sort_fields: list[dict[str, Any]] = [{"id": {"order": "asc"}}]
+    query_body: dict[str, Any] = {
         "query": {
             "bool": {
                 "must": [
@@ -100,7 +100,7 @@ async def search_sub_catalogs_with_pagination_shared(
 
 
 async def update_catalog_in_index_shared(
-    es_client: Any, catalog_id: str, catalog_data: Dict[str, Any]
+    es_client: Any, catalog_id: str, catalog_data: dict[str, Any]
 ) -> None:
     """Update a catalog document in the index.
 
@@ -125,9 +125,9 @@ async def search_children_with_pagination_shared(
     es_client: Any,
     catalog_id: str,
     limit: int = 10,
-    token: Optional[str] = None,
-    resource_type: Optional[str] = None,
-) -> tuple[List[Dict[str, Any]], int, Optional[str]]:
+    token: str | None = None,
+    resource_type: str | None = None,
+) -> tuple[list[dict[str, Any]], int, str | None]:
     """Search for children (catalogs and collections) with pagination.
 
     Args:
@@ -154,7 +154,7 @@ async def search_children_with_pagination_shared(
     }
 
     # Handle search_after token
-    search_after: Optional[List[str]] = None
+    search_after: list[str] | None = None
     if token:
         try:
             search_after_parts = token.split("|")

@@ -1,7 +1,7 @@
 """Async index insertion strategies."""
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from fastapi import HTTPException, status
 
@@ -186,7 +186,7 @@ class DatetimeIndexInserter(BaseIndexInserter):
         product: dict[str, Any],
         check_size: bool = True,
         use_cache: bool = True,
-    ) -> Optional[str]:
+    ) -> str | None:
         """Get target index with size checking internally.
 
         Args:
@@ -325,7 +325,7 @@ class DatetimeIndexInserter(BaseIndexInserter):
     @staticmethod
     def _find_aliases_for_index(
         all_indexes: list, target_index: str
-    ) -> tuple[Optional[dict[str, Any]], bool]:
+    ) -> tuple[dict[str, Any] | None, bool]:
         """Find aliases for a given index.
 
         Args:

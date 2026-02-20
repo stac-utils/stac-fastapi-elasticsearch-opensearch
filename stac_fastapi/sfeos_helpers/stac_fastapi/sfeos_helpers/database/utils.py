@@ -5,7 +5,7 @@ in Elasticsearch/OpenSearch, such as parameter validation.
 """
 
 import logging
-from typing import Any, Optional
+from typing import Any
 
 from stac_fastapi.core.utilities import bbox2polygon, get_bool_env
 from stac_fastapi.extensions.core.transaction.request import (
@@ -458,12 +458,12 @@ def sentry_initialize(
 
 
 def add_hidden_filter(
-    query: Optional[dict[str, Any]] = None, hide_item_path: Optional[str] = None
+    query: dict[str, Any] | None = None, hide_item_path: str | None = None
 ) -> dict[str, Any]:
     """Add hidden filter to a query to exclude hidden items.
 
     Args:
-        query: Optional Elasticsearch query to combine with hidden filter
+        query: Elasticsearch query to combine with hidden filter
         hide_item_path: Path to the hidden field (e.g., "properties._private.hidden")
                        If None or empty, return original query (no filtering)
 

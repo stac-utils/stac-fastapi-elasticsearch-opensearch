@@ -29,7 +29,7 @@ import copy
 import json
 import logging
 import os
-from typing import Any, Dict, Literal, Optional, Protocol
+from typing import Any, Literal, Protocol
 
 from stac_fastapi.core.utilities import get_bool_env
 
@@ -54,7 +54,7 @@ def merge_mappings(base: dict[str, Any], custom: dict[str, Any]) -> None:
 
 
 def parse_dynamic_mapping_config(
-    config_value: Optional[str],
+    config_value: str | None,
 ) -> bool | str:
     """Parse the dynamic mapping configuration value.
 
@@ -78,7 +78,7 @@ def parse_dynamic_mapping_config(
 
 
 def apply_custom_mappings(
-    mappings: Dict[str, Any], custom_mappings_json: Optional[str]
+    mappings: dict[str, Any], custom_mappings_json: str | None
 ) -> None:
     """Apply custom mappings from a JSON string to the mappings dictionary.
 
@@ -106,7 +106,7 @@ def apply_custom_mappings(
 
 
 def get_items_mappings(
-    dynamic_mapping: Optional[str] = None, custom_mappings: Optional[str] = None
+    dynamic_mapping: str | None = None, custom_mappings: str | None = None
 ) -> dict[str, Any]:
     """Get the ES_ITEMS_MAPPINGS with optional dynamic mapping and custom mappings applied.
 
@@ -303,7 +303,7 @@ ES_COLLECTIONS_MAPPINGS = {
 }
 
 # Shared aggregation mapping for both Elasticsearch and OpenSearch
-AGGREGATION_MAPPING: Dict[str, Dict[str, Any]] = {
+AGGREGATION_MAPPING: dict[str, dict[str, Any]] = {
     "total_count": {"value_count": {"field": "id"}},
     "collection_frequency": {"terms": {"field": "collection", "size": 100}},
     "platform_frequency": {"terms": {"field": "properties.platform", "size": 100}},
@@ -374,7 +374,7 @@ AGGREGATION_MAPPING: Dict[str, Dict[str, Any]] = {
     },
 }
 
-ES_MAPPING_TYPE_TO_JSON: Dict[
+ES_MAPPING_TYPE_TO_JSON: dict[
     str, Literal["string", "number", "boolean", "object", "array", "null"]
 ] = {
     "date": "string",

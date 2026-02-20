@@ -286,17 +286,17 @@ class CoreClient(AsyncBaseCoreClient):
         """Read all collections from the database.
 
         Args:
-            limit (Optional[int]): Maximum number of collections to return.
-            bbox (Optional[BBox]): Bounding box to filter collections by spatial extent.
-            datetime (Optional[str]): Filter collections by datetime range.
-            fields (Optional[List[str]]): Fields to include or exclude from the results.
-            sortby (Optional[str | list[str]]): Sorting options for the results.
-            filter_expr (Optional[str]): Structured filter expression in CQL2 JSON or CQL2-text format.
-            filter_lang (Optional[str]): Must be 'cql2-json' or 'cql2-text' if specified, other values will result in an error.
-            q (Optional[str | list[str]]): Free text search terms.
-            query (Optional[str]): Legacy query parameter (deprecated).
+            limit (int | None): Maximum number of collections to return.
+            bbox (BBox | None): Bounding box to filter collections by spatial extent.
+            datetime (str | None): Filter collections by datetime range.
+            fields (list[str] | None): Fields to include or exclude from the results.
+            sortby (str | list[str] | None): Sorting options for the results.
+            filter_expr (str | None): Structured filter expression in CQL2 JSON or CQL2-text format.
+            filter_lang (str | None): Must be 'cql2-json' or 'cql2-text' if specified, other values will result in an error.
+            q (str | list[str] | None): Free text search terms.
+            query (str | None): Legacy query parameter (deprecated).
             request (Request): FastAPI Request object.
-            token (Optional[str]): Pagination token for retrieving the next page of results.
+            token (str | None): Pagination token for retrieving the next page of results.
             **kwargs: Keyword arguments from the request.
 
         Returns:
@@ -613,17 +613,17 @@ class CoreClient(AsyncBaseCoreClient):
         Args:
             collection_id (str): ID of the collection to list items from.
             request (Request): FastAPI Request object.
-            bbox (Optional[BBox]): Optional bounding box filter.
-            datetime (Optional[str]): Optional datetime or interval filter.
-            limit (Optional[int]): Optional page size. Defaults to env `STAC_DEFAULT_ITEM_LIMIT` when unset.
-            sortby (Optional[str]): Optional sort specification. Accepts repeated values
+            bbox (BBox | None): Optional bounding box filter.
+            datetime (str | None): Optional datetime or interval filter.
+            limit (int | None): Optional page size. Defaults to env `STAC_DEFAULT_ITEM_LIMIT` when unset.
+            sortby (str | None): Optional sort specification. Accepts repeated values
                 like ``sortby=-properties.datetime`` or ``sortby=+id``. Bare fields (e.g. ``sortby=id``)
                 imply ascending order.
-            token (Optional[str]): Optional pagination token.
-            query (Optional[str]): Optional query string.
-            filter_expr (Optional[str]): Optional filter expression.
-            filter_lang (Optional[str]): Optional filter language.
-            fields (Optional[List[str]]): Fields to include or exclude from the results.
+            token (str | None): Optional pagination token.
+            query (str | None): Optional query string.
+            filter_expr (str | None): Optional filter expression.
+            filter_lang (str | None): Optional filter language.
+            fields (list[str] | None): Fields to include or exclude from the results.
 
         Returns:
             ItemCollection: Feature collection with items, paging links, and counts.
@@ -694,17 +694,17 @@ class CoreClient(AsyncBaseCoreClient):
         """Get search results from the database.
 
         Args:
-            collections (Optional[List[str]]): List of collection IDs to search in.
-            ids (Optional[List[str]]): List of item IDs to search for.
-            bbox (Optional[BBox]): Bounding box to search in.
-            datetime (Optional[str]): Filter items based on the datetime field.
-            limit (Optional[int]): Maximum number of results to return.
-            query (Optional[str]): Query string to filter the results.
-            token (Optional[str]): Access token to use when searching the catalog.
-            fields (Optional[List[str]]): Fields to include or exclude from the results.
-            sortby (Optional[str]): Sorting options for the results.
-            q (Optional[List[str]]): Free text query to filter the results.
-            intersects (Optional[str]): GeoJSON geometry to search in.
+            collections (list[str] | None): List of collection IDs to search in.
+            ids (list[str] | None): List of item IDs to search for.
+            bbox (BBox | None): Bounding box to search in.
+            datetime (str | None): Filter items based on the datetime field.
+            limit (int | None): Maximum number of results to return.
+            query (str | None): Query string to filter the results.
+            token (str | None): Access token to use when searching the catalog.
+            fields (list[str] | None): Fields to include or exclude from the results.
+            sortby (str | None): Sorting options for the results.
+            q (list[str] | None): Free text query to filter the results.
+            intersects (str | None): GeoJSON geometry to search in.
             kwargs: Additional parameters to be passed to the API.
         Returns:
             ItemCollection: Collection of `Item` objects representing the search results.

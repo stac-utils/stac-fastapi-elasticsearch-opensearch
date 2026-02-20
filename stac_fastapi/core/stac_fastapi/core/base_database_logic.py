@@ -30,15 +30,15 @@ class BaseDatabaseLogic(abc.ABC):
         """Retrieve a list of collections from the database, supporting pagination.
 
         Args:
-            token (Optional[str]): The pagination token.
+            token (str | None): The pagination token.
             limit (int): The number of results to return.
             request (Any, optional): The FastAPI request object. Defaults to None.
-            sort (Optional[List[Dict[str, Any]]], optional): Optional sort parameter. Defaults to None.
-            bbox (Optional[BBox], optional): Bounding box to filter collections by spatial extent. Defaults to None.
-            q (Optional[List[str]], optional): Free text search terms. Defaults to None.
-            filter (Optional[Dict[str, Any]], optional): Structured query in CQL2 format. Defaults to None.
-            query (Optional[Dict[str, Dict[str, Any]]], optional): Query extension parameters. Defaults to None.
-            datetime (Optional[str], optional): Temporal filter. Defaults to None.
+            sort (list[dict[str, Any]] | None, optional): Optional sort parameter. Defaults to None.
+            bbox (BBox | None, optional): Bounding box to filter collections by spatial extent. Defaults to None.
+            q (list[str] | None, optional): Free text search terms. Defaults to None.
+            filter (dict[str, Any] | None, optional): Structured query in CQL2 format. Defaults to None.
+            query (dict[str, dict[str, Any]] | None, optional): Query extension parameters. Defaults to None.
+            datetime (str | None, optional): Temporal filter. Defaults to None.
 
         Returns:
             A tuple of (collections, next pagination token if any, optional count).
