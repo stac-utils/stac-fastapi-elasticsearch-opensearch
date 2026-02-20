@@ -5,7 +5,7 @@ import os
 from datetime import datetime as datetime_type
 from datetime import timezone
 from enum import Enum
-from typing import Any, Optional, Type
+from typing import Optional, Type
 from urllib.parse import unquote_plus, urljoin
 
 import attr
@@ -116,7 +116,7 @@ class CoreClient(AsyncBaseCoreClient):
         base_url: str,
         conformance_classes: list[str],
         extension_schemas: list[str],
-    ) -> dict[str, Any]:
+    ) -> stac_types.LandingPage:
         landing_page = stac_types.LandingPage(
             type="Catalog",
             id=self.landing_page_id,
@@ -165,7 +165,7 @@ class CoreClient(AsyncBaseCoreClient):
         )
         return landing_page
 
-    async def landing_page(self, **kwargs) -> dict[str, Any]:
+    async def landing_page(self, **kwargs) -> stac_types.LandingPage:
         """Landing page.
 
         Called with `GET /`.
@@ -282,7 +282,7 @@ class CoreClient(AsyncBaseCoreClient):
         request: Request = None,
         token: Optional[str] = None,
         **kwargs,
-    ) -> dict[str, Any]:
+    ) -> stac_types.Collections:
         """Read all collections from the database.
 
         Args:
@@ -473,16 +473,16 @@ class CoreClient(AsyncBaseCoreClient):
             next_link = PagingLinks(next=next_token, request=request).link_next()
             links.append(next_link)
 
-        return {
-            "collections": filtered_collections,
-            "links": links,
-            "numberMatched": maybe_count,
-            "numberReturned": len(filtered_collections),
-        }
+        return stac_types.Collections(
+            collections=filtered_collections,
+            links=links,
+            numberMatched=maybe_count,
+            numberReturned=len(filtered_collections),
+        )
 
     async def post_all_collections(
         self, search_request: BaseSearchPostRequest, request: Request, **kwargs
-    ) -> dict[str, Any]:
+    ) -> stac_types.Collections:
         """Search collections with POST request.
 
         Args:
@@ -566,7 +566,9 @@ class CoreClient(AsyncBaseCoreClient):
             **kwargs,
         )
 
-    async def get_collection(self, collection_id: str, **kwargs) -> dict[str, Any]:
+    async def get_collection(
+        self, collection_id: str, **kwargs
+    ) -> stac_types.Collection:
         """Get a collection from the database by its id.
 
         Args:
@@ -601,7 +603,7 @@ class CoreClient(AsyncBaseCoreClient):
         query: Optional[str] = None,
         fields: Optional[list[str]] = None,
         **kwargs,
-    ) -> dict[str, Any]:
+    ) -> stac_types.ItemCollection:
         """List items within a specific collection.
 
         This endpoint delegates to ``get_search`` under the hood with
@@ -651,7 +653,7 @@ class CoreClient(AsyncBaseCoreClient):
 
     async def get_item(
         self, item_id: str, collection_id: str, **kwargs
-    ) -> dict[str, Any]:
+    ) -> stac_types.Item:
         """Get an item from the database based on its id and collection id.
 
         Args:
@@ -688,7 +690,7 @@ class CoreClient(AsyncBaseCoreClient):
         filter_expr: Optional[str] = None,
         filter_lang: Optional[str] = None,
         **kwargs,
-    ) -> dict[str, Any]:
+    ) -> stac_types.ItemCollection:
         """Get search results from the database.
 
         Args:
@@ -770,7 +772,7 @@ class CoreClient(AsyncBaseCoreClient):
 
     async def post_search(
         self, search_request: BaseSearchPostRequest, request: Request
-    ) -> dict[str, Any]:
+    ) -> stac_types.ItemCollection:
         """
         Perform a POST search on the catalog.
 
@@ -955,13 +957,13 @@ class CoreClient(AsyncBaseCoreClient):
                 links=links,
             )
 
-        return {
-            "type": "FeatureCollection",
-            "features": items,
-            "links": links,
-            "numberReturned": len(items),
-            "numberMatched": maybe_count,
-        }
+        return stac_types.ItemCollection(
+            type="FeatureCollection",
+            features=items,
+            links=links,
+            numberReturned=len(items),
+            numberMatched=maybe_count,
+        )
 
 
 @attr.s
@@ -975,7 +977,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     @overrides
     async def create_item(
         self, collection_id: str, item: Item | ItemCollection, **kwargs
-    ) -> dict[str, Any] | str:
+    ) -> stac_types.Item | str:
         """
         Create an item or a feature collection of items in the specified collection.
 
@@ -1096,7 +1098,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     @overrides
     async def update_item(
         self, collection_id: str, item_id: str, item: Item, **kwargs
-    ) -> dict[str, Any]:
+    ) -> stac_types.Item:
         """Update an item in the collection.
 
         Args:
@@ -1225,7 +1227,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     @overrides
     async def create_collection(
         self, collection: Collection, **kwargs
-    ) -> dict[str, Any]:
+    ) -> stac_types.Collection:
         """Create a new collection in the database.
 
         Args:
@@ -1252,7 +1254,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     @overrides
     async def update_collection(
         self, collection_id: str, collection: Collection, **kwargs
-    ) -> dict[str, Any]:
+    ) -> stac_types.Collection:
         """
         Update a collection.
 
@@ -1379,7 +1381,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
 
     def preprocess_item(
         self, item: stac_types.Item, base_url, method: BulkTransactionMethod
-    ) -> dict[str, Any]:
+    ) -> stac_types.Item:
         """Preprocess an item to match the data model.
 
         Args:
