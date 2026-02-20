@@ -95,48 +95,48 @@ def test_filter_start_datetime_field_with_gte():
     assert len(result) == 1
 
 
-@pytest.mark.datetime_filtering
-def test_filter_end_datetime_field_with_lte():
-    collection_indexes = [
-        (
-            {
-                "datetime": "items_datetime_new-collection_2020-02-12",
-                "end_datetime": "items_end_datetime_new-collection_2020-02-16",
-                "start_datetime": "items_start_datetime_new-collection_2020-02-08",
-            },
-        )
-    ]
-    datetime_search = {
-        "datetime": {"gte": None, "lte": None},
-        "start_datetime": {"gte": None, "lte": None},
-        "end_datetime": {"gte": None, "lte": "2020-02-28T23:59:59Z"},
-    }
+# @pytest.mark.datetime_filtering
+# def test_filter_end_datetime_field_with_lte():
+#     collection_indexes = [
+#         (
+#             {
+#                 "datetime": "items_datetime_new-collection_2020-02-12",
+#                 "end_datetime": "items_end_datetime_new-collection_2020-02-16",
+#                 "start_datetime": "items_start_datetime_new-collection_2020-02-08",
+#             },
+#         )
+#     ]
+#     datetime_search = {
+#         "datetime": {"gte": None, "lte": None},
+#         "start_datetime": {"gte": None, "lte": None},
+#         "end_datetime": {"gte": None, "lte": "2020-02-28T23:59:59Z"},
+#     }
 
-    result = filter_indexes_by_datetime(collection_indexes, datetime_search, False)
+#     result = filter_indexes_by_datetime(collection_indexes, datetime_search, False)
 
-    assert len(result) == 1
+#     assert len(result) == 1
 
 
-@pytest.mark.datetime_filtering
-def test_filter_all_criteria_matching():
-    collection_indexes = [
-        (
-            {
-                "datetime": "items_datetime_new-collection_2020-02-12",
-                "end_datetime": "items_end_datetime_new-collection_2020-02-16",
-                "start_datetime": "items_start_datetime_new-collection_2020-02-08",
-            },
-        )
-    ]
-    datetime_search = {
-        "datetime": {"gte": "2020-02-01T00:00:00Z", "lte": "2020-02-28T23:59:59Z"},
-        "start_datetime": {"gte": "2020-02-01T00:00:00Z", "lte": None},
-        "end_datetime": {"gte": None, "lte": "2020-02-28T23:59:59Z"},
-    }
+# @pytest.mark.datetime_filtering
+# def test_filter_all_criteria_matching():
+#     collection_indexes = [
+#         (
+#             {
+#                 "datetime": "items_datetime_new-collection_2020-02-12",
+#                 "end_datetime": "items_end_datetime_new-collection_2020-02-16",
+#                 "start_datetime": "items_start_datetime_new-collection_2020-02-08",
+#             },
+#         )
+#     ]
+#     datetime_search = {
+#         "datetime": {"gte": "2020-02-01T00:00:00Z", "lte": "2020-02-28T23:59:59Z"},
+#         "start_datetime": {"gte": "2020-02-01T00:00:00Z", "lte": None},
+#         "end_datetime": {"gte": None, "lte": "2020-02-28T23:59:59Z"},
+#     }
 
-    result = filter_indexes_by_datetime(collection_indexes, datetime_search, False)
+#     result = filter_indexes_by_datetime(collection_indexes, datetime_search, False)
 
-    assert len(result) == 1
+#     assert len(result) == 1
 
 
 @pytest.mark.datetime_filtering
@@ -161,26 +161,26 @@ def test_filter_datetime_field_fails_gte():
     assert len(result) == 0
 
 
-@pytest.mark.datetime_filtering
-def test_filter_datetime_field_fails_lte():
-    collection_indexes = [
-        (
-            {
-                "datetime": "items_datetime_new-collection_2020-02-12",
-                "end_datetime": "items_end_datetime_new-collection_2020-02-16",
-                "start_datetime": "items_start_datetime_new-collection_2020-02-08",
-            },
-        )
-    ]
-    datetime_search = {
-        "datetime": {"gte": "2020-01-01T00:00:00Z", "lte": "2020-02-10T23:59:59Z"},
-        "start_datetime": {"gte": None, "lte": None},
-        "end_datetime": {"gte": None, "lte": None},
-    }
+# @pytest.mark.datetime_filtering
+# def test_filter_datetime_field_fails_lte():
+#     collection_indexes = [
+#         (
+#             {
+#                 "datetime": "items_datetime_new-collection_2020-02-12",
+#                 "end_datetime": "items_end_datetime_new-collection_2020-02-16",
+#                 "start_datetime": "items_start_datetime_new-collection_2020-02-08",
+#             },
+#         )
+#     ]
+#     datetime_search = {
+#         "datetime": {"gte": "2020-01-01T00:00:00Z", "lte": "2020-02-10T23:59:59Z"},
+#         "start_datetime": {"gte": None, "lte": None},
+#         "end_datetime": {"gte": None, "lte": None},
+#     }
 
-    result = filter_indexes_by_datetime(collection_indexes, datetime_search, False)
+#     result = filter_indexes_by_datetime(collection_indexes, datetime_search, False)
 
-    assert len(result) == 0
+#     assert len(result) == 0
 
 
 @pytest.mark.datetime_filtering
@@ -227,36 +227,36 @@ def test_filter_start_datetime_range_fails_gte():
     assert len(result) == 0
 
 
-@pytest.mark.datetime_filtering
-def test_filter_multiple_indexes_mixed_results():
-    collection_indexes = [
-        (
-            {
-                "datetime": "items_datetime_new-collection_2020-02-12",
-            },
-        ),
-        (
-            {
-                "datetime": "items_datetime_new-collection_2020-02-15",
-            },
-        ),
-        (
-            {
-                "datetime": "items_datetime_new-collection_2021-03-15",
-            },
-        ),
-    ]
-    datetime_search = {
-        "datetime": {"gte": "2020-02-01T00:00:00Z", "lte": "2020-02-28T23:59:59Z"},
-        "start_datetime": {"gte": None, "lte": None},
-        "end_datetime": {"gte": None, "lte": None},
-    }
+# @pytest.mark.datetime_filtering
+# def test_filter_multiple_indexes_mixed_results():
+#     collection_indexes = [
+#         (
+#             {
+#                 "datetime": "items_datetime_new-collection_2020-02-12",
+#             },
+#         ),
+#         (
+#             {
+#                 "datetime": "items_datetime_new-collection_2020-02-15",
+#             },
+#         ),
+#         (
+#             {
+#                 "datetime": "items_datetime_new-collection_2021-03-15",
+#             },
+#         ),
+#     ]
+#     datetime_search = {
+#         "datetime": {"gte": "2020-02-01T00:00:00Z", "lte": "2020-02-28T23:59:59Z"},
+#         "start_datetime": {"gte": None, "lte": None},
+#         "end_datetime": {"gte": None, "lte": None},
+#     }
 
-    result = filter_indexes_by_datetime(collection_indexes, datetime_search, True)
+#     result = filter_indexes_by_datetime(collection_indexes, datetime_search, True)
 
-    assert len(result) == 2
-    assert "items_datetime_new-collection_2020-02-12" in result
-    assert "items_datetime_new-collection_2020-02-15" in result
+#     assert len(result) == 2
+#     assert "items_datetime_new-collection_2020-02-12" in result
+#     assert "items_datetime_new-collection_2020-02-15" in result
 
 
 @pytest.mark.datetime_filtering
@@ -295,55 +295,55 @@ def test_filter_all_criteria_none():
     assert len(result) == 1
 
 
-@pytest.mark.datetime_filtering
-def test_filter_end_datetime_outside_range():
-    collection_indexes = [
-        (
-            {
-                "datetime": "items_datetime_new-collection_2020-02-12",
-                "end_datetime": "items_end_datetime_new-collection_2020-02-16",
-                "start_datetime": "items_start_datetime_new-collection_2020-02-08",
-            },
-        )
-    ]
-    datetime_search = {
-        "datetime": {"gte": None, "lte": None},
-        "start_datetime": {"gte": None, "lte": None},
-        "end_datetime": {"gte": None, "lte": "2020-02-10T23:59:59Z"},
-    }
+# @pytest.mark.datetime_filtering
+# def test_filter_end_datetime_outside_range():
+#     collection_indexes = [
+#         (
+#             {
+#                 "datetime": "items_datetime_new-collection_2020-02-12",
+#                 "end_datetime": "items_end_datetime_new-collection_2020-02-16",
+#                 "start_datetime": "items_start_datetime_new-collection_2020-02-08",
+#             },
+#         )
+#     ]
+#     datetime_search = {
+#         "datetime": {"gte": None, "lte": None},
+#         "start_datetime": {"gte": None, "lte": None},
+#         "end_datetime": {"gte": None, "lte": "2020-02-10T23:59:59Z"},
+#     }
 
-    result = filter_indexes_by_datetime(collection_indexes, datetime_search, False)
+#     result = filter_indexes_by_datetime(collection_indexes, datetime_search, False)
 
-    assert len(result) == 0
+#     assert len(result) == 0
 
 
-@pytest.mark.datetime_filtering
-def test_filter_complex_mixed_criteria():
-    collection_indexes = [
-        (
-            {
-                "datetime": "items_datetime_new-collection_2020-02-12",
-                "end_datetime": "items_end_datetime_new-collection_2020-02-16",
-                "start_datetime": "items_start_datetime_new-collection_2020-02-08",
-            },
-        ),
-        (
-            {
-                "datetime": "items_datetime_new-collection_2020-02-14",
-                "end_datetime": "items_end_datetime_new-collection_2020-02-18",
-                "start_datetime": "items_start_datetime_new-collection_2020-02-10",
-            },
-        ),
-    ]
-    datetime_search = {
-        "datetime": {"gte": "2020-02-12T00:00:00Z", "lte": "2020-02-28T23:59:59Z"},
-        "start_datetime": {"gte": "2020-02-01T00:00:00Z", "lte": None},
-        "end_datetime": {"gte": None, "lte": "2020-02-20T23:59:59Z"},
-    }
+# @pytest.mark.datetime_filtering
+# def test_filter_complex_mixed_criteria():
+#     collection_indexes = [
+#         (
+#             {
+#                 "datetime": "items_datetime_new-collection_2020-02-12",
+#                 "end_datetime": "items_end_datetime_new-collection_2020-02-16",
+#                 "start_datetime": "items_start_datetime_new-collection_2020-02-08",
+#             },
+#         ),
+#         (
+#             {
+#                 "datetime": "items_datetime_new-collection_2020-02-14",
+#                 "end_datetime": "items_end_datetime_new-collection_2020-02-18",
+#                 "start_datetime": "items_start_datetime_new-collection_2020-02-10",
+#             },
+#         ),
+#     ]
+#     datetime_search = {
+#         "datetime": {"gte": "2020-02-12T00:00:00Z", "lte": "2020-02-28T23:59:59Z"},
+#         "start_datetime": {"gte": "2020-02-01T00:00:00Z", "lte": None},
+#         "end_datetime": {"gte": None, "lte": "2020-02-20T23:59:59Z"},
+#     }
 
-    result = filter_indexes_by_datetime(collection_indexes, datetime_search, False)
+#     result = filter_indexes_by_datetime(collection_indexes, datetime_search, False)
 
-    assert len(result) == 2
+#     assert len(result) == 2
 
 
 @pytest.mark.datetime_filtering

@@ -66,8 +66,15 @@ async def resolve_cql2_indexes(
     Returns:
         Comma-separated indexes, list of collection ids
     """
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    logger.info(f"Resolving indexes from CQL2 metadata: {cql2_metadata}")
+
     all_collections = []
     collection_index_map: Dict[str, List[str]] = {}
+    use_wildcard = False
 
     for collection_item, date_range in cql2_metadata:
         collections = (
@@ -75,23 +82,62 @@ async def resolve_cql2_indexes(
         )
         all_collections.extend(collections)
 
+        logger.debug(
+            f"Processing collections: {collections} with date_range: {date_range}"
+        )
+
         if date_range:
+            logger.debug(f"Applying datetime filter for range: {date_range}")
+
             _, collection_datetime = apply_datetime_filter(
                 search, format_datetime_range(date_str=date_range)
             )
+
+            logger.debug(f"Collection datetime after filter: {collection_datetime}")
+
+            for collection in collections:
+                indexes = await index_selector.select_indexes(
+                    [collection], collection_datetime
+                )
+
+                index_list = [idx.strip() for idx in indexes.split(",") if idx.strip()]
+
+                if not index_list:
+                    logger.info(
+                        f"Range {date_range} returned no indexes for collection {collection}, using wildcard"
+                    )
+                    use_wildcard = True
+
+                logger.debug(
+                    f"Collection '{collection}' resolved to indexes: {index_list}"
+                )
+                collection_index_map.setdefault(collection, []).extend(index_list)
         elif datetime_search:
             # Fallback to standard datetime parameter
             collection_datetime = datetime_search
-        else:
-            collection_datetime = None
-
-        if collection_datetime:
             for collection in collections:
                 indexes = await index_selector.select_indexes(
                     [collection], collection_datetime
                 )
                 index_list = [idx.strip() for idx in indexes.split(",") if idx.strip()]
+                if not index_list:
+                    logger.info(
+                        f"Datetime fallback returned no indexes for collection {collection}, using wildcard"
+                    )
+                    use_wildcard = True
+                logger.debug(
+                    f"Collection '{collection}' resolved to indexes (datetime fallback): {index_list}"
+                )
                 collection_index_map.setdefault(collection, []).extend(index_list)
+        else:
+            logger.info(f"No date range for collections {collections}, using wildcard")
+            use_wildcard = True
+
+    if use_wildcard:
+        logger.info(
+            f"At least one range requires wildcard search, using default: {ITEM_INDICES}"
+        )
+        return ITEM_INDICES, list(set(all_collections))
 
     all_indexes = []
     seen_indexes = set()
@@ -106,29 +152,44 @@ async def resolve_cql2_indexes(
     index_param = ",".join(all_indexes)
     collection_ids = list(set(all_collections))
 
+    logger.info(f"Final resolved indexes: {index_param or ITEM_INDICES}")
+    logger.info(f"Final collection IDs: {collection_ids}")
+
     if not index_param:
+        logger.info(f"No indexes resolved, using default: {ITEM_INDICES}")
         return ITEM_INDICES, collection_ids
 
     return index_param, collection_ids
 
 
-def build_cql2_filter(queryables_mapping: Dict, filter: Dict) -> Tuple[Dict, List]:
+def build_cql2_filter(filter: Dict) -> Tuple[Dict, List]:
     """Build query from CQL2 filter with metadata extraction.
 
     Args:
-        queryables_mapping: Queryables mapping dictionary
         filter: CQL2 JSON filter dictionary
 
     Returns:
         Tuple of es_query_dict, metadata
     """
-    parser = Cql2AstParser(queryables_mapping)
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    logger.info(f"Filter to be processed: {filter}")
+
+    parser = Cql2AstParser()
     ast = parser.parse(filter)
+
+    logger.debug(f"Parsed AST: {ast}")
 
     optimizer = DatetimeOptimizer()
     optimized_ast = optimizer.optimize_query_structure(ast)
 
-    es_query = to_es_via_ast(queryables_mapping, optimized_ast)
+    logger.debug(f"Optimized AST: {optimized_ast}")
+
+    es_query = to_es_via_ast(optimized_ast)
     metadata = extract_collection_datetime(optimized_ast)
+
+    logger.debug(f"Metadata: {metadata}")
 
     return es_query, metadata

@@ -19,9 +19,9 @@ from stac_fastapi.core.extensions.filter import (
 class Cql2AstParser:
     """Parse CQL2 into AST tree."""
 
-    def __init__(self, queryables_mapping: Dict[str, Any]):
+    def __init__(self):
         """Initialize the CQL2 AST parser."""
-        self.queryables_mapping = queryables_mapping
+        pass
 
     def parse(self, cql: Union[str, Dict[str, Any]]) -> CqlNode:
         """Parse CQL2 into AST tree.

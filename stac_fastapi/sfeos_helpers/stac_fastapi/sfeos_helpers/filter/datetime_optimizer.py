@@ -179,51 +179,193 @@ def extract_collection_datetime(node: CqlNode) -> List[Tuple[List[str], str]]:
         - collections: List[str] collection id(s)
         - datetime_range: str or empty string if no datetime constraint
     """
-    pairs = []
+    pairs: List[Tuple[List[str], str]] = []
 
-    def recurse(n: CqlNode):
-        if isinstance(n, LogicalNode) and n.op == LogicalOp.AND:
-            collections: List[str] = []
-            gte_date = None
-            lte_date = None
+    def extract_from_node(n: CqlNode, current_collections: List[str] = None) -> List[Tuple[List[str], str]]:
+        """Recursively extract collections and datetime ranges from node."""
+        if current_collections is None:
+            current_collections = []
 
-            for child in n.children:
-                if isinstance(child, (ComparisonNode, AdvancedComparisonNode)):
-                    if child.field == "collection":
-                        if isinstance(child.value, list):
-                            collections.extend(child.value)
-                        else:
-                            collections.append(child.value)
-                    elif child.field in ["datetime", "start_datetime", "end_datetime"]:
-                        if isinstance(child, ComparisonNode):
-                            if child.op == ComparisonOp.GTE:
-                                gte_date = child.value
-                            elif child.op == ComparisonOp.LTE:
-                                lte_date = child.value
-                        elif isinstance(child, AdvancedComparisonNode):
-                            if child.op == AdvancedComparisonOp.BETWEEN:
-                                if (
-                                    isinstance(child.value, (list, tuple))
-                                    and len(child.value) == 2
-                                ):
-                                    gte_date = child.value[0]
-                                    lte_date = child.value[1]
+        results: List[Tuple[List[str], str]] = []
 
-            if gte_date or lte_date:
-                if gte_date and lte_date:
-                    date_range = f"{gte_date}/{lte_date}"
-                elif gte_date:
-                    date_range = f"{gte_date}/.."
-                elif lte_date:
-                    date_range = f"../{lte_date}"
-                else:
-                    date_range = ""
-                pairs.append((collections, date_range))
-            elif collections:
-                pairs.append((collections, ""))
         if isinstance(n, LogicalNode):
-            for child in n.children:
-                recurse(child)
+            if n.op == LogicalOp.AND:
+                # For AND, collect all child results first
+                child_results_list = []
+                for child in n.children:
+                    child_results = extract_from_node(child, current_collections.copy())
+                    child_results_list.append(child_results)
 
-    recurse(node)
-    return pairs
+                if not child_results_list:
+                    return results
+
+                # If there's only one child, just return its results
+                if len(child_results_list) == 1:
+                    return child_results_list[0]
+
+                # Combine results from multiple children
+                # Start with results from first child
+                combined_results = child_results_list[0]
+
+                # For each subsequent child, combine with existing results
+                for next_child_results in child_results_list[1:]:
+                    new_combined = []
+                    for existing_coll, existing_range in combined_results:
+                        for new_coll, new_range in next_child_results:
+                            # Merge collections
+                            merged_coll = list(set(existing_coll + new_coll))
+                            merged_coll.sort()
+
+                            # Merge ranges based on type
+                            if not existing_range and not new_range:
+                                # No ranges, just collections
+                                new_combined.append((merged_coll, ""))
+                            elif existing_range and not new_range:
+                                # Only existing has range
+                                new_combined.append((merged_coll, existing_range))
+                            elif not existing_range and new_range:
+                                # Only new has range
+                                new_combined.append((merged_coll, new_range))
+                            else:
+                                # Both have ranges - need to combine with AND logic
+                                if ".." in existing_range or ".." in new_range:
+                                    # Handle NEQ ranges - keep them separate as they represent exclusions
+                                    if ".." in existing_range:
+                                        new_combined.append((merged_coll, existing_range))
+                                    if ".." in new_range:
+                                        new_combined.append((merged_coll, new_range))
+                                else:
+                                    # Both are regular ranges or exact dates
+                                    if "/" in existing_range:
+                                        e_parts = existing_range.split("/")
+                                        e_start = None if e_parts[0] == ".." else e_parts[0]
+                                        e_end = None if e_parts[1] == ".." else e_parts[1]
+                                    else:
+                                        e_start = e_end = existing_range
+
+                                    if "/" in new_range:
+                                        n_parts = new_range.split("/")
+                                        n_start = None if n_parts[0] == ".." else n_parts[0]
+                                        n_end = None if n_parts[1] == ".." else n_parts[1]
+                                    else:
+                                        n_start = n_end = new_range
+
+                                    # Take the most restrictive
+                                    start = None
+                                    end = None
+                                    if e_start and n_start:
+                                        start = max(e_start, n_start)
+                                    elif e_start:
+                                        start = e_start
+                                    elif n_start:
+                                        start = n_start
+
+                                    if e_end and n_end:
+                                        end = min(e_end, n_end)
+                                    elif e_end:
+                                        end = e_end
+                                    elif n_end:
+                                        end = n_end
+
+                                    if start and end:
+                                        if start <= end:
+                                            if start == end:
+                                                new_combined.append((merged_coll, start))
+                                            else:
+                                                new_combined.append((merged_coll, f"{start}/{end}"))
+                                    elif start:
+                                        new_combined.append((merged_coll, f"{start}/.."))
+                                    elif end:
+                                        new_combined.append((merged_coll, f"../{end}"))
+                    combined_results = new_combined
+
+                results.extend(combined_results)
+
+            elif n.op == LogicalOp.OR:
+                for child in n.children:
+                    child_results = extract_from_node(child, current_collections.copy())
+                    results.extend(child_results)
+
+            elif n.op == LogicalOp.NOT:
+                # Handle NOT operator by inverting the meaning of the child results
+                for child in n.children:
+                    child_results = extract_from_node(child, current_collections.copy())
+                    for coll, rng in child_results:
+                        if rng:
+                            if "/" in rng:
+                                parts = rng.split("/")
+                                if len(parts) == 2:
+                                    if parts[0] == "..":
+                                        # NOT (../X) becomes X/..
+                                        results.append((coll, f"{parts[1]}/.."))
+                                    elif parts[1] == "..":
+                                        # NOT (X/..) becomes ../X
+                                        results.append((coll, f"../{parts[0]}"))
+                                    else:
+                                        # NOT (X/Y) becomes ../X and Y/..
+                                        results.append((coll, f"../{parts[0]}"))
+                                        results.append((coll, f"{parts[1]}/.."))
+                            else:
+                                # NOT (exact date) becomes ../X and X/..
+                                results.append((coll, f"../{rng}"))
+                                results.append((coll, f"{rng}/.."))
+                        else:
+                            # If the child had no range (just collections), NOT doesn't change that
+                            results.append((coll, ""))
+
+        elif isinstance(n, ComparisonNode):
+            if n.field == "collection":
+                new_collections = current_collections.copy()
+                if isinstance(n.value, list):
+                    new_collections.extend(n.value)
+                else:
+                    new_collections.append(n.value)
+                results.append((new_collections, ""))
+
+            elif n.field in ["datetime", "start_datetime", "end_datetime"]:
+                if n.op == ComparisonOp.EQ:
+                    results.append((current_collections.copy(), n.value))
+                elif n.op == ComparisonOp.GT:
+                    results.append((current_collections.copy(), f"{n.value}/.."))
+                elif n.op == ComparisonOp.GTE:
+                    results.append((current_collections.copy(), f"{n.value}/.."))
+                elif n.op == ComparisonOp.LT:
+                    results.append((current_collections.copy(), f"../{n.value}"))
+                elif n.op == ComparisonOp.LTE:
+                    results.append((current_collections.copy(), f"../{n.value}"))
+                elif n.op == ComparisonOp.NEQ:
+                    results.append((current_collections.copy(), f"../{n.value}"))
+                    results.append((current_collections.copy(), f"{n.value}/.."))
+
+        elif isinstance(n, AdvancedComparisonNode):
+            if n.field in ["datetime", "start_datetime", "end_datetime"]:
+                if n.op == AdvancedComparisonOp.BETWEEN:
+                    if isinstance(n.value, (list, tuple)) and len(n.value) == 2:
+                        results.append((current_collections.copy(), f"{n.value[0]}/{n.value[1]}"))
+                elif n.op == AdvancedComparisonOp.IN:
+                    if isinstance(n.value, list):
+                        for date_value in n.value:
+                            results.append((current_collections.copy(), date_value))
+
+        return results
+
+    all_results = extract_from_node(node)
+
+    # Process results
+    final_results = []
+    seen = set()
+
+    for collections, date_range in all_results:
+        if not collections:
+            continue
+
+        unique_collections = list(set(collections))
+        unique_collections.sort()
+
+        if date_range is not None:
+            key = (tuple(unique_collections), date_range)
+            if key not in seen:
+                seen.add(key)
+                final_results.append((unique_collections, date_range))
+
+    return final_results

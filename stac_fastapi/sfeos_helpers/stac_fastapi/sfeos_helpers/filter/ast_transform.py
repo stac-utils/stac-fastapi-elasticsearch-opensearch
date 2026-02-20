@@ -1,5 +1,6 @@
 """AST-based query transformation for Elasticsearch/OpenSearch."""
 
+import os
 from typing import Any, Dict, Union
 
 from stac_fastapi.core.extensions.filter import (
@@ -15,25 +16,47 @@ from stac_fastapi.core.extensions.filter import (
 )
 
 
-def to_es_via_ast(
-    queryables_mapping: Dict[str, Any], query: Union[Dict[str, Any], CqlNode]
-) -> Dict[str, Any]:
+# Field path constants (should match those in database_logic.py)
+PROPERTIES_DATETIME_FIELD = os.getenv(
+    "STAC_FIELD_PROP_DATETIME", "properties.datetime"
+)
+PROPERTIES_START_DATETIME_FIELD = os.getenv(
+    "STAC_FIELD_PROP_START_DATETIME", "properties.start_datetime"
+)
+PROPERTIES_END_DATETIME_FIELD = os.getenv(
+    "STAC_FIELD_PROP_END_DATETIME", "properties.end_datetime"
+)
+COLLECTION_FIELD = os.getenv("STAC_FIELD_COLLECTION", "collection")
+GEOMETRY_FIELD = os.getenv("STAC_FIELD_GEOMETRY", "geometry")
+
+
+def _get_es_field_path(field: str) -> str:
+    """Get the correct Elasticsearch field path for a given logical field."""
+    field_mapping = {
+        "datetime": PROPERTIES_DATETIME_FIELD,
+        "start_datetime": PROPERTIES_START_DATETIME_FIELD,
+        "end_datetime": PROPERTIES_END_DATETIME_FIELD,
+        "collection": COLLECTION_FIELD,
+        "geometry": GEOMETRY_FIELD,
+    }
+    return field_mapping.get(field, field)
+
+
+def to_es_via_ast(query: Union[Dict[str, Any], CqlNode]) -> Dict[str, Any]:
     """Transform CQL2 query to Elasticsearch/Opensearch query via AST."""
     from .ast_parser import Cql2AstParser
 
     if isinstance(query, CqlNode):
         ast = query
     else:
-        parser = Cql2AstParser(queryables_mapping)
+        parser = Cql2AstParser()
         ast = parser.parse(query)
 
-    result = _transform_ast_node(ast, queryables_mapping)
+    result = _transform_ast_node(ast)
     return result
 
 
-def _transform_ast_node(
-    node: Any, queryables_mapping: Dict[str, Any]
-) -> Dict[str, Any]:
+def _transform_ast_node(node: Any) -> Dict[str, Any]:
     """Transform AST node to Elasticsearch/Opensearch query."""
     if isinstance(node, LogicalNode):
         bool_type = {
@@ -43,23 +66,16 @@ def _transform_ast_node(
         }[node.op]
 
         if node.op == LogicalOp.NOT:
-            return {
-                "bool": {
-                    bool_type: _transform_ast_node(node.children[0], queryables_mapping)
-                }
-            }
+            return {"bool": {bool_type: _transform_ast_node(node.children[0])}}
         else:
             return {
                 "bool": {
-                    bool_type: [
-                        _transform_ast_node(child, queryables_mapping)
-                        for child in node.children
-                    ]
+                    bool_type: [_transform_ast_node(child) for child in node.children]
                 }
             }
 
     elif isinstance(node, ComparisonNode):
-        field = _to_es_field(queryables_mapping, node.field)
+        field = _get_es_field_path(node.field)
         value = node.value
 
         if isinstance(value, dict) and "timestamp" in value:
@@ -86,7 +102,7 @@ def _transform_ast_node(
             return {"bool": {"must_not": {"exists": {"field": field}}}}
 
     elif isinstance(node, AdvancedComparisonNode):
-        field = _to_es_field(queryables_mapping, node.field)
+        field = _get_es_field_path(node.field)
 
         if node.op == AdvancedComparisonOp.BETWEEN:
             if isinstance(node.value, (list, tuple)) and len(node.value) == 2:
@@ -131,7 +147,7 @@ def _transform_ast_node(
             }
 
     elif isinstance(node, SpatialNode):
-        field = _to_es_field(queryables_mapping, node.field)
+        field = _get_es_field_path(node.field)
 
         relation_mapping = {
             SpatialOp.S_INTERSECTS: "intersects",
@@ -144,8 +160,3 @@ def _transform_ast_node(
         return {"geo_shape": {field: {"shape": node.geometry, "relation": relation}}}
 
     raise ValueError("Unsupported AST node")
-
-
-def _to_es_field(queryables_mapping: Dict[str, Any], field: str) -> str:
-    """Map field name using queryables mapping."""
-    return queryables_mapping.get(field, field)

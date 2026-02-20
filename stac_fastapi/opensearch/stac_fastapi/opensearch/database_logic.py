@@ -797,10 +797,8 @@ class DatabaseLogic(BaseDatabaseLogic):
                     otherwise the original Search object.
         """
         if _filter is not None:
-            queryables_mapping = await self.get_queryables_mapping()
-
             try:
-                es_query, metadata = build_cql2_filter(queryables_mapping, _filter)
+                es_query, metadata = build_cql2_filter(_filter)
                 search = search.filter(es_query)
                 search._cql2_metadata = metadata
 
@@ -809,6 +807,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                     "Failed to build CQL2 filter using AST tree approach, falling back to dictionary-based method. "
                     f"Error: {str(e)}. Filter: {_filter}"
                 )
+                queryables_mapping = await self.get_queryables_mapping()
                 es_query = filter_module.to_es(queryables_mapping, _filter)
                 search = search.filter(es_query)
 
@@ -875,9 +874,15 @@ class DatabaseLogic(BaseDatabaseLogic):
                 search,
                 datetime_search,
             )
+            logger.debug(
+                f"Resolve indexes from CQL2 metadata: {index_param} for collections {collection_ids} and cql2 metadata {cql2_metadata}"
+            )
         else:
             index_param = await self.async_index_selector.select_indexes(
                 collection_ids, datetime_search
+            )
+            logger.debug(
+                f"Selected indexes: {index_param} for collections {collection_ids} and datetime search {datetime_search}"
             )
         if len(index_param) > ES_MAX_URL_LENGTH - 300:
             index_param = ITEM_INDICES
