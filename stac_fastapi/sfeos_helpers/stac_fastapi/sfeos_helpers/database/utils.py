@@ -536,7 +536,8 @@ def retry_on_datetime_not_found(func) -> Callable:
         ):
             async for attempt in DATETIME_RETRY_STRATEGY:
                 with attempt:
-                    await self.async_index_inserter.refresh_cache()
+                    if attempt.retry_state.attempt_number > 1:
+                        await self.async_index_inserter.refresh_cache()
                     return await func(self, *args, **kwargs)
 
         return await func(self, *args, **kwargs)
@@ -556,7 +557,7 @@ def retry_on_connection_error(func) -> Callable:
 
     @wraps(func)
     async def wrapper(*args, **kwargs):
-        async for attempt in CONNECTION_RETRY_STRATEGY:
+        async for attempt in CONNECTION_RETRY_STRATEGY.copy():
             with attempt:
                 return await func(*args, **kwargs)
 
