@@ -1170,7 +1170,9 @@ async def test_hide_private_data_from_item(app_client, txn_client, load_test_dat
 
 
 @pytest.mark.asyncio
-async def test_search_count_timeout(app_client, txn_client, load_test_data, monkeypatch):
+async def test_search_count_timeout(
+    app_client, txn_client, load_test_data, monkeypatch
+):
     monkeypatch.setenv("COUNT_TIMEOUT", "0.011")
 
     test_collection = load_test_data("test_collection.json")
@@ -1192,10 +1194,12 @@ async def test_search_count_timeout(app_client, txn_client, load_test_data, monk
 
     if backend == "opensearch":
         from opensearchpy import AsyncOpenSearch
+
         monkeypatch.setattr(AsyncOpenSearch, "count", slow_count)
 
     elif backend == "elasticsearch":
         from elasticsearch import AsyncElasticsearch
+
         monkeypatch.setattr(AsyncElasticsearch, "count", slow_count)
 
     resp = await app_client.get(f"/search?collections={test_collection_id}")
