@@ -131,7 +131,7 @@ def filter_indexes_by_datetime(
         if gte and value_end < gte:
             return False
         if start_value_begin:
-            if lte and start_value_begin > lte < value_begin:
+            if lte and (start_value_begin > lte) and (lte < value_begin):
                 return False
         else:
             if lte and value_begin > lte:
