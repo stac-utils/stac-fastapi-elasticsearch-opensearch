@@ -309,7 +309,7 @@ def test_filter_end_datetime_outside_range():
     datetime_search = {
         "datetime": {"gte": None, "lte": None},
         "start_datetime": {"gte": None, "lte": None},
-        "end_datetime": {"gte": None, "lte": "2020-02-10T23:59:59Z"},
+        "end_datetime": {"gte": None, "lte": "2020-02-07T23:59:59Z"},
     }
 
     result = filter_indexes_by_datetime(collection_indexes, datetime_search, False)

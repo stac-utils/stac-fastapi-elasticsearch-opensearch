@@ -69,7 +69,7 @@ if sentry_enable:
         ca_certs=os.getenv("SENTRY_CA_CERTS", None),
     )
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, force=True)
 logger = logging.getLogger(__name__)
 
 TRANSACTIONS_EXTENSIONS = get_bool_env("ENABLE_TRANSACTIONS_EXTENSIONS", default=True)
