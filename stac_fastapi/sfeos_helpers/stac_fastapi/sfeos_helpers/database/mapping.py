@@ -4,11 +4,11 @@ This module provides functions for working with Elasticsearch/OpenSearch mapping
 """
 
 import os
-from collections import deque
-from typing import Any, Dict, Set
+from collections import defaultdict, deque
+from typing import Any
 
 
-def _get_excluded_from_queryables() -> Set[str]:
+def _get_excluded_from_queryables() -> set[str]:
     """Get fields to exclude from queryables endpoint and filtering.
 
     Reads from EXCLUDED_FROM_QUERYABLES environment variable.
@@ -28,7 +28,7 @@ def _get_excluded_from_queryables() -> Set[str]:
         - properties.storage:schemes (and children)
 
     Returns:
-        Set[str]: Set of field names to exclude from queryables
+        set[str]: set of field names to exclude from queryables
     """
     excluded = os.getenv("EXCLUDED_FROM_QUERYABLES", "")
     if not excluded:
@@ -47,31 +47,36 @@ def _get_excluded_from_queryables() -> Set[str]:
         else:
             result.add(f"properties.{field}")
 
+        if field.startswith("assets."):
+            result.add(field.removeprefix("assets."))
+        else:
+            result.add(f"assets.{field}")
+
     return result
 
 
 async def get_queryables_mapping_shared(
-    mappings: Dict[str, Dict[str, Any]],
+    mappings: dict[str, dict[str, Any]],
     collection_id: str = "*",
-) -> Dict[str, str]:
+) -> defaultdict[str, list[str]]:
     """Retrieve mapping of Queryables for search.
 
     Fields listed in the EXCLUDED_FROM_QUERYABLES environment variable will be
     excluded from the result, along with their children.
 
     Args:
-        mappings (Dict[str, Dict[str, Any]]): The mapping information returned from
+        mappings (dict[str, dict[str, Any]]): The mapping information returned from
             Elasticsearch/OpenSearch client's indices.get_mapping() method.
             Expected structure is {index_name: {"mappings": {...}}}.
         collection_id (str, optional): The id of the Collection the Queryables
             belongs to. Defaults to "*".
 
     Returns:
-        Dict[str, str]: A dictionary containing the Queryables mappings, where keys are
+        dict[str, str]: A dictionary containing the Queryables mappings, where keys are
             field names (with 'properties.' prefix removed) and values are the
             corresponding paths in the Elasticsearch/OpenSearch document structure.
     """
-    queryables_mapping = {}
+    queryables_mapping = defaultdict(list)
     excluded = _get_excluded_from_queryables()
 
     def is_excluded(path: str) -> bool:
@@ -83,7 +88,7 @@ async def get_queryables_mapping_shared(
     for mapping in mappings.values():
         mapping_properties = mapping["mappings"].get("properties", {})
 
-        stack: deque[tuple[str, Dict[str, Any]]] = deque(mapping_properties.items())
+        stack: deque[tuple[str, dict[str, Any]]] = deque(mapping_properties.items())
 
         while stack:
             field_fqn, field_def = stack.popleft()
@@ -104,8 +109,8 @@ async def get_queryables_mapping_shared(
             ):
                 continue
 
-            field_name = field_fqn.removeprefix("properties.")
+            field_name = field_fqn.removeprefix("properties.").removeprefix("assets.")
 
-            queryables_mapping[field_name] = field_fqn
+            queryables_mapping[field_name].append(field_fqn)
 
     return queryables_mapping
