@@ -108,7 +108,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
       - [Using Pre-built Docker Images](#using-pre-built-docker-images)
       - [Using Docker Compose](#using-docker-compose)
   - [Configuration Reference](#configuration-reference)
-  - [Making Fields Searchable with Free-Text Search](#making-fields-searchable-with-free-text-search)
+  - [Free-Text Search (`q` parameter)](#free-text-search-q-parameter)
   - [Excluding Fields from Queryables](#excluding-fields-from-queryables)
   - [Datetime-Based Index Management](#datetime-based-index-management)
     - [Overview](#overview)
@@ -664,126 +664,95 @@ You can customize additional settings in your `.env` file:
 > [!NOTE]
 > The variables `ES_HOST`, `ES_PORT`, `ES_USE_SSL`, `ES_VERIFY_CERTS` and `ES_TIMEOUT` apply to both Elasticsearch and OpenSearch backends, so there is no need to rename the key names to `OS_` even if you're using OpenSearch.
 
-## Making Fields Searchable with Free-Text Search
+## Free-Text Search (`q` parameter)
 
-The free-text search feature (using the `q` parameter) allows users to search across multiple fields simultaneously. By default, the search targets core fields (`id`, `collection`, `properties.title`, `properties.description`, `properties.keywords`) to ensure high performance and relevant results.
+The free-text search feature allows users to discover items and collections using keywords or phrases. By default, the search targets core fields: `id`, `collection`, `properties.title`, `properties.description`, and `properties.keywords`.
 
-### Understanding Field Mapping Types
+### How to Use the API
 
-Elasticsearch/OpenSearch supports different field types, each with different search capabilities:
+Users can submit search terms via the `q` parameter on the following routes:
 
-- **`text` type**: Analyzed fields that support partial word matching, tokenization, and case-insensitive search. Ideal for searchable content like titles, descriptions, and keywords.
-- **`keyword` type**: Exact match fields that do not support partial word matching. By default, unmapped custom properties are indexed as `keyword` type.
+* `GET /search?q=keyword` 
+* `POST /search` (with `{"q": ["keyword"]}` in the body)
+* `GET /collections?q=keyword` 
 
-### Making Custom Properties Searchable
+**Examples:**
 
-To make custom properties searchable with free-text search, you need to:
+* **Single Term**: `/search?q=temperature` (Finds items with "temperature" in any core field).
+* **Multiple Terms (OR logic)**: `/search?q=landsat&q=sentinel` (Finds items containing either "landsat" OR "sentinel").
 
-#### 1. Map the Field as `text` Type
+---
 
-Define your custom property as a `text` field in your Elasticsearch/OpenSearch mappings. You can do this using the `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` environment variable:
+### Setting Realistic Expectations: How Search Works
 
-```bash
-export STAC_FASTAPI_ES_CUSTOM_MAPPINGS='{"properties":{"properties":{"example_name":{"type":"text"}}}}'
-```
+To get the most out of the search engine, it is important to understand the difference between **Typo Tolerance** and **Partial Word Matching**.
 
-Or using a JSON file with `STAC_FASTAPI_ES_MAPPINGS_FILE`:
+#### 1. Typo Tolerance (Fuzziness)
 
-```json
-{
-  "properties": {
-    "properties": {
-      "example_name": {"type": "text"},
-      "custom_field": {"type": "text"}
-    }
-  }
-}
-```
+The API uses `fuzziness: "AUTO"`. This is a safety net for **accidental misspellings**, not a way to handle abbreviations or partial words.
 
-Then reference the file:
+* **The Logic**: It calculates the "Edit Distance" (how many letters must change to match).
+* **Short words (0–2 chars)**: Must be an exact match.
+* **Medium words (3–5 chars)**: 1 typo allowed (e.g., `sentnel` matches `sentinel`).
+* **Long words (6+ chars)**: 2 typos allowed (e.g., `temparature` matches `temperature`).
 
-```bash
-export STAC_FASTAPI_ES_MAPPINGS_FILE=/path/to/mappings.json
-```
+* **The Limitation**: `q=temp` will **not** find `temperature`. Because "temp" is missing 7 characters, it is too "far" for the fuzzy engine to bridge.
 
-#### 2. Add the Field to `FREE_TEXT_FIELDS`
+#### 2. Partial Matching (Tokenization)
 
-Configure which fields should be searched by setting the `FREE_TEXT_FIELDS` environment variable:
+Discovering a word *inside* a phrase (e.g., finding "Surface" within "Near-Surface Air Temperature") depends entirely on **Field Mapping**.
 
-```bash
-export FREE_TEXT_FIELDS="properties.title,properties.description,properties.example_name"
-```
+* **`text` fields**: These are "tokenized" (broken into words). Searching for one word in the phrase works perfectly.
+* **`keyword` fields**: These are stored as a single literal string. Searching for a single word will **fail**; you must search for the *exact full phrase*.
 
-You can also use field boosting to prioritize certain fields:
+**Summary Table:**
 
-```bash
-export FREE_TEXT_FIELDS="properties.title^3,properties.description,properties.example_name"
-```
+| User Search | Target Metadata Value | Match? | Reason |
+| --- | --- | --- | --- |
+| `temparature` | `temperature` | ✅ **Yes** | 1 typo (Fuzzy match) |
+| `temp` | `temperature` | ❌ **No** | Too many missing letters for Fuzzy |
+| `Surface` | `Near-Surface Air Temp` | ✅ **Yes** | Word found in a `text` field |
+| `Surface` | `Near-Surface Air Temp` | ❌ **No** | If field is a `keyword` (requires full string) |
 
-This gives `properties.title` 3x the weight in relevance scoring.
+---
 
-### Example: Adding a Custom Property
+### Administrator Configuration
 
-Here's a complete example of adding a custom `example_name` property that's searchable:
+#### Adding Custom Searchable Fields
 
-**Step 1: Create the mapping**
+If your metadata uses custom fields (e.g., `properties.example_name`), follow these steps to make them discoverable:
 
-```bash
-export STAC_FASTAPI_ES_CUSTOM_MAPPINGS='{"properties":{"properties":{"example_name":{"type":"text"}}}}'
-```
+1. **Map the field as `text`**: By default, unmapped strings are `keyword` type (exact match only). Use `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` to map them as `text`.
 
-**Step 2: Configure free-text search**
+   ```bash
+   export STAC_FASTAPI_ES_CUSTOM_MAPPINGS='{"properties":{"properties":{"example_name":{"type":"text"}}}}'
+   ```
 
-```bash
-export FREE_TEXT_FIELDS="properties.title,properties.description,properties.example_name"
-```
+   Or using a JSON file with `STAC_FASTAPI_ES_MAPPINGS_FILE`:
 
-**Step 3: Ingest items with the custom property**
+   ```json
+   {
+     "properties": {
+       "properties": {
+         "example_name": {"type": "text"},
+         "custom_field": {"type": "text"}
+       }
+     }
+   }
+   ```
 
-```json
-{
-  "id": "item-1",
-  "type": "Feature",
-  "properties": {
-    "datetime": "2024-01-01T00:00:00Z",
-    "title": "Satellite Image",
-    "example_name": "Near-Surface Air Temperature",
-    "description": "Temperature measurement data"
-  },
-  "geometry": {...},
-  "links": [...],
-  "assets": {...}
-}
-```
+2. **Add to Search Scope**: Update the `FREE_TEXT_FIELDS` environment variable:
 
-**Step 4: Search**
+   ```bash
+   export FREE_TEXT_FIELDS="properties.title,properties.description,properties.example_name"
+   ```
 
-Now users can search for "temperature" and find this item:
+   *Note: Use `^` to boost relevance, e.g., `properties.title^3` makes title matches 3x more important.*
 
-```
-GET /search?q=temperature
-```
+#### Performance & Scalability
 
-### Performance Considerations
-
-- **Default fields are optimized**: The default fields (`title`, `description`, `keywords`) are carefully chosen to balance search relevance with query performance.
-- **Avoid wildcard fields**: Do not use `properties.*` in `FREE_TEXT_FIELDS` for large catalogs (millions of items), as searching every property simultaneously can increase query latency and reduce relevance scoring accuracy.
-- **Be selective**: Only add fields to `FREE_TEXT_FIELDS` that users actually need to search. This improves performance and search quality.
-- **Index size**: Mapping fields as `text` type increases index size due to the analysis and tokenization required. Consider the storage implications when deciding which fields to make searchable.
-
-### Troubleshooting
-
-**Issue**: Searching for a custom property returns no results.
-
-**Causes**:
-1. The field is not mapped as `text` type (it's a `keyword` field by default)
-2. The field is not included in `FREE_TEXT_FIELDS`
-3. The field name in `FREE_TEXT_FIELDS` doesn't match the actual field path
-
-**Solution**:
-1. Verify the field is mapped as `text` using the Elasticsearch/OpenSearch mapping API
-2. Check that the field is listed in `FREE_TEXT_FIELDS`
-3. Use the correct field path (e.g., `properties.standard_name` for a property named `standard_name`)
+* **Be Selective**: Only add fields to `FREE_TEXT_FIELDS` that users genuinely need to search.
+* **Avoid Wildcards**: Do not use `properties.*` in `FREE_TEXT_FIELDS` for catalogs with millions of items. Searching every property simultaneously significantly increases query latency and creates "noisy" results.
 
 ## Redis for Navigation environment variables:
 These Redis configuration variables to enable proper navigation functionality in STAC FastAPI.
