@@ -49,10 +49,9 @@ def apply_free_text_filter_shared(
         env_fields = os.getenv("FREE_TEXT_FIELDS")
         if env_fields:
             fields = [f.strip() for f in env_fields.split(",")]
+            logging.debug(f"FREE_TEXT_FIELDS set to: {fields}")
         else:
             # Default fields with title boosting
-            # Note: properties.* wildcard doesn't work in multi_match, so we list common fields
-            # For searching ALL properties including custom ones, users should set FREE_TEXT_FIELDS
             fields = [
                 "id",
                 "collection",
@@ -62,6 +61,9 @@ def apply_free_text_filter_shared(
             ]
 
         # Use multi_match for intelligent text analysis and field prioritization
+        logging.debug(
+            f"Applying free-text search with query='{search_string}' on fields={fields}"
+        )
         search = search.query(
             "multi_match",
             query=search_string,

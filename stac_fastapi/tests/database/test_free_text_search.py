@@ -183,6 +183,57 @@ async def test_free_text_search_fuzziness_prefix_matching(app_client, txn_client
 
 
 @pytest.mark.asyncio
+async def test_free_text_search_custom_field_with_env_var(app_client, txn_client, ctx):
+    """Test searching on custom fields WITH FREE_TEXT_FIELDS environment variable.
+
+    This is Aria's use case: she has custom properties like 'standard_name' and wants
+    to search on them. With dynamic mapping enabled (default), custom properties are
+    automatically indexed as text fields.
+    """
+    # Set FREE_TEXT_FIELDS to include the custom property
+    os.environ["FREE_TEXT_FIELDS"] = "properties.standard_name"
+
+    try:
+        first_item = ctx.item
+
+        # Create item with custom property
+        second_item = dict(first_item)
+        second_item["id"] = f"ft-standard-{uuid.uuid4().hex[:8]}"
+        # Add the custom property that Aria wants to search on
+        second_item["properties"]["standard_name"] = "Near-Surface Air Temperature"
+        await create_item(txn_client, second_item)
+
+        await refresh_indices(txn_client)
+
+        # Search for a word in the custom property
+        # With dynamic mapping, the custom property should be indexed as text
+        params = {"q": ["temperature"]}
+        resp = await app_client.post("/search", json=params)
+        assert resp.status_code == 200
+        resp_json = resp.json()
+
+        # This should find the item because:
+        # 1. Dynamic mapping auto-indexes custom properties as text
+        # 2. FREE_TEXT_FIELDS includes properties.standard_name
+        # 3. "temperature" is a token in the standard_name value
+        assert (
+            len(resp_json["features"]) >= 1
+        ), "Should find item when searching custom property with FREE_TEXT_FIELDS"
+
+        # Also test searching for another word in the phrase
+        params = {"q": ["surface"]}
+        resp = await app_client.post("/search", json=params)
+        assert resp.status_code == 200
+        resp_json = resp.json()
+        assert (
+            len(resp_json["features"]) >= 1
+        ), "Should find item when searching for 'surface' in custom property"
+    finally:
+        if "FREE_TEXT_FIELDS" in os.environ:
+            del os.environ["FREE_TEXT_FIELDS"]
+
+
+@pytest.mark.asyncio
 async def test_free_text_search_no_results(app_client, txn_client, ctx):
     """Test free-text search returns empty results for non-matching terms."""
     await refresh_indices(txn_client)
