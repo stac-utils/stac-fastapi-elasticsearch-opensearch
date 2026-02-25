@@ -56,7 +56,7 @@ class IndexCacheManager:
         """Set cache data in Redis with TTL.
 
         Args:
-            data (Dict[str, List[tuple[Dict[str, str]]]]): Cache data to store.
+            data (dict[str, list[tuple[dict[str, str]]]]): Cache data to store.
         """
         await self._ensure_redis()
         serialized = json.dumps(_serialize_cache(data))
@@ -119,7 +119,7 @@ class IndexAliasLoader:
         """Load index aliases from search engine.
 
         Returns:
-            Dict[str, List[tuple[Dict[str, str]]]]: Mapping of main collection aliases to their data.
+            dict[str, list[tuple[dict[str, str]]]]: Mapping of main collection aliases to their data.
         """
         response = await self.client.indices.get_alias(index=f"{ITEMS_INDEX_PREFIX}*")
         result: dict[str, list[tuple[dict[str, str]]]] = {}
@@ -152,7 +152,7 @@ class IndexAliasLoader:
         """Find the main collection alias (without temporal suffixes).
 
         Args:
-            aliases (List[str]): List of all aliases for an index.
+            aliases (list[str]): list of all aliases for an index.
 
         Returns:
             str: The main collection alias.
@@ -170,11 +170,11 @@ class IndexAliasLoader:
         """Organize temporal aliases into a dictionary with type as key.
 
         Args:
-            aliases (List[str]): All aliases for the index.
+            aliases (list[str]): All aliases for the index.
             main_alias (str): The main collection alias.
 
         Returns:
-            Dict[str, str]: Dictionary with datetime types as keys and alias names as values.
+            dict[str, str]: dictionary with datetime types as keys and alias names as values.
         """
         aliases_dict = {}
 
@@ -205,7 +205,7 @@ class IndexAliasLoader:
                 If False, always load from search engine and refresh cache (write/insertion path).
 
         Returns:
-            Dict[str, List[tuple[Dict[str, str]]]]: Alias mapping data.
+            dict[str, list[tuple[dict[str, str]]]]: Alias mapping data.
         """
         if not use_cache:
             return await self.load_aliases()
@@ -230,7 +230,7 @@ class IndexAliasLoader:
         """Force refresh aliases from search engine.
 
         Returns:
-            Dict[str, List[tuple[Dict[str, str]]]]: Fresh alias mapping data.
+            dict[str, list[tuple[dict[str, str]]]]: Fresh alias mapping data.
         """
         return await self.load_aliases()
 
@@ -245,7 +245,7 @@ class IndexAliasLoader:
                 If False, load fresh from search engine (insertion path).
 
         Returns:
-            List[tuple[Dict[str, str]]]: List of tuples with alias dictionaries.
+            list[tuple[dict[str, str]]]: list of tuples with alias dictionaries.
         """
         aliases = await self.get_aliases(use_cache=use_cache)
         main_alias = index_alias_by_collection_id(collection_id)

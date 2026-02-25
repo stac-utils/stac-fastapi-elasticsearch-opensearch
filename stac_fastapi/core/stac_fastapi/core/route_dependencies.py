@@ -4,7 +4,6 @@ import importlib
 import inspect
 import logging
 import os
-from typing import Any  # noqa: F401
 
 import orjson
 from fastapi import Depends

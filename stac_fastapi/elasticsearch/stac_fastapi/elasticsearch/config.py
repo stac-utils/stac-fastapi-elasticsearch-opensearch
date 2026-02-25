@@ -3,7 +3,7 @@
 import logging
 import os
 import ssl
-from typing import Any, Set
+from typing import Any
 
 import certifi
 from elasticsearch._async.client import AsyncElasticsearch
@@ -71,7 +71,7 @@ def _es_config() -> dict[str, Any]:
     return config
 
 
-_forbidden_fields: Set[str] = {"type"}
+_forbidden_fields: set[str] = {"type"}
 
 
 class ElasticsearchSettings(ApiSettings, ApiBaseSettings):
@@ -83,8 +83,8 @@ class ElasticsearchSettings(ApiSettings, ApiBaseSettings):
     Default is False for safety.
     """
 
-    forbidden_fields: Set[str] = _forbidden_fields
-    indexed_fields: Set[str] = {"datetime"}
+    forbidden_fields: set[str] = _forbidden_fields
+    indexed_fields: set[str] = {"datetime"}
     enable_response_models: bool = False
     enable_direct_response: bool = get_bool_env("ENABLE_DIRECT_RESPONSE", default=False)
     raise_on_bulk_error: bool = get_bool_env("RAISE_ON_BULK_ERROR", default=False)
@@ -115,8 +115,8 @@ class AsyncElasticsearchSettings(ApiSettings, ApiBaseSettings):
     Default is False for safety.
     """
 
-    forbidden_fields: Set[str] = _forbidden_fields
-    indexed_fields: Set[str] = {"datetime"}
+    forbidden_fields: set[str] = _forbidden_fields
+    indexed_fields: set[str] = {"datetime"}
     enable_response_models: bool = False
     enable_direct_response: bool = get_bool_env("ENABLE_DIRECT_RESPONSE", default=False)
     raise_on_bulk_error: bool = get_bool_env("RAISE_ON_BULK_ERROR", default=False)
