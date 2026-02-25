@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 
+- Modernized free-text search to use `multi_match` query instead of restrictive `query_string` for intelligent text field analysis, supporting tokenization, lowercasing, partial word matching, and typo tolerance via `fuzziness="AUTO"`. Added `FREE_TEXT_FIELDS` environment variable for configurable field searching and field boosting support.
+
 ### Removed
 
 ### Updated

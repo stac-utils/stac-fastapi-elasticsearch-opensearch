@@ -4,6 +4,7 @@ This module provides functions for building and manipulating Elasticsearch/OpenS
 """
 
 import logging
+import os
 from typing import Any, Dict, List, Optional, Union
 
 from stac_fastapi.core.utilities import bbox2polygon
@@ -15,24 +16,58 @@ ES_MAX_URL_LENGTH = 4096
 def apply_free_text_filter_shared(
     search: Any, free_text_queries: Optional[List[str]]
 ) -> Any:
-    """Create a free text query for Elasticsearch/OpenSearch.
+    """Apply a flexible free-text search across configurable fields.
+
+    This function uses multi_match queries to search across text fields with support for
+    tokenization, lowercasing, partial word matching, and typo tolerance. Fields can be
+    configured via the FREE_TEXT_FIELDS environment variable.
 
     Args:
         search (Any): The search object to apply the query to.
-        free_text_queries (Optional[List[str]]): A list of text strings to search for in the properties.
+        free_text_queries (Optional[List[str]]): A list of text strings to search for.
 
     Returns:
         Any: The search object with the free text query applied, or the original search
             object if no free_text_queries were provided.
 
+    Environment Variables:
+        FREE_TEXT_FIELDS: Comma-separated list of fields to search (e.g.,
+            "properties.title,properties.standard_name,properties.description").
+            If not set, uses default fields with title boosting.
+
     Notes:
-        This function creates a query_string query that searches for the specified text strings
-        in all properties of the documents. The query strings are joined with OR operators.
+        - Removes restrictive double quotes to enable text field analysis
+        - Supports fuzziness for typo tolerance (e.g., "Temperatrue" -> "Temperature")
+        - Allows field boosting (e.g., "properties.title^3" gives title 3x weight)
+        - Works seamlessly with text-mapped fields in Elasticsearch/OpenSearch
     """
-    if free_text_queries is not None:
-        free_text_query_string = '" OR properties.\\*:"'.join(free_text_queries)
+    if free_text_queries:
+        # Combine all query terms into a single search string
+        search_string = " ".join(free_text_queries)
+
+        # Get fields from environment or use sensible defaults
+        env_fields = os.getenv("FREE_TEXT_FIELDS")
+        if env_fields:
+            fields = [f.strip() for f in env_fields.split(",")]
+        else:
+            # Default fields with title boosting
+            # Note: properties.* wildcard doesn't work in multi_match, so we list common fields
+            # For searching ALL properties including custom ones, users should set FREE_TEXT_FIELDS
+            fields = [
+                "id",
+                "collection",
+                "properties.title^3",
+                "properties.description",
+                "properties.keywords",
+            ]
+
+        # Use multi_match for intelligent text analysis and field prioritization
         search = search.query(
-            "query_string", query=f'properties.\\*:"{free_text_query_string}"'
+            "multi_match",
+            query=search_string,
+            fields=fields,
+            type="best_fields",
+            fuzziness="AUTO",
         )
 
     return search
