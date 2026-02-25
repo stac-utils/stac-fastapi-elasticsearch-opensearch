@@ -76,6 +76,47 @@ def apply_free_text_filter_shared(
     return search
 
 
+def apply_collections_free_text_filter_shared(
+    free_text_queries: Optional[List[str]],
+) -> Optional[Dict[str, Any]]:
+    """Apply free-text search for collections across core fields.
+
+    This function uses multi_match queries to search across collection text fields with support for
+    tokenization, lowercasing, and typo tolerance.
+
+    Args:
+        free_text_queries (Optional[List[str]]): A list of text strings to search for.
+
+    Returns:
+        Optional[Dict[str, Any]]: A dictionary containing the multi_match query configuration
+            that can be used with Elasticsearch/OpenSearch queries, or None if no queries provided.
+
+    Notes:
+        - Searches across: id, title (boosted 3x), description, keywords
+        - Supports fuzziness for typo tolerance (e.g., "Temperatrue" -> "Temperature")
+        - Works seamlessly with text-mapped fields in Elasticsearch/OpenSearch
+    """
+    if not free_text_queries:
+        return None
+
+    search_string = " ".join(free_text_queries)
+    logging.debug(f"Applying collections free-text search with query='{search_string}'")
+
+    return {
+        "multi_match": {
+            "query": search_string,
+            "fields": [
+                "id",
+                "title^3",
+                "description",
+                "keywords",
+            ],
+            "type": "best_fields",
+            "fuzziness": "AUTO",
+        }
+    }
+
+
 def apply_intersects_filter_shared(
     intersects: Geometry,
 ) -> Dict[str, Dict]:
