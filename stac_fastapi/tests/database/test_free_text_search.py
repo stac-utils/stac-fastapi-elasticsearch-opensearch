@@ -270,53 +270,12 @@ async def test_free_text_search_with_special_characters(app_client, txn_client, 
 
 
 @pytest.mark.asyncio
-async def test_free_text_search_on_unmapped_custom_property(
-    app_client, txn_client, ctx
-):
-    """Test free-text search on custom properties not in default mappings.
-
-    This tests Aria's use case where she has custom properties like
-    'standard_name' that weren't explicitly mapped but should still be
-    searchable via dynamic mapping.
-
-    Note: This test requires dynamic mapping to be enabled (STAC_FASTAPI_ES_DYNAMIC_MAPPING=true)
-    for custom properties to be automatically indexed as text fields.
-    """
-    first_item = ctx.item
-
-    # Create item with custom unmapped property
-    second_item = dict(first_item)
-    second_item["id"] = f"ft-custom-prop-{uuid.uuid4().hex[:8]}"
-    # Add a custom property that's not in default mappings
-    second_item["properties"]["standard_name"] = "Near-Surface Air Temperature"
-    second_item["properties"]["custom_field"] = "SEARCHABLE_VALUE"
-    await create_item(txn_client, second_item)
-
-    await refresh_indices(txn_client)
-
-    # Search for term in custom property using default fields
-    # Note: If dynamic mapping is disabled, custom properties won't be indexed
-    params = {"q": ["SEARCHABLE_VALUE"]}
-    resp = await app_client.post("/search", json=params)
-    assert resp.status_code == 200
-    resp_json = resp.json()
-    # With dynamic mapping enabled, should find the item
-    # If dynamic mapping is disabled, this may return 0 results
-    if len(resp_json["features"]) > 0:
-        assert True  # Dynamic mapping is working
-    else:
-        # Dynamic mapping may be disabled - that's OK, test passes either way
-        assert True
-
-
-@pytest.mark.asyncio
 async def test_free_text_search_custom_property_with_env_var(
     app_client, txn_client, ctx
 ):
     """Test free-text search on custom properties using FREE_TEXT_FIELDS environment variable.
 
-    This is Aria's primary use case: she wants to search on her custom
-    'standard_name' property without modifying the code.
+    Demonstrates how users can search on custom properties without modifying code.
 
     Note: This test requires dynamic mapping to be enabled (STAC_FASTAPI_ES_DYNAMIC_MAPPING=true)
     for custom properties to be automatically indexed as text fields.

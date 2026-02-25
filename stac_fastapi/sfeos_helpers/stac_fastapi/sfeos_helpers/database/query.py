@@ -51,7 +51,8 @@ def apply_free_text_filter_shared(
             fields = [f.strip() for f in env_fields.split(",")]
             logging.debug(f"FREE_TEXT_FIELDS set to: {fields}")
         else:
-            # Default fields with title boosting
+            # Default "High-Performance" fields
+            # To search custom properties, users should set FREE_TEXT_FIELDS environment variable
             fields = [
                 "id",
                 "collection",
