@@ -6,7 +6,7 @@ in Elasticsearch/OpenSearch, such as parameter validation.
 import logging
 import os
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable
 
 from stac_fastapi.core.utilities import bbox2polygon, get_bool_env
 from stac_fastapi.extensions.core.transaction.request import (
@@ -132,7 +132,7 @@ def check_item_exists_in_alias_sync(client: Any, alias: str, doc_id: str) -> boo
     return bool(resp["hits"]["total"]["value"])
 
 
-def add_bbox_shape_to_collection(collection: Dict[str, Any]) -> bool:
+def add_bbox_shape_to_collection(collection: dict[str, Any]) -> bool:
     """Add bbox_shape field to a collection document for spatial queries.
 
     This function extracts the bounding box from a collection's spatial extent
@@ -208,12 +208,12 @@ def add_bbox_shape_to_collection(collection: Dict[str, Any]) -> bool:
     return True
 
 
-def validate_refresh(value: Union[str, bool]) -> str:
+def validate_refresh(value: str | bool) -> str:
     """
     Validate the `refresh` parameter value.
 
     Args:
-        value (Union[str, bool]): The `refresh` parameter value, which can be a string or a boolean.
+        value (str | bool): The `refresh` parameter value, which can be a string or a boolean.
 
     Returns:
         str: The validated value of the `refresh` parameter, which can be "true", "false", or "wait_for".
@@ -248,14 +248,14 @@ def validate_refresh(value: Union[str, bool]) -> str:
     return "false"
 
 
-def merge_to_operations(data: Dict) -> List:
+def merge_to_operations(data: dict) -> list:
     """Convert merge operation to list of RF6902 operations.
 
     Args:
         data: dictionary to convert.
 
     Returns:
-        List: list of RF6902 operations.
+        list: list of RF6902 operations.
     """
     operations = []
 
@@ -287,9 +287,9 @@ def check_commands(
     """Add Elasticsearch checks to operation.
 
     Args:
-        commands (List[str]): current commands
+        commands (ESCommandSet): current commands
         op (str): the operation of script
-        path (Dict): path of variable to run operation on
+        path (ElasticPath): path of variable to run operation on
         from_path (bool): True if path is a from path
 
     """
@@ -359,7 +359,7 @@ def add_commands(
     operation: PatchOperation,
     path: ElasticPath,
     from_path: ElasticPath,
-    params: Dict,
+    params: dict,
 ) -> None:
     """Add value at path.
 
@@ -392,7 +392,7 @@ def add_commands(
 
 
 def test_commands(
-    commands: ESCommandSet, operation: PatchOperation, path: ElasticPath, params: Dict
+    commands: ESCommandSet, operation: PatchOperation, path: ElasticPath, params: dict
 ) -> None:
     """Test value at path.
 
@@ -420,17 +420,17 @@ def test_commands(
     )
 
 
-def operations_to_script(operations: List, create_nest: bool = False) -> Dict:
+def operations_to_script(operations: list, create_nest: bool = False) -> dict:
     """Convert list of operation to painless script.
 
     Args:
         operations: List of RF6902 operations.
 
     Returns:
-        Dict: elasticsearch update script.
+        dict: elasticsearch update script.
     """
     commands: ESCommandSet = ESCommandSet()
-    params: Dict = {}
+    params: dict = {}
 
     for operation in operations:
         path = ElasticPath(path=operation.path)
@@ -565,12 +565,12 @@ def retry_on_connection_error(func) -> Callable:
 
 
 def add_hidden_filter(
-    query: Optional[Dict[str, Any]] = None, hide_item_path: Optional[str] = None
-) -> Dict[str, Any]:
+    query: dict[str, Any] | None = None, hide_item_path: str | None = None
+) -> dict[str, Any]:
     """Add hidden filter to a query to exclude hidden items.
 
     Args:
-        query: Optional Elasticsearch query to combine with hidden filter
+        query: Elasticsearch query to combine with hidden filter
         hide_item_path: Path to the hidden field (e.g., "properties._private.hidden")
                        If None or empty, return original query (no filtering)
 

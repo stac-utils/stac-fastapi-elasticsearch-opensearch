@@ -1,7 +1,7 @@
 """patch helpers."""
 
 import re
-from typing import Any, Dict, Optional, Union
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, model_validator
 
@@ -16,7 +16,7 @@ class ESCommandSet:
         str: Elasticsearch commands
     """
 
-    dict_: Dict[str, None] = {}
+    dict_: dict[str, Any] | None = {}
 
     def __init__(self):
         """Initialise ESCommandSet instance."""
@@ -73,16 +73,16 @@ class ElasticPath(BaseModel):
 
     parts: list[str] = []
 
-    path: Optional[str] = None
-    key: Optional[Union[str, int]] = None
-    nest: Optional[str] = None
+    path: str | None = None
+    key: str | int | None = None
+    nest: str | None = None
 
-    es_path: Optional[str] = None
-    es_key: Optional[str] = None
-    es_nest: Optional[str] = None
+    es_path: str | None = None
+    es_key: str | None = None
+    es_nest: str | None = None
 
-    variable_name: Optional[str] = None
-    param_key: Optional[str] = None
+    variable_name: str | None = None
+    param_key: str | None = None
 
     model_config = ConfigDict(frozen=True)
 

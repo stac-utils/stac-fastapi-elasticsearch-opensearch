@@ -2,7 +2,7 @@
 
 import os
 from collections import deque
-from typing import Any, Optional
+from typing import Any
 
 import attr
 from fastapi import Request
@@ -82,7 +82,7 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
 
     async def get_queryables(
         self,
-        collection_id: Optional[str] = None,  # noqa: UP045
+        collection_id: str | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Get the queryables available for the given collection_id.
@@ -102,7 +102,7 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
         Returns:
             Dict[str, Any]: A dictionary containing the queryables for the given collection.
         """
-        request: Optional[Request] = kwargs.get("request")  # noqa: UP045
+        request: Request | None = kwargs.get("request")
         url_str = str(request.url) if request else ""
 
         queryables: dict[str, Any] = {

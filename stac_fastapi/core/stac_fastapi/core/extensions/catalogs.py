@@ -1,7 +1,7 @@
 """Catalogs extension."""
 
 import logging
-from typing import Any, Dict, List, Optional, Type
+from typing import Any, Type
 from urllib.parse import parse_qs, urlencode, urlparse
 
 import attr
@@ -32,10 +32,10 @@ class Catalogs(TypedDict, total=False):
     Similar to Collections but for catalogs.
     """
 
-    catalogs: List[Catalog]
-    links: List[dict]
-    numberMatched: Optional[int]
-    numberReturned: Optional[int]
+    catalogs: list[Catalog]
+    links: list[dict]
+    numberMatched: int | None
+    numberReturned: int | None
 
 
 @attr.s
@@ -48,7 +48,7 @@ class CatalogsExtension(ApiExtension):
 
     client: BaseCoreClient = attr.ib(default=None)
     settings: dict = attr.ib(default=attr.Factory(dict))
-    conformance_classes: List[str] = attr.ib(
+    conformance_classes: list[str] = attr.ib(
         default=attr.Factory(lambda: ["https://api.stacspec.org/v1.0.0-rc.2/children"])
     )
     router: APIRouter = attr.ib(default=attr.Factory(APIRouter))
@@ -238,14 +238,16 @@ class CatalogsExtension(ApiExtension):
     async def catalogs(
         self,
         request: Request,
-        limit: Optional[int] = Query(
+        limit: int
+        | None = Query(
             10,
             ge=1,
             description=(
                 "The maximum number of catalogs to return (page size). Defaults to 10."
             ),
         ),
-        token: Optional[str] = Query(
+        token: str
+        | None = Query(
             None,
             description="Pagination token for the next page of results",
         ),
@@ -468,7 +470,7 @@ class CatalogsExtension(ApiExtension):
             for child in children:
                 child_id = child.get("id")
                 try:
-                    parent_ids = child.get("parent_ids", [])
+                    parent_ids = child.get("parent_ids") or []
                     if catalog_id in parent_ids:
                         parent_ids.remove(catalog_id)
 
@@ -607,7 +609,7 @@ class CatalogsExtension(ApiExtension):
         catalog_id: str,
         request: Request,
         limit: int = Query(10, ge=1, le=100),
-        token: Optional[str] = Query(None),
+        token: str | None = Query(None),
     ) -> Catalogs:
         """Get all sub-catalogs of a specific catalog with pagination.
 
@@ -934,7 +936,7 @@ class CatalogsExtension(ApiExtension):
             collection_db = await self.client.database.find_collection(collection_id)
 
             # Check if the catalog_id is in the collection's parent_ids
-            parent_ids = collection_db.get("parent_ids", [])
+            parent_ids = collection_db.get("parent_ids") or []
             if catalog_id not in parent_ids:
                 raise HTTPException(
                     status_code=404,
@@ -961,15 +963,15 @@ class CatalogsExtension(ApiExtension):
         catalog_id: str,
         collection_id: str,
         request: Request,
-        bbox: Optional[List[float]] = None,
-        datetime: Optional[str] = None,
-        limit: Optional[int] = None,
-        sortby: Optional[str] = None,
-        filter_expr: Optional[str] = None,
-        filter_lang: Optional[str] = None,
-        token: Optional[str] = None,
-        query: Optional[str] = None,
-        fields: Optional[List[str]] = None,
+        bbox: list[float] | None = None,
+        datetime: str | None = None,
+        limit: int | None = None,
+        sortby: str | None = None,
+        filter_expr: str | None = None,
+        filter_lang: str | None = None,
+        token: str | None = None,
+        query: str | None = None,
+        fields: list[str] | None = None,
     ) -> stac_types.ItemCollection:
         """Get items from a collection in a catalog.
 
@@ -1045,15 +1047,16 @@ class CatalogsExtension(ApiExtension):
         catalog_id: str,
         request: Request,
         limit: int = 10,
-        token: str = None,
-        type: Optional[str] = Query(
+        token: str | None = None,
+        type: str
+        | None = Query(
             None, description="Filter by resource type (Catalog or Collection)"
         ),
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Get all children (Catalogs and Collections) of a specific catalog.
 
-        This is a 'Union' endpoint that returns mixed content types.
+        This is a mixed content endpoint that returns both Catalogs and Collections.
         """
         # 1. Verify the parent catalog exists
         await self.client.database.find_catalog(catalog_id)
@@ -1152,7 +1155,7 @@ class CatalogsExtension(ApiExtension):
             collection_db = await self.client.database.find_collection(collection_id)
 
             # Check if the catalog_id is in the collection's parent_ids
-            parent_ids = collection_db.get("parent_ids", [])
+            parent_ids = collection_db.get("parent_ids") or []
             if catalog_id not in parent_ids:
                 raise HTTPException(
                     status_code=404,
@@ -1160,6 +1163,7 @@ class CatalogsExtension(ApiExtension):
                 )
 
             # SAFE UNLINK LOGIC
+            parent_ids = list(parent_ids)  # Make a copy to avoid modifying the original
             parent_ids.remove(catalog_id)
 
             # Check if it is now an orphan (empty list)

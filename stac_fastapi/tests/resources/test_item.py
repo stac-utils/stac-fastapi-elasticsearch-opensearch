@@ -5,7 +5,6 @@ import uuid
 from copy import deepcopy
 from datetime import datetime, timedelta
 from random import randint
-from typing import Dict
 from urllib.parse import parse_qs, urlparse, urlsplit
 
 import ciso8601
@@ -1016,8 +1015,8 @@ async def _search_and_get_ids(
     app_client,
     endpoint: str = "/search",
     method: str = "get",
-    params: Dict = None,
-    json: Dict = None,
+    params: dict = None,
+    json: dict = None,
 ) -> set:
     """Helper to send search request and extract feature IDs."""
     if method == "get":

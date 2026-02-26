@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 
+- Refactored type hints to use Python 3.10+ syntax (PEP 604): replaced `Optional[X]` with `X | None`, `Dict` with `dict`, `List` with `list`, and removed unused typing imports across all modules. [#607](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/607)
+
 ### Removed
 
 ### Updated
