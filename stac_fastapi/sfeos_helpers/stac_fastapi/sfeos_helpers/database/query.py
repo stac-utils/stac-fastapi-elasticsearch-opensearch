@@ -77,18 +77,18 @@ def apply_free_text_filter_shared(
 
 
 def apply_collections_free_text_filter_shared(
-    free_text_queries: Optional[List[str]],
-) -> Optional[Dict[str, Any]]:
+    free_text_queries: list[str] | None,
+) -> dict[str, Any] | None:
     """Apply free-text search for collections across core fields.
 
     This function uses multi_match queries to search across collection text fields with support for
     tokenization, lowercasing, and typo tolerance.
 
     Args:
-        free_text_queries (Optional[List[str]]): A list of text strings to search for.
+        free_text_queries (list[str] | None): A list of text strings to search for.
 
     Returns:
-        Optional[Dict[str, Any]]: A dictionary containing the multi_match query configuration
+        dict[str, Any] | None: A dictionary containing the multi_match query configuration
             that can be used with Elasticsearch/OpenSearch queries, or None if no queries provided.
 
     Notes:
