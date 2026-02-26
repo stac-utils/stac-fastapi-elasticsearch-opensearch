@@ -115,7 +115,9 @@ search_extensions = [
     SortExtension(),
     TokenPaginationExtension(),
     filter_extension,
-    FreeTextExtension(),
+    FreeTextExtension(
+        conformance_classes=[FreeTextConformanceClasses.SEARCH],
+    ),
 ]
 
 if TRANSACTIONS_EXTENSIONS:
@@ -248,6 +250,9 @@ items_get_request_model = create_request_model(
         ),
         filter_extension,
         FieldsExtension(conformance_classes=[FieldsConformanceClasses.ITEMS]),
+        FreeTextExtension(
+            conformance_classes=[FreeTextConformanceClasses.ITEMS],
+        ),
     ],
     request_type="GET",
 )

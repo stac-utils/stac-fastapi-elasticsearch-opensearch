@@ -71,6 +71,7 @@ def apply_free_text_filter_shared(
             fields=fields,
             type="best_fields",
             fuzziness="AUTO",
+            operator="or",
         )
 
     return search

@@ -674,7 +674,10 @@ Users can submit search terms via the `q` parameter on the following routes:
 
 * `GET /search?q=keyword` 
 * `POST /search` (with `{"q": ["keyword"]}` in the body)
-* `GET /collections?q=keyword` 
+* `GET /collections?q=keyword`
+* `POST /collections` (with `{"q": ["keyword"]}` in the body)
+* `GET /collections/{collection_id}/items?q=keyword` (search items within a specific collection)
+* `POST /collections/{collection_id}/items` (with `{"q": ["keyword"]}` in the body) 
 
 **Examples:**
 
