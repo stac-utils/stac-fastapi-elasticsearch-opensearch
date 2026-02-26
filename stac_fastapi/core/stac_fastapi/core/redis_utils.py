@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import datetime as dt_datetime
 from functools import wraps
-from typing import Callable, List, Literal, Optional, Tuple, Union, cast
+from typing import Callable, Literal, cast
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from pydantic import Field, field_validator
@@ -22,7 +22,7 @@ class RedisCommonSettings(BaseSettings):
     """Common configuration for Redis Sentinel and Redis Standalone."""
 
     REDIS_DB: int = 15
-    REDIS_MAX_CONNECTIONS: Optional[int] = None
+    REDIS_MAX_CONNECTIONS: int | None = None
     REDIS_RETRY_TIMEOUT: bool = True
     REDIS_DECODE_RESPONSES: bool = True
     REDIS_CLIENT_NAME: str = "stac-fastapi-app"
@@ -66,7 +66,7 @@ class RedisSentinelSettings(RedisCommonSettings):
     REDIS_SENTINEL_PORTS: str = "26379"
     REDIS_SENTINEL_MASTER_NAME: str = "master"
 
-    def get_sentinel_hosts(self) -> List[str]:
+    def get_sentinel_hosts(self) -> list[str]:
         """Parse Redis Sentinel hosts from string to list."""
         if not self.REDIS_SENTINEL_HOSTS:
             return []
@@ -78,7 +78,7 @@ class RedisSentinelSettings(RedisCommonSettings):
                 h.strip() for h in self.REDIS_SENTINEL_HOSTS.split(",") if h.strip()
             ]
 
-    def get_sentinel_ports(self) -> List[int]:
+    def get_sentinel_ports(self) -> list[int]:
         """Parse Redis Sentinel ports from string to list of integers."""
         if not self.REDIS_SENTINEL_PORTS:
             return [26379]
@@ -91,7 +91,7 @@ class RedisSentinelSettings(RedisCommonSettings):
             ]
             return [int(port) for port in ports_str_list]
 
-    def get_sentinel_nodes(self) -> List[Tuple[str, int]]:
+    def get_sentinel_nodes(self) -> list[tuple[str, int]]:
         """Get list of (host, port) tuples for Sentinel connection."""
         hosts = self.get_sentinel_hosts()
         ports = self.get_sentinel_ports()
@@ -150,7 +150,7 @@ def redis_retry(func: Callable) -> Callable:
 
 
 @redis_retry
-async def _connect_redis_internal() -> Optional[aioredis.Redis]:
+async def _connect_redis_internal() -> aioredis.Redis | None:
     """Return a Redis connection Redis or Redis Sentinel."""
     if sentinel_settings.REDIS_SENTINEL_HOSTS:
         sentinel_nodes = settings.get_sentinel_nodes()
@@ -191,7 +191,7 @@ async def _connect_redis_internal() -> Optional[aioredis.Redis]:
     return redis
 
 
-async def connect_redis() -> Optional[aioredis.Redis]:
+async def connect_redis() -> aioredis.Redis | None:
     """Handle Redis connection."""
     try:
         return await _connect_redis_internal()
@@ -256,7 +256,7 @@ async def save_prev_link(
 @redis_retry
 async def get_prev_link(
     redis: aioredis.Redis, current_url: str, current_token: str
-) -> Optional[str]:
+) -> str | None:
     """Get the previous page link for the current token."""
     if not current_url or not current_token:
         return None
@@ -400,9 +400,7 @@ class AsyncRedisQueueManager:
         """Get Redis key for set of collections with pending items."""
         return f"{self.queue_settings.QUEUE_KEY_PREFIX}:collections"
 
-    async def queue_items(
-        self, collection_id: str, items: Union[dict, List[dict]]
-    ) -> int:
+    async def queue_items(self, collection_id: str, items: dict | list[dict]) -> int:
         """Queue one or more items for a collection. Deduplicates by item ID.
 
         Items are scored by the primary datetime field so that pending items
@@ -451,13 +449,13 @@ class AsyncRedisQueueManager:
         )
         return queue_length
 
-    async def get_pending_collections(self) -> List[str]:
+    async def get_pending_collections(self) -> list[str]:
         """Get list of collections with pending items."""
         return list(await self.redis.smembers(self._get_collections_set_key()))
 
     async def get_pending_items(
-        self, collection_id: str, limit: Optional[int] = None
-    ) -> List[dict]:
+        self, collection_id: str, limit: int | None = None
+    ) -> list[dict]:
         """Get pending items from the queue ordered by primary datetime (ascending).
 
         Args:
@@ -482,8 +480,8 @@ class AsyncRedisQueueManager:
         return [json.loads(item_json) for item_json in items_json if item_json]
 
     async def get_pending_item_ids(
-        self, collection_id: str, limit: Optional[int] = None
-    ) -> List[str]:
+        self, collection_id: str, limit: int | None = None
+    ) -> list[str]:
         """Get IDs of pending items ordered by primary datetime (ascending).
 
         Args:
@@ -505,7 +503,7 @@ class AsyncRedisQueueManager:
         return await self.redis.zcard(self._get_zset_key(collection_id))
 
     async def mark_items_processed(
-        self, collection_id: str, item_ids: List[str]
+        self, collection_id: str, item_ids: list[str]
     ) -> int:
         """Remove processed items from the queue by their IDs.
 
@@ -563,7 +561,7 @@ class AsyncRedisQueueManager:
         """Get Redis key for the SET of collections that have failed items."""
         return f"{self.queue_settings.QUEUE_KEY_PREFIX}:failed:collections"
 
-    async def save_failed_items(self, collection_id: str, item_ids: List[str]) -> None:
+    async def save_failed_items(self, collection_id: str, item_ids: list[str]) -> None:
         """Save failed item IDs to the dead-letter queue.
 
         Args:

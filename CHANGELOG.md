@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Changed
 
 - Modernized free-text search to use `multi_match` query instead of restrictive `query_string` for intelligent text field analysis, supporting tokenization, lowercasing, partial word matching, and typo tolerance via `fuzziness="AUTO"`. Added `FREE_TEXT_FIELDS` environment variable for configurable field searching and field boosting support. [#613](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/613)
+- Refactored type hints to use Python 3.10+ syntax (PEP 604): replaced `Optional[X]` with `X | None`, `Dict` with `dict`, `List` with `list`, and removed unused typing imports across all modules. [#607](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/607)
 
 ### Removed
 

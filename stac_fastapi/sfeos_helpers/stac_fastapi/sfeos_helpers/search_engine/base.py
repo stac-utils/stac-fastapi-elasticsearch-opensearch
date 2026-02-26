@@ -9,7 +9,7 @@ class BaseIndexInserter(ABC):
 
     @abstractmethod
     async def get_target_index(
-        self, collection_id: str, product: Dict[str, Any]
+        self, collection_id: str, product: dict[str, Any]
     ) -> str:
         """Get target index for a product asynchronously.
 
@@ -25,7 +25,7 @@ class BaseIndexInserter(ABC):
     @abstractmethod
     async def prepare_bulk_actions(
         self, collection_id: str, items: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
+    ) -> list[dict[str, Any]]:
         """Prepare bulk actions for multiple items asynchronously.
 
         Args:
