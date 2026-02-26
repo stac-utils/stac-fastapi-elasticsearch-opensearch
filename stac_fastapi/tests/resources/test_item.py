@@ -560,48 +560,6 @@ async def test_item_search_properties_field(app_client):
 
 
 @pytest.mark.asyncio
-async def test_item_search_free_text_extension(app_client, txn_client, ctx):
-    """Test POST search indexed field with q parameter (free-text)"""
-    first_item = ctx.item
-
-    second_item = dict(first_item)
-    second_item["id"] = "second-item"
-    second_item["properties"]["ft_field1"] = "hello"
-
-    await create_item(txn_client, second_item)
-
-    params = {"q": ["hello"]}
-    resp = await app_client.post("/search", json=params)
-    assert resp.status_code == 200
-    resp_json = resp.json()
-    assert len(resp_json["features"]) == 1
-
-
-@pytest.mark.asyncio
-async def test_item_search_free_text_extension_or_query(app_client, txn_client, ctx):
-    """Test POST search indexed field with q parameter with multiple terms (free-text)"""
-    first_item = ctx.item
-
-    second_item = dict(first_item)
-    second_item["id"] = "second-item"
-    second_item["properties"]["ft_field1"] = "hello"
-    second_item["properties"]["ft_field2"] = "world"
-
-    await create_item(txn_client, second_item)
-
-    third_item = dict(first_item)
-    third_item["id"] = "third-item"
-    third_item["properties"]["ft_field1"] = "world"
-    await create_item(txn_client, third_item)
-
-    params = {"q": ["hello", "world"]}
-    resp = await app_client.post("/search", json=params)
-    assert resp.status_code == 200
-    resp_json = resp.json()
-    assert len(resp_json["features"]) == 2
-
-
-@pytest.mark.asyncio
 async def test_item_search_get_query_extension(app_client, ctx):
     """Test GET search with JSONB query (query extension)"""
 

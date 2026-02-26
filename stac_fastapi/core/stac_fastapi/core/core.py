@@ -602,6 +602,7 @@ class CoreClient(AsyncBaseCoreClient):
         token: str | None = None,
         query: str | None = None,
         fields: list[str] | None = None,
+        q: str | list[str] | None = None,
         **kwargs,
     ) -> stac_types.ItemCollection:
         """List items within a specific collection.
@@ -624,6 +625,7 @@ class CoreClient(AsyncBaseCoreClient):
             filter_expr (str | None): Optional filter expression.
             filter_lang (str | None): Optional filter language.
             fields (list[str] | None): Fields to include or exclude from the results.
+            q (str | list[str] | None): Optional free-text search term(s).
 
         Returns:
             ItemCollection: Feature collection with items, paging links, and counts.
@@ -649,6 +651,7 @@ class CoreClient(AsyncBaseCoreClient):
             filter_expr=filter_expr,
             filter_lang=filter_lang,
             fields=fields,
+            q=q,
         )
 
     async def get_item(
@@ -685,7 +688,7 @@ class CoreClient(AsyncBaseCoreClient):
         token: str | None = None,
         fields: list[str] | None = None,
         sortby: str | None = None,
-        q: list[str] | None = None,
+        q: str | list[str] | None = None,
         intersects: str | None = None,
         filter_expr: str | None = None,
         filter_lang: str | None = None,
@@ -886,6 +889,10 @@ class CoreClient(AsyncBaseCoreClient):
 
         if hasattr(search_request, "q"):
             free_text_queries = getattr(search_request, "q", None)
+            # Convert single string to list for consistent handling
+            if isinstance(free_text_queries, str):
+                # Split comma-separated values
+                free_text_queries = [q.strip() for q in free_text_queries.split(",")]
             try:
                 search = self.database.apply_free_text_filter(search, free_text_queries)
             except Exception as e:

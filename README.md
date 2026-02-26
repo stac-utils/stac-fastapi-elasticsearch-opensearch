@@ -108,6 +108,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
       - [Using Pre-built Docker Images](#using-pre-built-docker-images)
       - [Using Docker Compose](#using-docker-compose)
   - [Configuration Reference](#configuration-reference)
+  - [Free-Text Search (`q` parameter)](#free-text-search-q-parameter)
   - [Excluding Fields from Queryables](#excluding-fields-from-queryables)
   - [Datetime-Based Index Management](#datetime-based-index-management)
     - [Overview](#overview)
@@ -658,9 +659,102 @@ You can customize additional settings in your `.env` file:
 | `HIDE_ITEM_PATH` | Path to boolean field that marks items as hidden (excluded from search) or not. If null, the item is returned. | `None` | Optional |
 | `EXCLUDED_FROM_QUERYABLES` | Comma-separated list of fully qualified field names to exclude from the queryables endpoint and filtering. Use full paths like `properties.auth:schemes,properties.storage:schemes`. Excluded fields and their nested children will not be exposed in queryables. | None | Optional |
 | `EXCLUDED_FROM_ITEMS` | Specifies fields to exclude from STAC item responses. Supports comma-separated field names and dot notation for nested fields (e.g., `private_data,properties.confidential,assets.internal`). | `None` | Optional |
+| `FREE_TEXT_FIELDS` | Comma-separated list of fields to search in free-text queries. Supports field boosting syntax (e.g., `properties.title^3` gives title 3x weight). Example: `properties.title,properties.description,properties.example_name`. **Important**: Custom properties must be mapped as `text` type to support partial word matching. By default, unmapped properties are indexed as `keyword` type (exact match only). If not set, defaults to: `id,collection,properties.title^3,properties.description,properties.keywords`. | Default fields with title boosting | Optional |
 
 > [!NOTE]
 > The variables `ES_HOST`, `ES_PORT`, `ES_USE_SSL`, `ES_VERIFY_CERTS` and `ES_TIMEOUT` apply to both Elasticsearch and OpenSearch backends, so there is no need to rename the key names to `OS_` even if you're using OpenSearch.
+
+## Free-Text Search (`q` parameter)
+
+The free-text search feature allows users to discover items and collections using keywords or phrases. By default, the search targets core fields: `id`, `collection`, `properties.title`, `properties.description`, and `properties.keywords`.
+
+### How to Use the API
+
+Users can submit search terms via the `q` parameter on the following routes:
+
+* `GET /search?q=keyword` 
+* `POST /search` (with `{"q": ["keyword"]}` in the body)
+* `GET /collections?q=keyword`
+* `POST /collections` (with `{"q": ["keyword"]}` in the body)
+* `GET /collections/{collection_id}/items?q=keyword` (search items within a specific collection)
+
+**Examples:**
+
+* **Single Term**: `/search?q=temperature` (Finds items with "temperature" in any core field).
+* **Multiple Terms (OR logic)**: `/search?q=landsat&q=sentinel` (Finds items containing either "landsat" OR "sentinel").
+
+---
+
+### Setting Realistic Expectations: How Search Works
+
+To get the most out of the search engine, it is important to understand the difference between **Typo Tolerance** and **Partial Word Matching**.
+
+#### 1. Typo Tolerance (Fuzziness)
+
+The API uses `fuzziness: "AUTO"`. This is a safety net for **accidental misspellings**, not a way to handle abbreviations or partial words.
+
+* **The Logic**: It calculates the "Edit Distance" (how many letters must change to match).
+* **Short words (0–2 chars)**: Must be an exact match.
+* **Medium words (3–5 chars)**: 1 typo allowed (e.g., `sentnel` matches `sentinel`).
+* **Long words (6+ chars)**: 2 typos allowed (e.g., `temparature` matches `temperature`).
+
+* **The Limitation**: `q=temp` will **not** find `temperature`. Because "temp" is missing 7 characters, it is too "far" for the fuzzy engine to bridge.
+
+#### 2. Partial Matching (Tokenization)
+
+Discovering a word *inside* a phrase (e.g., finding "Surface" within "Near-Surface Air Temperature") depends entirely on **Field Mapping**.
+
+* **`text` fields**: These are "tokenized" (broken into words). Searching for one word in the phrase works perfectly.
+* **`keyword` fields**: These are stored as a single literal string. Searching for a single word will **fail**; you must search for the *exact full phrase*.
+
+**Summary Table:**
+
+| User Search | Target Metadata Value | Match? | Reason |
+| --- | --- | --- | --- |
+| `temparature` | `temperature` | ✅ **Yes** | 1 typo (Fuzzy match) |
+| `temp` | `temperature` | ❌ **No** | Too many missing letters for Fuzzy |
+| `Surface` | `Near-Surface Air Temp` | ✅ **Yes** | Word found in a `text` field |
+| `Surface` | `Near-Surface Air Temp` | ❌ **No** | If field is a `keyword` (requires full string) |
+
+---
+
+### Administrator Configuration
+
+#### Adding Custom Searchable Fields
+
+If your metadata uses custom fields (e.g., `properties.example_name`), follow these steps to make them discoverable:
+
+1. **Map the field as `text`**: By default, unmapped strings are `keyword` type (exact match only). Use `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` to map them as `text`.
+
+   ```bash
+   export STAC_FASTAPI_ES_CUSTOM_MAPPINGS='{"properties":{"properties":{"example_name":{"type":"text"}}}}'
+   ```
+
+   Or using a JSON file with `STAC_FASTAPI_ES_MAPPINGS_FILE`:
+
+   ```json
+   {
+     "properties": {
+       "properties": {
+         "example_name": {"type": "text"},
+         "custom_field": {"type": "text"}
+       }
+     }
+   }
+   ```
+
+2. **Add to Search Scope**: Update the `FREE_TEXT_FIELDS` environment variable:
+
+   ```bash
+   export FREE_TEXT_FIELDS="properties.title,properties.description,properties.example_name"
+   ```
+
+   *Note: Use `^` to boost relevance, e.g., `properties.title^3` makes title matches 3x more important.*
+
+#### Performance & Scalability
+
+* **Be Selective**: Only add fields to `FREE_TEXT_FIELDS` that users genuinely need to search.
+* **Avoid Wildcards**: Do not use `properties.*` in `FREE_TEXT_FIELDS` for catalogs with millions of items. Searching every property simultaneously significantly increases query latency and creates "noisy" results.
 
 ## Redis for Navigation environment variables:
 These Redis configuration variables to enable proper navigation functionality in STAC FastAPI.

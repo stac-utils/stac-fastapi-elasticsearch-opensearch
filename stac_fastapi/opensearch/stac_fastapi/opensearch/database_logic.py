@@ -32,6 +32,7 @@ from stac_fastapi.sfeos_helpers.database import (
     add_bbox_shape_to_collection,
     apply_collections_bbox_filter_shared,
     apply_collections_datetime_filter_shared,
+    apply_collections_free_text_filter_shared,
     apply_free_text_filter_shared,
     apply_intersects_filter_shared,
     check_item_exists_in_alias,
@@ -248,34 +249,9 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         # Apply free text query if provided
         if q:
-            # For collections, we want to search across all relevant fields
-            should_clauses = []
-
-            # For each search term
-            for term in q:
-                # Create a multi_match query for each term
-                for field in [
-                    "id",
-                    "title",
-                    "description",
-                    "keywords",
-                    "summaries.platform",
-                    "summaries.constellation",
-                    "providers.name",
-                    "providers.url",
-                ]:
-                    should_clauses.append(
-                        {
-                            "wildcard": {
-                                field: {"value": f"*{term}*", "case_insensitive": True}
-                            }
-                        }
-                    )
-
-            # Add the free text query to the query parts
-            query_parts.append(
-                {"bool": {"should": should_clauses, "minimum_should_match": 1}}
-            )
+            free_text_query = apply_collections_free_text_filter_shared(q)
+            if free_text_query:
+                query_parts.append(free_text_query)
 
         # Apply structured filter if provided
         if filter:

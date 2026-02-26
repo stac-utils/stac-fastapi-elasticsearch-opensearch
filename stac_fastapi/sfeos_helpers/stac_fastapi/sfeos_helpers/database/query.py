@@ -4,6 +4,7 @@ This module provides functions for building and manipulating Elasticsearch/OpenS
 """
 
 import logging
+import os
 from typing import Any
 
 from stac_fastapi.core.utilities import bbox2polygon
@@ -15,7 +16,11 @@ ES_MAX_URL_LENGTH = 4096
 def apply_free_text_filter_shared(
     search: Any, free_text_queries: list[str] | None
 ) -> Any:
-    """Create a free text query for Elasticsearch/OpenSearch.
+    """Apply a flexible free-text search across configurable fields.
+
+    This function uses multi_match queries to search across text fields with support for
+    tokenization, lowercasing, partial word matching, and typo tolerance. Fields can be
+    configured via the FREE_TEXT_FIELDS environment variable.
 
     Args:
         search (Any): The search object to apply the query to.
@@ -25,17 +30,92 @@ def apply_free_text_filter_shared(
         Any: The search object with the free text query applied, or the original search
             object if no free_text_queries were provided.
 
+    Environment Variables:
+        FREE_TEXT_FIELDS: Comma-separated list of fields to search (e.g.,
+            "properties.title,properties.standard_name,properties.description").
+            If not set, uses default fields with title boosting.
+
     Notes:
-        This function creates a query_string query that searches for the specified text strings
-        in all properties of the documents. The query strings are joined with OR operators.
+        - Removes restrictive double quotes to enable text field analysis
+        - Supports fuzziness for typo tolerance (e.g., "Temperatrue" -> "Temperature")
+        - Allows field boosting (e.g., "properties.title^3" gives title 3x weight)
+        - Works seamlessly with text-mapped fields in Elasticsearch/OpenSearch
     """
-    if free_text_queries is not None:
-        free_text_query_string = '" OR properties.\\*:"'.join(free_text_queries)
+    if free_text_queries:
+        # Combine all query terms into a single search string
+        search_string = " ".join(free_text_queries)
+
+        # Get fields from environment or use sensible defaults
+        env_fields = os.getenv("FREE_TEXT_FIELDS")
+        if env_fields:
+            fields = [f.strip() for f in env_fields.split(",")]
+            logging.debug(f"FREE_TEXT_FIELDS set to: {fields}")
+        else:
+            # Default "High-Performance" fields
+            # To search custom properties, users should set FREE_TEXT_FIELDS environment variable
+            fields = [
+                "id",
+                "collection",
+                "properties.title^3",
+                "properties.description",
+                "properties.keywords",
+            ]
+
+        # Use multi_match for intelligent text analysis and field prioritization
+        logging.debug(
+            f"Applying free-text search with query='{search_string}' on fields={fields}"
+        )
         search = search.query(
-            "query_string", query=f'properties.\\*:"{free_text_query_string}"'
+            "multi_match",
+            query=search_string,
+            fields=fields,
+            type="best_fields",
+            fuzziness="AUTO",
+            operator="or",
         )
 
     return search
+
+
+def apply_collections_free_text_filter_shared(
+    free_text_queries: list[str] | None,
+) -> dict[str, Any] | None:
+    """Apply free-text search for collections across core fields.
+
+    This function uses multi_match queries to search across collection text fields with support for
+    tokenization, lowercasing, and typo tolerance.
+
+    Args:
+        free_text_queries (list[str] | None): A list of text strings to search for.
+
+    Returns:
+        dict[str, Any] | None: A dictionary containing the multi_match query configuration
+            that can be used with Elasticsearch/OpenSearch queries, or None if no queries provided.
+
+    Notes:
+        - Searches across: id, title (boosted 3x), description, keywords
+        - Supports fuzziness for typo tolerance (e.g., "Temperatrue" -> "Temperature")
+        - Works seamlessly with text-mapped fields in Elasticsearch/OpenSearch
+    """
+    if not free_text_queries:
+        return None
+
+    search_string = " ".join(free_text_queries)
+    logging.debug(f"Applying collections free-text search with query='{search_string}'")
+
+    return {
+        "multi_match": {
+            "query": search_string,
+            "fields": [
+                "id",
+                "title^3",
+                "description",
+                "keywords",
+            ],
+            "type": "best_fields",
+            "fuzziness": "AUTO",
+        }
+    }
 
 
 def apply_intersects_filter_shared(
