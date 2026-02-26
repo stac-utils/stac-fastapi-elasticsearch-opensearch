@@ -29,14 +29,14 @@ import copy
 import json
 import logging
 import os
-from typing import Any, Dict, Literal, Optional, Protocol, Union
+from typing import Any, Literal, Protocol
 
 from stac_fastapi.core.utilities import get_bool_env
 
 logger = logging.getLogger(__name__)
 
 
-def merge_mappings(base: Dict[str, Any], custom: Dict[str, Any]) -> None:
+def merge_mappings(base: dict[str, Any], custom: dict[str, Any]) -> None:
     """Recursively merge custom mappings into base mappings.
 
     Custom mappings will overwrite base mappings if keys collide.
@@ -54,8 +54,8 @@ def merge_mappings(base: Dict[str, Any], custom: Dict[str, Any]) -> None:
 
 
 def parse_dynamic_mapping_config(
-    config_value: Optional[str],
-) -> Union[bool, str]:
+    config_value: str | None,
+) -> bool | str:
     """Parse the dynamic mapping configuration value.
 
     Args:
@@ -78,7 +78,7 @@ def parse_dynamic_mapping_config(
 
 
 def apply_custom_mappings(
-    mappings: Dict[str, Any], custom_mappings_json: Optional[str]
+    mappings: dict[str, Any], custom_mappings_json: str | None
 ) -> None:
     """Apply custom mappings from a JSON string to the mappings dictionary.
 
@@ -106,8 +106,8 @@ def apply_custom_mappings(
 
 
 def get_items_mappings(
-    dynamic_mapping: Optional[str] = None, custom_mappings: Optional[str] = None
-) -> Dict[str, Any]:
+    dynamic_mapping: str | None = None, custom_mappings: str | None = None
+) -> dict[str, Any]:
     """Get the ES_ITEMS_MAPPINGS with optional dynamic mapping and custom mappings applied.
 
     This function creates a fresh copy of the base mappings and applies the
@@ -157,7 +157,7 @@ def get_items_mappings(
 
 # stac_pydantic classes extend _GeometryBase, which doesn't have a type field,
 # So create our own Protocol for typing
-# Union[ Point, MultiPoint, LineString, MultiLineString, Polygon, MultiPolygon, GeometryCollection]
+# Point | MultiPoint | LineString | MultiLineString | Polygon | MultiPolygon | GeometryCollection
 class Geometry(Protocol):  # noqa
     type: str
     coordinates: Any
@@ -303,7 +303,7 @@ ES_COLLECTIONS_MAPPINGS = {
 }
 
 # Shared aggregation mapping for both Elasticsearch and OpenSearch
-AGGREGATION_MAPPING: Dict[str, Dict[str, Any]] = {
+AGGREGATION_MAPPING: dict[str, dict[str, Any]] = {
     "total_count": {"value_count": {"field": "id"}},
     "collection_frequency": {"terms": {"field": "collection", "size": 100}},
     "platform_frequency": {"terms": {"field": "properties.platform", "size": 100}},
@@ -374,7 +374,7 @@ AGGREGATION_MAPPING: Dict[str, Dict[str, Any]] = {
     },
 }
 
-ES_MAPPING_TYPE_TO_JSON: Dict[
+ES_MAPPING_TYPE_TO_JSON: dict[
     str, Literal["string", "number", "boolean", "object", "array", "null"]
 ] = {
     "date": "string",

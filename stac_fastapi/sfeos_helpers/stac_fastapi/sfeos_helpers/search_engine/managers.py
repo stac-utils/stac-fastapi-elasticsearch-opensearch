@@ -132,7 +132,7 @@ class DatetimeIndexManager:
 
     @staticmethod
     def validate_product_datetimes(
-        product: Dict[str, Any], use_datetime
+        product: dict[str, Any], use_datetime
     ) -> ProductDatetimes:
         """Validate and extract datetime fields from product.
 

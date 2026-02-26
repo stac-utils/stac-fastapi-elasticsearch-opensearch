@@ -7,20 +7,20 @@ such as converting bounding boxes to polygon representations.
 import logging
 import os
 import re
-from typing import Any, Dict, List, Optional, Set, Union
+from typing import Any
 
 from stac_fastapi.types.stac import Item
 
 MAX_LIMIT = 10000
 
 
-def get_bool_env(name: str, default: Union[bool, str] = False) -> bool:
+def get_bool_env(name: str, default: bool | str = False) -> bool:
     """
     Retrieve a boolean value from an environment variable.
 
     Args:
         name (str): The name of the environment variable.
-        default (Union[bool, str], optional): The default value to use if the variable is not set or unrecognized. Defaults to False.
+        default (bool | str, optional): The default value to use if the variable is not set or unrecognized. Defaults to False.
 
     Returns:
         bool: The boolean value parsed from the environment variable.
@@ -56,7 +56,7 @@ def get_bool_env(name: str, default: Union[bool, str] = False) -> bool:
         return default_str in true_values
 
 
-def bbox2polygon(b0: float, b1: float, b2: float, b3: float) -> List[List[List[float]]]:
+def bbox2polygon(b0: float, b1: float, b2: float, b3: float) -> list[list[list[float]]]:
     """Transform a bounding box represented by its four coordinates `b0`, `b1`, `b2`, and `b3` into a polygon.
 
     Args:
@@ -72,9 +72,9 @@ def bbox2polygon(b0: float, b1: float, b2: float, b3: float) -> List[List[List[f
 
 
 def filter_fields(  # noqa: C901
-    item: Union[Item, Dict[str, Any]],
-    include: Optional[Set[str]] = None,
-    exclude: Optional[Set[str]] = None,
+    item: Item | dict[str, Any],
+    include: set[str] | None = None,
+    exclude: set[str] | None = None,
 ) -> Item:
     """Preserve and remove fields as indicated by the fields extension include/exclude sets.
 
@@ -91,22 +91,22 @@ def filter_fields(  # noqa: C901
         regex_pattern = "^" + re.escape(pattern).replace(r"\*", ".*") + "$"
         return bool(re.match(regex_pattern, key))
 
-    def get_matching_keys(source: Dict[str, Any], pattern: str) -> List[str]:
+    def get_matching_keys(source: dict[str, Any], pattern: str) -> list[str]:
         """Get all keys that match the pattern."""
         if not isinstance(source, dict):
             return []
         return [key for key in source.keys() if match_pattern(pattern, key)]
 
     def include_fields(
-        source: Dict[str, Any], fields: Optional[Set[str]]
-    ) -> Dict[str, Any]:
+        source: dict[str, Any], fields: set[str] | None
+    ) -> dict[str, Any]:
         """Include only the specified fields from the source dictionary."""
         if not fields:
             return source
 
         def recursive_include(
-            source: Dict[str, Any], path_parts: List[str]
-        ) -> Dict[str, Any]:
+            source: dict[str, Any], path_parts: list[str]
+        ) -> dict[str, Any]:
             """Recursively include fields matching the pattern path."""
             if not path_parts:
                 return source
@@ -122,7 +122,7 @@ def filter_fields(  # noqa: C901
             if not matching_keys:
                 return {}
 
-            result: Dict[str, Any] = {}
+            result: dict[str, Any] = {}
             for key in matching_keys:
                 if remaining_parts:
                     if isinstance(source[key], dict):
@@ -134,7 +134,7 @@ def filter_fields(  # noqa: C901
 
             return result
 
-        clean_item: Dict[str, Any] = {}
+        clean_item: dict[str, Any] = {}
         for key_path in fields or []:
             if "*" in key_path:
                 value = recursive_include(source, key_path.split("."))
@@ -173,13 +173,13 @@ def filter_fields(  # noqa: C901
         return clean_item
 
     def exclude_fields(
-        source: Dict[str, Any],
-        fields: Optional[Set[str]],
+        source: dict[str, Any],
+        fields: set[str] | None,
     ) -> None:
         """Exclude fields from source."""
 
         def recursive_exclude(
-            source: Dict[str, Any], path_parts: List[str], current_path: str = ""
+            source: dict[str, Any], path_parts: list[str], current_path: str = ""
         ) -> None:
             """Recursively exclude fields matching the pattern path."""
             if not path_parts or not isinstance(source, dict):
@@ -241,7 +241,7 @@ def filter_fields(  # noqa: C901
     return Item(**clean_item)
 
 
-def dict_deep_update(merge_to: Dict[str, Any], merge_from: Dict[str, Any]) -> None:
+def dict_deep_update(merge_to: dict[str, Any], merge_from: dict[str, Any]) -> None:
     """Perform a deep update of two dicts.
 
     merge_to is updated in-place with the values from merge_from.

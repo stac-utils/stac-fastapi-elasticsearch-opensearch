@@ -4,7 +4,7 @@ This module provides functions for working with documents in Elasticsearch/OpenS
 including document ID generation and bulk action creation.
 """
 
-from typing import Any, Dict, List
+from typing import Any
 
 from stac_fastapi.sfeos_helpers.database.index import index_alias_by_collection_id
 from stac_fastapi.types.stac import Item
@@ -23,15 +23,17 @@ def mk_item_id(item_id: str, collection_id: str) -> str:
     return f"{item_id}|{collection_id}"
 
 
-def mk_actions(collection_id: str, processed_items: List[Item]) -> List[Dict[str, Any]]:
+def mk_actions(
+    collection_id: str, processed_items: list[Item]
+) -> list[dict[str, Any] | dict[str, str | dict]]:
     """Create Elasticsearch bulk actions for a list of processed items.
 
     Args:
         collection_id (str): The identifier for the collection the items belong to.
-        processed_items (List[Item]): The list of processed items to be bulk indexed.
+        processed_items (list[Item]): The list of processed items to be bulk indexed.
 
     Returns:
-        List[Dict[str, Union[str, Dict]]]: The list of bulk actions to be executed,
+        list[dict[str, Any] | dict[str, str | dict]]: The list of bulk actions to be executed,
         each action being a dictionary with the following keys:
         - `_index`: the index to store the document in.
         - `_id`: the document's identifier.
