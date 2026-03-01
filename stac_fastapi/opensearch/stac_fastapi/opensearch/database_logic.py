@@ -788,7 +788,8 @@ class DatabaseLogic(BaseDatabaseLogic):
         """
         if _filter is not None:
             try:
-                es_query, metadata = build_cql2_filter(_filter)
+                queryables_mapping = await self.get_queryables_mapping()
+                es_query, metadata = build_cql2_filter(queryables_mapping, _filter)
                 search = search.filter(es_query)
                 search._cql2_metadata = metadata
 

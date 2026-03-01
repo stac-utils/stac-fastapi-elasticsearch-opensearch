@@ -15,6 +15,8 @@ from stac_fastapi.core.extensions.filter import (
     SpatialOp,
 )
 
+from .transform import to_es_field
+
 # Field path constants (should match those in database_logic.py)
 PROPERTIES_DATETIME_FIELD = os.getenv("STAC_FIELD_PROP_DATETIME", "properties.datetime")
 PROPERTIES_START_DATETIME_FIELD = os.getenv(
@@ -39,7 +41,9 @@ def _get_es_field_path(field: str) -> str:
     return field_mapping.get(field, field)
 
 
-def to_es_via_ast(query: Union[Dict[str, Any], CqlNode]) -> Dict[str, Any]:
+def to_es_via_ast(
+    queryables_mapping: Dict[str, Any], query: Union[Dict[str, Any], CqlNode]
+) -> Dict[str, Any]:
     """Transform CQL2 query to Elasticsearch/Opensearch query via AST."""
     from .ast_parser import Cql2AstParser
 
@@ -48,12 +52,13 @@ def to_es_via_ast(query: Union[Dict[str, Any], CqlNode]) -> Dict[str, Any]:
     else:
         parser = Cql2AstParser()
         ast = parser.parse(query)
-
-    result = _transform_ast_node(ast)
+    result = _transform_ast_node(queryables_mapping, ast)
     return result
 
 
-def _transform_ast_node(node: Any) -> Dict[str, Any]:
+def _transform_ast_node(
+    queryables_mapping: Dict[str, Any], node: Any
+) -> Dict[str, Any]:
     """Transform AST node to Elasticsearch/Opensearch query."""
     if isinstance(node, LogicalNode):
         bool_type = {
@@ -63,43 +68,56 @@ def _transform_ast_node(node: Any) -> Dict[str, Any]:
         }[node.op]
 
         if node.op == LogicalOp.NOT:
-            return {"bool": {bool_type: _transform_ast_node(node.children[0])}}
+            return {
+                "bool": {
+                    bool_type: _transform_ast_node(queryables_mapping, node.children[0])
+                }
+            }
         else:
             return {
                 "bool": {
-                    bool_type: [_transform_ast_node(child) for child in node.children]
+                    bool_type: [
+                        _transform_ast_node(queryables_mapping, child)
+                        for child in node.children
+                    ]
                 }
             }
 
     elif isinstance(node, ComparisonNode):
-        field = _get_es_field_path(node.field)
+        # Map the field using queryables_mapping
+        fields = to_es_field(queryables_mapping, node.field)
         value = node.value
 
         if isinstance(value, dict) and "timestamp" in value:
             value = value["timestamp"]
 
-        if node.op == ComparisonOp.EQ:
-            return {"term": {field: value}}
-        elif node.op == ComparisonOp.NEQ:
-            return {"bool": {"must_not": [{"term": {field: value}}]}}
-        elif node.op in [
-            ComparisonOp.LT,
-            ComparisonOp.LTE,
-            ComparisonOp.GT,
-            ComparisonOp.GTE,
-        ]:
-            range_op = {
-                ComparisonOp.LT: "lt",
-                ComparisonOp.LTE: "lte",
-                ComparisonOp.GT: "gt",
-                ComparisonOp.GTE: "gte",
-            }[node.op]
-            return {"range": {field: {range_op: value}}}
-        elif node.op == ComparisonOp.IS_NULL:
-            return {"bool": {"must_not": {"exists": {"field": field}}}}
+        # Build queries for each mapped field
+        queries = []
+        for field in fields:
+            if node.op == ComparisonOp.EQ:
+                queries.append({"term": {field: value}})
+            elif node.op == ComparisonOp.NEQ:
+                queries.append({"bool": {"must_not": [{"term": {field: value}}]}})
+            elif node.op in [
+                ComparisonOp.LT,
+                ComparisonOp.LTE,
+                ComparisonOp.GT,
+                ComparisonOp.GTE,
+            ]:
+                range_op = {
+                    ComparisonOp.LT: "lt",
+                    ComparisonOp.LTE: "lte",
+                    ComparisonOp.GT: "gt",
+                    ComparisonOp.GTE: "gte",
+                }[node.op]
+                queries.append({"range": {field: {range_op: value}}})
+            elif node.op == ComparisonOp.IS_NULL:
+                queries.append({"bool": {"must_not": {"exists": {"field": field}}}})
+
+        return queries[0] if len(queries) == 1 else {"bool": {"should": queries}}
 
     elif isinstance(node, AdvancedComparisonNode):
-        field = _get_es_field_path(node.field)
+        fields = to_es_field(queryables_mapping, node.field)
 
         if node.op == AdvancedComparisonOp.BETWEEN:
             if isinstance(node.value, (list, tuple)) and len(node.value) == 2:
@@ -108,12 +126,18 @@ def _transform_ast_node(node: Any) -> Dict[str, Any]:
                     gte = gte["timestamp"]
                 if isinstance(lte, dict) and "timestamp" in lte:
                     lte = lte["timestamp"]
-                return {"range": {field: {"gte": gte, "lte": lte}}}
+                queries = [
+                    {"range": {field: {"gte": gte, "lte": lte}}} for field in fields
+                ]
+                return (
+                    queries[0] if len(queries) == 1 else {"bool": {"should": queries}}
+                )
 
         elif node.op == AdvancedComparisonOp.IN:
             if not isinstance(node.value, list):
                 raise ValueError(f"IN operator expects list, got {type(node.value)}")
-            return {"terms": {field: node.value}}
+            queries = [{"terms": {field: node.value}} for field in fields]
+            return queries[0] if len(queries) == 1 else {"bool": {"should": queries}}
 
         elif node.op == AdvancedComparisonOp.LIKE:
             pattern = str(node.value)
@@ -139,12 +163,14 @@ def _transform_ast_node(node: Any) -> Dict[str, Any]:
                     es_pattern += pattern[i]
                 i += 1
 
-            return {
-                "wildcard": {field: {"value": es_pattern, "case_insensitive": True}}
-            }
+            queries = [
+                {"wildcard": {field: {"value": es_pattern, "case_insensitive": True}}}
+                for field in fields
+            ]
+            return queries[0] if len(queries) == 1 else {"bool": {"should": queries}}
 
     elif isinstance(node, SpatialNode):
-        field = _get_es_field_path(node.field)
+        fields = to_es_field(queryables_mapping, node.field)
 
         relation_mapping = {
             SpatialOp.S_INTERSECTS: "intersects",
@@ -154,6 +180,10 @@ def _transform_ast_node(node: Any) -> Dict[str, Any]:
         }
 
         relation = relation_mapping[node.op]
-        return {"geo_shape": {field: {"shape": node.geometry, "relation": relation}}}
+        queries = [
+            {"geo_shape": {field: {"shape": node.geometry, "relation": relation}}}
+            for field in fields
+        ]
+        return queries[0] if len(queries) == 1 else {"bool": {"should": queries}}
 
     raise ValueError("Unsupported AST node")

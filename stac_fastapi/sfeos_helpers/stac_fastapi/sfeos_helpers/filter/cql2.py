@@ -158,7 +158,7 @@ async def resolve_cql2_indexes(
     return index_param, collection_ids
 
 
-def build_cql2_filter(filter: Dict) -> Tuple[Dict, List]:
+def build_cql2_filter(queryables_mapping: Dict, filter: Dict) -> Tuple[Dict, List]:
     """Build query from CQL2 filter with metadata extraction.
 
     Args:
@@ -189,7 +189,7 @@ def build_cql2_filter(filter: Dict) -> Tuple[Dict, List]:
     logger.info(f"optimized_ast to be processed: {optimized_ast}")
     print(f"optimized_ast to be processed: {optimized_ast}")
 
-    es_query = to_es_via_ast(optimized_ast)
+    es_query = to_es_via_ast(queryables_mapping, optimized_ast)
 
     logger.info(f"es_query to be processed: {es_query}")
     print(

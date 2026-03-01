@@ -165,7 +165,7 @@ async def test_search_filter_ext_and_get_cql2text_id(app_client, ctx):
 async def test_search_filter_ext_and_get_cql2text_cloud_cover(app_client, ctx):
     collection = ctx.item["collection"]
     cloud_cover = ctx.item["properties"]["eo:cloud_cover"]
-    filter = f"properties.eo:cloud_cover={cloud_cover} AND collection='{collection}'"
+    filter = f"eo:cloud_cover={cloud_cover} AND collection='{collection}'"
     resp = await app_client.get(f"/search?filter-lang=cql2-text&filter={filter}")
 
     assert resp.status_code == 200
