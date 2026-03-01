@@ -1,6 +1,6 @@
 """link helpers."""
 
-from typing import Any, Dict, List, Optional
+from typing import Any
 from urllib.parse import ParseResult, parse_qs, urlencode, urljoin, urlparse
 
 import attr
@@ -15,7 +15,7 @@ from starlette.requests import Request
 INFERRED_LINK_RELS = {"self", "item", "parent", "collection", "root"}
 
 
-def merge_params(url: str, newparams: Dict) -> str:
+def merge_params(url: str, newparams: dict) -> str:
     """Merge url parameters."""
     u = urlparse(url)
     params = parse_qs(u.query)
@@ -53,17 +53,17 @@ class BaseLinks:
         """Resolve url to the current request url."""
         return urljoin(str(self.base_url), str(url))
 
-    def link_self(self) -> Dict:
+    def link_self(self) -> dict:
         """Return the self link."""
         return dict(rel=Relations.self.value, type=MimeTypes.json.value, href=self.url)
 
-    def link_root(self) -> Dict:
+    def link_root(self) -> dict:
         """Return the catalog root."""
         return dict(
             rel=Relations.root.value, type=MimeTypes.json.value, href=self.base_url
         )
 
-    def create_links(self) -> List[Dict[str, Any]]:
+    def create_links(self) -> list[dict[str, Any]]:
         """Return all inferred links."""
         links = []
         for name in dir(self):
@@ -74,8 +74,8 @@ class BaseLinks:
         return links
 
     async def get_links(
-        self, extra_links: Optional[List[Dict[str, Any]]] = None
-    ) -> List[Dict[str, Any]]:
+        self, extra_links: list[dict[str, Any]] | None = None
+    ) -> list[dict[str, Any]]:
         """
         Generate all the links.
 
@@ -112,10 +112,10 @@ class CollectionLinks(BaseLinks):
     """Create inferred links specific to collections."""
 
     collection_id: str = attr.ib()
-    extensions: List[str] = attr.ib(default=attr.Factory(list))
-    parent_url: Optional[str] = attr.ib(default=None, kw_only=True)
+    extensions: list[str] = attr.ib(default=attr.Factory(list))
+    parent_url: str | None = attr.ib(default=None, kw_only=True)
 
-    def link_self(self) -> Dict:
+    def link_self(self) -> dict:
         """Return the self link."""
         return dict(
             rel=Relations.self.value,
@@ -123,7 +123,7 @@ class CollectionLinks(BaseLinks):
             href=urljoin(self.base_url, f"collections/{self.collection_id}"),
         )
 
-    def link_parent(self) -> Dict[str, Any]:
+    def link_parent(self) -> dict[str, Any]:
         """Create the `parent` link.
 
         The parent link represents the structural parent (the path the user is traversing):
@@ -133,7 +133,7 @@ class CollectionLinks(BaseLinks):
         parent_href = self.parent_url if self.parent_url else self.base_url
         return dict(rel=Relations.parent, type=MimeTypes.json.value, href=parent_href)
 
-    def link_items(self) -> Dict[str, Any]:
+    def link_items(self) -> dict[str, Any]:
         """Create the `items` link."""
         return dict(
             rel="items",
@@ -141,7 +141,7 @@ class CollectionLinks(BaseLinks):
             href=urljoin(self.base_url, f"collections/{self.collection_id}/items"),
         )
 
-    def link_queryables(self) -> Dict[str, Any]:
+    def link_queryables(self) -> dict[str, Any]:
         """Create the `queryables` link."""
         if "FilterExtension" in self.extensions:
             return dict(
@@ -154,7 +154,7 @@ class CollectionLinks(BaseLinks):
         else:
             return None
 
-    def link_aggregate(self) -> Dict[str, Any]:
+    def link_aggregate(self) -> dict[str, Any]:
         """Create the `aggregate` link."""
         if "AggregationExtension" in self.extensions:
             return dict(
@@ -167,7 +167,7 @@ class CollectionLinks(BaseLinks):
         else:
             return None
 
-    def link_aggregations(self) -> Dict[str, Any]:
+    def link_aggregations(self) -> dict[str, Any]:
         """Create the `aggregations` link."""
         if "AggregationExtension" in self.extensions:
             return dict(
@@ -185,9 +185,9 @@ class CollectionLinks(BaseLinks):
 class PagingLinks(BaseLinks):
     """Create links for paging."""
 
-    next: Optional[str] = attr.ib(kw_only=True, default=None)
+    next: str | None = attr.ib(kw_only=True, default=None)
 
-    def link_next(self) -> Optional[Dict[str, Any]]:
+    def link_next(self) -> dict[str, Any] | None:
         """Create link for next page."""
         if self.next is not None:
             method = self.request.method

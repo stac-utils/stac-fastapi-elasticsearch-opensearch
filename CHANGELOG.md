@@ -9,11 +9,25 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+### Changed
+
+### Updated
+
+### Fixed
+
+### Removed
+
+## [v6.12.0] - 2026-02-26
+
+### Added
+
+- Added free-text search (`q` parameter) support to GET `/collections/{collection_id}/items` endpoint. The `q` parameter accepts comma-separated search terms (e.g., `?q=hello,world`) and uses OR logic to match items containing any of the specified terms. Also added support for GET `/search` endpoint with comma-separated values. [#613](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/613)
 - Added code to remove `assets.` prefix from queryables, as is done with `properties.`. [#602](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/602)
 
 ### Changed
 
-### Removed
+- Modernized free-text search to use `multi_match` query instead of restrictive `query_string` for intelligent text field analysis, supporting tokenization, lowercasing, partial word matching, and typo tolerance via `fuzziness="AUTO"`. Added `FREE_TEXT_FIELDS` environment variable for configurable field searching and field boosting support. [#613](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/613)
+- Refactored type hints to use Python 3.10+ syntax (PEP 604): replaced `Optional[X]` with `X | None`, `Dict` with `dict`, `List` with `list`, and removed unused typing imports across all modules. [#607](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/607)
 
 ### Updated
 
@@ -769,7 +783,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.11.0...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.12.0...main
+[v6.12.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.11.2...v6.12.0
 [v6.11.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.10.2...v6.11.0
 [v6.10.2]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.10.1...v6.10.2
 [v6.10.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.10.0...v6.10.1

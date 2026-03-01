@@ -6,7 +6,7 @@ This module provides functions for creating and managing indices in Elasticsearc
 import re
 from datetime import date, datetime
 from functools import lru_cache
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from stac_fastapi.sfeos_helpers.mappings import (
     _ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE,
@@ -51,7 +51,7 @@ def index_alias_by_collection_id(collection_id: str) -> str:
     return f"{ITEMS_INDEX_PREFIX}{cleaned}"
 
 
-def indices(collection_ids: Optional[List[str]]) -> str:
+def indices(collection_ids: list[str] | None) -> str:
     """
     Get a comma-separated string of index names for a given list of collection ids.
 
@@ -69,10 +69,10 @@ def indices(collection_ids: Optional[List[str]]) -> str:
 
 
 def filter_indexes_by_datetime(
-    collection_indexes: List[Tuple[Dict[str, str], ...]],
-    datetime_search: Dict[str, Dict[str, Optional[str]]],
+    collection_indexes: list[tuple[dict[str, str], ...]],
+    datetime_search: dict[str, dict[str, str | None]],
     use_datetime: bool,
-) -> List[str]:
+) -> list[str]:
     """
     Filter Elasticsearch index aliases based on datetime search criteria.
 
@@ -83,7 +83,7 @@ def filter_indexes_by_datetime(
     Args:
         collection_indexes (List[Tuple[Dict[str, str], ...]]): A list of tuples containing dictionaries
             with 'datetime', 'start_datetime', and 'end_datetime' aliases.
-        datetime_search (Dict[str, Dict[str, Optional[str]]]): A dictionary with keys 'datetime',
+        datetime_search (dict[str, dict[str, str | None]]): A dictionary with keys 'datetime',
             'start_datetime', and 'end_datetime', each containing 'gte' and 'lte' criteria as ISO format
             datetime strings or None.
         use_datetime (bool): Flag determining which datetime field to filter on:
@@ -91,10 +91,10 @@ def filter_indexes_by_datetime(
             - False: Filters using 'start_datetime' and 'end_datetime' aliases.
 
     Returns:
-        List[str]: A list of start_datetime aliases that match all provided search criteria.
+        list[str]: A list of start_datetime aliases that match all provided search criteria.
     """
 
-    def extract_date_from_alias(alias: str) -> Optional[tuple[datetime, datetime]]:
+    def extract_date_from_alias(alias: str) -> tuple[datetime, datetime] | None:
         date_pattern = re.compile(r"\d{4}-\d{2}-\d{2}")
         try:
             dates = date_pattern.findall(alias)
@@ -112,14 +112,14 @@ def filter_indexes_by_datetime(
         except (ValueError, IndexError):
             return None
 
-    def parse_search_date(date_str: Optional[str]) -> Optional[date]:
+    def parse_search_date(date_str: str | None) -> date | None:
         if not date_str:
             return None
         date_str = date_str.rstrip("Z")
         return datetime.fromisoformat(date_str).date()
 
     def check_criteria(
-        value_begin: datetime, value_end: datetime, criteria: Dict
+        value_begin: datetime, value_end: datetime, criteria: dict
     ) -> bool:
         gte = parse_search_date(criteria.get("gte"))
         lte = parse_search_date(criteria.get("lte"))

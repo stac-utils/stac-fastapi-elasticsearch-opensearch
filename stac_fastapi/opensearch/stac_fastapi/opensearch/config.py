@@ -3,7 +3,7 @@
 import logging
 import os
 import ssl
-from typing import Any, Dict, Set, Union
+from typing import Any
 
 import certifi
 from opensearchpy import AsyncOpenSearch, OpenSearch
@@ -14,7 +14,7 @@ from stac_fastapi.sfeos_helpers.database import validate_refresh
 from stac_fastapi.types.config import ApiSettings
 
 
-def _es_config() -> Dict[str, Any]:
+def _es_config() -> dict[str, Any]:
     # Determine the scheme (http or https)
     use_ssl = get_bool_env("ES_USE_SSL", default=True)
     scheme = "https" if use_ssl else "http"
@@ -32,7 +32,7 @@ def _es_config() -> Dict[str, Any]:
     hosts = [f"{scheme}://{host.strip()}:{es_port}" for host in es_hosts.split(",")]
 
     # Initialize the configuration dictionary
-    config: Dict[str, Any] = {
+    config: dict[str, Any] = {
         "hosts": hosts,
         "headers": {"accept": "application/json", "Content-Type": "application/json"},
     }
@@ -73,7 +73,7 @@ def _es_config() -> Dict[str, Any]:
     return config
 
 
-_forbidden_fields: Set[str] = {"type"}
+_forbidden_fields: set[str] = {"type"}
 
 
 class OpensearchSettings(ApiSettings, ApiBaseSettings):
@@ -85,19 +85,19 @@ class OpensearchSettings(ApiSettings, ApiBaseSettings):
     Default is False for safety.
     """
 
-    forbidden_fields: Set[str] = _forbidden_fields
-    indexed_fields: Set[str] = {"datetime"}
+    forbidden_fields: set[str] = _forbidden_fields
+    indexed_fields: set[str] = {"datetime"}
     enable_response_models: bool = False
     enable_direct_response: bool = get_bool_env("ENABLE_DIRECT_RESPONSE", default=False)
     raise_on_bulk_error: bool = get_bool_env("RAISE_ON_BULK_ERROR", default=False)
 
     @property
-    def database_refresh(self) -> Union[bool, str]:
+    def database_refresh(self) -> bool | str:
         """
         Get the value of the DATABASE_REFRESH environment variable.
 
         Returns:
-            Union[bool, str]: The value of DATABASE_REFRESH, which can be True, False, or "wait_for".
+            bool | str: The value of DATABASE_REFRESH, which can be True, False, or "wait_for".
         """
         value = os.getenv("DATABASE_REFRESH", "false")
         return validate_refresh(value)
@@ -117,19 +117,19 @@ class AsyncOpensearchSettings(ApiSettings, ApiBaseSettings):
     Default is False for safety.
     """
 
-    forbidden_fields: Set[str] = _forbidden_fields
-    indexed_fields: Set[str] = {"datetime"}
+    forbidden_fields: set[str] = _forbidden_fields
+    indexed_fields: set[str] = {"datetime"}
     enable_response_models: bool = False
     enable_direct_response: bool = get_bool_env("ENABLE_DIRECT_RESPONSE", default=False)
     raise_on_bulk_error: bool = get_bool_env("RAISE_ON_BULK_ERROR", default=False)
 
     @property
-    def database_refresh(self) -> Union[bool, str]:
+    def database_refresh(self) -> bool | str:
         """
         Get the value of the DATABASE_REFRESH environment variable.
 
         Returns:
-            Union[bool, str]: The value of DATABASE_REFRESH, which can be True, False, or "wait_for".
+            bool | str: The value of DATABASE_REFRESH, which can be True, False, or "wait_for".
         """
         value = os.getenv("DATABASE_REFRESH", "false")
         return validate_refresh(value)
