@@ -31,6 +31,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Updated
 
+### Fixed
+
+- Fixed `numberMatched=null` responses by adding a configurable `COUNT_TIMEOUT` and awaiting the count task with `asyncio.wait_for`, preventing premature returns while avoiding delays to `/search` responses when the count operation is slow.[#610](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/610)
 - stac-fastapi libraries to v6.2.1. [#606](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/606)
 
 ## [v6.11.0] - 2026-02-18

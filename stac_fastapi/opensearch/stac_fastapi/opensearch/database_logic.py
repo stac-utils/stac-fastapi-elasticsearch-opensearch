@@ -869,6 +869,15 @@ class DatabaseLogic(BaseDatabaseLogic):
         except exceptions.NotFoundError:
             raise NotFoundError(f"Collections '{collection_ids}' do not exist")
 
+        count_timeout = float(os.getenv("COUNT_TIMEOUT", 0.5))
+
+        if count_timeout > 0 and not count_task.done():
+            try:
+                logger.debug("Waiting for count task to complete...")
+                await asyncio.wait_for(count_task, timeout=count_timeout)
+            except asyncio.TimeoutError:
+                logger.warning("Count task timed out, returning results without count")
+
         hits = es_response["hits"]["hits"]
         items = (hit["_source"] for hit in hits[:limit])
 
