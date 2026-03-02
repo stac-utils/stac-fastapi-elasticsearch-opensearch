@@ -3,7 +3,11 @@ import logging
 from typing import Any, cast
 
 from stac_fastapi.core.utilities import get_bool_env
-from stac_fastapi.sfeos_helpers.database import filter_indexes_by_datetime, return_date
+from stac_fastapi.sfeos_helpers.database import (
+    filter_indexes_by_datetime,
+    filter_indexes_by_datetime_range,
+    return_date,
+)
 from stac_fastapi.sfeos_helpers.mappings import ITEM_INDICES
 
 from ...database import indices
@@ -107,9 +111,14 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
                 collection_indexes = await self.get_collection_indexes(
                     collection_id, use_cache=not for_insertion
                 )
-                filtered_indexes = filter_indexes_by_datetime(
-                    collection_indexes, datetime_filters, self.use_datetime
-                )
+                if for_insertion or self.use_datetime:
+                    filtered_indexes = filter_indexes_by_datetime(
+                        collection_indexes, datetime_filters, self.use_datetime
+                    )
+                else:
+                    filtered_indexes = filter_indexes_by_datetime_range(
+                        collection_indexes, datetime_filters
+                    )
                 selected_indexes.extend(filtered_indexes)
 
             result = ",".join(selected_indexes) if selected_indexes else ""
