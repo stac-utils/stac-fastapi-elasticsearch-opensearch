@@ -8,12 +8,14 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- Added `filter_indexes_by_datetime_range` for selecting indexes using range intersection between query `[start_datetime, end_datetime]` and index temporal extent, used when `USE_DATETIME=false`.
 
 ### Changed
 
 ### Updated
 
 ### Fixed
+- Fixed application logs not being visible when running via uvicorn by adding `force=True` to `logging.basicConfig`, preventing uvicorn's logging configuration from overriding the application's log setup.
 
 ### Removed
 
@@ -23,11 +25,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 - Added free-text search (`q` parameter) support to GET `/collections/{collection_id}/items` endpoint. The `q` parameter accepts comma-separated search terms (e.g., `?q=hello,world`) and uses OR logic to match items containing any of the specified terms. Also added support for GET `/search` endpoint with comma-separated values. [#613](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/613)
 - Added code to remove `assets.` prefix from queryables, as is done with `properties.`. [#602](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/602)
-
-### Fixed
-
-- Fixed application logs not being visible when running via uvicorn by adding `force=True` to `logging.basicConfig`, preventing uvicorn's logging configuration from overriding the application's log setup.
-- Fixed datetime-based index selection returning too many indexes when filtering by `end_datetime`, which could cause unnecessary indexes to be included in search queries.
 
 ### Changed
 
