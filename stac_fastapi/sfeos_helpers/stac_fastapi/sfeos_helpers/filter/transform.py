@@ -88,7 +88,7 @@ def to_es(queryables_mapping: dict[str, Any], query: dict[str, Any]) -> dict[str
         if query["op"] in [ComparisonOp.EQ, ComparisonOp.NEQ]:
             field = next((f for f in fields if f.endswith(".keyword")), fields[0])
         else:
-            field = next((f for f in fields if "." not in f), fields[0])
+            field = next((f for f in fields if not f.endswith(".keyword")), fields[0])
 
         value = query["args"][1]
         if isinstance(value, dict) and "timestamp" in value:
@@ -117,12 +117,12 @@ def to_es(queryables_mapping: dict[str, Any], query: dict[str, Any]) -> dict[str
 
     elif query["op"] == ComparisonOp.IS_NULL:
         fields = to_es_field(queryables_mapping, query["args"][0]["property"])
-        field = next((f for f in fields if "." not in f), fields[0])
+        field = next((f for f in fields if not f.endswith(".keyword")), fields[0])
         queries = [{"bool": {"must_not": {"exists": {"field": field}}}}]
 
     elif query["op"] == AdvancedComparisonOp.BETWEEN:
         fields = to_es_field(queryables_mapping, query["args"][0]["property"])
-        field = next((f for f in fields if "." not in f), fields[0])
+        field = next((f for f in fields if not f.endswith(".keyword")), fields[0])
 
         # Handle both formats: [property, [lower, upper]] or [property, lower, upper]
         if len(query["args"]) == 2 and isinstance(query["args"][1], list):
