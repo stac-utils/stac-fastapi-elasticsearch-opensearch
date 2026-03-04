@@ -48,6 +48,7 @@ from .index import (
     create_index_templates_shared,
     delete_item_index_shared,
     filter_indexes_by_datetime,
+    filter_indexes_by_datetime_range,
     index_alias_by_collection_id,
     index_by_collection_id,
     indices,
@@ -84,6 +85,7 @@ __all__ = [
     "index_alias_by_collection_id",
     "index_by_collection_id",
     "filter_indexes_by_datetime",
+    "filter_indexes_by_datetime_range",
     "indices",
     # Query operations
     "apply_free_text_filter_shared",
