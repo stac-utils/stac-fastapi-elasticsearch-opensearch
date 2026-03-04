@@ -16,16 +16,12 @@ from stac_fastapi.extensions.core.transaction.request import (
     PatchRemove,
 )
 from stac_fastapi.sfeos_helpers.models.patch import ElasticPath, ESCommandSet
+from stac_fastapi.types.errors import ConflictError, NotFoundError
 
 try:
-    from opensearchpy.exceptions import (
-        ConnectionError,
-        ConnectionTimeout,
-        NotFoundError,
-    )
+    from opensearchpy.exceptions import ConnectionError, ConnectionTimeout
 except ImportError:
     from elasticsearch.exceptions import (
-        NotFoundError,
         ConnectionError,
         ConnectionTimeout,
     )
@@ -38,8 +34,6 @@ from tenacity import (
     stop_after_attempt,
     wait_fixed,
 )
-
-from stac_fastapi.types.errors import ConflictError
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +58,9 @@ DATETIME_RETRY_STRATEGY = AsyncRetrying(
     stop=stop_after_attempt(RETRY_MAX_ATTEMPTS_NOT_FOUND_ERROR),
     wait=wait_fixed(RETRY_WAIT_SECONDS),
     retry=retry_if_exception(
-        lambda e: isinstance(e, NotFoundError) and "index_not_found_exception" in str(e)
+        lambda e: isinstance(e, NotFoundError)
+        and "Collections '" in str(e)
+        and "' do not exist" in str(e)
     ),
     reraise=RETRY_RERAISE,
     before_sleep=before_sleep_log(logger, logging.WARNING),

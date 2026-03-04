@@ -819,8 +819,6 @@ class DatabaseLogic(BaseDatabaseLogic):
         Raises:
             NotFoundError: If the collections specified in `collection_ids` do not exist.
         """
-        ignore_unavailable = get_bool_env("IGNORE_UNAVAILABLE", True)
-        logger.debug(f"IGNORE_UNAVAILABLE was set to: {ignore_unavailable}")
         search_after = None
 
         if token:
@@ -912,8 +910,6 @@ class DatabaseLogic(BaseDatabaseLogic):
         ignore_unavailable: bool | None = True,
     ):
         """Return aggregations of STAC Items."""
-        ignore_unavailable = get_bool_env("IGNORE_UNAVAILABLE", True)
-        logger.debug(f"IGNORE_UNAVAILABLE was set to: {ignore_unavailable}")
         search_body: dict[str, Any] = {}
         query = search.query.to_dict() if search.query else None
         if query:

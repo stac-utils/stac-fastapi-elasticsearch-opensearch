@@ -18,7 +18,7 @@ from stac_fastapi.sfeos_helpers.database import (
     retry_on_connection_error,
     retry_on_datetime_not_found,
 )
-from stac_fastapi.types.errors import ConflictError
+from stac_fastapi.types.errors import ConflictError, NotFoundError
 
 from ..conftest import create_collection, create_item
 
@@ -1187,12 +1187,8 @@ async def test_datetime_search_retry_retries_success():
     async def search(*args, **kwargs):
         call_count["count"] += 1
         if call_count["count"] < 3:
-            raise exceptions.NotFoundError(
-                404,
-                "index_not_found_exception",
-                "no such index [test-index]",
-                "test-index",
-                "index_or_alias",
+            raise NotFoundError(
+                "Collections 'test-index' do not exist",
             )
         return "success"
 
@@ -1208,9 +1204,10 @@ async def test_datetime_search_retry_retries_success():
     result = await decorated_search(
         self=mock_self, datetime_search={"from": "2020-01-01"}
     )
+
     assert result == "success"
-    # The 3th request succeeds after 2 failures
     assert call_count["count"] == 3
+    assert mock_inserter.refresh_cache.call_count == 2
 
 
 @pytest.mark.asyncio
@@ -1262,12 +1259,8 @@ async def test_datetime_search_max_retries():
 
     async def search(*args, **kwargs):
         call_count["count"] += 1
-        raise exceptions.NotFoundError(
-            404,
-            "index_not_found_exception",
-            f'no such index [test-index-attempt-{call_count["count"]}]',
-            f'test-index-attempt-{call_count["count"]}',
-            "index_or_alias",
+        raise NotFoundError(
+            "Collections 'test-index' do not exist",
         )
 
     mock_search_func = AsyncMock(side_effect=search)
@@ -1279,7 +1272,7 @@ async def test_datetime_search_max_retries():
     mock_inserter.refresh_cache = AsyncMock()
     mock_self.async_index_inserter = mock_inserter
 
-    with pytest.raises(exceptions.NotFoundError):
+    with pytest.raises(NotFoundError):
         await decorated_search(
             self=mock_self, datetime_search={"start_datetime": "2025-01-01"}
         )
