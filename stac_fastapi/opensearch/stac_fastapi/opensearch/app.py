@@ -293,6 +293,16 @@ async def lifespan(app: FastAPI):
 app = api.app
 app.router.lifespan_context = lifespan
 app.root_path = os.getenv("STAC_FASTAPI_ROOT_PATH", "")
+
+try:
+    from stac_fastapi.sfeos_helpers.metrics import get_instrumentator
+    metrics = get_instrumentator()
+    metrics.instrument(app).expose(app, endpoint="/metrics")
+except ImportError:
+    logger.warning(
+        "prometheus-fastapi-instrumentator not installed; metrics endpoint disabled"
+    )
+
 # Add rate limit
 setup_rate_limit(app, rate_limit=os.getenv("STAC_FASTAPI_RATE_LIMIT"))
 
