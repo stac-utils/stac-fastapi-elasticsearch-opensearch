@@ -296,6 +296,7 @@ app.root_path = os.getenv("STAC_FASTAPI_ROOT_PATH", "")
 
 try:
     from stac_fastapi.sfeos_helpers.metrics import get_instrumentator
+
     metrics = get_instrumentator()
     metrics.instrument(app).expose(app, endpoint="/metrics")
 except ImportError:
