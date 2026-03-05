@@ -9,8 +9,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 - Added `filter_indexes_by_datetime_range` for selecting indexes using range intersection between query `[start_datetime, end_datetime]` and index temporal extent, used when `USE_DATETIME=false`.
+- Added datetime-only index filtering: when no collections are specified but a datetime range is provided, `DatetimeBasedIndexSelector` now filters indexes across all collections by the given time range instead of falling back to a wildcard.
 
 ### Changed
+- Improved `item_queue_worker.py` error handling: bulk errors are now logged immediately and failed item IDs are extracted from all bulk operation types.
 
 ### Updated
 
