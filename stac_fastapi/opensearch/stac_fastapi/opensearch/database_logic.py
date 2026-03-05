@@ -56,6 +56,7 @@ from stac_fastapi.sfeos_helpers.database.utils import (
     merge_to_operations,
     operations_to_script,
 )
+from stac_fastapi.sfeos_helpers.filter import build_cql2_filter, resolve_cql2_indexes
 from stac_fastapi.sfeos_helpers.mappings import (
     AGGREGATION_MAPPING,
     COLLECTIONS_INDEX,
@@ -758,9 +759,25 @@ class DatabaseLogic(BaseDatabaseLogic):
             Search: The modified Search object with the filter applied if a filter is provided,
                     otherwise the original Search object.
         """
+        # es_query = filter_module.to_es(await self.get_queryables_mapping(), _filter)
+
         if _filter is not None:
-            es_query = filter_module.to_es(await self.get_queryables_mapping(), _filter)
-            search = search.filter(es_query)
+            try:
+                # queryables_mapping = await self.get_queryables_mapping()
+                es_query, metadata = build_cql2_filter(
+                    await self.get_queryables_mapping(), _filter
+                )
+                search = search.filter(es_query)
+                search._cql2_metadata = metadata
+
+            except Exception as e:
+                logger.warning(
+                    "Failed to build CQL2 filter using AST tree approach, falling back to dictionary-based method."
+                    f"Error: {str(e)}. Filter: {_filter}"
+                )
+                queryables_mapping = await self.get_queryables_mapping()
+                es_query = filter_module.to_es(queryables_mapping, _filter)
+                search = search.filter(es_query)
 
         return search
 
@@ -814,9 +831,33 @@ class DatabaseLogic(BaseDatabaseLogic):
         search_body: dict[str, Any] = {}
         query = search.query.to_dict() if search.query else None
 
-        index_param = await self.async_index_selector.select_indexes(
-            collection_ids, datetime_search
-        )
+        cql2_metadata = getattr(search, "_cql2_metadata", None)
+
+        # Special case for cql2-json index selection
+        if cql2_metadata:
+            index_param, collection_ids = await resolve_cql2_indexes(
+                cql2_metadata,
+                self.async_index_selector,
+                self.apply_datetime_filter,
+                search,
+            )
+            logger.debug(
+                f"Resolve indexes from CQL2 metadata : {index_param} for collections {collection_ids} and cql2 metadata {cql2_metadata}"
+            )
+            print(
+                f"Resolve indexes from CQL2 metadata: {index_param} for collections {collection_ids} and cql2 metadata {cql2_metadata}"
+            )
+        else:
+            index_param = await self.async_index_selector.select_indexes(
+                collection_ids, datetime_search
+            )
+            logger.debug(
+                f"Selected indexes: {index_param} for collections {collection_ids} and datetime search {datetime_search}"
+            )
+            print(
+                f"Selected indexes: {index_param} for collections {collection_ids} and datetime search {datetime_search}"
+            )
+
         if len(index_param) > ES_MAX_URL_LENGTH - 300:
             index_param = ITEM_INDICES
             query = add_collections_to_body(collection_ids, query)
