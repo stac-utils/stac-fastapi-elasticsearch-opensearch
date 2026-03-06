@@ -1,13 +1,20 @@
 """Async index selectors with datetime-based filtering."""
-from typing import Any
+import logging
+from typing import Any, cast
 
 from stac_fastapi.core.utilities import get_bool_env
-from stac_fastapi.sfeos_helpers.database import filter_indexes_by_datetime, return_date
+from stac_fastapi.sfeos_helpers.database import (
+    filter_indexes_by_datetime,
+    filter_indexes_by_datetime_range,
+    return_date,
+)
 from stac_fastapi.sfeos_helpers.mappings import ITEM_INDICES
 
 from ...database import indices
 from .base import BaseIndexSelector
 from .cache_manager import IndexAliasLoader, IndexCacheManager
+
+logger = logging.getLogger(__name__)
 
 
 class DatetimeBasedIndexSelector(BaseIndexSelector):
@@ -104,22 +111,30 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
                 collection_indexes = await self.get_collection_indexes(
                     collection_id, use_cache=not for_insertion
                 )
-                filtered_indexes = filter_indexes_by_datetime(
-                    collection_indexes, datetime_filters, self.use_datetime
-                )
+                if for_insertion or self.use_datetime:
+                    filtered_indexes = filter_indexes_by_datetime(
+                        collection_indexes, datetime_filters, self.use_datetime
+                    )
+                else:
+                    filtered_indexes = filter_indexes_by_datetime_range(
+                        collection_indexes, datetime_filters
+                    )
                 selected_indexes.extend(filtered_indexes)
 
-            return ",".join(selected_indexes) if selected_indexes else ""
+            result = ",".join(selected_indexes) if selected_indexes else ""
+            logger.info(f"Selected indexes: {result}")
+            return result
 
+        logger.info(f"Selected indexes: {ITEM_INDICES}")
         return ITEM_INDICES
 
     def parse_datetime_filters(
-        self, datetime: str, for_insertion: bool
-    ) -> dict[str, dict[str, str | None]]:
+        self, datetime: str | dict, for_insertion: bool
+    ) -> dict[str, dict[str, Any]]:
         """Parse datetime string into structured filter criteria.
 
         Args:
-            datetime: Datetime search criteria string
+            datetime: Datetime search criteria string or dict with gte/lte keys.
             for_insertion (bool): If True, generates filters for inserting items.
                 If False, generates filters for searching items. Defaults to False.
 
@@ -141,18 +156,19 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
                 "end_datetime": {"gte": None, "lte": None},
             }
 
+        dt_dict = cast(dict, datetime)
         return {
             "datetime": {
                 "gte": parsed_datetime.get("gte") if self.use_datetime else None,
                 "lte": parsed_datetime.get("lte") if self.use_datetime else None,
             },
             "start_datetime": {
-                "gte": parsed_datetime.get("gte") if not self.use_datetime else None,
+                "gte": dt_dict.get("gte") if not self.use_datetime else None,
                 "lte": None,
             },
             "end_datetime": {
                 "gte": None,
-                "lte": parsed_datetime.get("lte") if not self.use_datetime else None,
+                "lte": dt_dict.get("lte") if not self.use_datetime else None,
             },
         }
 
