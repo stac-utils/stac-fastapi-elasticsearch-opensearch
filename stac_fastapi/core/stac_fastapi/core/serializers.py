@@ -180,6 +180,9 @@ class CollectionSerializer(Serializer):
         # Avoid modifying the input dict in-place ... doing so breaks some tests
         collection = deepcopy(collection)
 
+        # Extract parent_ids before removing (needed for dynamic parent link injection)
+        parent_ids = collection.get("parent_ids", [])
+
         # Remove internal fields (not part of STAC spec)
         collection.pop("bbox_shape", None)
         collection.pop("parent_ids", None)
@@ -209,6 +212,41 @@ class CollectionSerializer(Serializer):
         original_links = collection.get("links")
         if original_links:
             collection_links += resolve_links(original_links, str(request.base_url))
+
+        # DYNAMIC PARENT LINK INJECTION (Poly-hierarchy support)
+        # If the Catalogs Extension is enabled and this collection has parent catalogs,
+        # inject rel="parent" links for each parent (in addition to the structural parent)
+        base_url = str(request.base_url)
+        catalogs_enabled = "CatalogsExtension" in extensions
+
+        if catalogs_enabled and parent_ids:
+            # Deduplicate parent_ids to prevent duplicate links
+            unique_parent_ids = list(set(parent_ids))
+
+            # Poly-hierarchy: Add a parent link for each parent catalog
+            for pid in unique_parent_ids:
+                # If the parent is the root catalog ID, point to base_url
+                # Otherwise, point to the canonical /catalogs/{pid} endpoint
+                parent_href = (
+                    base_url
+                    if pid in ("stac-fastapi", "root")
+                    else f"{base_url}catalogs/{pid}"
+                )
+
+                # Check if this parent link already exists to avoid duplicates
+                parent_link_exists = any(
+                    link.get("rel") == "parent" and link.get("href") == parent_href
+                    for link in collection_links
+                )
+
+                if not parent_link_exists:
+                    collection_links.append(
+                        {
+                            "rel": "parent",
+                            "type": "application/json",
+                            "href": parent_href,
+                        }
+                    )
 
         collection["links"] = collection_links
 

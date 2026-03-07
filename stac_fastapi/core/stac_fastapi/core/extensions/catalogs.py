@@ -375,12 +375,20 @@ class CatalogsExtension(ApiExtension):
                 detail=f"Failed to update catalog: {str(e)}",
             )
 
-    async def get_catalog(self, catalog_id: str, request: Request) -> Catalog:
+    async def get_catalog(
+        self,
+        catalog_id: str,
+        request: Request,
+        limit: int = Query(
+            100, ge=1, le=1000, description="Page size for child link pagination"
+        ),
+    ) -> Catalog:
         """Get a specific catalog by ID.
 
         Args:
             catalog_id: The ID of the catalog to retrieve.
             request: Request object.
+            limit: Page size for child link pagination (default: 100, max: 1000).
 
         Returns:
             The requested catalog.
@@ -392,15 +400,7 @@ class CatalogsExtension(ApiExtension):
             # Convert to STAC format
             catalog = self.client.catalog_serializer.db_to_stac(db_catalog, request)
 
-            # DYNAMIC INJECTION: Ensure the 'children' link exists
-            # This link points to the /children endpoint which dynamically lists all children
             base_url = str(request.base_url)
-            children_link = {
-                "rel": "children",
-                "type": "application/json",
-                "href": f"{base_url}catalogs/{catalog_id}/children",
-                "title": "Child catalogs and collections",
-            }
 
             # Convert to dict if needed to manipulate links
             if isinstance(catalog, dict):
@@ -416,7 +416,97 @@ class CatalogsExtension(ApiExtension):
             if "links" not in catalog_dict:
                 catalog_dict["links"] = []
 
-            # Add children link if it doesn't already exist
+            # 1. DYNAMIC PARENT LINKS (Poly-hierarchy support)
+            # Add parent links for all parent catalogs
+            root_id = self.settings.get("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi")
+            parent_ids = list(set(db_catalog.get("parent_ids", [])))
+            if not parent_ids:
+                # Top-level sub-catalog with no parents, point to root
+                catalog_dict["links"].append(
+                    {
+                        "rel": "parent",
+                        "type": "application/json",
+                        "href": base_url,
+                    }
+                )
+            else:
+                # Poly-hierarchy: Add a parent link for EVERY parent catalog (deduplicated)
+                for pid in parent_ids:
+                    # Special case: if parent is the root catalog ID, point to base_url
+                    parent_href = (
+                        base_url if pid == root_id else f"{base_url}catalogs/{pid}"
+                    )
+                    catalog_dict["links"].append(
+                        {
+                            "rel": "parent",
+                            "type": "application/json",
+                            "href": parent_href,
+                        }
+                    )
+
+            # 2. DYNAMIC CHILD LINKS (Downward traversal with pagination)
+            # Query for all children (catalogs and collections) that have this catalog as a parent
+            try:
+                token = None
+                while True:
+                    (
+                        children_data,
+                        _,
+                        next_token,
+                    ) = await search_children_with_pagination_shared(
+                        self.client.database.client,
+                        catalog_id,
+                        limit=limit,
+                        token=token,
+                        resource_type=None,
+                    )
+
+                    for child in children_data:
+                        child_type = child.get("type", "Collection")
+                        child_id = child.get("id")
+
+                        # Skip children with missing ID
+                        if not child_id:
+                            logger.warning(
+                                f"Child document missing id field in catalog {catalog_id}: {child}"
+                            )
+                            continue
+
+                        child_title = child.get("title", child_id)
+
+                        # Build appropriate href based on child type
+                        if child_type == "Catalog":
+                            child_href = f"{base_url}catalogs/{child_id}"
+                        else:
+                            # Collection
+                            child_href = f"{base_url}catalogs/{catalog_id}/collections/{child_id}"
+
+                        catalog_dict["links"].append(
+                            {
+                                "rel": "child",
+                                "type": "application/json",
+                                "href": child_href,
+                                "title": child_title,
+                            }
+                        )
+
+                    # Continue pagination if there are more results
+                    if not next_token:
+                        break
+                    token = next_token
+            except Exception as e:
+                logger.warning(
+                    f"Could not fetch children for catalog {catalog_id}: {e}"
+                )
+
+            # 3. CHILDREN ENDPOINT LINK
+            # Keep the /children endpoint link for convenience
+            children_link = {
+                "rel": "children",
+                "type": "application/json",
+                "href": f"{base_url}catalogs/{catalog_id}/children",
+                "title": "Child catalogs and collections",
+            }
             if not any(
                 link.get("rel") == "children" for link in catalog_dict.get("links", [])
             ):
@@ -583,7 +673,12 @@ class CatalogsExtension(ApiExtension):
                 collections=collections,
                 links=[
                     {"rel": "root", "type": "application/json", "href": base_url},
-                    {"rel": "parent", "type": "application/json", "href": base_url},
+                    # Scoped breadcrumb: Lock parent link to the specific catalog for contextual navigation
+                    {
+                        "rel": "parent",
+                        "type": "application/json",
+                        "href": f"{base_url}catalogs/{catalog_id}",
+                    },
                     {
                         "rel": "self",
                         "type": "application/json",
@@ -1063,7 +1158,7 @@ class CatalogsExtension(ApiExtension):
 
         # 2. Search for children with pagination
         children_data, total, next_token = await search_children_with_pagination_shared(
-            self.client.database.client, catalog_id, limit, token, type
+            self.client.database.client, catalog_id, limit, token, resource_type=type
         )
 
         # 3. Serialize children based on type
