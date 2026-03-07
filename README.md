@@ -28,9 +28,9 @@ The following organizations have contributed time and/or funding to support the 
 
 ## Latest News
 
-- **01/11/2026:** Feature: **Hierarchical Catalog Support**. Sub-catalogs are now fully supported! Catalogs can now contain other catalogs for unlimited nesting levels. This enables complex organizational hierarchies with multi-parent support for both catalogs and collections.
-- **01/09/2026:** New Feature: **Custom Index Mappings**. You can now customize Elasticsearch/OpenSearch index mappings directly via environment variables without changing source code. Use `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` to merge custom field definitions (e.g., for STAC extensions like SAR or Cube) or `STAC_FASTAPI_ES_MAPPINGS_FILE` to load mappings from a JSON file. See [Custom Index Mappings](#custom-index-mappings) for details.
-- **12/09/2025:** Feature Merge: **Multi-Tenant Catalogs**. The [`STAC API - Multi-Tenant Catalogs Endpoint Extension`](https://github.com/stac-api-extensions/multi-tenant-catalogs) is now in main! This enables a registry of catalogs and supports **poly-hierarchy** (collections belonging to multiple catalogs simultaneously). Enable it via `ENABLE_CATALOGS_EXTENSION`. _Coming next: Support for nested sub-catalogs._
+- **01/11/2026: Hierarchical Catalog Support.** Sub-catalogs are now fully supported! Catalogs can now contain other catalogs for unlimited nesting levels. This enables complex organizational hierarchies with multi-parent support for both catalogs and collections.
+- **01/09/2026: Custom Index Mappings.** You can now customize Elasticsearch/OpenSearch index mappings directly via environment variables without changing source code. Use `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` to merge custom field definitions (e.g., for STAC extensions like SAR or Cube) or `STAC_FASTAPI_ES_MAPPINGS_FILE` to load mappings from a JSON file. See [Custom Index Mappings](#custom-index-mappings) for details.
+- **12/09/2025: Multi-Tenant Catalogs.** The [`STAC API - Multi-Tenant Catalogs Endpoint Extension`](https://github.com/stac-api-extensions/multi-tenant-catalogs) is now in main! This enables a registry of catalogs and supports **poly-hierarchy** (collections belonging to multiple catalogs simultaneously). Enable it via `ENABLE_CATALOGS_ROUTE`. _Coming next: Support for nested sub-catalogs._
 - **11/07/2025:** 🌍 The SFEOS STAC Viewer is now available at: https://healy-hyperspatial.github.io/sfeos-web. Use this site to examine your data and test your STAC API!
 - **10/24/2025:** Added `previous_token` pagination using Redis for efficient navigation. This feature allows users to navigate backwards through large result sets by storing pagination state in Redis. To use this feature, ensure Redis is configured (see [Redis for navigation](#redis-for-navigation)) and set `REDIS_ENABLE=true` in your environment.
 - **10/23/2025:** The `EXCLUDED_FROM_QUERYABLES` environment variable was added to exclude fields from the `queryables` endpoint. See [docs](#excluding-fields-from-queryables).
@@ -254,6 +254,16 @@ This implementation follows the [Multi-Tenant Virtual Catalogs Endpoint](https:/
 - **STAC API Compliance**: Follows STAC specification for catalog objects and linking
 - **Flexible Querying**: Support for standard STAC API query parameters when browsing collections within catalogs
 - **Safety-First Data Protection**: Collection and catalog data is never deleted through the catalogs route; only containers can be destroyed
+
+### DAG Specification & Dynamic Link Generation
+
+SFEOS implements the [STAC API - Multi-Tenant Catalogs Endpoint Extension](https://github.com/stac-api-extensions/multi-tenant-catalogs) (v1.0.0-beta.3) with full support for Directed Acyclic Graph (DAG) structures:
+
+- **Dynamic Parent Links**: All `rel="parent"` links are generated at runtime based on the `parent_ids` field, enabling true poly-hierarchy where catalogs can have multiple parents. Each parent is represented as a separate link, allowing clients to navigate up the graph through any parent path.
+- **Dynamic Child Links**: All `rel="child"` links are generated dynamically by querying the database for actual children (catalogs and collections), preventing stale links and enabling STAC Browser folder navigation. Child links are never persisted statically.
+- **Contextual Breadcrumbs**: Scoped endpoints (like `/catalogs/{id}/collections`) lock breadcrumb navigation to the specific catalog context via the `rel="parent"` link, ensuring proper UI traversal in STAC Browser and preventing users from being unexpectedly redirected to the root.
+- **No Static Links**: Parent and child relationships are never persisted as static links in the database. All links are computed on-the-fly based on the `parent_ids` array, ensuring data consistency and preventing orphaned references.
+- **STAC Browser Compatible**: The dynamic link generation fully supports STAC Browser's navigation model, enabling seamless folder-based exploration of complex catalog hierarchies.
 
 ### Safety Architecture
 
