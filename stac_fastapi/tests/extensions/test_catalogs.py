@@ -2434,3 +2434,161 @@ async def test_get_catalog_mixed_child_types_pagination(
     assert (
         collection_child_count >= 25
     ), f"Should have at least 25 collection children in links, got {collection_child_count}"
+
+
+@pytest.mark.asyncio
+async def test_collection_serializer_dynamic_parent_links(
+    catalogs_app_client, load_test_data
+):
+    """Test that CollectionSerializer injects dynamic parent links via /collections endpoint.
+
+    This tests that collections accessed via the global /collections/{id} endpoint
+    show their poly-hierarchy parent links when CatalogsExtension is enabled.
+    """
+    # Create a parent catalog
+    parent_catalog = load_test_data("test_catalog.json")
+    parent_id = f"parent-catalog-{uuid.uuid4()}"
+    parent_catalog["id"] = parent_id
+
+    parent_resp = await catalogs_app_client.post("/catalogs", json=parent_catalog)
+    assert parent_resp.status_code == 201
+
+    # Create a collection linked to the parent catalog
+    test_collection = load_test_data("test_collection.json")
+    collection_id = f"test-collection-{uuid.uuid4()}"
+    test_collection["id"] = collection_id
+
+    coll_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_id}/collections", json=test_collection
+    )
+    assert coll_resp.status_code == 201
+
+    # Get the collection via the global /collections endpoint
+    resp = await catalogs_app_client.get(f"/collections/{collection_id}")
+    assert resp.status_code == 200
+
+    collection_data = resp.json()
+    links = collection_data.get("links", [])
+
+    # Find parent links
+    parent_links = [link for link in links if link.get("rel") == "parent"]
+
+    # Should have at least one parent link (the injected catalog parent)
+    assert (
+        len(parent_links) > 0
+    ), "Collection should have parent links when accessed via /collections endpoint"
+
+    # Verify the parent link points to the correct catalog
+    parent_hrefs = [link["href"] for link in parent_links]
+    assert any(
+        parent_id in href for href in parent_hrefs
+    ), f"Parent links should include catalog {parent_id}"
+
+
+@pytest.mark.asyncio
+async def test_collection_serializer_deduplicates_parent_links(
+    catalogs_app_client, load_test_data
+):
+    """Test that CollectionSerializer deduplicates parent links if parent_ids has duplicates.
+
+    This tests that even if the database has duplicate parent IDs, only unique parent links
+    are returned when accessed via /collections endpoint.
+    """
+    # Create a parent catalog
+    parent_catalog = load_test_data("test_catalog.json")
+    parent_id = f"parent-catalog-{uuid.uuid4()}"
+    parent_catalog["id"] = parent_id
+
+    parent_resp = await catalogs_app_client.post("/catalogs", json=parent_catalog)
+    assert parent_resp.status_code == 201
+
+    # Create a collection linked to the parent catalog
+    test_collection = load_test_data("test_collection.json")
+    collection_id = f"test-collection-{uuid.uuid4()}"
+    test_collection["id"] = collection_id
+
+    coll_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_id}/collections", json=test_collection
+    )
+    assert coll_resp.status_code == 201
+
+    # Get the collection via the global /collections endpoint
+    resp = await catalogs_app_client.get(f"/collections/{collection_id}")
+    assert resp.status_code == 200
+
+    collection_data = resp.json()
+    links = collection_data.get("links", [])
+
+    # Find parent links
+    parent_links = [link for link in links if link.get("rel") == "parent"]
+    parent_hrefs = [link["href"] for link in parent_links]
+
+    # Verify no duplicate parent links
+    assert len(parent_hrefs) == len(
+        set(parent_hrefs)
+    ), f"Parent links should be unique, got duplicates: {parent_hrefs}"
+
+
+@pytest.mark.asyncio
+async def test_collection_serializer_poly_hierarchy_parent_links(
+    catalogs_app_client, load_test_data
+):
+    """Test that CollectionSerializer handles poly-hierarchy (multiple parents) correctly.
+
+    This tests that a collection linked to multiple parent catalogs shows all parent links.
+    """
+    # Create two parent catalogs
+    parent_catalog_1 = load_test_data("test_catalog.json")
+    parent_id_1 = f"parent-catalog-1-{uuid.uuid4()}"
+    parent_catalog_1["id"] = parent_id_1
+
+    parent_resp_1 = await catalogs_app_client.post("/catalogs", json=parent_catalog_1)
+    assert parent_resp_1.status_code == 201
+
+    parent_catalog_2 = load_test_data("test_catalog.json")
+    parent_id_2 = f"parent-catalog-2-{uuid.uuid4()}"
+    parent_catalog_2["id"] = parent_id_2
+
+    parent_resp_2 = await catalogs_app_client.post("/catalogs", json=parent_catalog_2)
+    assert parent_resp_2.status_code == 201
+
+    # Create a collection linked to the first parent
+    test_collection = load_test_data("test_collection.json")
+    collection_id = f"test-collection-{uuid.uuid4()}"
+    test_collection["id"] = collection_id
+
+    coll_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_id_1}/collections", json=test_collection
+    )
+    assert coll_resp.status_code == 201
+
+    # Link the collection to the second parent as well
+    # POST the same collection to the second catalog to add it as a parent
+    link_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_id_2}/collections", json=test_collection
+    )
+    assert link_resp.status_code == 201
+
+    # Get the collection via the global /collections endpoint
+    resp = await catalogs_app_client.get(f"/collections/{collection_id}")
+    assert resp.status_code == 200
+
+    collection_data = resp.json()
+    links = collection_data.get("links", [])
+
+    # Find parent links
+    parent_links = [link for link in links if link.get("rel") == "parent"]
+    parent_hrefs = [link["href"] for link in parent_links]
+
+    # Should have links to both parent catalogs
+    assert any(
+        parent_id_1 in href for href in parent_hrefs
+    ), f"Parent links should include first catalog {parent_id_1}"
+    assert any(
+        parent_id_2 in href for href in parent_hrefs
+    ), f"Parent links should include second catalog {parent_id_2}"
+
+    # Verify no duplicate parent links
+    assert len(parent_hrefs) == len(
+        set(parent_hrefs)
+    ), f"Parent links should be unique, got duplicates: {parent_hrefs}"
