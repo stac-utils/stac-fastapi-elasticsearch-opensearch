@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 - Added `filter_indexes_by_datetime_range` for selecting indexes using range intersection between query `[start_datetime, end_datetime]` and index temporal extent, used when `USE_DATETIME=false`.
-- Implemented DAG (Directed Acyclic Graph) specification for multi-tenant catalogs endpoint with dynamic link generation. Catalogs now support poly-hierarchy (multiple parents), contextual breadcrumb navigation for scoped endpoints, and dynamic child link traversal. All parent and child relationships are generated at runtime based on `parent_ids` field.
+- Implemented DAG (Directed Acyclic Graph) specification for multi-tenant catalogs endpoint with dynamic link generation. Catalogs now support poly-hierarchy (multiple parents), contextual breadcrumb navigation for scoped endpoints, and dynamic child link traversal. All parent and child relationships are generated at runtime based on `parent_ids` field. [#624](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/624)
 
 ### Changed
 
