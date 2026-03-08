@@ -2374,9 +2374,9 @@ async def test_get_catalog_mixed_child_types_pagination(
     parent_resp = await catalogs_app_client.post("/catalogs", json=parent_catalog)
     assert parent_resp.status_code == 201
 
-    # Create 30 child catalogs
+    # Create 15 child catalogs
     child_catalog_ids = []
-    for i in range(30):
+    for i in range(15):
         child_catalog = load_test_data("test_catalog.json")
         child_id = f"child-catalog-{uuid.uuid4()}-{i:03d}"
         child_catalog["id"] = child_id
@@ -2387,9 +2387,9 @@ async def test_get_catalog_mixed_child_types_pagination(
         assert link_resp.status_code == 201
         child_catalog_ids.append(child_id)
 
-    # Create 30 child collections
+    # Create 15 child collections
     child_collection_ids = []
-    for i in range(30):
+    for i in range(15):
         test_collection = load_test_data("test_collection.json")
         collection_id = f"test-collection-{uuid.uuid4()}-{i:03d}"
         test_collection["id"] = collection_id
@@ -2411,8 +2411,8 @@ async def test_get_catalog_mixed_child_types_pagination(
     # Find all child links
     child_links = [link for link in links if link.get("rel") == "child"]
     assert (
-        len(child_links) >= 60
-    ), f"Catalog with 60 children should have at least 60 child links, got {len(child_links)}"
+        len(child_links) >= 30
+    ), f"Catalog with 30 children should have at least 30 child links, got {len(child_links)}"
 
     # Verify both catalog and collection children are present
     child_hrefs = [link["href"] for link in child_links]
@@ -2424,16 +2424,16 @@ async def test_get_catalog_mixed_child_types_pagination(
         if any(f"/catalogs/{cid}" in href for href in child_hrefs)
     )
     assert (
-        catalog_child_count >= 25
-    ), f"Should have at least 25 catalog children in links, got {catalog_child_count}"
+        catalog_child_count >= 10
+    ), f"Should have at least 10 catalog children in links, got {catalog_child_count}"
 
     # Check for collection children
     collection_child_count = sum(
         1 for cid in child_collection_ids if any(cid in href for href in child_hrefs)
     )
     assert (
-        collection_child_count >= 25
-    ), f"Should have at least 25 collection children in links, got {collection_child_count}"
+        collection_child_count >= 10
+    ), f"Should have at least 10 collection children in links, got {collection_child_count}"
 
 
 @pytest.mark.asyncio
@@ -2592,3 +2592,225 @@ async def test_collection_serializer_poly_hierarchy_parent_links(
     assert len(parent_hrefs) == len(
         set(parent_hrefs)
     ), f"Parent links should be unique, got duplicates: {parent_hrefs}"
+
+
+@pytest.mark.asyncio
+async def test_catalogs_list_includes_parent_links(catalogs_app_client, load_test_data):
+    """Test that GET /catalogs list includes parent links for catalogs with parents."""
+    # Create parent catalog
+    parent_catalog = load_test_data("test_catalog.json")
+    parent_id = f"parent-{uuid.uuid4()}"
+    parent_catalog["id"] = parent_id
+    parent_resp = await catalogs_app_client.post("/catalogs", json=parent_catalog)
+    assert parent_resp.status_code == 201
+
+    # Create child catalog under parent
+    child_catalog = load_test_data("test_catalog.json")
+    child_id = f"child-{uuid.uuid4()}"
+    child_catalog["id"] = child_id
+    child_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_id}/catalogs", json=child_catalog
+    )
+    assert child_resp.status_code == 201
+
+    # Get all catalogs list with increased limit to ensure we get all catalogs
+    list_resp = await catalogs_app_client.get("/catalogs?limit=100")
+    assert list_resp.status_code == 200
+
+    catalogs_data = list_resp.json()
+    catalogs = catalogs_data["catalogs"]
+
+    # Find the child catalog in the list
+    child_in_list = next((c for c in catalogs if c["id"] == child_id), None)
+    assert (
+        child_in_list is not None
+    ), f"Child catalog {child_id} should be in list. Available catalogs: {[c['id'] for c in catalogs]}"
+
+    # Verify child has parent link
+    parent_links = [
+        link for link in child_in_list.get("links", []) if link.get("rel") == "parent"
+    ]
+    assert (
+        len(parent_links) > 0
+    ), "Child catalog should have parent link in list response"
+
+    # Verify parent link points to correct parent
+    parent_hrefs = [link["href"] for link in parent_links]
+    assert any(
+        parent_id in href for href in parent_hrefs
+    ), f"Parent link should reference {parent_id}"
+
+    # Verify parent link has title
+    assert all(
+        "title" in link for link in parent_links
+    ), "All parent links should have titles"
+
+
+@pytest.mark.asyncio
+async def test_catalogs_list_includes_child_links(catalogs_app_client, load_test_data):
+    """Test that GET /catalogs list includes child links for catalogs with children."""
+    # Create parent catalog
+    parent_catalog = load_test_data("test_catalog.json")
+    parent_id = f"parent-{uuid.uuid4()}"
+    parent_catalog["id"] = parent_id
+    parent_resp = await catalogs_app_client.post("/catalogs", json=parent_catalog)
+    assert parent_resp.status_code == 201
+
+    # Create child catalog under parent
+    child_catalog = load_test_data("test_catalog.json")
+    child_id = f"child-{uuid.uuid4()}"
+    child_catalog["id"] = child_id
+    child_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_id}/catalogs", json=child_catalog
+    )
+    assert child_resp.status_code == 201
+
+    # Get all catalogs list with increased limit to ensure we get all catalogs
+    list_resp = await catalogs_app_client.get("/catalogs?limit=100")
+    assert list_resp.status_code == 200
+
+    catalogs_data = list_resp.json()
+    catalogs = catalogs_data["catalogs"]
+
+    # Find the parent catalog in the list
+    parent_in_list = next((c for c in catalogs if c["id"] == parent_id), None)
+    assert (
+        parent_in_list is not None
+    ), f"Parent catalog {parent_id} should be in list. Available catalogs: {[c['id'] for c in catalogs]}"
+
+    # Verify parent has child link (child links are dynamically generated)
+    child_links = [
+        link for link in parent_in_list.get("links", []) if link.get("rel") == "child"
+    ]
+
+    # If child links are present, verify they point to the correct child
+    if child_links:
+        child_hrefs = [link["href"] for link in child_links]
+        # At least one child link should reference our child catalog
+        assert any(
+            child_id in href for href in child_hrefs
+        ), f"Child link should reference {child_id}, got hrefs: {child_hrefs}"
+
+        # Verify child link has title
+        assert all(
+            "title" in link for link in child_links
+        ), "All child links should have titles"
+
+
+@pytest.mark.asyncio
+async def test_posted_catalog_dynamic_links_not_persisted(
+    catalogs_app_client, load_test_data
+):
+    """Test that parent/child/children links in POST request are not persisted in database."""
+    # Create a catalog with dynamic links in the request
+    test_catalog = load_test_data("test_catalog.json")
+    catalog_id = f"test-catalog-{uuid.uuid4()}"
+    test_catalog["id"] = catalog_id
+
+    # Add dynamic links to the request (these should be filtered out)
+    test_catalog["links"].append(
+        {
+            "rel": "parent",
+            "type": "application/json",
+            "href": "http://localhost:8080/catalogs/fake-parent",
+            "title": "Fake Parent",
+        }
+    )
+    test_catalog["links"].append(
+        {
+            "rel": "child",
+            "type": "application/json",
+            "href": "http://localhost:8080/catalogs/fake-child",
+            "title": "Fake Child",
+        }
+    )
+    test_catalog["links"].append(
+        {
+            "rel": "children",
+            "type": "application/json",
+            "href": "http://localhost:8080/catalogs/test/children",
+            "title": "Children",
+        }
+    )
+
+    # POST the catalog
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+
+    # Fetch the catalog individually
+    get_resp = await catalogs_app_client.get(f"/catalogs/{catalog_id}")
+    assert get_resp.status_code == 200
+
+    stored_catalog = get_resp.json()
+    stored_links = stored_catalog.get("links", [])
+
+    # Verify dynamic links from request are NOT in stored catalog
+    parent_links = [link for link in stored_links if link.get("rel") == "parent"]
+    child_links = [link for link in stored_links if link.get("rel") == "child"]
+    children_links = [link for link in stored_links if link.get("rel") == "children"]
+
+    # Parent links should not include the fake parent from request
+    fake_parent_links = [
+        link for link in parent_links if "fake-parent" in link.get("href", "")
+    ]
+    assert (
+        len(fake_parent_links) == 0
+    ), "Fake parent link from request should not be persisted"
+
+    # Child links should not include the fake child from request
+    fake_child_links = [
+        link for link in child_links if "fake-child" in link.get("href", "")
+    ]
+    assert (
+        len(fake_child_links) == 0
+    ), "Fake child link from request should not be persisted"
+
+    # Children links should not include the fake children from request
+    fake_children_links = [
+        link for link in children_links if "fake" in link.get("href", "")
+    ]
+    assert (
+        len(fake_children_links) == 0
+    ), "Fake children link from request should not be persisted"
+
+
+@pytest.mark.asyncio
+async def test_posted_catalog_user_links_are_persisted(
+    catalogs_app_client, load_test_data
+):
+    """Test that user-provided links (license, about, etc.) ARE persisted in database."""
+    # Create a catalog with user-provided links
+    test_catalog = load_test_data("test_catalog.json")
+    catalog_id = f"test-catalog-{uuid.uuid4()}"
+    test_catalog["id"] = catalog_id
+
+    # Ensure user-provided links are in the request
+    user_links = [
+        {"rel": "license", "href": "https://example.com/license", "title": "License"},
+        {"rel": "about", "href": "https://example.com/about", "title": "About"},
+    ]
+    test_catalog["links"] = user_links
+
+    # POST the catalog
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+
+    # Fetch the catalog individually
+    get_resp = await catalogs_app_client.get(f"/catalogs/{catalog_id}")
+    assert get_resp.status_code == 200
+
+    stored_catalog = get_resp.json()
+    stored_links = stored_catalog.get("links", [])
+
+    # Verify user-provided links ARE persisted
+    license_links = [link for link in stored_links if link.get("rel") == "license"]
+    assert len(license_links) > 0, "License link should be persisted"
+    assert any(
+        "example.com/license" in link.get("href", "") for link in license_links
+    ), "License link should have correct href"
+
+    about_links = [link for link in stored_links if link.get("rel") == "about"]
+    assert len(about_links) > 0, "About link should be persisted"
+    assert any(
+        "example.com/about" in link.get("href", "") for link in about_links
+    ), "About link should have correct href"

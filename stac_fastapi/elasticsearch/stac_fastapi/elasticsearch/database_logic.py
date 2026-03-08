@@ -1902,6 +1902,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             "sort": formatted_sort,
             "size": limit,
             "query": {"term": {"type": "Catalog"}},
+            "_source": True,  # Ensure all fields including parent_ids are returned
         }
 
         # Handle search_after token
@@ -1909,8 +1910,16 @@ class DatabaseLogic(BaseDatabaseLogic):
         if token:
             try:
                 search_after = token.split("|")
+                # Validate token format: must have correct number of values and be non-empty
                 if len(search_after) != len(formatted_sort):
                     search_after = None
+                else:
+                    # Validate each value can be converted to appropriate type
+                    # For string fields (like 'id'), values should be non-empty strings
+                    for val in search_after:
+                        if not val or not isinstance(val, str):
+                            search_after = None
+                            break
             except Exception:
                 search_after = None
 
