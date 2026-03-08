@@ -1,5 +1,6 @@
 """Catalogs extension."""
 
+import asyncio
 import logging
 from typing import Any, Type
 from urllib.parse import parse_qs, urlencode, urlparse
@@ -274,7 +275,56 @@ class CatalogsExtension(ApiExtension):
 
         # Convert database catalogs to STAC format
         catalog_stac_objects = []
+
+        # --- 1. PRE-FETCH PARENT TITLES CONCURRENTLY ---
+        # Get all unique parent IDs across all catalogs on this page
+        unique_parent_ids = list(
+            set(pid for c in catalogs for pid in c.get("parent_ids", []) if pid)
+        )
+        parent_id_to_title = {}
+
+        if unique_parent_ids:
+
+            async def fetch_title(pid):
+                try:
+                    parent_catalog = await self.client.database.find_catalog(pid)
+                    return pid, parent_catalog.get("title", pid)
+                except Exception:
+                    return pid, pid  # Fallback to ID on error
+
+            # Fire all parent lookups at the exact same time
+            title_results = await asyncio.gather(
+                *(fetch_title(pid) for pid in unique_parent_ids)
+            )
+            parent_id_to_title = dict(title_results)
+
+        # --- 2. PRE-FETCH CHILDREN CONCURRENTLY ---
+        async def fetch_children(catalog_id):
+            try:
+                children_data, _, _ = await search_children_with_pagination_shared(
+                    self.client.database.client,
+                    catalog_id,
+                    limit=100,
+                    token=None,
+                    resource_type=None,
+                )
+                return catalog_id, children_data
+            except Exception as e:
+                logger.warning(
+                    f"Could not fetch children for catalog {catalog_id}: {e}"
+                )
+                return catalog_id, []
+
+        # Fire all child lookups at the exact same time
+        children_results = await asyncio.gather(
+            *(fetch_children(c.get("id")) for c in catalogs)
+        )
+        catalog_children_map = dict(children_results)
+
+        # --- 3. FORMATTING LOOP (Now 100% In-Memory & Synchronous) ---
         for catalog in catalogs:
+            catalog_id = catalog.get("id")
+
             # Ensure parent_ids exists (for backward compatibility with catalogs created before this field was added)
             if "parent_ids" not in catalog:
                 catalog["parent_ids"] = []
@@ -302,86 +352,50 @@ class CatalogsExtension(ApiExtension):
                     else dict(catalog_stac)
                 )
 
-            # Add titles to parent links (use parent_ids from catalog data)
-            try:
-                parent_ids = catalog.get("parent_ids", [])
-                parent_id_to_title = {}
-
-                # Batch fetch parent catalogs to avoid N+1 queries
-                for parent_id in parent_ids:
-                    if parent_id:
-                        try:
-                            parent_catalog = await self.client.database.find_catalog(
-                                parent_id
-                            )
-                            parent_id_to_title[parent_id] = parent_catalog.get(
-                                "title", parent_id
-                            )
-                        except Exception:
-                            parent_id_to_title[parent_id] = parent_id
-
-                # Apply titles to links
-                for link in catalog_dict.get("links", []):
-                    if link.get("rel") == "parent" and "title" not in link:
-                        parent_href = link.get("href", "")
-                        if parent_href.endswith("/"):
-                            link["title"] = "Root Catalog"
-                        else:
-                            parent_id = (
-                                parent_href.split("/catalogs/")[-1]
-                                if "/catalogs/" in parent_href
-                                else None
-                            )
-                            if parent_id and parent_id in parent_id_to_title:
-                                link["title"] = parent_id_to_title[parent_id]
-            except Exception as e:
-                logger.warning(
-                    f"Could not add titles to parent links for catalog {catalog.get('id')}: {e}"
-                )
-
-            # Add dynamic child links
-            try:
-                children_data, _, _ = await search_children_with_pagination_shared(
-                    self.client.database.client,
-                    catalog.get("id"),
-                    limit=100,
-                    token=None,
-                    resource_type=None,
-                )
-                if not children_data:
-                    # No children found, skip child link generation
-                    pass
-                for child in children_data:
-                    child_type = child.get("type", "Collection")
-                    child_id = child.get("id")
-
-                    # Skip children with missing ID
-                    if not child_id:
-                        logger.warning(
-                            f"Child document missing id field in catalog {catalog.get('id')}: {child}"
-                        )
-                        continue
-
-                    child_title = child.get("title", child_id)
-
-                    # Build appropriate href based on child type
-                    if child_type == "Catalog":
-                        child_href = f"{base_url}catalogs/{child_id}"
+            # Apply parent titles from our pre-fetched map
+            for link in catalog_dict.get("links", []):
+                if link.get("rel") == "parent" and "title" not in link:
+                    parent_href = link.get("href", "")
+                    if parent_href.endswith("/"):
+                        link["title"] = "Root Catalog"
                     else:
-                        # Collection
-                        child_href = f"{base_url}catalogs/{catalog.get('id')}/collections/{child_id}"
+                        pid = (
+                            parent_href.split("/catalogs/")[-1]
+                            if "/catalogs/" in parent_href
+                            else None
+                        )
+                        if pid and pid in parent_id_to_title:
+                            link["title"] = parent_id_to_title[pid]
 
-                    catalog_dict["links"].append(
-                        {
-                            "rel": "child",
-                            "type": "application/json",
-                            "href": child_href,
-                            "title": child_title,
-                        }
+            # Apply child links from our pre-fetched map
+            children_data = catalog_children_map.get(catalog_id, [])
+            for child in children_data:
+                child_id = child.get("id")
+                if not child_id:
+                    logger.warning(
+                        f"Child document missing id field in catalog {catalog_id}: {child}"
                     )
-            except Exception as e:
-                logger.warning(
-                    f"Could not fetch children for catalog {catalog.get('id')}: {e}"
+                    continue
+
+                child_type = child.get("type", "Collection")
+                child_title = child.get("title", child_id)
+
+                # Build appropriate href based on child type
+                if child_type == "Catalog":
+                    child_href = f"{base_url}catalogs/{child_id}"
+                else:
+                    # Collection
+                    child_href = (
+                        f"{base_url}catalogs/{catalog_id}/collections/{child_id}"
+                    )
+
+                catalog_dict["links"].append(
+                    {
+                        "rel": "child",
+                        "type": "application/json",
+                        "href": child_href,
+                        "title": child_title,
+                    }
                 )
 
             # Convert back to Catalog object
