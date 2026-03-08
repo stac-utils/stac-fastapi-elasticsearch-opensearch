@@ -56,6 +56,99 @@ def to_es_via_ast(
     return result
 
 
+def _convert_cql2_geometry_to_geojson(geometry):
+    """Convert CQL2 geometry format to GeoJSON format."""
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    if isinstance(geometry, dict) and "type" in geometry and "coordinates" in geometry:
+        logger.debug(f"Geometry already in GeoJSON format: {geometry}")
+        return geometry
+
+    # Handle CQL2 geometry formats
+    if isinstance(geometry, dict) and "op" in geometry:
+        op = geometry["op"]
+        args = geometry.get("args", [])
+
+        logger.debug(f"Converting CQL2 geometry: op={op}, args={args}")
+
+        # Handle polygon
+        if op == "polygon":
+            if not args:
+                logger.warning("Polygon geometry has no args")
+                return geometry
+
+            # Extract coordinates - they should be the first argument
+            coordinates = args[0] if args else []
+
+            # Validate and fix coordinates structure
+            if not isinstance(coordinates, list):
+                logger.warning(
+                    f"Polygon coordinates is not a list: {type(coordinates)}"
+                )
+                return geometry
+
+            # Ensure coordinates is a list of rings
+            # GeoJSON polygon format: coordinates = [ring1, ring2, ...]
+            # where each ring is [[x1,y1], [x2,y2], ...]
+
+            # Case 1: Already in correct format - list of rings
+            if (
+                len(coordinates) > 0
+                and isinstance(coordinates[0], list)
+                and len(coordinates[0]) > 0
+                and isinstance(coordinates[0][0], list)
+            ):
+                # This is already [[ring]] format - use as is
+                logger.debug("Polygon already in correct format (list of rings)")
+                pass
+
+            # Case 2: Single ring provided as list of positions
+            elif (
+                len(coordinates) > 0
+                and isinstance(coordinates[0], list)
+                and len(coordinates[0]) > 0
+                and not isinstance(coordinates[0][0], list)
+            ):
+                # This is a single ring [x1,y1], [x2,y2], ... need to wrap it
+                logger.debug("Wrapping single ring in outer array")
+                coordinates = [coordinates]
+
+            # Case 3: Flat list of coordinates? Very unlikely but handle
+            elif len(coordinates) > 0 and not isinstance(coordinates[0], list):
+                logger.warning(f"Unexpected polygon coordinate format: {coordinates}")
+                # Try to reconstruct - assume it's alternating x,y
+                if len(coordinates) >= 6 and len(coordinates) % 2 == 0:
+                    ring = []
+                    for i in range(0, len(coordinates), 2):
+                        ring.append([coordinates[i], coordinates[i + 1]])
+                    coordinates = [ring]
+
+            result = {"type": "Polygon", "coordinates": coordinates}
+            logger.debug(f"Converted polygon to: {result}")
+            return result
+
+        # Handle point
+        elif op == "point":
+            if len(args) >= 2:
+                result = {"type": "Point", "coordinates": [args[0], args[1]]}
+                logger.debug(f"Converted point to: {result}")
+                return result
+
+        # Handle linestring
+        elif op == "linestring":
+            if args:
+                coordinates = args[0] if args else []
+                result = {"type": "LineString", "coordinates": coordinates}
+                logger.debug(f"Converted linestring to: {result}")
+                return result
+
+    # If we can't convert, log warning and return as is
+    logger.warning(f"Unable to convert geometry to GeoJSON: {geometry}")
+    return geometry
+
+
 def _transform_ast_node(
     queryables_mapping: Dict[str, Any], node: Any
 ) -> Dict[str, Any]:
@@ -180,8 +273,9 @@ def _transform_ast_node(
         }
 
         relation = relation_mapping[node.op]
+        geometry = _convert_cql2_geometry_to_geojson(node.geometry)
         queries = [
-            {"geo_shape": {field: {"shape": node.geometry, "relation": relation}}}
+            {"geo_shape": {field: {"shape": geometry, "relation": relation}}}
             for field in fields
         ]
         return queries[0] if len(queries) == 1 else {"bool": {"should": queries}}

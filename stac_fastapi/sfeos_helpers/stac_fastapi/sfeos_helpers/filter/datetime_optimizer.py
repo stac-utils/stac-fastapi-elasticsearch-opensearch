@@ -78,7 +78,36 @@ class DatetimeOptimizer:
 
     def optimize_query_structure(self, ast: CqlNode) -> CqlNode:
         """Optimize AST structure for better query performance."""
+        ast = self._flatten_and_conditions(ast)
         return self._reorder_for_datetime_priority(ast)
+
+    def _flatten_and_conditions(self, node: CqlNode) -> CqlNode:
+        """Flatten nested AND operations in the AST."""
+        if isinstance(node, LogicalNode):
+            if node.op == LogicalOp.AND:
+                flattened_children = []
+                for child in node.children:
+                    flattened_child = self._flatten_and_conditions(child)
+
+                    if (
+                        isinstance(flattened_child, LogicalNode)
+                        and flattened_child.op == LogicalOp.AND
+                    ):
+                        flattened_children.extend(flattened_child.children)
+                    else:
+                        flattened_children.append(flattened_child)
+
+                if len(flattened_children) == 1:
+                    return flattened_children[0]
+
+                return LogicalNode(op=LogicalOp.AND, children=flattened_children)
+
+            elif node.op in [LogicalOp.OR, LogicalOp.NOT]:
+                processed_children = [
+                    self._flatten_and_conditions(child) for child in node.children
+                ]
+                return LogicalNode(op=node.op, children=processed_children)
+        return node
 
     def _reorder_for_datetime_priority(self, node: CqlNode) -> CqlNode:
         """Reorder query tree to prioritize datetime filters."""
@@ -196,7 +225,8 @@ def extract_collection_datetime(node: CqlNode) -> List[Tuple[List[str], str]]:
                 child_results_list = []
                 for child in n.children:
                     child_results = extract_from_node(child, current_collections.copy())
-                    child_results_list.append(child_results)
+                    if child_results:
+                        child_results_list.append(child_results)
 
                 if not child_results_list:
                     return results
