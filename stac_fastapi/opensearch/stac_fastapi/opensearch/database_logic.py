@@ -1802,11 +1802,6 @@ class DatabaseLogic(BaseDatabaseLogic):
             logger.warning(f"No items to insert for collection {collection_id}")
             return 0, []
 
-        # Handle empty processed_items
-        if not processed_items:
-            logger.warning(f"No items to insert for collection {collection_id}")
-            return 0, []
-
         raise_on_error = self.sync_settings.raise_on_bulk_error
         success, errors = helpers.bulk(
             self.sync_client,
@@ -1873,6 +1868,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             "sort": formatted_sort,
             "size": limit,
             "query": {"term": {"type": "Catalog"}},
+            "_source": True,  # Ensure all fields including parent_ids are returned
         }
 
         # Handle search_after token
@@ -1880,8 +1876,16 @@ class DatabaseLogic(BaseDatabaseLogic):
         if token:
             try:
                 search_after = token.split("|")
+                # Validate token format: must have correct number of values and be non-empty
                 if len(search_after) != len(formatted_sort):
                     search_after = None
+                else:
+                    # Validate each value can be converted to appropriate type
+                    # For string fields (like 'id'), values should be non-empty strings
+                    for val in search_after:
+                        if not val or not isinstance(val, str):
+                            search_after = None
+                            break
             except Exception:
                 search_after = None
 

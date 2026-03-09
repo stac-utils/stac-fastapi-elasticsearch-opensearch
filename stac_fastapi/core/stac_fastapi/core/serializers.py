@@ -233,20 +233,20 @@ class CollectionSerializer(Serializer):
                     else f"{base_url}catalogs/{pid}"
                 )
 
-                # Check if this parent link already exists to avoid duplicates
-                parent_link_exists = any(
-                    link.get("rel") == "parent" and link.get("href") == parent_href
-                    for link in collection_links
-                )
+                parent_link = {
+                    "rel": "parent",
+                    "type": "application/json",
+                    "href": parent_href,
+                }
 
-                if not parent_link_exists:
-                    collection_links.append(
-                        {
-                            "rel": "parent",
-                            "type": "application/json",
-                            "href": parent_href,
-                        }
-                    )
+                # Add title for root catalog
+                if parent_href == base_url or pid in ("stac-fastapi", "root"):
+                    parent_link["title"] = "Root Catalog"
+                else:
+                    # Title will be added later by catalogs() method if available
+                    parent_link["title"] = pid
+
+                collection_links.append(parent_link)
 
         collection["links"] = collection_links
 
@@ -394,6 +394,9 @@ class CatalogSerializer(Serializer):
         # Avoid modifying the input dict in-place
         catalog = deepcopy(catalog)
 
+        # Extract parent_ids before removing (needed for dynamic parent link injection)
+        parent_ids = catalog.get("parent_ids", [])
+
         # Remove internal fields (not part of STAC spec)
         catalog.pop("parent_ids", None)
 
@@ -407,9 +410,46 @@ class CatalogSerializer(Serializer):
         # Create the catalog links - for now, just resolve existing links
         original_links = catalog.get("links", [])
         if original_links:
-            catalog["links"] = resolve_links(original_links, str(request.base_url))
+            catalog_links = resolve_links(original_links, str(request.base_url))
         else:
-            catalog["links"] = []
+            catalog_links = []
+
+        # DYNAMIC PARENT LINK INJECTION (Poly-hierarchy support)
+        # If the Catalogs Extension is enabled and this catalog has parent catalogs,
+        # inject rel="parent" links for each parent
+        base_url = str(request.base_url)
+        catalogs_enabled = "CatalogsExtension" in extensions
+
+        if catalogs_enabled and parent_ids:
+            # Deduplicate parent_ids to prevent duplicate links
+            unique_parent_ids = list(set(parent_ids))
+
+            # Poly-hierarchy: Add a parent link for each parent catalog
+            for pid in unique_parent_ids:
+                # If the parent is the root catalog ID, point to base_url
+                # Otherwise, point to the canonical /catalogs/{pid} endpoint
+                parent_href = (
+                    base_url
+                    if pid in ("stac-fastapi", "root")
+                    else f"{base_url}catalogs/{pid}"
+                )
+
+                parent_link = {
+                    "rel": "parent",
+                    "type": "application/json",
+                    "href": parent_href,
+                }
+
+                # Add title for root catalog
+                if parent_href == base_url or pid in ("stac-fastapi", "root"):
+                    parent_link["title"] = "Root Catalog"
+                else:
+                    # Title will be added later by catalogs() method if available
+                    parent_link["title"] = pid
+
+                catalog_links.append(parent_link)
+
+        catalog["links"] = catalog_links
 
         # Return the Catalog object
         return stac_types.Catalog(**catalog)

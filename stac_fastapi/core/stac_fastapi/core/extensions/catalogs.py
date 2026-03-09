@@ -1,5 +1,6 @@
 """Catalogs extension."""
 
+import asyncio
 import logging
 from typing import Any, Type
 from urllib.parse import parse_qs, urlencode, urlparse
@@ -194,7 +195,7 @@ class CatalogsExtension(ApiExtension):
             response_class=self.response_class,
             status_code=204,
             summary="Delete Catalog Collection",
-            description="Delete a collection from a catalog. If the collection has multiple parent catalogs, only removes this catalog from parent_ids. If this is the only parent, deletes the collection entirely.",
+            description="Unlink a collection from a catalog. If the collection has multiple parent catalogs, only removes this catalog from parent_ids. If this is the only parent, the collection is adopted by the root catalog. Collection data is never deleted.",
             tags=["Catalogs"],
         )
 
@@ -274,8 +275,131 @@ class CatalogsExtension(ApiExtension):
 
         # Convert database catalogs to STAC format
         catalog_stac_objects = []
+
+        # --- 1. PRE-FETCH PARENT TITLES CONCURRENTLY ---
+        # Get all unique parent IDs across all catalogs on this page
+        unique_parent_ids = list(
+            set(pid for c in catalogs for pid in c.get("parent_ids", []) if pid)
+        )
+        parent_id_to_title = {}
+
+        if unique_parent_ids:
+
+            async def fetch_title(pid):
+                try:
+                    parent_catalog = await self.client.database.find_catalog(pid)
+                    return pid, parent_catalog.get("title", pid)
+                except Exception:
+                    return pid, pid  # Fallback to ID on error
+
+            # Fire all parent lookups at the exact same time
+            title_results = await asyncio.gather(
+                *(fetch_title(pid) for pid in unique_parent_ids)
+            )
+            parent_id_to_title = dict(title_results)
+
+        # --- 2. PRE-FETCH CHILDREN CONCURRENTLY ---
+        async def fetch_children(catalog_id):
+            try:
+                children_data, _, _ = await search_children_with_pagination_shared(
+                    self.client.database.client,
+                    catalog_id,
+                    limit=100,
+                    token=None,
+                    resource_type=None,
+                )
+                return catalog_id, children_data
+            except Exception as e:
+                logger.warning(
+                    f"Could not fetch children for catalog {catalog_id}: {e}"
+                )
+                return catalog_id, []
+
+        # Fire all child lookups at the exact same time
+        children_results = await asyncio.gather(
+            *(fetch_children(c.get("id")) for c in catalogs)
+        )
+        catalog_children_map = dict(children_results)
+
+        # --- 3. FORMATTING LOOP (Now 100% In-Memory & Synchronous) ---
         for catalog in catalogs:
-            catalog_stac = self.client.catalog_serializer.db_to_stac(catalog, request)
+            catalog_id = catalog.get("id")
+
+            # Ensure parent_ids exists (for backward compatibility with catalogs created before this field was added)
+            if "parent_ids" not in catalog:
+                catalog["parent_ids"] = []
+
+            extensions_list = [
+                type(ext).__name__ for ext in self.client.database.extensions
+            ]
+            # Always include CatalogsExtension since we're in the catalogs endpoint
+            if "CatalogsExtension" not in extensions_list:
+                extensions_list.append("CatalogsExtension")
+
+            catalog_stac = self.client.catalog_serializer.db_to_stac(
+                catalog,
+                request,
+                extensions=extensions_list,
+            )
+
+            # Convert to dict to add dynamic child links (same as get_catalog)
+            if isinstance(catalog_stac, dict):
+                catalog_dict = catalog_stac
+            else:
+                catalog_dict = (
+                    catalog_stac.model_dump()
+                    if hasattr(catalog_stac, "model_dump")
+                    else dict(catalog_stac)
+                )
+
+            # Apply parent titles from our pre-fetched map
+            for link in catalog_dict.get("links", []):
+                if link.get("rel") == "parent" and "title" not in link:
+                    parent_href = link.get("href", "")
+                    if parent_href.endswith("/"):
+                        link["title"] = "Root Catalog"
+                    else:
+                        pid = (
+                            parent_href.split("/catalogs/")[-1]
+                            if "/catalogs/" in parent_href
+                            else None
+                        )
+                        if pid and pid in parent_id_to_title:
+                            link["title"] = parent_id_to_title[pid]
+
+            # Apply child links from our pre-fetched map
+            children_data = catalog_children_map.get(catalog_id, [])
+            for child in children_data:
+                child_id = child.get("id")
+                if not child_id:
+                    logger.warning(
+                        f"Child document missing id field in catalog {catalog_id}: {child}"
+                    )
+                    continue
+
+                child_type = child.get("type", "Collection")
+                child_title = child.get("title", child_id)
+
+                # Build appropriate href based on child type
+                if child_type == "Catalog":
+                    child_href = f"{base_url}catalogs/{child_id}"
+                else:
+                    # Collection
+                    child_href = (
+                        f"{base_url}catalogs/{catalog_id}/collections/{child_id}"
+                    )
+
+                catalog_dict["links"].append(
+                    {
+                        "rel": "child",
+                        "type": "application/json",
+                        "href": child_href,
+                        "title": child_title,
+                    }
+                )
+
+            # Convert back to Catalog object
+            catalog_stac = Catalog(**catalog_dict)
             catalog_stac_objects.append(catalog_stac)
 
         # Create pagination links
@@ -320,11 +444,27 @@ class CatalogsExtension(ApiExtension):
         db_catalog_dict = db_catalog.model_dump()
         db_catalog_dict["type"] = "Catalog"
 
+        # Filter out dynamic links (parent, child, children) - these are generated at read-time
+        if "links" in db_catalog_dict:
+            db_catalog_dict["links"] = [
+                link
+                for link in db_catalog_dict["links"]
+                if link.get("rel") not in ("parent", "child", "children")
+            ]
+
+        # Initialize parent_ids for root-level catalogs (empty list means no parents)
+        if "parent_ids" not in db_catalog_dict:
+            db_catalog_dict["parent_ids"] = []
+
         # Create the catalog in the database with refresh to ensure immediate availability
         await self.client.database.create_catalog(db_catalog_dict, refresh=True)
 
-        # Return the created catalog
-        return catalog
+        # Return the created catalog with extensions for proper serialization
+        return self.client.catalog_serializer.db_to_stac(
+            db_catalog_dict,
+            request,
+            extensions=[type(ext).__name__ for ext in self.client.database.extensions],
+        )
 
     async def update_catalog(
         self, catalog_id: str, catalog: Catalog, request: Request
@@ -836,21 +976,24 @@ class CatalogsExtension(ApiExtension):
                 if "parent_ids" not in existing_catalog:
                     existing_catalog["parent_ids"] = []
 
-                # Append if not already present
-                if catalog_id not in existing_catalog["parent_ids"]:
-                    existing_catalog["parent_ids"].append(catalog_id)
+                # Append if not already present (use set to avoid duplicates in case of race conditions)
+                parent_ids_set = set(existing_catalog["parent_ids"])
+                if catalog_id not in parent_ids_set:
+                    parent_ids_set.add(catalog_id)
+                    existing_catalog["parent_ids"] = list(parent_ids_set)
 
                     # Persist the update
                     await update_catalog_in_index_shared(
                         self.client.database.client, catalog.id, existing_catalog
                     )
-                    logger.info(
-                        f"Linked existing catalog {catalog.id} to parent {catalog_id}"
-                    )
 
                 # Return the STAC object
                 return self.client.catalog_serializer.db_to_stac(
-                    existing_catalog, request
+                    existing_catalog,
+                    request,
+                    extensions=[
+                        type(ext).__name__ for ext in self.client.database.extensions
+                    ],
                 )
 
             except NotFoundError:
@@ -864,16 +1007,34 @@ class CatalogsExtension(ApiExtension):
                 db_catalog_dict = db_catalog.model_dump()
                 db_catalog_dict["type"] = "Catalog"
 
+                # Filter out dynamic links (parent, child, children) - these are generated at read-time
+                if "links" in db_catalog_dict:
+                    db_catalog_dict["links"] = [
+                        link
+                        for link in db_catalog_dict["links"]
+                        if link.get("rel") not in ("parent", "child", "children")
+                    ]
+
                 # Initialize parent_ids
                 db_catalog_dict["parent_ids"] = [catalog_id]
 
+                # Verify parent_ids is in the dict before storing
+                if "parent_ids" not in db_catalog_dict:
+                    raise ValueError(
+                        f"parent_ids missing from catalog dict for {catalog.id}"
+                    )
+
                 # Create in DB
                 await self.client.database.create_catalog(db_catalog_dict, refresh=True)
-                logger.info(
-                    f"Created new catalog {catalog.id} with parent {catalog_id}"
-                )
 
-                return catalog
+                # Return the serialized STAC object with extensions
+                return self.client.catalog_serializer.db_to_stac(
+                    db_catalog_dict,
+                    request,
+                    extensions=[
+                        type(ext).__name__ for ext in self.client.database.extensions
+                    ],
+                )
 
         except HTTPException:
             raise
@@ -1044,8 +1205,7 @@ class CatalogsExtension(ApiExtension):
                 status_code=404, detail=f"Collection {collection_id} not found"
             )
 
-        # Return the collection with catalog context
-        collection_db = await self.client.database.find_collection(collection_id)
+        # Return the collection with catalog context (reuse collection_db from above)
         return self.client.collection_serializer.db_to_stac_in_catalog(
             collection_db,
             request,
