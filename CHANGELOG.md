@@ -8,12 +8,14 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- Added `filter_indexes_by_datetime_range` for selecting indexes using range intersection between query `[start_datetime, end_datetime]` and index temporal extent, used when `USE_DATETIME=false`.
 
 ### Changed
 
 ### Updated
 
 ### Fixed
+- Fixed application logs not being visible when running via uvicorn by adding `force=True` to `logging.basicConfig`, preventing uvicorn's logging configuration from overriding the application's log setup.
 
 ### Removed
 
