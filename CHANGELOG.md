@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 - Added `filter_indexes_by_datetime_range` for selecting indexes using range intersection between query `[start_datetime, end_datetime]` and index temporal extent, used when `USE_DATETIME=false`.
+- Added Prometheus metrics support via `prometheus-fastapi-instrumentator`. Install the optional extra (`pip install stac-fastapi-elasticsearch[metrics]` or `pip install stac-fastapi-opensearch[metrics]`) to expose a `/metrics` endpoint with request counts, latency histograms, and in-progress gauges.
 
 ### Changed
 
