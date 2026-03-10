@@ -14,8 +14,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 
-- Changed so the Docker OS uses `DATABASE_REFRESH=true` as do other tests, to ensure the index is refreshed before search tests run. [#627](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/627)
-
+- Fixed local OS tests fail by setting `DATABASE_REFRESH=true` in Docker Compose so documents are refreshed immediately after create/update/delete operations, preventing stale read-after-write results that caused item update/delete tests to fail.[#627](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/627)
 ### Updated
 
 ### Fixed
