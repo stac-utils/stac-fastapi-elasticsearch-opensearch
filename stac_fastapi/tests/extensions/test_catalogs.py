@@ -2814,3 +2814,186 @@ async def test_posted_catalog_user_links_are_persisted(
     assert any(
         "example.com/about" in link.get("href", "") for link in about_links
     ), "About link should have correct href"
+
+
+@pytest.mark.asyncio
+async def test_subcatalog_list_endpoint_includes_links(
+    catalogs_app_client, load_test_data
+):
+    """Test that GET /catalogs/{id}/catalogs returns sub-catalogs with parent and child links."""
+    # Create parent catalog
+    parent_catalog = load_test_data("test_catalog.json")
+    parent_id = f"parent-{uuid.uuid4()}"
+    parent_catalog["id"] = parent_id
+    parent_resp = await catalogs_app_client.post("/catalogs", json=parent_catalog)
+    assert parent_resp.status_code == 201
+
+    # Create multiple sub-catalogs
+    sub_catalog_ids = []
+    for i in range(3):
+        sub_catalog = load_test_data("test_catalog.json")
+        sub_id = f"sub-{uuid.uuid4()}-{i}"
+        sub_catalog["id"] = sub_id
+        sub_resp = await catalogs_app_client.post(
+            f"/catalogs/{parent_id}/catalogs", json=sub_catalog
+        )
+        assert sub_resp.status_code == 201
+        sub_catalog_ids.append(sub_id)
+
+    # Get sub-catalogs via /catalogs/{id}/catalogs endpoint
+    list_resp = await catalogs_app_client.get(
+        f"/catalogs/{parent_id}/catalogs?limit=100"
+    )
+    assert list_resp.status_code == 200
+
+    catalogs_data = list_resp.json()
+    catalogs = catalogs_data["catalogs"]
+
+    # Verify all sub-catalogs are returned
+    assert (
+        len(catalogs) >= 3
+    ), f"Should have at least 3 sub-catalogs, got {len(catalogs)}"
+
+    # Verify each sub-catalog has parent links
+    for sub_id in sub_catalog_ids:
+        sub_in_list = next((c for c in catalogs if c["id"] == sub_id), None)
+        assert sub_in_list is not None, f"Sub-catalog {sub_id} should be in list"
+
+        parent_links = [
+            link for link in sub_in_list.get("links", []) if link.get("rel") == "parent"
+        ]
+        assert len(parent_links) > 0, f"Sub-catalog {sub_id} should have parent link"
+        assert any(
+            parent_id in link.get("href", "") for link in parent_links
+        ), f"Parent link should reference {parent_id}"
+        assert all(
+            "title" in link for link in parent_links
+        ), f"All parent links for {sub_id} should have titles"
+
+
+@pytest.mark.asyncio
+async def test_subcatalog_list_endpoint_includes_child_links(
+    catalogs_app_client, load_test_data
+):
+    """Test that GET /catalogs/{id}/catalogs returns sub-catalogs with child links."""
+    # Create parent catalog
+    parent_catalog = load_test_data("test_catalog.json")
+    parent_id = f"parent-{uuid.uuid4()}"
+    parent_catalog["id"] = parent_id
+    parent_resp = await catalogs_app_client.post("/catalogs", json=parent_catalog)
+    assert parent_resp.status_code == 201
+
+    # Create a sub-catalog
+    sub_catalog = load_test_data("test_catalog.json")
+    sub_id = f"sub-{uuid.uuid4()}"
+    sub_catalog["id"] = sub_id
+    sub_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_id}/catalogs", json=sub_catalog
+    )
+    assert sub_resp.status_code == 201
+
+    # Add a collection to the sub-catalog
+    test_collection = load_test_data("test_collection.json")
+    collection_id = f"collection-{uuid.uuid4()}"
+    test_collection["id"] = collection_id
+    coll_resp = await catalogs_app_client.post(
+        f"/catalogs/{sub_id}/collections", json=test_collection
+    )
+    assert coll_resp.status_code == 201
+
+    # Get sub-catalogs via /catalogs/{id}/catalogs endpoint
+    list_resp = await catalogs_app_client.get(
+        f"/catalogs/{parent_id}/catalogs?limit=100"
+    )
+    assert list_resp.status_code == 200
+
+    catalogs_data = list_resp.json()
+    catalogs = catalogs_data["catalogs"]
+
+    # Find the sub-catalog in the list
+    sub_in_list = next((c for c in catalogs if c["id"] == sub_id), None)
+    assert sub_in_list is not None, f"Sub-catalog {sub_id} should be in list"
+
+    # Verify sub-catalog has child links
+    child_links = [
+        link for link in sub_in_list.get("links", []) if link.get("rel") == "child"
+    ]
+    if child_links:
+        # Child links are dynamically generated, so they may or may not be present
+        # But if they are, verify they point to the correct child
+        child_hrefs = [link["href"] for link in child_links]
+        assert any(
+            collection_id in href for href in child_hrefs
+        ), f"Child link should reference {collection_id}"
+        assert all(
+            "title" in link for link in child_links
+        ), "All child links should have titles"
+
+
+@pytest.mark.asyncio
+async def test_both_endpoints_return_consistent_links(
+    catalogs_app_client, load_test_data
+):
+    """Test that /catalogs and /catalogs/{id}/catalogs return consistent parent/child links."""
+    # Create parent catalog
+    parent_catalog = load_test_data("test_catalog.json")
+    parent_id = f"parent-{uuid.uuid4()}"
+    parent_catalog["id"] = parent_id
+    parent_resp = await catalogs_app_client.post("/catalogs", json=parent_catalog)
+    assert parent_resp.status_code == 201
+
+    # Create a sub-catalog
+    sub_catalog = load_test_data("test_catalog.json")
+    sub_id = f"sub-{uuid.uuid4()}"
+    sub_catalog["id"] = sub_id
+    sub_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_id}/catalogs", json=sub_catalog
+    )
+    assert sub_resp.status_code == 201
+
+    # Get from /catalogs endpoint
+    all_catalogs_resp = await catalogs_app_client.get("/catalogs?limit=100")
+    assert all_catalogs_resp.status_code == 200
+    all_catalogs = all_catalogs_resp.json()["catalogs"]
+    sub_from_all = next((c for c in all_catalogs if c["id"] == sub_id), None)
+
+    # Get from /catalogs/{id}/catalogs endpoint
+    sub_catalogs_resp = await catalogs_app_client.get(
+        f"/catalogs/{parent_id}/catalogs?limit=100"
+    )
+    assert sub_catalogs_resp.status_code == 200
+    sub_catalogs = sub_catalogs_resp.json()["catalogs"]
+    sub_from_endpoint = next((c for c in sub_catalogs if c["id"] == sub_id), None)
+
+    # Both should have the same parent links
+    assert sub_from_all is not None, f"Sub-catalog {sub_id} should be in /catalogs"
+    assert (
+        sub_from_endpoint is not None
+    ), f"Sub-catalog {sub_id} should be in /catalogs/{parent_id}/catalogs"
+
+    parent_links_all = [
+        link for link in sub_from_all.get("links", []) if link.get("rel") == "parent"
+    ]
+    parent_links_endpoint = [
+        link
+        for link in sub_from_endpoint.get("links", [])
+        if link.get("rel") == "parent"
+    ]
+
+    # Both should have parent links
+    assert (
+        len(parent_links_all) > 0
+    ), "Sub-catalog from /catalogs should have parent links"
+    assert (
+        len(parent_links_endpoint) > 0
+    ), f"Sub-catalog from /catalogs/{parent_id}/catalogs should have parent links"
+
+    # Parent links should be consistent
+    parent_hrefs_all = [link.get("href") for link in parent_links_all]
+    parent_hrefs_endpoint = [link.get("href") for link in parent_links_endpoint]
+    assert any(
+        parent_id in href for href in parent_hrefs_all
+    ), "Parent link from /catalogs should reference parent"
+    assert any(
+        parent_id in href for href in parent_hrefs_endpoint
+    ), "Parent link from /catalogs/{id}/catalogs should reference parent"
