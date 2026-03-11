@@ -1320,6 +1320,7 @@ class CatalogsExtension(ApiExtension):
         Get all children (Catalogs and Collections) of a specific catalog.
 
         This is a mixed content endpoint that returns both Catalogs and Collections.
+        Catalogs are returned with dynamic parent and child links.
         """
         # 1. Verify the parent catalog exists
         await self.client.database.find_catalog(catalog_id)
@@ -1329,21 +1330,42 @@ class CatalogsExtension(ApiExtension):
             self.client.database.client, catalog_id, limit, token, resource_type=type
         )
 
-        # 3. Serialize children based on type
+        base_url = str(request.base_url)
+
+        # 3. Separate catalogs and collections for processing
+        catalog_children = [
+            doc for doc in children_data if doc.get("type") == "Catalog"
+        ]
+        collection_children = [
+            doc for doc in children_data if doc.get("type") != "Catalog"
+        ]
+
+        # 4. Format catalogs with dynamic links using shared helper
+        formatted_catalogs = []
+        if catalog_children:
+            formatted_catalogs = await self._format_catalogs_with_links(
+                catalog_children, request, base_url
+            )
+
+        # 5. Serialize collections (no dynamic links needed)
+        formatted_collections = []
+        for doc in collection_children:
+            child = self.client.collection_serializer.db_to_stac(doc, request)
+            formatted_collections.append(child)
+
+        # 6. Combine catalogs and collections in original order
         children = []
+        catalog_idx = 0
+        collection_idx = 0
         for doc in children_data:
-            resource_type = doc.get(
-                "type", "Collection"
-            )  # Default to Collection if missing
-
-            # Serialize based on type
-            # This ensures we hide internal fields like 'parent_ids' correctly
-            if resource_type == "Catalog":
-                child = self.client.catalog_serializer.db_to_stac(doc, request)
+            if doc.get("type") == "Catalog":
+                if catalog_idx < len(formatted_catalogs):
+                    children.append(formatted_catalogs[catalog_idx])
+                    catalog_idx += 1
             else:
-                child = self.client.collection_serializer.db_to_stac(doc, request)
-
-            children.append(child)
+                if collection_idx < len(formatted_collections):
+                    children.append(formatted_collections[collection_idx])
+                    collection_idx += 1
 
         # 4. Format Response
         # The Children extension uses a specific response format
