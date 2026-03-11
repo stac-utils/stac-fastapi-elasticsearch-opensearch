@@ -44,6 +44,8 @@ from stac_fastapi.sfeos_helpers.database import (
     mk_actions,
     mk_item_id,
     populate_sort_shared,
+    retry_on_connection_error,
+    retry_on_datetime_not_found,
     return_date,
     validate_refresh,
 )
@@ -181,6 +183,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     """CORE LOGIC"""
 
+    @retry_on_connection_error
     async def get_all_collections(
         self,
         token: str | None,
@@ -357,6 +360,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         return collections, next_token, matched
 
+    @retry_on_connection_error
     async def get_one_item(self, collection_id: str, item_id: str) -> dict:
         """Retrieve a single item from the database.
 
@@ -779,6 +783,8 @@ class DatabaseLogic(BaseDatabaseLogic):
         """
         return populate_sort_shared(sortby=sortby)
 
+    @retry_on_datetime_not_found
+    @retry_on_connection_error
     async def execute_search(
         self,
         search: Search,
@@ -892,6 +898,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     """ AGGREGATE LOGIC """
 
+    @retry_on_connection_error
     async def aggregate(
         self,
         collection_ids: list[str] | None,
@@ -1125,6 +1132,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         logger.debug(f"Item {item['id']} prepared successfully.")
         return prepped_item
 
+    @retry_on_connection_error
     async def create_item(
         self,
         item: Item,
@@ -1202,6 +1210,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             refresh=refresh,
         )
 
+    @retry_on_connection_error
     async def merge_patch_item(
         self,
         collection_id: str,
@@ -1233,6 +1242,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             refresh=refresh,
         )
 
+    @retry_on_connection_error
     async def json_patch_item(
         self,
         collection_id: str,
@@ -1338,6 +1348,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         return item
 
+    @retry_on_connection_error
     async def delete_item(self, item_id: str, collection_id: str, **kwargs: Any):
         """Delete a single item from the database.
 
@@ -1390,6 +1401,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         except exceptions.NotFoundError:
             raise NotFoundError(f"Mapping for index {index_name} not found")
 
+    @retry_on_connection_error
     async def get_items_unique_values(
         self, collection_id: str, field_names: Iterable[str], *, limit: int = 100
     ) -> dict[str, list[str]]:
@@ -1421,6 +1433,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             result[field] = [bucket["key"] for bucket in agg["buckets"]]
         return result
 
+    @retry_on_connection_error
     async def create_collection(self, collection: Collection, **kwargs: Any):
         """Create a single collection in the database.
 
@@ -1466,6 +1479,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 self.client, collection_id
             )
 
+    @retry_on_connection_error
     async def find_collection(self, collection_id: str) -> Collection:
         """Find and return a collection from the database.
 
@@ -1492,6 +1506,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         return collection["_source"]
 
+    @retry_on_connection_error
     async def update_collection(
         self, collection_id: str, collection: Collection, **kwargs: Any
     ):
@@ -1559,6 +1574,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 refresh=refresh,
             )
 
+    @retry_on_connection_error
     async def merge_patch_collection(
         self,
         collection_id: str,
@@ -1588,6 +1604,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             refresh=refresh,
         )
 
+    @retry_on_connection_error
     async def json_patch_collection(
         self,
         collection_id: str,
@@ -1650,6 +1667,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         return collection
 
+    @retry_on_connection_error
     async def delete_collection(self, collection_id: str, **kwargs: Any):
         """Delete a collection from the database.
 
@@ -1685,6 +1703,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         await delete_item_index(collection_id)
         await self.async_index_inserter.refresh_cache()
 
+    @retry_on_connection_error
     async def bulk_async(
         self,
         collection_id: str,
@@ -1831,6 +1850,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     """CATALOGS LOGIC"""
 
+    @retry_on_connection_error
     async def get_all_catalogs(
         self,
         token: str | None,
@@ -1916,6 +1936,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         return catalogs, next_token, matched
 
+    @retry_on_connection_error
     async def create_catalog(self, catalog: dict, refresh: bool = False) -> None:
         """Create a catalog in OpenSearch.
 
@@ -1930,6 +1951,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             refresh=refresh,
         )
 
+    @retry_on_connection_error
     async def find_catalog(self, catalog_id: str) -> dict:
         """Find a catalog in OpenSearch by ID.
 
@@ -1954,6 +1976,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         except exceptions.NotFoundError:
             raise NotFoundError(f"Catalog {catalog_id} not found")
 
+    @retry_on_connection_error
     async def delete_catalog(self, catalog_id: str, refresh: bool = False) -> None:
         """Delete a catalog from OpenSearch.
 
