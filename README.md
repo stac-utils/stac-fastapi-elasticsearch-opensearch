@@ -257,7 +257,7 @@ This implementation follows the [Multi-Tenant Virtual Catalogs Endpoint](https:/
 
 ### DAG Specification & Dynamic Link Generation
 
-SFEOS implements the [STAC API - Multi-Tenant Catalogs Endpoint Extension](https://github.com/stac-api-extensions/multi-tenant-catalogs) (v1.0.0-beta.3) with full support for Directed Acyclic Graph (DAG) structures:
+SFEOS implements the [STAC API - Multi-Tenant Catalogs Endpoint Extension](https://github.com/stac-api-extensions/multi-tenant-catalogs) (v1.0.0-beta.4) with full support for Directed Acyclic Graph (DAG) structures:
 
 - **Dynamic Parent Links**: All `rel="parent"` links are generated at runtime based on the `parent_ids` field, enabling true poly-hierarchy where catalogs can have multiple parents. Each parent is represented as a separate link, allowing clients to navigate up the graph through any parent path.
 - **Dynamic Child Links**: All `rel="child"` links are generated dynamically by querying the database for actual children (catalogs and collections), preventing stale links and enabling STAC Browser folder navigation. Child links are never persisted statically.

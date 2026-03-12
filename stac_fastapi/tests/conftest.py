@@ -430,7 +430,7 @@ def build_test_app_with_catalogs():
         ),
         settings=test_settings,
         conformance_classes=[
-            "https://api.stacspec.org/v1.0.0-beta.3/multi-tenant-catalogs",
+            "https://api.stacspec.org/v1.0.0-beta.4/multi-tenant-catalogs",
         ],
     )
 
