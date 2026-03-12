@@ -1935,10 +1935,9 @@ class DatabaseLogic(BaseDatabaseLogic):
                 if len(search_after) != len(formatted_sort):
                     search_after = None
                 else:
-                    # Validate each value can be converted to appropriate type
-                    # For string fields (like 'id'), values should be non-empty strings
+                    # Validate each value is non-empty (check for patterns like "id||date")
                     for val in search_after:
-                        if not val or not isinstance(val, str):
+                        if not val:
                             search_after = None
                             break
             except Exception:

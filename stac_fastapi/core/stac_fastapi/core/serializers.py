@@ -451,6 +451,13 @@ class CatalogSerializer(Serializer):
         parent_ids = catalog.pop("parent_ids", [])
         base_url = str(request.base_url)
 
+        # Set defaults to prevent Pydantic validation errors on legacy records
+        catalog.setdefault("type", "Catalog")
+        catalog.setdefault("stac_extensions", [])
+        catalog.setdefault("stac_version", "")
+        catalog.setdefault("title", "")
+        catalog.setdefault("description", "")
+
         catalog_links = resolve_links(catalog.get("links", []), base_url)
 
         if "CatalogsExtension" in extensions:

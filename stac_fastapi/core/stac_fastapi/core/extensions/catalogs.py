@@ -280,7 +280,10 @@ class CatalogsExtension(ApiExtension):
                 try:
                     parent_catalog = await self.client.database.find_catalog(pid)
                     return pid, parent_catalog.get("title", pid)
-                except Exception:
+                except Exception as e:
+                    logger.debug(
+                        f"Could not fetch title for parent catalog {pid}, using ID as fallback: {e}"
+                    )
                     return pid, pid
 
             title_results = await asyncio.gather(
@@ -1016,6 +1019,9 @@ class CatalogsExtension(ApiExtension):
                     await update_catalog_in_index_shared(
                         self.client.database.client, catalog.id, existing_catalog
                     )
+                    logger.info(
+                        f"Linked existing catalog {catalog.id} to parent {catalog_id}"
+                    )
 
                 # Return the STAC object
                 return self.client.catalog_serializer.db_to_stac(
@@ -1056,6 +1062,9 @@ class CatalogsExtension(ApiExtension):
 
                 # Create in DB
                 await self.client.database.create_catalog(db_catalog_dict, refresh=True)
+                logger.info(
+                    f"Created new catalog {catalog.id} with parent {catalog_id}"
+                )
 
                 # Return the serialized STAC object with extensions
                 return self.client.catalog_serializer.db_to_stac(

@@ -96,9 +96,9 @@ async def check_item_exists_in_alias(client: Any, alias: str, doc_id: str) -> bo
         body={
             "query": {"ids": {"values": [doc_id]}},
             "_source": False,
-            "size": 0,
-            "terminate_after": 1,
         },
+        size=0,
+        terminate_after=1,
     )
     return bool(resp["hits"]["total"]["value"])
 
@@ -119,9 +119,9 @@ def check_item_exists_in_alias_sync(client: Any, alias: str, doc_id: str) -> boo
         body={
             "query": {"ids": {"values": [doc_id]}},
             "_source": False,
-            "size": 0,
-            "terminate_after": 1,
         },
+        size=0,
+        terminate_after=1,
     )
     return bool(resp["hits"]["total"]["value"])
 
