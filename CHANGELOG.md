@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Fixed
 - Fixed application logs not being visible when running via uvicorn by adding `force=True` to `logging.basicConfig`, preventing uvicorn's logging configuration from overriding the application's log setup.
 
+- Ensure that queryable mapping, when processing CQL2 queries, does not add duplicate fields to ES/OS queries.[#616](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/616)
+
 ### Removed
 
 ## [v6.12.0] - 2026-02-26
