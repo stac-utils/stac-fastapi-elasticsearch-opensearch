@@ -471,22 +471,22 @@ async def test_create_catalog_collection(catalogs_app_client, load_test_data, ct
     assert get_resp.status_code == 200
     assert get_resp.json()["id"] == test_collection["id"]
 
-    # Verify the collection has a catalog link to the catalog (when accessed via catalog context)
+    # Verify the collection has a parent link to the catalog (when accessed via catalog context)
     collection_data = get_resp.json()
     collection_links = collection_data.get("links", [])
-    catalog_link = None
+    parent_link = None
     for link in collection_links:
-        if link.get("rel") == "catalog" and f"/catalogs/{catalog_id}" in link.get(
+        if link.get("rel") == "parent" and f"/catalogs/{catalog_id}" in link.get(
             "href", ""
         ):
-            catalog_link = link
+            parent_link = link
             break
 
     assert (
-        catalog_link is not None
-    ), f"Collection should have catalog link to /catalogs/{catalog_id}"
-    assert catalog_link["type"] == "application/json"
-    assert catalog_link["href"].endswith(f"/catalogs/{catalog_id}")
+        parent_link is not None
+    ), f"Collection should have parent link to /catalogs/{catalog_id}"
+    assert parent_link["type"] == "application/json"
+    assert parent_link["href"].endswith(f"/catalogs/{catalog_id}")
 
     # Verify the catalog has a children link
     catalog_resp = await catalogs_app_client.get(f"/catalogs/{catalog_id}")
@@ -699,16 +699,16 @@ async def test_create_catalog_collection_adds_parent_id(
 
     collection_data = get_resp.json()
     # parent_ids should be in the collection data (from database)
-    # We can verify it exists by checking the catalog link (when accessed via catalog context)
-    catalog_link = None
+    # We can verify it exists by checking the parent link (when accessed via catalog context)
+    parent_link = None
     for link in collection_data.get("links", []):
-        if link.get("rel") == "catalog" and catalog_id in link.get("href", ""):
-            catalog_link = link
+        if link.get("rel") == "parent" and catalog_id in link.get("href", ""):
+            parent_link = link
             break
 
     assert (
-        catalog_link is not None
-    ), "Collection should have catalog link when accessed via catalog endpoint"
+        parent_link is not None
+    ), "Collection should have parent link when accessed via catalog endpoint"
 
 
 @pytest.mark.asyncio
@@ -2033,10 +2033,12 @@ async def test_get_catalog_dynamic_parent_links_single_parent(
 async def test_get_catalog_dynamic_parent_links_poly_hierarchy(
     catalogs_app_client, load_test_data
 ):
-    """Test that get_catalog returns multiple parent links for poly-hierarchical catalogs.
+    """Test that get_catalog returns single parent + related links for poly-hierarchical catalogs.
 
-    This tests the DAG specification requirement for poly-hierarchy support where a catalog
-    can have multiple parents.
+    This tests the new spec requirement where:
+    - Exactly ONE rel="parent" link (the first/primary parent)
+    - Additional parents exposed via rel="related" links
+    - All alternative scoped URIs exposed via rel="duplicate" links
     """
     # Create two parent catalogs
     parent_ids = []
@@ -2061,25 +2063,52 @@ async def test_get_catalog_dynamic_parent_links_poly_hierarchy(
         )
         assert link_resp.status_code == 201
 
-    # Get the child catalog and verify it has multiple parent links
+    # Get the child catalog and verify link structure
     resp = await catalogs_app_client.get(f"/catalogs/{child_id}")
     assert resp.status_code == 200
 
     catalog_data = resp.json()
     links = catalog_data.get("links", [])
 
-    # Find all parent links
+    # NEW SPEC: Exactly ONE parent link
     parent_links = [link for link in links if link.get("rel") == "parent"]
     assert (
-        len(parent_links) >= 2
-    ), f"Catalog with 2 parents should have at least 2 parent links, got {len(parent_links)}"
+        len(parent_links) == 1
+    ), f"Catalog should have exactly 1 parent link per new spec, got {len(parent_links)}"
 
-    # Verify each parent is represented
-    parent_hrefs = [link["href"] for link in parent_links]
+    # Verify the parent link points to one of the parent catalogs
+    parent_href = parent_links[0]["href"]
+    assert any(
+        f"/catalogs/{parent_id}" in parent_href for parent_id in parent_ids
+    ), f"Parent link should point to one of the parent catalogs, got: {parent_href}"
+
+    # NEW SPEC: Additional parents as rel="related" links
+    related_links = [link for link in links if link.get("rel") == "related"]
+    assert (
+        len(related_links) >= 1
+    ), f"Catalog with 2 parents should have at least 1 related link for the other parent, got {len(related_links)}"
+
+    # Verify related links point to the other parent(s)
+    related_hrefs = [link["href"] for link in related_links]
+    # At least one related link should point to a parent catalog
+    assert any(
+        any(f"/catalogs/{parent_id}" in href for parent_id in parent_ids)
+        for href in related_hrefs
+    ), "Related links should include other parent catalogs"
+
+    # NEW SPEC: Duplicate links for alternative scoped URIs
+    duplicate_links = [link for link in links if link.get("rel") == "duplicate"]
+    assert (
+        len(duplicate_links) >= 2
+    ), f"Catalog with 2 parents should have at least 2 duplicate links (one per parent-scoped URI), got {len(duplicate_links)}"
+
+    # Verify duplicate links point to parent-scoped URIs
+    duplicate_hrefs = [link["href"] for link in duplicate_links]
     for parent_id in parent_ids:
         assert any(
-            f"/catalogs/{parent_id}" in href for href in parent_hrefs
-        ), f"Parent links should include {parent_id}"
+            f"/catalogs/{parent_id}/catalogs/{child_id}" in href
+            for href in duplicate_hrefs
+        ), f"Duplicate links should include scoped URI for parent {parent_id}"
 
 
 @pytest.mark.asyncio
@@ -2268,10 +2297,12 @@ async def test_get_catalog_child_links_pagination_over_100(
 async def test_get_catalog_deduplicates_parent_links(
     catalogs_app_client, load_test_data
 ):
-    """Test that get_catalog deduplicates parent links if parent_ids has duplicates.
+    """Test that get_catalog returns exactly one parent link per new spec.
 
-    This tests that even if the database has duplicate parent IDs, only unique parent links
-    are returned.
+    This tests the new spec requirement where:
+    - Exactly ONE rel="parent" link (no duplicates possible)
+    - Related links are also deduplicated
+    - Duplicate links are also deduplicated
     """
     # Create a parent catalog
     parent_catalog = load_test_data("test_catalog.json")
@@ -2298,14 +2329,31 @@ async def test_get_catalog_deduplicates_parent_links(
     catalog_data = resp.json()
     links = catalog_data.get("links", [])
 
-    # Find all parent links
+    # NEW SPEC: Exactly ONE parent link
     parent_links = [link for link in links if link.get("rel") == "parent"]
-    parent_hrefs = [link["href"] for link in parent_links]
+    assert (
+        len(parent_links) == 1
+    ), f"Catalog should have exactly 1 parent link per new spec, got {len(parent_links)}"
 
-    # Verify no duplicate parent links
+    # Verify no duplicate hrefs in any link relation type
+    parent_hrefs = [link["href"] for link in parent_links]
     assert len(parent_hrefs) == len(
         set(parent_hrefs)
     ), f"Parent links should be unique, got duplicates: {parent_hrefs}"
+
+    # Verify related links are also unique
+    related_links = [link for link in links if link.get("rel") == "related"]
+    related_hrefs = [link["href"] for link in related_links]
+    assert len(related_hrefs) == len(
+        set(related_hrefs)
+    ), f"Related links should be unique, got duplicates: {related_hrefs}"
+
+    # Verify duplicate links are also unique
+    duplicate_links = [link for link in links if link.get("rel") == "duplicate"]
+    duplicate_hrefs = [link["href"] for link in duplicate_links]
+    assert len(duplicate_hrefs) == len(
+        set(duplicate_hrefs)
+    ), f"Duplicate links should be unique, got duplicates: {duplicate_hrefs}"
 
 
 @pytest.mark.asyncio
@@ -2440,10 +2488,10 @@ async def test_get_catalog_mixed_child_types_pagination(
 async def test_collection_serializer_dynamic_parent_links(
     catalogs_app_client, load_test_data
 ):
-    """Test that CollectionSerializer injects dynamic parent links via /collections endpoint.
+    """Test that CollectionSerializer injects dynamic links via /collections endpoint.
 
-    This tests that collections accessed via the global /collections/{id} endpoint
-    show their poly-hierarchy parent links when CatalogsExtension is enabled.
+    Per the new spec, collections accessed via the global /collections/{id} endpoint
+    MUST have parent → root (/) and catalog parents exposed as rel="related" links.
     """
     # Create a parent catalog
     parent_catalog = load_test_data("test_catalog.json")
@@ -2470,19 +2518,21 @@ async def test_collection_serializer_dynamic_parent_links(
     collection_data = resp.json()
     links = collection_data.get("links", [])
 
-    # Find parent links
+    # NEW SPEC: Global endpoint MUST have parent → root (/)
     parent_links = [link for link in links if link.get("rel") == "parent"]
+    assert len(parent_links) == 1, "Collection should have exactly 1 parent link"
 
-    # Should have at least one parent link (the injected catalog parent)
+    parent_href = parent_links[0]["href"]
     assert (
-        len(parent_links) > 0
-    ), "Collection should have parent links when accessed via /collections endpoint"
+        parent_href.rstrip("/") == "http://test-server"
+    ), f"Global collection parent MUST point to root (/), got: {parent_href}"
 
-    # Verify the parent link points to the correct catalog
-    parent_hrefs = [link["href"] for link in parent_links]
+    # NEW SPEC: Catalog parents should be rel="related" links
+    related_links = [link for link in links if link.get("rel") == "related"]
+    related_hrefs = [link["href"] for link in related_links]
     assert any(
-        parent_id in href for href in parent_hrefs
-    ), f"Parent links should include catalog {parent_id}"
+        parent_id in href for href in related_hrefs
+    ), f"Related links should include catalog parent {parent_id}"
 
 
 @pytest.mark.asyncio
@@ -2535,7 +2585,11 @@ async def test_collection_serializer_poly_hierarchy_parent_links(
 ):
     """Test that CollectionSerializer handles poly-hierarchy (multiple parents) correctly.
 
-    This tests that a collection linked to multiple parent catalogs shows all parent links.
+    This tests the new spec requirement where:
+    - Exactly ONE rel="parent" link (the first/primary parent)
+    - Additional parents exposed via rel="related" links
+    - All alternative scoped URIs exposed via rel="duplicate" links
+    - Canonical link points to global /collections/{id} endpoint
     """
     # Create two parent catalogs
     parent_catalog_1 = load_test_data("test_catalog.json")
@@ -2576,22 +2630,56 @@ async def test_collection_serializer_poly_hierarchy_parent_links(
     collection_data = resp.json()
     links = collection_data.get("links", [])
 
-    # Find parent links
+    # NEW SPEC: Global endpoint MUST have parent → root (/)
     parent_links = [link for link in links if link.get("rel") == "parent"]
-    parent_hrefs = [link["href"] for link in parent_links]
+    assert (
+        len(parent_links) == 1
+    ), f"Collection should have exactly 1 parent link per new spec, got {len(parent_links)}"
 
-    # Should have links to both parent catalogs
-    assert any(
-        parent_id_1 in href for href in parent_hrefs
-    ), f"Parent links should include first catalog {parent_id_1}"
-    assert any(
-        parent_id_2 in href for href in parent_hrefs
-    ), f"Parent links should include second catalog {parent_id_2}"
+    # Verify the parent link points to root (/)
+    parent_href = parent_links[0]["href"]
+    assert (
+        parent_href.rstrip("/") == "http://test-server"
+    ), f"Global collection parent link MUST point to root (/), got: {parent_href}"
 
-    # Verify no duplicate parent links
-    assert len(parent_hrefs) == len(
-        set(parent_hrefs)
-    ), f"Parent links should be unique, got duplicates: {parent_hrefs}"
+    # NEW SPEC: ALL catalog parents as rel="related" links
+    related_links = [link for link in links if link.get("rel") == "related"]
+    assert (
+        len(related_links) >= 2
+    ), f"Collection with 2 catalog parents should have 2 related links, got {len(related_links)}"
+
+    # Verify related links include BOTH parent catalogs
+    related_hrefs = [link["href"] for link in related_links]
+    for parent_id in [parent_id_1, parent_id_2]:
+        assert any(
+            parent_id in href for href in related_hrefs
+        ), f"Related links should include catalog parent {parent_id}"
+
+    # NEW SPEC: Canonical link points to global endpoint
+    canonical_links = [link for link in links if link.get("rel") == "canonical"]
+    assert (
+        len(canonical_links) == 1
+    ), f"Collection should have exactly 1 canonical link, got {len(canonical_links)}"
+    assert (
+        f"/collections/{collection_id}" in canonical_links[0]["href"]
+    ), "Canonical link should point to global /collections endpoint"
+
+    # NEW SPEC: Duplicate links for alternative scoped URIs
+    duplicate_links = [link for link in links if link.get("rel") == "duplicate"]
+    assert (
+        len(duplicate_links) >= 2
+    ), f"Collection with 2 parents should have at least 2 duplicate links, got {len(duplicate_links)}"
+
+    # Verify duplicate links point to catalog-scoped URIs
+    duplicate_hrefs = [link["href"] for link in duplicate_links]
+    assert any(
+        f"/catalogs/{parent_id_1}/collections/{collection_id}" in href
+        for href in duplicate_hrefs
+    ), f"Duplicate links should include scoped URI for parent {parent_id_1}"
+    assert any(
+        f"/catalogs/{parent_id_2}/collections/{collection_id}" in href
+        for href in duplicate_hrefs
+    ), f"Duplicate links should include scoped URI for parent {parent_id_2}"
 
 
 @pytest.mark.asyncio
@@ -3145,3 +3233,112 @@ async def test_children_endpoint_mixed_content_with_links(
         assert (
             coll_in_children is not None
         ), f"Collection {coll_id} should be in /children"
+
+
+@pytest.mark.asyncio
+async def test_scoped_collection_links_poly_hierarchy(
+    catalogs_app_client, load_test_data
+):
+    """Test that scoped collection endpoint returns correct links per spec.
+
+    Per the Multi-Tenant Catalogs spec, when accessing a collection via
+    /catalogs/{id}/collections/{id} (scoped endpoint), the response MUST include:
+    - Exactly ONE rel="parent" pointing to the specific catalog (contextual breadcrumb)
+    - rel="related" links for other parent catalogs (poly-hierarchy)
+    - rel="canonical" link pointing to global /collections/{id} endpoint
+    - rel="duplicate" links for all alternative scoped URIs
+    """
+    # Create two parent catalogs
+    parent_catalog_1 = load_test_data("test_catalog.json")
+    parent_id_1 = f"parent-catalog-1-{uuid.uuid4()}"
+    parent_catalog_1["id"] = parent_id_1
+
+    parent_resp_1 = await catalogs_app_client.post("/catalogs", json=parent_catalog_1)
+    assert parent_resp_1.status_code == 201
+
+    parent_catalog_2 = load_test_data("test_catalog.json")
+    parent_id_2 = f"parent-catalog-2-{uuid.uuid4()}"
+    parent_catalog_2["id"] = parent_id_2
+
+    parent_resp_2 = await catalogs_app_client.post("/catalogs", json=parent_catalog_2)
+    assert parent_resp_2.status_code == 201
+
+    # Create a collection linked to the first parent
+    test_collection = load_test_data("test_collection.json")
+    collection_id = f"test-collection-{uuid.uuid4()}"
+    test_collection["id"] = collection_id
+
+    coll_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_id_1}/collections", json=test_collection
+    )
+    assert coll_resp.status_code == 201
+
+    # Link the collection to the second parent as well (poly-hierarchy)
+    link_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_id_2}/collections", json=test_collection
+    )
+    assert link_resp.status_code == 201
+
+    # Get the collection via the SCOPED endpoint (through parent_id_1)
+    resp = await catalogs_app_client.get(
+        f"/catalogs/{parent_id_1}/collections/{collection_id}"
+    )
+    assert resp.status_code == 200
+
+    collection_data = resp.json()
+    links = collection_data.get("links", [])
+
+    # SPEC: Exactly ONE parent link pointing to the contextual catalog
+    parent_links = [link for link in links if link.get("rel") == "parent"]
+    assert (
+        len(parent_links) == 1
+    ), f"Scoped collection should have exactly 1 parent link, got {len(parent_links)}"
+
+    parent_href = parent_links[0]["href"]
+    assert f"/catalogs/{parent_id_1}" in parent_href, (
+        f"Scoped collection parent MUST point to contextual catalog {parent_id_1}, "
+        f"got: {parent_href}"
+    )
+
+    # SPEC: Related links for other parent catalogs
+    related_links = [link for link in links if link.get("rel") == "related"]
+    assert (
+        len(related_links) >= 1
+    ), f"Collection with 2 parents should have at least 1 related link, got {len(related_links)}"
+
+    related_hrefs = [link["href"] for link in related_links]
+    assert any(
+        parent_id_2 in href for href in related_hrefs
+    ), f"Related links should include other parent catalog {parent_id_2}"
+
+    # SPEC: Canonical link pointing to global endpoint
+    canonical_links = [link for link in links if link.get("rel") == "canonical"]
+    assert (
+        len(canonical_links) == 1
+    ), f"Scoped collection should have exactly 1 canonical link, got {len(canonical_links)}"
+
+    canonical_href = canonical_links[0]["href"]
+    assert f"/collections/{collection_id}" in canonical_href, (
+        f"Canonical link should point to global /collections/{collection_id}, "
+        f"got: {canonical_href}"
+    )
+
+    # SPEC: Duplicate links for all alternative scoped URIs
+    duplicate_links = [link for link in links if link.get("rel") == "duplicate"]
+    assert (
+        len(duplicate_links) >= 2
+    ), f"Collection with 2 parents should have at least 2 duplicate links, got {len(duplicate_links)}"
+
+    duplicate_hrefs = [link["href"] for link in duplicate_links]
+
+    # Should have duplicate link for current scoped URI
+    assert any(
+        f"/catalogs/{parent_id_1}/collections/{collection_id}" in href
+        for href in duplicate_hrefs
+    ), f"Duplicate links should include current scoped URI /catalogs/{parent_id_1}/collections/{collection_id}"
+
+    # Should have duplicate link for other scoped URI
+    assert any(
+        f"/catalogs/{parent_id_2}/collections/{collection_id}" in href
+        for href in duplicate_hrefs
+    ), f"Duplicate links should include alternative scoped URI /catalogs/{parent_id_2}/collections/{collection_id}"

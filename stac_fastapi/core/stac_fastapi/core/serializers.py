@@ -200,29 +200,68 @@ class CollectionSerializer(Serializer):
                     context_parent_id = path_parts[idx - 1]
 
             unique_pids = list(dict.fromkeys(parent_ids))
-            if context_parent_id in unique_pids:
-                unique_pids.remove(context_parent_id)
-                unique_pids.insert(0, context_parent_id)
 
-            if not unique_pids:
-                collection_links.append(
-                    {"rel": "parent", "href": base_url, "title": "Root Catalog"}
-                )
+            # Determine if we're in a catalog context (scoped) or global context
+            if context_parent_id:
+                # SCOPED CONTEXT: /catalogs/{id}/collections/{id}
+                # Move context parent to front, make it rel="parent", others rel="related"
+                if context_parent_id in unique_pids:
+                    unique_pids.remove(context_parent_id)
+                    unique_pids.insert(0, context_parent_id)
+
+                if unique_pids:
+                    # Remove the default parent link from CollectionLinks
+                    collection_links = [
+                        link for link in collection_links if link.get("rel") != "parent"
+                    ]
+
+                    for idx, pid in enumerate(unique_pids):
+                        is_root = pid in ("stac-fastapi", "root")
+                        href = base_url if is_root else f"{base_url}catalogs/{pid}"
+                        collection_links.append(
+                            {
+                                "rel": "parent" if idx == 0 else "related",
+                                "href": href,
+                                "title": "Root Catalog" if is_root else pid,
+                            }
+                        )
             else:
-                for idx, pid in enumerate(unique_pids):
+                # GLOBAL CONTEXT: /collections/{id}
+                # Parent MUST be root (/), all catalogs are rel="related"
+                # CollectionLinks already created parent → root, so just add related links
+                for pid in unique_pids:
                     is_root = pid in ("stac-fastapi", "root")
-                    href = base_url if is_root else f"{base_url}catalogs/{pid}"
-                    collection_links.append(
-                        {
-                            "rel": "parent" if idx == 0 else "related",
-                            "href": href,
-                            "title": "Root Catalog" if is_root else pid,
-                        }
-                    )
+                    if (
+                        not is_root
+                    ):  # Don't add root as related since it's already parent
+                        href = f"{base_url}catalogs/{pid}"
+                        collection_links.append(
+                            {
+                                "rel": "related",
+                                "href": href,
+                                "title": pid,
+                            }
+                        )
 
             collection_links.append(
                 {"rel": "canonical", "href": f"{base_url}collections/{collection_id}"}
             )
+
+            # Add duplicate links for alternative scoped URIs (RFC 6249)
+            for pid in unique_pids:
+                is_root = pid in ("stac-fastapi", "root")
+                if not is_root:
+                    duplicate_href = (
+                        f"{base_url}catalogs/{pid}/collections/{collection_id}"
+                    )
+                    collection_links.append(
+                        {
+                            "rel": "duplicate",
+                            "type": "application/json",
+                            "href": duplicate_href,
+                            "title": f"Collection in catalog: {pid}",
+                        }
+                    )
 
         original_links = collection.get("links")
         if original_links:
@@ -269,6 +308,7 @@ class CollectionSerializer(Serializer):
         if "CatalogsExtension" in extensions:
             unique_parent_ids = list(dict.fromkeys(parent_ids))
 
+            # Add rel="related" links for other parent catalogs (not the current context)
             for pid in unique_parent_ids:
                 if pid == catalog_id:
                     continue
@@ -287,6 +327,23 @@ class CollectionSerializer(Serializer):
             collection_links.append(
                 {"rel": "canonical", "type": "application/json", "href": canonical_href}
             )
+
+            # Add duplicate links for alternative scoped URIs (RFC 6249)
+            # Include the current catalog context and all other parent catalogs
+            for pid in unique_parent_ids:
+                is_root = pid in ("stac-fastapi", "root")
+                if not is_root:
+                    duplicate_href = (
+                        f"{base_url}catalogs/{pid}/collections/{collection_id}"
+                    )
+                    collection_links.append(
+                        {
+                            "rel": "duplicate",
+                            "type": "application/json",
+                            "href": duplicate_href,
+                            "title": f"Collection in catalog: {pid}",
+                        }
+                    )
 
         original_links = collection.get("links")
         if original_links:
@@ -367,6 +424,22 @@ class CatalogSerializer(Serializer):
             catalog_links.append(
                 {"rel": "canonical", "href": f"{base_url}catalogs/{catalog.get('id')}"}
             )
+
+            # Add duplicate links for alternative scoped URIs (RFC 6249)
+            # Show all parent-scoped URIs where this catalog can be accessed
+            catalog_id = catalog.get("id")
+            for pid in unique_pids:
+                is_root = pid in ("stac-fastapi", "root")
+                if not is_root:
+                    duplicate_href = f"{base_url}catalogs/{pid}/catalogs/{catalog_id}"
+                    catalog_links.append(
+                        {
+                            "rel": "duplicate",
+                            "type": "application/json",
+                            "href": duplicate_href,
+                            "title": f"Catalog in parent: {pid}",
+                        }
+                    )
 
         catalog["links"] = catalog_links
         return stac_types.Catalog(**catalog)

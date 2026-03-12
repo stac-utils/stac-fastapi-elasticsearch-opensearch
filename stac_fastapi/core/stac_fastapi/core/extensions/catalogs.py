@@ -558,7 +558,15 @@ class CatalogsExtension(ApiExtension):
             db_catalog = await self.client.database.find_catalog(catalog_id)
 
             # 2. SERIALIZE & INITIALIZE DICT
-            catalog = self.client.catalog_serializer.db_to_stac(db_catalog, request)
+            extensions_list = [
+                type(ext).__name__ for ext in self.client.database.extensions
+            ]
+            if "CatalogsExtension" not in extensions_list:
+                extensions_list.append("CatalogsExtension")
+
+            catalog = self.client.catalog_serializer.db_to_stac(
+                db_catalog, request, extensions=extensions_list
+            )
             base_url = str(request.base_url)
 
             if isinstance(catalog, dict):
@@ -811,6 +819,12 @@ class CatalogsExtension(ApiExtension):
 
             # Fetch the collections
             collections = []
+            extensions_list = [
+                type(ext).__name__ for ext in self.client.database.extensions
+            ]
+            if "CatalogsExtension" not in extensions_list:
+                extensions_list.append("CatalogsExtension")
+
             for coll_id in collection_ids:
                 try:
                     # Get the collection from database
@@ -821,10 +835,7 @@ class CatalogsExtension(ApiExtension):
                             collection_db,
                             request,
                             catalog_id=catalog_id,
-                            extensions=[
-                                type(ext).__name__
-                                for ext in self.client.database.extensions
-                            ],
+                            extensions=extensions_list,
                         )
                     )
                     collections.append(collection)
@@ -1230,11 +1241,17 @@ class CatalogsExtension(ApiExtension):
             )
 
         # Return the collection with catalog context (reuse collection_db from above)
+        extensions_list = [
+            type(ext).__name__ for ext in self.client.database.extensions
+        ]
+        if "CatalogsExtension" not in extensions_list:
+            extensions_list.append("CatalogsExtension")
+
         return self.client.collection_serializer.db_to_stac_in_catalog(
             collection_db,
             request,
             catalog_id=catalog_id,
-            extensions=[type(ext).__name__ for ext in self.client.database.extensions],
+            extensions=extensions_list,
         )
 
     async def get_catalog_collection_items(
