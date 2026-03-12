@@ -96,12 +96,11 @@ class ItemSerializer(Serializer):
 
         # 2. Contextual Scoping for Multi-Tenant
         if request and "CatalogsExtension" in extensions:
-            path_parts = request.url.path.strip("/").split("/")
-            if "collections" in path_parts and "catalogs" in path_parts:
-                coll_idx = path_parts.index("collections")
-                cat_id = path_parts[coll_idx - 1]
+            # Use path_params for safe extraction (avoids fragile string parsing)
+            catalog_id = request.path_params.get("catalog_id")
+            if catalog_id:
                 scoped_collection_url = (
-                    f"{base_url}catalogs/{cat_id}/collections/{collection_id}"
+                    f"{base_url}catalogs/{catalog_id}/collections/{collection_id}"
                 )
 
                 for link in item_links:
@@ -113,7 +112,10 @@ class ItemSerializer(Serializer):
             item_links += resolve_links(original_links, base_url)
 
         assets = (
-            {a.pop("es_key"): a for a in item.get("assets", [])}
+            {
+                a.pop("es_key", f"asset_{idx}"): a
+                for idx, a in enumerate(item.get("assets", []))
+            }
             if get_bool_env("STAC_INDEX_ASSETS")
             else item.get("assets", {})
         )
@@ -207,12 +209,8 @@ class CollectionSerializer(Serializer):
         ).create_links()
 
         if "CatalogsExtension" in extensions:
-            path_parts = request.url.path.strip("/").split("/")
-            context_parent_id = None
-            if "collections" in path_parts:
-                idx = path_parts.index("collections")
-                if idx > 0:
-                    context_parent_id = path_parts[idx - 1]
+            # Use path_params for safe extraction (avoids fragile string parsing)
+            context_parent_id = request.path_params.get("catalog_id")
 
             unique_pids = list(dict.fromkeys(parent_ids))
 
@@ -287,10 +285,12 @@ class CollectionSerializer(Serializer):
         # Handle asset deserialization based on STAC_INDEX_ASSETS setting
         if get_bool_env("STAC_INDEX_ASSETS"):
             collection["assets"] = {
-                a.pop("es_key"): a for a in collection.get("assets", [])
+                a.pop("es_key", f"asset_{idx}"): a
+                for idx, a in enumerate(collection.get("assets", []))
             }
             collection["item_assets"] = {
-                i.pop("es_key"): i for i in collection.get("item_assets", [])
+                i.pop("es_key", f"item_asset_{idx}"): i
+                for idx, i in enumerate(collection.get("item_assets", []))
             }
         else:
             collection["assets"] = collection.get("assets", {})
@@ -399,10 +399,12 @@ class CollectionSerializer(Serializer):
         # Handle asset deserialization based on STAC_INDEX_ASSETS setting
         if get_bool_env("STAC_INDEX_ASSETS"):
             collection["assets"] = {
-                a.pop("es_key"): a for a in collection.get("assets", [])
+                a.pop("es_key", f"asset_{idx}"): a
+                for idx, a in enumerate(collection.get("assets", []))
             }
             collection["item_assets"] = {
-                i.pop("es_key"): i for i in collection.get("item_assets", [])
+                i.pop("es_key", f"item_asset_{idx}"): i
+                for idx, i in enumerate(collection.get("item_assets", []))
             }
         else:
             collection["assets"] = collection.get("assets", {})
@@ -452,15 +454,12 @@ class CatalogSerializer(Serializer):
         catalog_links = resolve_links(catalog.get("links", []), base_url)
 
         if "CatalogsExtension" in extensions:
-            path_parts = request.url.path.strip("/").split("/")
-            context_parent_id = None
-            if "catalogs" in path_parts:
-                indices = [i for i, x in enumerate(path_parts) if x == "catalogs"]
-                if len(indices) > 1:
-                    context_parent_id = path_parts[indices[1] - 1]
+            # Use path_params for safe extraction (avoids fragile string parsing)
+            # For catalogs, we need the parent_catalog_id if accessing /catalogs/{parent}/catalogs/{child}
+            context_parent_id = request.path_params.get("parent_catalog_id")
 
             unique_pids = list(dict.fromkeys(parent_ids))
-            if context_parent_id in unique_pids:
+            if context_parent_id and context_parent_id in unique_pids:
                 unique_pids.remove(context_parent_id)
                 unique_pids.insert(0, context_parent_id)
 

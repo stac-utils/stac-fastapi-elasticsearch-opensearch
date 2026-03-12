@@ -55,6 +55,18 @@ class CatalogsExtension(ApiExtension):
     router: APIRouter = attr.ib(default=attr.Factory(APIRouter))
     response_class: Type[Response] = attr.ib(default=JSONResponse)
 
+    @property
+    def _active_extensions(self) -> list[str]:
+        """Get list of active extensions, ensuring CatalogsExtension is included.
+
+        Returns:
+            List of extension class names.
+        """
+        exts = [type(ext).__name__ for ext in self.client.database.extensions]
+        if "CatalogsExtension" not in exts:
+            exts.append("CatalogsExtension")
+        return exts
+
     def register(self, app: FastAPI, settings=None) -> None:
         """Register the extension with a FastAPI application.
 
@@ -300,11 +312,6 @@ class CatalogsExtension(ApiExtension):
 
         # --- 3. FORMATTING LOOP (Now 100% In-Memory & Synchronous) ---
         catalog_stac_objects = []
-        extensions_list = [
-            type(ext).__name__ for ext in self.client.database.extensions
-        ]
-        if "CatalogsExtension" not in extensions_list:
-            extensions_list.append("CatalogsExtension")
 
         for catalog_data in catalogs_data:
             catalog_id = catalog_data.get("id")
@@ -313,7 +320,7 @@ class CatalogsExtension(ApiExtension):
             catalog_stac = self.client.catalog_serializer.db_to_stac(
                 catalog_data,
                 request,
-                extensions=extensions_list,
+                extensions=self._active_extensions,
             )
 
             catalog_dict = (
@@ -558,14 +565,8 @@ class CatalogsExtension(ApiExtension):
             db_catalog = await self.client.database.find_catalog(catalog_id)
 
             # 2. SERIALIZE & INITIALIZE DICT
-            extensions_list = [
-                type(ext).__name__ for ext in self.client.database.extensions
-            ]
-            if "CatalogsExtension" not in extensions_list:
-                extensions_list.append("CatalogsExtension")
-
             catalog = self.client.catalog_serializer.db_to_stac(
-                db_catalog, request, extensions=extensions_list
+                db_catalog, request, extensions=self._active_extensions
             )
             base_url = str(request.base_url)
 
@@ -644,7 +645,7 @@ class CatalogsExtension(ApiExtension):
                         }
                     )
 
-            # 5. DYNAMIC CHILD LINKS (Recursive pagination)
+            # 5. DYNAMIC CHILD LINKS (Paginated, one level deep)
             try:
                 token = None
                 while True:
@@ -819,12 +820,6 @@ class CatalogsExtension(ApiExtension):
 
             # Fetch the collections
             collections = []
-            extensions_list = [
-                type(ext).__name__ for ext in self.client.database.extensions
-            ]
-            if "CatalogsExtension" not in extensions_list:
-                extensions_list.append("CatalogsExtension")
-
             for coll_id in collection_ids:
                 try:
                     # Get the collection from database
@@ -835,7 +830,7 @@ class CatalogsExtension(ApiExtension):
                             collection_db,
                             request,
                             catalog_id=catalog_id,
-                            extensions=extensions_list,
+                            extensions=self._active_extensions,
                         )
                     )
                     collections.append(collection)
@@ -1241,17 +1236,11 @@ class CatalogsExtension(ApiExtension):
             )
 
         # Return the collection with catalog context (reuse collection_db from above)
-        extensions_list = [
-            type(ext).__name__ for ext in self.client.database.extensions
-        ]
-        if "CatalogsExtension" not in extensions_list:
-            extensions_list.append("CatalogsExtension")
-
         return self.client.collection_serializer.db_to_stac_in_catalog(
             collection_db,
             request,
             catalog_id=catalog_id,
-            extensions=extensions_list,
+            extensions=self._active_extensions,
         )
 
     async def get_catalog_collection_items(
