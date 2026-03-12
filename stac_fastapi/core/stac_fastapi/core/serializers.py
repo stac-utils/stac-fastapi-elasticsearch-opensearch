@@ -184,6 +184,21 @@ class CollectionSerializer(Serializer):
         parent_ids = collection.pop("parent_ids", [])
         collection.pop("bbox_shape", None)
 
+        # Ensure all required STAC Collection fields have default values
+        collection.setdefault("type", "Collection")
+        collection.setdefault("stac_extensions", [])
+        collection.setdefault("stac_version", "")
+        collection.setdefault("title", "")
+        collection.setdefault("description", "")
+        collection.setdefault("keywords", [])
+        collection.setdefault("license", "")
+        collection.setdefault("providers", [])
+        collection.setdefault("summaries", {})
+        collection.setdefault(
+            "extent", {"spatial": {"bbox": []}, "temporal": {"interval": []}}
+        )
+        collection.setdefault("assets", {})
+
         collection_id = collection.get("id")
         base_url = str(request.base_url)
 
@@ -268,6 +283,20 @@ class CollectionSerializer(Serializer):
             collection_links += resolve_links(original_links, base_url)
 
         collection["links"] = collection_links
+
+        # Handle asset deserialization based on STAC_INDEX_ASSETS setting
+        if get_bool_env("STAC_INDEX_ASSETS"):
+            collection["assets"] = {
+                a.pop("es_key"): a for a in collection.get("assets", [])
+            }
+            collection["item_assets"] = {
+                i.pop("es_key"): i for i in collection.get("item_assets", [])
+            }
+        else:
+            collection["assets"] = collection.get("assets", {})
+            if item_assets := collection.get("item_assets"):
+                collection["item_assets"] = item_assets
+
         return stac_types.Collection(**collection)
 
     @classmethod
@@ -293,6 +322,22 @@ class CollectionSerializer(Serializer):
         collection = deepcopy(collection)
         parent_ids = collection.pop("parent_ids", [])
         collection.pop("bbox_shape", None)
+
+        # Ensure all required STAC Collection fields have default values
+        collection.setdefault("type", "Collection")
+        collection.setdefault("stac_extensions", [])
+        collection.setdefault("stac_version", "")
+        collection.setdefault("title", "")
+        collection.setdefault("description", "")
+        collection.setdefault("keywords", [])
+        collection.setdefault("license", "")
+        collection.setdefault("providers", [])
+        collection.setdefault("summaries", {})
+        collection.setdefault(
+            "extent", {"spatial": {"bbox": []}, "temporal": {"interval": []}}
+        )
+        collection.setdefault("assets", {})
+
         collection_id = collection.get("id")
 
         base_url = str(request.base_url)
@@ -350,6 +395,20 @@ class CollectionSerializer(Serializer):
             collection_links += resolve_links(original_links, base_url)
 
         collection["links"] = collection_links
+
+        # Handle asset deserialization based on STAC_INDEX_ASSETS setting
+        if get_bool_env("STAC_INDEX_ASSETS"):
+            collection["assets"] = {
+                a.pop("es_key"): a for a in collection.get("assets", [])
+            }
+            collection["item_assets"] = {
+                i.pop("es_key"): i for i in collection.get("item_assets", [])
+            }
+        else:
+            collection["assets"] = collection.get("assets", {})
+            if item_assets := collection.get("item_assets"):
+                collection["item_assets"] = item_assets
+
         return stac_types.Collection(**collection)
 
 
