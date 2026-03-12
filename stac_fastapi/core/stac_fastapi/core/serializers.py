@@ -21,37 +21,18 @@ logger = logging.getLogger(__name__)
 
 @attr.s
 class Serializer(abc.ABC):
-    """Defines serialization methods between the API and the data model.
-
-    This class is meant to be subclassed and implemented by specific serializers for different STAC objects (e.g. Item, Collection).
-    """
+    """Defines serialization methods between the API and the data model."""
 
     @classmethod
     @abc.abstractmethod
     def db_to_stac(cls, item: dict, base_url: str) -> Any:
-        """Transform database model to STAC object.
-
-        Arguments:
-            item (dict): A dictionary representing the database model.
-            base_url (str): The base URL of the STAC API.
-
-        Returns:
-            Any: A STAC object, e.g. an `Item` or `Collection`, representing the input `item`.
-        """
+        """Transform database model to STAC object."""
         ...
 
     @classmethod
     @abc.abstractmethod
     def stac_to_db(cls, stac_object: Any, base_url: str) -> dict:
-        """Transform STAC object to database model.
-
-        Arguments:
-            stac_object (Any): A STAC object, e.g. an `Item` or `Collection`.
-            base_url (str): The base URL of the STAC API.
-
-        Returns:
-            dict: A dictionary representing the database model.
-        """
+        """Transform STAC object to database model."""
         ...
 
 
@@ -63,11 +44,11 @@ class ItemSerializer(Serializer):
         """Transform STAC item to database-ready STAC item.
 
         Args:
-            stac_data (stac_types.Item): The STAC item object to be transformed.
-            base_url (str): The base URL for the STAC API.
+            stac_data: The STAC item to be transformed.
+            base_url: The base URL of the API.
 
         Returns:
-            dict: The database-ready STAC item object.
+            A dictionary representation of the item ready for database insertion.
         """
         item_links = resolve_links(stac_data.get("links", []), base_url)
         stac_data["links"] = item_links
@@ -78,44 +59,73 @@ class ItemSerializer(Serializer):
             ]
 
         now = now_to_rfc3339_str()
+        if "properties" not in stac_data:
+            stac_data["properties"] = {}
         if "created" not in stac_data["properties"]:
             stac_data["properties"]["created"] = now
         stac_data["properties"]["updated"] = now
         return stac_data
 
     @classmethod
-    def db_to_stac(cls, item: dict, base_url: str) -> stac_types.Item:
+    def db_to_stac(
+        cls,
+        item: dict,
+        base_url: str,
+        request: Request = None,
+        extensions: list[str] | None = None,
+    ) -> stac_types.Item:
         """Transform database-ready STAC item to STAC item.
 
         Args:
-            item (dict): The database-ready STAC item to be transformed.
-            base_url (str): The base URL for the STAC API.
+            item: The database item dictionary.
+            base_url: The base URL of the API.
+            request: The incoming starlette request for context.
+            extensions: List of enabled API extensions.
 
         Returns:
-            stac_types.Item: The STAC item object.
+            A stac_types.Item object.
         """
         item_id = item["id"]
         collection_id = item["collection"]
+        extensions = extensions or []
+
+        # 1. Base Item Links
         item_links = ItemLinks(
             collection_id=collection_id, item_id=item_id, base_url=base_url
         ).create_links()
+
+        # 2. Contextual Scoping for Multi-Tenant
+        if request and "CatalogsExtension" in extensions:
+            # Use path_params for safe extraction (avoids fragile string parsing)
+            catalog_id = request.path_params.get("catalog_id")
+            if catalog_id:
+                scoped_collection_url = (
+                    f"{base_url}catalogs/{catalog_id}/collections/{collection_id}"
+                )
+
+                for link in item_links:
+                    if link["rel"] in ["parent", "collection"]:
+                        link["href"] = scoped_collection_url
 
         original_links = item.get("links", [])
         if original_links:
             item_links += resolve_links(original_links, base_url)
 
-        if get_bool_env("STAC_INDEX_ASSETS"):
-            assets = {a.pop("es_key"): a for a in item.get("assets", [])}
-
-        else:
-            assets = item.get("assets", {})
+        assets = (
+            {
+                a.pop("es_key", f"asset_{idx}"): a
+                for idx, a in enumerate(item.get("assets", []))
+            }
+            if get_bool_env("STAC_INDEX_ASSETS")
+            else item.get("assets", {})
+        )
 
         stac_item = stac_types.Item(
             type="Feature",
-            stac_version=item.get("stac_version", ""),
+            stac_version=item.get("stac_version", "1.0.0"),
             stac_extensions=item.get("stac_extensions", []),
             id=item_id,
-            collection=item.get("collection", ""),
+            collection=collection_id,
             geometry=item.get("geometry", {}),
             bbox=item.get("bbox", []),
             properties=item.get("properties", {}),
@@ -123,11 +133,10 @@ class ItemSerializer(Serializer):
             assets=assets,
         )
 
-        excluded_fields = os.getenv("EXCLUDED_FROM_ITEMS")
-        if excluded_fields:
+        if excluded_fields := os.getenv("EXCLUDED_FROM_ITEMS"):
             for field_path in excluded_fields.split(","):
-                if field_path := field_path.strip():
-                    get_excluded_from_items(stac_item, field_path)
+                if path := field_path.strip():
+                    get_excluded_from_items(stac_item, path)
 
         return stac_item
 
@@ -137,29 +146,25 @@ class CollectionSerializer(Serializer):
 
     @classmethod
     def stac_to_db(cls, collection: stac_types.Collection, request: Request) -> dict:
-        """
-        Transform STAC Collection to database-ready STAC collection.
+        """Transform STAC Collection to database-ready STAC collection.
 
         Args:
-            stac_data: the STAC Collection object to be transformed
-            starlette.requests.Request: the API request
+            collection: The STAC collection object.
+            request: The incoming starlette request.
 
         Returns:
-            dict: The database-ready STAC Collection object.
+            A dictionary representation of the collection for the database.
         """
         collection = deepcopy(collection)
         collection["links"] = resolve_links(
             collection.get("links", []), str(request.base_url)
         )
-
         if get_bool_env("STAC_INDEX_ASSETS"):
-            collection["assets"] = [
-                {"es_key": k, **v} for k, v in collection.get("assets", {}).items()
-            ]
-            collection["item_assets"] = [
-                {"es_key": k, **v} for k, v in collection.get("item_assets", {}).items()
-            ]
-
+            for key in ["assets", "item_assets"]:
+                if key in collection:
+                    collection[key] = [
+                        {"es_key": k, **v} for k, v in collection.get(key, {}).items()
+                    ]
         return collection
 
     @classmethod
@@ -169,26 +174,19 @@ class CollectionSerializer(Serializer):
         """Transform database model to STAC collection.
 
         Args:
-            collection (dict): The collection data in dictionary form, extracted from the database.
-            starlette.requests.Request: the API request
-            extensions: A list of the extension class names (`ext.__name__`) or all enabled STAC API extensions.
+            collection: The database collection dictionary.
+            request: The incoming starlette request.
+            extensions: List of enabled API extensions.
 
         Returns:
-            stac_types.Collection: The STAC collection object.
+            A stac_types.Collection object with dynamic links.
         """
         extensions = extensions or []
-        # Avoid modifying the input dict in-place ... doing so breaks some tests
         collection = deepcopy(collection)
-
-        # Extract parent_ids before removing (needed for dynamic parent link injection)
-        parent_ids = collection.get("parent_ids", [])
-
-        # Remove internal fields (not part of STAC spec)
+        parent_ids = collection.pop("parent_ids", [])
         collection.pop("bbox_shape", None)
-        collection.pop("parent_ids", None)
 
-        # Set defaults
-        collection_id = collection.get("id")
+        # Ensure all required STAC Collection fields have default values
         collection.setdefault("type", "Collection")
         collection.setdefault("stac_extensions", [])
         collection.setdefault("stac_version", "")
@@ -203,67 +201,102 @@ class CollectionSerializer(Serializer):
         )
         collection.setdefault("assets", {})
 
-        # Create the collection links using CollectionLinks
+        collection_id = collection.get("id")
+        base_url = str(request.base_url)
+
         collection_links = CollectionLinks(
             collection_id=collection_id, request=request, extensions=extensions
         ).create_links()
 
-        # Add any additional links from the collection dictionary
+        if "CatalogsExtension" in extensions:
+            # Use path_params for safe extraction (avoids fragile string parsing)
+            context_parent_id = request.path_params.get("catalog_id")
+
+            unique_pids = list(dict.fromkeys(parent_ids))
+
+            # Determine if we're in a catalog context (scoped) or global context
+            if context_parent_id:
+                # SCOPED CONTEXT: /catalogs/{id}/collections/{id}
+                # Move context parent to front, make it rel="parent", others rel="related"
+                if context_parent_id in unique_pids:
+                    unique_pids.remove(context_parent_id)
+                    unique_pids.insert(0, context_parent_id)
+
+                if unique_pids:
+                    # Remove the default parent link from CollectionLinks
+                    collection_links = [
+                        link for link in collection_links if link.get("rel") != "parent"
+                    ]
+
+                    for idx, pid in enumerate(unique_pids):
+                        is_root = pid in ("stac-fastapi", "root")
+                        href = base_url if is_root else f"{base_url}catalogs/{pid}"
+                        collection_links.append(
+                            {
+                                "rel": "parent" if idx == 0 else "related",
+                                "href": href,
+                                "title": "Root Catalog" if is_root else pid,
+                            }
+                        )
+            else:
+                # GLOBAL CONTEXT: /collections/{id}
+                # Parent MUST be root (/), all catalogs are rel="related"
+                # CollectionLinks already created parent → root, so just add related links
+                for pid in unique_pids:
+                    is_root = pid in ("stac-fastapi", "root")
+                    if (
+                        not is_root
+                    ):  # Don't add root as related since it's already parent
+                        href = f"{base_url}catalogs/{pid}"
+                        collection_links.append(
+                            {
+                                "rel": "related",
+                                "href": href,
+                                "title": pid,
+                            }
+                        )
+
+            collection_links.append(
+                {"rel": "canonical", "href": f"{base_url}collections/{collection_id}"}
+            )
+
+            # Add duplicate links for alternative scoped URIs (RFC 6249)
+            for pid in unique_pids:
+                is_root = pid in ("stac-fastapi", "root")
+                if not is_root:
+                    duplicate_href = (
+                        f"{base_url}catalogs/{pid}/collections/{collection_id}"
+                    )
+                    collection_links.append(
+                        {
+                            "rel": "duplicate",
+                            "type": "application/json",
+                            "href": duplicate_href,
+                            "title": f"Collection in catalog: {pid}",
+                        }
+                    )
+
         original_links = collection.get("links")
         if original_links:
-            collection_links += resolve_links(original_links, str(request.base_url))
-
-        # DYNAMIC PARENT LINK INJECTION (Poly-hierarchy support)
-        # If the Catalogs Extension is enabled and this collection has parent catalogs,
-        # inject rel="parent" links for each parent (in addition to the structural parent)
-        base_url = str(request.base_url)
-        catalogs_enabled = "CatalogsExtension" in extensions
-
-        if catalogs_enabled and parent_ids:
-            # Deduplicate parent_ids to prevent duplicate links
-            unique_parent_ids = list(set(parent_ids))
-
-            # Poly-hierarchy: Add a parent link for each parent catalog
-            for pid in unique_parent_ids:
-                # If the parent is the root catalog ID, point to base_url
-                # Otherwise, point to the canonical /catalogs/{pid} endpoint
-                parent_href = (
-                    base_url
-                    if pid in ("stac-fastapi", "root")
-                    else f"{base_url}catalogs/{pid}"
-                )
-
-                parent_link = {
-                    "rel": "parent",
-                    "type": "application/json",
-                    "href": parent_href,
-                }
-
-                # Add title for root catalog
-                if parent_href == base_url or pid in ("stac-fastapi", "root"):
-                    parent_link["title"] = "Root Catalog"
-                else:
-                    # Title will be added later by catalogs() method if available
-                    parent_link["title"] = pid
-
-                collection_links.append(parent_link)
+            collection_links += resolve_links(original_links, base_url)
 
         collection["links"] = collection_links
 
+        # Handle asset deserialization based on STAC_INDEX_ASSETS setting
         if get_bool_env("STAC_INDEX_ASSETS"):
             collection["assets"] = {
-                a.pop("es_key"): a for a in collection.get("assets", [])
+                a.pop("es_key", f"asset_{idx}"): a
+                for idx, a in enumerate(collection.get("assets", []))
             }
             collection["item_assets"] = {
-                i.pop("es_key"): i for i in collection.get("item_assets", [])
+                i.pop("es_key", f"item_asset_{idx}"): i
+                for idx, i in enumerate(collection.get("item_assets", []))
             }
-
         else:
             collection["assets"] = collection.get("assets", {})
             if item_assets := collection.get("item_assets"):
                 collection["item_assets"] = item_assets
 
-        # Return the stac_types.Collection object
         return stac_types.Collection(**collection)
 
     @classmethod
@@ -276,27 +309,21 @@ class CollectionSerializer(Serializer):
     ) -> stac_types.Collection:
         """Transform database model to STAC collection within a catalog context.
 
-        This method is used when a collection is accessed via /catalogs/{id}/collections/{id}.
-        It sets the structural parent to the catalog and injects a catalog link.
-
         Args:
-            collection (dict): The collection data in dictionary form, extracted from the database.
-            request: the API request
-            catalog_id: The ID of the parent catalog (sets structural parent)
-            extensions: A list of the extension class names (`ext.__name__`) or all enabled STAC API extensions.
+            collection: The database collection dictionary.
+            request: The incoming starlette request.
+            catalog_id: The ID of the specific catalog context.
+            extensions: List of enabled API extensions.
 
         Returns:
-            stac_types.Collection: The STAC collection object with catalog context.
+            A stac_types.Collection object scoped to the provided catalog.
         """
         extensions = extensions or []
-        # Avoid modifying the input dict in-place
         collection = deepcopy(collection)
-
-        # Remove internal fields (not part of STAC spec)
+        parent_ids = collection.pop("parent_ids", [])
         collection.pop("bbox_shape", None)
 
-        # Set defaults
-        collection_id = collection.get("id")
+        # Ensure all required STAC Collection fields have default values
         collection.setdefault("type", "Collection")
         collection.setdefault("stac_extensions", [])
         collection.setdefault("stac_version", "")
@@ -311,12 +338,11 @@ class CollectionSerializer(Serializer):
         )
         collection.setdefault("assets", {})
 
-        # Determine the structural parent URL
-        # When accessed via /catalogs/{id}/collections/{id}, the parent is the catalog
+        collection_id = collection.get("id")
+
         base_url = str(request.base_url)
         parent_url = f"{base_url}catalogs/{catalog_id}"
 
-        # Create the collection links using CollectionLinks with catalog as parent
         collection_links = CollectionLinks(
             collection_id=collection_id,
             request=request,
@@ -324,36 +350,67 @@ class CollectionSerializer(Serializer):
             parent_url=parent_url,
         ).create_links()
 
-        # Add any additional links from the collection dictionary
+        if "CatalogsExtension" in extensions:
+            unique_parent_ids = list(dict.fromkeys(parent_ids))
+
+            # Add rel="related" links for other parent catalogs (not the current context)
+            for pid in unique_parent_ids:
+                if pid == catalog_id:
+                    continue
+                is_root = pid in ("stac-fastapi", "root")
+                href = base_url if is_root else f"{base_url}catalogs/{pid}"
+                collection_links.append(
+                    {
+                        "rel": "related",
+                        "type": "application/json",
+                        "href": href,
+                        "title": "Root Catalog" if is_root else pid,
+                    }
+                )
+
+            canonical_href = f"{base_url}collections/{collection_id}"
+            collection_links.append(
+                {"rel": "canonical", "type": "application/json", "href": canonical_href}
+            )
+
+            # Add duplicate links for alternative scoped URIs (RFC 6249)
+            # Include the current catalog context and all other parent catalogs
+            for pid in unique_parent_ids:
+                is_root = pid in ("stac-fastapi", "root")
+                if not is_root:
+                    duplicate_href = (
+                        f"{base_url}catalogs/{pid}/collections/{collection_id}"
+                    )
+                    collection_links.append(
+                        {
+                            "rel": "duplicate",
+                            "type": "application/json",
+                            "href": duplicate_href,
+                            "title": f"Collection in catalog: {pid}",
+                        }
+                    )
+
         original_links = collection.get("links")
         if original_links:
-            collection_links += resolve_links(original_links, str(request.base_url))
-
-        # Inject catalog link for consistency (same as parent in this context)
-        catalog_link = {
-            "rel": "catalog",
-            "type": "application/json",
-            "href": parent_url,
-            "title": catalog_id,
-        }
-        collection_links.append(catalog_link)
+            collection_links += resolve_links(original_links, base_url)
 
         collection["links"] = collection_links
 
+        # Handle asset deserialization based on STAC_INDEX_ASSETS setting
         if get_bool_env("STAC_INDEX_ASSETS"):
             collection["assets"] = {
-                a.pop("es_key"): a for a in collection.get("assets", [])
+                a.pop("es_key", f"asset_{idx}"): a
+                for idx, a in enumerate(collection.get("assets", []))
             }
             collection["item_assets"] = {
-                i.pop("es_key"): i for i in collection.get("item_assets", [])
+                i.pop("es_key", f"item_asset_{idx}"): i
+                for idx, i in enumerate(collection.get("item_assets", []))
             }
-
         else:
             collection["assets"] = collection.get("assets", {})
             if item_assets := collection.get("item_assets"):
                 collection["item_assets"] = item_assets
 
-        # Return the stac_types.Collection object
         return stac_types.Collection(**collection)
 
 
@@ -362,15 +419,14 @@ class CatalogSerializer(Serializer):
 
     @classmethod
     def stac_to_db(cls, catalog: Catalog, request: Request) -> dict:
-        """
-        Transform STAC Catalog to database-ready STAC catalog.
+        """Transform STAC Catalog to database-ready STAC catalog.
 
         Args:
-            catalog: the STAC Catalog object to be transformed
-            request: the API request
+            catalog: The STAC Catalog object.
+            request: The incoming starlette request.
 
         Returns:
-            dict: The database-ready STAC Catalog object.
+            A dictionary representation of the catalog for the database.
         """
         catalog = deepcopy(catalog)
         catalog.links = resolve_links(catalog.links, str(request.base_url))
@@ -383,73 +439,65 @@ class CatalogSerializer(Serializer):
         """Transform database model to STAC catalog.
 
         Args:
-            catalog (dict): The catalog data in dictionary form, extracted from the database.
-            request (Request): the API request
-            extensions: A list of the extension class names (`ext.__name__`) or all enabled STAC API extensions.
+            catalog: The database catalog dictionary.
+            request: The incoming starlette request.
+            extensions: List of enabled API extensions.
 
         Returns:
-            stac_types.Catalog: The STAC catalog object.
+            A stac_types.Catalog object with dynamic links.
         """
         extensions = extensions or []
-        # Avoid modifying the input dict in-place
         catalog = deepcopy(catalog)
-
-        # Extract parent_ids before removing (needed for dynamic parent link injection)
-        parent_ids = catalog.get("parent_ids", [])
-
-        # Remove internal fields (not part of STAC spec)
-        catalog.pop("parent_ids", None)
-
-        # Set defaults
-        catalog.setdefault("type", "Catalog")
-        catalog.setdefault("stac_extensions", [])
-        catalog.setdefault("stac_version", "")
-        catalog.setdefault("title", "")
-        catalog.setdefault("description", "")
-
-        # Create the catalog links - for now, just resolve existing links
-        original_links = catalog.get("links", [])
-        if original_links:
-            catalog_links = resolve_links(original_links, str(request.base_url))
-        else:
-            catalog_links = []
-
-        # DYNAMIC PARENT LINK INJECTION (Poly-hierarchy support)
-        # If the Catalogs Extension is enabled and this catalog has parent catalogs,
-        # inject rel="parent" links for each parent
+        parent_ids = catalog.pop("parent_ids", [])
         base_url = str(request.base_url)
-        catalogs_enabled = "CatalogsExtension" in extensions
 
-        if catalogs_enabled and parent_ids:
-            # Deduplicate parent_ids to prevent duplicate links
-            unique_parent_ids = list(set(parent_ids))
+        catalog_links = resolve_links(catalog.get("links", []), base_url)
 
-            # Poly-hierarchy: Add a parent link for each parent catalog
-            for pid in unique_parent_ids:
-                # If the parent is the root catalog ID, point to base_url
-                # Otherwise, point to the canonical /catalogs/{pid} endpoint
-                parent_href = (
-                    base_url
-                    if pid in ("stac-fastapi", "root")
-                    else f"{base_url}catalogs/{pid}"
+        if "CatalogsExtension" in extensions:
+            # Use path_params for safe extraction (avoids fragile string parsing)
+            # For catalogs, we need the parent_catalog_id if accessing /catalogs/{parent}/catalogs/{child}
+            context_parent_id = request.path_params.get("parent_catalog_id")
+
+            unique_pids = list(dict.fromkeys(parent_ids))
+            if context_parent_id and context_parent_id in unique_pids:
+                unique_pids.remove(context_parent_id)
+                unique_pids.insert(0, context_parent_id)
+
+            if not unique_pids:
+                catalog_links.append(
+                    {"rel": "parent", "href": base_url, "title": "Root Catalog"}
                 )
+            else:
+                for idx, pid in enumerate(unique_pids):
+                    is_root = pid in ("stac-fastapi", "root")
+                    href = base_url if is_root else f"{base_url}catalogs/{pid}"
+                    catalog_links.append(
+                        {
+                            "rel": "parent" if idx == 0 else "related",
+                            "href": href,
+                            "title": "Root Catalog" if is_root else pid,
+                        }
+                    )
 
-                parent_link = {
-                    "rel": "parent",
-                    "type": "application/json",
-                    "href": parent_href,
-                }
+            catalog_links.append(
+                {"rel": "canonical", "href": f"{base_url}catalogs/{catalog.get('id')}"}
+            )
 
-                # Add title for root catalog
-                if parent_href == base_url or pid in ("stac-fastapi", "root"):
-                    parent_link["title"] = "Root Catalog"
-                else:
-                    # Title will be added later by catalogs() method if available
-                    parent_link["title"] = pid
-
-                catalog_links.append(parent_link)
+            # Add duplicate links for alternative scoped URIs (RFC 6249)
+            # Show all parent-scoped URIs where this catalog can be accessed
+            catalog_id = catalog.get("id")
+            for pid in unique_pids:
+                is_root = pid in ("stac-fastapi", "root")
+                if not is_root:
+                    duplicate_href = f"{base_url}catalogs/{pid}/catalogs/{catalog_id}"
+                    catalog_links.append(
+                        {
+                            "rel": "duplicate",
+                            "type": "application/json",
+                            "href": duplicate_href,
+                            "title": f"Catalog in parent: {pid}",
+                        }
+                    )
 
         catalog["links"] = catalog_links
-
-        # Return the Catalog object
         return stac_types.Catalog(**catalog)

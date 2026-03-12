@@ -257,13 +257,52 @@ This implementation follows the [Multi-Tenant Virtual Catalogs Endpoint](https:/
 
 ### DAG Specification & Dynamic Link Generation
 
-SFEOS implements the [STAC API - Multi-Tenant Catalogs Endpoint Extension](https://github.com/stac-api-extensions/multi-tenant-catalogs) (v1.0.0-beta.3) with full support for Directed Acyclic Graph (DAG) structures:
+SFEOS implements the [STAC API - Multi-Tenant Catalogs Endpoint Extension](https://github.com/stac-api-extensions/multi-tenant-catalogs) (v1.0.0-beta.4) with full support for Directed Acyclic Graph (DAG) structures and strict STAC core compliance:
 
-- **Dynamic Parent Links**: All `rel="parent"` links are generated at runtime based on the `parent_ids` field, enabling true poly-hierarchy where catalogs can have multiple parents. Each parent is represented as a separate link, allowing clients to navigate up the graph through any parent path.
-- **Dynamic Child Links**: All `rel="child"` links are generated dynamically by querying the database for actual children (catalogs and collections), preventing stale links and enabling STAC Browser folder navigation. Child links are never persisted statically.
-- **Contextual Breadcrumbs**: Scoped endpoints (like `/catalogs/{id}/collections`) lock breadcrumb navigation to the specific catalog context via the `rel="parent"` link, ensuring proper UI traversal in STAC Browser and preventing users from being unexpectedly redirected to the root.
-- **No Static Links**: Parent and child relationships are never persisted as static links in the database. All links are computed on-the-fly based on the `parent_ids` array, ensuring data consistency and preventing orphaned references.
-- **STAC Browser Compatible**: The dynamic link generation fully supports STAC Browser's navigation model, enabling seamless folder-based exploration of complex catalog hierarchies.
+#### Link Relations
+
+All link relations are generated dynamically at runtime based on the `parent_ids` field and request context:
+
+- **`rel="parent"`** - Exactly one parent link per resource, context-aware:
+  - Global endpoints (`/collections/{id}`, `/catalogs/{id}`): Points to root `/` or first parent
+  - Scoped endpoints (`/catalogs/{id}/collections/{id}`): Points to the contextual catalog
+  - Ensures proper breadcrumb navigation in STAC Browser
+
+- **`rel="related"`** - Alternative parents in poly-hierarchy:
+  - Exposes all other parent catalogs beyond the contextual parent
+  - Allows advanced clients to discover the full organizational graph
+  - Only included when a resource has multiple parents
+
+- **`rel="canonical"`** - Authoritative global endpoint:
+  - Points to the primary, global URI for the resource
+  - Example: `/catalogs/{id}/collections/{id}` → canonical: `/collections/{id}`
+  - Enables clients to deduplicate resources across different contexts
+
+- **`rel="duplicate"`** - Alternative scoped URIs (RFC 6249):
+  - Lists all parent-scoped endpoints where the resource can be accessed
+  - Example: Collection in 2 catalogs has duplicate links to both scoped URIs
+  - Helps clients identify identical resources in different organizational contexts
+
+- **`rel="child"`** - Direct children:
+  - Generated dynamically by querying the database for actual children
+  - Never persisted statically, preventing stale links
+  - Enables STAC Browser folder navigation
+
+#### Contextual vs Global Navigation
+
+**Global Endpoints** (`/collections/{id}`):
+- Parent → root `/`
+- Related → all catalog parents
+- Canonical → self
+- Duplicate → all scoped URIs
+
+**Scoped Endpoints** (`/catalogs/{id}/collections/{id}`):
+- Parent → contextual catalog
+- Related → other catalog parents
+- Canonical → global endpoint
+- Duplicate → all scoped URIs
+
+**Key Principle**: No static links are persisted in the database. All relationships are computed on-the-fly based on the `parent_ids` array, ensuring data consistency and preventing orphaned references.
 
 ### Safety Architecture
 
