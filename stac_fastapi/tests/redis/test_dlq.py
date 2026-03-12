@@ -109,10 +109,10 @@ def test_extract_empty():
     assert ItemQueueWorker._extract_failed_item_ids([]) == set()
 
 
-def test_extract_missing_index_key():
-    assert (
-        ItemQueueWorker._extract_failed_item_ids([{"delete": {"_id": "x|c"}}]) == set()
-    )
+def test_extract_delete_op():
+    assert ItemQueueWorker._extract_failed_item_ids([{"delete": {"_id": "x|c"}}]) == {
+        "x"
+    }
 
 
 def test_extract_missing_id():
