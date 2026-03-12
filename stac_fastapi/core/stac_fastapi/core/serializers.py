@@ -187,19 +187,25 @@ class CollectionSerializer(Serializer):
         collection.pop("bbox_shape", None)
 
         # Ensure all required STAC Collection fields have default values
+        # Handle both missing keys and explicit None values
         collection.setdefault("type", "Collection")
-        collection.setdefault("stac_extensions", [])
+        if collection.get("stac_extensions") is None:
+            collection["stac_extensions"] = []
         collection.setdefault("stac_version", "")
         collection.setdefault("title", "")
         collection.setdefault("description", "")
-        collection.setdefault("keywords", [])
+        if collection.get("keywords") is None:
+            collection["keywords"] = []
         collection.setdefault("license", "")
-        collection.setdefault("providers", [])
-        collection.setdefault("summaries", {})
+        if collection.get("providers") is None:
+            collection["providers"] = []
+        if collection.get("summaries") is None:
+            collection["summaries"] = {}
         collection.setdefault(
             "extent", {"spatial": {"bbox": []}, "temporal": {"interval": []}}
         )
-        collection.setdefault("assets", {})
+        if collection.get("assets") is None:
+            collection["assets"] = {}
 
         collection_id = collection.get("id")
         base_url = str(request.base_url)
@@ -324,30 +330,38 @@ class CollectionSerializer(Serializer):
         collection.pop("bbox_shape", None)
 
         # Ensure all required STAC Collection fields have default values
+        # Handle both missing keys and explicit None values
         collection.setdefault("type", "Collection")
-        collection.setdefault("stac_extensions", [])
+        if collection.get("stac_extensions") is None:
+            collection["stac_extensions"] = []
         collection.setdefault("stac_version", "")
         collection.setdefault("title", "")
         collection.setdefault("description", "")
-        collection.setdefault("keywords", [])
+        if collection.get("keywords") is None:
+            collection["keywords"] = []
         collection.setdefault("license", "")
-        collection.setdefault("providers", [])
-        collection.setdefault("summaries", {})
+        if collection.get("providers") is None:
+            collection["providers"] = []
+        if collection.get("summaries") is None:
+            collection["summaries"] = {}
         collection.setdefault(
             "extent", {"spatial": {"bbox": []}, "temporal": {"interval": []}}
         )
-        collection.setdefault("assets", {})
+        if collection.get("assets") is None:
+            collection["assets"] = {}
 
         collection_id = collection.get("id")
 
         base_url = str(request.base_url)
         parent_url = f"{base_url}catalogs/{catalog_id}"
+        self_url = f"{base_url}catalogs/{catalog_id}/collections/{collection_id}"
 
         collection_links = CollectionLinks(
             collection_id=collection_id,
             request=request,
             extensions=extensions,
             parent_url=parent_url,
+            self_url=self_url,
         ).create_links()
 
         if "CatalogsExtension" in extensions:
@@ -374,8 +388,10 @@ class CollectionSerializer(Serializer):
             )
 
             # Add duplicate links for alternative scoped URIs (RFC 6249)
-            # Include the current catalog context and all other parent catalogs
+            # Show OTHER catalogs where this collection can be accessed (not current context)
             for pid in unique_parent_ids:
+                if pid == catalog_id:
+                    continue  # Skip current catalog context
                 is_root = pid in ("stac-fastapi", "root")
                 if not is_root:
                     duplicate_href = (
@@ -483,26 +499,6 @@ class CatalogSerializer(Serializer):
                             "rel": "parent" if idx == 0 else "related",
                             "href": href,
                             "title": "Root Catalog" if is_root else pid,
-                        }
-                    )
-
-            catalog_links.append(
-                {"rel": "canonical", "href": f"{base_url}catalogs/{catalog.get('id')}"}
-            )
-
-            # Add duplicate links for alternative scoped URIs (RFC 6249)
-            # Show all parent-scoped URIs where this catalog can be accessed
-            catalog_id = catalog.get("id")
-            for pid in unique_pids:
-                is_root = pid in ("stac-fastapi", "root")
-                if not is_root:
-                    duplicate_href = f"{base_url}catalogs/{pid}/catalogs/{catalog_id}"
-                    catalog_links.append(
-                        {
-                            "rel": "duplicate",
-                            "type": "application/json",
-                            "href": duplicate_href,
-                            "title": f"Catalog in parent: {pid}",
                         }
                     )
 

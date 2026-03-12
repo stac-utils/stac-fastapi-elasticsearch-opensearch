@@ -2038,7 +2038,6 @@ async def test_get_catalog_dynamic_parent_links_poly_hierarchy(
     This tests the new spec requirement where:
     - Exactly ONE rel="parent" link (the first/primary parent)
     - Additional parents exposed via rel="related" links
-    - All alternative scoped URIs exposed via rel="duplicate" links
     """
     # Create two parent catalogs
     parent_ids = []
@@ -2096,19 +2095,8 @@ async def test_get_catalog_dynamic_parent_links_poly_hierarchy(
         for href in related_hrefs
     ), "Related links should include other parent catalogs"
 
-    # NEW SPEC: Duplicate links for alternative scoped URIs
-    duplicate_links = [link for link in links if link.get("rel") == "duplicate"]
-    assert (
-        len(duplicate_links) >= 2
-    ), f"Catalog with 2 parents should have at least 2 duplicate links (one per parent-scoped URI), got {len(duplicate_links)}"
-
-    # Verify duplicate links point to parent-scoped URIs
-    duplicate_hrefs = [link["href"] for link in duplicate_links]
-    for parent_id in parent_ids:
-        assert any(
-            f"/catalogs/{parent_id}/catalogs/{child_id}" in href
-            for href in duplicate_hrefs
-        ), f"Duplicate links should include scoped URI for parent {parent_id}"
+    # NOTE: Catalogs do NOT have rel="duplicate" links because they don't have
+    # scoped read endpoints (no GET /catalogs/{parent}/catalogs/{child})
 
 
 @pytest.mark.asyncio
@@ -2302,7 +2290,6 @@ async def test_get_catalog_deduplicates_parent_links(
     This tests the new spec requirement where:
     - Exactly ONE rel="parent" link (no duplicates possible)
     - Related links are also deduplicated
-    - Duplicate links are also deduplicated
     """
     # Create a parent catalog
     parent_catalog = load_test_data("test_catalog.json")
@@ -2348,12 +2335,7 @@ async def test_get_catalog_deduplicates_parent_links(
         set(related_hrefs)
     ), f"Related links should be unique, got duplicates: {related_hrefs}"
 
-    # Verify duplicate links are also unique
-    duplicate_links = [link for link in links if link.get("rel") == "duplicate"]
-    duplicate_hrefs = [link["href"] for link in duplicate_links]
-    assert len(duplicate_hrefs) == len(
-        set(duplicate_hrefs)
-    ), f"Duplicate links should be unique, got duplicates: {duplicate_hrefs}"
+    # NOTE: Catalogs do NOT have rel="duplicate" links (no scoped read endpoints)
 
 
 @pytest.mark.asyncio
@@ -3323,22 +3305,156 @@ async def test_scoped_collection_links_poly_hierarchy(
         f"got: {canonical_href}"
     )
 
-    # SPEC: Duplicate links for all alternative scoped URIs
+    # SPEC: Duplicate links for alternative scoped URIs (excluding current context)
     duplicate_links = [link for link in links if link.get("rel") == "duplicate"]
-    assert (
-        len(duplicate_links) >= 2
-    ), f"Collection with 2 parents should have at least 2 duplicate links, got {len(duplicate_links)}"
+    assert len(duplicate_links) == 1, (
+        f"Collection with 2 parents accessed via 1 catalog should have 1 duplicate "
+        f"link (for the other catalog), got {len(duplicate_links)}"
+    )
 
     duplicate_hrefs = [link["href"] for link in duplicate_links]
 
-    # Should have duplicate link for current scoped URI
-    assert any(
+    # Should NOT have duplicate link for current scoped URI (that's the self link)
+    assert not any(
         f"/catalogs/{parent_id_1}/collections/{collection_id}" in href
         for href in duplicate_hrefs
-    ), f"Duplicate links should include current scoped URI /catalogs/{parent_id_1}/collections/{collection_id}"
+    ), f"Duplicate links should NOT include current context /catalogs/{parent_id_1}"
 
-    # Should have duplicate link for other scoped URI
+    # Should have duplicate link for the OTHER parent's scoped URI
     assert any(
         f"/catalogs/{parent_id_2}/collections/{collection_id}" in href
         for href in duplicate_hrefs
     ), f"Duplicate links should include alternative scoped URI /catalogs/{parent_id_2}/collections/{collection_id}"
+
+
+@pytest.mark.asyncio
+async def test_duplicate_links_exclude_current_catalog_context(
+    catalogs_app_client, load_test_data
+):
+    """Test that duplicate links exclude the current catalog context.
+
+    When accessing a collection via /catalogs/{id}/collections/{id}, the duplicate
+    links should only show OTHER catalogs where this collection exists, not the
+    current catalog context.
+    """
+    # Create three parent catalogs
+    parent_ids = []
+    for i in range(3):
+        parent_catalog = load_test_data("test_catalog.json")
+        parent_id = f"parent-catalog-{uuid.uuid4()}-{i}"
+        parent_catalog["id"] = parent_id
+
+        parent_resp = await catalogs_app_client.post("/catalogs", json=parent_catalog)
+        assert parent_resp.status_code == 201
+        parent_ids.append(parent_id)
+
+    # Create a collection
+    collection = load_test_data("test_collection.json")
+    collection_id = f"multi-parent-collection-{uuid.uuid4()}"
+    collection["id"] = collection_id
+
+    # Link collection to all three catalogs
+    for parent_id in parent_ids:
+        link_resp = await catalogs_app_client.post(
+            f"/catalogs/{parent_id}/collections", json=collection
+        )
+        assert link_resp.status_code in [200, 201]
+
+    # Access collection via first catalog's scoped endpoint
+    resp = await catalogs_app_client.get(
+        f"/catalogs/{parent_ids[0]}/collections/{collection_id}"
+    )
+    assert resp.status_code == 200
+
+    collection_data = resp.json()
+    links = collection_data.get("links", [])
+
+    # Get duplicate links
+    duplicate_links = [link for link in links if link.get("rel") == "duplicate"]
+    duplicate_hrefs = [link["href"] for link in duplicate_links]
+
+    # Should NOT include current catalog context in duplicate links
+    assert not any(
+        f"/catalogs/{parent_ids[0]}/collections/{collection_id}" in href
+        for href in duplicate_hrefs
+    ), f"Duplicate links should NOT include current catalog context /catalogs/{parent_ids[0]}"
+
+    # Should include the OTHER two catalogs
+    assert any(
+        f"/catalogs/{parent_ids[1]}/collections/{collection_id}" in href
+        for href in duplicate_hrefs
+    ), f"Duplicate links should include alternative catalog /catalogs/{parent_ids[1]}"
+
+    assert any(
+        f"/catalogs/{parent_ids[2]}/collections/{collection_id}" in href
+        for href in duplicate_hrefs
+    ), f"Duplicate links should include alternative catalog /catalogs/{parent_ids[2]}"
+
+    # Verify we have exactly 2 duplicate links (for the 2 other catalogs)
+    assert len(duplicate_links) == 2, (
+        f"Collection with 3 parents accessed via 1 catalog should have 2 duplicate "
+        f"links (for the other 2 catalogs), got {len(duplicate_links)}"
+    )
+
+
+@pytest.mark.asyncio
+async def test_catalog_collections_endpoint_excludes_catalogs(
+    catalogs_app_client, load_test_data
+):
+    """Test that GET /catalogs/{id}/collections only returns Collections, not Catalogs.
+
+    This verifies that the type filter is working correctly to exclude catalogs
+    from the collections endpoint.
+    """
+    # Create a parent catalog
+    parent_catalog = load_test_data("test_catalog.json")
+    parent_id = f"parent-catalog-{uuid.uuid4()}"
+    parent_catalog["id"] = parent_id
+
+    parent_resp = await catalogs_app_client.post("/catalogs", json=parent_catalog)
+    assert parent_resp.status_code == 201
+
+    # Create a child catalog (should NOT appear in collections endpoint)
+    child_catalog = load_test_data("test_catalog.json")
+    child_catalog_id = f"child-catalog-{uuid.uuid4()}"
+    child_catalog["id"] = child_catalog_id
+
+    catalog_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_id}/catalogs", json=child_catalog
+    )
+    assert catalog_resp.status_code == 201
+
+    # Create a collection (SHOULD appear in collections endpoint)
+    collection = load_test_data("test_collection.json")
+    collection_id = f"test-collection-{uuid.uuid4()}"
+    collection["id"] = collection_id
+
+    coll_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_id}/collections", json=collection
+    )
+    assert coll_resp.status_code in [200, 201]
+
+    # Get collections from the catalog
+    resp = await catalogs_app_client.get(f"/catalogs/{parent_id}/collections")
+    assert resp.status_code == 200
+
+    data = resp.json()
+    collections = data.get("collections", [])
+
+    # Verify all returned items are Collections (type="Collection")
+    for item in collections:
+        assert item.get("type") == "Collection", (
+            f"Collections endpoint returned item with type={item.get('type')}, "
+            f"expected 'Collection'. Item ID: {item.get('id')}"
+        )
+
+    # Verify the collection is present
+    collection_ids = [c.get("id") for c in collections]
+    assert (
+        collection_id in collection_ids
+    ), f"Collection {collection_id} should be in the results"
+
+    # Verify the child catalog is NOT present
+    assert (
+        child_catalog_id not in collection_ids
+    ), f"Catalog {child_catalog_id} should NOT be in collections endpoint results"
