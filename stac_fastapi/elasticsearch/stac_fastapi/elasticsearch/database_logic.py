@@ -304,6 +304,9 @@ class DatabaseLogic(BaseDatabaseLogic):
         if datetime_filter:
             query_parts.append(datetime_filter)
 
+        # Always filter by type=Collection to exclude catalogs
+        query_parts.append({"term": {"type": "Collection"}})
+
         # Combine all query parts with AND logic
         if query_parts:
             body["query"] = (

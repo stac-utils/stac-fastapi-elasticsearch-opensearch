@@ -420,7 +420,7 @@ class CatalogsExtension(ApiExtension):
         base_url = str(request.base_url)
 
         # Get all catalogs from database with pagination
-        catalogs, next_token, _ = await self.client.database.get_all_catalogs(
+        catalogs, next_token, total_hits = await self.client.database.get_all_catalogs(
             token=token,
             limit=limit,
             request=request,
@@ -450,11 +450,12 @@ class CatalogsExtension(ApiExtension):
             }
             links.append(next_link)
 
-        # Return Catalogs object with catalogs
+        # Return Catalogs object with catalogs and numberMatched
         return Catalogs(
             catalogs=catalog_stac_objects,
             links=links,
             numberReturned=len(catalog_stac_objects),
+            numberMatched=total_hits,  # Include the total number of matching catalogs
         )
 
     async def create_catalog(self, catalog: Catalog, request: Request) -> Catalog:
