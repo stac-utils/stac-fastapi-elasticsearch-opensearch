@@ -67,6 +67,35 @@ class CatalogsExtension(ApiExtension):
             exts.append("CatalogsExtension")
         return exts
 
+    @staticmethod
+    def _create_child_link(base_url: str, parent_id: str, child: dict) -> dict:
+        """Generate a STAC rel='child' link based on the child's resource type.
+
+        Args:
+            base_url: The base URL of the API.
+            parent_id: The ID of the parent catalog.
+            child: The child resource dictionary (catalog or collection).
+
+        Returns:
+            A link dictionary with rel='child'.
+        """
+        child_id = child.get("id")
+        child_type = child.get("type", "Collection")
+        child_title = child.get("title", child_id)
+
+        if child_type == "Catalog":
+            href = f"{base_url}catalogs/{child_id}"
+        else:
+            # Collection - use scoped URI
+            href = f"{base_url}catalogs/{parent_id}/collections/{child_id}"
+
+        return {
+            "rel": "child",
+            "type": "application/json",
+            "href": href,
+            "title": child_title,
+        }
+
     def register(self, app: FastAPI, settings=None) -> None:
         """Register the extension with a FastAPI application.
 
@@ -356,33 +385,14 @@ class CatalogsExtension(ApiExtension):
             # Apply child links from pre-fetched map
             children_data = catalog_children_map.get(catalog_id, [])
             for child in children_data:
-                child_id = child.get("id")
-                if not child_id:
+                if child.get("id"):
+                    catalog_dict["links"].append(
+                        self._create_child_link(base_url, catalog_id, child)
+                    )
+                else:
                     logger.warning(
                         f"Child document missing id field in catalog {catalog_id}: {child}"
                     )
-                    continue
-
-                child_type = child.get("type", "Collection")
-                child_title = child.get("title", child_id)
-
-                # Build appropriate href based on child type
-                if child_type == "Catalog":
-                    child_href = f"{base_url}catalogs/{child_id}"
-                else:
-                    # Collection
-                    child_href = (
-                        f"{base_url}catalogs/{catalog_id}/collections/{child_id}"
-                    )
-
-                catalog_dict["links"].append(
-                    {
-                        "rel": "child",
-                        "type": "application/json",
-                        "href": child_href,
-                        "title": child_title,
-                    }
-                )
 
             # Convert back to Catalog object
             catalog_stac = Catalog(**catalog_dict)
@@ -666,25 +676,10 @@ class CatalogsExtension(ApiExtension):
                     )
 
                     for child in children_data:
-                        child_id = child.get("id")
-                        if not child_id:
-                            continue
-
-                        child_type = child.get("type", "Collection")
-                        # Note: Spec says Catalogs use /catalogs/{id}, Collections use /catalogs/{id}/collections/{id}
-                        if child_type == "Catalog":
-                            child_href = f"{base_url}catalogs/{child_id}"
-                        else:
-                            child_href = f"{base_url}catalogs/{catalog_id}/collections/{child_id}"
-
-                        catalog_dict["links"].append(
-                            {
-                                "rel": "child",
-                                "type": "application/json",
-                                "href": child_href,
-                                "title": child.get("title", child_id),
-                            }
-                        )
+                        if child.get("id"):
+                            catalog_dict["links"].append(
+                                self._create_child_link(base_url, catalog_id, child)
+                            )
 
                     if not next_token:
                         break
