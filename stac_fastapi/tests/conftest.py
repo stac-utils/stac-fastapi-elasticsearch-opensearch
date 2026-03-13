@@ -40,6 +40,7 @@ from stac_fastapi.types.config import Settings
 
 os.environ.setdefault("ENABLE_COLLECTIONS_SEARCH_ROUTE", "true")
 os.environ.setdefault("ENABLE_CATALOGS_ROUTE", "false")
+os.environ.setdefault("DATABASE_REFRESH", "true")
 
 if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
     from stac_fastapi.opensearch.app import app_config
@@ -429,7 +430,8 @@ def build_test_app_with_catalogs():
         ),
         settings=test_settings,
         conformance_classes=[
-            "https://api.stacspec.org/v1.0.0-beta.1/multi-tenant-catalogs",
+            "https://api.stacspec.org/v1.0.0-beta.4/multi-tenant-catalogs",
+            "https://api.stacspec.org/v1.0.0-beta.4/multi-tenant-catalogs/transaction",
         ],
     )
 

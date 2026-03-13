@@ -228,7 +228,8 @@ if ENABLE_CATALOGS_ROUTE:
         ),
         settings=settings,
         conformance_classes=[
-            "https://api.stacspec.org/v1.0.0-beta.1/multi-tenant-catalogs",
+            "https://api.stacspec.org/v1.0.0-beta.4/multi-tenant-catalogs",
+            "https://api.stacspec.org/v1.0.0-beta.4/multi-tenant-catalogs/transaction",  # Optional conformance class for transactional support
         ],
     )
     extensions.append(catalogs_extension)

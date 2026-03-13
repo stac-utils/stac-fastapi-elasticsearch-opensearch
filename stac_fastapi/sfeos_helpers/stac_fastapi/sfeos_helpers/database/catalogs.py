@@ -26,7 +26,17 @@ async def search_collections_by_parent_id_shared(
     Returns:
         List of collection documents from the search results.
     """
-    query_body = {"query": {"term": {"parent_ids": catalog_id}}, "size": size}
+    query_body = {
+        "query": {
+            "bool": {
+                "must": [
+                    {"term": {"parent_ids": catalog_id}},
+                    {"term": {"type": "Collection"}},
+                ]
+            }
+        },
+        "size": size,
+    }
     try:
         search_result = await es_client.search(index=COLLECTIONS_INDEX, body=query_body)
         return [hit["_source"] for hit in search_result["hits"]["hits"]]
