@@ -302,8 +302,9 @@ class DatabaseLogic(BaseDatabaseLogic):
         if datetime_filter:
             query_parts.append(datetime_filter)
 
-        # Always filter by type=Collection to exclude catalogs
-        query_parts.append({"term": {"type": "Collection"}})
+        # Exclude Catalogs to prevent them from appearing in the collections endpoint,
+        # without strictly requiring "type": "Collection" to support legacy data.
+        query_parts.append({"bool": {"must_not": [{"term": {"type": "Catalog"}}]}})
 
         # Combine all query parts with AND logic
         if query_parts:
