@@ -1,5 +1,6 @@
 import os
 import uuid
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from stac_pydantic import api
@@ -13,6 +14,10 @@ from stac_fastapi.sfeos_helpers.mappings import (
     COLLECTIONS_INDEX,
     ES_COLLECTIONS_MAPPINGS,
     ES_ITEMS_MAPPINGS,
+    ITEM_INDICES,
+)
+from stac_fastapi.sfeos_helpers.search_engine.selection.selectors import (
+    DatetimeBasedIndexSelector,
 )
 
 from ..conftest import MockRequest, database
@@ -526,3 +531,270 @@ def test_range_index_without_start_datetime_skipped():
         _range_search("2025-11-01T00:00:00Z", "2025-11-10T23:59:59Z"),
     )
     assert len(result) == 0
+
+
+SELECTOR_ALIASES = {
+    "items_col-a": [
+        (
+            {
+                "start_datetime": "items_start_datetime_col-a_2020-02-08",
+                "end_datetime": "items_end_datetime_col-a_2020-02-16",
+            },
+        ),
+        (
+            {
+                "start_datetime": "items_start_datetime_col-a_2020-06-10",
+                "end_datetime": "items_end_datetime_col-a_2020-06-20",
+            },
+        ),
+    ],
+    "items_col-b": [
+        (
+            {
+                "start_datetime": "items_start_datetime_col-b_2020-02-15",
+                "end_datetime": "items_end_datetime_col-b_2020-02-25",
+            },
+        ),
+    ],
+}
+
+
+def _make_selector(monkeypatch):
+    """Create a DatetimeBasedIndexSelector with mocked alias_loader."""
+    monkeypatch.setenv("USE_DATETIME", "false")
+    DatetimeBasedIndexSelector._instance = None
+    with patch.object(DatetimeBasedIndexSelector, "__init__", lambda self, c: None):
+        sel = DatetimeBasedIndexSelector.__new__(DatetimeBasedIndexSelector, None)
+    sel.alias_loader = AsyncMock()
+    sel.alias_loader.get_aliases = AsyncMock(return_value=SELECTOR_ALIASES)
+    sel.alias_loader.get_collection_indexes = AsyncMock(
+        side_effect=lambda cid, **kw: SELECTOR_ALIASES.get(f"items_{cid}", [])
+    )
+    return sel
+
+
+@pytest.mark.datetime_filtering
+def test_has_datetime_values_with_gte():
+    assert DatetimeBasedIndexSelector._has_datetime_values(
+        {"gte": "2020-01-01T00:00:00Z", "lte": None}
+    )
+
+
+@pytest.mark.datetime_filtering
+def test_has_datetime_values_with_lte():
+    assert DatetimeBasedIndexSelector._has_datetime_values(
+        {"gte": None, "lte": "2020-12-31T00:00:00Z"}
+    )
+
+
+@pytest.mark.datetime_filtering
+def test_has_datetime_values_both_none():
+    assert not DatetimeBasedIndexSelector._has_datetime_values(
+        {"gte": None, "lte": None}
+    )
+
+
+@pytest.mark.datetime_filtering
+def test_has_datetime_values_empty_dict():
+    assert not DatetimeBasedIndexSelector._has_datetime_values({})
+
+
+@pytest.mark.datetime_filtering
+def test_has_datetime_values_none():
+    assert not DatetimeBasedIndexSelector._has_datetime_values(None)
+
+
+@pytest.mark.datetime_filtering
+def test_has_datetime_values_string():
+    assert DatetimeBasedIndexSelector._has_datetime_values("2020-01-01T00:00:00Z")
+
+
+@pytest.mark.datetime_filtering
+def test_has_datetime_values_empty_string():
+    assert not DatetimeBasedIndexSelector._has_datetime_values("")
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_select_indexes_with_collections_and_datetime(monkeypatch):
+    sel = _make_selector(monkeypatch)
+    result = await sel.select_indexes(
+        ["col-a"],
+        {"gte": "2020-02-01T00:00:00Z", "lte": "2020-02-28T23:59:59Z"},
+    )
+
+    assert "items_start_datetime_col-a_2020-02-08" in result
+    assert "items_start_datetime_col-a_2020-06-10" not in result
+    sel.alias_loader.get_aliases.assert_not_awaited()
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_select_indexes_no_collections_with_datetime(monkeypatch):
+    sel = _make_selector(monkeypatch)
+    result = await sel.select_indexes(
+        None,
+        {"gte": "2020-02-01T00:00:00Z", "lte": "2020-02-28T23:59:59Z"},
+    )
+
+    sel.alias_loader.get_aliases.assert_awaited_once()
+    assert "items_start_datetime_col-a_2020-02-08" in result
+    assert "items_start_datetime_col-b_2020-02-15" in result
+    assert "items_start_datetime_col-a_2020-06-10" not in result
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_select_indexes_empty_collections_with_datetime(monkeypatch):
+    sel = _make_selector(monkeypatch)
+    result = await sel.select_indexes(
+        [],
+        {"gte": "2020-02-01T00:00:00Z", "lte": "2020-02-28T23:59:59Z"},
+    )
+
+    sel.alias_loader.get_aliases.assert_awaited_once()
+    assert "items_start_datetime_col-a_2020-02-08" in result
+    assert "items_start_datetime_col-b_2020-02-15" in result
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_select_indexes_no_collections_no_datetime(monkeypatch):
+    sel = _make_selector(monkeypatch)
+    result = await sel.select_indexes(
+        None,
+        {"gte": None, "lte": None},
+    )
+
+    assert result == ITEM_INDICES
+    sel.alias_loader.get_aliases.assert_not_awaited()
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_select_indexes_no_matches_returns_empty(monkeypatch):
+    sel = _make_selector(monkeypatch)
+    result = await sel.select_indexes(
+        ["col-a"],
+        {"gte": "2025-01-01T00:00:00Z", "lte": "2025-01-31T23:59:59Z"},
+    )
+
+    assert result == ""
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_select_indexes_collections_no_datetime_returns_all_for_collection(
+    monkeypatch,
+):
+    sel = _make_selector(monkeypatch)
+    result = await sel.select_indexes(
+        ["col-a"],
+        {"gte": None, "lte": None},
+    )
+
+    assert "items_start_datetime_col-a_2020-02-08" in result
+    assert "items_start_datetime_col-a_2020-06-10" in result
+    assert "col-b" not in result
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_select_indexes_no_collections_only_gte(monkeypatch):
+    """No collections + only gte → returns all indexes starting from that date."""
+    sel = _make_selector(monkeypatch)
+    result = await sel.select_indexes(
+        None,
+        {"gte": "2020-06-01T00:00:00Z", "lte": None},
+    )
+
+    assert "items_start_datetime_col-a_2020-06-10" in result
+    assert "items_start_datetime_col-a_2020-02-08" not in result
+    assert "items_start_datetime_col-b_2020-02-15" not in result
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_select_indexes_no_collections_only_lte(monkeypatch):
+    """No collections + only lte → returns all indexes up to that date."""
+    sel = _make_selector(monkeypatch)
+    result = await sel.select_indexes(
+        None,
+        {"gte": None, "lte": "2020-02-20T23:59:59Z"},
+    )
+
+    assert "items_start_datetime_col-a_2020-02-08" in result
+    assert "items_start_datetime_col-b_2020-02-15" in result
+    assert "items_start_datetime_col-a_2020-06-10" not in result
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_select_indexes_no_collections_wide_range_returns_all(monkeypatch):
+    """No collections + wide datetime range → returns all indexes."""
+    sel = _make_selector(monkeypatch)
+    result = await sel.select_indexes(
+        None,
+        {"gte": "2019-01-01T00:00:00Z", "lte": "2021-12-31T23:59:59Z"},
+    )
+
+    assert "items_start_datetime_col-a_2020-02-08" in result
+    assert "items_start_datetime_col-a_2020-06-10" in result
+    assert "items_start_datetime_col-b_2020-02-15" in result
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_select_indexes_no_collections_narrow_range_single_match(monkeypatch):
+    """No collections + narrow range → only one index matches."""
+    sel = _make_selector(monkeypatch)
+    result = await sel.select_indexes(
+        None,
+        {"gte": "2020-06-10T00:00:00Z", "lte": "2020-06-15T23:59:59Z"},
+    )
+
+    assert "items_start_datetime_col-a_2020-06-10" in result
+    assert "items_start_datetime_col-a_2020-02-08" not in result
+    assert "items_start_datetime_col-b_2020-02-15" not in result
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_select_indexes_no_collections_no_matches(monkeypatch):
+    """No collections + datetime outside all ranges → empty string."""
+    sel = _make_selector(monkeypatch)
+    result = await sel.select_indexes(
+        None,
+        {"gte": "2025-01-01T00:00:00Z", "lte": "2025-12-31T23:59:59Z"},
+    )
+
+    assert result == ""
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_select_indexes_multiple_collections_datetime(monkeypatch):
+    """Multiple collections + datetime → filters each collection independently."""
+    sel = _make_selector(monkeypatch)
+    result = await sel.select_indexes(
+        ["col-a", "col-b"],
+        {"gte": "2020-02-01T00:00:00Z", "lte": "2020-02-28T23:59:59Z"},
+    )
+
+    assert "items_start_datetime_col-a_2020-02-08" in result
+    assert "items_start_datetime_col-b_2020-02-15" in result
+    assert "items_start_datetime_col-a_2020-06-10" not in result
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_select_indexes_boundary_date_match(monkeypatch):
+    """Datetime range touching index boundary should match."""
+    sel = _make_selector(monkeypatch)
+    result = await sel.select_indexes(
+        None,
+        {"gte": "2020-02-16T00:00:00Z", "lte": "2020-02-16T23:59:59Z"},
+    )
+
+    assert "items_start_datetime_col-a_2020-02-08" in result
+    assert "items_start_datetime_col-b_2020-02-15" in result

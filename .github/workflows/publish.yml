@@ -97,7 +97,7 @@ jobs:
 
       - name: Extract metadata for Elasticsearch image
         id: meta-es
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository_owner }}/stac-fastapi-es
           tags: |
@@ -118,7 +118,7 @@ jobs:
 
       - name: Extract metadata for OpenSearch image
         id: meta-os
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ghcr.io/${{ github.repository_owner }}/stac-fastapi-os
           tags: |
