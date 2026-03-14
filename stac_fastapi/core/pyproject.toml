@@ -40,7 +40,7 @@ dependencies = [
     "overrides~=7.4.0",
     "geojson-pydantic~=1.0.0",
     "pygeofilter~=0.3.1",
-    "jsonschema~=4.0.0",
+    "jsonschema~=4.26.0",
     "slowapi~=0.1.9",
 ]
 

@@ -8,21 +8,32 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+
+### Changed
+
+### Fixed
+
+### Updated
+
+### Removed
+
+## [v6.13.0] - 2026-03-14
+
+### Added
+
 - Added `filter_indexes_by_datetime_range` for selecting indexes using range intersection between query `[start_datetime, end_datetime]` and index temporal extent, used when `USE_DATETIME=false`.
 - Implemented the Multi-Tenant Catalogs DAG specification (v1.0.0-beta.4). Structural links (`parent`, `child`) are now dynamically generated at runtime to support true poly-hierarchy. Scoped endpoints now feature locked contextual breadcrumbs (`rel="parent"`) with alternative parents exposed as `rel="related"`. Added `rel="canonical"` and `rel="duplicate"` links to Collections to support graph deduplication, and optimized catalog list endpoints to prevent N+1 queries. [#624](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/624)
 - Added datetime-only index filtering: when no collections are specified but a datetime range is provided, `DatetimeBasedIndexSelector` now filters indexes across all collections by the given time range instead of falling back to a wildcard.
 - Retry for datetime searches on `NotFoundError` error retry for database connection errors `ConnectionError`, `ConnectionTimeout` to resolve cache race conditions. [#605](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/605)
 
 ### Changed
+
 - Improved `item_queue_worker.py` error handling: bulk errors are now logged immediately and failed item IDs are extracted from all bulk operation types.
 - Fixed local OS tests fail by setting `DATABASE_REFRESH=true` in Docker Compose so documents are refreshed immediately after create/update/delete operations, preventing stale read-after-write results that caused item update/delete tests to fail.[#627](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/627)
 
-### Updated
-
 ### Fixed
-- Fixed application logs not being visible when running via uvicorn by adding `force=True` to `logging.basicConfig`, preventing uvicorn's logging configuration from overriding the application's log setup.
 
-### Removed
+- Fixed application logs not being visible when running via uvicorn by adding `force=True` to `logging.basicConfig`, preventing uvicorn's logging configuration from overriding the application's log setup.
 
 ## [v6.12.0] - 2026-02-26
 
@@ -790,7 +801,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.12.0...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.13.0...main
+[v6.13.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.12.0...v6.13.0
 [v6.12.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.11.2...v6.12.0
 [v6.11.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.10.2...v6.11.0
 [v6.10.2]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.10.1...v6.10.2
