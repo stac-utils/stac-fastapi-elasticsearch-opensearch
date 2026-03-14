@@ -33,6 +33,11 @@ dependencies = [
     "stac-fastapi.core==6.13.0",
 ]
 
+[project.optional-dependencies]
+metrics = [
+    "prometheus-fastapi-instrumentator~=0.21.0",
+]
+
 [project.urls]
 Homepage = "https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch"
 

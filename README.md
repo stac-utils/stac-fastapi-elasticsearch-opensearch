@@ -1604,6 +1604,22 @@ This prevents Elasticsearch from creating mappings for unused metadata fields, r
 - **Examples**: Implementation examples are available in the [examples/rate_limit](examples/rate_limit) directory.
 
 
+## Prometheus metrics
+
+- **Installation**: Install the `metrics` extra alongside your backend:
+  ```bash
+  pip install stac-fastapi-elasticsearch[metrics]  # Elasticsearch backend
+  pip install stac-fastapi-opensearch[metrics]     # OpenSearch backend
+  ```
+
+- **Usage**: Once installed, `/metrics` is live on startup. If the package is missing, the app starts normally and logs a warning.
+
+- **Metrics exposed** (Prometheus text format):
+  - `http_requests_total` — request count by method, path, and status code
+  - `http_request_duration_seconds` — request latency histogram
+  - `http_requests_inprogress` — in-flight request gauge
+
+
 ## Hidden Items Filtering
 
 SFEOS supports filtering out hidden items using the `HIDE_ITEM_PATH` environment variable. This feature is useful for temporarily removing items from search results without deleting them. To configure it, set `HIDE_ITEM_PATH` to the path of a boolean field in STAC items. Items where this field is `true` will be excluded from all results and counts.
