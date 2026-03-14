@@ -304,6 +304,10 @@ class DatabaseLogic(BaseDatabaseLogic):
         if datetime_filter:
             query_parts.append(datetime_filter)
 
+        # Exclude Catalogs to prevent them from appearing in the collections endpoint,
+        # without strictly requiring "type": "Collection" to support legacy data.
+        query_parts.append({"bool": {"must_not": [{"term": {"type": "Catalog"}}]}})
+
         # Combine all query parts with AND logic
         if query_parts:
             body["query"] = (
@@ -870,6 +874,15 @@ class DatabaseLogic(BaseDatabaseLogic):
             es_response = await search_task
         except ESNotFoundError:
             raise NotFoundError(f"Collections '{collection_ids}' do not exist")
+
+        count_timeout = float(os.getenv("COUNT_TIMEOUT", 0.5))
+
+        if count_timeout > 0 and not count_task.done():
+            try:
+                logger.debug("Waiting for count task to complete...")
+                await asyncio.wait_for(count_task, timeout=count_timeout)
+            except asyncio.TimeoutError:
+                logger.warning("Count task timed out, returning results without count")
 
         hits = es_response["hits"]["hits"]
         items = (hit["_source"] for hit in hits[:limit])
@@ -1923,6 +1936,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             "sort": formatted_sort,
             "size": limit,
             "query": {"term": {"type": "Catalog"}},
+            "_source": True,  # Ensure all fields including parent_ids are returned
         }
 
         # Handle search_after token
@@ -1930,8 +1944,15 @@ class DatabaseLogic(BaseDatabaseLogic):
         if token:
             try:
                 search_after = token.split("|")
+                # Validate token format: must have correct number of values and be non-empty
                 if len(search_after) != len(formatted_sort):
                     search_after = None
+                else:
+                    # Validate each value is non-empty (check for patterns like "id||date")
+                    for val in search_after:
+                        if not val:
+                            search_after = None
+                            break
             except Exception:
                 search_after = None
 

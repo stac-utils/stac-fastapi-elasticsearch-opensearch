@@ -1,5 +1,6 @@
 """Catalogs extension."""
 
+import asyncio
 import logging
 from typing import Any, Type
 from urllib.parse import parse_qs, urlencode, urlparse
@@ -53,6 +54,18 @@ class CatalogsExtension(ApiExtension):
     )
     router: APIRouter = attr.ib(default=attr.Factory(APIRouter))
     response_class: Type[Response] = attr.ib(default=JSONResponse)
+
+    @property
+    def _active_extensions(self) -> list[str]:
+        """Get list of active extensions, ensuring CatalogsExtension is included.
+
+        Returns:
+            List of extension class names.
+        """
+        exts = [type(ext).__name__ for ext in self.client.database.extensions]
+        if "CatalogsExtension" not in exts:
+            exts.append("CatalogsExtension")
+        return exts
 
     def register(self, app: FastAPI, settings=None) -> None:
         """Register the extension with a FastAPI application.
@@ -194,7 +207,7 @@ class CatalogsExtension(ApiExtension):
             response_class=self.response_class,
             status_code=204,
             summary="Delete Catalog Collection",
-            description="Delete a collection from a catalog. If the collection has multiple parent catalogs, only removes this catalog from parent_ids. If this is the only parent, deletes the collection entirely.",
+            description="Unlink a collection from a catalog. If the collection has multiple parent catalogs, only removes this catalog from parent_ids. If this is the only parent, the collection is adopted by the root catalog. Collection data is never deleted.",
             tags=["Catalogs"],
         )
 
@@ -235,6 +248,148 @@ class CatalogsExtension(ApiExtension):
 
         app.include_router(self.router, tags=["Catalogs"])
 
+    async def _format_catalogs_with_links(
+        self,
+        catalogs_data: list[dict],
+        request: Request,
+        base_url: str,
+    ) -> list[Catalog]:
+        """Format catalog data with dynamic parent and child links.
+
+        This helper method is shared between /catalogs and /catalogs/{id}/catalogs endpoints.
+        It handles concurrent fetching of parent titles and children, then formats catalogs
+        with dynamic links applied.
+
+        Args:
+            catalogs_data: List of catalog documents from the database.
+            request: Request object for serialization.
+            base_url: Base URL for building hrefs.
+
+        Returns:
+            List of formatted Catalog objects with dynamic links.
+        """
+        # --- 1. PRE-FETCH PARENT TITLES CONCURRENTLY ---
+        unique_parent_ids = list(
+            set(pid for c in catalogs_data for pid in c.get("parent_ids", []) if pid)
+        )
+        parent_id_to_title = {}
+
+        if unique_parent_ids:
+
+            async def fetch_title(pid):
+                try:
+                    parent_catalog = await self.client.database.find_catalog(pid)
+                    return pid, parent_catalog.get("title", pid)
+                except Exception as e:
+                    logger.debug(
+                        f"Could not fetch title for parent catalog {pid}, using ID as fallback: {e}"
+                    )
+                    return pid, pid
+
+            title_results = await asyncio.gather(
+                *(fetch_title(pid) for pid in unique_parent_ids)
+            )
+            parent_id_to_title = dict(title_results)
+
+        # --- 2. PRE-FETCH CHILDREN CONCURRENTLY ---
+        async def fetch_children(catalog_id):
+            try:
+                children_data, _, _ = await search_children_with_pagination_shared(
+                    self.client.database.client,
+                    catalog_id,
+                    limit=100,
+                    token=None,
+                    resource_type=None,
+                )
+                return catalog_id, children_data
+            except Exception as e:
+                logger.warning(
+                    f"Could not fetch children for catalog {catalog_id}: {e}"
+                )
+                return catalog_id, []
+
+        children_results = await asyncio.gather(
+            *(fetch_children(c.get("id")) for c in catalogs_data)
+        )
+        catalog_children_map = dict(children_results)
+
+        # --- 3. FORMATTING LOOP (Now 100% In-Memory & Synchronous) ---
+        catalog_stac_objects = []
+
+        for catalog_data in catalogs_data:
+            catalog_id = catalog_data.get("id")
+
+            # The Serializer now handles parent, related, and canonical links automatically
+            catalog_stac = self.client.catalog_serializer.db_to_stac(
+                catalog_data,
+                request,
+                extensions=self._active_extensions,
+            )
+
+            catalog_dict = (
+                catalog_stac.model_dump()
+                if hasattr(catalog_stac, "model_dump")
+                else dict(catalog_stac)
+            )
+
+            # Apply titles to both 'parent' AND 'related' links from pre-fetched map
+            for link in catalog_dict.get("links", []):
+                if link.get("rel") in ["parent", "related"] and "title" not in link:
+                    # If it points to root (base_url), title is Root Catalog
+                    if (
+                        link.get("href") == base_url
+                        or link.get("href") == f"{base_url}/"
+                    ):
+                        link["title"] = "Root Catalog"
+                        continue
+
+                    # Instead of parsing the URL, use our parent_ids list from the db_catalog
+                    # This is more robust against trailing slashes or varying URL patterns
+                    for pid in catalog_data.get("parent_ids", []):
+                        if (
+                            pid in parent_id_to_title
+                            and f"/catalogs/{pid}" in link.get("href", "")
+                        ):
+                            link["title"] = parent_id_to_title[pid]
+                            break
+
+            # Apply child links from pre-fetched map
+            children_data = catalog_children_map.get(catalog_id, [])
+            for child in children_data:
+                child_id = child.get("id")
+                if not child_id:
+                    logger.warning(
+                        f"Child document missing id field in catalog {catalog_id}: {child}"
+                    )
+                    continue
+
+                child_type = child.get("type", "Collection")
+                child_title = child.get("title", child_id)
+
+                # Build appropriate href based on child type
+                if child_type == "Catalog":
+                    child_href = f"{base_url}catalogs/{child_id}"
+                else:
+                    # Collection
+                    child_href = (
+                        f"{base_url}catalogs/{catalog_id}/collections/{child_id}"
+                    )
+
+                catalog_dict["links"].append(
+                    {
+                        "rel": "child",
+                        "type": "application/json",
+                        "href": child_href,
+                        "title": child_title,
+                    }
+                )
+
+            # Convert back to Catalog object
+            catalog_stac = Catalog(**catalog_dict)
+            catalog_stac_objects.append(catalog_stac)
+
+        return catalog_stac_objects
+
     async def catalogs(
         self,
         request: Request,
@@ -265,18 +420,17 @@ class CatalogsExtension(ApiExtension):
         base_url = str(request.base_url)
 
         # Get all catalogs from database with pagination
-        catalogs, next_token, _ = await self.client.database.get_all_catalogs(
+        catalogs, next_token, total_hits = await self.client.database.get_all_catalogs(
             token=token,
             limit=limit,
             request=request,
             sort=[{"field": "id", "direction": "asc"}],
         )
 
-        # Convert database catalogs to STAC format
-        catalog_stac_objects = []
-        for catalog in catalogs:
-            catalog_stac = self.client.catalog_serializer.db_to_stac(catalog, request)
-            catalog_stac_objects.append(catalog_stac)
+        # Format catalogs with dynamic parent and child links
+        catalog_stac_objects = await self._format_catalogs_with_links(
+            catalogs, request, base_url
+        )
 
         # Create pagination links
         links = [
@@ -296,11 +450,12 @@ class CatalogsExtension(ApiExtension):
             }
             links.append(next_link)
 
-        # Return Catalogs object with catalogs
+        # Return Catalogs object with catalogs and numberMatched
         return Catalogs(
             catalogs=catalog_stac_objects,
             links=links,
             numberReturned=len(catalog_stac_objects),
+            numberMatched=total_hits,  # Include the total number of matching catalogs
         )
 
     async def create_catalog(self, catalog: Catalog, request: Request) -> Catalog:
@@ -320,11 +475,27 @@ class CatalogsExtension(ApiExtension):
         db_catalog_dict = db_catalog.model_dump()
         db_catalog_dict["type"] = "Catalog"
 
+        # Filter out dynamic links (parent, child, children) - these are generated at read-time
+        if "links" in db_catalog_dict:
+            db_catalog_dict["links"] = [
+                link
+                for link in db_catalog_dict["links"]
+                if link.get("rel") not in ("parent", "child", "children")
+            ]
+
+        # Initialize parent_ids for root-level catalogs (empty list means no parents)
+        if "parent_ids" not in db_catalog_dict:
+            db_catalog_dict["parent_ids"] = []
+
         # Create the catalog in the database with refresh to ensure immediate availability
         await self.client.database.create_catalog(db_catalog_dict, refresh=True)
 
-        # Return the created catalog
-        return catalog
+        # Return the created catalog with extensions for proper serialization
+        return self.client.catalog_serializer.db_to_stac(
+            db_catalog_dict,
+            request,
+            extensions=[type(ext).__name__ for ext in self.client.database.extensions],
+        )
 
     async def update_catalog(
         self, catalog_id: str, catalog: Catalog, request: Request
@@ -375,34 +546,34 @@ class CatalogsExtension(ApiExtension):
                 detail=f"Failed to update catalog: {str(e)}",
             )
 
-    async def get_catalog(self, catalog_id: str, request: Request) -> Catalog:
-        """Get a specific catalog by ID.
+    async def get_catalog(
+        self,
+        catalog_id: str,
+        request: Request,
+        limit: int = Query(
+            100, ge=1, le=1000, description="Page size for child link pagination"
+        ),
+    ) -> Catalog:
+        """Get a specific catalog by ID according to the Multi-Tenant spec.
 
         Args:
             catalog_id: The ID of the catalog to retrieve.
             request: Request object.
+            limit: Page size for child link pagination.
 
         Returns:
-            The requested catalog.
+            The requested catalog with spec-compliant HATEOAS links.
         """
         try:
-            # Get the catalog from the database
+            # 1. FETCH DATA
             db_catalog = await self.client.database.find_catalog(catalog_id)
 
-            # Convert to STAC format
-            catalog = self.client.catalog_serializer.db_to_stac(db_catalog, request)
-
-            # DYNAMIC INJECTION: Ensure the 'children' link exists
-            # This link points to the /children endpoint which dynamically lists all children
+            # 2. SERIALIZE & INITIALIZE DICT
+            catalog = self.client.catalog_serializer.db_to_stac(
+                db_catalog, request, extensions=self._active_extensions
+            )
             base_url = str(request.base_url)
-            children_link = {
-                "rel": "children",
-                "type": "application/json",
-                "href": f"{base_url}catalogs/{catalog_id}/children",
-                "title": "Child catalogs and collections",
-            }
 
-            # Convert to dict if needed to manipulate links
             if isinstance(catalog, dict):
                 catalog_dict = catalog
             else:
@@ -412,18 +583,127 @@ class CatalogsExtension(ApiExtension):
                     else dict(catalog)
                 )
 
-            # Ensure catalog has a links array
-            if "links" not in catalog_dict:
-                catalog_dict["links"] = []
+            # Clear existing structural links to ensure dynamic generation per spec
+            catalog_dict["links"] = [
+                link
+                for link in catalog_dict.get("links", [])
+                if link.get("rel") not in ["self", "parent", "root", "child", "related"]
+            ]
 
-            # Add children link if it doesn't already exist
-            if not any(
-                link.get("rel") == "children" for link in catalog_dict.get("links", [])
-            ):
-                catalog_dict["links"].append(children_link)
+            # 3. MANDATORY LINKS (Self & Root)
+            catalog_dict["links"].extend(
+                [
+                    {
+                        "rel": "self",
+                        "type": "application/json",
+                        "href": f"{base_url}catalogs/{catalog_id}",
+                    },
+                    {
+                        "rel": "root",
+                        "type": "application/json",
+                        "href": base_url,
+                    },
+                ]
+            )
 
-            # Return as Catalog object
+            # 4. DYNAMIC PARENT & RELATED LINKS (Poly-hierarchy Logic)
+            root_id = self.settings.get("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi")
+            parent_ids = db_catalog.get("parent_ids", [])
+
+            if not parent_ids:
+                # Top-level sub-catalog: Point parent to Global Root
+                catalog_dict["links"].append(
+                    {
+                        "rel": "parent",
+                        "type": "application/json",
+                        "href": base_url,
+                    }
+                )
+            else:
+                # First ID is Primary Parent
+                primary_pid = parent_ids[0]
+                parent_href = (
+                    base_url
+                    if primary_pid == root_id
+                    else f"{base_url}catalogs/{primary_pid}"
+                )
+                catalog_dict["links"].append(
+                    {
+                        "rel": "parent",
+                        "type": "application/json",
+                        "href": parent_href,
+                    }
+                )
+
+                # Additional parents become 'related'
+                for pid in parent_ids[1:]:
+                    related_href = (
+                        base_url if pid == root_id else f"{base_url}catalogs/{pid}"
+                    )
+                    catalog_dict["links"].append(
+                        {
+                            "rel": "related",
+                            "type": "application/json",
+                            "href": related_href,
+                            "title": f"Parent context: {pid}",
+                        }
+                    )
+
+            # 5. DYNAMIC CHILD LINKS (Paginated, one level deep)
+            try:
+                token = None
+                while True:
+                    (
+                        children_data,
+                        _,
+                        next_token,
+                    ) = await search_children_with_pagination_shared(
+                        self.client.database.client,
+                        catalog_id,
+                        limit=limit,
+                        token=token,
+                        resource_type=None,
+                    )
+
+                    for child in children_data:
+                        child_id = child.get("id")
+                        if not child_id:
+                            continue
+
+                        child_type = child.get("type", "Collection")
+                        # Note: Spec says Catalogs use /catalogs/{id}, Collections use /catalogs/{id}/collections/{id}
+                        if child_type == "Catalog":
+                            child_href = f"{base_url}catalogs/{child_id}"
+                        else:
+                            child_href = f"{base_url}catalogs/{catalog_id}/collections/{child_id}"
+
+                        catalog_dict["links"].append(
+                            {
+                                "rel": "child",
+                                "type": "application/json",
+                                "href": child_href,
+                                "title": child.get("title", child_id),
+                            }
+                        )
+
+                    if not next_token:
+                        break
+                    token = next_token
+            except Exception as e:
+                logger.warning(f"Child link generation failed for {catalog_id}: {e}")
+
+            # 6. CONVENIENCE CHILDREN LINK (Recommended by spec)
+            catalog_dict["links"].append(
+                {
+                    "rel": "children",
+                    "type": "application/json",
+                    "href": f"{base_url}catalogs/{catalog_id}/children",
+                    "title": "Child catalogs and collections",
+                }
+            )
+
             return Catalog(**catalog_dict)
+
         except HTTPException:
             raise
         except Exception as e:
@@ -554,10 +834,7 @@ class CatalogsExtension(ApiExtension):
                             collection_db,
                             request,
                             catalog_id=catalog_id,
-                            extensions=[
-                                type(ext).__name__
-                                for ext in self.client.database.extensions
-                            ],
+                            extensions=self._active_extensions,
                         )
                     )
                     collections.append(collection)
@@ -583,7 +860,12 @@ class CatalogsExtension(ApiExtension):
                 collections=collections,
                 links=[
                     {"rel": "root", "type": "application/json", "href": base_url},
-                    {"rel": "parent", "type": "application/json", "href": base_url},
+                    # Scoped breadcrumb: Lock parent link to the specific catalog for contextual navigation
+                    {
+                        "rel": "parent",
+                        "type": "application/json",
+                        "href": f"{base_url}catalogs/{catalog_id}",
+                    },
                     {
                         "rel": "self",
                         "type": "application/json",
@@ -638,27 +920,14 @@ class CatalogsExtension(ApiExtension):
                 self.client.database.client, catalog_id, limit, token
             )
 
-            # Serialize to STAC format
-            catalogs = []
-            for catalog_data in catalogs_data:
-                try:
-                    catalog = self.client.catalog_serializer.db_to_stac(
-                        catalog_data,
-                        request,
-                        extensions=[
-                            type(ext).__name__
-                            for ext in self.client.database.extensions
-                        ],
-                    )
-                    catalogs.append(catalog)
-                except Exception as e:
-                    logger.error(
-                        f"Error serializing catalog {catalog_data.get('id')}: {e}"
-                    )
-                    continue
+            base_url = str(request.base_url)
+
+            # Format catalogs with dynamic parent and child links using shared helper
+            catalogs = await self._format_catalogs_with_links(
+                catalogs_data, request, base_url
+            )
 
             # Generate pagination links
-            base_url = str(request.base_url)
             links = [
                 {"rel": "root", "type": "application/json", "href": base_url},
                 {
@@ -741,9 +1010,11 @@ class CatalogsExtension(ApiExtension):
                 if "parent_ids" not in existing_catalog:
                     existing_catalog["parent_ids"] = []
 
-                # Append if not already present
-                if catalog_id not in existing_catalog["parent_ids"]:
-                    existing_catalog["parent_ids"].append(catalog_id)
+                # Append if not already present (use set to avoid duplicates in case of race conditions)
+                parent_ids_set = set(existing_catalog["parent_ids"])
+                if catalog_id not in parent_ids_set:
+                    parent_ids_set.add(catalog_id)
+                    existing_catalog["parent_ids"] = list(parent_ids_set)
 
                     # Persist the update
                     await update_catalog_in_index_shared(
@@ -755,7 +1026,11 @@ class CatalogsExtension(ApiExtension):
 
                 # Return the STAC object
                 return self.client.catalog_serializer.db_to_stac(
-                    existing_catalog, request
+                    existing_catalog,
+                    request,
+                    extensions=[
+                        type(ext).__name__ for ext in self.client.database.extensions
+                    ],
                 )
 
             except NotFoundError:
@@ -769,8 +1044,22 @@ class CatalogsExtension(ApiExtension):
                 db_catalog_dict = db_catalog.model_dump()
                 db_catalog_dict["type"] = "Catalog"
 
+                # Filter out dynamic links (parent, child, children) - these are generated at read-time
+                if "links" in db_catalog_dict:
+                    db_catalog_dict["links"] = [
+                        link
+                        for link in db_catalog_dict["links"]
+                        if link.get("rel") not in ("parent", "child", "children")
+                    ]
+
                 # Initialize parent_ids
                 db_catalog_dict["parent_ids"] = [catalog_id]
+
+                # Verify parent_ids is in the dict before storing
+                if "parent_ids" not in db_catalog_dict:
+                    raise ValueError(
+                        f"parent_ids missing from catalog dict for {catalog.id}"
+                    )
 
                 # Create in DB
                 await self.client.database.create_catalog(db_catalog_dict, refresh=True)
@@ -778,7 +1067,14 @@ class CatalogsExtension(ApiExtension):
                     f"Created new catalog {catalog.id} with parent {catalog_id}"
                 )
 
-                return catalog
+                # Return the serialized STAC object with extensions
+                return self.client.catalog_serializer.db_to_stac(
+                    db_catalog_dict,
+                    request,
+                    extensions=[
+                        type(ext).__name__ for ext in self.client.database.extensions
+                    ],
+                )
 
         except HTTPException:
             raise
@@ -949,13 +1245,12 @@ class CatalogsExtension(ApiExtension):
                 status_code=404, detail=f"Collection {collection_id} not found"
             )
 
-        # Return the collection with catalog context
-        collection_db = await self.client.database.find_collection(collection_id)
+        # Return the collection with catalog context (reuse collection_db from above)
         return self.client.collection_serializer.db_to_stac_in_catalog(
             collection_db,
             request,
             catalog_id=catalog_id,
-            extensions=[type(ext).__name__ for ext in self.client.database.extensions],
+            extensions=self._active_extensions,
         )
 
     async def get_catalog_collection_items(
@@ -1057,30 +1352,52 @@ class CatalogsExtension(ApiExtension):
         Get all children (Catalogs and Collections) of a specific catalog.
 
         This is a mixed content endpoint that returns both Catalogs and Collections.
+        Catalogs are returned with dynamic parent and child links.
         """
         # 1. Verify the parent catalog exists
         await self.client.database.find_catalog(catalog_id)
 
         # 2. Search for children with pagination
         children_data, total, next_token = await search_children_with_pagination_shared(
-            self.client.database.client, catalog_id, limit, token, type
+            self.client.database.client, catalog_id, limit, token, resource_type=type
         )
 
-        # 3. Serialize children based on type
+        base_url = str(request.base_url)
+
+        # 3. Separate catalogs and collections for processing
+        catalog_children = [
+            doc for doc in children_data if doc.get("type") == "Catalog"
+        ]
+        collection_children = [
+            doc for doc in children_data if doc.get("type") != "Catalog"
+        ]
+
+        # 4. Format catalogs with dynamic links using shared helper
+        formatted_catalogs = []
+        if catalog_children:
+            formatted_catalogs = await self._format_catalogs_with_links(
+                catalog_children, request, base_url
+            )
+
+        # 5. Serialize collections (no dynamic links needed)
+        formatted_collections = []
+        for doc in collection_children:
+            child = self.client.collection_serializer.db_to_stac(doc, request)
+            formatted_collections.append(child)
+
+        # 6. Combine catalogs and collections in original order
         children = []
+        catalog_idx = 0
+        collection_idx = 0
         for doc in children_data:
-            resource_type = doc.get(
-                "type", "Collection"
-            )  # Default to Collection if missing
-
-            # Serialize based on type
-            # This ensures we hide internal fields like 'parent_ids' correctly
-            if resource_type == "Catalog":
-                child = self.client.catalog_serializer.db_to_stac(doc, request)
+            if doc.get("type") == "Catalog":
+                if catalog_idx < len(formatted_catalogs):
+                    children.append(formatted_catalogs[catalog_idx])
+                    catalog_idx += 1
             else:
-                child = self.client.collection_serializer.db_to_stac(doc, request)
-
-            children.append(child)
+                if collection_idx < len(formatted_collections):
+                    children.append(formatted_collections[collection_idx])
+                    collection_idx += 1
 
         # 4. Format Response
         # The Children extension uses a specific response format
