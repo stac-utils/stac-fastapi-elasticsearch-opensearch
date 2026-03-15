@@ -4,7 +4,6 @@ import re
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from stac_fastapi.core.datetime_utils import format_datetime_range
-from stac_fastapi.sfeos_helpers.mappings import ITEM_INDICES
 
 from .ast_parser import Cql2AstParser
 from .datetime_optimizer import DatetimeOptimizer, extract_collection_datetime
@@ -71,8 +70,7 @@ async def resolve_cql2_indexes(
     print(f"Resolving indexes from CQL2 metadata: {cql2_metadata}")
 
     all_collections = []
-    collection_index_map: Dict[str, List[str]] = {}
-    use_wildcard = False
+    all_indexes_set = set()
 
     for collection_item, date_range in cql2_metadata:
         collections = (
@@ -103,56 +101,34 @@ async def resolve_cql2_indexes(
 
                 index_list = [idx.strip() for idx in indexes.split(",") if idx.strip()]
 
-                if not index_list:
-                    logger.info(
-                        f"Range {date_range} returned no indexes for collection {collection}, using wildcard"
-                    )
-                    print(
-                        f"Range {date_range} returned no indexes for collection {collection}, using wildcard"
-                    )
-                    use_wildcard = True
-
                 logger.debug(
                     f"Collection '{collection}' resolved to indexes: {index_list}"
                 )
                 print(f"Collection '{collection}' resolved to indexes: {index_list}")
-                collection_index_map.setdefault(collection, []).extend(index_list)
+
+                # Add all indexes from this range to the global set (UNION)
+                all_indexes_set.update(index_list)
         else:
-            logger.info(f"No date range for collections {collections}, using wildcard")
-            print(f"No date range for collections {collections}, using wildcard")
-            use_wildcard = True
+            # If no date range, get all indexes for this collection
+            for collection in collections:
+                indexes = await index_selector.select_indexes([collection], None)
+                index_list = [idx.strip() for idx in indexes.split(",") if idx.strip()]
+                all_indexes_set.update(index_list)
 
-    if use_wildcard:
-        logger.info(
-            f"At least one range requires wildcard search, using default: {ITEM_INDICES}"
-        )
-        print(
-            f"At least one range requires wildcard search, using default: {ITEM_INDICES}"
-        )
-        return ITEM_INDICES, list(set(all_collections))
+    # If no indexes found, return empty
+    if not all_indexes_set:
+        logger.info("No indexes resolved, returning empty")
+        print("No indexes resolved, returning empty")
+        return "", list(set(all_collections))
 
-    all_indexes = []
-    seen_indexes = set()
-
-    for collection in all_collections:
-        if collection in collection_index_map:
-            for idx in collection_index_map[collection]:
-                if idx not in seen_indexes:
-                    seen_indexes.add(idx)
-                    all_indexes.append(idx)
-
-    index_param = ",".join(all_indexes)
+    # Return UNION of all indexes from all ranges
+    index_param = ",".join(sorted(all_indexes_set))
     collection_ids = list(set(all_collections))
 
-    logger.info(f"Final resolved indexes: {index_param or ITEM_INDICES}")
+    logger.info(f"Final resolved indexes: {index_param}")
     logger.info(f"Final collection IDs: {collection_ids}")
-    print(f"Final resolved indexes: {index_param or ITEM_INDICES}")
+    print(f"Final resolved indexes: {index_param}")
     print(f"Final collection IDs: {collection_ids}")
-
-    if not index_param:
-        logger.info(f"No indexes resolved, using default: {ITEM_INDICES}")
-        print(f"No indexes resolved, using default: {ITEM_INDICES}")
-        return ITEM_INDICES, collection_ids
 
     return index_param, collection_ids
 
