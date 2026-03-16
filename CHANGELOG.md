@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- Added pagination support to GET `/catalogs/{catalog_id}/collections` endpoint with `limit` (default: 10, max: 100) and `token` parameters. Fixed missing `numberReturned` and `numberMatched` context fields. [#632](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/632)
+
 ### Updated
 
 ### Removed

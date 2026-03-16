@@ -45,6 +45,70 @@ async def search_collections_by_parent_id_shared(
         return []
 
 
+async def search_collections_by_parent_id_with_pagination_shared(
+    es_client: Any,
+    catalog_id: str,
+    limit: int = 10,
+    token: str | None = None,
+) -> tuple[list[dict[str, Any]], int, str | None]:
+    """Search for collections with a specific parent catalog with pagination support.
+
+    Args:
+        es_client: Elasticsearch/OpenSearch client instance.
+        catalog_id: The parent catalog ID.
+        limit: Maximum number of results to return (default: 10).
+        token: Pagination token for cursor-based pagination.
+
+    Returns:
+        Tuple of (collections, total_count, next_token).
+    """
+    sort_fields: list[dict[str, Any]] = [{"id": {"order": "asc"}}]
+    query_body: dict[str, Any] = {
+        "query": {
+            "bool": {
+                "must": [
+                    {"term": {"parent_ids": catalog_id}},
+                    {"term": {"type": "Collection"}},
+                ]
+            }
+        },
+        "sort": sort_fields,
+        "size": limit,
+    }
+
+    # Handle pagination cursor (token)
+    # Token format: "value1|value2|..." matching the sort fields
+    if token:
+        try:
+            search_after = token.split("|")
+            if len(search_after) == len(sort_fields):
+                query_body["search_after"] = search_after
+        except Exception:
+            logger.debug(f"Invalid pagination token: {token}")
+
+    # Execute the search
+    try:
+        search_result = await es_client.search(index=COLLECTIONS_INDEX, body=query_body)
+    except Exception as e:
+        logger.error(f"Error searching for collections with parent {catalog_id}: {e}")
+        search_result = {"hits": {"hits": []}}
+
+    # Process results
+    hits = search_result.get("hits", {}).get("hits", [])
+    total_hits = search_result.get("hits", {}).get("total", {}).get("value", 0)
+
+    collections = [hit["_source"] for hit in hits]
+
+    # Generate next token if more results exist
+    next_token = None
+    if len(hits) == limit and len(collections) > 0:
+        last_hit_sort = hits[-1].get("sort")
+        if last_hit_sort:
+            next_token = "|".join(str(x) for x in last_hit_sort)
+
+    return collections, total_hits, next_token
+
+
 async def search_sub_catalogs_with_pagination_shared(
     es_client: Any,
     catalog_id: str,

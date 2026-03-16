@@ -16,6 +16,7 @@ from stac_fastapi.core.models import Catalog
 from stac_fastapi.sfeos_helpers.database import (
     search_children_with_pagination_shared,
     search_collections_by_parent_id_shared,
+    search_collections_by_parent_id_with_pagination_shared,
     search_sub_catalogs_with_pagination_shared,
     update_catalog_in_index_shared,
 )
@@ -792,13 +793,19 @@ class CatalogsExtension(ApiExtension):
             )
 
     async def get_catalog_collections(
-        self, catalog_id: str, request: Request
+        self,
+        catalog_id: str,
+        request: Request,
+        limit: int = Query(10, ge=1, le=100),
+        token: str | None = Query(None),
     ) -> stac_types.Collections:
-        """Get collections linked from a specific catalog.
+        """Get collections linked from a specific catalog with pagination.
 
         Args:
             catalog_id: The ID of the catalog.
             request: Request object.
+            limit: Maximum number of results to return (default: 10, max: 100).
+            token: Pagination token for cursor-based pagination.
 
         Returns:
             Collections object containing collections linked from the catalog.
@@ -807,11 +814,15 @@ class CatalogsExtension(ApiExtension):
             # Verify the catalog exists
             await self.client.database.find_catalog(catalog_id)
 
-            # Query collections by parent_ids field
+            # Query collections by parent_ids field with pagination
             # This uses the parent_ids field in the collection mapping to find all
             # collections that have this catalog as a parent
-            collections_data = await search_collections_by_parent_id_shared(
-                self.client.database.client, catalog_id
+            (
+                collections_data,
+                total_hits,
+                next_token,
+            ) = await search_collections_by_parent_id_with_pagination_shared(
+                self.client.database.client, catalog_id, limit, token
             )
 
             # Extract collection IDs from results
@@ -851,22 +862,42 @@ class CatalogsExtension(ApiExtension):
 
             # Return in Collections format
             base_url = str(request.base_url)
+
+            # Build links
+            links = [
+                {"rel": "root", "type": "application/json", "href": base_url},
+                # Scoped breadcrumb: Lock parent link to the specific catalog for contextual navigation
+                {
+                    "rel": "parent",
+                    "type": "application/json",
+                    "href": f"{base_url}catalogs/{catalog_id}",
+                },
+                {
+                    "rel": "self",
+                    "type": "application/json",
+                    "href": str(request.url),
+                },
+            ]
+
+            # Add next link if more results exist
+            if next_token:
+                from urllib.parse import urlencode
+
+                query_params = {"limit": limit, "token": next_token}
+                links.append(
+                    {
+                        "rel": "next",
+                        "href": f"{base_url}catalogs/{catalog_id}/collections?{urlencode(query_params)}",
+                        "type": "application/json",
+                        "title": "Next page",
+                    }
+                )
+
             return stac_types.Collections(
                 collections=collections,
-                links=[
-                    {"rel": "root", "type": "application/json", "href": base_url},
-                    # Scoped breadcrumb: Lock parent link to the specific catalog for contextual navigation
-                    {
-                        "rel": "parent",
-                        "type": "application/json",
-                        "href": f"{base_url}catalogs/{catalog_id}",
-                    },
-                    {
-                        "rel": "self",
-                        "type": "application/json",
-                        "href": f"{base_url}catalogs/{catalog_id}/collections",
-                    },
-                ],
+                links=links,
+                numberMatched=total_hits,
+                numberReturned=len(collections),
             )
 
         except HTTPException:
