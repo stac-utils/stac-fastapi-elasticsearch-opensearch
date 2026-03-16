@@ -1277,10 +1277,6 @@ class DatabaseLogic(BaseDatabaseLogic):
         Returns:
             patched item.
         """
-        for operation in operations:
-            if operation.op in ["add", "replace", "remove"]:
-                self.async_index_inserter.validate_datetime_field_update(operation.path)
-
         new_item_id = None
         new_collection_id = None
         script_operations = []
@@ -1312,6 +1308,26 @@ class DatabaseLogic(BaseDatabaseLogic):
                 raise NotFoundError(
                     f"Item {item_id} does not exist inside Collection {collection_id}"
                 )
+
+            existing_source = search_response["hits"]["hits"][0]["_source"]
+            for operation in operations:
+                if operation.op == "remove":
+                    self.async_index_inserter.validate_datetime_field_update(
+                        operation.path
+                    )
+                elif operation.op in ["add", "replace"]:
+                    path_parts = operation.path.split("/")
+                    existing_value = existing_source
+                    for part in path_parts:
+                        if isinstance(existing_value, dict):
+                            existing_value = existing_value.get(part)
+                        else:
+                            existing_value = None
+                            break
+                    if existing_value != operation.value:
+                        self.async_index_inserter.validate_datetime_field_update(
+                            operation.path
+                        )
 
             if script_operations:
                 script = operations_to_script(
