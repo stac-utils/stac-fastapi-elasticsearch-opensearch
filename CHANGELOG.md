@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 
+- Refactored serializers and catalog extension to eliminate duplicated code by extracting helper methods: `_create_child_link()` for child link generation, `_set_collection_defaults()` for STAC Collection field initialization, and `_deserialize_assets()` for asset handling. This improves maintainability by centralizing common logic into single-source-of-truth implementations. [#629](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/629)
+
 ### Fixed
 
 ### Updated
@@ -30,7 +32,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 - Improved `item_queue_worker.py` error handling: bulk errors are now logged immediately and failed item IDs are extracted from all bulk operation types.
 - Fixed local OS tests fail by setting `DATABASE_REFRESH=true` in Docker Compose so documents are refreshed immediately after create/update/delete operations, preventing stale read-after-write results that caused item update/delete tests to fail.[#627](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/627)
-- Refactored serializers and catalog extension to eliminate duplicated code by extracting helper methods: `_create_child_link()` for child link generation, `_set_collection_defaults()` for STAC Collection field initialization, and `_deserialize_assets()` for asset handling. This improves maintainability by centralizing common logic into single-source-of-truth implementations.
 
 ### Fixed
 
