@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 
+### Changed
+
+- Updated CI/CD testing to use OpenSearch 3.5.0 instead of 2.19.3.
+
 ### Fixed
 
 ### Updated
