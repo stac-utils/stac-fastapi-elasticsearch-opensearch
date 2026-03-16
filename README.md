@@ -133,6 +133,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
   - [Auth](#auth)
   - [Aggregation](#aggregation)
   - [Rate Limiting](#rate-limiting)
+  - [Prometheus metrics](#prometheus-metrics)
   - [Hidden Items Filtering](#hidden-items-filtering)
   - [Error Monitoring with Sentry](#error-monitoring-with-sentry)
 
