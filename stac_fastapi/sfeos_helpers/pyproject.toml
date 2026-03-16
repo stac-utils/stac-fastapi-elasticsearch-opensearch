@@ -35,7 +35,7 @@ dependencies = [
 
 [project.optional-dependencies]
 metrics = [
-    "prometheus-fastapi-instrumentator~=0.21.0",
+    "prometheus-fastapi-instrumentator~=7.1.0",
 ]
 
 [project.urls]
