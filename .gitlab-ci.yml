@@ -107,6 +107,7 @@ pytest-datetime:
 deploy-dev:
   <<: *deploy_configuration
   stage: deploy_dev
+  allow_failure: true
   script: ./ci/deploy.sh dev/waw3-2-general-01-staging
 
 reload-dev:
