@@ -200,15 +200,21 @@ def extract_from_ast(node: CqlNode, field_name: str) -> List[Any]:
     return values if values else None
 
 
-def extract_collection_datetime(node: CqlNode) -> List[Tuple[List[str], str]]:
+def extract_collection_datetime(
+    node: CqlNode,
+    all_collection_ids: Optional[List[str]] = None,
+) -> List[Tuple[List[str], str]]:
     """Extract collections, datetime range from CQL AST.
+
+    Args:
+        node: The CQL AST node
+        all_collection_ids: List of all collection IDs from database (required for NOT collection handling)
 
     Returns:
         List of tuples where each tuple contains:
         - collections: List[str] collection id(s)
         - datetime_range: str or empty string if no datetime constraint
     """
-    # pairs: List[Tuple[List[str], str]] = []
 
     def extract_from_node(
         n: CqlNode, current_collections: List[str] = None
@@ -416,8 +422,35 @@ def extract_collection_datetime(node: CqlNode) -> List[Tuple[List[str], str]]:
                     results.extend(child_results)
 
             elif n.op == LogicalOp.NOT:
-                # Handle NOT operator by inverting the meaning of the child results
+                # Handle NOT operator
                 for child in n.children:
+                    # Check if this is a NOT on collection field
+                    if (
+                        isinstance(child, ComparisonNode)
+                        and child.field == "collection"
+                        and child.op == ComparisonOp.EQ
+                    ):
+
+                        # This is NOT collection = X
+                        # We need to return ALL OTHER collections
+                        if all_collection_ids:
+                            excluded = child.value
+                            if isinstance(excluded, list):
+                                excluded_list = excluded
+                            else:
+                                excluded_list = [excluded]
+
+                            # Get all collections except the excluded ones
+                            included_collections = [
+                                c for c in all_collection_ids if c not in excluded_list
+                            ]
+
+                            if included_collections:
+                                # Return with empty date range (will be combined with datetime from other branches)
+                                results.append((included_collections, ""))
+                            continue
+
+                    # Original NOT handling for other fields (datetime, etc.)
                     child_results = extract_from_node(child, current_collections.copy())
                     for coll, rng in child_results:
                         if rng:
@@ -498,7 +531,6 @@ def extract_collection_datetime(node: CqlNode) -> List[Tuple[List[str], str]]:
 
     if not has_collections:
         # DATETIME-ONLY CASE: Return all datetime conditions with empty collections
-        # datetime_only_results = []
         datetime_only_results: List[Tuple[List[Any], Optional[Any]]] = []
         seen_dates = set()
 

@@ -154,11 +154,16 @@ async def resolve_cql2_indexes(
     return index_param, collection_ids
 
 
-def build_cql2_filter(queryables_mapping: Dict, filter: Dict) -> Tuple[Dict, List]:
+def build_cql2_filter(
+    queryables_mapping: Dict,
+    filter: Dict,
+    all_collection_ids: Optional[List[str]] = None,  # Add this parameter
+) -> Tuple[Dict, List]:
     """Build query from CQL2 filter with metadata extraction.
 
     Args:
         filter: CQL2 JSON filter dictionary
+        all_collection_ids: List of all collection IDs from database
 
     Returns:
         Tuple of es_query_dict, metadata
@@ -194,7 +199,7 @@ def build_cql2_filter(queryables_mapping: Dict, filter: Dict) -> Tuple[Dict, Lis
         f"es_query to be processed: {json.dumps(es_query, indent=2) if isinstance(es_query, dict) else es_query}"
     )
 
-    metadata = extract_collection_datetime(optimized_ast)
+    metadata = extract_collection_datetime(optimized_ast, all_collection_ids)
 
     logger.info(f"metadata: {metadata}")
     print(f"metadata: {metadata}")

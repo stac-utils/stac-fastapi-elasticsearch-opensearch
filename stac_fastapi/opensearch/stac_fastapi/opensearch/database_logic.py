@@ -763,9 +763,15 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         if _filter is not None:
             try:
-                # queryables_mapping = await self.get_queryables_mapping()
+                resp = await self.client.search(
+                    index=COLLECTIONS_INDEX,
+                    body={"query": {"match_all": {}}, "_source": ["id"], "size": 10000},
+                )
+                all_collection_ids = [
+                    hit["_source"]["id"] for hit in resp["hits"]["hits"]
+                ]
                 es_query, metadata = build_cql2_filter(
-                    await self.get_queryables_mapping(), _filter
+                    await self.get_queryables_mapping(), _filter, all_collection_ids
                 )
                 search = search.filter(es_query)
                 search._cql2_metadata = metadata
