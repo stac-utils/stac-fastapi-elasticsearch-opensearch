@@ -1,6 +1,6 @@
 """Extracts datetime patterns from CQL2 AST."""
 
-from typing import Any, List, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union
 
 from stac_fastapi.core.extensions.filter import (
     AdvancedComparisonNode,
@@ -493,6 +493,23 @@ def extract_collection_datetime(node: CqlNode) -> List[Tuple[List[str], str]]:
     final_results = []
     seen = set()
 
+    # Check if this is a datetime-only query (no collections in any result)
+    has_collections = any(colls for colls, _ in all_results)
+
+    if not has_collections:
+        # DATETIME-ONLY CASE: Return all datetime conditions with empty collections
+        # datetime_only_results = []
+        datetime_only_results: List[Tuple[List[Any], Optional[Any]]] = []
+        seen_dates = set()
+
+        for _, date_range in all_results:
+            if date_range and date_range not in seen_dates:
+                seen_dates.add(date_range)
+                datetime_only_results.append(([], date_range))
+
+        return datetime_only_results
+
+    # Regular case with collections
     for collections, date_range in all_results:
         if not collections:
             continue

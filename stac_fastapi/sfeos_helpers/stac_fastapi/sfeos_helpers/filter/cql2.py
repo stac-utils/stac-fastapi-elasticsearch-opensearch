@@ -83,37 +83,58 @@ async def resolve_cql2_indexes(
         )
         print(f"Processing collections: {collections} with date_range: {date_range}")
 
-        if date_range:
-            logger.debug(f"Applying datetime filter for range: {date_range}")
-            print(f"Applying datetime filter for range: {date_range}")
+        # Get datetime filter if present
+        collection_datetime = None
+        # if date_range:
+        logger.debug(f"Applying datetime filter for range: {date_range}")
+        print(f"Applying datetime filter for range: {date_range}")
 
-            _, collection_datetime = apply_datetime_filter(
-                search, format_datetime_range(date_str=date_range)
+        _, collection_datetime = apply_datetime_filter(
+            search, format_datetime_range(date_str=date_range)
+        )
+
+        logger.debug(f"Collection datetime after filter: {collection_datetime}")
+        print(f"Collection datetime after filter: {collection_datetime}")
+
+        # SPECIAL CASE: No collections specified, only datetime
+        if not collections or (len(collections) == 1 and not collections[0]):
+            if collection_datetime:
+                logger.info(
+                    "No collections specified, selecting all indexes matching datetime range"
+                )
+                print(
+                    "No collections specified, selecting all indexes matching datetime range"
+                )
+                # Pass empty list for collections to get all indexes across all collections
+                indexes = await index_selector.select_indexes([], collection_datetime)
+
+                index_list = [idx.strip() for idx in indexes.split(",") if idx.strip()]
+                logger.debug(f"All indexes matching datetime resolved to: {index_list}")
+                print(f"All indexes matching datetime resolved to: {index_list}")
+
+                all_indexes_set.update(index_list)
+            continue
+
+        # Handle collections with datetime
+        # if date_range:
+        for collection in collections:
+            indexes = await index_selector.select_indexes(
+                [collection], collection_datetime
             )
 
-            logger.debug(f"Collection datetime after filter: {collection_datetime}")
-            print(f"Collection datetime after filter: {collection_datetime}")
+            index_list = [idx.strip() for idx in indexes.split(",") if idx.strip()]
 
-            for collection in collections:
-                indexes = await index_selector.select_indexes(
-                    [collection], collection_datetime
-                )
+            logger.debug(f"Collection '{collection}' resolved to indexes: {index_list}")
+            print(f"Collection '{collection}' resolved to indexes: {index_list}")
 
-                index_list = [idx.strip() for idx in indexes.split(",") if idx.strip()]
-
-                logger.debug(
-                    f"Collection '{collection}' resolved to indexes: {index_list}"
-                )
-                print(f"Collection '{collection}' resolved to indexes: {index_list}")
-
-                # Add all indexes from this range to the global set (UNION)
-                all_indexes_set.update(index_list)
-        else:
-            # If no date range, get all indexes for this collection
-            for collection in collections:
-                indexes = await index_selector.select_indexes([collection], None)
-                index_list = [idx.strip() for idx in indexes.split(",") if idx.strip()]
-                all_indexes_set.update(index_list)
+            # Add all indexes from this range to the global set (UNION)
+            all_indexes_set.update(index_list)
+        # else:
+        #     # If no date range, get all indexes for this collection
+        #     for collection in collections:
+        #         indexes = await index_selector.select_indexes([collection], None)
+        #         index_list = [idx.strip() for idx in indexes.split(",") if idx.strip()]
+        #         all_indexes_set.update(index_list)
 
     # If no indexes found, return empty
     if not all_indexes_set:
