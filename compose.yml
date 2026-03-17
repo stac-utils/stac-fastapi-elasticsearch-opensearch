@@ -95,7 +95,7 @@ services:
 
   opensearch:
     container_name: os-container
-    image: opensearchproject/opensearch:${OPENSEARCH_VERSION:-2.19.3}
+    image: opensearchproject/opensearch:${OPENSEARCH_VERSION:-3.5.0}
     hostname: opensearch
     environment:
       - discovery.type=single-node
