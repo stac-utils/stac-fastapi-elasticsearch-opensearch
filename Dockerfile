@@ -18,7 +18,7 @@ RUN pip install --no-cache-dir --upgrade pip setuptools wheel
 COPY stac_fastapi/ stac_fastapi/
 
 RUN pip install --no-cache-dir ./stac_fastapi/core[redis,sentry]
-RUN pip install --no-cache-dir ./stac_fastapi/sfeos_helpers
+RUN pip install --no-cache-dir ./stac_fastapi/sfeos_helpers[metrics]
 RUN pip install --no-cache-dir ./stac_fastapi/opensearch[server,redis]
 
 EXPOSE 8080
