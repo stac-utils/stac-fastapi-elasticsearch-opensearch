@@ -242,6 +242,35 @@ def validate_refresh(value: str | bool) -> str:
     return "false"
 
 
+def validate_datetime_operations(
+    operations: list, existing_source: dict, validator: Callable
+) -> None:
+    """Validate datetime field changes in patch operations.
+
+    Compares operation values against existing document values.
+    Only validates when the value actually changes.
+
+    Args:
+        operations: List of patch operations.
+        existing_source: The existing document source from the search response.
+        validator: Callable that validates a field path.
+    """
+    for operation in operations:
+        if operation.op == "remove":
+            validator(operation.path)
+        elif operation.op in ["add", "replace"]:
+            path_parts = operation.path.strip("/").split("/")
+            existing_value = existing_source
+            for part in path_parts:
+                if isinstance(existing_value, dict):
+                    existing_value = existing_value.get(part)
+                else:
+                    existing_value = None
+                    break
+            if existing_value != operation.value:
+                validator(operation.path)
+
+
 def merge_to_operations(data: dict) -> list:
     """Convert merge operation to list of RF6902 operations.
 
