@@ -74,7 +74,7 @@ async def test_bulk_item_insert_with_raise_on_error(
     )
 
     # Validate the results - duplicate should be skipped, not inserted
-    assert "1 items were skipped (duplicates)" in result
+    assert "1 skipped (duplicates)" in result
 
     # Clean up the inserted item
     await txn_client.delete_item(initial_item["id"], ctx.item["collection"])

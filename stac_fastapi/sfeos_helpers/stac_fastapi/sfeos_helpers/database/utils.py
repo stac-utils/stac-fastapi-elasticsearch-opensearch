@@ -64,6 +64,28 @@ DATETIME_RETRY_STRATEGY = AsyncRetrying(
 )
 
 
+def separate_bulk_conflict_errors(
+    errors: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Separate 409 conflict errors from other errors in bulk operation results.
+
+    Args:
+        errors: List of error dicts from ES/OS bulk helpers.
+
+    Returns:
+        Tuple of (conflict_errors, other_errors).
+    """
+    conflict_errors = []
+    other_errors = []
+    for error in errors:
+        action_data = next(iter(error.values()), {})
+        if action_data.get("status") == 409:
+            conflict_errors.append(error)
+        else:
+            other_errors.append(error)
+    return conflict_errors, other_errors
+
+
 class ItemAlreadyExistsError(ConflictError):
     """Error raised when attempting to create an item that already exists.
 
