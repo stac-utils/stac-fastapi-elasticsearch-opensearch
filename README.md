@@ -5,7 +5,7 @@
   <img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/sfeos.png" width=1000>
 </p>
 
-**Jump to:** [Project Introduction](#project-introduction---what-is-sfeos) | [Quick Start](#quick-start) | [Table of Contents](#table-of-contents)
+**Jump to:** [Project Introduction](#project-introduction---what-is-sfeos) | [Quick Start](#quick-start) | [Table of Contents](#table-of-contents) | [SFEOS-tools CLI](#sfeos-tools-cli) |
 
   [![Downloads](https://static.pepy.tech/badge/stac-fastapi-core?color=blue)](https://pepy.tech/project/stac-fastapi-core)
   [![GitHub contributors](https://img.shields.io/github/contributors/stac-utils/stac-fastapi-elasticsearch-opensearch?color=blue)](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/graphs/contributors)
@@ -123,7 +123,6 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
   - [Configure the API](#configure-the-api)
   - [Collection Pagination](#collection-pagination)
   - [SFEOS Tools CLI](#sfeos-tools-cli)
-  - [Ingesting Sample Data CLI Tool](#ingesting-sample-data-cli-tool)
   - [Redis for navigation](#redis-for-navigation)
   - [Elasticsearch Mappings](#elasticsearch-mappings)
   - [Custom Index Mappings](#custom-index-mappings)
@@ -1061,97 +1060,92 @@ The system uses a precise naming convention:
 
 ## SFEOS Tools CLI
 
-- **Overview**: [SFEOS Tools](https://github.com/Healy-Hyperspatial/sfeos-tools) is an installable CLI package for managing and maintaining SFEOS deployments. This CLI package provides utilities for managing and maintaining SFEOS deployments.
+[SFEOS Tools](https://github.com/StacLabs/sfeos-tools) is a CLI package for managing SFEOS deployments. It provides utilities for database operations, data loading, and catalog ingestion.
 
-- **Installation**:
-  ```shell
-  # For Elasticsearch (from PyPI)
-  pip install sfeos-tools[elasticsearch]
-  
-  # For OpenSearch (from PyPI)
-  pip install sfeos-tools[opensearch]
-  
-  ```
+### Installation
 
-- **Available Commands**:
-  - `add-bbox-shape`: Add bbox_shape field to existing collections for spatial search support
-  - `reindex`: Reindex all STAC indices (collections and per-collection items) to new versioned indices and update aliases; supports both Elasticsearch and OpenSearch backends. Use this when you need to apply mapping changes, update index settings, or migrate to a new index structure. The command handles the entire process including creating new indices, reindexing data, and atomically updating aliases with zero downtime.
+```bash
+# For Elasticsearch
+pip install sfeos-tools[elasticsearch]
 
-- **Basic Usage**:
-  ```shell
-  sfeos-tools add-bbox-shape --backend elasticsearch
-  sfeos-tools add-bbox-shape --backend opensearch
-  ```
+# For OpenSearch
+pip install sfeos-tools[opensearch]
 
-- **Connection Options**: Configure database connection via CLI flags or environment variables:
-  - `--host`: Database host (default: `localhost` or `ES_HOST` env var)
-  - `--port`: Database port (default: `9200` or `ES_PORT` env var)
-  - `--use-ssl` / `--no-ssl`: Use SSL connection (default: `true` or `ES_USE_SSL` env var)
-  - `--user`: Database username (default: `ES_USER` env var)
-  - `--password`: Database password (default: `ES_PASS` env var)
+# For viewer (Streamlit-based)
+pip install sfeos-tools[viewer]
 
-- **Examples**:
-  ```shell
-  # Local Docker Compose (no SSL)
-  sfeos-tools add-bbox-shape --backend elasticsearch --no-ssl
-  
-  # Remote server with SSL
-  sfeos-tools add-bbox-shape \
-    --backend elasticsearch \
-    --host db.example.com \
-    --port 9200 \
-    --user admin \
-    --password secret
-  
-  # Cloud deployment with environment variables
-  ES_HOST=my-es-cluster.cloud.com ES_PORT=9243 ES_USER=elastic ES_PASS=changeme \
-    sfeos-tools add-bbox-shape --backend elasticsearch
-  
-  # Using --help for more information
-  sfeos-tools --help
-  sfeos-tools add-bbox-shape --help
-  sfeos-tools reindex --help
+# For development
+pip install sfeos-tools[dev]
+```
 
-  ```
+### Basic Usage
 
-- **Documentation**:
-  For complete documentation, examples, and advanced usage, please visit the [SFEOS Tools GitHub repository](https://github.com/Healy-Hyperspatial/sfeos-tools).
+```bash
+sfeos-tools --help
+sfeos-tools --version
+```
 
-- **Contributing**:
-  Contributions, bug reports, and feature requests are welcome! Please file them on the [SFEOS Tools issue tracker](https://github.com/Healy-Hyperspatial/sfeos-tools/issues).
+### Common Commands
 
-## Ingesting Sample Data CLI Tool
+**Database Operations:**
+- `add-bbox-shape`: Add spatial search support to existing collections
+- `reindex`: Reindex all STAC indices with zero downtime
 
-- **Overview**: The `data_loader.py` script provides a convenient way to load STAC items into the database.
+**Data Management:**
+- `load-data`: Load STAC collections and items from local JSON files into the API
+- `ingest-catalog`: Ingest SKOS/RDF-XML files to create STAC catalogs
 
-- **Usage**:
-  ```shell
-  python3 data_loader.py --base-url http://localhost:8080
-  ```
+**Viewer:**
+- `viewer`: Launch interactive Streamlit-based web viewer for exploring STAC data
 
-- **Options**:
-  ```
-  --base-url TEXT       Base URL of the STAC API  [required]
-  --collection-id TEXT  ID of the collection to which items are added
-  --use-bulk            Use bulk insert method for items
-  --data-dir PATH       Directory containing collection.json and feature
-                        collection file
-  --help                Show this message and exit.
-  ```
+### Data Loading with `load-data`
 
-- **Example Workflows**:
-  - **Loading Sample Data**: 
-    ```shell
-    python3 data_loader.py --base-url http://localhost:8080
-    ```
-  - **Loading Data to a Specific Collection**:
-    ```shell
-    python3 data_loader.py --base-url http://localhost:8080 --collection-id my-collection
-    ```
-  - **Using Bulk Insert for Performance**:
-    ```shell
-    python3 data_loader.py --base-url http://localhost:8080 --use-bulk
-    ```
+The `load-data` command provides flexible options for populating your STAC API with collections and items:
+
+**Basic Usage:**
+```bash
+# Load from default directory (sample_data/)
+sfeos-tools load-data --stac-url http://localhost:8080
+
+# Load with custom collection ID
+sfeos-tools load-data --stac-url http://localhost:8080 --collection-id my-collection
+
+# Load from custom directory
+sfeos-tools load-data --stac-url http://localhost:8080 --data-dir /path/to/stac/data
+
+# Use bulk insert for large datasets (faster performance)
+sfeos-tools load-data --stac-url http://localhost:8080 --use-bulk
+```
+
+**Data Directory Structure:**
+
+Your data directory should contain:
+- `collection.json`: STAC collection definition
+- One or more `.json` files: Feature collections with STAC items
+
+**Common Workflows:**
+- **Populating a new STAC API deployment** with test or production data
+- **Migrating data** between STAC API instances
+- **Bulk loading** large numbers of STAC items with optimized performance
+- **Creating collections** programmatically from JSON definitions
+
+### Standardized Options
+
+**Database Commands** (`add-bbox-shape`, `reindex`):
+- `--backend`: Database backend (elasticsearch or opensearch) - required
+- `--host`: Database host (default: localhost or ES_HOST env var)
+- `--port`: Database port (default: 9200 for ES, 9202 for OS, or ES_PORT env var)
+- `--use-ssl/--no-ssl`: SSL connection (default: true or ES_USE_SSL env var)
+- `--user`: Database username (default: ES_USER env var)
+- `--password`: Database password (default: ES_PASS env var)
+
+**STAC API Commands** (`load-data`, `ingest-catalog`, `viewer`):
+- `--stac-url`: STAC API base URL (default: http://localhost:8080)
+- `--user`: Username for basic authentication (optional)
+- `--password`: Password for basic authentication (optional)
+- `--use-ssl/--no-ssl`: SSL verification (optional)
+
+For complete documentation, examples, and advanced usage, visit the [SFEOS Tools GitHub repository](https://github.com/StacLabs/sfeos-tools).
 
 ## Redis for Navigation
 
