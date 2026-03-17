@@ -57,6 +57,7 @@ from stac_fastapi.sfeos_helpers.database.utils import (
     add_hidden_filter,
     merge_to_operations,
     operations_to_script,
+    validate_datetime_operations,
 )
 from stac_fastapi.sfeos_helpers.mappings import (
     AGGREGATION_MAPPING,
@@ -1310,24 +1311,11 @@ class DatabaseLogic(BaseDatabaseLogic):
                 )
 
             existing_source = search_response["hits"]["hits"][0]["_source"]
-            for operation in operations:
-                if operation.op == "remove":
-                    self.async_index_inserter.validate_datetime_field_update(
-                        operation.path
-                    )
-                elif operation.op in ["add", "replace"]:
-                    path_parts = operation.path.split("/")
-                    existing_value = existing_source
-                    for part in path_parts:
-                        if isinstance(existing_value, dict):
-                            existing_value = existing_value.get(part)
-                        else:
-                            existing_value = None
-                            break
-                    if existing_value != operation.value:
-                        self.async_index_inserter.validate_datetime_field_update(
-                            operation.path
-                        )
+            validate_datetime_operations(
+                operations,
+                existing_source,
+                self.async_index_inserter.validate_datetime_field_update,
+            )
 
             if script_operations:
                 script = operations_to_script(
