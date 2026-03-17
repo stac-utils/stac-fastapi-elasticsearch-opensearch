@@ -35,10 +35,6 @@ from stac_fastapi.core.serializers import (
 )
 from stac_fastapi.core.session import Session
 from stac_fastapi.core.utilities import filter_fields, get_bool_env
-from stac_fastapi.sfeos_helpers.database import (
-    ItemAlreadyExistsError,
-    separate_bulk_conflict_errors,
-)
 from stac_fastapi.extensions.core.transaction import AsyncBaseTransactionsClient
 from stac_fastapi.extensions.core.transaction.request import (
     PartialCollection,
@@ -49,6 +45,10 @@ from stac_fastapi.extensions.third_party.bulk_transactions import (
     BaseBulkTransactionsClient,
     BulkTransactionMethod,
     Items,
+)
+from stac_fastapi.sfeos_helpers.database import (
+    ItemAlreadyExistsError,
+    separate_bulk_conflict_errors,
 )
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
@@ -1024,8 +1024,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             )
             features = item_dict["features"]
             processed_items = [
-                bulk_client.preprocess_item(feature, base_url)
-                for feature in features
+                bulk_client.preprocess_item(feature, base_url) for feature in features
             ]
 
             # Deduplicate items within the batch by ID (keep last occurrence)
@@ -1391,9 +1390,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         """Create es engine."""
         self.client = self.settings.create_client
 
-    def preprocess_item(
-        self, item: stac_types.Item, base_url
-    ) -> stac_types.Item:
+    def preprocess_item(self, item: stac_types.Item, base_url) -> stac_types.Item:
         """Preprocess an item to match the data model.
 
         Args:
@@ -1403,9 +1400,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         Returns:
             The preprocessed item.
         """
-        return self.database.bulk_sync_prep_create_item(
-            item=item, base_url=base_url
-        )
+        return self.database.bulk_sync_prep_create_item(item=item, base_url=base_url)
 
     @overrides
     def bulk_item_insert(
@@ -1461,7 +1456,6 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
             return f"No items to insert. {skipped_batch_duplicates} items were skipped (duplicates)."
 
         collection_id = processed_items[0]["collection"]
-        attempted = len(processed_items)
         success, errors = self.database.bulk_sync(
             collection_id,
             processed_items,
@@ -1472,9 +1466,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         if conflict_errors and get_bool_env("RAISE_ON_BULK_ERROR"):
             doc_id = next(iter(conflict_errors[0].values())).get("_id", "")
             item_id = doc_id.split("|")[0] if "|" in doc_id else doc_id
-            raise ItemAlreadyExistsError(
-                item_id=item_id, collection_id=collection_id
-            )
+            raise ItemAlreadyExistsError(item_id=item_id, collection_id=collection_id)
         if other_errors:
             logger.error(f"Bulk sync operation encountered errors: {other_errors}")
         else:

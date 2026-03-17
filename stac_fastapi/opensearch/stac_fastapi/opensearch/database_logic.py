@@ -1031,9 +1031,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         except Exception:
             return False
 
-    async def async_prep_create_item(
-        self, item: Item, base_url: str
-    ) -> Item:
+    async def async_prep_create_item(self, item: Item, base_url: str) -> Item:
         """
         Preps an item for insertion into the database.
 
@@ -1049,9 +1047,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         return self.item_serializer.stac_to_db(item, base_url)
 
-    async def bulk_async_prep_create_item(
-        self, item: Item, base_url: str
-    ) -> Item:
+    async def bulk_async_prep_create_item(self, item: Item, base_url: str) -> Item:
         """
         Prepare an item for insertion into the database.
 
@@ -1079,9 +1075,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         logger.debug(f"Item {item['id']} prepared successfully.")
         return prepped_item
 
-    def bulk_sync_prep_create_item(
-        self, item: Item, base_url: str
-    ) -> Item:
+    def bulk_sync_prep_create_item(self, item: Item, base_url: str) -> Item:
         """
         Prepare an item for insertion into the database.
 
@@ -1175,9 +1169,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                         "properties/end_datetime"
                     )
 
-        item = await self.async_prep_create_item(
-            item=item, base_url=base_url
-        )
+        item = await self.async_prep_create_item(item=item, base_url=base_url)
 
         target_index = await self.async_index_inserter.get_target_index(
             collection_id, item

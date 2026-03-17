@@ -78,7 +78,7 @@ def separate_bulk_conflict_errors(
     conflict_errors = []
     other_errors = []
     for error in errors:
-        action_data = next(iter(error.values()), {})
+        action_data: dict[str, Any] = next(iter(error.values()), {})
         if action_data.get("status") == 409:
             conflict_errors.append(error)
         else:
