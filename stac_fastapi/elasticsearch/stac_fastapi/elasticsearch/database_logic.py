@@ -265,7 +265,11 @@ class DatabaseLogic(BaseDatabaseLogic):
             if isinstance(filter, str):
                 filter = orjson.loads(filter)
             # Convert the filter to an Elasticsearch query using the filter module
+            logger.info(f"[get_all_collections] Raw CQL2 filter received: {filter}")
             es_query = filter_module.to_es(await self.get_queryables_mapping(), filter)
+            logger.info(
+                f"[get_all_collections] Translated ES query from CQL2 filter: {es_query}"
+            )
             query_parts.append(es_query)
 
         # Apply query extension if provided
@@ -316,6 +320,8 @@ class DatabaseLogic(BaseDatabaseLogic):
                 if len(query_parts) == 1
                 else {"bool": {"must": query_parts}}
             )
+
+        logger.info(f"[get_all_collections] Final ES search body: {body}")
 
         # Create async tasks for count
         count_task = asyncio.create_task(
