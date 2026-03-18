@@ -1388,7 +1388,7 @@ class CatalogsExtension(ApiExtension):
         await self.client.database.find_catalog(catalog_id)
         search_after = _decode_token(token)
 
-        # Call helper with decoded search_after list
+        # 1. Fetch data
         (
             children_data,
             total,
@@ -1402,21 +1402,34 @@ class CatalogsExtension(ApiExtension):
         )
 
         base_url = str(request.base_url)
-        formatted_children = []
 
-        # Optimization: Process children in-place from children_data
+        # 2. SEPARATE: Pull out catalogs to format them as a batch
+        catalog_docs = [doc for doc in children_data if doc.get("type") == "Catalog"]
+
+        # 3. BATCH PROCESS: One call to rule them all
+        # This triggers the asyncio.gather inside the helper for ALL catalogs at once
+        formatted_catalogs_list = []
+        if catalog_docs:
+            formatted_catalogs_list = await self._format_catalogs_with_links(
+                catalog_docs, request, base_url
+            )
+
+        # Create a lookup map for easy re-assembly: { "id": CatalogObject }
+        catalog_lookup = {c.id: c for c in formatted_catalogs_list}
+
+        # 4. RE-ASSEMBLE: Put them back in the original search order
+        formatted_children = []
         for doc in children_data:
+            doc_id = doc.get("id")
             if doc.get("type") == "Catalog":
-                # We use the existing helper for catalog link injection
-                formatted = await self._format_catalogs_with_links(
-                    [doc], request, base_url
-                )
-                formatted_children.append(formatted[0])
+                formatted_children.append(catalog_lookup[doc_id])
             else:
+                # Collections don't need parent/child pre-fetching, so serialize normally
                 formatted_children.append(
                     self.client.collection_serializer.db_to_stac(doc, request)
                 )
 
+        # 5. Build links (The rest remains the same)
         links = [
             {"rel": "self", "type": "application/json", "href": str(request.url)},
             {"rel": "root", "type": "application/json", "href": base_url},
@@ -1432,12 +1445,12 @@ class CatalogsExtension(ApiExtension):
             params = {"limit": limit, "token": new_token}
             if type:
                 params["type"] = type
-
             links.append(
                 {
                     "rel": "next",
                     "type": "application/json",
                     "href": f"{base_url}catalogs/{catalog_id}/children?{urlencode(params)}",
+                    "title": "Next page",
                 }
             )
 

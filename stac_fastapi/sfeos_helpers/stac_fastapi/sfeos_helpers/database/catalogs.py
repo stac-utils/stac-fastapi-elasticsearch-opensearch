@@ -111,7 +111,7 @@ async def search_sub_catalogs_with_pagination_shared(
     catalog_id: str,
     limit: int = 10,
     search_after: list | None = None,
-) -> tuple[list[dict[str, Any]], int, str | None]:
+) -> tuple[list[dict[str, Any]], int, list | None]:
     """Search for sub-catalogs with pagination support.
 
     Args:
@@ -183,7 +183,7 @@ async def search_children_with_pagination_shared(
     limit: int = 10,
     search_after: list | None = None,
     resource_type: str | None = None,
-) -> tuple[list[dict[str, Any]], int, str | None]:
+) -> tuple[list[dict[str, Any]], int, list | None]:
     """Search for children (catalogs and collections) with pagination.
 
     Args:
