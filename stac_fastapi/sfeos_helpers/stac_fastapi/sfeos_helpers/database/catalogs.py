@@ -42,7 +42,7 @@ async def search_collections_by_parent_id_shared(
         return [hit["_source"] for hit in search_result["hits"]["hits"]]
     except Exception as e:
         logger.error(f"Error searching for collections with parent {catalog_id}: {e}")
-        return []
+        raise
 
 
 async def search_collections_by_parent_id_with_pagination_shared(
@@ -61,8 +61,10 @@ async def search_collections_by_parent_id_with_pagination_shared(
 
     Returns:
         Tuple of (collections_list, total_hits_count, next_search_after_list).
+
+    Raises:
+        Exception: Re-raises any database connection or query errors to the caller.
     """
-    # We sort by 'id' to ensure a stable, deterministic sort order for pagination
     sort_fields: list[dict[str, Any]] = [{"id": {"order": "asc"}}]
 
     query_body: dict[str, Any] = {
@@ -76,25 +78,26 @@ async def search_collections_by_parent_id_with_pagination_shared(
         },
         "sort": sort_fields,
         "size": limit,
-        # Ensure we get an accurate total count even beyond the 10k default limit
         "track_total_hits": True,
     }
 
-    # If we have a cursor from a previous page, apply it
     if search_after:
         query_body["search_after"] = search_after
 
+    # Execute the search - we no longer catch the error here.
+    # If the DB is down, this will bubble up to the API controller.
     try:
         search_result = await es_client.search(index=COLLECTIONS_INDEX, body=query_body)
     except Exception as e:
-        logger.error(f"Error searching for collections with parent {catalog_id}: {e}")
-        return [], 0, None
+        logger.error(
+            f"Database error searching for collections in parent {catalog_id}: {e}"
+        )
+        # Re-raising ensures the API returns a 500 Error
+        raise
 
-    # Extract hits and total count
     hits_container = search_result.get("hits", {})
     hits = hits_container.get("hits", [])
 
-    # Handle OpenSearch total hits object (can be an int or a dict depending on version)
     total_hits_data = hits_container.get("total", 0)
     total_hits = (
         total_hits_data.get("value", 0)
@@ -102,11 +105,8 @@ async def search_collections_by_parent_id_with_pagination_shared(
         else total_hits_data
     )
 
-    # Map the search hits to a list of source dictionaries
     collections = [hit["_source"] for hit in hits]
 
-    # Generate the next cursor if we hit the limit
-    # This 'sort' list is what OpenSearch uses for the next 'search_after'
     next_search_after = None
     if len(hits) == limit:
         next_search_after = hits[-1].get("sort")
@@ -160,7 +160,7 @@ async def search_sub_catalogs_with_pagination_shared(
         search_result = await es_client.search(index=COLLECTIONS_INDEX, body=query_body)
     except Exception as e:
         logger.error(f"Error searching for catalogs with parent {catalog_id}: {e}")
-        search_result = {"hits": {"hits": []}}
+        raise
 
     # Process results
     hits = search_result.get("hits", {}).get("hits", [])
@@ -251,7 +251,7 @@ async def search_children_with_pagination_shared(
         search_result = await es_client.search(index=COLLECTIONS_INDEX, body=body)
     except Exception as e:
         logger.error(f"Error searching for children of catalog {catalog_id}: {e}")
-        search_result = {"hits": {"hits": []}}
+        raise
 
     # Process results
     hits = search_result.get("hits", {}).get("hits", [])
