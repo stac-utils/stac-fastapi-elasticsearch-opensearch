@@ -11,8 +11,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 
-### Changed
-
 - Updated CI/CD testing to use OpenSearch 3.5.0 instead of 2.19.3. [#631](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/631)
 - Refactored serializers and catalog extension to eliminate duplicated code by extracting helper methods: `_create_child_link()` for child link generation, `_set_collection_defaults()` for STAC Collection field initialization, and `_deserialize_assets()` for asset handling. This improves maintainability by centralizing common logic into single-source-of-truth implementations. [#629](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/629)
 
@@ -20,6 +18,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 - Added pagination support to GET `/catalogs/{catalog_id}/collections` endpoint with `limit` (default: 10, max: 100) and `token` parameters. Fixed missing `numberReturned` and `numberMatched` context fields. [#632](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/632)
 - Fixed `json_patch_item` datetime validation for datetime-based indexes: PATCH operations on datetime fields (`properties/datetime`, `properties/start_datetime`, `properties/end_datetime`) no longer raise an error when the value is unchanged. Validation now compares old and new values before rejecting the operation, consistent with `update_item` (PUT) behavior. [#636](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/636)
+- Fixed Catalogs extension edge cases: `PUT /catalogs/{catalog_id}` now enforces the path ID and returns the persisted/serialized catalog; `/catalogs/{catalog_id}/children` no longer risks a `KeyError` when a child catalog cannot be batch-formatted; collection serialization in scoped catalog endpoints is consistently handled via the core client serializer. [#632](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/632)
 
 ### Updated
 
