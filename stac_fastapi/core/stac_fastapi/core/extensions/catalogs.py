@@ -5,7 +5,7 @@ import base64
 import json
 import logging
 from typing import Any, Type
-from urllib.parse import parse_qs, urlencode, urlparse
+from urllib.parse import urlencode
 
 import attr
 from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
@@ -28,6 +28,24 @@ from stac_fastapi.types.errors import NotFoundError
 from stac_fastapi.types.extension import ApiExtension
 
 logger = logging.getLogger(__name__)
+
+
+def _decode_token(token: str | None) -> list | None:
+    """Decode a Base64/JSON pagination token into a search_after list."""
+    if not token:
+        return None
+    try:
+        return json.loads(base64.urlsafe_b64decode(token.encode()).decode())
+    except Exception:
+        logger.warning(f"Invalid pagination token provided: {token}")
+        return None
+
+
+def _encode_token(search_after: list | None) -> str | None:
+    """Encode a search_after list into a Base64/JSON pagination token."""
+    if not search_after:
+        return None
+    return base64.urlsafe_b64encode(json.dumps(search_after).encode()).decode()
 
 
 class Catalogs(TypedDict, total=False):
@@ -330,7 +348,7 @@ class CatalogsExtension(ApiExtension):
                     self.client.database.client,
                     catalog_id,
                     limit=100,
-                    token=None,
+                    search_after=None,
                     resource_type=None,
                 )
                 return catalog_id, children_data
@@ -431,44 +449,46 @@ class CatalogsExtension(ApiExtension):
             Catalogs object containing catalogs and pagination links.
         """
         base_url = str(request.base_url)
+        search_after = _decode_token(token)
 
-        # Get all catalogs from database with pagination
-        catalogs, next_token, total_hits = await self.client.database.get_all_catalogs(
-            token=token,
+        # Updated to pass decoded search_after
+        (
+            catalogs,
+            next_search_after,
+            total_hits,
+        ) = await self.client.database.get_all_catalogs(
+            token=search_after,
             limit=limit,
             request=request,
             sort=[{"field": "id", "direction": "asc"}],
         )
 
-        # Format catalogs with dynamic parent and child links
         catalog_stac_objects = await self._format_catalogs_with_links(
             catalogs, request, base_url
         )
 
-        # Create pagination links
         links = [
             {"rel": "root", "type": "application/json", "href": base_url},
             {"rel": "parent", "type": "application/json", "href": base_url},
             {"rel": "self", "type": "application/json", "href": str(request.url)},
         ]
 
-        # Add next link if there are more pages
-        if next_token:
-            query_params = {"limit": limit, "token": next_token}
-            next_link = {
-                "rel": "next",
-                "href": f"{base_url}catalogs?{urlencode(query_params)}",
-                "type": "application/json",
-                "title": "Next page of catalogs",
-            }
-            links.append(next_link)
+        if next_search_after:
+            new_token = _encode_token(next_search_after)
+            links.append(
+                {
+                    "rel": "next",
+                    "href": f"{base_url}catalogs?{urlencode({'limit': limit, 'token': new_token})}",
+                    "type": "application/json",
+                    "title": "Next page",
+                }
+            )
 
-        # Return Catalogs object with catalogs and numberMatched
         return Catalogs(
             catalogs=catalog_stac_objects,
             links=links,
             numberReturned=len(catalog_stac_objects),
-            numberMatched=total_hits,  # Include the total number of matching catalogs
+            numberMatched=total_hits,
         )
 
     async def create_catalog(self, catalog: Catalog, request: Request) -> Catalog:
@@ -664,17 +684,17 @@ class CatalogsExtension(ApiExtension):
 
             # 5. DYNAMIC CHILD LINKS (Paginated, one level deep)
             try:
-                token = None
+                current_search_after = None
                 while True:
                     (
                         children_data,
                         _,
-                        next_token,
+                        next_search_after,
                     ) = await search_children_with_pagination_shared(
                         self.client.database.client,
                         catalog_id,
                         limit=limit,
-                        token=token,
+                        search_after=current_search_after,
                         resource_type=None,
                     )
 
@@ -684,9 +704,9 @@ class CatalogsExtension(ApiExtension):
                                 self._create_child_link(base_url, catalog_id, child)
                             )
 
-                    if not next_token:
+                    if not next_search_after:
                         break
-                    token = next_token
+                    current_search_after = next_search_after
             except Exception as e:
                 logger.warning(f"Child link generation failed for {catalog_id}: {e}")
 
@@ -935,26 +955,23 @@ class CatalogsExtension(ApiExtension):
             HTTPException: If the catalog is not found.
         """
         try:
-            # Verify the catalog exists
             await self.client.database.find_catalog(catalog_id)
+            search_after = _decode_token(token)
 
-            # Search for sub-catalogs with pagination
+            # Updated to pass decoded search_after
             (
                 catalogs_data,
                 total_hits,
-                next_token,
+                next_search_after,
             ) = await search_sub_catalogs_with_pagination_shared(
-                self.client.database.client, catalog_id, limit, token
+                self.client.database.client, catalog_id, limit, search_after
             )
 
             base_url = str(request.base_url)
-
-            # Format catalogs with dynamic parent and child links using shared helper
             catalogs = await self._format_catalogs_with_links(
                 catalogs_data, request, base_url
             )
 
-            # Generate pagination links
             links = [
                 {"rel": "root", "type": "application/json", "href": base_url},
                 {
@@ -962,22 +979,16 @@ class CatalogsExtension(ApiExtension):
                     "type": "application/json",
                     "href": f"{base_url}catalogs/{catalog_id}",
                 },
-                {
-                    "rel": "self",
-                    "type": "application/json",
-                    "href": str(request.url),
-                },
+                {"rel": "self", "type": "application/json", "href": str(request.url)},
             ]
 
-            # Add next link if more results exist
-            if next_token:
-                query_params = {"limit": limit, "token": next_token}
+            if next_search_after:
+                new_token = _encode_token(next_search_after)
                 links.append(
                     {
                         "rel": "next",
-                        "href": f"{base_url}catalogs/{catalog_id}/catalogs?{urlencode(query_params)}",
+                        "href": f"{base_url}catalogs/{catalog_id}/catalogs?{urlencode({'limit': limit, 'token': new_token})}",
                         "type": "application/json",
-                        "title": "Next page",
                     }
                 )
 
@@ -987,15 +998,8 @@ class CatalogsExtension(ApiExtension):
                 "numberReturned": len(catalogs),
                 "numberMatched": total_hits,
             }
-
-        except HTTPException:
-            # Re-raise HTTP exceptions as-is
-            raise
         except Exception as e:
-            logger.error(
-                f"Error retrieving catalogs for catalog {catalog_id}: {e}",
-                exc_info=True,
-            )
+            logger.error(f"Error in get_catalog_catalogs: {e}")
             raise HTTPException(
                 status_code=404, detail=f"Catalog {catalog_id} not found"
             )
@@ -1381,97 +1385,68 @@ class CatalogsExtension(ApiExtension):
         This is a mixed content endpoint that returns both Catalogs and Collections.
         Catalogs are returned with dynamic parent and child links.
         """
-        # 1. Verify the parent catalog exists
         await self.client.database.find_catalog(catalog_id)
+        search_after = _decode_token(token)
 
-        # 2. Search for children with pagination
-        children_data, total, next_token = await search_children_with_pagination_shared(
-            self.client.database.client, catalog_id, limit, token, resource_type=type
+        # Call helper with decoded search_after list
+        (
+            children_data,
+            total,
+            next_search_after,
+        ) = await search_children_with_pagination_shared(
+            self.client.database.client,
+            catalog_id,
+            limit,
+            search_after,
+            resource_type=type,
         )
 
         base_url = str(request.base_url)
+        formatted_children = []
 
-        # 3. Separate catalogs and collections for processing
-        catalog_children = [
-            doc for doc in children_data if doc.get("type") == "Catalog"
-        ]
-        collection_children = [
-            doc for doc in children_data if doc.get("type") != "Catalog"
-        ]
-
-        # 4. Format catalogs with dynamic links using shared helper
-        formatted_catalogs = []
-        if catalog_children:
-            formatted_catalogs = await self._format_catalogs_with_links(
-                catalog_children, request, base_url
-            )
-
-        # 5. Serialize collections (no dynamic links needed)
-        formatted_collections = []
-        for doc in collection_children:
-            child = self.client.collection_serializer.db_to_stac(doc, request)
-            formatted_collections.append(child)
-
-        # 6. Combine catalogs and collections in original order
-        children = []
-        catalog_idx = 0
-        collection_idx = 0
+        # Optimization: Process children in-place from children_data
         for doc in children_data:
             if doc.get("type") == "Catalog":
-                if catalog_idx < len(formatted_catalogs):
-                    children.append(formatted_catalogs[catalog_idx])
-                    catalog_idx += 1
+                # We use the existing helper for catalog link injection
+                formatted = await self._format_catalogs_with_links(
+                    [doc], request, base_url
+                )
+                formatted_children.append(formatted[0])
             else:
-                if collection_idx < len(formatted_collections):
-                    children.append(formatted_collections[collection_idx])
-                    collection_idx += 1
+                formatted_children.append(
+                    self.client.collection_serializer.db_to_stac(doc, request)
+                )
 
-        # 4. Format Response
-        # The Children extension uses a specific response format
-        response = {
-            "children": children,
-            "links": [
-                {"rel": "self", "type": "application/json", "href": str(request.url)},
+        links = [
+            {"rel": "self", "type": "application/json", "href": str(request.url)},
+            {"rel": "root", "type": "application/json", "href": base_url},
+            {
+                "rel": "parent",
+                "type": "application/json",
+                "href": f"{base_url}catalogs/{catalog_id}",
+            },
+        ]
+
+        if next_search_after:
+            new_token = _encode_token(next_search_after)
+            params = {"limit": limit, "token": new_token}
+            if type:
+                params["type"] = type
+
+            links.append(
                 {
-                    "rel": "root",
+                    "rel": "next",
                     "type": "application/json",
-                    "href": str(request.base_url),
-                },
-                {
-                    "rel": "parent",
-                    "type": "application/json",
-                    "href": f"{str(request.base_url)}catalogs/{catalog_id}",
-                },
-            ],
-            "numberReturned": len(children),
+                    "href": f"{base_url}catalogs/{catalog_id}/children?{urlencode(params)}",
+                }
+            )
+
+        return {
+            "children": formatted_children,
+            "links": links,
+            "numberReturned": len(formatted_children),
             "numberMatched": total,
         }
-
-        # 5. Generate Next Link
-        if next_token:
-            # Get existing query params
-            parsed_url = urlparse(str(request.url))
-            params = parse_qs(parsed_url.query)
-
-            # Update params
-            params["token"] = [next_token]
-            params["limit"] = [str(limit)]
-            if type:
-                params["type"] = [type]
-
-            # Flatten params for urlencode (parse_qs returns lists)
-            flat_params = {
-                k: v[0] if isinstance(v, list) else v for k, v in params.items()
-            }
-
-            next_link = {
-                "rel": "next",
-                "type": "application/json",
-                "href": f"{request.base_url}catalogs/{catalog_id}/children?{urlencode(flat_params)}",
-            }
-            response["links"].append(next_link)
-
-        return response
 
     async def delete_catalog_collection(
         self, catalog_id: str, collection_id: str, request: Request
