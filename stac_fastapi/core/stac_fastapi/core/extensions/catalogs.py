@@ -381,6 +381,7 @@ class CatalogsExtension(ApiExtension):
                 if hasattr(catalog_stac, "model_dump")
                 else dict(catalog_stac)
             )
+            catalog_dict.setdefault("links", [])
 
             # Apply titles to both 'parent' AND 'related' links from pre-fetched map
             for link in catalog_dict.get("links", []):
@@ -554,6 +555,8 @@ class CatalogsExtension(ApiExtension):
             db_catalog = self.client.catalog_serializer.stac_to_db(catalog, request)
             db_catalog_dict = db_catalog.model_dump()
             db_catalog_dict["type"] = "Catalog"
+            # Enforce path ID as authoritative to avoid accidental cross-ID updates
+            db_catalog_dict["id"] = catalog_id
 
             # Preserve parent_ids and other internal fields from the existing catalog
             if "parent_ids" in existing_catalog_db:
@@ -562,8 +565,13 @@ class CatalogsExtension(ApiExtension):
             # Update the catalog in the database (upsert via create_catalog)
             await self.client.database.create_catalog(db_catalog_dict, refresh=True)
 
-            # Return the updated catalog
-            return catalog
+            # Return a fresh serialized catalog (authoritative persisted version)
+            updated_db_catalog = await self.client.database.find_catalog(catalog_id)
+            return self.client.catalog_serializer.db_to_stac(
+                updated_db_catalog,
+                request,
+                extensions=self._active_extensions,
+            )
 
         except NotFoundError:
             raise
@@ -1146,15 +1154,12 @@ class CatalogsExtension(ApiExtension):
                     )
 
                 # Convert back to STAC format for the response
-                updated_collection = (
-                    self.client.database.collection_serializer.db_to_stac(
-                        existing_collection_dict,
-                        request,
-                        extensions=[
-                            type(ext).__name__
-                            for ext in self.client.database.extensions
-                        ],
-                    )
+                updated_collection = self.client.collection_serializer.db_to_stac(
+                    existing_collection_dict,
+                    request,
+                    extensions=[
+                        type(ext).__name__ for ext in self.client.database.extensions
+                    ],
                 )
 
                 return updated_collection
@@ -1183,7 +1188,7 @@ class CatalogsExtension(ApiExtension):
                 # depending on which catalog it's accessed from.
 
                 # Now convert to database format (this will process the links)
-                collection_db = self.client.database.collection_serializer.stac_to_db(
+                collection_db = self.client.collection_serializer.stac_to_db(
                     collection_dict, request
                 )
                 await self.client.database.create_collection(
@@ -1191,15 +1196,12 @@ class CatalogsExtension(ApiExtension):
                 )
 
                 # Convert back to STAC format for the response
-                created_collection = (
-                    self.client.database.collection_serializer.db_to_stac(
-                        collection_db,
-                        request,
-                        extensions=[
-                            type(ext).__name__
-                            for ext in self.client.database.extensions
-                        ],
-                    )
+                created_collection = self.client.collection_serializer.db_to_stac(
+                    collection_db,
+                    request,
+                    extensions=[
+                        type(ext).__name__ for ext in self.client.database.extensions
+                    ],
                 )
 
                 return created_collection
@@ -1344,9 +1346,11 @@ class CatalogsExtension(ApiExtension):
         request: Request,
         limit: int = 10,
         token: str | None = None,
-        type: str
+        resource_type: str
         | None = Query(
-            None, description="Filter by resource type (Catalog or Collection)"
+            None,
+            alias="type",
+            description="Filter by resource type (Catalog or Collection)",
         ),
     ) -> dict[str, Any]:
         """
@@ -1369,7 +1373,7 @@ class CatalogsExtension(ApiExtension):
                 catalog_id,
                 limit,
                 search_after,
-                resource_type=type,
+                resource_type=resource_type,
             )
 
             base_url = str(request.base_url).rstrip("/")
@@ -1395,7 +1399,20 @@ class CatalogsExtension(ApiExtension):
             for doc in children_data:
                 doc_id = doc.get("id")
                 if doc.get("type") == "Catalog":
-                    formatted_children.append(catalog_lookup[doc_id])
+                    formatted_catalog = catalog_lookup.get(doc_id)
+                    if formatted_catalog is not None:
+                        formatted_children.append(formatted_catalog)
+                    else:
+                        logger.error(
+                            f"Catalog child {doc_id} could not be batch-formatted; returning minimally serialized document without dynamic child links."
+                        )
+                        formatted_children.append(
+                            self.client.catalog_serializer.db_to_stac(
+                                doc,
+                                request,
+                                extensions=self._active_extensions,
+                            )
+                        )
                 else:
                     # Collections don't need parent/child pre-fetching, so serialize normally
                     formatted_children.append(
@@ -1416,8 +1433,8 @@ class CatalogsExtension(ApiExtension):
             if next_search_after:
                 new_token = _encode_token(next_search_after)
                 params = {"limit": limit, "token": new_token}
-                if type:
-                    params["type"] = type
+                if resource_type:
+                    params["type"] = resource_type
                 links.append(
                     {
                         "rel": "next",
