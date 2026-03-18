@@ -133,6 +133,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
   - [Auth](#auth)
   - [Aggregation](#aggregation)
   - [Rate Limiting](#rate-limiting)
+  - [Prometheus metrics](#prometheus-metrics)
   - [Hidden Items Filtering](#hidden-items-filtering)
   - [Error Monitoring with Sentry](#error-monitoring-with-sentry)
 
@@ -1602,6 +1603,22 @@ This prevents Elasticsearch from creating mappings for unused metadata fields, r
   - Ensures fair resource allocation among all clients
   
 - **Examples**: Implementation examples are available in the [examples/rate_limit](examples/rate_limit) directory.
+
+
+## Prometheus metrics
+
+- **Installation**: Install the `metrics` extra alongside your backend:
+  ```bash
+  pip install stac-fastapi-elasticsearch[metrics]  # Elasticsearch backend
+  pip install stac-fastapi-opensearch[metrics]     # OpenSearch backend
+  ```
+
+- **Usage**: Once installed, `/metrics` is live on startup. If the package is missing, the app starts normally and logs a warning.
+
+- **Metrics exposed** (Prometheus text format):
+  - `http_requests_total` — request count by method, path, and status code
+  - `http_request_duration_seconds` — request latency histogram
+  - `http_requests_inprogress` — in-flight request gauge
 
 
 ## Hidden Items Filtering
