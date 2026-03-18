@@ -1,6 +1,8 @@
 """Catalogs extension."""
 
 import asyncio
+import base64
+import json
 import logging
 from typing import Any, Type
 from urllib.parse import parse_qs, urlencode, urlparse
@@ -811,29 +813,36 @@ class CatalogsExtension(ApiExtension):
             Collections object containing collections linked from the catalog.
         """
         try:
-            # Verify the catalog exists
+            # 1. Verify the catalog exists
             await self.client.database.find_catalog(catalog_id)
 
-            # Query collections by parent_ids field with pagination
-            # This uses the parent_ids field in the collection mapping to find all
-            # collections that have this catalog as a parent
+            # 2. Decode the pagination token if provided (Point 2: Robust Tokens)
+            search_after = None
+            if token:
+                try:
+                    search_after = json.loads(
+                        base64.urlsafe_b64decode(token.encode()).decode()
+                    )
+                except Exception:
+                    logger.warning(f"Invalid pagination token provided: {token}")
+                    # We proceed without search_after rather than crashing
+
+            # 3. Query collections by parent_ids field with pagination
+            # We pass search_after directly to the database helper
             (
                 collections_data,
                 total_hits,
-                next_token,
+                next_search_after,
             ) = await search_collections_by_parent_id_with_pagination_shared(
-                self.client.database.client, catalog_id, limit, token
+                self.client.database.client, catalog_id, limit, search_after
             )
 
-            # Extract collection IDs from results
-            collection_ids = [coll.get("id") for coll in collections_data]
-
-            # Fetch the collections
+            # 4. Serialize the results (Point 1: Optimized N+1 Fix)
+            # We loop through the 'collections_data' which already contains the DB records.
+            # This saves us from making 'n' additional database calls.
             collections = []
-            for coll_id in collection_ids:
+            for collection_db in collections_data:
                 try:
-                    # Get the collection from database
-                    collection_db = await self.client.database.find_collection(coll_id)
                     # Serialize with catalog context (sets parent to catalog, injects catalog link)
                     collection = (
                         self.client.collection_serializer.db_to_stac_in_catalog(
@@ -844,29 +853,17 @@ class CatalogsExtension(ApiExtension):
                         )
                     )
                     collections.append(collection)
-                except HTTPException as e:
-                    # Only skip collections that are not found (404)
-                    if e.status_code == 404:
-                        logger.debug(f"Collection {coll_id} not found, skipping")
-                        continue
-                    else:
-                        # Re-raise other HTTP exceptions (5xx server errors, etc.)
-                        logger.error(f"HTTP error retrieving collection {coll_id}: {e}")
-                        raise
                 except Exception as e:
-                    # Log unexpected errors and re-raise them
                     logger.error(
-                        f"Unexpected error retrieving collection {coll_id}: {e}"
+                        f"Error serializing collection {collection_db.get('id')}: {e}"
                     )
-                    raise
+                    # We continue to ensure one bad record doesn't break the whole page
+                    continue
 
-            # Return in Collections format
+            # 5. Build HATEOAS links
             base_url = str(request.base_url)
-
-            # Build links
             links = [
                 {"rel": "root", "type": "application/json", "href": base_url},
-                # Scoped breadcrumb: Lock parent link to the specific catalog for contextual navigation
                 {
                     "rel": "parent",
                     "type": "application/json",
@@ -879,11 +876,14 @@ class CatalogsExtension(ApiExtension):
                 },
             ]
 
-            # Add next link if more results exist
-            if next_token:
-                from urllib.parse import urlencode
+            # 6. Generate Base64 next link if more results exist
+            if next_search_after:
+                # Encode the sort keys into a URL-safe Base64 string
+                encoded_token = base64.urlsafe_b64encode(
+                    json.dumps(next_search_after).encode()
+                ).decode()
 
-                query_params = {"limit": limit, "token": next_token}
+                query_params = {"limit": limit, "token": encoded_token}
                 links.append(
                     {
                         "rel": "next",
@@ -893,6 +893,7 @@ class CatalogsExtension(ApiExtension):
                     }
                 )
 
+            # 7. Return in Collections format (Fixed context fields)
             return stac_types.Collections(
                 collections=collections,
                 links=links,
@@ -901,7 +902,6 @@ class CatalogsExtension(ApiExtension):
             )
 
         except HTTPException:
-            # Re-raise HTTP exceptions as-is
             raise
         except Exception as e:
             logger.error(
@@ -909,7 +909,8 @@ class CatalogsExtension(ApiExtension):
                 exc_info=True,
             )
             raise HTTPException(
-                status_code=404, detail=f"Catalog {catalog_id} not found"
+                status_code=404,
+                detail=f"Catalog {catalog_id} not found or error retrieving collections",
             )
 
     async def get_catalog_catalogs(

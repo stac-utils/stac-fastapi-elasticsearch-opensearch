@@ -49,20 +49,22 @@ async def search_collections_by_parent_id_with_pagination_shared(
     es_client: Any,
     catalog_id: str,
     limit: int = 10,
-    token: str | None = None,
-) -> tuple[list[dict[str, Any]], int, str | None]:
-    """Search for collections with a specific parent catalog with pagination support.
+    search_after: list | None = None,
+) -> tuple[list[dict[str, Any]], int, list | None]:
+    """Search for collections with a specific parent catalog using OpenSearch pagination.
 
     Args:
         es_client: Elasticsearch/OpenSearch client instance.
-        catalog_id: The parent catalog ID.
-        limit: Maximum number of results to return (default: 10).
-        token: Pagination token for cursor-based pagination.
+        catalog_id: The parent catalog ID to filter by.
+        limit: Maximum number of results to return.
+        search_after: A list of sort values from the last hit of the previous page.
 
     Returns:
-        Tuple of (collections, total_count, next_token).
+        Tuple of (collections_list, total_hits_count, next_search_after_list).
     """
+    # We sort by 'id' to ensure a stable, deterministic sort order for pagination
     sort_fields: list[dict[str, Any]] = [{"id": {"order": "asc"}}]
+
     query_body: dict[str, Any] = {
         "query": {
             "bool": {
@@ -74,39 +76,42 @@ async def search_collections_by_parent_id_with_pagination_shared(
         },
         "sort": sort_fields,
         "size": limit,
+        # Ensure we get an accurate total count even beyond the 10k default limit
+        "track_total_hits": True,
     }
 
-    # Handle pagination cursor (token)
-    # Token format: "value1|value2|..." matching the sort fields
-    if token:
-        try:
-            search_after = token.split("|")
-            if len(search_after) == len(sort_fields):
-                query_body["search_after"] = search_after
-        except Exception:
-            logger.debug(f"Invalid pagination token: {token}")
+    # If we have a cursor from a previous page, apply it
+    if search_after:
+        query_body["search_after"] = search_after
 
-    # Execute the search
     try:
         search_result = await es_client.search(index=COLLECTIONS_INDEX, body=query_body)
     except Exception as e:
         logger.error(f"Error searching for collections with parent {catalog_id}: {e}")
-        search_result = {"hits": {"hits": []}}
+        return [], 0, None
 
-    # Process results
-    hits = search_result.get("hits", {}).get("hits", [])
-    total_hits = search_result.get("hits", {}).get("total", {}).get("value", 0)
+    # Extract hits and total count
+    hits_container = search_result.get("hits", {})
+    hits = hits_container.get("hits", [])
 
+    # Handle OpenSearch total hits object (can be an int or a dict depending on version)
+    total_hits_data = hits_container.get("total", 0)
+    total_hits = (
+        total_hits_data.get("value", 0)
+        if isinstance(total_hits_data, dict)
+        else total_hits_data
+    )
+
+    # Map the search hits to a list of source dictionaries
     collections = [hit["_source"] for hit in hits]
 
-    # Generate next token if more results exist
-    next_token = None
-    if len(hits) == limit and len(collections) > 0:
-        last_hit_sort = hits[-1].get("sort")
-        if last_hit_sort:
-            next_token = "|".join(str(x) for x in last_hit_sort)
+    # Generate the next cursor if we hit the limit
+    # This 'sort' list is what OpenSearch uses for the next 'search_after'
+    next_search_after = None
+    if len(hits) == limit:
+        next_search_after = hits[-1].get("sort")
 
-    return collections, total_hits, next_token
+    return collections, total_hits, next_search_after
 
 
 async def search_sub_catalogs_with_pagination_shared(
