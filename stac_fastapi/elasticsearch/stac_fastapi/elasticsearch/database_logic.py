@@ -62,6 +62,7 @@ from stac_fastapi.sfeos_helpers.database.utils import (
     add_hidden_filter,
     merge_to_operations,
     operations_to_script,
+    validate_datetime_operations,
 )
 from stac_fastapi.sfeos_helpers.mappings import (
     AGGREGATION_MAPPING,
@@ -1277,10 +1278,6 @@ class DatabaseLogic(BaseDatabaseLogic):
         Returns:
             patched item.
         """
-        for operation in operations:
-            if operation.op in ["add", "replace", "remove"]:
-                self.async_index_inserter.validate_datetime_field_update(operation.path)
-
         new_item_id = None
         new_collection_id = None
         script_operations = []
@@ -1313,6 +1310,13 @@ class DatabaseLogic(BaseDatabaseLogic):
                 raise NotFoundError(
                     f"Item {item_id} does not exist inside Collection {collection_id}"
                 )
+
+            existing_source = search_response["hits"]["hits"][0]["_source"]
+            validate_datetime_operations(
+                operations,
+                existing_source,
+                self.async_index_inserter.validate_datetime_field_update,
+            )
 
             if script_operations:
                 script = operations_to_script(
