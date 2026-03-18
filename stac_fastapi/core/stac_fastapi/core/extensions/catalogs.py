@@ -1403,8 +1403,8 @@ class CatalogsExtension(ApiExtension):
                     if formatted_catalog is not None:
                         formatted_children.append(formatted_catalog)
                     else:
-                        logger.warning(
-                            f"Catalog child {doc_id} could not be formatted; returning minimally serialized document."
+                        logger.error(
+                            f"Catalog child {doc_id} could not be batch-formatted; returning minimally serialized document without dynamic child links."
                         )
                         formatted_children.append(
                             self.client.catalog_serializer.db_to_stac(
