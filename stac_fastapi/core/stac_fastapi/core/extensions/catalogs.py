@@ -565,19 +565,13 @@ class CatalogsExtension(ApiExtension):
             # Return the updated catalog
             return catalog
 
-        except HTTPException:
+        except NotFoundError:
             raise
         except Exception as e:
-            error_msg = str(e)
-            if "not found" in error_msg.lower():
-                raise HTTPException(
-                    status_code=404, detail=f"Catalog {catalog_id} not found"
-                )
+            if "not found" in str(e).lower():
+                raise NotFoundError(f"Catalog {catalog_id} not found")
             logger.error(f"Error updating catalog {catalog_id}: {e}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to update catalog: {str(e)}",
-            )
+            raise e
 
     async def get_catalog(
         self,
@@ -722,13 +716,13 @@ class CatalogsExtension(ApiExtension):
 
             return Catalog(**catalog_dict)
 
-        except HTTPException:
+        except NotFoundError:
             raise
         except Exception as e:
-            logger.error(f"Error retrieving catalog {catalog_id}: {e}")
-            raise HTTPException(
-                status_code=404, detail=f"Catalog {catalog_id} not found"
-            )
+            if "not found" in str(e).lower():
+                raise NotFoundError(f"Catalog {catalog_id} not found")
+            logger.error(f"Internal error fetching catalog {catalog_id}: {e}")
+            raise e
 
     async def delete_catalog(self, catalog_id: str, request: Request) -> None:
         """Delete a catalog (The Container).
@@ -802,17 +796,13 @@ class CatalogsExtension(ApiExtension):
             await self.client.database.delete_catalog(catalog_id, refresh=True)
             logger.info(f"Deleted catalog {catalog_id}")
 
+        except NotFoundError:
+            raise
         except Exception as e:
-            error_msg = str(e)
-            if "not found" in error_msg.lower():
-                raise HTTPException(
-                    status_code=404, detail=f"Catalog {catalog_id} not found"
-                )
+            if "not found" in str(e).lower():
+                raise NotFoundError(f"Catalog {catalog_id} not found")
             logger.error(f"Error deleting catalog {catalog_id}: {e}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to delete catalog: {str(e)}",
-            )
+            raise e
 
     async def get_catalog_collections(
         self,
@@ -921,17 +911,13 @@ class CatalogsExtension(ApiExtension):
                 numberReturned=len(collections),
             )
 
-        except HTTPException:
+        except NotFoundError:
             raise
         except Exception as e:
-            logger.error(
-                f"Error retrieving collections for catalog {catalog_id}: {e}",
-                exc_info=True,
-            )
-            raise HTTPException(
-                status_code=404,
-                detail=f"Catalog {catalog_id} not found or error retrieving collections",
-            )
+            if "not found" in str(e).lower():
+                raise NotFoundError(f"Catalog {catalog_id} not found")
+            logger.error(f"Error retrieving collections for {catalog_id}: {e}")
+            raise e
 
     async def get_catalog_catalogs(
         self,
@@ -998,11 +984,13 @@ class CatalogsExtension(ApiExtension):
                 "numberReturned": len(catalogs),
                 "numberMatched": total_hits,
             }
+        except NotFoundError:
+            raise
         except Exception as e:
+            if "not found" in str(e).lower():
+                raise NotFoundError(f"Catalog {catalog_id} not found")
             logger.error(f"Error in get_catalog_catalogs: {e}")
-            raise HTTPException(
-                status_code=404, detail=f"Catalog {catalog_id} not found"
-            )
+            raise e
 
     async def create_catalog_catalog(
         self, catalog_id: str, catalog: Catalog, request: Request
@@ -1250,39 +1238,26 @@ class CatalogsExtension(ApiExtension):
         Returns:
             The requested collection.
         """
-        # Verify the catalog exists
         try:
             await self.client.database.find_catalog(catalog_id)
-        except Exception:
-            raise HTTPException(
-                status_code=404, detail=f"Catalog {catalog_id} not found"
-            )
-
-        # Verify the collection exists and has the catalog as a parent
-        try:
             collection_db = await self.client.database.find_collection(collection_id)
-
-            # Check if the catalog_id is in the collection's parent_ids
             parent_ids = collection_db.get("parent_ids") or []
             if catalog_id not in parent_ids:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Collection {collection_id} does not belong to catalog {catalog_id}",
+                raise NotFoundError(
+                    f"Collection {collection_id} does not belong to catalog {catalog_id}"
                 )
-        except HTTPException:
-            raise
-        except Exception:
-            raise HTTPException(
-                status_code=404, detail=f"Collection {collection_id} not found"
+            return self.client.collection_serializer.db_to_stac_in_catalog(
+                collection_db,
+                request,
+                catalog_id=catalog_id,
+                extensions=self._active_extensions,
             )
-
-        # Return the collection with catalog context (reuse collection_db from above)
-        return self.client.collection_serializer.db_to_stac_in_catalog(
-            collection_db,
-            request,
-            catalog_id=catalog_id,
-            extensions=self._active_extensions,
-        )
+        except NotFoundError:
+            raise
+        except Exception as e:
+            if "not found" in str(e).lower():
+                raise NotFoundError(f"Resource not found: {e}")
+            raise e
 
     async def get_catalog_collection_items(
         self,
@@ -1321,25 +1296,25 @@ class CatalogsExtension(ApiExtension):
         # Verify the catalog exists
         try:
             await self.client.database.find_catalog(catalog_id)
-        except Exception:
-            raise HTTPException(
-                status_code=404, detail=f"Catalog {catalog_id} not found"
+            return await self.client.item_collection(
+                collection_id=collection_id,
+                request=request,
+                bbox=bbox,
+                datetime=datetime,
+                limit=limit,
+                sortby=sortby,
+                filter_expr=filter_expr,
+                filter_lang=filter_lang,
+                token=token,
+                query=query,
+                fields=fields,
             )
-
-        # Delegate to the core client's item_collection method with all parameters
-        return await self.client.item_collection(
-            collection_id=collection_id,
-            request=request,
-            bbox=bbox,
-            datetime=datetime,
-            limit=limit,
-            sortby=sortby,
-            filter_expr=filter_expr,
-            filter_lang=filter_lang,
-            token=token,
-            query=query,
-            fields=fields,
-        )
+        except NotFoundError:
+            raise
+        except Exception as e:
+            if "not found" in str(e).lower():
+                raise NotFoundError(f"Catalog {catalog_id} not found")
+            raise e
 
     async def get_catalog_collection_item(
         self, catalog_id: str, collection_id: str, item_id: str, request: Request
@@ -1385,81 +1360,91 @@ class CatalogsExtension(ApiExtension):
         This is a mixed content endpoint that returns both Catalogs and Collections.
         Catalogs are returned with dynamic parent and child links.
         """
-        await self.client.database.find_catalog(catalog_id)
-        search_after = _decode_token(token)
+        try:
+            await self.client.database.find_catalog(catalog_id)
+            search_after = _decode_token(token)
 
-        # 1. Fetch data
-        (
-            children_data,
-            total,
-            next_search_after,
-        ) = await search_children_with_pagination_shared(
-            self.client.database.client,
-            catalog_id,
-            limit,
-            search_after,
-            resource_type=type,
-        )
-
-        base_url = str(request.base_url)
-
-        # 2. SEPARATE: Pull out catalogs to format them as a batch
-        catalog_docs = [doc for doc in children_data if doc.get("type") == "Catalog"]
-
-        # 3. BATCH PROCESS: One call to rule them all
-        # This triggers the asyncio.gather inside the helper for ALL catalogs at once
-        formatted_catalogs_list = []
-        if catalog_docs:
-            formatted_catalogs_list = await self._format_catalogs_with_links(
-                catalog_docs, request, base_url
+            # 1. Fetch data
+            (
+                children_data,
+                total,
+                next_search_after,
+            ) = await search_children_with_pagination_shared(
+                self.client.database.client,
+                catalog_id,
+                limit,
+                search_after,
+                resource_type=type,
             )
 
-        # Create a lookup map for easy re-assembly: { "id": CatalogObject }
-        catalog_lookup = {c.id: c for c in formatted_catalogs_list}
+            base_url = str(request.base_url)
 
-        # 4. RE-ASSEMBLE: Put them back in the original search order
-        formatted_children = []
-        for doc in children_data:
-            doc_id = doc.get("id")
-            if doc.get("type") == "Catalog":
-                formatted_children.append(catalog_lookup[doc_id])
-            else:
-                # Collections don't need parent/child pre-fetching, so serialize normally
-                formatted_children.append(
-                    self.client.collection_serializer.db_to_stac(doc, request)
+            # 2. SEPARATE: Pull out catalogs to format them as a batch
+            catalog_docs = [
+                doc for doc in children_data if doc.get("type") == "Catalog"
+            ]
+
+            # 3. BATCH PROCESS: One call to rule them all
+            # This triggers the asyncio.gather inside the helper for ALL catalogs at once
+            formatted_catalogs_list = []
+            if catalog_docs:
+                formatted_catalogs_list = await self._format_catalogs_with_links(
+                    catalog_docs, request, base_url
                 )
 
-        # 5. Build links (The rest remains the same)
-        links = [
-            {"rel": "self", "type": "application/json", "href": str(request.url)},
-            {"rel": "root", "type": "application/json", "href": base_url},
-            {
-                "rel": "parent",
-                "type": "application/json",
-                "href": f"{base_url}catalogs/{catalog_id}",
-            },
-        ]
+            # Create a lookup map for easy re-assembly: { "id": CatalogObject }
+            catalog_lookup = {c.id: c for c in formatted_catalogs_list}
 
-        if next_search_after:
-            new_token = _encode_token(next_search_after)
-            params = {"limit": limit, "token": new_token}
-            if type:
-                params["type"] = type
-            links.append(
+            # 4. RE-ASSEMBLE: Put them back in the original search order
+            formatted_children = []
+            for doc in children_data:
+                doc_id = doc.get("id")
+                if doc.get("type") == "Catalog":
+                    formatted_children.append(catalog_lookup[doc_id])
+                else:
+                    # Collections don't need parent/child pre-fetching, so serialize normally
+                    formatted_children.append(
+                        self.client.collection_serializer.db_to_stac(doc, request)
+                    )
+
+            # 5. Build links (The rest remains the same)
+            links = [
+                {"rel": "self", "type": "application/json", "href": str(request.url)},
+                {"rel": "root", "type": "application/json", "href": base_url},
                 {
-                    "rel": "next",
+                    "rel": "parent",
                     "type": "application/json",
-                    "href": f"{base_url}catalogs/{catalog_id}/children?{urlencode(params)}",
-                    "title": "Next page",
-                }
-            )
+                    "href": f"{base_url}catalogs/{catalog_id}",
+                },
+            ]
 
-        return {
-            "children": formatted_children,
-            "links": links,
-            "numberReturned": len(formatted_children),
-            "numberMatched": total,
-        }
+            if next_search_after:
+                new_token = _encode_token(next_search_after)
+                params = {"limit": limit, "token": new_token}
+                if type:
+                    params["type"] = type
+                links.append(
+                    {
+                        "rel": "next",
+                        "type": "application/json",
+                        "href": f"{base_url}catalogs/{catalog_id}/children?{urlencode(params)}",
+                        "title": "Next page",
+                    }
+                )
+
+            return {
+                "children": formatted_children,
+                "links": links,
+                "numberReturned": len(formatted_children),
+                "numberMatched": total,
+            }
+        except NotFoundError:
+            raise
+        except Exception as e:
+            if "not found" in str(e).lower():
+                raise NotFoundError(f"Catalog {catalog_id} not found")
+            logger.error(f"Error in get_catalog_children: {e}")
+            raise e
 
     async def delete_catalog_collection(
         self, catalog_id: str, collection_id: str, request: Request
@@ -1520,14 +1505,10 @@ class CatalogsExtension(ApiExtension):
                 collection_id=collection_id, collection=collection_db, refresh=True
             )
 
-        except HTTPException:
+        except NotFoundError:
             raise
         except Exception as e:
-            logger.error(
-                f"Error removing collection {collection_id} from catalog {catalog_id}: {e}",
-                exc_info=True,
-            )
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to remove collection from catalog: {str(e)}",
-            )
+            if "not found" in str(e).lower():
+                raise NotFoundError(f"Resource not found: {e}")
+            logger.error(f"Error unlinking collection: {e}")
+            raise e
