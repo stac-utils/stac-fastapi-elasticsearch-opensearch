@@ -37,7 +37,7 @@ def _decode_token(token: str | None) -> list | None:
     try:
         return json.loads(base64.urlsafe_b64decode(token.encode()).decode())
     except Exception:
-        logger.warning(f"Invalid pagination token provided: {token}")
+        logger.debug(f"Invalid pagination token provided: {token}")
         return None
 
 
@@ -105,10 +105,10 @@ class CatalogsExtension(ApiExtension):
         child_title = child.get("title", child_id)
 
         if child_type == "Catalog":
-            href = f"{base_url}catalogs/{child_id}"
+            href = f"{base_url}/catalogs/{child_id}"
         else:
             # Collection - use scoped URI
-            href = f"{base_url}catalogs/{parent_id}/collections/{child_id}"
+            href = f"{base_url}/catalogs/{parent_id}/collections/{child_id}"
 
         return {
             "rel": "child",
@@ -448,7 +448,7 @@ class CatalogsExtension(ApiExtension):
         Returns:
             Catalogs object containing catalogs and pagination links.
         """
-        base_url = str(request.base_url)
+        base_url = str(request.base_url).rstrip("/")
         search_after = _decode_token(token)
 
         # Updated to pass decoded search_after
@@ -478,7 +478,7 @@ class CatalogsExtension(ApiExtension):
             links.append(
                 {
                     "rel": "next",
-                    "href": f"{base_url}catalogs?{urlencode({'limit': limit, 'token': new_token})}",
+                    "href": f"{base_url}/catalogs?{urlencode({'limit': limit, 'token': new_token})}",
                     "type": "application/json",
                     "title": "Next page",
                 }
@@ -599,7 +599,7 @@ class CatalogsExtension(ApiExtension):
             catalog = self.client.catalog_serializer.db_to_stac(
                 db_catalog, request, extensions=self._active_extensions
             )
-            base_url = str(request.base_url)
+            base_url = str(request.base_url).rstrip("/")
 
             if isinstance(catalog, dict):
                 catalog_dict = catalog
@@ -623,7 +623,7 @@ class CatalogsExtension(ApiExtension):
                     {
                         "rel": "self",
                         "type": "application/json",
-                        "href": f"{base_url}catalogs/{catalog_id}",
+                        "href": f"{base_url}/catalogs/{catalog_id}",
                     },
                     {
                         "rel": "root",
@@ -652,7 +652,7 @@ class CatalogsExtension(ApiExtension):
                 parent_href = (
                     base_url
                     if primary_pid == root_id
-                    else f"{base_url}catalogs/{primary_pid}"
+                    else f"{base_url}/catalogs/{primary_pid}"
                 )
                 catalog_dict["links"].append(
                     {
@@ -665,7 +665,7 @@ class CatalogsExtension(ApiExtension):
                 # Additional parents become 'related'
                 for pid in parent_ids[1:]:
                     related_href = (
-                        base_url if pid == root_id else f"{base_url}catalogs/{pid}"
+                        base_url if pid == root_id else f"{base_url}/catalogs/{pid}"
                     )
                     catalog_dict["links"].append(
                         {
@@ -709,7 +709,7 @@ class CatalogsExtension(ApiExtension):
                 {
                     "rel": "children",
                     "type": "application/json",
-                    "href": f"{base_url}catalogs/{catalog_id}/children",
+                    "href": f"{base_url}/catalogs/{catalog_id}/children",
                     "title": "Child catalogs and collections",
                 }
             )
@@ -830,9 +830,7 @@ class CatalogsExtension(ApiExtension):
             search_after = None
             if token:
                 try:
-                    search_after = json.loads(
-                        base64.urlsafe_b64decode(token.encode()).decode()
-                    )
+                    search_after = _decode_token(token)
                 except Exception:
                     logger.warning(f"Invalid pagination token provided: {token}")
                     # We proceed without search_after rather than crashing
@@ -871,13 +869,13 @@ class CatalogsExtension(ApiExtension):
                     continue
 
             # 5. Build HATEOAS links
-            base_url = str(request.base_url)
+            base_url = str(request.base_url).rstrip("/")
             links = [
                 {"rel": "root", "type": "application/json", "href": base_url},
                 {
                     "rel": "parent",
                     "type": "application/json",
-                    "href": f"{base_url}catalogs/{catalog_id}",
+                    "href": f"{base_url}/catalogs/{catalog_id}",
                 },
                 {
                     "rel": "self",
@@ -888,16 +886,13 @@ class CatalogsExtension(ApiExtension):
 
             # 6. Generate Base64 next link if more results exist
             if next_search_after:
-                # Encode the sort keys into a URL-safe Base64 string
-                encoded_token = base64.urlsafe_b64encode(
-                    json.dumps(next_search_after).encode()
-                ).decode()
+                encoded_token = _encode_token(next_search_after)
 
                 query_params = {"limit": limit, "token": encoded_token}
                 links.append(
                     {
                         "rel": "next",
-                        "href": f"{base_url}catalogs/{catalog_id}/collections?{urlencode(query_params)}",
+                        "href": f"{base_url}/catalogs/{catalog_id}/collections?{urlencode(query_params)}",
                         "type": "application/json",
                         "title": "Next page",
                     }
@@ -953,7 +948,7 @@ class CatalogsExtension(ApiExtension):
                 self.client.database.client, catalog_id, limit, search_after
             )
 
-            base_url = str(request.base_url)
+            base_url = str(request.base_url).rstrip("/")
             catalogs = await self._format_catalogs_with_links(
                 catalogs_data, request, base_url
             )
@@ -963,7 +958,7 @@ class CatalogsExtension(ApiExtension):
                 {
                     "rel": "parent",
                     "type": "application/json",
-                    "href": f"{base_url}catalogs/{catalog_id}",
+                    "href": f"{base_url}/catalogs/{catalog_id}",
                 },
                 {"rel": "self", "type": "application/json", "href": str(request.url)},
             ]
@@ -973,7 +968,7 @@ class CatalogsExtension(ApiExtension):
                 links.append(
                     {
                         "rel": "next",
-                        "href": f"{base_url}catalogs/{catalog_id}/catalogs?{urlencode({'limit': limit, 'token': new_token})}",
+                        "href": f"{base_url}/catalogs/{catalog_id}/catalogs?{urlencode({'limit': limit, 'token': new_token})}",
                         "type": "application/json",
                     }
                 )
@@ -1377,7 +1372,7 @@ class CatalogsExtension(ApiExtension):
                 resource_type=type,
             )
 
-            base_url = str(request.base_url)
+            base_url = str(request.base_url).rstrip("/")
 
             # 2. SEPARATE: Pull out catalogs to format them as a batch
             catalog_docs = [
@@ -1414,7 +1409,7 @@ class CatalogsExtension(ApiExtension):
                 {
                     "rel": "parent",
                     "type": "application/json",
-                    "href": f"{base_url}catalogs/{catalog_id}",
+                    "href": f"{base_url}/catalogs/{catalog_id}",
                 },
             ]
 
@@ -1427,7 +1422,7 @@ class CatalogsExtension(ApiExtension):
                     {
                         "rel": "next",
                         "type": "application/json",
-                        "href": f"{base_url}catalogs/{catalog_id}/children?{urlencode(params)}",
+                        "href": f"{base_url}/catalogs/{catalog_id}/children?{urlencode(params)}",
                         "title": "Next page",
                     }
                 )
