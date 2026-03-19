@@ -1,12 +1,25 @@
+import asyncio
 import os
 import random
 import uuid
 from copy import deepcopy
 from datetime import datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from stac_fastapi.types.errors import ConflictError
+from stac_fastapi.sfeos_helpers.search_engine import DatetimeIndexInserter
+
+try:
+    from opensearchpy import exceptions
+except ImportError:
+    from elasticsearch import exceptions
+
+from stac_fastapi.sfeos_helpers.database import (
+    retry_on_connection_error,
+    retry_on_datetime_not_found,
+)
+from stac_fastapi.types.errors import ConflictError, NotFoundError
 
 from ..conftest import create_collection, create_item
 
@@ -1166,3 +1179,161 @@ async def test_hide_private_data_from_item(app_client, txn_client, load_test_dat
     assert "private_data" not in item["properties"]
 
     del os.environ["EXCLUDED_FROM_ITEMS"]
+
+
+@pytest.mark.asyncio
+async def test_search_count_timeout(
+    app_client, txn_client, load_test_data, monkeypatch
+):
+    monkeypatch.setenv("COUNT_TIMEOUT", "0.011")
+
+    test_collection = load_test_data("test_collection.json")
+    test_collection_id = "test-collection-count-timeout"
+    test_collection["id"] = test_collection_id
+    await create_collection(txn_client, test_collection)
+
+    test_item = load_test_data("test_item.json")
+    test_item_id = "test-item-count-timeout"
+    test_item["id"] = test_item_id
+    test_item["collection"] = test_collection_id
+    await create_item(txn_client, test_item)
+
+    async def slow_count(*args, **kwargs):
+        await asyncio.sleep(0.01)
+        return {"count": 1}
+
+    backend = os.getenv("BACKEND")
+
+    if backend == "opensearch":
+        from opensearchpy import AsyncOpenSearch
+
+        monkeypatch.setattr(AsyncOpenSearch, "count", slow_count)
+
+    elif backend == "elasticsearch":
+        from elasticsearch import AsyncElasticsearch
+
+        monkeypatch.setattr(AsyncElasticsearch, "count", slow_count)
+
+    resp = await app_client.get(f"/search?collections={test_collection_id}")
+
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["features"]) == 1
+    assert resp_json["numberReturned"] == 1
+
+    monkeypatch.delenv("COUNT_TIMEOUT")
+
+
+@pytest.mark.asyncio
+async def test_datetime_search_retry_retries_success():
+    call_count = {"count": 0}
+
+    async def search(*args, **kwargs):
+        call_count["count"] += 1
+        if call_count["count"] < 3:
+            raise NotFoundError(
+                "Collections 'test-index' do not exist",
+            )
+        return "success"
+
+    mock_search_func = AsyncMock(side_effect=search)
+    decorated_search = retry_on_datetime_not_found(mock_search_func)
+
+    mock_self = MagicMock()
+    mock_inserter = MagicMock()
+    mock_inserter.__class__ = DatetimeIndexInserter
+    mock_inserter.refresh_cache = AsyncMock()
+    mock_self.async_index_inserter = mock_inserter
+
+    result = await decorated_search(
+        self=mock_self, datetime_search={"from": "2020-01-01"}
+    )
+
+    assert result == "success"
+    assert call_count["count"] == 3
+
+
+@pytest.mark.asyncio
+async def test_connection_error_retry_retries_success():
+    call_count = {"count": 0}
+
+    async def search(*args, **kwargs):
+        call_count["count"] += 1
+        if call_count["count"] < 5:
+            raise exceptions.ConnectionError(500, "Connection failed", {})
+        return "success"
+
+    mock_search_func = AsyncMock(side_effect=search)
+    decorated_search = retry_on_connection_error(mock_search_func)
+    result = await decorated_search(self=None)
+
+    assert result == "success"
+    assert mock_search_func.call_count == 5
+
+
+@pytest.mark.asyncio
+async def test_datetime_search_no_retry_no_datetime():
+    call_count = {"count": 0}
+
+    async def search(*args, **kwargs):
+        call_count["count"] += 1
+        raise NotFoundError(
+            "Collections 'test-index' do not exist",
+        )
+
+    mock_search_func = AsyncMock(side_effect=search)
+    decorated_search = retry_on_datetime_not_found(mock_search_func)
+    mock_self = MagicMock()
+    mock_self.async_index_inserter = None
+
+    with pytest.raises(NotFoundError):
+        await decorated_search(self=mock_self, datetime_search={})
+
+    assert mock_search_func.call_count == 1
+
+
+@pytest.mark.asyncio
+async def test_datetime_search_max_retries():
+    call_count = {"count": 0}
+
+    async def search(*args, **kwargs):
+        call_count["count"] += 1
+        raise NotFoundError(
+            "Collections 'test-index' do not exist",
+        )
+
+    mock_search_func = AsyncMock(side_effect=search)
+    decorated_search = retry_on_datetime_not_found(mock_search_func)
+
+    mock_self = MagicMock()
+    mock_inserter = MagicMock()
+    mock_inserter.__class__ = DatetimeIndexInserter
+    mock_inserter.refresh_cache = AsyncMock()
+    mock_self.async_index_inserter = mock_inserter
+
+    with pytest.raises(NotFoundError):
+        await decorated_search(
+            self=mock_self, datetime_search={"start_datetime": "2025-01-01"}
+        )
+
+    assert call_count["count"] == 3
+
+
+@pytest.mark.asyncio
+async def test_connection_error_max_retries():
+    call_count = {"count": 0}
+
+    async def search(*args, **kwargs):
+        call_count["count"] += 1
+        raise exceptions.ConnectionError(
+            500, f"Connection error: attempt {call_count['count']}", {}
+        )
+
+    mock_search_func = AsyncMock(side_effect=search)
+    decorated_search = retry_on_connection_error(mock_search_func)
+
+    with pytest.raises(exceptions.ConnectionError) as exc_info:
+        await decorated_search(self=None)
+
+    assert mock_search_func.call_count == 5
+    assert "attempt 5" in str(exc_info.value)

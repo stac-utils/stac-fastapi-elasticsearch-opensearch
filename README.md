@@ -13,7 +13,7 @@
   [![GitHub forks](https://img.shields.io/github/forks/stac-utils/stac-fastapi-elasticsearch-opensearch.svg?color=blue)](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/network/members)
    [![PyPI version](https://img.shields.io/pypi/v/stac-fastapi-elasticsearch.svg?color=blue)](https://pypi.org/project/stac-fastapi-elasticsearch/)
   [![STAC](https://img.shields.io/badge/STAC-1.1.0-blue.svg)](https://github.com/radiantearth/stac-spec/tree/v1.1.0)
-  [![stac-fastapi](https://img.shields.io/badge/stac--fastapi-6.1.1-blue.svg)](https://github.com/stac-utils/stac-fastapi)
+  [![stac-fastapi](https://img.shields.io/badge/stac--fastapi-6.2.1-blue.svg)](https://github.com/stac-utils/stac-fastapi)
 
 ## Sponsors & Supporters
 
@@ -28,9 +28,9 @@ The following organizations have contributed time and/or funding to support the 
 
 ## Latest News
 
-- **01/11/2026:** Feature: **Hierarchical Catalog Support**. Sub-catalogs are now fully supported! Catalogs can now contain other catalogs for unlimited nesting levels. This enables complex organizational hierarchies with multi-parent support for both catalogs and collections.
-- **01/09/2026:** New Feature: **Custom Index Mappings**. You can now customize Elasticsearch/OpenSearch index mappings directly via environment variables without changing source code. Use `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` to merge custom field definitions (e.g., for STAC extensions like SAR or Cube) or `STAC_FASTAPI_ES_MAPPINGS_FILE` to load mappings from a JSON file. See [Custom Index Mappings](#custom-index-mappings) for details.
-- **12/09/2025:** Feature Merge: **Multi-Tenant Catalogs**. The [`STAC API - Multi-Tenant Catalogs Endpoint Extension`](https://github.com/stac-api-extensions/multi-tenant-catalogs) is now in main! This enables a registry of catalogs and supports **poly-hierarchy** (collections belonging to multiple catalogs simultaneously). Enable it via `ENABLE_CATALOGS_EXTENSION`. _Coming next: Support for nested sub-catalogs._
+- **01/11/2026: Hierarchical Catalog Support.** Sub-catalogs are now fully supported! Catalogs can now contain other catalogs for unlimited nesting levels. This enables complex organizational hierarchies with multi-parent support for both catalogs and collections.
+- **01/09/2026: Custom Index Mappings.** You can now customize Elasticsearch/OpenSearch index mappings directly via environment variables without changing source code. Use `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` to merge custom field definitions (e.g., for STAC extensions like SAR or Cube) or `STAC_FASTAPI_ES_MAPPINGS_FILE` to load mappings from a JSON file. See [Custom Index Mappings](#custom-index-mappings) for details.
+- **12/09/2025: Multi-Tenant Catalogs.** The [`STAC API - Multi-Tenant Catalogs Endpoint Extension`](https://github.com/stac-api-extensions/multi-tenant-catalogs) is now in main! This enables a registry of catalogs and supports **poly-hierarchy** (collections belonging to multiple catalogs simultaneously). Enable it via `ENABLE_CATALOGS_ROUTE`. _Coming next: Support for nested sub-catalogs._
 - **11/07/2025:** 🌍 The SFEOS STAC Viewer is now available at: https://healy-hyperspatial.github.io/sfeos-web. Use this site to examine your data and test your STAC API!
 - **10/24/2025:** Added `previous_token` pagination using Redis for efficient navigation. This feature allows users to navigate backwards through large result sets by storing pagination state in Redis. To use this feature, ensure Redis is configured (see [Redis for navigation](#redis-for-navigation)) and set `REDIS_ENABLE=true` in your environment.
 - **10/23/2025:** The `EXCLUDED_FROM_QUERYABLES` environment variable was added to exclude fields from the `queryables` endpoint. See [docs](#excluding-fields-from-queryables).
@@ -109,6 +109,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
       - [Using Pre-built Docker Images](#using-pre-built-docker-images)
       - [Using Docker Compose](#using-docker-compose)
   - [Configuration Reference](#configuration-reference)
+  - [Free-Text Search (`q` parameter)](#free-text-search-q-parameter)
   - [Excluding Fields from Queryables](#excluding-fields-from-queryables)
   - [Datetime-Based Index Management](#datetime-based-index-management)
     - [Overview](#overview)
@@ -134,7 +135,9 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
   - [Auth](#auth)
   - [Aggregation](#aggregation)
   - [Rate Limiting](#rate-limiting)
+  - [Prometheus metrics](#prometheus-metrics)
   - [Hidden Items Filtering](#hidden-items-filtering)
+  - [Error Monitoring with Sentry](#error-monitoring-with-sentry)
 
 ## Documentation & Resources
 
@@ -254,6 +257,55 @@ This implementation follows the [Multi-Tenant Virtual Catalogs Endpoint](https:/
 - **STAC API Compliance**: Follows STAC specification for catalog objects and linking
 - **Flexible Querying**: Support for standard STAC API query parameters when browsing collections within catalogs
 - **Safety-First Data Protection**: Collection and catalog data is never deleted through the catalogs route; only containers can be destroyed
+
+### DAG Specification & Dynamic Link Generation
+
+SFEOS implements the [STAC API - Multi-Tenant Catalogs Endpoint Extension](https://github.com/stac-api-extensions/multi-tenant-catalogs) (v1.0.0-beta.4) with full support for Directed Acyclic Graph (DAG) structures and strict STAC core compliance:
+
+#### Link Relations
+
+All link relations are generated dynamically at runtime based on the `parent_ids` field and request context:
+
+- **`rel="parent"`** - Exactly one parent link per resource, context-aware:
+  - Global endpoints (`/collections/{id}`, `/catalogs/{id}`): Points to root `/` or first parent
+  - Scoped endpoints (`/catalogs/{id}/collections/{id}`): Points to the contextual catalog
+  - Ensures proper breadcrumb navigation in STAC Browser
+
+- **`rel="related"`** - Alternative parents in poly-hierarchy:
+  - Exposes all other parent catalogs beyond the contextual parent
+  - Allows advanced clients to discover the full organizational graph
+  - Only included when a resource has multiple parents
+
+- **`rel="canonical"`** - Authoritative global endpoint:
+  - Points to the primary, global URI for the resource
+  - Example: `/catalogs/{id}/collections/{id}` → canonical: `/collections/{id}`
+  - Enables clients to deduplicate resources across different contexts
+
+- **`rel="duplicate"`** - Alternative scoped URIs (RFC 6249):
+  - Lists all parent-scoped endpoints where the resource can be accessed
+  - Example: Collection in 2 catalogs has duplicate links to both scoped URIs
+  - Helps clients identify identical resources in different organizational contexts
+
+- **`rel="child"`** - Direct children:
+  - Generated dynamically by querying the database for actual children
+  - Never persisted statically, preventing stale links
+  - Enables STAC Browser folder navigation
+
+#### Contextual vs Global Navigation
+
+**Global Endpoints** (`/collections/{id}`):
+- Parent → root `/`
+- Related → all catalog parents
+- Canonical → self
+- Duplicate → all scoped URIs
+
+**Scoped Endpoints** (`/catalogs/{id}/collections/{id}`):
+- Parent → contextual catalog
+- Related → other catalog parents
+- Canonical → global endpoint
+- Duplicate → all scoped URIs
+
+**Key Principle**: No static links are persisted in the database. All relationships are computed on-the-fly based on the `parent_ids` array, ensuring data consistency and preventing orphaned references.
 
 ### Safety Architecture
 
@@ -420,9 +472,15 @@ To link an **existing** Catalog or Collection to a new parent, simply `POST` it 
 2. **If YES (Link):** The API adds the new parent to the resource's `parent_ids` list. No data is duplicated.
 3. **If NO (Create):** The API creates a new resource.
 
+#### Important: Flat Catalog URL Structure
+
+All catalogs are accessed via the **flat canonical endpoint** `/catalogs/{catalog_id}`, regardless of their position in the hierarchy. Nested routes like `/catalogs/id1/catalogs/id2` are **not supported**. This ensures consistent, cacheable URLs regardless of catalog depth or parent relationships.
+
+To discover a catalog's children, use `/catalogs/{catalog_id}/catalogs` or `/catalogs/{catalog_id}/children`, which returns links to the child catalogs' canonical endpoints.
+
 #### Example: Creating a "Forestry" Playlist
 
-Imagine you have an existing catalog `sentinel-2` stored under `providers/esa`. You want to create a curated "Forestry" catalog that includes this existing data.
+Imagine you have an existing catalog `sentinel-2`. You want to create a curated "Forestry" catalog that includes this existing data.
 
 ```bash
 # 1. Create the new Forestry catalog
@@ -447,13 +505,22 @@ curl -X POST "http://localhost:8081/catalogs/forestry/catalogs" \
     "description": "Sentinel-2 satellite imagery",
     "title": "Sentinel-2"
   }'
+
+# 3. Access the sentinel-2 catalog via its canonical endpoint
+curl "http://localhost:8081/catalogs/sentinel-2"
+
+# 4. Discover sentinel-2 as a child of forestry
+curl "http://localhost:8081/catalogs/forestry/catalogs"
+# This returns links to /catalogs/sentinel-2 (canonical endpoint)
 ```
 
-**Result:** The sentinel-2 catalog is now accessible via both paths:
-- `/catalogs/providers/esa/catalogs/sentinel-2`
-- `/catalogs/forestry/catalogs/sentinel-2`
+**Result:** The sentinel-2 catalog now has multiple parents (including forestry). It is always accessed via its canonical endpoint:
+- `/catalogs/sentinel-2`
 
-Because you are linking the node (the Catalog), the entire sub-tree attached to that node is automatically shared. If sentinel-2 contains millions of items and sub-catalogs, they are all instantly visible under the new forestry path without needing to re-link individual items.
+You can discover it as a child of forestry via:
+- `/catalogs/forestry/catalogs` (lists sentinel-2 with a link to `/catalogs/sentinel-2`)
+
+Because you are linking the node (the Catalog), the entire sub-tree attached to that node is automatically shared. If sentinel-2 contains millions of items and sub-catalogs, they are all instantly visible under the new forestry parent without needing to re-link individual items.
 
 > **Configuration**: The catalogs route can be enabled or disabled by setting the `ENABLE_CATALOGS_ROUTE` environment variable to `true` or `false`. By default, this endpoint is **disabled**.
 
@@ -573,10 +640,10 @@ There are two main ways to run the API locally:
   docker compose up elasticsearch app-elasticsearch
   ```
 
-- **Configuration**: By default, Docker Compose uses Elasticsearch 8.x and OpenSearch 2.11.1. To use different versions, create a `.env` file:
+- **Configuration**: By default, Docker Compose uses Elasticsearch 8.x and OpenSearch 3.5.0. To use different versions, create a `.env` file:
   ```shell
   ELASTICSEARCH_VERSION=8.11.0
-  OPENSEARCH_VERSION=2.11.1
+  OPENSEARCH_VERSION=3.5.0
   ENABLE_DIRECT_RESPONSE=false
   ```
 
@@ -611,7 +678,11 @@ You can customize additional settings in your `.env` file:
 | `ES_TIMEOUT` | Client timeout for Elasticsearch/OpenSearch. | DB client default | Optional |
 | `BACKEND` | Tests-related variable | `elasticsearch` or `opensearch` based on the backend | Optional |
 | `ELASTICSEARCH_VERSION` | Version of Elasticsearch to use. | `8.11.0` | Optional |
-| `OPENSEARCH_VERSION` | OpenSearch version | `2.11.1` | Optional |
+| `OPENSEARCH_VERSION` | OpenSearch version | `3.5.0` | Optional |
+| `RETRY_MAX_ATTEMPTS_CONNECTION_ERROR` | Specifies the maximum number of retry attempts for connection errors (ConnectionError, ConnectionTimeout) before giving up. | `5` | Optional |
+| `RETRY_MAX_ATTEMPTS_NOT_FOUND_ERROR` | Specifies the maximum number of retry attempts for `IndexNotFoundException` error before giving up. This is particularly useful for datetime-based index searches where indices may need to be refreshed. | `3` | Optional |
+| `RETRY_WAIT_SECONDS` | Specifies the number of seconds to wait between retry attempts. | `0.5` | Optional |
+| `RETRY_RERAISE` | Specifies whether the original exception should be re-raised after all retry attempts are exhausted. | `true` | Optional |
 
 ### 3. API Metadata
 
@@ -642,6 +713,8 @@ You can customize additional settings in your `.env` file:
 | `STAC_DEFAULT_COLLECTION_LIMIT` | Configures the default number of STAC collections returned when no limit parameter is specified in the request. | `300` | Optional |
 | `STAC_GLOBAL_ITEM_MAX_LIMIT` | Configures the maximum number of STAC items that can be returned in a single search request. | N/A | Optional |
 | `STAC_DEFAULT_ITEM_LIMIT` | Configures the default number of STAC items returned when no limit parameter is specified in the request. | `10` | Optional |
+| `COUNT_TIMEOUT` | Configures the timeout for the count task with search queries. If the count query takes longer than timeout, the search results are returned without the total count. Set to 0 to disable the timeout.. | `0.5` | Optional |
+
 
 ### 6. Database Indexing & Behavior
 
@@ -669,9 +742,102 @@ You can customize additional settings in your `.env` file:
 | `HIDE_ITEM_PATH` | Path to boolean field that marks items as hidden (excluded from search) or not. If null, the item is returned. | `None` | Optional |
 | `EXCLUDED_FROM_QUERYABLES` | Comma-separated list of fully qualified field names to exclude from the queryables endpoint and filtering. Use full paths like `properties.auth:schemes,properties.storage:schemes`. Excluded fields and their nested children will not be exposed in queryables. | None | Optional |
 | `EXCLUDED_FROM_ITEMS` | Specifies fields to exclude from STAC item responses. Supports comma-separated field names and dot notation for nested fields (e.g., `private_data,properties.confidential,assets.internal`). | `None` | Optional |
+| `FREE_TEXT_FIELDS` | Comma-separated list of fields to search in free-text queries. Supports field boosting syntax (e.g., `properties.title^3` gives title 3x weight). Example: `properties.title,properties.description,properties.example_name`. **Important**: Custom properties must be mapped as `text` type to support partial word matching. By default, unmapped properties are indexed as `keyword` type (exact match only). If not set, defaults to: `id,collection,properties.title^3,properties.description,properties.keywords`. | Default fields with title boosting | Optional |
 
 > [!NOTE]
 > The variables `ES_HOST`, `ES_PORT`, `ES_USE_SSL`, `ES_VERIFY_CERTS` and `ES_TIMEOUT` apply to both Elasticsearch and OpenSearch backends, so there is no need to rename the key names to `OS_` even if you're using OpenSearch.
+
+## Free-Text Search (`q` parameter)
+
+The free-text search feature allows users to discover items and collections using keywords or phrases. By default, the search targets core fields: `id`, `collection`, `properties.title`, `properties.description`, and `properties.keywords`.
+
+### How to Use the API
+
+Users can submit search terms via the `q` parameter on the following routes:
+
+* `GET /search?q=keyword` 
+* `POST /search` (with `{"q": ["keyword"]}` in the body)
+* `GET /collections?q=keyword`
+* `POST /collections` (with `{"q": ["keyword"]}` in the body)
+* `GET /collections/{collection_id}/items?q=keyword` (search items within a specific collection)
+
+**Examples:**
+
+* **Single Term**: `/search?q=temperature` (Finds items with "temperature" in any core field).
+* **Multiple Terms (OR logic)**: `/search?q=landsat&q=sentinel` (Finds items containing either "landsat" OR "sentinel").
+
+---
+
+### Setting Realistic Expectations: How Search Works
+
+To get the most out of the search engine, it is important to understand the difference between **Typo Tolerance** and **Partial Word Matching**.
+
+#### 1. Typo Tolerance (Fuzziness)
+
+The API uses `fuzziness: "AUTO"`. This is a safety net for **accidental misspellings**, not a way to handle abbreviations or partial words.
+
+* **The Logic**: It calculates the "Edit Distance" (how many letters must change to match).
+* **Short words (0–2 chars)**: Must be an exact match.
+* **Medium words (3–5 chars)**: 1 typo allowed (e.g., `sentnel` matches `sentinel`).
+* **Long words (6+ chars)**: 2 typos allowed (e.g., `temparature` matches `temperature`).
+
+* **The Limitation**: `q=temp` will **not** find `temperature`. Because "temp" is missing 7 characters, it is too "far" for the fuzzy engine to bridge.
+
+#### 2. Partial Matching (Tokenization)
+
+Discovering a word *inside* a phrase (e.g., finding "Surface" within "Near-Surface Air Temperature") depends entirely on **Field Mapping**.
+
+* **`text` fields**: These are "tokenized" (broken into words). Searching for one word in the phrase works perfectly.
+* **`keyword` fields**: These are stored as a single literal string. Searching for a single word will **fail**; you must search for the *exact full phrase*.
+
+**Summary Table:**
+
+| User Search | Target Metadata Value | Match? | Reason |
+| --- | --- | --- | --- |
+| `temparature` | `temperature` | ✅ **Yes** | 1 typo (Fuzzy match) |
+| `temp` | `temperature` | ❌ **No** | Too many missing letters for Fuzzy |
+| `Surface` | `Near-Surface Air Temp` | ✅ **Yes** | Word found in a `text` field |
+| `Surface` | `Near-Surface Air Temp` | ❌ **No** | If field is a `keyword` (requires full string) |
+
+---
+
+### Administrator Configuration
+
+#### Adding Custom Searchable Fields
+
+If your metadata uses custom fields (e.g., `properties.example_name`), follow these steps to make them discoverable:
+
+1. **Map the field as `text`**: By default, unmapped strings are `keyword` type (exact match only). Use `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` to map them as `text`.
+
+   ```bash
+   export STAC_FASTAPI_ES_CUSTOM_MAPPINGS='{"properties":{"properties":{"example_name":{"type":"text"}}}}'
+   ```
+
+   Or using a JSON file with `STAC_FASTAPI_ES_MAPPINGS_FILE`:
+
+   ```json
+   {
+     "properties": {
+       "properties": {
+         "example_name": {"type": "text"},
+         "custom_field": {"type": "text"}
+       }
+     }
+   }
+   ```
+
+2. **Add to Search Scope**: Update the `FREE_TEXT_FIELDS` environment variable:
+
+   ```bash
+   export FREE_TEXT_FIELDS="properties.title,properties.description,properties.example_name"
+   ```
+
+   *Note: Use `^` to boost relevance, e.g., `properties.title^3` makes title matches 3x more important.*
+
+#### Performance & Scalability
+
+* **Be Selective**: Only add fields to `FREE_TEXT_FIELDS` that users genuinely need to search.
+* **Avoid Wildcards**: Do not use `properties.*` in `FREE_TEXT_FIELDS` for catalogs with millions of items. Searching every property simultaneously significantly increases query latency and creates "noisy" results.
 
 ## Redis for Navigation environment variables:
 These Redis configuration variables to enable proper navigation functionality in STAC FastAPI.
@@ -781,6 +947,9 @@ Enable datetime-based indexing by setting the following environment variable:
 ENABLE_DATETIME_INDEX_FILTERING=true
 ```
 
+> [!IMPORTANT]
+> **Redis is required** when datetime-based indexing is enabled. The system uses Redis to cache index alias mappings from Elasticsearch/OpenSearch, which significantly speeds up search queries by avoiding repeated alias lookups. Insert operations always fetch fresh aliases directly from ES/OS and then refresh the Redis cache, ensuring that search queries always see up-to-date alias data. Configure Redis using the connection variables described in the [Redis for Navigation](#redis-for-navigation-environment-variables) section (`REDIS_HOST`/`REDIS_PORT` or `REDIS_SENTINEL_HOSTS`).
+
 ### Related Configuration Variables
 
 | Variable | Description | Default | Example |
@@ -788,6 +957,25 @@ ENABLE_DATETIME_INDEX_FILTERING=true
 | `ENABLE_DATETIME_INDEX_FILTERING` | Enables time-based index partitioning | `false` | `true` |
 | `DATETIME_INDEX_MAX_SIZE_GB` | Maximum size limit for datetime indexes (GB) - note: add +20% to target size due to ES/OS compression | `25` | `50` |
 | `STAC_ITEMS_INDEX_PREFIX` | Prefix for item indexes | `items_` | `stac_items_` |
+| `ENABLE_REDIS_QUEUE` | Enables Redis queue for async item processing | `false` | `true` |
+| `QUEUE_BATCH_SIZE` | Number of items to process in a single batch | `50` | `100` |
+| `QUEUE_FLUSH_INTERVAL` | Maximum seconds to wait before flushing queue (even if batch not full) | `30` | `60` |
+| `QUEUE_KEY_PREFIX` | Redis key prefix for queue data | `item_queue` | `stac_queue` |
+| `WORKER_POLL_INTERVAL` | Seconds between worker polls for new items | `1.0` | `0.5` |
+| `WORKER_MAX_THREADS` | Maximum concurrent threads for processing collections | `4` | `8` |
+
+### Redis Queue for Item Processing
+
+When datetime-based indexing is enabled, you can use Redis-based queue processing to avoid race conditions. Without the queue, concurrent requests adding items to the same collection may cause conflicts when modifying index aliases. The queue serializes item processing per collection, ensuring safe alias management.
+
+When `ENABLE_REDIS_QUEUE=true`, you **must** run the Item Queue Worker process to process queued items. The worker reads items from the Redis queue and inserts them into Elasticsearch/OpenSearch.
+
+**Start the worker:**
+```bash
+python scripts/item_queue_worker.py
+```
+
+**Important:** Without the worker running, items will remain in the Redis queue and will not be indexed in Elasticsearch/OpenSearch.
 
 ## How Datetime-Based Indexing Works
 
@@ -1477,6 +1665,22 @@ Without this dependency, geometry filtering on single items is skipped with a wa
 - **Examples**: Implementation examples are available in the [examples/rate_limit](examples/rate_limit) directory.
 
 
+## Prometheus metrics
+
+- **Installation**: Install the `metrics` extra alongside your backend:
+  ```bash
+  pip install stac-fastapi-elasticsearch[metrics]  # Elasticsearch backend
+  pip install stac-fastapi-opensearch[metrics]     # OpenSearch backend
+  ```
+
+- **Usage**: Once installed, `/metrics` is live on startup. If the package is missing, the app starts normally and logs a warning.
+
+- **Metrics exposed** (Prometheus text format):
+  - `http_requests_total` — request count by method, path, and status code
+  - `http_request_duration_seconds` — request latency histogram
+  - `http_requests_inprogress` — in-flight request gauge
+
+
 ## Hidden Items Filtering
 
 SFEOS supports filtering out hidden items using the `HIDE_ITEM_PATH` environment variable. This feature is useful for temporarily removing items from search results without deleting them. To configure it, set `HIDE_ITEM_PATH` to the path of a boolean field in STAC items. Items where this field is `true` will be excluded from all results and counts.
@@ -1497,3 +1701,15 @@ The following item will be excluded from returned results:
     }
   }
   ```
+
+## Error Monitoring with Sentry
+
+Optional integration with Sentry for error tracking, performance monitoring, and release tracking. When enabled, Sentry provides real-time insights into application errors, performance bottlenecks, and deployment health.
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `SENTRY_ENABLE` | Enable Sentry integration for error tracking and performance monitoring | `false` |
+| `SENTRY_DSN` | Sentry Data Source Name (DSN) for your project | `None` |
+| `SENTRY_ENVIRONMENT` | Deployment environment (production, staging, development) | `staging` |
+| `SENTRY_TRACES_SAMPLE_RATE` | Percentage of transactions to sample for performance monitoring (0.0 to 1.0) | `0.1` |
+| `SENTRY_CA_CERTS` | Path to a certificate used to validate SSL/TLS connections to Sentry (useful in private networks or when using internal certificate authorities) | `None` |

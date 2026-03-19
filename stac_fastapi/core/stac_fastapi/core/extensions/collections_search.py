@@ -1,6 +1,6 @@
 """Collections search extension."""
 
-from typing import Any, Dict, List, Optional, Type, Union
+from typing import Any, Type
 
 from fastapi import APIRouter, Body, FastAPI, Query, Request
 from fastapi.responses import JSONResponse
@@ -17,13 +17,11 @@ from stac_fastapi.types.stac import Collections
 class CollectionsSearchRequest(ExtendedSearch):
     """Extended search model for collections with free text search support."""
 
-    q: Optional[Union[str, List[str]]] = None
-    token: Optional[str] = None
-    query: Optional[
-        str
-    ] = None  # Legacy query extension (deprecated but still supported)
-    filter_expr: Optional[str] = None
-    filter_lang: Optional[str] = None
+    q: str | list[str] | None = None
+    token: str | None = None
+    query: str | None = None  # Legacy query extension (deprecated but still supported)
+    filter_expr: str | None = None
+    filter_lang: str | None = None
 
 
 def build_get_collections_search_doc(original_endpoint):
@@ -31,11 +29,14 @@ def build_get_collections_search_doc(original_endpoint):
 
     async def documented_endpoint(
         request: Request,
-        q: Optional[Union[str, List[str]]] = Query(
+        q: str
+        | list[str]
+        | None = Query(
             None,
             description="Free text search query",
         ),
-        query: Optional[str] = Query(
+        query: str
+        | None = Query(
             None,
             description="Additional filtering expressed as a string (legacy support)",
             examples=["platform=landsat AND collection_category=level2"],
@@ -47,38 +48,44 @@ def build_get_collections_search_doc(original_endpoint):
                 "The maximum number of collections to return (page size). Defaults to 10."
             ),
         ),
-        token: Optional[str] = Query(
+        token: str
+        | None = Query(
             None,
             description="Pagination token for the next page of results",
         ),
-        bbox: Optional[str] = Query(
+        bbox: str
+        | None = Query(
             None,
             description=(
                 "Bounding box for spatial filtering in format 'minx,miny,maxx,maxy' "
                 "or 'minx,miny,minz,maxx,maxy,maxz'"
             ),
         ),
-        datetime: Optional[str] = Query(
+        datetime: str
+        | None = Query(
             None,
             description=(
                 "Temporal filter in ISO 8601 format (e.g., "
                 "'2020-01-01T00:00:00Z/2021-01-01T00:00:00Z')"
             ),
         ),
-        sortby: Optional[str] = Query(
+        sortby: str
+        | None = Query(
             None,
             description=(
                 "Sorting criteria in the format 'field' or '-field' for descending order"
             ),
         ),
-        fields: Optional[List[str]] = Query(
+        fields: list[str]
+        | None = Query(
             None,
             description=(
                 "Comma-separated list of fields to include or exclude (use -field to exclude)"
             ),
             alias="fields[]",
         ),
-        filter: Optional[str] = Query(
+        filter: str
+        | None = Query(
             None,
             description=(
                 "Structured filter expression in CQL2 JSON or CQL2-text format"
@@ -87,7 +94,8 @@ def build_get_collections_search_doc(original_endpoint):
                 '{"op": "=", "args": [{"property": "properties.category"}, "level2"]}'
             ],
         ),
-        filter_lang: Optional[str] = Query(
+        filter_lang: str
+        | None = Query(
             None,
             description=(
                 "Filter language. Must be 'cql2-json' or 'cql2-text' if specified"
@@ -147,7 +155,7 @@ def build_post_collections_search_doc(original_post_endpoint):
 
     async def documented_post_endpoint(
         request: Request,
-        body: Dict[str, Any] = Body(
+        body: dict[str, Any] = Body(
             ...,
             description=(
                 "Search parameters for collections.\n\n"
@@ -183,7 +191,7 @@ def build_post_collections_search_doc(original_post_endpoint):
                 }
             ],
         ),
-    ) -> Union[Collections, Response]:
+    ) -> Collections | Response:
         return await original_post_endpoint(request, body)
 
     documented_post_endpoint.__name__ = original_post_endpoint.__name__
@@ -198,11 +206,11 @@ class CollectionsSearchEndpointExtension(ApiExtension):
 
     def __init__(
         self,
-        client: Optional[BaseCoreClient] = None,
-        settings: dict = None,
-        GET: Optional[Type[Union[BaseModel, APIRequest]]] = None,
-        POST: Optional[Type[Union[BaseModel, APIRequest]]] = None,
-        conformance_classes: Optional[List[str]] = None,
+        client: BaseCoreClient | None = None,
+        settings: dict | None = None,
+        GET: Type[BaseModel | APIRequest] | None = None,
+        POST: Type[BaseModel | APIRequest] | None = None,
+        conformance_classes: list[str] | None = None,
     ):
         """Initialize the extension.
 
@@ -279,7 +287,7 @@ class CollectionsSearchEndpointExtension(ApiExtension):
 
     async def collections_search_get_endpoint(
         self, request: Request
-    ) -> Union[Collections, Response]:
+    ) -> Collections | Response:
         """GET /collections-search endpoint.
 
         Args:
@@ -323,7 +331,7 @@ class CollectionsSearchEndpointExtension(ApiExtension):
 
     async def collections_search_post_endpoint(
         self, request: Request, body: dict
-    ) -> Union[Collections, Response]:
+    ) -> Collections | Response:
         """POST /collections-search endpoint.
 
         Args:
@@ -351,15 +359,13 @@ class CollectionsSearchEndpointExtension(ApiExtension):
         # Set the postbody on the request for pagination links
         request.postbody = body
 
-        collections = await self.client.post_all_collections(
+        return await self.client.post_all_collections(
             search_request=search_request, request=request
         )
 
-        return collections
-
     @classmethod
     def from_extensions(
-        cls, extensions: List[ApiExtension]
+        cls, extensions: list[ApiExtension]
     ) -> "CollectionsSearchEndpointExtension":
         """Create a CollectionsSearchEndpointExtension from a list of extensions.
 

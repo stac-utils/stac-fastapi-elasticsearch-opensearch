@@ -2,7 +2,7 @@
 
 import os
 from collections import deque
-from typing import Any, Optional
+from typing import Any
 
 import attr
 from fastapi import Request
@@ -53,6 +53,11 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
             else:
                 result.add(f"properties.{field}")
 
+            if field.startswith("assets."):
+                result.add(field.removeprefix("assets."))
+            else:
+                result.add(f"assets.{field}")
+
         return result
 
     @staticmethod
@@ -77,7 +82,7 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
 
     async def get_queryables(
         self,
-        collection_id: Optional[str] = None,  # noqa: UP045
+        collection_id: str | None = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """Get the queryables available for the given collection_id.
@@ -97,7 +102,7 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
         Returns:
             Dict[str, Any]: A dictionary containing the queryables for the given collection.
         """
-        request: Optional[Request] = kwargs.get("request")  # noqa: UP045
+        request: Request | None = kwargs.get("request")
         url_str = str(request.url) if request else ""
 
         queryables: dict[str, Any] = {
@@ -146,10 +151,10 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
             if not field_type or not field_def.get("enabled", True):
                 continue
 
-            # Fields in Item Properties should be exposed with their un-prefixed names,
-            # and not require expressions to prefix them with properties,
-            # e.g., eo:cloud_cover instead of properties.eo:cloud_cover.
-            field_name = field_fqn.removeprefix("properties.")
+            # Fields in Item Properties or assets should be exposed with their
+            # un-prefixed names, and not require expressions to prefixthem ,e.g.,
+            # eo:cloud_cover instead of properties.eo:cloud_cover or assets.eo:cloud_cover.
+            field_name = field_fqn.removeprefix("properties.").removeprefix("assets.")
 
             # Generate field properties
             field_result = ALL_QUERYABLES.get(field_name, {}).copy()

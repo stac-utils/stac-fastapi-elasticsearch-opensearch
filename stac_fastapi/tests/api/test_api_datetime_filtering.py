@@ -126,6 +126,8 @@ async def test_create_new_index_when_size_limit_exceeded_for_datetime_index(
     indices = await txn_client.database.client.indices.get_alias(index="*")
     expected_aliases = [
         "items_start_datetime_test-collection_2020-02-08-2020-02-08",
+        "items_start_datetime_test-collection_1970-01-11-2020-02-07",
+        "items_end_datetime_test-collection_1970-01-11",
     ]
     all_aliases = set()
 
@@ -349,9 +351,7 @@ async def test_bulk_create_items_with_early_date_in_second_batch_for_datetime_in
 
     indices = await txn_client.database.client.indices.get_alias(index="*")
     expected_aliases = [
-        "items_start_datetime_test-collection_2008-01-15-2010-02-09",
-        "items_start_datetime_test-collection_2020-02-09",
-        "items_start_datetime_test-collection_2010-02-10-2020-02-08",
+        "items_start_datetime_test-collection_2008-01-15",
     ]
 
     all_aliases = set()
@@ -629,7 +629,7 @@ async def test_patch_item_datetime_field_blocked_use_datetime_true(
 
     monkeypatch.setenv("USE_DATETIME", "true")
     if hasattr(txn_client.database.async_index_selector, "cache_manager"):
-        txn_client.database.async_index_selector.cache_manager.clear_cache()
+        await txn_client.database.async_index_selector.cache_manager.clear_cache()
 
     base_item = load_test_data("test_item.json")
     collection_id = base_item["collection"]
@@ -1573,3 +1573,53 @@ async def test_datetime_index_item_put_operation(
             f"/collections/{collection_id}/items/{base_item['id']}", json=item_data
         )
         assert response.json()["properties"]["platform"] == "Updated platform via PUT"
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_patch_item_datetime_same_value_allowed_use_datetime_false(
+    mock_datetime_env, app_client, load_test_data, ctx
+):
+    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip("Datetime index filtering not enabled")
+
+    base_item = load_test_data("test_item.json")
+    collection_id = base_item["collection"]
+
+    patch_data = {
+        "properties": {
+            "start_datetime": base_item["properties"]["start_datetime"],
+            "end_datetime": base_item["properties"]["end_datetime"],
+        }
+    }
+    response = await app_client.patch(
+        f"/collections/{collection_id}/items/{base_item['id']}", json=patch_data
+    )
+    assert response.status_code == 200
+
+    patch_data = {"properties": {"start_datetime": "2025-01-01T00:00:00Z"}}
+    response = await app_client.patch(
+        f"/collections/{collection_id}/items/{base_item['id']}", json=patch_data
+    )
+    assert response.status_code == 400
+    assert "start_datetime" in response.json()["detail"]
+    assert "not yet supported" in response.json()["detail"]
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_patch_item_datetime_different_value_allowed_use_datetime_false(
+    mock_datetime_env, app_client, load_test_data, ctx
+):
+    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip("Datetime index filtering not enabled")
+
+    base_item = load_test_data("test_item.json")
+    collection_id = base_item["collection"]
+
+    patch_data = {"properties": {"datetime": "2025-06-15T12:00:00Z"}}
+    response = await app_client.patch(
+        f"/collections/{collection_id}/items/{base_item['id']}", json=patch_data
+    )
+    assert response.status_code == 200
+    assert response.json()["properties"]["datetime"] == "2025-06-15T12:00:00Z"

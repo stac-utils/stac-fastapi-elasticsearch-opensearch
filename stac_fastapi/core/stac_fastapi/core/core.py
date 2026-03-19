@@ -5,7 +5,7 @@ import os
 from datetime import datetime as datetime_type
 from datetime import timezone
 from enum import Enum
-from typing import List, Optional, Set, Type, Union
+from typing import Type
 from urllib.parse import unquote_plus, urljoin
 
 import attr
@@ -89,10 +89,10 @@ class CoreClient(AsyncBaseCoreClient):
     """
 
     database: BaseDatabaseLogic = attr.ib()
-    base_conformance_classes: List[str] = attr.ib(
+    base_conformance_classes: list[str] = attr.ib(
         factory=lambda: BASE_CONFORMANCE_CLASSES
     )
-    extensions: List[ApiExtension] = attr.ib(default=attr.Factory(list))
+    extensions: list[ApiExtension] = attr.ib(default=attr.Factory(list))
 
     session: Session = attr.ib(default=attr.Factory(Session.create_from_env))
     item_serializer: Type[ItemSerializer] = attr.ib(default=ItemSerializer)
@@ -124,8 +124,8 @@ class CoreClient(AsyncBaseCoreClient):
     def _landing_page(
         self,
         base_url: str,
-        conformance_classes: List[str],
-        extension_schemas: List[str],
+        conformance_classes: list[str],
+        extension_schemas: list[str],
     ) -> stac_types.LandingPage:
         landing_page = stac_types.LandingPage(
             type="Catalog",
@@ -280,33 +280,33 @@ class CoreClient(AsyncBaseCoreClient):
 
     async def all_collections(
         self,
-        limit: Optional[int] = None,
-        bbox: Optional[BBox] = None,
-        datetime: Optional[str] = None,
-        fields: Optional[List[str]] = None,
-        sortby: Optional[Union[str, List[str]]] = None,
-        filter_expr: Optional[str] = None,
-        filter_lang: Optional[str] = None,
-        q: Optional[Union[str, List[str]]] = None,
-        query: Optional[str] = None,
+        limit: int | None = None,
+        bbox: BBox | None = None,
+        datetime: str | None = None,
+        fields: list[str] | None = None,
+        sortby: str | list[str] | None = None,
+        filter_expr: str | None = None,
+        filter_lang: str | None = None,
+        q: str | list[str] | None = None,
+        query: str | None = None,
         request: Request = None,
-        token: Optional[str] = None,
+        token: str | None = None,
         **kwargs,
     ) -> stac_types.Collections:
         """Read all collections from the database.
 
         Args:
-            limit (Optional[int]): Maximum number of collections to return.
-            bbox (Optional[BBox]): Bounding box to filter collections by spatial extent.
-            datetime (Optional[str]): Filter collections by datetime range.
-            fields (Optional[List[str]]): Fields to include or exclude from the results.
-            sortby (Optional[Union[str, List[str]]]): Sorting options for the results.
-            filter_expr (Optional[str]): Structured filter expression in CQL2 JSON or CQL2-text format.
-            filter_lang (Optional[str]): Must be 'cql2-json' or 'cql2-text' if specified, other values will result in an error.
-            q (Optional[Union[str, List[str]]]): Free text search terms.
-            query (Optional[str]): Legacy query parameter (deprecated).
+            limit (int | None): Maximum number of collections to return.
+            bbox (BBox | None): Bounding box to filter collections by spatial extent.
+            datetime (str | None): Filter collections by datetime range.
+            fields (list[str] | None): Fields to include or exclude from the results.
+            sortby (str | list[str] | None): Sorting options for the results.
+            filter_expr (str | None): Structured filter expression in CQL2 JSON or CQL2-text format.
+            filter_lang (str | None): Must be 'cql2-json' or 'cql2-text' if specified, other values will result in an error.
+            q (str | list[str] | None): Free text search terms.
+            query (str | None): Legacy query parameter (deprecated).
             request (Request): FastAPI Request object.
-            token (Optional[str]): Pagination token for retrieving the next page of results.
+            token (str | None): Pagination token for retrieving the next page of results.
             **kwargs: Keyword arguments from the request.
 
         Returns:
@@ -614,15 +614,16 @@ class CoreClient(AsyncBaseCoreClient):
         self,
         collection_id: str,
         request: Request,
-        bbox: Optional[BBox] = None,
-        datetime: Optional[str] = None,
-        limit: Optional[int] = None,
-        sortby: Optional[str] = None,
-        filter_expr: Optional[str] = None,
-        filter_lang: Optional[str] = None,
-        token: Optional[str] = None,
-        query: Optional[str] = None,
-        fields: Optional[List[str]] = None,
+        bbox: BBox | None = None,
+        datetime: str | None = None,
+        limit: int | None = None,
+        sortby: str | None = None,
+        filter_expr: str | None = None,
+        filter_lang: str | None = None,
+        token: str | None = None,
+        query: str | None = None,
+        fields: list[str] | None = None,
+        q: str | list[str] | None = None,
         **kwargs,
     ) -> stac_types.ItemCollection:
         """List items within a specific collection.
@@ -634,17 +635,18 @@ class CoreClient(AsyncBaseCoreClient):
         Args:
             collection_id (str): ID of the collection to list items from.
             request (Request): FastAPI Request object.
-            bbox (Optional[BBox]): Optional bounding box filter.
-            datetime (Optional[str]): Optional datetime or interval filter.
-            limit (Optional[int]): Optional page size. Defaults to env `STAC_DEFAULT_ITEM_LIMIT` when unset.
-            sortby (Optional[str]): Optional sort specification. Accepts repeated values
+            bbox (BBox | None): Optional bounding box filter.
+            datetime (str | None): Optional datetime or interval filter.
+            limit (int | None): Optional page size. Defaults to env `STAC_DEFAULT_ITEM_LIMIT` when unset.
+            sortby (str | None): Optional sort specification. Accepts repeated values
                 like ``sortby=-properties.datetime`` or ``sortby=+id``. Bare fields (e.g. ``sortby=id``)
                 imply ascending order.
-            token (Optional[str]): Optional pagination token.
-            query (Optional[str]): Optional query string.
-            filter_expr (Optional[str]): Optional filter expression.
-            filter_lang (Optional[str]): Optional filter language.
-            fields (Optional[List[str]]): Fields to include or exclude from the results.
+            token (str | None): Optional pagination token.
+            query (str | None): Optional query string.
+            filter_expr (str | None): Optional filter expression.
+            filter_lang (str | None): Optional filter language.
+            fields (list[str] | None): Fields to include or exclude from the results.
+            q (str | list[str] | None): Optional free-text search term(s).
 
         Returns:
             ItemCollection: Feature collection with items, paging links, and counts.
@@ -670,6 +672,7 @@ class CoreClient(AsyncBaseCoreClient):
             filter_expr=filter_expr,
             filter_lang=filter_lang,
             fields=fields,
+            q=q,
         )
 
     async def get_item(
@@ -707,35 +710,35 @@ class CoreClient(AsyncBaseCoreClient):
     async def get_search(
         self,
         request: Request,
-        collections: Optional[List[str]] = None,
-        ids: Optional[List[str]] = None,
-        bbox: Optional[BBox] = None,
-        datetime: Optional[str] = None,
-        limit: Optional[int] = None,
-        query: Optional[str] = None,
-        token: Optional[str] = None,
-        fields: Optional[List[str]] = None,
-        sortby: Optional[str] = None,
-        q: Optional[List[str]] = None,
-        intersects: Optional[str] = None,
-        filter_expr: Optional[str] = None,
-        filter_lang: Optional[str] = None,
+        collections: list[str] | None = None,
+        ids: list[str] | None = None,
+        bbox: BBox | None = None,
+        datetime: str | None = None,
+        limit: int | None = None,
+        query: str | None = None,
+        token: str | None = None,
+        fields: list[str] | None = None,
+        sortby: str | None = None,
+        q: str | list[str] | None = None,
+        intersects: str | None = None,
+        filter_expr: str | None = None,
+        filter_lang: str | None = None,
         **kwargs,
     ) -> stac_types.ItemCollection:
         """Get search results from the database.
 
         Args:
-            collections (Optional[List[str]]): List of collection IDs to search in.
-            ids (Optional[List[str]]): List of item IDs to search for.
-            bbox (Optional[BBox]): Bounding box to search in.
-            datetime (Optional[str]): Filter items based on the datetime field.
-            limit (Optional[int]): Maximum number of results to return.
-            query (Optional[str]): Query string to filter the results.
-            token (Optional[str]): Access token to use when searching the catalog.
-            fields (Optional[List[str]]): Fields to include or exclude from the results.
-            sortby (Optional[str]): Sorting options for the results.
-            q (Optional[List[str]]): Free text query to filter the results.
-            intersects (Optional[str]): GeoJSON geometry to search in.
+            collections (list[str] | None): List of collection IDs to search in.
+            ids (list[str] | None): List of item IDs to search for.
+            bbox (BBox | None): Bounding box to search in.
+            datetime (str | None): Filter items based on the datetime field.
+            limit (int | None): Maximum number of results to return.
+            query (str | None): Query string to filter the results.
+            token (str | None): Access token to use when searching the catalog.
+            fields (list[str] | None): Fields to include or exclude from the results.
+            sortby (str | None): Sorting options for the results.
+            q (list[str] | None): Free text query to filter the results.
+            intersects (str | None): GeoJSON geometry to search in.
             kwargs: Additional parameters to be passed to the API.
         Returns:
             ItemCollection: Collection of `Item` objects representing the search results.
@@ -975,6 +978,10 @@ class CoreClient(AsyncBaseCoreClient):
 
         if hasattr(search_request, "q"):
             free_text_queries = getattr(search_request, "q", None)
+            # Convert single string to list for consistent handling
+            if isinstance(free_text_queries, str):
+                # Split comma-separated values
+                free_text_queries = [q.strip() for q in free_text_queries.split(",")]
             try:
                 search = self.database.apply_free_text_filter(search, free_text_queries)
             except Exception as e:
@@ -1003,8 +1010,8 @@ class CoreClient(AsyncBaseCoreClient):
         )
 
         fields = getattr(search_request, "fields", None)
-        include: Set[str] = fields.include if fields and fields.include else set()
-        exclude: Set[str] = fields.exclude if fields and fields.exclude else set()
+        include: set[str] = fields.include if fields and fields.include else set()
+        exclude: set[str] = fields.exclude if fields and fields.exclude else set()
 
         items = [
             filter_fields(
@@ -1065,18 +1072,18 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
     @overrides
     async def create_item(
-        self, collection_id: str, item: Union[Item, ItemCollection], **kwargs
-    ) -> Union[stac_types.Item, str]:
+        self, collection_id: str, item: Item | ItemCollection, **kwargs
+    ) -> stac_types.Item | str:
         """
         Create an item or a feature collection of items in the specified collection.
 
         Args:
             collection_id (str): The ID of the collection to add the item(s) to.
-            item (Union[Item, ItemCollection]): A single item or a collection of items to be added.
+            item (Item | ItemCollection): A single item or a collection of items to be added.
             **kwargs: Additional keyword arguments, such as `request` and `refresh`.
 
         Returns:
-            Union[stac_types.Item, str]: The created item if a single item is added, or a summary string
+            stac_types.Item | str: The created item if a single item is added, or a summary string
             indicating the number of items successfully added and errors if a collection of items is added.
 
         Raises:
@@ -1089,19 +1096,55 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         # Convert Pydantic model to dict for uniform processing
         item_dict = item.model_dump(mode="json")
 
+        # Check if Redis queue is enabled for async item processing
+        use_queue = get_bool_env("ENABLE_REDIS_QUEUE", default=False)
+
         # Handle FeatureCollection (bulk insert)
         if item_dict["type"] == "FeatureCollection":
             bulk_client = BulkTransactionsClient(
                 database=self.database, settings=self.settings
             )
             features = item_dict["features"]
-            processed_items = [
+            all_prepped = [
                 bulk_client.preprocess_item(
                     feature, base_url, BulkTransactionMethod.INSERT
                 )
                 for feature in features
             ]
+            # Filter out None values (skipped duplicates from DB check)
+            processed_items = [item for item in all_prepped if item is not None]
+            skipped_db_duplicates = len(all_prepped) - len(processed_items)
+
+            # Deduplicate items within the batch by ID (keep last occurrence)
+            # This matches ES behavior where later items overwrite earlier ones
+            seen_ids: dict = {}
+            for item in processed_items:
+                seen_ids[item["id"]] = item
+            unique_items = list(seen_ids.values())
+            skipped_batch_duplicates = len(processed_items) - len(unique_items)
+            processed_items = unique_items
+
+            skipped = skipped_db_duplicates + skipped_batch_duplicates
             attempted = len(processed_items)
+
+            if not processed_items:
+                return f"No items to insert. {skipped} items were skipped (duplicates)."
+
+            if use_queue:
+                from stac_fastapi.core.redis_utils import AsyncRedisQueueManager
+
+                queue_manager = await AsyncRedisQueueManager.create()
+                try:
+                    queue_len = await queue_manager.queue_items(
+                        collection_id, processed_items
+                    )
+                    logger.info(
+                        f"Queued {len(processed_items)} items for collection '{collection_id}'. "
+                        f"Queue length: {queue_len}"
+                    )
+                    return f"Successfully queued {len(processed_items)} items for processing."
+                finally:
+                    await queue_manager.close()
 
             success, errors = await self.database.bulk_async(
                 collection_id=collection_id,
@@ -1116,9 +1159,33 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 logger.info(
                     f"Bulk async operation succeeded with {success} actions for collection {collection_id}."
                 )
-            return f"Successfully added {success} Items. {attempted - success} errors occurred."
+            return f"Successfully added {success} Items. {skipped} skipped (duplicates). {attempted - success} errors occurred."
 
-        # Handle single item
+        if use_queue:
+            from stac_fastapi.core.redis_utils import AsyncRedisQueueManager
+
+            bulk_client = BulkTransactionsClient(
+                database=self.database, settings=self.settings
+            )
+            processed_item = bulk_client.preprocess_item(
+                item_dict, base_url, BulkTransactionMethod.INSERT
+            )
+
+            queue_manager = await AsyncRedisQueueManager.create()
+            try:
+                queue_len = await queue_manager.queue_items(
+                    collection_id, processed_item
+                )
+                logger.info(
+                    f"Queued item '{item_dict.get('id')}' for collection '{collection_id}'. "
+                    f"Queue length: {queue_len}"
+                )
+                return (
+                    f"Successfully queued item '{item_dict.get('id')}' for processing."
+                )
+            finally:
+                await queue_manager.close()
+
         await self.database.create_item(
             item_dict, base_url=base_url, exist_ok=False, **kwargs
         )
@@ -1143,24 +1210,49 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             NotFound: If the specified collection is not found in the database.
 
         """
-        item = item.model_dump(mode="json")
+        item_dict = item.model_dump(mode="json")
         base_url = str(kwargs["request"].base_url)
 
         now = datetime_type.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        item["properties"]["updated"] = now
+        item_dict["properties"]["updated"] = now
+
+        use_queue = get_bool_env("ENABLE_REDIS_QUEUE", default=False)
+
+        if use_queue:
+            from stac_fastapi.core.redis_utils import AsyncRedisQueueManager
+
+            bulk_client = BulkTransactionsClient(
+                database=self.database, settings=self.settings
+            )
+            processed_item = bulk_client.preprocess_item(
+                item_dict, base_url, BulkTransactionMethod.UPSERT
+            )
+
+            queue_manager = await AsyncRedisQueueManager.create()
+            try:
+                queue_len = await queue_manager.queue_items(
+                    collection_id, processed_item
+                )
+                logger.info(
+                    f"Queued update for item '{item_id}' in collection '{collection_id}'. "
+                    f"Queue length: {queue_len}"
+                )
+            finally:
+                await queue_manager.close()
+
+            return ItemSerializer.db_to_stac(item_dict, base_url)
 
         await self.database.create_item(
-            item, base_url=base_url, exist_ok=True, **kwargs
+            item_dict, base_url=base_url, exist_ok=True, **kwargs
         )
-
-        return ItemSerializer.db_to_stac(item, base_url)
+        return ItemSerializer.db_to_stac(item_dict, base_url)
 
     @overrides
     async def patch_item(
         self,
         collection_id: str,
         item_id: str,
-        patch: Union[PartialItem, List[PatchOperation]],
+        patch: PartialItem | list[PatchOperation],
         **kwargs,
     ):
         """Patch an item in the collection.
@@ -1168,7 +1260,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         Args:
             collection_id (str): The ID of the collection the item belongs to.
             item_id (str): The ID of the item to be updated.
-            patch (Union[PartialItem, List[PatchOperation]]): The item data or operations.
+            patch (PartialItem | list[PatchOperation]): The item data or operations.
             kwargs: Other optional arguments, including the request object.
 
         Returns:
@@ -1297,7 +1389,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     async def patch_collection(
         self,
         collection_id: str,
-        patch: Union[PartialCollection, List[PatchOperation]],
+        patch: PartialCollection | list[PatchOperation],
         **kwargs,
     ):
         """Update a collection.
@@ -1403,7 +1495,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
 
     @overrides
     def bulk_item_insert(
-        self, items: Items, chunk_size: Optional[int] = None, **kwargs
+        self, items: Items, chunk_size: int | None = None, **kwargs
     ) -> str:
         """Perform a bulk insertion of items into the database using Elasticsearch.
 
@@ -1429,17 +1521,34 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
             base_url = ""
 
         processed_items = []
+        skipped_db_duplicates = 0
         for item in items.items.values():
             try:
                 validated = Item(**item) if not isinstance(item, Item) else item
-                processed_items.append(
-                    self.preprocess_item(
-                        validated.model_dump(mode="json"), base_url, items.method
-                    )
+                prepped = self.preprocess_item(
+                    validated.model_dump(mode="json"), base_url, items.method
                 )
+                if prepped is not None:
+                    processed_items.append(prepped)
+                else:
+                    skipped_db_duplicates += 1
             except ValidationError:
                 # Immediately raise on the first invalid item (strict mode)
                 raise
+
+        # Deduplicate items within the batch by ID (keep last occurrence)
+        # This matches ES behavior where later items overwrite earlier ones
+        seen_ids: dict = {}
+        for item in processed_items:
+            seen_ids[item["id"]] = item
+        unique_items = list(seen_ids.values())
+        skipped_batch_duplicates = len(processed_items) - len(unique_items)
+        processed_items = unique_items
+
+        skipped = skipped_db_duplicates + skipped_batch_duplicates
+
+        if not processed_items:
+            return f"No items to insert. {skipped} items were skipped (duplicates)."
 
         collection_id = processed_items[0]["collection"]
         attempted = len(processed_items)
@@ -1453,4 +1562,4 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         else:
             logger.info(f"Bulk sync operation succeeded with {success} actions.")
 
-        return f"Successfully added/updated {success} Items. {attempted - success} errors occurred."
+        return f"Successfully added/updated {success} Items. {skipped} skipped (duplicates). {attempted - success} errors occurred."

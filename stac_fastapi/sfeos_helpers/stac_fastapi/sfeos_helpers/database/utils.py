@@ -5,7 +5,9 @@ in Elasticsearch/OpenSearch, such as parameter validation.
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Union
+import os
+from functools import wraps
+from typing import Any, Callable
 
 from stac_fastapi.core.utilities import bbox2polygon, get_bool_env
 from stac_fastapi.extensions.core.transaction.request import (
@@ -14,11 +16,117 @@ from stac_fastapi.extensions.core.transaction.request import (
     PatchRemove,
 )
 from stac_fastapi.sfeos_helpers.models.patch import ElasticPath, ESCommandSet
+from stac_fastapi.types.errors import ConflictError, NotFoundError
+
+try:
+    from opensearchpy.exceptions import ConnectionError, ConnectionTimeout
+except ImportError:
+    from elasticsearch.exceptions import ConnectionError, ConnectionTimeout
+
+from tenacity import (
+    AsyncRetrying,
+    before_sleep_log,
+    retry_if_exception,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_fixed,
+)
 
 logger = logging.getLogger(__name__)
 
+RETRY_MAX_ATTEMPTS_CONNECTION_ERROR = int(
+    os.getenv("RETRY_MAX_ATTEMPTS_CONNECTION_ERROR", "5")
+)
+RETRY_MAX_ATTEMPTS_NOT_FOUND_ERROR = int(
+    os.getenv("RETRY_MAX_ATTEMPTS_NOT_FOUND_ERROR", "3")
+)
+RETRY_WAIT_SECONDS = float(os.getenv("RETRY_WAIT_SECONDS", "0.5"))
+RETRY_RERAISE = get_bool_env("RETRY_RERAISE", default=True)
 
-def add_bbox_shape_to_collection(collection: Dict[str, Any]) -> bool:
+CONNECTION_RETRY_STRATEGY = AsyncRetrying(
+    stop=stop_after_attempt(RETRY_MAX_ATTEMPTS_CONNECTION_ERROR),
+    wait=wait_fixed(RETRY_WAIT_SECONDS),
+    retry=retry_if_exception_type((ConnectionError, ConnectionTimeout)),
+    reraise=RETRY_RERAISE,
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+)
+
+DATETIME_RETRY_STRATEGY = AsyncRetrying(
+    stop=stop_after_attempt(RETRY_MAX_ATTEMPTS_NOT_FOUND_ERROR),
+    wait=wait_fixed(RETRY_WAIT_SECONDS),
+    retry=retry_if_exception(
+        lambda e: isinstance(e, NotFoundError)
+        and "Collections '" in str(e)
+        and "' do not exist" in str(e)
+    ),
+    reraise=RETRY_RERAISE,
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+)
+
+
+class ItemAlreadyExistsError(ConflictError):
+    """Error raised when attempting to create an item that already exists.
+
+    Attributes:
+        item_id: The ID of the item that already exists.
+        collection_id: The ID of the collection containing the item.
+    """
+
+    def __init__(self, item_id: str, collection_id: str):
+        """Initialize the error with item and collection IDs."""
+        self.item_id = item_id
+        self.collection_id = collection_id
+        message = f"Item {item_id} in collection {collection_id} already exists"
+        super().__init__(message)
+
+
+async def check_item_exists_in_alias(client: Any, alias: str, doc_id: str) -> bool:
+    """Check if an item exists across all indexes for an alias.
+
+    Args:
+        client: The async Elasticsearch/OpenSearch client.
+        alias: The index alias to search against.
+        doc_id: The document ID to check for existence.
+
+    Returns:
+        bool: True if the item exists in any index under the alias, False otherwise.
+    """
+    resp = await client.search(
+        index=alias,
+        body={
+            "query": {"ids": {"values": [doc_id]}},
+            "_source": False,
+        },
+        size=0,
+        terminate_after=1,
+    )
+    return bool(resp["hits"]["total"]["value"])
+
+
+def check_item_exists_in_alias_sync(client: Any, alias: str, doc_id: str) -> bool:
+    """Check if an item exists across all indexes for an alias (sync).
+
+    Args:
+        client: The sync Elasticsearch/OpenSearch client.
+        alias: The index alias to search against.
+        doc_id: The document ID to check for existence.
+
+    Returns:
+        bool: True if the item exists in any index under the alias, False otherwise.
+    """
+    resp = client.search(
+        index=alias,
+        body={
+            "query": {"ids": {"values": [doc_id]}},
+            "_source": False,
+        },
+        size=0,
+        terminate_after=1,
+    )
+    return bool(resp["hits"]["total"]["value"])
+
+
+def add_bbox_shape_to_collection(collection: dict[str, Any]) -> bool:
     """Add bbox_shape field to a collection document for spatial queries.
 
     This function extracts the bounding box from a collection's spatial extent
@@ -94,12 +202,12 @@ def add_bbox_shape_to_collection(collection: Dict[str, Any]) -> bool:
     return True
 
 
-def validate_refresh(value: Union[str, bool]) -> str:
+def validate_refresh(value: str | bool) -> str:
     """
     Validate the `refresh` parameter value.
 
     Args:
-        value (Union[str, bool]): The `refresh` parameter value, which can be a string or a boolean.
+        value (str | bool): The `refresh` parameter value, which can be a string or a boolean.
 
     Returns:
         str: The validated value of the `refresh` parameter, which can be "true", "false", or "wait_for".
@@ -134,14 +242,43 @@ def validate_refresh(value: Union[str, bool]) -> str:
     return "false"
 
 
-def merge_to_operations(data: Dict) -> List:
+def validate_datetime_operations(
+    operations: list, existing_source: dict, validator: Callable
+) -> None:
+    """Validate datetime field changes in patch operations.
+
+    Compares operation values against existing document values.
+    Only validates when the value actually changes.
+
+    Args:
+        operations: List of patch operations.
+        existing_source: The existing document source from the search response.
+        validator: Callable that validates a field path.
+    """
+    for operation in operations:
+        if operation.op == "remove":
+            validator(operation.path)
+        elif operation.op in ["add", "replace"]:
+            path_parts = operation.path.strip("/").split("/")
+            existing_value = existing_source
+            for part in path_parts:
+                if isinstance(existing_value, dict):
+                    existing_value = existing_value.get(part)
+                else:
+                    existing_value = None
+                    break
+            if existing_value != operation.value:
+                validator(operation.path)
+
+
+def merge_to_operations(data: dict) -> list:
     """Convert merge operation to list of RF6902 operations.
 
     Args:
         data: dictionary to convert.
 
     Returns:
-        List: list of RF6902 operations.
+        list: list of RF6902 operations.
     """
     operations = []
 
@@ -245,7 +382,7 @@ def add_commands(
     operation: PatchOperation,
     path: ElasticPath,
     from_path: ElasticPath,
-    params: Dict,
+    params: dict,
 ) -> None:
     """Add value at path.
 
@@ -278,7 +415,7 @@ def add_commands(
 
 
 def test_commands(
-    commands: ESCommandSet, operation: PatchOperation, path: ElasticPath, params: Dict
+    commands: ESCommandSet, operation: PatchOperation, path: ElasticPath, params: dict
 ) -> None:
     """Test value at path.
 
@@ -306,17 +443,17 @@ def test_commands(
     )
 
 
-def operations_to_script(operations: List, create_nest: bool = False) -> Dict:
+def operations_to_script(operations: list, create_nest: bool = False) -> dict:
     """Convert list of operation to painless script.
 
     Args:
         operations: List of RF6902 operations.
 
     Returns:
-        Dict: elasticsearch update script.
+        dict: elasticsearch update script.
     """
     commands: ESCommandSet = ESCommandSet()
-    params: Dict = {}
+    params: dict = {}
 
     for operation in operations:
         path = ElasticPath(path=operation.path)
@@ -363,13 +500,100 @@ def operations_to_script(operations: List, create_nest: bool = False) -> Dict:
     }
 
 
+def sentry_initialize(
+    dsn: str,
+    environment: str = "production",
+    traces_sample_rate: float = 1.0,
+    **kwargs,
+) -> None:
+    """
+    Initialize Sentry SDK for error and performance monitoring.
+
+    Args:
+        dsn: Data Source Name - The Sentry project DSN URL
+        environment: Deployment environment (e.g., "production", "staging", "development")
+        traces_sample_rate: Sample rate for performance traces (0.0 to 1.0)
+        Additional Sentry SDK configuration parameters.
+    """
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+
+    sentry_config = {
+        "dsn": dsn,
+        "environment": environment,
+        "traces_sample_rate": traces_sample_rate,
+        "integrations": [FastApiIntegration()],
+    }
+    sentry_config.update(kwargs)
+
+    sentry_sdk.init(**sentry_config)
+
+    logger.info(f"Sentry initialized for environment: {environment}")
+
+
+def retry_on_datetime_not_found(func) -> Callable:
+    """Retries datetime search queries on NotFoundError.
+
+    Args:
+        func: The async function to be decorated.
+
+    Returns:
+        A decorated function with retry logic for datetime-based searches.
+
+    Note:
+        Retry logic is only applied when `datetime_search` is provided as a
+        non-empty dictionary. For non-datetime queries or empty datetime
+        dictionaries, the function executes without retry attempts.
+    """
+
+    @wraps(func)
+    async def wrapper(self, *args, **kwargs):
+        from stac_fastapi.sfeos_helpers.search_engine.inserters import (
+            DatetimeIndexInserter,
+        )
+
+        datetime_search = kwargs.get("datetime_search")
+        if (
+            isinstance(self.async_index_inserter, DatetimeIndexInserter)
+            and datetime_search
+        ):
+            async for attempt in DATETIME_RETRY_STRATEGY.copy():
+                with attempt:
+                    if attempt.retry_state.attempt_number > 1:
+                        await self.async_index_inserter.refresh_cache()
+                    return await func(self, *args, **kwargs)
+
+        return await func(self, *args, **kwargs)
+
+    return wrapper
+
+
+def retry_on_connection_error(func) -> Callable:
+    """Retries on ConnectionError, ConnectionTimeout etc.
+
+    Args:
+        func: The async function to be decorate.
+
+    Returns:
+        A decorated function with retry logic for connection errors .
+    """
+
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        async for attempt in CONNECTION_RETRY_STRATEGY.copy():
+            with attempt:
+                return await func(*args, **kwargs)
+
+    return wrapper
+
+
 def add_hidden_filter(
-    query: Optional[Dict[str, Any]] = None, hide_item_path: Optional[str] = None
-) -> Dict[str, Any]:
+    query: dict[str, Any] | None = None, hide_item_path: str | None = None
+) -> dict[str, Any]:
     """Add hidden filter to a query to exclude hidden items.
 
     Args:
-        query: Optional Elasticsearch query to combine with hidden filter
+        query: Elasticsearch query to combine with hidden filter
         hide_item_path: Path to the hidden field (e.g., "properties._private.hidden")
                        If None or empty, return original query (no filtering)
 

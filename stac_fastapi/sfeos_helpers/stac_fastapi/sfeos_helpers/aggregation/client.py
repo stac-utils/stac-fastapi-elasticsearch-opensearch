@@ -1,7 +1,6 @@
 """Client implementation for the STAC API Aggregation Extension."""
 
-
-from typing import Annotated, Any, Dict, List, Optional, Union
+from typing import Any
 from urllib.parse import unquote_plus, urljoin
 
 import attr
@@ -10,6 +9,7 @@ from fastapi import HTTPException, Path, Request
 from pygeofilter.backends.cql2_json import to_cql2
 from pygeofilter.parsers.cql2_text import parse as parse_cql2_text
 from stac_pydantic.shared import BBox
+from typing_extensions import Annotated
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
@@ -91,8 +91,8 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
     MAX_GEOTILE_PRECISION = 29
 
     async def get_aggregations(
-        self, collection_id: Optional[str] = None, **kwargs
-    ) -> Dict[str, Any]:
+        self, collection_id: str | None = None, **kwargs
+    ) -> dict[str, Any]:
         """Get the available aggregations for a catalog or collection defined in the STAC JSON.
 
         If no aggregations are defined, default aggregations are used.
@@ -102,7 +102,7 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
             **kwargs: Additional keyword arguments
 
         Returns:
-            Dict[str, Any]: A dictionary containing the available aggregations
+            dict[str, Any]: A dictionary containing the available aggregations
         """
         request: Request = kwargs.get("request")
         base_url = str(request.base_url) if request else ""
@@ -148,7 +148,7 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
         }
 
     def extract_precision(
-        self, precision: Union[int, None], min_value: int, max_value: int
+        self, precision: int | None, min_value: int, max_value: int
     ) -> int:
         """Ensure that the aggregation precision value is within a valid range.
 
@@ -172,7 +172,7 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
             )
         return precision
 
-    def extract_date_histogram_interval(self, value: Optional[str]) -> str:
+    def extract_date_histogram_interval(self, value: str | None) -> str:
         """Ensure that the interval for the date histogram is valid.
 
         If no value is provided, the default will be returned.
@@ -225,26 +225,24 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
 
     async def aggregate(
         self,
-        aggregate_request: Optional[EsAggregationExtensionPostRequest] = None,
-        collection_id: Optional[
-            Annotated[str, Path(description="Collection ID")]
-        ] = None,
-        collections: Optional[List[str]] = [],
-        datetime: Optional[DateTimeType] = None,
-        intersects: Optional[str] = None,
-        filter_lang: Optional[str] = None,
-        filter_expr: Optional[str] = None,
-        aggregations: Optional[str] = None,
-        ids: Optional[List[str]] = None,
-        bbox: Optional[BBox] = None,
-        centroid_geohash_grid_frequency_precision: Optional[int] = None,
-        centroid_geohex_grid_frequency_precision: Optional[int] = None,
-        centroid_geotile_grid_frequency_precision: Optional[int] = None,
-        geometry_geohash_grid_frequency_precision: Optional[int] = None,
-        geometry_geotile_grid_frequency_precision: Optional[int] = None,
-        datetime_frequency_interval: Optional[str] = None,
+        aggregate_request: EsAggregationExtensionPostRequest | None = None,
+        collection_id: Annotated[str, Path(description="Collection ID")] | None = None,
+        collections: list[str] | None = [],
+        datetime: DateTimeType | None = None,
+        intersects: str | None = None,
+        filter_lang: str | None = None,
+        filter_expr: str | None = None,
+        aggregations: str | None = None,
+        ids: list[str] | None = None,
+        bbox: BBox | None = None,
+        centroid_geohash_grid_frequency_precision: int | None = None,
+        centroid_geohex_grid_frequency_precision: int | None = None,
+        centroid_geotile_grid_frequency_precision: int | None = None,
+        geometry_geohash_grid_frequency_precision: int | None = None,
+        geometry_geotile_grid_frequency_precision: int | None = None,
+        datetime_frequency_interval: str | None = None,
         **kwargs,
-    ) -> Union[Dict, Exception]:
+    ) -> dict | Exception:
         """Get aggregations from the database."""
         request: Request = kwargs["request"]
         base_url = str(request.base_url)
@@ -419,7 +417,7 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
         except Exception as error:
             if not isinstance(error, IndexError):
                 raise error
-        aggs: List[Aggregation] = []
+        aggs: list[Aggregation] = []
         if db_response:
             result_aggs = db_response.get("aggregations", {})
             for agg in {

@@ -4,7 +4,8 @@ This module provides functions for building and manipulating Elasticsearch/OpenS
 """
 
 import logging
-from typing import Any, Dict, List, Optional, Union
+import os
+from typing import Any
 
 from stac_fastapi.core.utilities import bbox2polygon
 from stac_fastapi.sfeos_helpers.mappings import Geometry
@@ -13,34 +14,113 @@ ES_MAX_URL_LENGTH = 4096
 
 
 def apply_free_text_filter_shared(
-    search: Any, free_text_queries: Optional[List[str]]
+    search: Any, free_text_queries: list[str] | None
 ) -> Any:
-    """Create a free text query for Elasticsearch/OpenSearch.
+    """Apply a flexible free-text search across configurable fields.
+
+    This function uses multi_match queries to search across text fields with support for
+    tokenization, lowercasing, partial word matching, and typo tolerance. Fields can be
+    configured via the FREE_TEXT_FIELDS environment variable.
 
     Args:
         search (Any): The search object to apply the query to.
-        free_text_queries (Optional[List[str]]): A list of text strings to search for in the properties.
+        free_text_queries (list[str] | None): A list of text strings to search for in the properties.
 
     Returns:
         Any: The search object with the free text query applied, or the original search
             object if no free_text_queries were provided.
 
+    Environment Variables:
+        FREE_TEXT_FIELDS: Comma-separated list of fields to search (e.g.,
+            "properties.title,properties.standard_name,properties.description").
+            If not set, uses default fields with title boosting.
+
     Notes:
-        This function creates a query_string query that searches for the specified text strings
-        in all properties of the documents. The query strings are joined with OR operators.
+        - Removes restrictive double quotes to enable text field analysis
+        - Supports fuzziness for typo tolerance (e.g., "Temperatrue" -> "Temperature")
+        - Allows field boosting (e.g., "properties.title^3" gives title 3x weight)
+        - Works seamlessly with text-mapped fields in Elasticsearch/OpenSearch
     """
-    if free_text_queries is not None:
-        free_text_query_string = '" OR properties.\\*:"'.join(free_text_queries)
+    if free_text_queries:
+        # Combine all query terms into a single search string
+        search_string = " ".join(free_text_queries)
+
+        # Get fields from environment or use sensible defaults
+        env_fields = os.getenv("FREE_TEXT_FIELDS")
+        if env_fields:
+            fields = [f.strip() for f in env_fields.split(",")]
+            logging.debug(f"FREE_TEXT_FIELDS set to: {fields}")
+        else:
+            # Default "High-Performance" fields
+            # To search custom properties, users should set FREE_TEXT_FIELDS environment variable
+            fields = [
+                "id",
+                "collection",
+                "properties.title^3",
+                "properties.description",
+                "properties.keywords",
+            ]
+
+        # Use multi_match for intelligent text analysis and field prioritization
+        logging.debug(
+            f"Applying free-text search with query='{search_string}' on fields={fields}"
+        )
         search = search.query(
-            "query_string", query=f'properties.\\*:"{free_text_query_string}"'
+            "multi_match",
+            query=search_string,
+            fields=fields,
+            type="best_fields",
+            fuzziness="AUTO",
+            operator="or",
         )
 
     return search
 
 
+def apply_collections_free_text_filter_shared(
+    free_text_queries: list[str] | None,
+) -> dict[str, Any] | None:
+    """Apply free-text search for collections across core fields.
+
+    This function uses multi_match queries to search across collection text fields with support for
+    tokenization, lowercasing, and typo tolerance.
+
+    Args:
+        free_text_queries (list[str] | None): A list of text strings to search for.
+
+    Returns:
+        dict[str, Any] | None: A dictionary containing the multi_match query configuration
+            that can be used with Elasticsearch/OpenSearch queries, or None if no queries provided.
+
+    Notes:
+        - Searches across: id, title (boosted 3x), description, keywords
+        - Supports fuzziness for typo tolerance (e.g., "Temperatrue" -> "Temperature")
+        - Works seamlessly with text-mapped fields in Elasticsearch/OpenSearch
+    """
+    if not free_text_queries:
+        return None
+
+    search_string = " ".join(free_text_queries)
+    logging.debug(f"Applying collections free-text search with query='{search_string}'")
+
+    return {
+        "multi_match": {
+            "query": search_string,
+            "fields": [
+                "id",
+                "title^3",
+                "description",
+                "keywords",
+            ],
+            "type": "best_fields",
+            "fuzziness": "AUTO",
+        }
+    }
+
+
 def apply_intersects_filter_shared(
     intersects: Geometry,
-) -> Dict[str, Dict]:
+) -> dict[str, dict]:
     """Create a geo_shape filter for intersecting geometry.
 
     Args:
@@ -69,8 +149,8 @@ def apply_intersects_filter_shared(
 
 
 def apply_collections_datetime_filter_shared(
-    datetime_str: Optional[str],
-) -> Optional[Dict[str, Any]]:
+    datetime_str: str | None,
+) -> dict[str, Any] | None:
     """Create a temporal filter for collections based on their extent.
 
     Args:
@@ -81,7 +161,7 @@ def apply_collections_datetime_filter_shared(
             - None if no datetime filter is provided
 
     Returns:
-        Optional[Dict[str, Any]]: A dictionary containing the temporal filter configuration
+        dict[str, Any] | None: A dictionary containing the temporal filter configuration
             that can be used with Elasticsearch/OpenSearch queries, or None if datetime_str is None.
             Example return value:
             {
@@ -130,8 +210,8 @@ def apply_collections_datetime_filter_shared(
 
 
 def apply_collections_bbox_filter_shared(
-    bbox: Union[str, List[float], None],
-) -> Optional[Dict[str, Dict]]:
+    bbox: str | list[float] | None,
+) -> dict[str, dict] | None:
     """Create a geo_shape filter for collections bbox search.
 
     This function handles bbox parsing from both GET requests (string format) and POST requests
@@ -144,7 +224,7 @@ def apply_collections_bbox_filter_shared(
             - None if no bbox filter is provided
 
     Returns:
-        Optional[Dict[str, Dict]]: A dictionary containing the geo_shape filter configuration
+        dict[str, dict] | None: A dictionary containing the geo_shape filter configuration
             that can be used with Elasticsearch/OpenSearch queries, or None if bbox is invalid.
             Example return value:
             {
@@ -201,14 +281,14 @@ def apply_collections_bbox_filter_shared(
     }
 
 
-def populate_sort_shared(sortby: List) -> Optional[Dict[str, Dict[str, str]]]:
+def populate_sort_shared(sortby: list) -> dict[str, dict[str, str]] | None:
     """Create a sort configuration for Elasticsearch/OpenSearch queries.
 
     Args:
         sortby (List): A list of sort specifications, each containing a field and direction.
 
     Returns:
-        Optional[Dict[str, Dict[str, str]]]: A dictionary mapping field names to sort direction
+        dict[str, dict[str, str]] | None: A dictionary mapping field names to sort direction
             configurations, or None if no sort was specified.
 
     Notes:
@@ -226,13 +306,13 @@ def populate_sort_shared(sortby: List) -> Optional[Dict[str, Dict[str, str]]]:
 
 
 def add_collections_to_body(
-    collection_ids: List[str], query: Optional[Dict[str, Any]]
-) -> Dict[str, Any]:
+    collection_ids: list[str], query: dict[str, Any] | None
+) -> dict[str, Any]:
     """Add a list of collection ids to the body of a query.
 
     Args:
         collection_ids (List[str]): A list of collections ids.
-        query (Optional[Dict[str, Any]]): The query to add collections to. If none, create a query that filters
+        query (dict[str, Any] | None): The query to add collections to. If none, create a query that filters
         the collection ids.
 
     Returns:
