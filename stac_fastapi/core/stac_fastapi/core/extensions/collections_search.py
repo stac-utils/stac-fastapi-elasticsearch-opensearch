@@ -4,7 +4,7 @@ from typing import Any, Type
 
 from fastapi import APIRouter, Body, FastAPI, Query, Request
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import AliasChoices, BaseModel, Field
 from stac_pydantic.api.search import ExtendedSearch
 from starlette.responses import Response
 
@@ -20,8 +20,13 @@ class CollectionsSearchRequest(ExtendedSearch):
     q: str | list[str] | None = None
     token: str | None = None
     query: str | None = None  # Legacy query extension (deprecated but still supported)
-    filter_expr: str | None = None
-    filter_lang: str | None = None
+    # Filter Extension (CQL2 JSON / CQL2 text)
+    # stac_pydantic.api.search.ExtendedSearch doesn't include these fields, so we define them here.
+    filter: dict[str, Any] | str | None = None
+    filter_lang: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("filter_lang", "filter-lang"),
+    )
 
 
 def build_get_collections_search_doc(original_endpoint):
