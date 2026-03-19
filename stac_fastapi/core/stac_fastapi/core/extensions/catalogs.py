@@ -1,9 +1,11 @@
 """Catalogs extension."""
 
 import asyncio
+import base64
+import json
 import logging
 from typing import Any, Type
-from urllib.parse import parse_qs, urlencode, urlparse
+from urllib.parse import urlencode
 
 import attr
 from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
@@ -16,6 +18,7 @@ from stac_fastapi.core.models import Catalog
 from stac_fastapi.sfeos_helpers.database import (
     search_children_with_pagination_shared,
     search_collections_by_parent_id_shared,
+    search_collections_by_parent_id_with_pagination_shared,
     search_sub_catalogs_with_pagination_shared,
     update_catalog_in_index_shared,
 )
@@ -25,6 +28,24 @@ from stac_fastapi.types.errors import NotFoundError
 from stac_fastapi.types.extension import ApiExtension
 
 logger = logging.getLogger(__name__)
+
+
+def _decode_token(token: str | None) -> list | None:
+    """Decode a Base64/JSON pagination token into a search_after list."""
+    if not token:
+        return None
+    try:
+        return json.loads(base64.urlsafe_b64decode(token.encode()).decode())
+    except Exception:
+        logger.debug(f"Invalid pagination token provided: {token}")
+        return None
+
+
+def _encode_token(search_after: list | None) -> str | None:
+    """Encode a search_after list into a Base64/JSON pagination token."""
+    if not search_after:
+        return None
+    return base64.urlsafe_b64encode(json.dumps(search_after).encode()).decode()
 
 
 class Catalogs(TypedDict, total=False):
@@ -84,10 +105,10 @@ class CatalogsExtension(ApiExtension):
         child_title = child.get("title", child_id)
 
         if child_type == "Catalog":
-            href = f"{base_url}catalogs/{child_id}"
+            href = f"{base_url}/catalogs/{child_id}"
         else:
             # Collection - use scoped URI
-            href = f"{base_url}catalogs/{parent_id}/collections/{child_id}"
+            href = f"{base_url}/catalogs/{parent_id}/collections/{child_id}"
 
         return {
             "rel": "child",
@@ -327,7 +348,7 @@ class CatalogsExtension(ApiExtension):
                     self.client.database.client,
                     catalog_id,
                     limit=100,
-                    token=None,
+                    search_after=None,
                     resource_type=None,
                 )
                 return catalog_id, children_data
@@ -360,6 +381,7 @@ class CatalogsExtension(ApiExtension):
                 if hasattr(catalog_stac, "model_dump")
                 else dict(catalog_stac)
             )
+            catalog_dict.setdefault("links", [])
 
             # Apply titles to both 'parent' AND 'related' links from pre-fetched map
             for link in catalog_dict.get("links", []):
@@ -427,45 +449,47 @@ class CatalogsExtension(ApiExtension):
         Returns:
             Catalogs object containing catalogs and pagination links.
         """
-        base_url = str(request.base_url)
+        base_url = str(request.base_url).rstrip("/")
+        search_after = _decode_token(token)
 
-        # Get all catalogs from database with pagination
-        catalogs, next_token, total_hits = await self.client.database.get_all_catalogs(
-            token=token,
+        # Updated to pass decoded search_after
+        (
+            catalogs,
+            next_search_after,
+            total_hits,
+        ) = await self.client.database.get_all_catalogs(
+            token=search_after,
             limit=limit,
             request=request,
             sort=[{"field": "id", "direction": "asc"}],
         )
 
-        # Format catalogs with dynamic parent and child links
         catalog_stac_objects = await self._format_catalogs_with_links(
             catalogs, request, base_url
         )
 
-        # Create pagination links
         links = [
             {"rel": "root", "type": "application/json", "href": base_url},
             {"rel": "parent", "type": "application/json", "href": base_url},
             {"rel": "self", "type": "application/json", "href": str(request.url)},
         ]
 
-        # Add next link if there are more pages
-        if next_token:
-            query_params = {"limit": limit, "token": next_token}
-            next_link = {
-                "rel": "next",
-                "href": f"{base_url}catalogs?{urlencode(query_params)}",
-                "type": "application/json",
-                "title": "Next page of catalogs",
-            }
-            links.append(next_link)
+        if next_search_after:
+            new_token = _encode_token(next_search_after)
+            links.append(
+                {
+                    "rel": "next",
+                    "href": f"{base_url}/catalogs?{urlencode({'limit': limit, 'token': new_token})}",
+                    "type": "application/json",
+                    "title": "Next page",
+                }
+            )
 
-        # Return Catalogs object with catalogs and numberMatched
         return Catalogs(
             catalogs=catalog_stac_objects,
             links=links,
             numberReturned=len(catalog_stac_objects),
-            numberMatched=total_hits,  # Include the total number of matching catalogs
+            numberMatched=total_hits,
         )
 
     async def create_catalog(self, catalog: Catalog, request: Request) -> Catalog:
@@ -531,6 +555,8 @@ class CatalogsExtension(ApiExtension):
             db_catalog = self.client.catalog_serializer.stac_to_db(catalog, request)
             db_catalog_dict = db_catalog.model_dump()
             db_catalog_dict["type"] = "Catalog"
+            # Enforce path ID as authoritative to avoid accidental cross-ID updates
+            db_catalog_dict["id"] = catalog_id
 
             # Preserve parent_ids and other internal fields from the existing catalog
             if "parent_ids" in existing_catalog_db:
@@ -539,22 +565,21 @@ class CatalogsExtension(ApiExtension):
             # Update the catalog in the database (upsert via create_catalog)
             await self.client.database.create_catalog(db_catalog_dict, refresh=True)
 
-            # Return the updated catalog
-            return catalog
+            # Return a fresh serialized catalog (authoritative persisted version)
+            updated_db_catalog = await self.client.database.find_catalog(catalog_id)
+            return self.client.catalog_serializer.db_to_stac(
+                updated_db_catalog,
+                request,
+                extensions=self._active_extensions,
+            )
 
-        except HTTPException:
+        except NotFoundError:
             raise
         except Exception as e:
-            error_msg = str(e)
-            if "not found" in error_msg.lower():
-                raise HTTPException(
-                    status_code=404, detail=f"Catalog {catalog_id} not found"
-                )
+            if "not found" in str(e).lower():
+                raise NotFoundError(f"Catalog {catalog_id} not found")
             logger.error(f"Error updating catalog {catalog_id}: {e}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to update catalog: {str(e)}",
-            )
+            raise e
 
     async def get_catalog(
         self,
@@ -582,7 +607,7 @@ class CatalogsExtension(ApiExtension):
             catalog = self.client.catalog_serializer.db_to_stac(
                 db_catalog, request, extensions=self._active_extensions
             )
-            base_url = str(request.base_url)
+            base_url = str(request.base_url).rstrip("/")
 
             if isinstance(catalog, dict):
                 catalog_dict = catalog
@@ -606,7 +631,7 @@ class CatalogsExtension(ApiExtension):
                     {
                         "rel": "self",
                         "type": "application/json",
-                        "href": f"{base_url}catalogs/{catalog_id}",
+                        "href": f"{base_url}/catalogs/{catalog_id}",
                     },
                     {
                         "rel": "root",
@@ -635,7 +660,7 @@ class CatalogsExtension(ApiExtension):
                 parent_href = (
                     base_url
                     if primary_pid == root_id
-                    else f"{base_url}catalogs/{primary_pid}"
+                    else f"{base_url}/catalogs/{primary_pid}"
                 )
                 catalog_dict["links"].append(
                     {
@@ -648,7 +673,7 @@ class CatalogsExtension(ApiExtension):
                 # Additional parents become 'related'
                 for pid in parent_ids[1:]:
                     related_href = (
-                        base_url if pid == root_id else f"{base_url}catalogs/{pid}"
+                        base_url if pid == root_id else f"{base_url}/catalogs/{pid}"
                     )
                     catalog_dict["links"].append(
                         {
@@ -661,17 +686,17 @@ class CatalogsExtension(ApiExtension):
 
             # 5. DYNAMIC CHILD LINKS (Paginated, one level deep)
             try:
-                token = None
+                current_search_after = None
                 while True:
                     (
                         children_data,
                         _,
-                        next_token,
+                        next_search_after,
                     ) = await search_children_with_pagination_shared(
                         self.client.database.client,
                         catalog_id,
                         limit=limit,
-                        token=token,
+                        search_after=current_search_after,
                         resource_type=None,
                     )
 
@@ -681,9 +706,9 @@ class CatalogsExtension(ApiExtension):
                                 self._create_child_link(base_url, catalog_id, child)
                             )
 
-                    if not next_token:
+                    if not next_search_after:
                         break
-                    token = next_token
+                    current_search_after = next_search_after
             except Exception as e:
                 logger.warning(f"Child link generation failed for {catalog_id}: {e}")
 
@@ -692,20 +717,20 @@ class CatalogsExtension(ApiExtension):
                 {
                     "rel": "children",
                     "type": "application/json",
-                    "href": f"{base_url}catalogs/{catalog_id}/children",
+                    "href": f"{base_url}/catalogs/{catalog_id}/children",
                     "title": "Child catalogs and collections",
                 }
             )
 
             return Catalog(**catalog_dict)
 
-        except HTTPException:
+        except NotFoundError:
             raise
         except Exception as e:
-            logger.error(f"Error retrieving catalog {catalog_id}: {e}")
-            raise HTTPException(
-                status_code=404, detail=f"Catalog {catalog_id} not found"
-            )
+            if "not found" in str(e).lower():
+                raise NotFoundError(f"Catalog {catalog_id} not found")
+            logger.error(f"Internal error fetching catalog {catalog_id}: {e}")
+            raise e
 
     async def delete_catalog(self, catalog_id: str, request: Request) -> None:
         """Delete a catalog (The Container).
@@ -779,50 +804,61 @@ class CatalogsExtension(ApiExtension):
             await self.client.database.delete_catalog(catalog_id, refresh=True)
             logger.info(f"Deleted catalog {catalog_id}")
 
+        except NotFoundError:
+            raise
         except Exception as e:
-            error_msg = str(e)
-            if "not found" in error_msg.lower():
-                raise HTTPException(
-                    status_code=404, detail=f"Catalog {catalog_id} not found"
-                )
+            if "not found" in str(e).lower():
+                raise NotFoundError(f"Catalog {catalog_id} not found")
             logger.error(f"Error deleting catalog {catalog_id}: {e}")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to delete catalog: {str(e)}",
-            )
+            raise e
 
     async def get_catalog_collections(
-        self, catalog_id: str, request: Request
+        self,
+        catalog_id: str,
+        request: Request,
+        limit: int = Query(10, ge=1, le=100),
+        token: str | None = Query(None),
     ) -> stac_types.Collections:
-        """Get collections linked from a specific catalog.
+        """Get collections linked from a specific catalog with pagination.
 
         Args:
             catalog_id: The ID of the catalog.
             request: Request object.
+            limit: Maximum number of results to return (default: 10, max: 100).
+            token: Pagination token for cursor-based pagination.
 
         Returns:
             Collections object containing collections linked from the catalog.
         """
         try:
-            # Verify the catalog exists
+            # 1. Verify the catalog exists
             await self.client.database.find_catalog(catalog_id)
 
-            # Query collections by parent_ids field
-            # This uses the parent_ids field in the collection mapping to find all
-            # collections that have this catalog as a parent
-            collections_data = await search_collections_by_parent_id_shared(
-                self.client.database.client, catalog_id
+            # 2. Decode the pagination token if provided (Point 2: Robust Tokens)
+            search_after = None
+            if token:
+                try:
+                    search_after = _decode_token(token)
+                except Exception:
+                    logger.warning(f"Invalid pagination token provided: {token}")
+                    # We proceed without search_after rather than crashing
+
+            # 3. Query collections by parent_ids field with pagination
+            # We pass search_after directly to the database helper
+            (
+                collections_data,
+                total_hits,
+                next_search_after,
+            ) = await search_collections_by_parent_id_with_pagination_shared(
+                self.client.database.client, catalog_id, limit, search_after
             )
 
-            # Extract collection IDs from results
-            collection_ids = [coll.get("id") for coll in collections_data]
-
-            # Fetch the collections
+            # 4. Serialize the results (Point 1: Optimized N+1 Fix)
+            # We loop through the 'collections_data' which already contains the DB records.
+            # This saves us from making 'n' additional database calls.
             collections = []
-            for coll_id in collection_ids:
+            for collection_db in collections_data:
                 try:
-                    # Get the collection from database
-                    collection_db = await self.client.database.find_collection(coll_id)
                     # Serialize with catalog context (sets parent to catalog, injects catalog link)
                     collection = (
                         self.client.collection_serializer.db_to_stac_in_catalog(
@@ -833,53 +869,58 @@ class CatalogsExtension(ApiExtension):
                         )
                     )
                     collections.append(collection)
-                except HTTPException as e:
-                    # Only skip collections that are not found (404)
-                    if e.status_code == 404:
-                        logger.debug(f"Collection {coll_id} not found, skipping")
-                        continue
-                    else:
-                        # Re-raise other HTTP exceptions (5xx server errors, etc.)
-                        logger.error(f"HTTP error retrieving collection {coll_id}: {e}")
-                        raise
                 except Exception as e:
-                    # Log unexpected errors and re-raise them
                     logger.error(
-                        f"Unexpected error retrieving collection {coll_id}: {e}"
+                        f"Error serializing collection {collection_db.get('id')}: {e}"
                     )
-                    raise
+                    # We continue to ensure one bad record doesn't break the whole page
+                    continue
 
-            # Return in Collections format
-            base_url = str(request.base_url)
+            # 5. Build HATEOAS links
+            base_url = str(request.base_url).rstrip("/")
+            links = [
+                {"rel": "root", "type": "application/json", "href": base_url},
+                {
+                    "rel": "parent",
+                    "type": "application/json",
+                    "href": f"{base_url}/catalogs/{catalog_id}",
+                },
+                {
+                    "rel": "self",
+                    "type": "application/json",
+                    "href": str(request.url),
+                },
+            ]
+
+            # 6. Generate Base64 next link if more results exist
+            if next_search_after:
+                encoded_token = _encode_token(next_search_after)
+
+                query_params = {"limit": limit, "token": encoded_token}
+                links.append(
+                    {
+                        "rel": "next",
+                        "href": f"{base_url}/catalogs/{catalog_id}/collections?{urlencode(query_params)}",
+                        "type": "application/json",
+                        "title": "Next page",
+                    }
+                )
+
+            # 7. Return in Collections format (Fixed context fields)
             return stac_types.Collections(
                 collections=collections,
-                links=[
-                    {"rel": "root", "type": "application/json", "href": base_url},
-                    # Scoped breadcrumb: Lock parent link to the specific catalog for contextual navigation
-                    {
-                        "rel": "parent",
-                        "type": "application/json",
-                        "href": f"{base_url}catalogs/{catalog_id}",
-                    },
-                    {
-                        "rel": "self",
-                        "type": "application/json",
-                        "href": f"{base_url}catalogs/{catalog_id}/collections",
-                    },
-                ],
+                links=links,
+                numberMatched=total_hits,
+                numberReturned=len(collections),
             )
 
-        except HTTPException:
-            # Re-raise HTTP exceptions as-is
+        except NotFoundError:
             raise
         except Exception as e:
-            logger.error(
-                f"Error retrieving collections for catalog {catalog_id}: {e}",
-                exc_info=True,
-            )
-            raise HTTPException(
-                status_code=404, detail=f"Catalog {catalog_id} not found"
-            )
+            if "not found" in str(e).lower():
+                raise NotFoundError(f"Catalog {catalog_id} not found")
+            logger.error(f"Error retrieving collections for {catalog_id}: {e}")
+            raise e
 
     async def get_catalog_catalogs(
         self,
@@ -903,49 +944,40 @@ class CatalogsExtension(ApiExtension):
             HTTPException: If the catalog is not found.
         """
         try:
-            # Verify the catalog exists
             await self.client.database.find_catalog(catalog_id)
+            search_after = _decode_token(token)
 
-            # Search for sub-catalogs with pagination
+            # Updated to pass decoded search_after
             (
                 catalogs_data,
                 total_hits,
-                next_token,
+                next_search_after,
             ) = await search_sub_catalogs_with_pagination_shared(
-                self.client.database.client, catalog_id, limit, token
+                self.client.database.client, catalog_id, limit, search_after
             )
 
-            base_url = str(request.base_url)
-
-            # Format catalogs with dynamic parent and child links using shared helper
+            base_url = str(request.base_url).rstrip("/")
             catalogs = await self._format_catalogs_with_links(
                 catalogs_data, request, base_url
             )
 
-            # Generate pagination links
             links = [
                 {"rel": "root", "type": "application/json", "href": base_url},
                 {
                     "rel": "parent",
                     "type": "application/json",
-                    "href": f"{base_url}catalogs/{catalog_id}",
+                    "href": f"{base_url}/catalogs/{catalog_id}",
                 },
-                {
-                    "rel": "self",
-                    "type": "application/json",
-                    "href": str(request.url),
-                },
+                {"rel": "self", "type": "application/json", "href": str(request.url)},
             ]
 
-            # Add next link if more results exist
-            if next_token:
-                query_params = {"limit": limit, "token": next_token}
+            if next_search_after:
+                new_token = _encode_token(next_search_after)
                 links.append(
                     {
                         "rel": "next",
-                        "href": f"{base_url}catalogs/{catalog_id}/catalogs?{urlencode(query_params)}",
+                        "href": f"{base_url}/catalogs/{catalog_id}/catalogs?{urlencode({'limit': limit, 'token': new_token})}",
                         "type": "application/json",
-                        "title": "Next page",
                     }
                 )
 
@@ -955,18 +987,13 @@ class CatalogsExtension(ApiExtension):
                 "numberReturned": len(catalogs),
                 "numberMatched": total_hits,
             }
-
-        except HTTPException:
-            # Re-raise HTTP exceptions as-is
+        except NotFoundError:
             raise
         except Exception as e:
-            logger.error(
-                f"Error retrieving catalogs for catalog {catalog_id}: {e}",
-                exc_info=True,
-            )
-            raise HTTPException(
-                status_code=404, detail=f"Catalog {catalog_id} not found"
-            )
+            if "not found" in str(e).lower():
+                raise NotFoundError(f"Catalog {catalog_id} not found")
+            logger.error(f"Error in get_catalog_catalogs: {e}")
+            raise e
 
     async def create_catalog_catalog(
         self, catalog_id: str, catalog: Catalog, request: Request
@@ -1127,15 +1154,12 @@ class CatalogsExtension(ApiExtension):
                     )
 
                 # Convert back to STAC format for the response
-                updated_collection = (
-                    self.client.database.collection_serializer.db_to_stac(
-                        existing_collection_dict,
-                        request,
-                        extensions=[
-                            type(ext).__name__
-                            for ext in self.client.database.extensions
-                        ],
-                    )
+                updated_collection = self.client.collection_serializer.db_to_stac(
+                    existing_collection_dict,
+                    request,
+                    extensions=[
+                        type(ext).__name__ for ext in self.client.database.extensions
+                    ],
                 )
 
                 return updated_collection
@@ -1164,7 +1188,7 @@ class CatalogsExtension(ApiExtension):
                 # depending on which catalog it's accessed from.
 
                 # Now convert to database format (this will process the links)
-                collection_db = self.client.database.collection_serializer.stac_to_db(
+                collection_db = self.client.collection_serializer.stac_to_db(
                     collection_dict, request
                 )
                 await self.client.database.create_collection(
@@ -1172,15 +1196,12 @@ class CatalogsExtension(ApiExtension):
                 )
 
                 # Convert back to STAC format for the response
-                created_collection = (
-                    self.client.database.collection_serializer.db_to_stac(
-                        collection_db,
-                        request,
-                        extensions=[
-                            type(ext).__name__
-                            for ext in self.client.database.extensions
-                        ],
-                    )
+                created_collection = self.client.collection_serializer.db_to_stac(
+                    collection_db,
+                    request,
+                    extensions=[
+                        type(ext).__name__ for ext in self.client.database.extensions
+                    ],
                 )
 
                 return created_collection
@@ -1214,39 +1235,26 @@ class CatalogsExtension(ApiExtension):
         Returns:
             The requested collection.
         """
-        # Verify the catalog exists
         try:
             await self.client.database.find_catalog(catalog_id)
-        except Exception:
-            raise HTTPException(
-                status_code=404, detail=f"Catalog {catalog_id} not found"
-            )
-
-        # Verify the collection exists and has the catalog as a parent
-        try:
             collection_db = await self.client.database.find_collection(collection_id)
-
-            # Check if the catalog_id is in the collection's parent_ids
             parent_ids = collection_db.get("parent_ids") or []
             if catalog_id not in parent_ids:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Collection {collection_id} does not belong to catalog {catalog_id}",
+                raise NotFoundError(
+                    f"Collection {collection_id} does not belong to catalog {catalog_id}"
                 )
-        except HTTPException:
-            raise
-        except Exception:
-            raise HTTPException(
-                status_code=404, detail=f"Collection {collection_id} not found"
+            return self.client.collection_serializer.db_to_stac_in_catalog(
+                collection_db,
+                request,
+                catalog_id=catalog_id,
+                extensions=self._active_extensions,
             )
-
-        # Return the collection with catalog context (reuse collection_db from above)
-        return self.client.collection_serializer.db_to_stac_in_catalog(
-            collection_db,
-            request,
-            catalog_id=catalog_id,
-            extensions=self._active_extensions,
-        )
+        except NotFoundError:
+            raise
+        except Exception as e:
+            if "not found" in str(e).lower():
+                raise NotFoundError(f"Resource not found: {e}")
+            raise e
 
     async def get_catalog_collection_items(
         self,
@@ -1285,25 +1293,25 @@ class CatalogsExtension(ApiExtension):
         # Verify the catalog exists
         try:
             await self.client.database.find_catalog(catalog_id)
-        except Exception:
-            raise HTTPException(
-                status_code=404, detail=f"Catalog {catalog_id} not found"
+            return await self.client.item_collection(
+                collection_id=collection_id,
+                request=request,
+                bbox=bbox,
+                datetime=datetime,
+                limit=limit,
+                sortby=sortby,
+                filter_expr=filter_expr,
+                filter_lang=filter_lang,
+                token=token,
+                query=query,
+                fields=fields,
             )
-
-        # Delegate to the core client's item_collection method with all parameters
-        return await self.client.item_collection(
-            collection_id=collection_id,
-            request=request,
-            bbox=bbox,
-            datetime=datetime,
-            limit=limit,
-            sortby=sortby,
-            filter_expr=filter_expr,
-            filter_lang=filter_lang,
-            token=token,
-            query=query,
-            fields=fields,
-        )
+        except NotFoundError:
+            raise
+        except Exception as e:
+            if "not found" in str(e).lower():
+                raise NotFoundError(f"Catalog {catalog_id} not found")
+            raise e
 
     async def get_catalog_collection_item(
         self, catalog_id: str, collection_id: str, item_id: str, request: Request
@@ -1338,9 +1346,11 @@ class CatalogsExtension(ApiExtension):
         request: Request,
         limit: int = 10,
         token: str | None = None,
-        type: str
+        resource_type: str
         | None = Query(
-            None, description="Filter by resource type (Catalog or Collection)"
+            None,
+            alias="type",
+            description="Filter by resource type (Catalog or Collection)",
         ),
     ) -> dict[str, Any]:
         """
@@ -1349,97 +1359,104 @@ class CatalogsExtension(ApiExtension):
         This is a mixed content endpoint that returns both Catalogs and Collections.
         Catalogs are returned with dynamic parent and child links.
         """
-        # 1. Verify the parent catalog exists
-        await self.client.database.find_catalog(catalog_id)
+        try:
+            await self.client.database.find_catalog(catalog_id)
+            search_after = _decode_token(token)
 
-        # 2. Search for children with pagination
-        children_data, total, next_token = await search_children_with_pagination_shared(
-            self.client.database.client, catalog_id, limit, token, resource_type=type
-        )
-
-        base_url = str(request.base_url)
-
-        # 3. Separate catalogs and collections for processing
-        catalog_children = [
-            doc for doc in children_data if doc.get("type") == "Catalog"
-        ]
-        collection_children = [
-            doc for doc in children_data if doc.get("type") != "Catalog"
-        ]
-
-        # 4. Format catalogs with dynamic links using shared helper
-        formatted_catalogs = []
-        if catalog_children:
-            formatted_catalogs = await self._format_catalogs_with_links(
-                catalog_children, request, base_url
+            # 1. Fetch data
+            (
+                children_data,
+                total,
+                next_search_after,
+            ) = await search_children_with_pagination_shared(
+                self.client.database.client,
+                catalog_id,
+                limit,
+                search_after,
+                resource_type=resource_type,
             )
 
-        # 5. Serialize collections (no dynamic links needed)
-        formatted_collections = []
-        for doc in collection_children:
-            child = self.client.collection_serializer.db_to_stac(doc, request)
-            formatted_collections.append(child)
+            base_url = str(request.base_url).rstrip("/")
 
-        # 6. Combine catalogs and collections in original order
-        children = []
-        catalog_idx = 0
-        collection_idx = 0
-        for doc in children_data:
-            if doc.get("type") == "Catalog":
-                if catalog_idx < len(formatted_catalogs):
-                    children.append(formatted_catalogs[catalog_idx])
-                    catalog_idx += 1
-            else:
-                if collection_idx < len(formatted_collections):
-                    children.append(formatted_collections[collection_idx])
-                    collection_idx += 1
+            # 2. SEPARATE: Pull out catalogs to format them as a batch
+            catalog_docs = [
+                doc for doc in children_data if doc.get("type") == "Catalog"
+            ]
 
-        # 4. Format Response
-        # The Children extension uses a specific response format
-        response = {
-            "children": children,
-            "links": [
+            # 3. BATCH PROCESS: One call to rule them all
+            # This triggers the asyncio.gather inside the helper for ALL catalogs at once
+            formatted_catalogs_list = []
+            if catalog_docs:
+                formatted_catalogs_list = await self._format_catalogs_with_links(
+                    catalog_docs, request, base_url
+                )
+
+            # Create a lookup map for easy re-assembly: { "id": CatalogObject }
+            catalog_lookup = {c.id: c for c in formatted_catalogs_list}
+
+            # 4. RE-ASSEMBLE: Put them back in the original search order
+            formatted_children = []
+            for doc in children_data:
+                doc_id = doc.get("id")
+                if doc.get("type") == "Catalog":
+                    formatted_catalog = catalog_lookup.get(doc_id)
+                    if formatted_catalog is not None:
+                        formatted_children.append(formatted_catalog)
+                    else:
+                        logger.error(
+                            f"Catalog child {doc_id} could not be batch-formatted; returning minimally serialized document without dynamic child links."
+                        )
+                        formatted_children.append(
+                            self.client.catalog_serializer.db_to_stac(
+                                doc,
+                                request,
+                                extensions=self._active_extensions,
+                            )
+                        )
+                else:
+                    # Collections don't need parent/child pre-fetching, so serialize normally
+                    formatted_children.append(
+                        self.client.collection_serializer.db_to_stac(doc, request)
+                    )
+
+            # 5. Build links (The rest remains the same)
+            links = [
                 {"rel": "self", "type": "application/json", "href": str(request.url)},
-                {
-                    "rel": "root",
-                    "type": "application/json",
-                    "href": str(request.base_url),
-                },
+                {"rel": "root", "type": "application/json", "href": base_url},
                 {
                     "rel": "parent",
                     "type": "application/json",
-                    "href": f"{str(request.base_url)}catalogs/{catalog_id}",
+                    "href": f"{base_url}/catalogs/{catalog_id}",
                 },
-            ],
-            "numberReturned": len(children),
-            "numberMatched": total,
-        }
+            ]
 
-        # 5. Generate Next Link
-        if next_token:
-            # Get existing query params
-            parsed_url = urlparse(str(request.url))
-            params = parse_qs(parsed_url.query)
+            if next_search_after:
+                new_token = _encode_token(next_search_after)
+                params = {"limit": limit, "token": new_token}
+                if resource_type:
+                    params["type"] = resource_type
+                links.append(
+                    {
+                        "rel": "next",
+                        "type": "application/json",
+                        "href": f"{base_url}/catalogs/{catalog_id}/children?{urlencode(params)}",
+                        "title": "Next page",
+                    }
+                )
 
-            # Update params
-            params["token"] = [next_token]
-            params["limit"] = [str(limit)]
-            if type:
-                params["type"] = [type]
-
-            # Flatten params for urlencode (parse_qs returns lists)
-            flat_params = {
-                k: v[0] if isinstance(v, list) else v for k, v in params.items()
+            return {
+                "children": formatted_children,
+                "links": links,
+                "numberReturned": len(formatted_children),
+                "numberMatched": total,
             }
-
-            next_link = {
-                "rel": "next",
-                "type": "application/json",
-                "href": f"{request.base_url}catalogs/{catalog_id}/children?{urlencode(flat_params)}",
-            }
-            response["links"].append(next_link)
-
-        return response
+        except NotFoundError:
+            raise
+        except Exception as e:
+            if "not found" in str(e).lower():
+                raise NotFoundError(f"Catalog {catalog_id} not found")
+            logger.error(f"Error in get_catalog_children: {e}")
+            raise e
 
     async def delete_catalog_collection(
         self, catalog_id: str, collection_id: str, request: Request
@@ -1500,14 +1517,10 @@ class CatalogsExtension(ApiExtension):
                 collection_id=collection_id, collection=collection_db, refresh=True
             )
 
-        except HTTPException:
+        except NotFoundError:
             raise
         except Exception as e:
-            logger.error(
-                f"Error removing collection {collection_id} from catalog {catalog_id}: {e}",
-                exc_info=True,
-            )
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to remove collection from catalog: {str(e)}",
-            )
+            if "not found" in str(e).lower():
+                raise NotFoundError(f"Resource not found: {e}")
+            logger.error(f"Error unlinking collection: {e}")
+            raise e
