@@ -10,8 +10,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 
 ### Changed
+- Updated SFEOS Tools CLI section in README with expanded documentation for `load-data` command and standardized options [#637](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/637)
 
-### Changed
+### Removed
 
 - Updated CI/CD testing to use OpenSearch 3.5.0 instead of 2.19.3. [#631](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/631)
 - Refactored serializers and catalog extension to eliminate duplicated code by extracting helper methods: `_create_child_link()` for child link generation, `_set_collection_defaults()` for STAC Collection field initialization, and `_deserialize_assets()` for asset handling. This improves maintainability by centralizing common logic into single-source-of-truth implementations. [#629](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/629)
