@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+### Updated
+
+### Changed
+
+### Removed
+
+### Fixed
+
+## [v6.14.0] - 2026-03-19
+
 ### Changed
 - Updated SFEOS Tools CLI section in README with expanded documentation for `load-data` command and standardized options [#637](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/637)
 
@@ -23,7 +33,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Fixed `json_patch_item` datetime validation for datetime-based indexes: PATCH operations on datetime fields (`properties/datetime`, `properties/start_datetime`, `properties/end_datetime`) no longer raise an error when the value is unchanged. Validation now compares old and new values before rejecting the operation, consistent with `update_item` (PUT) behavior. [#636](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/636)
 - Fixed issue with POST /collections-search cql2-json filter. [#639](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/639)
 
-### Removed
 
 ## [v6.13.0] - 2026-03-14
 
@@ -810,7 +819,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.13.0...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.14.0...main
+[v6.14.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.13.0...v6.14.0
 [v6.13.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.12.0...v6.13.0
 [v6.12.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.11.2...v6.12.0
 [v6.11.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.10.2...v6.11.0
