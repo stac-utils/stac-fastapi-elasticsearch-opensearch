@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [Unreleased]
 
 ### Added
+- Added custom mappings integration for Dynamic Template.
+- Added custom mapping integration for Collections.
+
+### Changed
+- Improved `mappings.py` for code reusability.
+- Added logic to merge list of dict for Dynamic Template.
+
+## [Unreleased]
+
+### Added
 - Added `filter_indexes_by_datetime_range` for selecting indexes using range intersection between query `[start_datetime, end_datetime]` and index temporal extent, used when `USE_DATETIME=false`.
 - Added datetime-only index filtering: when no collections are specified but a datetime range is provided, `DatetimeBasedIndexSelector` now filters indexes across all collections by the given time range instead of falling back to a wildcard.
 
