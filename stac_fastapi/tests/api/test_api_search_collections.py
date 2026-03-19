@@ -414,6 +414,53 @@ async def test_collections_filter_search(app_client, txn_client, ctx):
 
 
 @pytest.mark.asyncio
+async def test_collections_filter_search_in_ids_post_only(app_client, txn_client, ctx):
+    """Verify POST /collections-search honors CQL2-json `in` filter on id for multiple collections."""
+    base_collection = ctx.collection
+
+    test_prefix = f"filter-in-{uuid.uuid4().hex[:8]}"
+    target_ids = [f"{test_prefix}-1", f"{test_prefix}-2"]
+    other_id = f"{test_prefix}-other"
+
+    # Create two target collections and one extra collection
+    for coll_id in target_ids + [other_id]:
+        test_collection = base_collection.copy()
+        test_collection["id"] = coll_id
+        test_collection["title"] = f"Test Collection {coll_id}"
+        await create_collection(txn_client, test_collection)
+
+    await refresh_indices(txn_client)
+
+    # CQL2-json filter: id IN [target_ids]
+    filter_expr = {
+        "op": "in",
+        "args": [
+            {"property": "id"},
+            target_ids,
+        ],
+    }
+
+    resp = await app_client.post(
+        "/collections-search",
+        json={
+            "filter": filter_expr,
+            "filter_lang": "cql2-json",
+            "limit": 10,
+        },
+    )
+
+    assert resp.status_code == 200, resp.text
+    resp_json = resp.json()
+
+    returned_ids = {
+        c["id"] for c in resp_json["collections"] if c["id"].startswith(test_prefix)
+    }
+
+    # Only the two target collections should be returned, not the other one
+    assert returned_ids == set(target_ids)
+
+
+@pytest.mark.asyncio
 async def test_collections_query_extension(app_client, txn_client, ctx):
     """Verify GET /collections, GET /collections-search, and POST /collections-search honor the query extension."""
     # Create multiple collections with different content

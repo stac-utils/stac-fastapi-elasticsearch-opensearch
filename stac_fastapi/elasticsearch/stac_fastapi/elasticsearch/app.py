@@ -69,7 +69,7 @@ if sentry_enable:
         ca_certs=os.getenv("SENTRY_CA_CERTS", None),
     )
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, force=True)
 logger = logging.getLogger(__name__)
 
 TRANSACTIONS_EXTENSIONS = get_bool_env("ENABLE_TRANSACTIONS_EXTENSIONS", default=True)
@@ -228,7 +228,8 @@ if ENABLE_CATALOGS_ROUTE:
         ),
         settings=settings,
         conformance_classes=[
-            "https://api.stacspec.org/v1.0.0-beta.1/multi-tenant-catalogs",
+            "https://api.stacspec.org/v1.0.0-beta.4/multi-tenant-catalogs",
+            "https://api.stacspec.org/v1.0.0-beta.4/multi-tenant-catalogs/transaction",  # Optional conformance class for transactional support
         ],
     )
     extensions.append(catalogs_extension)
@@ -260,7 +261,7 @@ items_get_request_model = create_request_model(
 app_config = {
     "title": os.getenv("STAC_FASTAPI_TITLE", "stac-fastapi-elasticsearch"),
     "description": os.getenv("STAC_FASTAPI_DESCRIPTION", "stac-fastapi-elasticsearch"),
-    "api_version": os.getenv("STAC_FASTAPI_VERSION", "6.12.0"),
+    "api_version": os.getenv("STAC_FASTAPI_VERSION", "6.13.0"),
     "settings": settings,
     "extensions": extensions,
     "client": CoreClient(
@@ -293,6 +294,16 @@ async def lifespan(app: FastAPI):
 app = api.app
 app.router.lifespan_context = lifespan
 app.root_path = os.getenv("STAC_FASTAPI_ROOT_PATH", "")
+
+try:
+    from stac_fastapi.sfeos_helpers.metrics import get_instrumentator
+
+    metrics = get_instrumentator()
+    metrics.instrument(app).expose(app, endpoint="/metrics")
+except ImportError:
+    logger.warning(
+        "prometheus-fastapi-instrumentator not installed; metrics endpoint disabled"
+    )
 
 # Add rate limit
 setup_rate_limit(app, rate_limit=os.getenv("STAC_FASTAPI_RATE_LIMIT"))

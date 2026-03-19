@@ -53,13 +53,23 @@ def to_es(queryables_mapping: dict[str, Any], query: dict[str, Any]) -> dict[str
     Returns:
         dict[str, Any]: The corresponding Elasticsearch query in the form of a dictionary.
     """
+    op = query.get("op")
+    # Be permissive about operator casing coming from request bodies / validators.
+    # In practice we see some clients (and some model validators) emit operators like "IN".
+    if isinstance(op, str):
+        op_lower = op.lower()
+        if op_lower in {"and", "or", "not", "like", "between", "in"}:
+            op = op_lower
+        elif op_lower == "isnull":
+            op = ComparisonOp.IS_NULL
+
     queries: list[dict[str, Any]] = [{}]
-    if query["op"] in [LogicalOp.AND, LogicalOp.OR, LogicalOp.NOT]:
+    if op in [LogicalOp.AND, LogicalOp.OR, LogicalOp.NOT]:
         bool_type = {
             LogicalOp.AND: "must",
             LogicalOp.OR: "should",
             LogicalOp.NOT: "must_not",
-        }[query["op"]]
+        }[op]
         return {
             "bool": {
                 bool_type: [
@@ -68,7 +78,7 @@ def to_es(queryables_mapping: dict[str, Any], query: dict[str, Any]) -> dict[str
             }
         }
 
-    elif query["op"] in [
+    elif op in [
         ComparisonOp.EQ,
         ComparisonOp.NEQ,
         ComparisonOp.LT,
@@ -85,42 +95,50 @@ def to_es(queryables_mapping: dict[str, Any], query: dict[str, Any]) -> dict[str
 
         fields = to_es_field(queryables_mapping, query["args"][0]["property"])
 
-        if query["op"] in [ComparisonOp.EQ, ComparisonOp.NEQ]:
-            field = next((f for f in fields if f.endswith(".keyword")), fields[0])
+        if op in [ComparisonOp.EQ, ComparisonOp.NEQ]:
+            selected_field = next((f for f in fields if f.endswith(".keyword")), fields[0])
         else:
-            field = next((f for f in fields if not f.endswith(".keyword")), fields[0])
+            selected_field = next((f for f in fields if not f.endswith(".keyword")), fields[0])
 
         value = query["args"][1]
         if isinstance(value, dict) and "timestamp" in value:
             value = value["timestamp"]
-            if query["op"] == ComparisonOp.EQ:
-                queries = [{"range": {field: {"gte": value, "lte": value}}}]
-            elif query["op"] == ComparisonOp.NEQ:
+            if op == ComparisonOp.EQ:
+                queries = [
+                    {"range": {selected_field: {"gte": value, "lte": value}}}
+                ]
+            elif op == ComparisonOp.NEQ:
                 queries = [
                     {
                         "bool": {
                             "must_not": [
-                                {"range": {field: {"gte": value, "lte": value}}}
+                                {"range": {selected_field: {"gte": value, "lte": value}}}
                             ]
                         }
                     }
                 ]
             else:
-                queries = [{"range": {field: {range_op[query["op"]]: value}}}]
+                queries = [
+                    {"range": {selected_field: {range_op[op]: value}}}
+                ]
         else:
-            if query["op"] == ComparisonOp.EQ:
-                queries = [{"term": {field: value}}]
-            elif query["op"] == ComparisonOp.NEQ:
-                queries = [{"bool": {"must_not": [{"term": {field: value}}]}}]
+            if op == ComparisonOp.EQ:
+                queries = [{"term": {selected_field: value}}]
+            elif op == ComparisonOp.NEQ:
+                queries = [
+                    {"bool": {"must_not": [{"term": {selected_field: value}}]}}
+                ]
             else:
-                queries = [{"range": {field: {range_op[query["op"]]: value}}}]
+                queries = [
+                    {"range": {selected_field: {range_op[op]: value}}}
+                ]
 
-    elif query["op"] == ComparisonOp.IS_NULL:
+    elif op == ComparisonOp.IS_NULL:
         fields = to_es_field(queryables_mapping, query["args"][0]["property"])
         field = next((f for f in fields if not f.endswith(".keyword")), fields[0])
         queries = [{"bool": {"must_not": {"exists": {"field": field}}}}]
 
-    elif query["op"] == AdvancedComparisonOp.BETWEEN:
+    elif op == AdvancedComparisonOp.BETWEEN:
         fields = to_es_field(queryables_mapping, query["args"][0]["property"])
         field = next((f for f in fields if not f.endswith(".keyword")), fields[0])
 
@@ -142,7 +160,7 @@ def to_es(queryables_mapping: dict[str, Any], query: dict[str, Any]) -> dict[str
             lte = lte["timestamp"]
         queries = [{"range": {field: {"gte": gte, "lte": lte}}}]
 
-    elif query["op"] == AdvancedComparisonOp.IN:
+    elif op == AdvancedComparisonOp.IN:
         fields = to_es_field(queryables_mapping, query["args"][0]["property"])
         field = next((f for f in fields if f.endswith(".keyword")), fields[0])
         values = query["args"][1]
@@ -150,13 +168,13 @@ def to_es(queryables_mapping: dict[str, Any], query: dict[str, Any]) -> dict[str
             raise ValueError(f"Arg {values} is not a list")
         queries = [{"terms": {field: values}}]
 
-    elif query["op"] == AdvancedComparisonOp.LIKE:
+    elif op == AdvancedComparisonOp.LIKE:
         fields = to_es_field(queryables_mapping, query["args"][0]["property"])
         field = next((f for f in fields if not f.endswith(".keyword")), fields[0])
         pattern = cql2_like_to_es(query["args"][1])
         queries = [{"wildcard": {field: {"value": pattern, "case_insensitive": True}}}]
 
-    elif query["op"] in [
+    elif op in [
         SpatialOp.S_INTERSECTS,
         SpatialOp.S_CONTAINS,
         SpatialOp.S_WITHIN,
@@ -173,7 +191,9 @@ def to_es(queryables_mapping: dict[str, Any], query: dict[str, Any]) -> dict[str
             SpatialOp.S_DISJOINT: "disjoint",
         }
 
-        relation = relation_mapping[query["op"]]
-        queries = [{"geo_shape": {field: {"shape": geometry, "relation": relation}}}]
+        relation = relation_mapping[op]
+        queries = [
+            {"geo_shape": {field: {"shape": geometry, "relation": relation}}}
+        ]
 
     return queries[0] if len(queries) == 1 else {"bool": {"should": queries}}

@@ -1,13 +1,20 @@
 """Async index selectors with datetime-based filtering."""
-from typing import Any
+import logging
+from typing import Any, cast
 
 from stac_fastapi.core.utilities import get_bool_env
-from stac_fastapi.sfeos_helpers.database import filter_indexes_by_datetime, return_date
+from stac_fastapi.sfeos_helpers.database import (
+    filter_indexes_by_datetime,
+    filter_indexes_by_datetime_range,
+    return_date,
+)
 from stac_fastapi.sfeos_helpers.mappings import ITEM_INDICES
 
 from ...database import indices
 from .base import BaseIndexSelector
 from .cache_manager import IndexAliasLoader, IndexCacheManager
+
+logger = logging.getLogger(__name__)
 
 
 class DatetimeBasedIndexSelector(BaseIndexSelector):
@@ -81,12 +88,13 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
         """Select indexes filtered by collection IDs and datetime criteria.
 
         For each specified collection, retrieves its associated indexes and filters
-        them based on datetime range. If no collection IDs are provided, returns
-        all item indices.
+        them based on datetime range. If no collection IDs are provided but datetime
+        criteria exist, filters across all collections by datetime. If neither is
+        provided, returns all item indices.
 
         Args:
             collection_ids (list[str] | None): List of collection IDs to filter by.
-                If None or empty, returns all item indices.
+                If None or empty, all collections are considered for datetime filtering.
             datetime_search (str): Datetime search criteria.
             for_insertion (bool): If True, selects indexes for inserting items into
                 the database. If False, selects indexes for searching/querying items.
@@ -98,28 +106,74 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
                 indexes match the criteria.
         """
         datetime_filters = self.parse_datetime_filters(datetime_search, for_insertion)
+
         if collection_ids:
-            selected_indexes = []
-            for collection_id in collection_ids:
-                collection_indexes = await self.get_collection_indexes(
-                    collection_id, use_cache=not for_insertion
-                )
-                filtered_indexes = filter_indexes_by_datetime(
-                    collection_indexes, datetime_filters, self.use_datetime
-                )
-                selected_indexes.extend(filtered_indexes)
+            collections_indexes = [
+                await self.get_collection_indexes(cid, use_cache=not for_insertion)
+                for cid in collection_ids
+            ]
+        elif self._has_datetime_values(datetime_search):
+            all_aliases = await self.alias_loader.get_aliases()
+            collections_indexes = list(all_aliases.values())
+        else:
+            logger.info(f"Selected indexes: {ITEM_INDICES}")
+            return ITEM_INDICES
 
-            return ",".join(selected_indexes) if selected_indexes else ""
+        selected_indexes = []
+        for collection_indexes in collections_indexes:
+            selected_indexes.extend(
+                self._filter_indexes(
+                    collection_indexes, datetime_filters, for_insertion
+                )
+            )
 
-        return ITEM_INDICES
+        result = ",".join(selected_indexes) if selected_indexes else ""
+        logger.info(f"Selected indexes: {result}")
+        return result
+
+    def _filter_indexes(
+        self,
+        collection_indexes: list[tuple[dict[str, str]]],
+        datetime_filters: dict[str, dict[str, Any]],
+        for_insertion: bool,
+    ) -> list[str]:
+        """Filter collection indexes by datetime criteria.
+
+        Args:
+            collection_indexes: Index aliases for a collection.
+            datetime_filters: Parsed datetime filter criteria.
+            for_insertion: Whether filtering for insertion or search.
+
+        Returns:
+            List of matching index alias names.
+        """
+        if for_insertion or self.use_datetime:
+            return filter_indexes_by_datetime(
+                collection_indexes, datetime_filters, self.use_datetime
+            )
+        return filter_indexes_by_datetime_range(collection_indexes, datetime_filters)
+
+    @staticmethod
+    def _has_datetime_values(datetime_search: str | dict | None) -> bool:
+        """Check if datetime_search contains actual datetime values.
+
+        Args:
+            datetime_search: Datetime search criteria (dict with gte/lte or string).
+
+        Returns:
+            True if datetime_search has non-empty datetime values.
+        """
+        if isinstance(datetime_search, dict):
+            return bool(datetime_search.get("gte") or datetime_search.get("lte"))
+        return bool(datetime_search)
 
     def parse_datetime_filters(
-        self, datetime: str, for_insertion: bool
-    ) -> dict[str, dict[str, str | None]]:
+        self, datetime: str | dict, for_insertion: bool
+    ) -> dict[str, dict[str, Any]]:
         """Parse datetime string into structured filter criteria.
 
         Args:
-            datetime: Datetime search criteria string
+            datetime: Datetime search criteria string or dict with gte/lte keys.
             for_insertion (bool): If True, generates filters for inserting items.
                 If False, generates filters for searching items. Defaults to False.
 
@@ -141,18 +195,19 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
                 "end_datetime": {"gte": None, "lte": None},
             }
 
+        dt_dict = cast(dict, datetime)
         return {
             "datetime": {
                 "gte": parsed_datetime.get("gte") if self.use_datetime else None,
                 "lte": parsed_datetime.get("lte") if self.use_datetime else None,
             },
             "start_datetime": {
-                "gte": parsed_datetime.get("gte") if not self.use_datetime else None,
+                "gte": dt_dict.get("gte") if not self.use_datetime else None,
                 "lte": None,
             },
             "end_datetime": {
                 "gte": None,
-                "lte": parsed_datetime.get("lte") if not self.use_datetime else None,
+                "lte": dt_dict.get("lte") if not self.use_datetime else None,
             },
         }
 

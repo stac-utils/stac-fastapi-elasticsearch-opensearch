@@ -71,17 +71,21 @@ class ItemQueueWorker:
         """Extract item IDs from bulk_async error responses.
 
         Each error dict has the shape:
-            {"index": {"_id": "item_id|collection_id", ...}}
+            {"<op_type>": {"_id": "item_id|collection_id", ...}}
+        where op_type is one of: index, create, update, delete.
 
         Returns:
             Set of failed item IDs.
         """
         failed: set[str] = set()
         for error in errors:
-            index_info = error.get("index", {})
-            doc_id = index_info.get("_id", "")
-            if doc_id:
-                failed.add(doc_id.split("|")[0])
+            for op_type in ("index", "create", "update", "delete"):
+                info = error.get(op_type)
+                if info:
+                    doc_id = info.get("_id", "")
+                    if doc_id:
+                        failed.add(doc_id.split("|")[0])
+                    break
         return failed
 
     async def _should_flush(self, collection_id: str) -> bool:
@@ -166,15 +170,19 @@ class ItemQueueWorker:
                 failed_ids = self._extract_failed_item_ids(errors) if errors else set()
                 successful_ids = [iid for iid in item_ids if iid not in failed_ids]
 
+                if errors:
+                    logger.error(
+                        f"Collection '{collection_id}' batch #{batch_num}: "
+                        f"{len(failed_ids)} item(s) failed, saving to DLQ. "
+                        f"Bulk errors: {errors}"
+                    )
+
                 if successful_ids:
                     await self.queue_manager.mark_items_processed(
                         collection_id, successful_ids
                     )
 
                 if failed_ids:
-                    logger.error(
-                        f"Collection '{collection_id}' batch #{batch_num}: {len(failed_ids)} item(s) failed, saving to DLQ: {failed_ids}"
-                    )
                     try:
                         await self.queue_manager.save_failed_items(
                             collection_id, list(failed_ids)
