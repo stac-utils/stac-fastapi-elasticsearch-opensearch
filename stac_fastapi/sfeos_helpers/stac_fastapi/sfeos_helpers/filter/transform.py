@@ -96,42 +96,42 @@ def to_es(queryables_mapping: dict[str, Any], query: dict[str, Any]) -> dict[str
         fields = to_es_field(queryables_mapping, query["args"][0]["property"])
 
         if op in [ComparisonOp.EQ, ComparisonOp.NEQ]:
-            selected_field = next((f for f in fields if f.endswith(".keyword")), fields[0])
+            selected_field = next(
+                (f for f in fields if f.endswith(".keyword")), fields[0]
+            )
         else:
-            selected_field = next((f for f in fields if not f.endswith(".keyword")), fields[0])
+            selected_field = next(
+                (f for f in fields if not f.endswith(".keyword")), fields[0]
+            )
 
         value = query["args"][1]
         if isinstance(value, dict) and "timestamp" in value:
             value = value["timestamp"]
             if op == ComparisonOp.EQ:
-                queries = [
-                    {"range": {selected_field: {"gte": value, "lte": value}}}
-                ]
+                queries = [{"range": {selected_field: {"gte": value, "lte": value}}}]
             elif op == ComparisonOp.NEQ:
                 queries = [
                     {
                         "bool": {
                             "must_not": [
-                                {"range": {selected_field: {"gte": value, "lte": value}}}
+                                {
+                                    "range": {
+                                        selected_field: {"gte": value, "lte": value}
+                                    }
+                                }
                             ]
                         }
                     }
                 ]
             else:
-                queries = [
-                    {"range": {selected_field: {range_op[op]: value}}}
-                ]
+                queries = [{"range": {selected_field: {range_op[op]: value}}}]
         else:
             if op == ComparisonOp.EQ:
                 queries = [{"term": {selected_field: value}}]
             elif op == ComparisonOp.NEQ:
-                queries = [
-                    {"bool": {"must_not": [{"term": {selected_field: value}}]}}
-                ]
+                queries = [{"bool": {"must_not": [{"term": {selected_field: value}}]}}]
             else:
-                queries = [
-                    {"range": {selected_field: {range_op[op]: value}}}
-                ]
+                queries = [{"range": {selected_field: {range_op[op]: value}}}]
 
     elif op == ComparisonOp.IS_NULL:
         fields = to_es_field(queryables_mapping, query["args"][0]["property"])
@@ -192,8 +192,6 @@ def to_es(queryables_mapping: dict[str, Any], query: dict[str, Any]) -> dict[str
         }
 
         relation = relation_mapping[op]
-        queries = [
-            {"geo_shape": {field: {"shape": geometry, "relation": relation}}}
-        ]
+        queries = [{"geo_shape": {field: {"shape": geometry, "relation": relation}}}]
 
     return queries[0] if len(queries) == 1 else {"bool": {"should": queries}}
