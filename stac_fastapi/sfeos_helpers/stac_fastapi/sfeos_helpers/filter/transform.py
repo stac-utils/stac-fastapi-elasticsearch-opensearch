@@ -53,13 +53,23 @@ def to_es(queryables_mapping: dict[str, Any], query: dict[str, Any]) -> dict[str
     Returns:
         dict[str, Any]: The corresponding Elasticsearch query in the form of a dictionary.
     """
+    op = query.get("op")
+    # Be permissive about operator casing coming from request bodies / validators.
+    # In practice we see some clients (and some model validators) emit operators like "IN".
+    if isinstance(op, str):
+        op_lower = op.lower()
+        if op_lower in {"and", "or", "not", "like", "between", "in"}:
+            op = op_lower
+        elif op_lower == "isnull":
+            op = ComparisonOp.IS_NULL
+
     queries: list[dict[str, Any]] = [{}]
-    if query["op"] in [LogicalOp.AND, LogicalOp.OR, LogicalOp.NOT]:
+    if op in [LogicalOp.AND, LogicalOp.OR, LogicalOp.NOT]:
         bool_type = {
             LogicalOp.AND: "must",
             LogicalOp.OR: "should",
             LogicalOp.NOT: "must_not",
-        }[query["op"]]
+        }[op]
         return {
             "bool": {
                 bool_type: [
@@ -68,7 +78,7 @@ def to_es(queryables_mapping: dict[str, Any], query: dict[str, Any]) -> dict[str
             }
         }
 
-    elif query["op"] in [
+    elif op in [
         ComparisonOp.EQ,
         ComparisonOp.NEQ,
         ComparisonOp.LT,
@@ -87,11 +97,11 @@ def to_es(queryables_mapping: dict[str, Any], query: dict[str, Any]) -> dict[str
         value = query["args"][1]
         if isinstance(value, dict) and "timestamp" in value:
             value = value["timestamp"]
-            if query["op"] == ComparisonOp.EQ:
+            if op == ComparisonOp.EQ:
                 queries = [
                     {"range": {field: {"gte": value, "lte": value}}} for field in fields
                 ]
-            elif query["op"] == ComparisonOp.NEQ:
+            elif op == ComparisonOp.NEQ:
                 queries = [
                     {
                         "bool": {
@@ -104,30 +114,28 @@ def to_es(queryables_mapping: dict[str, Any], query: dict[str, Any]) -> dict[str
                 ]
             else:
                 queries = [
-                    {"range": {field: {range_op[query["op"]]: value}}}
-                    for field in fields
+                    {"range": {field: {range_op[op]: value}}} for field in fields
                 ]
         else:
-            if query["op"] == ComparisonOp.EQ:
+            if op == ComparisonOp.EQ:
                 queries = [{"term": {field: value}} for field in fields]
-            elif query["op"] == ComparisonOp.NEQ:
+            elif op == ComparisonOp.NEQ:
                 queries = [
                     {"bool": {"must_not": [{"term": {field: value}}]}}
                     for field in fields
                 ]
             else:
                 queries = [
-                    {"range": {field: {range_op[query["op"]]: value}}}
-                    for field in fields
+                    {"range": {field: {range_op[op]: value}}} for field in fields
                 ]
 
-    elif query["op"] == ComparisonOp.IS_NULL:
+    elif op == ComparisonOp.IS_NULL:
         fields = to_es_field(queryables_mapping, query["args"][0]["property"])
         queries = [
             {"bool": {"must_not": {"exists": {"field": field}}}} for field in fields
         ]
 
-    elif query["op"] == AdvancedComparisonOp.BETWEEN:
+    elif op == AdvancedComparisonOp.BETWEEN:
         fields = to_es_field(queryables_mapping, query["args"][0]["property"])
 
         # Handle both formats: [property, [lower, upper]] or [property, lower, upper]
@@ -148,14 +156,14 @@ def to_es(queryables_mapping: dict[str, Any], query: dict[str, Any]) -> dict[str
             lte = lte["timestamp"]
         queries = [{"range": {field: {"gte": gte, "lte": lte}}} for field in fields]
 
-    elif query["op"] == AdvancedComparisonOp.IN:
+    elif op == AdvancedComparisonOp.IN:
         fields = to_es_field(queryables_mapping, query["args"][0]["property"])
         values = query["args"][1]
         if not isinstance(values, list):
             raise ValueError(f"Arg {values} is not a list")
         queries = [{"terms": {field: values}} for field in fields]
 
-    elif query["op"] == AdvancedComparisonOp.LIKE:
+    elif op == AdvancedComparisonOp.LIKE:
         fields = to_es_field(queryables_mapping, query["args"][0]["property"])
         pattern = cql2_like_to_es(query["args"][1])
         queries = [
@@ -163,7 +171,7 @@ def to_es(queryables_mapping: dict[str, Any], query: dict[str, Any]) -> dict[str
             for field in fields
         ]
 
-    elif query["op"] in [
+    elif op in [
         SpatialOp.S_INTERSECTS,
         SpatialOp.S_CONTAINS,
         SpatialOp.S_WITHIN,
@@ -179,7 +187,7 @@ def to_es(queryables_mapping: dict[str, Any], query: dict[str, Any]) -> dict[str
             SpatialOp.S_DISJOINT: "disjoint",
         }
 
-        relation = relation_mapping[query["op"]]
+        relation = relation_mapping[op]
         queries = [
             {"geo_shape": {field: {"shape": geometry, "relation": relation}}}
             for field in fields
