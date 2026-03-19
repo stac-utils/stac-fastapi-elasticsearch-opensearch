@@ -154,27 +154,52 @@ def _transform_ast_node(
 ) -> Dict[str, Any]:
     """Transform AST node to Elasticsearch/Opensearch query."""
     if isinstance(node, LogicalNode):
-        bool_type = {
-            LogicalOp.AND: "must",
-            LogicalOp.OR: "should",
-            LogicalOp.NOT: "must_not",
-        }[node.op]
+        if node.op == LogicalOp.AND:
+            # Process all children for AND operator
+            must_clauses = []
+            must_not_clauses = []
 
-        if node.op == LogicalOp.NOT:
+            for child in node.children:
+                child_query = _transform_ast_node(queryables_mapping, child)
+
+                # Check if this child is a negation that can be hoisted
+                if isinstance(child_query, dict) and "bool" in child_query:
+                    bool_query = child_query["bool"]
+                    # If it's a simple negation (only must_not), hoist it
+                    if len(bool_query) == 1 and "must_not" in bool_query:
+                        must_not_clauses.append(bool_query["must_not"])
+                    else:
+                        must_clauses.append(child_query)
+                else:
+                    must_clauses.append(child_query)
+
+            # Build the final bool query
+            bool_query = {}
+            if must_clauses:
+                bool_query["must"] = (
+                    must_clauses if len(must_clauses) > 1 else must_clauses[0]
+                )
+            if must_not_clauses:
+                bool_query["must_not"] = (
+                    must_not_clauses
+                    if len(must_not_clauses) > 1
+                    else must_not_clauses[0]
+                )
+
+            return {"bool": bool_query}
+
+        elif node.op == LogicalOp.OR:
             return {
                 "bool": {
-                    bool_type: _transform_ast_node(queryables_mapping, node.children[0])
-                }
-            }
-        else:
-            return {
-                "bool": {
-                    bool_type: [
+                    "should": [
                         _transform_ast_node(queryables_mapping, child)
                         for child in node.children
                     ]
                 }
             }
+        elif node.op == LogicalOp.NOT:
+            child_query = _transform_ast_node(queryables_mapping, node.children[0])
+            return {"bool": {"must_not": child_query}}
 
     elif isinstance(node, ComparisonNode):
         # Map the field using queryables_mapping
@@ -190,7 +215,9 @@ def _transform_ast_node(
             if node.op == ComparisonOp.EQ:
                 queries.append({"term": {field: value}})
             elif node.op == ComparisonOp.NEQ:
-                queries.append({"bool": {"must_not": [{"term": {field: value}}]}})
+                # Use term query for all fields including datetime
+                # Term query is semantically correct for "not equals"
+                queries.append({"term": {field: value}})
             elif node.op in [
                 ComparisonOp.LT,
                 ComparisonOp.LTE,
@@ -207,7 +234,16 @@ def _transform_ast_node(
             elif node.op == ComparisonOp.IS_NULL:
                 queries.append({"bool": {"must_not": {"exists": {"field": field}}}})
 
-        return queries[0] if len(queries) == 1 else {"bool": {"should": queries}}
+        # Handle negation at this level
+        if node.op == ComparisonOp.NEQ:
+            if len(queries) == 1:
+                # Return as a simple must_not structure for hoisting
+                return {"bool": {"must_not": queries[0]}}
+            else:
+                # For multiple fields with NEQ, ensure none of them match
+                return {"bool": {"must_not": {"bool": {"should": queries}}}}
+        else:
+            return queries[0] if len(queries) == 1 else {"bool": {"should": queries}}
 
     elif isinstance(node, AdvancedComparisonNode):
         fields = to_es_field(queryables_mapping, node.field)
@@ -219,6 +255,8 @@ def _transform_ast_node(
                     gte = gte["timestamp"]
                 if isinstance(lte, dict) and "timestamp" in lte:
                     lte = lte["timestamp"]
+
+                # Return the range query - negation will be handled by LogicalOp.NOT
                 queries = [
                     {"range": {field: {"gte": gte, "lte": lte}}} for field in fields
                 ]

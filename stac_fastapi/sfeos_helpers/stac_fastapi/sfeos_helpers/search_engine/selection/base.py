@@ -31,3 +31,12 @@ class BaseIndexSelector(ABC):
     async def refresh_cache(self):
         """Refresh cache (no-op for unfiltered selector)."""
         pass
+
+    @abstractmethod
+    async def get_all_collection_ids(self) -> list[str] | None:
+        """Return all known collection IDs from cache, if available.
+
+        Returns:
+            list[str] | None: List of collection IDs, or None if not available from cache.
+        """
+        pass

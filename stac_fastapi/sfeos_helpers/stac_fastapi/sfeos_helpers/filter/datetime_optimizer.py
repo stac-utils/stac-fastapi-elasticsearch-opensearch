@@ -78,8 +78,64 @@ class DatetimeOptimizer:
 
     def optimize_query_structure(self, ast: CqlNode) -> CqlNode:
         """Optimize AST structure for better query performance."""
+        ast = self._apply_demorgan(ast)
         ast = self._flatten_and_conditions(ast)
-        return self._reorder_for_datetime_priority(ast)
+
+        # Step 3: Reorder for datetime priority (safe operation)
+        ast = self._reorder_for_datetime_priority(ast)
+
+        return ast
+
+    def _apply_demorgan(self, node: CqlNode) -> CqlNode:
+        """Apply De Morgan's law to transform NOT (A AND B) into (NOT A) OR (NOT B)."""
+        if isinstance(node, LogicalNode):
+            if node.op == LogicalOp.NOT and len(node.children) == 1:
+                child = node.children[0]
+
+                # Case: NOT (AND ...)
+                if isinstance(child, LogicalNode) and child.op == LogicalOp.AND:
+                    # Create OR of NOTs for each child
+                    not_children = []
+                    for and_child in child.children:
+                        not_children.append(
+                            LogicalNode(op=LogicalOp.NOT, children=[and_child])
+                        )
+
+                    # Recursively process the new NOT nodes
+                    not_children = [self._apply_demorgan(c) for c in not_children]
+
+                    # Return OR node
+                    return LogicalNode(op=LogicalOp.OR, children=not_children)
+
+                # Case: NOT (OR ...) = (NOT A) AND (NOT B)
+                elif isinstance(child, LogicalNode) and child.op == LogicalOp.OR:
+                    not_children = []
+                    for or_child in child.children:
+                        not_children.append(
+                            LogicalNode(op=LogicalOp.NOT, children=[or_child])
+                        )
+
+                    # Recursively process the new NOT nodes
+                    not_children = [self._apply_demorgan(c) for c in not_children]
+
+                    # Return AND node
+                    return LogicalNode(op=LogicalOp.AND, children=not_children)
+
+                else:
+                    # Regular NOT, process children recursively
+                    processed_children = [
+                        self._apply_demorgan(child) for child in node.children
+                    ]
+                    return LogicalNode(op=node.op, children=processed_children)
+
+            else:
+                # Recursively process children for other logical nodes
+                processed_children = [
+                    self._apply_demorgan(child) for child in node.children
+                ]
+                return LogicalNode(op=node.op, children=processed_children)
+
+        return node
 
     def _flatten_and_conditions(self, node: CqlNode) -> CqlNode:
         """Flatten nested AND operations in the AST."""
@@ -110,7 +166,10 @@ class DatetimeOptimizer:
         return node
 
     def _reorder_for_datetime_priority(self, node: CqlNode) -> CqlNode:
-        """Reorder query tree to prioritize datetime filters."""
+        """Reorder query tree to prioritize datetime filters.
+
+        Note: Only reorders within AND nodes, preserves OR and NOT structure.
+        """
         if isinstance(node, LogicalNode):
             if node.op == LogicalOp.AND:
                 datetime_children = []
@@ -131,6 +190,8 @@ class DatetimeOptimizer:
                 return LogicalNode(op=LogicalOp.AND, children=reordered_children)
 
             elif node.op in [LogicalOp.OR, LogicalOp.NOT]:
+                # For OR and NOT, we cannot reorder children as it would change logic
+                # But we can still process them recursively
                 processed_children = [
                     self._reorder_for_datetime_priority(child)
                     for child in node.children
@@ -226,7 +287,24 @@ def extract_collection_datetime(
         results: List[Tuple[List[str], str]] = []
 
         if isinstance(n, LogicalNode):
-            if n.op == LogicalOp.AND:
+            # ===== FIXED: HANDLE OR NODES CORRECTLY =====
+            if n.op == LogicalOp.OR:
+                all_or_results = []
+
+                for child in n.children:
+                    child_results = extract_from_node(child, current_collections.copy())
+                    all_or_results.extend(child_results)
+
+                # For OR, we need to check if ANY branch has no datetime constraint
+                # If so, we need ALL indexes
+                for coll, rng in all_or_results:
+                    if rng == "":  # Empty string means no datetime constraint
+                        return [([], "")]  # Signal to search ALL indexes
+
+                # Otherwise, return all OR results
+                results.extend(all_or_results)
+
+            elif n.op == LogicalOp.AND:
                 # For AND, collect all child results first
                 child_results_list = []
                 for child in n.children:
@@ -416,23 +494,15 @@ def extract_collection_datetime(
 
                 results.extend(combined_results)
 
-            elif n.op == LogicalOp.OR:
-                for child in n.children:
-                    child_results = extract_from_node(child, current_collections.copy())
-                    results.extend(child_results)
-
             elif n.op == LogicalOp.NOT:
-                # Handle NOT operator
+                # ===== FIXED: HANDLE NOT NODES CORRECTLY WITH PROPER RANGE GENERATION =====
                 for child in n.children:
-                    # Check if this is a NOT on collection field
+                    # Handle NOT on collection field
                     if (
                         isinstance(child, ComparisonNode)
                         and child.field == "collection"
                         and child.op == ComparisonOp.EQ
                     ):
-
-                        # This is NOT collection = X
-                        # We need to return ALL OTHER collections
                         if all_collection_ids:
                             excluded = child.value
                             if isinstance(excluded, list):
@@ -446,41 +516,142 @@ def extract_collection_datetime(
                             ]
 
                             if included_collections:
-                                # Return with empty date range (will be combined with datetime from other branches)
+                                # Return with empty date range (no datetime constraint)
                                 results.append((included_collections, ""))
                             continue
 
-                    # Original NOT handling for other fields (datetime, etc.)
-                    child_results = extract_from_node(child, current_collections.copy())
-                    for coll, rng in child_results:
-                        if rng:
-                            if "/" in rng and ".." not in rng:
-                                parts = rng.split("/")
-                                if len(parts) == 2:
-                                    start_val = parts[0]
-                                    end_val = parts[1]
-                                    results.append((coll, f"../{start_val}"))
-                                    results.append((coll, f"{end_val}/.."))
-                            elif "/" in rng:
-                                parts = rng.split("/")
-                                if len(parts) == 2:
-                                    if parts[0] == "..":
-                                        # NOT (../X) becomes X/..
-                                        results.append((coll, f"{parts[1]}/.."))
-                                    elif parts[1] == "..":
-                                        # NOT (X/..) becomes ../X
-                                        results.append((coll, f"../{parts[0]}"))
-                                    else:
-                                        # NOT (X/Y) becomes ../X and Y/..
-                                        results.append((coll, f"../{parts[0]}"))
-                                        results.append((coll, f"{parts[1]}/.."))
-                            else:
-                                # NOT (exact date) becomes ../X and X/..
-                                results.append((coll, f"../{rng}"))
-                                results.append((coll, f"{rng}/.."))
+                    # ===== NEW: Handle NOT on BETWEEN =====
+                    elif (
+                        isinstance(child, AdvancedComparisonNode)
+                        and child.op == AdvancedComparisonOp.BETWEEN
+                        and child.field
+                        in ["datetime", "start_datetime", "end_datetime"]
+                    ):
+                        if (
+                            isinstance(child.value, (list, tuple))
+                            and len(child.value) == 2
+                        ):
+                            start_date, end_date = child.value[0], child.value[1]
+                            # NOT BETWEEN means: before start OR after end
+                            results.append(
+                                (current_collections.copy(), f"../{start_date}")
+                            )
+                            results.append(
+                                (current_collections.copy(), f"{end_date}/..")
+                            )
+
+                    # ===== FIXED: Handle NOT on AdvancedComparisonNode (IN operator) with multiple ranges =====
+                    elif (
+                        isinstance(child, AdvancedComparisonNode)
+                        and child.op == AdvancedComparisonOp.IN
+                        and child.field
+                        in ["datetime", "start_datetime", "end_datetime"]
+                    ):
+                        if isinstance(child.value, list) and len(child.value) > 0:
+                            # Sort the dates to create proper ranges
+                            dates = sorted(child.value)
+
+                            # Add range before the first date
+                            results.append(
+                                (current_collections.copy(), f"../{dates[0]}")
+                            )
+
+                            # Add ranges between consecutive dates
+                            for i in range(len(dates) - 1):
+                                results.append(
+                                    (
+                                        current_collections.copy(),
+                                        f"{dates[i]}/{dates[i+1]}",
+                                    )
+                                )
+
+                            # Add range after the last date
+                            results.append(
+                                (current_collections.copy(), f"{dates[-1]}/..")
+                            )
+
+                    # Handle NOT on datetime fields (existing code)
+                    elif isinstance(child, ComparisonNode) and child.field in [
+                        "datetime",
+                        "start_datetime",
+                        "end_datetime",
+                    ]:
+                        if child.op == ComparisonOp.LT:
+                            # NOT (datetime < X) = datetime >= X
+                            results.append(
+                                (current_collections.copy(), f"{child.value}/..")
+                            )
+                        elif child.op == ComparisonOp.LTE:
+                            # NOT (datetime <= X) = datetime > X
+                            results.append(
+                                (current_collections.copy(), f"{child.value}/..")
+                            )
+                        elif child.op == ComparisonOp.GT:
+                            # NOT (datetime > X) = datetime <= X
+                            results.append(
+                                (current_collections.copy(), f"../{child.value}")
+                            )
+                        elif child.op == ComparisonOp.GTE:
+                            # NOT (datetime >= X) = datetime < X
+                            results.append(
+                                (current_collections.copy(), f"../{child.value}")
+                            )
+                        elif child.op == ComparisonOp.EQ:
+                            # NOT (datetime = X) = datetime < X OR datetime > X
+                            # This creates two possible ranges
+                            results.append(
+                                (current_collections.copy(), f"../{child.value}")
+                            )
+                            results.append(
+                                (current_collections.copy(), f"{child.value}/..")
+                            )
                         else:
-                            # If the child had no range (just collections), NOT doesn't change that
-                            results.append((coll, ""))
+                            # For any other datetime comparison, we can't optimize
+                            results.append((current_collections.copy(), ""))
+
+                    # Handle NOT on other fields (like sat:orbit_state)
+                    elif (
+                        isinstance(child, ComparisonNode)
+                        and child.field != "collection"
+                    ):
+                        # For non-datetime, non-collection fields, there's no datetime constraint
+                        # This means we need to include ALL time ranges
+                        results.append((current_collections.copy(), ""))
+
+                    # Handle NOT on LogicalNode (should have been transformed by optimizer)
+                    elif isinstance(child, LogicalNode):
+                        # This case should ideally be handled by the optimizer
+                        # But as fallback, recursively process
+                        child_results = extract_from_node(
+                            child, current_collections.copy()
+                        )
+                        for coll, rng in child_results:
+                            if rng:
+                                # Invert the range logic
+                                if "/" in rng and ".." not in rng:
+                                    parts = rng.split("/")
+                                    if len(parts) == 2:
+                                        results.append((coll, f"../{parts[0]}"))
+                                        results.append((coll, f"{parts[1]}/.."))
+                                elif "/" in rng:
+                                    parts = rng.split("/")
+                                    if len(parts) == 2:
+                                        if parts[0] == "..":
+                                            results.append((coll, f"{parts[1]}/.."))
+                                        elif parts[1] == "..":
+                                            results.append((coll, f"../{parts[0]}"))
+                                        else:
+                                            results.append((coll, f"../{parts[0]}"))
+                                            results.append((coll, f"{parts[1]}/.."))
+                                else:
+                                    results.append((coll, f"../{rng}"))
+                                    results.append((coll, f"{rng}/.."))
+                            else:
+                                results.append((coll, ""))
+
+                    # Handle any other cases
+                    else:
+                        results.append((current_collections.copy(), ""))
 
         elif isinstance(n, ComparisonNode):
             if n.field == "collection":
@@ -503,6 +674,7 @@ def extract_collection_datetime(
                 elif n.op == ComparisonOp.LTE:
                     results.append((current_collections.copy(), f"../{n.value}"))
                 elif n.op == ComparisonOp.NEQ:
+                    # Not equal to a specific datetime means either before or after
                     results.append((current_collections.copy(), f"../{n.value}"))
                     results.append((current_collections.copy(), f"{n.value}/.."))
 
@@ -540,6 +712,17 @@ def extract_collection_datetime(
                 datetime_only_results.append(([], date_range))
 
         return datetime_only_results
+
+    # ===== FIXED: CHECK FOR ALL-INDEXES MARKER =====
+    # If we have an empty collections + empty datetime range result, that means
+    # we need to search ALL indexes (no optimization possible)
+    needs_all_indexes = any(
+        not colls and dt_range == "" for colls, dt_range in all_results
+    )
+
+    if needs_all_indexes:
+        # Return a single result that will trigger full index scan
+        return [([], "")]
 
     # Regular case with collections
     for collections, date_range in all_results:

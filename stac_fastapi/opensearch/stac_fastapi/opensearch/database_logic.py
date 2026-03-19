@@ -759,17 +759,11 @@ class DatabaseLogic(BaseDatabaseLogic):
             Search: The modified Search object with the filter applied if a filter is provided,
                     otherwise the original Search object.
         """
-        # es_query = filter_module.to_es(await self.get_queryables_mapping(), _filter)
-
         if _filter is not None:
             try:
-                resp = await self.client.search(
-                    index=COLLECTIONS_INDEX,
-                    body={"query": {"match_all": {}}, "_source": ["id"], "size": 10000},
+                all_collection_ids = (
+                    await self.async_index_selector.get_all_collection_ids()
                 )
-                all_collection_ids = [
-                    hit["_source"]["id"] for hit in resp["hits"]["hits"]
-                ]
                 es_query, metadata = build_cql2_filter(
                     await self.get_queryables_mapping(), _filter, all_collection_ids
                 )

@@ -157,7 +157,7 @@ async def resolve_cql2_indexes(
 def build_cql2_filter(
     queryables_mapping: Dict,
     filter: Dict,
-    all_collection_ids: Optional[List[str]] = None,  # Add this parameter
+    all_collection_ids: Optional[List[str]] = None,
 ) -> Tuple[Dict, List]:
     """Build query from CQL2 filter with metadata extraction.
 
