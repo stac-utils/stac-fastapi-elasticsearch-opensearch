@@ -141,6 +141,127 @@ async def test_get_catalog_collections(catalogs_app_client, load_test_data, ctx)
 
 
 @pytest.mark.asyncio
+async def test_get_catalog_collections_context_fields(
+    catalogs_app_client, load_test_data, ctx
+):
+    """Test that /catalogs/{catalog_id}/collections includes numberReturned and numberMatched.
+
+    This test verifies the fix for issue #632.
+    """
+    # Create a catalog
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+
+    # Add two collections to the catalog
+    collection1 = ctx.collection.copy()
+    collection1["id"] = f"test-collection-1-{uuid.uuid4()}"
+
+    collection2 = ctx.collection.copy()
+    collection2["id"] = f"test-collection-2-{uuid.uuid4()}"
+
+    add_resp1 = await catalogs_app_client.post(
+        f"/catalogs/{test_catalog['id']}/collections", json=collection1
+    )
+    assert add_resp1.status_code == 201
+
+    add_resp2 = await catalogs_app_client.post(
+        f"/catalogs/{test_catalog['id']}/collections", json=collection2
+    )
+    assert add_resp2.status_code == 201
+
+    # Get collections from the catalog
+    resp = await catalogs_app_client.get(f"/catalogs/{test_catalog['id']}/collections")
+    assert resp.status_code == 200
+
+    collections_response = resp.json()
+
+    # Verify context fields are present
+    assert "numberReturned" in collections_response, "numberReturned field is missing"
+    assert "numberMatched" in collections_response, "numberMatched field is missing"
+
+    # Verify the values are correct
+    assert collections_response["numberReturned"] == 2, "Should return 2 collections"
+    assert collections_response["numberMatched"] == 2, "Should match 2 collections"
+
+    # Verify collections are present
+    assert len(collections_response["collections"]) == 2
+    collection_ids = [col["id"] for col in collections_response["collections"]]
+    assert collection1["id"] in collection_ids
+    assert collection2["id"] in collection_ids
+
+
+@pytest.mark.asyncio
+async def test_get_catalog_collections_pagination(
+    catalogs_app_client, load_test_data, ctx
+):
+    """Test pagination support for /catalogs/{catalog_id}/collections endpoint."""
+    # Create a catalog
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+
+    # Add 5 collections to the catalog
+    collection_ids = []
+    for i in range(5):
+        collection = ctx.collection.copy()
+        collection["id"] = f"test-collection-{i}-{uuid.uuid4()}"
+        collection_ids.append(collection["id"])
+
+        add_resp = await catalogs_app_client.post(
+            f"/catalogs/{test_catalog['id']}/collections", json=collection
+        )
+        assert add_resp.status_code == 201
+
+    # Get first page with limit=2
+    resp = await catalogs_app_client.get(
+        f"/catalogs/{test_catalog['id']}/collections?limit=2"
+    )
+    assert resp.status_code == 200
+
+    page1 = resp.json()
+    assert page1["numberReturned"] == 2
+    assert page1["numberMatched"] == 5
+    assert len(page1["collections"]) == 2
+
+    # Verify next link exists
+    links = page1["links"]
+    next_links = [link for link in links if link["rel"] == "next"]
+    assert len(next_links) == 1, "Should have a next link"
+
+    # Extract token from next link
+    next_url = next_links[0]["href"]
+    assert "token=" in next_url
+
+    # Get second page using token
+    import re
+
+    token_match = re.search(r"token=([^&]+)", next_url)
+    assert token_match
+    token = token_match.group(1)
+
+    resp2 = await catalogs_app_client.get(
+        f"/catalogs/{test_catalog['id']}/collections?limit=2&token={token}"
+    )
+    assert resp2.status_code == 200
+
+    page2 = resp2.json()
+    assert page2["numberReturned"] == 2
+    assert page2["numberMatched"] == 5
+
+    # Verify no duplicate collections between pages
+    page1_ids = [c["id"] for c in page1["collections"]]
+    page2_ids = [c["id"] for c in page2["collections"]]
+    assert (
+        len(set(page1_ids) & set(page2_ids)) == 0
+    ), "Pages should not have overlapping collections"
+
+
+@pytest.mark.asyncio
 async def test_get_catalog_collections_nonexistent_catalog(catalogs_app_client):
     """Test getting collections from a catalog that doesn't exist."""
     resp = await catalogs_app_client.get("/catalogs/nonexistent-catalog/collections")
@@ -527,6 +648,62 @@ async def test_create_catalog_collection_nonexistent_catalog(
     resp = await catalogs_app_client.post(
         "/catalogs/nonexistent-catalog/collections", json=test_collection
     )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_link_existing_collection_by_id(catalogs_app_client, load_test_data, ctx):
+    """Test linking an existing collection to a catalog using only its ID."""
+    # First create a catalog
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+    catalog_id = test_catalog["id"]
+
+    # The collection from ctx already exists in the database
+    existing_collection_id = ctx.collection["id"]
+
+    # Link the collection using only its HTTP payload
+    link_payload = {"id": existing_collection_id}
+    resp = await catalogs_app_client.post(
+        f"/catalogs/{catalog_id}/collections", json=link_payload
+    )
+    assert resp.status_code == 201
+
+    linked_collection = resp.json()
+    assert linked_collection["id"] == existing_collection_id
+
+    # Verify the collection is now part of the catalog
+    get_resp = await catalogs_app_client.get(
+        f"/catalogs/{catalog_id}/collections/{existing_collection_id}"
+    )
+    assert get_resp.status_code == 200
+    assert get_resp.json()["id"] == existing_collection_id
+
+
+@pytest.mark.asyncio
+async def test_link_nonexistent_collection_by_id(catalogs_app_client, load_test_data):
+    """Test linking a nonexistent collection using only an ID (should fail with 404)."""
+    # First create a catalog
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+    catalog_id = test_catalog["id"]
+
+    # Provide an ID for a collection that doesn't exist
+    fake_collection_id = f"fake-collection-{uuid.uuid4()}"
+
+    # Try to link it
+    link_payload = {"id": fake_collection_id}
+    resp = await catalogs_app_client.post(
+        f"/catalogs/{catalog_id}/collections", json=link_payload
+    )
+
+    # We expect a 404 Not Found since it's just an ID and doesn't exist
     assert resp.status_code == 404
 
 
