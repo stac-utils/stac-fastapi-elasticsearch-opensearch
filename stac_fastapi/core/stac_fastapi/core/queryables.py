@@ -8,6 +8,8 @@ from typing import Any
 
 from fastapi import HTTPException
 
+from stac_fastapi.core.extensions.filter import DEFAULT_QUERYABLES
+
 logger = logging.getLogger(__name__)
 
 
@@ -120,20 +122,7 @@ def merge_queryables(collection_queryables: list[dict]) -> dict:
         and all properties from the given schemas. If conflicts occur (same property, different types),
         the first encountered property definition is kept and a warning is logged.
     """
-    merged_properties: dict[str, Any] = {
-        "id": {"title": "Item ID", "description": "Item identifier", "type": "string"},
-        "geometry": {
-            "title": "Item Geometry",
-            "description": "Item Geometry",
-            "$ref": "https://geojson.org/schema/Geometry.json",
-        },
-        "datetime": {
-            "title": "Acquisition Timestamp",
-            "description": "Acquisition Timestamp",
-            "type": "string",
-            "format": "date-time",
-        },
-    }
+    merged_properties: dict[str, Any] = DEFAULT_QUERYABLES.copy()
 
     for schema in collection_queryables:
         props = schema.get("properties", {})

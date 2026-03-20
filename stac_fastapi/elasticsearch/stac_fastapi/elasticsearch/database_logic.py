@@ -446,6 +446,11 @@ class DatabaseLogic(BaseDatabaseLogic):
             },
         )
         hits = response.get("hits", {}).get("hits", [])
+        if len(hits) == 10000:
+            logger.warning(
+                "Root queryables union reached the 10,000 collection limit. "
+                "Some collections may be excluded from the union."
+            )
         return [
             hit["_source"].get("queryables", {})
             for hit in hits
