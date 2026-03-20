@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Added advice to Readme about linking an already exiting Collection to a Catalog, simply by POSTing the collection's ID.
+
 ### Updated
 
 - Updated POST /catalogs/catalogId/collections endpoint to accept an id of an existing collection to link it to the catalog. [#644](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/644)
