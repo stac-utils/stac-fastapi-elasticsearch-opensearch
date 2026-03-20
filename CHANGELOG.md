@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Updated
 
+- Updated POST /catalogs/catalogId/collections endpoint to accept an id of an existing collection to link it to the catalog. [#644](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/644)
+
 ### Changed
 
 ### Removed
@@ -20,6 +22,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ## [v6.14.0] - 2026-03-19
 
 ### Changed
+
 - Updated SFEOS Tools CLI section in README with expanded documentation for `load-data` command and standardized options [#637](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/637)
 
 ### Updated
