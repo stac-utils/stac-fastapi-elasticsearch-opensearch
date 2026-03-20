@@ -62,6 +62,32 @@ from stac_fastapi.types.search import BaseSearchPostRequest
 logger = logging.getLogger(__name__)
 
 partialItemValidator = TypeAdapter(PartialItem)
+
+
+def _parse_cql2_text_strict(filter_expr: str) -> dict:
+    """Parse a CQL2-text filter string into a CQL2-JSON dict, raising HTTP 400 on any error.
+
+    The underlying pygeofilter LALR parser rejects the entire input if any token is
+    unexpected — it does NOT silently truncate on garbage. This helper centralises that
+    call so all code paths get consistent, strict error handling.
+
+    Security note: never build a security/tenant filter by concatenating a CQL2-text
+    string onto user-supplied input. Always apply security filters as separate
+    Elasticsearch/OpenSearch DSL calls (.filter() / .query()) after parsing is complete.
+    """
+    try:
+        result = to_cql2(parse_cql2_text(filter_expr))
+        # to_cql2 may return a string or a dict depending on the pygeofilter version
+        if isinstance(result, str):
+            return orjson.loads(result)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid CQL2-text filter: {e}. The entire filter expression must be valid CQL2.",
+        )
 partialCollectionValidator = TypeAdapter(PartialCollection)
 
 PROJECT_4326_TO_3857 = pyproj.Transformer.from_crs(
@@ -404,18 +430,10 @@ class CoreClient(AsyncBaseCoreClient):
                             # First try to parse as JSON
                             parsed_filter = orjson.loads(unquote_plus(filter_expr))
                         except Exception:
-                            # If that fails, use pygeofilter to convert CQL2-text to CQL2-JSON
-                            try:
-                                # Parse CQL2-text and convert to CQL2-JSON
-                                text_filter = unquote_plus(filter_expr)
-                                parsed_ast = parse_cql2_text(text_filter)
-                                parsed_filter = to_cql2(parsed_ast)
-                            except Exception as e:
-                                # If parsing fails, provide a helpful error message
-                                raise HTTPException(
-                                    status_code=400,
-                                    detail=f"Invalid CQL2-text filter: {e}. Please check your syntax.",
-                                )
+                            # If that fails, treat as CQL2-text
+                            parsed_filter = _parse_cql2_text_strict(
+                                unquote_plus(filter_expr)
+                            )
                     else:
                         # For explicit cql2-json, parse as JSON
                         parsed_filter = orjson.loads(unquote_plus(filter_expr))
@@ -750,11 +768,17 @@ class CoreClient(AsyncBaseCoreClient):
 
         if filter_expr:
             base_args["filter_lang"] = "cql2-json"
-            base_args["filter"] = orjson.loads(
-                unquote_plus(filter_expr)
-                if filter_lang == "cql2-json"
-                else to_cql2(parse_cql2_text(filter_expr))
-            )
+            if filter_lang == "cql2-json":
+                try:
+                    base_args["filter"] = orjson.loads(unquote_plus(filter_expr))
+                except Exception as e:
+                    raise HTTPException(
+                        status_code=400, detail=f"Invalid CQL2-JSON filter: {e}"
+                    )
+            else:
+                base_args["filter"] = _parse_cql2_text_strict(
+                    unquote_plus(filter_expr)
+                )
 
         if fields:
             includes, excludes = set(), set()
@@ -1075,20 +1099,8 @@ class CoreClient(AsyncBaseCoreClient):
         search = self.database.apply_bbox_filter(search, bbox=bbox)
 
         if "filter" in request.query_params:
-            cql2_text = request.query_params["filter"]
-            try:
-                cql_ast = parse_cql2_text(cql2_text)
-                cql2_json_str = to_cql2(cql_ast)
-                cql2_json = (
-                    orjson.loads(cql2_json_str)
-                    if isinstance(cql2_json_str, str)
-                    else cql2_json_str
-                )
-                search = await self.database.apply_cql2_filter(search, cql2_json)
-            except Exception as e:
-                raise HTTPException(
-                    status_code=400, detail=f"Error with cql2 filter: {e}"
-                )
+            cql2_json = _parse_cql2_text_strict(request.query_params["filter"])
+            search = await self.database.apply_cql2_filter(search, cql2_json)
 
         now = time.time()
 
@@ -1296,20 +1308,8 @@ class CoreClient(AsyncBaseCoreClient):
 
         # Optional CQL2 filter
         if "filter" in request.query_params:
-            cql2_text = request.query_params["filter"]
-            try:
-                cql_ast = parse_cql2_text(cql2_text)
-                cql2_json_str = to_cql2(cql_ast)
-                cql2_json = (
-                    orjson.loads(cql2_json_str)
-                    if isinstance(cql2_json_str, str)
-                    else cql2_json_str
-                )
-                search = await self.database.apply_cql2_filter(search, cql2_json)
-            except Exception as e:
-                raise HTTPException(
-                    status_code=400, detail=f"Error with cql2 filter: {e}"
-                )
+            cql2_json = _parse_cql2_text_strict(request.query_params["filter"])
+            search = await self.database.apply_cql2_filter(search, cql2_json)
 
         items, _, _ = await self.database.execute_search(
             search=search,

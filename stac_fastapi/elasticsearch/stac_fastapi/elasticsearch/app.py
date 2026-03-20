@@ -4,7 +4,7 @@ import logging
 import os
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import (
@@ -29,7 +29,6 @@ from stac_fastapi.core.extensions.collections_search import (
 )
 from stac_fastapi.core.extensions.fields import FieldsExtension
 from stac_fastapi.core.rate_limit import setup_rate_limit
-from stac_fastapi.core.route_dependencies import get_route_dependencies
 from stac_fastapi.core.session import Session
 from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.elasticsearch.config import ElasticsearchSettings
@@ -256,7 +255,6 @@ app_config = {
     "search_get_request_model": create_get_request_model(search_extensions),
     "search_post_request_model": post_request_model,
     "items_get_request_model": items_get_request_model,
-    "route_dependencies": get_route_dependencies(),
 }
 
 # Add collections_get_request_model if it was created
@@ -280,6 +278,52 @@ app.root_path = os.getenv("STAC_FASTAPI_ROOT_PATH", "")
 
 # Add rate limit
 setup_rate_limit(app, rate_limit=os.getenv("STAC_FASTAPI_RATE_LIMIT"))
+
+# VECTOR TILES
+
+core_client = app_config["client"]
+
+
+async def tile_route(collection_id: str, z: int, x: int, y: int, request: Request):
+    return await core_client.get_tile(collection_id, z, x, y, request)
+
+
+async def tilejson_route(collection_id: str, request: Request):
+    return await core_client.get_tilejson(collection_id, request)
+
+
+async def clear_tile_cache_route():
+    core_client.clear_tile_cache()
+    return {"message": "Tile cache cleared successfully"}
+
+
+async def stac_tile_route(z: int, x: int, y: int, request: Request):
+    return await core_client.get_stac_tile(z, x, y, request)
+
+
+app.add_api_route(
+    "/collections/{collection_id}/tiles/{z}/{x}/{y}.mvt",
+    tile_route,
+    methods=["GET"],
+)
+
+app.add_api_route(
+    "/collections/{collection_id}/tiles/tilejson.json",
+    tilejson_route,
+    methods=["GET"],
+)
+
+app.add_api_route(
+    "/admin/tiles/vector/cache/clear",
+    clear_tile_cache_route,
+    methods=["POST"],
+)
+
+app.add_api_route(
+    "/data/tiles/{z}/{x}/{y}.mvt",
+    stac_tile_route,
+    methods=["GET"],
+)
 
 
 def run() -> None:

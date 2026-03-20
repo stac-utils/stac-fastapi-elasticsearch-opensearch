@@ -699,6 +699,10 @@ class DatabaseLogic(BaseDatabaseLogic):
         Returns:
             Search: The modified Search object with the filter applied if a filter is provided,
                     otherwise the original Search object.
+
+        Security note: security/tenant filters must be applied as additional .query() calls on
+        the returned Search object — never by concatenating strings into the CQL2 _filter dict.
+        String concatenation of security filters with user-supplied CQL2 is an injection risk.
         """
         if _filter is not None:
             es_query = filter_module.to_es(await self.get_queryables_mapping(), _filter)
