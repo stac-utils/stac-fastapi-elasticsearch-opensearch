@@ -88,6 +88,8 @@ class ElasticsearchSettings(ApiSettings, ApiBaseSettings):
     enable_response_models: bool = False
     enable_direct_response: bool = get_bool_env("ENABLE_DIRECT_RESPONSE", default=False)
     raise_on_bulk_error: bool = get_bool_env("RAISE_ON_BULK_ERROR", default=False)
+    root_queryables_union: bool = get_bool_env("ROOT_QUERYABLES_UNION", default=False)
+    stac_queryables_config: str | None = os.getenv("STAC_QUERYABLES_CONFIG")
 
     @property
     def database_refresh(self) -> bool | str:
@@ -120,6 +122,8 @@ class AsyncElasticsearchSettings(ApiSettings, ApiBaseSettings):
     enable_response_models: bool = False
     enable_direct_response: bool = get_bool_env("ENABLE_DIRECT_RESPONSE", default=False)
     raise_on_bulk_error: bool = get_bool_env("RAISE_ON_BULK_ERROR", default=False)
+    root_queryables_union: bool = get_bool_env("ROOT_QUERYABLES_UNION", default=False)
+    stac_queryables_config: str | None = os.getenv("STAC_QUERYABLES_CONFIG")
 
     @property
     def database_refresh(self) -> bool | str:

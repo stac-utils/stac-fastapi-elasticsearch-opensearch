@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Added customizable root `/queryables` endpoint with dynamic union (`ROOT_QUERYABLES_UNION`) and static override (`STAC_QUERYABLES_CONFIG`) configuration options. [#612](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/612)
+
 ### Updated
 
 - Updated POST /catalogs/catalogId/collections endpoint to accept an id of an existing collection to link it to the catalog. [#644](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/644)

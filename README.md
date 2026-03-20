@@ -110,7 +110,10 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
       - [Using Docker Compose](#using-docker-compose)
   - [Configuration Reference](#configuration-reference)
   - [Free-Text Search (`q` parameter)](#free-text-search-q-parameter)
-  - [Excluding Fields from Queryables](#excluding-fields-from-queryables)
+  - [Queryables Endpoint](#queryables-endpoint)
+    - [Root Queryables Configuration](#root-queryables-configuration)
+    - [Excluding Fields from Queryables](#excluding-fields-from-queryables)
+    - [Queryables Validation](#queryables-validation)
   - [Datetime-Based Index Management](#datetime-based-index-management)
     - [Overview](#overview)
     - [When to Use](#when-to-use)
@@ -712,6 +715,8 @@ You can customize additional settings in your `.env` file:
 |----------|-------------|---------|----------|
 | `VALIDATE_QUERYABLES` | Enable validation of query parameters against the collection's queryables. If set to `true`, the API will reject queries containing fields that are not defined in the collection's queryables. | `false` | Optional |
 | `QUERYABLES_CACHE_TTL` | Time-to-live (in seconds) for the queryables cache. Used when `VALIDATE_QUERYABLES` is enabled. | `1800` | Optional |
+| `ROOT_QUERYABLES_UNION` | If set to `true`, the root `/queryables` endpoint dynamically unions queryables from all available collections. | `false` | Optional |
+| `STAC_QUERYABLES_CONFIG` | Path to a static JSON file serving as an override for the root `/queryables` endpoint. Overrides `ROOT_QUERYABLES_UNION` if provided. | `None` | Optional |
 | `HIDE_ITEM_PATH` | Path to boolean field that marks items as hidden (excluded from search) or not. If null, the item is returned. | `None` | Optional |
 | `EXCLUDED_FROM_QUERYABLES` | Comma-separated list of fully qualified field names to exclude from the queryables endpoint and filtering. Use full paths like `properties.auth:schemes,properties.storage:schemes`. Excluded fields and their nested children will not be exposed in queryables. | None | Optional |
 | `EXCLUDED_FROM_ITEMS` | Specifies fields to exclude from STAC item responses. Supports comma-separated field names and dot notation for nested fields (e.g., `private_data,properties.confidential,assets.internal`). | `None` | Optional |
@@ -838,7 +843,50 @@ These Redis configuration variables to enable proper navigation functionality in
 > [!NOTE]
 > Use either the Sentinel configuration (`REDIS_SENTINEL_HOSTS`, `REDIS_SENTINEL_PORTS`, `REDIS_SENTINEL_MASTER_NAME`) OR the Redis configuration (`REDIS_HOST`, `REDIS_PORT`), but not both.
 
-## Excluding Fields from Queryables
+## Queryables Endpoint
+
+The `/queryables` endpoint in STAC APIs provides a JSON Schema detailing which fields can be used in filter expressions. SFEOS provides extensive configuration options to manage how queryables are generated, exposed, and validated.
+
+By default, the root `/queryables` endpoint returns a baseline schema of universal STAC properties (like `id`, `datetime`, and `geometry`). On individual collections (`/collections/{collection_id}/queryables`), the endpoint dynamically surveys the database mapping of the collection's items and accurately exposes its specific properties.
+
+### Root Queryables Configuration
+
+For the root `/queryables` endpoint (`GET /queryables`), you can enhance the baseline response using the following environment variables:
+
+- **`ROOT_QUERYABLES_UNION` (boolean)**: Set to `true` to dynamically scan all available collections in your catalog and merge their queryables into a single, comprehensive schema. This is highly recommended when front-end clients (like STAC Browser) rely on the root endpoint to offer "global" search filters across all diverse collections.
+  
+- **`STAC_QUERYABLES_CONFIG` (string)**: Provide an absolute or relative path to a local JSON file to serve as a static override for the root queryables endpoint. This allows you complete control over the exposed schema without relying on dynamic database resolution. *Note: If provided, this overrides `ROOT_QUERYABLES_UNION`.*
+
+  **Example `queryables_config.json`:**
+  ```json
+  {
+    "$schema": "https://json-schema.org/draft/2019-09/schema",
+    "$id": "https://example.com/queryables.json",
+    "type": "object",
+    "title": "Custom Root Queryables",
+    "properties": {
+      "id": {
+        "description": "ID",
+        "type": "string"
+      },
+      "collection": {
+        "description": "Collection",
+        "type": "string"
+      },
+      "eo:cloud_cover": {
+        "description": "Cloud Cover",
+        "type": "number",
+        "minimum": 0,
+        "maximum": 100
+      }
+    },
+    "additionalProperties": false
+  }
+  ```
+
+> **Performance Note**: Dynamic union queries are automatically cached for the duration specified by `QUERYABLES_CACHE_TTL` (default is 1800 seconds) to prevent database strain.
+
+### Excluding Fields from Queryables
 
 You can exclude specific fields from being exposed in the queryables endpoint and from filtering by setting the `EXCLUDED_FROM_QUERYABLES` environment variable. This is useful for hiding sensitive or internal fields that should not be queryable by API users.
 
@@ -862,7 +910,7 @@ EXCLUDED_FROM_QUERYABLES="properties.auth:schemes,properties.storage:schemes,pro
 - Excluded fields and their nested children will be skipped during field traversal
 - Both the field itself and any nested properties will be excluded
 
-## Queryables Validation
+### Queryables Validation
 
 SFEOS supports validating query parameters against the collection's defined queryables. This ensures that users only query fields that are explicitly exposed and indexed.
 

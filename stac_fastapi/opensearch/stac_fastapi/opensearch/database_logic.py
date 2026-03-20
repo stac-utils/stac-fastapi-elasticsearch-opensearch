@@ -429,6 +429,27 @@ class DatabaseLogic(BaseDatabaseLogic):
             collection_id=collection_id, mappings=mappings
         )
 
+    async def get_all_collection_queryables(self) -> list[dict]:
+        """Retrieve all queryables from all collections.
+
+        Returns:
+            A list of queryables dictionaries, one from each active collection.
+        """
+        response = await self.client.search(
+            index=COLLECTIONS_INDEX,
+            body={
+                "_source": ["queryables"],
+                "query": {"term": {"type": "Collection"}},
+                "size": 10000,
+            },
+        )
+        hits = response.get("hits", {}).get("hits", [])
+        return [
+            hit["_source"].get("queryables", {})
+            for hit in hits
+            if hit.get("_source", {}).get("queryables")
+        ]
+
     @staticmethod
     def make_search():
         """Database logic to create a Search instance."""

@@ -144,6 +144,15 @@ class BaseDatabaseLogic(abc.ABC):
         """Retrieve mapping of Queryables for search."""
         pass
 
+    @abc.abstractmethod
+    async def get_all_collection_queryables(self) -> list[dict]:
+        """Retrieve all queryables schemas from all collections.
+
+        Returns:
+            A list of queryables dictionaries, one from each active collection.
+        """
+        pass
+
     async def get_all_catalogs(
         self,
         token: str | None,
