@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Updated
 
+- Updated POST /catalogs/catalogId/collections endpoint to accept an id of an existing collection to link it to the catalog.
+
 ### Changed
 
 ### Removed

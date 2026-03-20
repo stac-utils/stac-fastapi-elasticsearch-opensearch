@@ -10,6 +10,7 @@ from urllib.parse import urlencode
 import attr
 from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 from stac_pydantic import Collection
 from starlette.responses import Response
 from typing_extensions import TypedDict
@@ -28,6 +29,12 @@ from stac_fastapi.types.errors import NotFoundError
 from stac_fastapi.types.extension import ApiExtension
 
 logger = logging.getLogger(__name__)
+
+
+class CollectionId(BaseModel):
+    """Model for linking an existing collection by ID."""
+
+    id: str
 
 
 def _decode_token(token: str | None) -> list | None:
@@ -1111,7 +1118,10 @@ class CatalogsExtension(ApiExtension):
             )
 
     async def create_catalog_collection(
-        self, catalog_id: str, collection: Collection, request: Request
+        self,
+        catalog_id: str,
+        collection: Collection | CollectionId,
+        request: Request,
     ) -> stac_types.Collection:
         """Create a new collection and link it to a specific catalog.
 
@@ -1170,6 +1180,13 @@ class CatalogsExtension(ApiExtension):
                 if "not found" not in error_msg.lower():
                     # Re-raise if it's a different error
                     raise
+
+                # If only an ID was provided to link an existing collection but it's not found
+                if not isinstance(collection, Collection):
+                    raise HTTPException(
+                        status_code=404, detail=f"Collection {collection.id} not found."
+                    )
+
                 # Collection doesn't exist, create it
                 # Create the collection using the same pattern as TransactionsClient.create_collection
                 # This handles the Collection model from stac_pydantic correctly

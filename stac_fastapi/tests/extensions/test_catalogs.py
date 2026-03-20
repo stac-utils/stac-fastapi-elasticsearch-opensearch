@@ -652,6 +652,62 @@ async def test_create_catalog_collection_nonexistent_catalog(
 
 
 @pytest.mark.asyncio
+async def test_link_existing_collection_by_id(catalogs_app_client, load_test_data, ctx):
+    """Test linking an existing collection to a catalog using only its ID."""
+    # First create a catalog
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+    catalog_id = test_catalog["id"]
+
+    # The collection from ctx already exists in the database
+    existing_collection_id = ctx.collection["id"]
+
+    # Link the collection using only its HTTP payload
+    link_payload = {"id": existing_collection_id}
+    resp = await catalogs_app_client.post(
+        f"/catalogs/{catalog_id}/collections", json=link_payload
+    )
+    assert resp.status_code == 201
+
+    linked_collection = resp.json()
+    assert linked_collection["id"] == existing_collection_id
+
+    # Verify the collection is now part of the catalog
+    get_resp = await catalogs_app_client.get(
+        f"/catalogs/{catalog_id}/collections/{existing_collection_id}"
+    )
+    assert get_resp.status_code == 200
+    assert get_resp.json()["id"] == existing_collection_id
+
+
+@pytest.mark.asyncio
+async def test_link_nonexistent_collection_by_id(catalogs_app_client, load_test_data):
+    """Test linking a nonexistent collection using only an ID (should fail with 404)."""
+    # First create a catalog
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+    catalog_id = test_catalog["id"]
+
+    # Provide an ID for a collection that doesn't exist
+    fake_collection_id = f"fake-collection-{uuid.uuid4()}"
+
+    # Try to link it
+    link_payload = {"id": fake_collection_id}
+    resp = await catalogs_app_client.post(
+        f"/catalogs/{catalog_id}/collections", json=link_payload
+    )
+
+    # We expect a 404 Not Found since it's just an ID and doesn't exist
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_delete_catalog(catalogs_app_client, load_test_data):
     """Test deleting an empty catalog."""
     # Create a catalog
