@@ -1,8 +1,6 @@
 """Catalogs helper functions."""
 
 import asyncio
-import base64
-import json
 import logging
 from typing import Any, Type
 from urllib.parse import urlencode
@@ -28,24 +26,6 @@ class CollectionId(BaseModel):
     """Model for linking an existing collection by ID."""
 
     id: str
-
-
-def _decode_token(token: str | None) -> list | None:
-    """Decode a Base64/JSON pagination token into a search_after list."""
-    if not token:
-        return None
-    try:
-        return json.loads(base64.urlsafe_b64decode(token.encode()).decode())
-    except Exception:
-        logger.debug(f"Invalid pagination token provided: {token}")
-        return None
-
-
-def _encode_token(search_after: list | None) -> str | None:
-    """Encode a search_after list into a Base64/JSON pagination token."""
-    if not search_after:
-        return None
-    return base64.urlsafe_b64encode(json.dumps(search_after).encode()).decode()
 
 
 class Catalogs(TypedDict, total=False):

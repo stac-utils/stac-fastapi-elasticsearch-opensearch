@@ -7,11 +7,12 @@ from copy import deepcopy
 from typing import Any, Iterable, Type
 
 import attr
+import opensearchpy.helpers as helpers
 import orjson
 from fastapi import HTTPException
-from opensearchpy import RequestError, exceptions, helpers
-from opensearchpy.helpers.query import Q
-from opensearchpy.helpers.search import Search
+from opensearchpy import Q, Search
+from opensearchpy.exceptions import NotFoundError as OSNotFoundError
+from opensearchpy.exceptions import RequestError
 from starlette.requests import Request
 
 import stac_fastapi.sfeos_helpers.filter as filter_module
@@ -52,6 +53,10 @@ from stac_fastapi.sfeos_helpers.database import (
     search_sub_catalogs_with_pagination_shared,
     update_catalog_in_index_shared,
     validate_refresh,
+)
+from stac_fastapi.sfeos_helpers.database.catalogs import (
+    decode_token_to_search_after,
+    encode_search_after_to_token,
 )
 from stac_fastapi.sfeos_helpers.database.query import (
     ES_MAX_URL_LENGTH,
@@ -411,7 +416,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 )
 
             return response["hits"]["hits"][0]["_source"]
-        except exceptions.NotFoundError:
+        except OSNotFoundError:
             raise NotFoundError(
                 f"Item {item_id} does not exist inside Collection {collection_id}"
             )
@@ -881,7 +886,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         try:
             es_response = await search_task
-        except exceptions.NotFoundError:
+        except OSNotFoundError:
             raise NotFoundError(f"Collections '{collection_ids}' do not exist")
 
         count_timeout = float(os.getenv("COUNT_TIMEOUT", 0.5))
@@ -976,7 +981,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         try:
             db_response = await search_task
-        except exceptions.NotFoundError:
+        except OSNotFoundError:
             raise NotFoundError(f"Collections '{collection_ids}' do not exist")
 
         return db_response
@@ -1332,11 +1337,11 @@ class DatabaseLogic(BaseDatabaseLogic):
                     body={"script": script},
                     refresh=True,
                 )
-        except exceptions.NotFoundError:
+        except OSNotFoundError:
             raise NotFoundError(
                 f"Item {item_id} does not exist inside Collection {collection_id}"
             )
-        except exceptions.RequestError as exc:
+        except RequestError as exc:
             raise HTTPException(
                 status_code=400, detail=exc.info["error"]["caused_by"]
             ) from exc
@@ -1399,7 +1404,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 body={"query": {"term": {"_id": mk_item_id(item_id, collection_id)}}},
                 refresh=refresh,
             )
-        except exceptions.NotFoundError:
+        except OSNotFoundError:
             raise NotFoundError(
                 f"Item {item_id} in collection {collection_id} not found"
             )
@@ -1419,7 +1424,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 index=index_name, params={"allow_no_indices": "false"}
             )
             return mapping
-        except exceptions.NotFoundError:
+        except OSNotFoundError:
             raise NotFoundError(f"Mapping for index {index_name} not found")
 
     @retry_on_connection_error
@@ -1522,7 +1527,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             collection = await self.client.get(
                 index=COLLECTIONS_INDEX, id=collection_id
             )
-        except exceptions.NotFoundError:
+        except OSNotFoundError:
             raise NotFoundError(f"Collection {collection_id} not found")
 
         return collection["_source"]
@@ -1669,7 +1674,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 refresh=True,
             )
 
-        except exceptions.RequestError as exc:
+        except RequestError as exc:
             raise HTTPException(
                 status_code=400, detail=exc.info["error"]["caused_by"]
             ) from exc
@@ -1993,7 +1998,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             if response["_source"].get("type") != "Catalog":
                 raise NotFoundError(f"Catalog {catalog_id} not found")
             return response["_source"]
-        except exceptions.NotFoundError:
+        except OSNotFoundError:
             raise NotFoundError(f"Catalog {catalog_id} not found")
 
     @retry_on_connection_error
@@ -2021,17 +2026,7 @@ class DatabaseLogic(BaseDatabaseLogic):
     ) -> tuple[list[dict[str, Any]], int | None, str | None]:
         """Get children of a catalog (both sub-catalogs and collections)."""
         # Decode token to search_after
-        search_after = None
-        if token:
-            try:
-                import base64
-                import json
-
-                search_after = json.loads(
-                    base64.urlsafe_b64decode(token.encode()).decode()
-                )
-            except Exception:
-                pass
+        search_after = decode_token_to_search_after(token)
 
         (
             children,
@@ -2046,17 +2041,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         )
 
         # Encode next_search_after to token
-        next_token = None
-        if next_search_after:
-            try:
-                import base64
-                import json
-
-                next_token = base64.urlsafe_b64encode(
-                    json.dumps(next_search_after).encode()
-                ).decode()
-            except Exception:
-                pass
+        next_token = encode_search_after_to_token(next_search_after)
 
         return children, total_hits if total_hits is not None else 0, next_token
 
@@ -2070,17 +2055,7 @@ class DatabaseLogic(BaseDatabaseLogic):
     ) -> tuple[list[dict[str, Any]], int | None, str | None]:
         """Get collections within a catalog."""
         # Decode token to search_after
-        search_after = None
-        if token:
-            try:
-                import base64
-                import json
-
-                search_after = json.loads(
-                    base64.urlsafe_b64decode(token.encode()).decode()
-                )
-            except Exception:
-                pass
+        search_after = decode_token_to_search_after(token)
 
         (
             collections,
@@ -2094,17 +2069,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         )
 
         # Encode next_search_after to token
-        next_token = None
-        if next_search_after:
-            try:
-                import base64
-                import json
-
-                next_token = base64.urlsafe_b64encode(
-                    json.dumps(next_search_after).encode()
-                ).decode()
-            except Exception:
-                pass
+        next_token = encode_search_after_to_token(next_search_after)
 
         return collections, total_hits if total_hits is not None else 0, next_token
 
@@ -2118,17 +2083,7 @@ class DatabaseLogic(BaseDatabaseLogic):
     ) -> tuple[list[dict[str, Any]], int | None, str | None]:
         """Get sub-catalogs within a catalog."""
         # Decode token to search_after
-        search_after = None
-        if token:
-            try:
-                import base64
-                import json
-
-                search_after = json.loads(
-                    base64.urlsafe_b64decode(token.encode()).decode()
-                )
-            except Exception:
-                pass
+        search_after = decode_token_to_search_after(token)
 
         (
             catalogs,
@@ -2142,17 +2097,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         )
 
         # Encode next_search_after to token
-        next_token = None
-        if next_search_after:
-            try:
-                import base64
-                import json
-
-                next_token = base64.urlsafe_b64encode(
-                    json.dumps(next_search_after).encode()
-                ).decode()
-            except Exception:
-                pass
+        next_token = encode_search_after_to_token(next_search_after)
 
         return catalogs, total_hits if total_hits is not None else 0, next_token
 

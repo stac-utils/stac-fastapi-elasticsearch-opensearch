@@ -58,6 +58,10 @@ from stac_fastapi.sfeos_helpers.database import (
     update_catalog_in_index_shared,
     validate_refresh,
 )
+from stac_fastapi.sfeos_helpers.database.catalogs import (
+    decode_token_to_search_after,
+    encode_search_after_to_token,
+)
 from stac_fastapi.sfeos_helpers.database.query import (
     ES_MAX_URL_LENGTH,
     add_collections_to_body,
@@ -2067,17 +2071,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             Tuple containing list of children, next token, and total count.
         """
         # Decode token to search_after
-        search_after = None
-        if token:
-            try:
-                import base64
-                import json
-
-                search_after = json.loads(
-                    base64.urlsafe_b64decode(token.encode()).decode()
-                )
-            except Exception:
-                pass
+        search_after = decode_token_to_search_after(token)
 
         (
             children,
@@ -2092,17 +2086,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         )
 
         # Encode next_search_after to token
-        next_token = None
-        if next_search_after:
-            try:
-                import base64
-                import json
-
-                next_token = base64.urlsafe_b64encode(
-                    json.dumps(next_search_after).encode()
-                ).decode()
-            except Exception:
-                pass
+        next_token = encode_search_after_to_token(next_search_after)
 
         return children, total_hits if total_hits is not None else 0, next_token
 
@@ -2126,17 +2110,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             Tuple containing list of collections, next token, and total count.
         """
         # Decode token to search_after
-        search_after = None
-        if token:
-            try:
-                import base64
-                import json
-
-                search_after = json.loads(
-                    base64.urlsafe_b64decode(token.encode()).decode()
-                )
-            except Exception:
-                pass
+        search_after = decode_token_to_search_after(token)
 
         (
             collections,
@@ -2150,17 +2124,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         )
 
         # Encode next_search_after to token
-        next_token = None
-        if next_search_after:
-            try:
-                import base64
-                import json
-
-                next_token = base64.urlsafe_b64encode(
-                    json.dumps(next_search_after).encode()
-                ).decode()
-            except Exception:
-                pass
+        next_token = encode_search_after_to_token(next_search_after)
 
         return collections, total_hits if total_hits is not None else 0, next_token
 
@@ -2184,17 +2148,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             Tuple containing list of sub-catalogs, next token, and total count.
         """
         # Decode token to search_after
-        search_after = None
-        if token:
-            try:
-                import base64
-                import json
-
-                search_after = json.loads(
-                    base64.urlsafe_b64decode(token.encode()).decode()
-                )
-            except Exception:
-                pass
+        search_after = decode_token_to_search_after(token)
 
         (
             catalogs,
@@ -2208,17 +2162,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         )
 
         # Encode next_search_after to token
-        next_token = None
-        if next_search_after:
-            try:
-                import base64
-                import json
-
-                next_token = base64.urlsafe_b64encode(
-                    json.dumps(next_search_after).encode()
-                ).decode()
-            except Exception:
-                pass
+        next_token = encode_search_after_to_token(next_search_after)
 
         return catalogs, total_hits if total_hits is not None else 0, next_token
 

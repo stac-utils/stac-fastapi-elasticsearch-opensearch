@@ -5,12 +5,48 @@ direct Elasticsearch/OpenSearch client access. These functions are used by
 the CatalogsExtension to maintain database-agnostic code in the core module.
 """
 
+import base64
+import json
 import logging
 from typing import Any
 
 from stac_fastapi.sfeos_helpers.mappings import COLLECTIONS_INDEX
 
 logger = logging.getLogger(__name__)
+
+
+def decode_token_to_search_after(token: str | None) -> list | None:
+    """Decode a base64-encoded pagination token to search_after list.
+
+    Args:
+        token: Base64-encoded JSON string representing search_after values.
+
+    Returns:
+        List of sort values for search_after, or None if token is invalid/empty.
+    """
+    if not token:
+        return None
+    try:
+        return json.loads(base64.urlsafe_b64decode(token.encode()).decode())
+    except Exception:
+        return None
+
+
+def encode_search_after_to_token(search_after: list | None) -> str | None:
+    """Encode search_after list to a base64-encoded pagination token.
+
+    Args:
+        search_after: List of sort values from the last hit of the previous page.
+
+    Returns:
+        Base64-encoded JSON string, or None if search_after is empty/invalid.
+    """
+    if not search_after:
+        return None
+    try:
+        return base64.urlsafe_b64encode(json.dumps(search_after).encode()).decode()
+    except Exception:
+        return None
 
 
 def _get_total_hits(hits_container: dict[str, Any]) -> int:
