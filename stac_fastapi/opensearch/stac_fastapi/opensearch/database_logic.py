@@ -1535,7 +1535,7 @@ class DatabaseLogic(BaseDatabaseLogic):
     @retry_on_connection_error
     async def update_collection(
         self, collection_id: str, collection: Collection, **kwargs: Any
-    ):
+    ) -> None:
         """Update a collection from the database.
 
         Args:
@@ -1564,20 +1564,31 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         await self.find_collection(collection_id=collection_id)
 
-        if collection_id != collection["id"]:
+        # Convert dict to proper format if needed
+        collection_dict = (
+            collection
+            if isinstance(collection, dict)
+            else collection.model_dump()
+            if hasattr(collection, "model_dump")
+            else dict(collection)
+        )
+
+        if collection_id != collection_dict.get("id"):
             logger.info(
-                f"Collection ID change detected: {collection_id} -> {collection['id']}"
+                f"Collection ID change detected: {collection_id} -> {collection_dict.get('id')}"
             )
 
-            await self.create_collection(collection, refresh=refresh)
+            await self.create_collection(collection_dict, refresh=refresh)
 
             await self.client.reindex(
                 body={
-                    "dest": {"index": f"{ITEMS_INDEX_PREFIX}{collection['id']}"},
+                    "dest": {
+                        "index": f"{ITEMS_INDEX_PREFIX}{collection_dict.get('id')}"
+                    },
                     "source": {"index": f"{ITEMS_INDEX_PREFIX}{collection_id}"},
                     "script": {
                         "lang": "painless",
-                        "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection["id"]}'); ctx._source.collection = '{collection["id"]}' ;""",
+                        "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection_dict.get("id")}'); ctx._source.collection = '{collection_dict.get("id")}' ;""",
                     },
                 },
                 wait_for_completion=True,
@@ -1591,12 +1602,12 @@ class DatabaseLogic(BaseDatabaseLogic):
                 "ENABLE_COLLECTIONS_SEARCH_ROUTE"
             ):
                 # Convert bbox to bbox_shape for geospatial queries (ES/OS specific)
-                add_bbox_shape_to_collection(collection)
+                add_bbox_shape_to_collection(collection_dict)
 
             await self.client.index(
                 index=COLLECTIONS_INDEX,
                 id=collection_id,
-                body=collection,
+                body=collection_dict,
                 refresh=refresh,
             )
 
@@ -2150,14 +2161,32 @@ class DatabaseLogic(BaseDatabaseLogic):
         collection_id: str,
         request: Any,
     ) -> Any:
-        """Get a specific collection within a catalog."""
+        """Get a specific collection within a catalog.
+
+        Args:
+            catalog_id (str): The ID of the parent catalog.
+            collection_id (str): The ID of the collection.
+            request (Any): The request object.
+
+        Returns:
+            The collection object.
+
+        Raises:
+            NotFoundError: If the collection or catalog does not exist or are not related.
+        """
         # Ensure parent catalog exists
         await self.find_catalog(catalog_id)
 
         # Get collection
         collection = await self.find_collection(collection_id)
 
-        # Verify relationship (optional check could be added here)
+        # Verify relationship: catalog_id must be in parent_ids
+        parent_ids = collection.get("parent_ids", [])
+        if catalog_id not in parent_ids:
+            raise NotFoundError(
+                f"Collection {collection_id} is not linked to catalog {catalog_id}"
+            )
+
         return collection
 
     @retry_on_connection_error

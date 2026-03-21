@@ -1550,7 +1550,7 @@ class DatabaseLogic(BaseDatabaseLogic):
     @retry_on_connection_error
     async def update_collection(
         self, collection_id: str, collection: Collection, **kwargs: Any
-    ):
+    ) -> None:
         """Update a collection in the database.
 
         Args:
@@ -1585,23 +1585,34 @@ class DatabaseLogic(BaseDatabaseLogic):
         # Ensure the collection exists
         await self.find_collection(collection_id=collection_id)
 
+        # Convert dict to proper format if needed
+        collection_dict = (
+            collection
+            if isinstance(collection, dict)
+            else collection.model_dump()
+            if hasattr(collection, "model_dump")
+            else dict(collection)
+        )
+
         # Handle collection ID change
-        if collection_id != collection["id"]:
+        if collection_id != collection_dict.get("id"):
             logger.info(
-                f"Collection ID change detected: {collection_id} -> {collection['id']}"
+                f"Collection ID change detected: {collection_id} -> {collection_dict.get('id')}"
             )
 
             # Create the new collection
-            await self.create_collection(collection, refresh=refresh)
+            await self.create_collection(collection_dict, refresh=refresh)
 
             # Reindex items from the old collection to the new collection
             await self.client.reindex(
                 body={
-                    "dest": {"index": f"{ITEMS_INDEX_PREFIX}{collection['id']}"},
+                    "dest": {
+                        "index": f"{ITEMS_INDEX_PREFIX}{collection_dict.get('id')}"
+                    },
                     "source": {"index": f"{ITEMS_INDEX_PREFIX}{collection_id}"},
                     "script": {
                         "lang": "painless",
-                        "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection["id"]}'); ctx._source.collection = '{collection["id"]}' ;""",  # noqa: E702
+                        "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection_dict.get("id")}'); ctx._source.collection = '{collection_dict.get("id")}' ;""",  # noqa: E702
                     },
                 },
                 wait_for_completion=True,
@@ -1616,13 +1627,13 @@ class DatabaseLogic(BaseDatabaseLogic):
                 "ENABLE_COLLECTIONS_SEARCH_ROUTE"
             ):
                 # Convert bbox to bbox_shape for geospatial queries (ES/OS specific)
-                add_bbox_shape_to_collection(collection)
+                add_bbox_shape_to_collection(collection_dict)
 
             # Update the existing collection
             await self.client.index(
                 index=COLLECTIONS_INDEX,
                 id=collection_id,
-                document=collection,
+                document=collection_dict,
                 refresh=refresh,
             )
 
@@ -2270,22 +2281,12 @@ class DatabaseLogic(BaseDatabaseLogic):
         # Get collection
         collection = await self.find_collection(collection_id)
 
-        # Verify relationship
-        # simple check: is catalog_id in parent_ids of the collection?
-        # Note: This assumes we store parent_ids in index time.
+        # Verify relationship: catalog_id must be in parent_ids
         parent_ids = collection.get("parent_ids", [])
         if catalog_id not in parent_ids:
-            # Fallback check: check links for parent relation if parent_ids not populated
-            # This is less reliable if links are external URLs, but good for consistency
-            links = collection.get("links", [])
-            _ = next((link for link in links if link.get("rel") == "parent"), None)
-
-            # If we strictly enforce parent_ids, we raise:
-            # raise NotFoundError(f"Collection {collection_id} is not a child of Catalog {catalog_id}")
-            # For now, we allow access if the collection exists for looser coupling.
-            if not parent_ids:
-                # If no parent_ids logic is strictly enforced yet, we might skip this check
-                pass
+            raise NotFoundError(
+                f"Collection {collection_id} is not linked to catalog {catalog_id}"
+            )
 
         return collection
 

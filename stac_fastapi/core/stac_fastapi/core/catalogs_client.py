@@ -149,6 +149,8 @@ class CatalogsClient(AsyncBaseCatalogsClient):
             # Add child links for each child (up to 100)
             for child in children_list[:100]:
                 child_id = child.get("id")
+                if not child_id:
+                    continue
                 child_title = child.get("title", child_id)
                 child_type = child.get("type", "Catalog")
 
@@ -165,9 +167,14 @@ class CatalogsClient(AsyncBaseCatalogsClient):
                         "title": child_title,
                     }
                 )
-        except Exception:
-            # If getting children fails, just skip adding child links
+        except NotFoundError:
             pass
+        except Exception as e:
+            import logging
+
+            logging.getLogger(__name__).warning(
+                f"Failed to fetch children for catalog {catalog_id}: {e}"
+            )
 
         catalog_data["links"] = catalog_links
         return Catalog(**catalog_data)
@@ -237,8 +244,8 @@ class CatalogsClient(AsyncBaseCatalogsClient):
                 raise NotFoundError(f"Catalog {catalog_id} not found")
         except NotFoundError:
             raise
-        except Exception:
-            raise NotFoundError(f"Catalog {catalog_id} not found")
+        except Exception as e:
+            raise NotFoundError(f"Catalog {catalog_id} not found") from e
 
         limit = limit or 10
         (
@@ -306,8 +313,8 @@ class CatalogsClient(AsyncBaseCatalogsClient):
                 raise NotFoundError(f"Catalog {catalog_id} not found")
         except NotFoundError:
             raise
-        except Exception:
-            raise NotFoundError(f"Catalog {catalog_id} not found")
+        except Exception as e:
+            raise NotFoundError(f"Catalog {catalog_id} not found") from e
 
         limit = limit or 10
         (
@@ -432,8 +439,8 @@ class CatalogsClient(AsyncBaseCatalogsClient):
                 raise NotFoundError(f"Catalog {catalog_id} not found")
         except NotFoundError:
             raise
-        except Exception:
-            raise NotFoundError(f"Catalog {catalog_id} not found")
+        except Exception as e:
+            raise NotFoundError(f"Catalog {catalog_id} not found") from e
 
         # Get collection ID safely
         if isinstance(collection, dict):
@@ -451,7 +458,8 @@ class CatalogsClient(AsyncBaseCatalogsClient):
         if is_object_uri:
             try:
                 existing = await self.database.find_collection(col_id)
-                # Link existing collection
+                # Link existing collection (fetch fresh to avoid race condition)
+                existing = await self.database.find_collection(col_id)
                 if "parent_ids" not in existing:
                     existing["parent_ids"] = []
                 if catalog_id not in existing["parent_ids"]:
@@ -471,13 +479,16 @@ class CatalogsClient(AsyncBaseCatalogsClient):
                 else:
                     content = dict(collection_obj)
                 return JSONResponse(content=content, status_code=201)
-            except Exception:
+            except NotFoundError:
                 raise NotFoundError(f"Collection {col_id} not found")
+            except Exception as e:
+                raise NotFoundError(f"Collection {col_id} not found") from e
 
         # Full collection data provided - try to link existing or create new
         try:
             existing = await self.database.find_collection(col_id)
-            # Link existing collection
+            # Link existing collection (fetch fresh to avoid race condition)
+            existing = await self.database.find_collection(col_id)
             if "parent_ids" not in existing:
                 existing["parent_ids"] = []
             if catalog_id not in existing["parent_ids"]:
@@ -497,7 +508,7 @@ class CatalogsClient(AsyncBaseCatalogsClient):
             else:
                 content = dict(collection_obj)
             return JSONResponse(content=content, status_code=201)
-        except Exception:
+        except NotFoundError:
             # Create new collection
             if isinstance(collection, dict):
                 col_dict = collection
@@ -534,6 +545,8 @@ class CatalogsClient(AsyncBaseCatalogsClient):
             else:
                 content = dict(collection_obj)
             return JSONResponse(content=content, status_code=201)
+        except Exception as e:
+            raise NotFoundError(f"Failed to create/link collection {col_id}") from e
 
     async def get_catalog_collection(
         self,
@@ -636,8 +649,8 @@ class CatalogsClient(AsyncBaseCatalogsClient):
                 raise NotFoundError(f"Catalog {catalog_id} not found")
         except NotFoundError:
             raise
-        except Exception:
-            raise NotFoundError(f"Catalog {catalog_id} not found")
+        except Exception as e:
+            raise NotFoundError(f"Catalog {catalog_id} not found") from e
 
         # Validate collection exists and belongs to this catalog
         try:
@@ -646,8 +659,10 @@ class CatalogsClient(AsyncBaseCatalogsClient):
                 collection_id=collection_id,
                 request=request,
             )
-        except Exception:
-            raise NotFoundError(f"Collection {collection_id} not found")
+        except NotFoundError:
+            raise
+        except Exception as e:
+            raise NotFoundError(f"Collection {collection_id} not found") from e
 
         # Verify collection is in this catalog's parent_ids
         parent_ids = collection_dict.get("parent_ids", [])
@@ -678,6 +693,10 @@ class CatalogsClient(AsyncBaseCatalogsClient):
 
         serialized_items = []
         for item in items:
+            item_id = item.get("id")
+            if not item_id:
+                continue
+
             # Create item without request to avoid urljoin errors, then add all links manually
             serialized_item = self.item_serializer.db_to_stac(item, None)
 
@@ -686,7 +705,7 @@ class CatalogsClient(AsyncBaseCatalogsClient):
                 {
                     "rel": "self",
                     "type": "application/geo+json",
-                    "href": f"{base_url}/catalogs/{catalog_id}/collections/{collection_id}/items/{item.get('id', '')}",
+                    "href": f"{base_url}/catalogs/{catalog_id}/collections/{collection_id}/items/{item_id}",
                 },
                 {
                     "rel": "parent",
@@ -788,8 +807,8 @@ class CatalogsClient(AsyncBaseCatalogsClient):
                 raise NotFoundError(f"Catalog {catalog_id} not found")
         except NotFoundError:
             raise
-        except Exception:
-            raise NotFoundError(f"Catalog {catalog_id} not found")
+        except Exception as e:
+            raise NotFoundError(f"Catalog {catalog_id} not found") from e
 
         # Validate collection exists and belongs to this catalog
         try:
@@ -798,8 +817,10 @@ class CatalogsClient(AsyncBaseCatalogsClient):
                 collection_id=collection_id,
                 request=request,
             )
-        except Exception:
-            raise NotFoundError(f"Collection {collection_id} not found")
+        except NotFoundError:
+            raise
+        except Exception as e:
+            raise NotFoundError(f"Collection {collection_id} not found") from e
 
         # Verify collection is in this catalog's parent_ids
         parent_ids = collection_dict.get("parent_ids", [])
@@ -896,8 +917,8 @@ class CatalogsClient(AsyncBaseCatalogsClient):
                 raise NotFoundError(f"Catalog {catalog_id} not found")
         except NotFoundError:
             raise
-        except Exception:
-            raise NotFoundError(f"Catalog {catalog_id} not found")
+        except Exception as e:
+            raise NotFoundError(f"Catalog {catalog_id} not found") from e
 
         limit = limit or 10
         (
