@@ -1,5 +1,6 @@
 """Catalogs client implementation for multi-tenant catalogs extension."""
 
+import logging
 from datetime import datetime
 from typing import Literal
 
@@ -22,6 +23,8 @@ from stac_fastapi.core.serializers import (
 )
 from stac_fastapi.types.errors import NotFoundError
 
+logger = logging.getLogger(__name__)
+
 
 @attr.s
 class CatalogsClient(AsyncBaseCatalogsClient):
@@ -35,6 +38,19 @@ class CatalogsClient(AsyncBaseCatalogsClient):
     catalog_serializer: CatalogSerializer = attr.ib(default=CatalogSerializer)
     collection_serializer: CollectionSerializer = attr.ib(default=CollectionSerializer)
     item_serializer: ItemSerializer = attr.ib(default=ItemSerializer)
+
+    def _get_base_url(self, request: Request | None) -> str:
+        """Extract base URL from request with sensible default.
+
+        Args:
+            request: FastAPI request object or None.
+
+        Returns:
+            Base URL without trailing slash, or empty string if request is None.
+        """
+        if request is None:
+            return ""
+        return str(request.base_url).rstrip("/")
 
     async def get_catalogs(
         self,
@@ -52,7 +68,7 @@ class CatalogsClient(AsyncBaseCatalogsClient):
             sort=[{"field": "id", "direction": "asc"}],
         )
 
-        base_url = str(request.base_url).rstrip("/") if request else ""
+        base_url = self._get_base_url(request)
         catalogs = [
             self.catalog_serializer.db_to_stac(
                 cat, request, extensions=["CatalogsExtension"]
@@ -125,7 +141,7 @@ class CatalogsClient(AsyncBaseCatalogsClient):
             )
 
         # Add children endpoint link and child links
-        base_url = str(request.base_url).rstrip("/") if request else ""
+        base_url = self._get_base_url(request)
         catalog_links = list(catalog_data.get("links", []))
 
         # Add children endpoint link
@@ -170,11 +186,7 @@ class CatalogsClient(AsyncBaseCatalogsClient):
         except NotFoundError:
             pass
         except Exception as e:
-            import logging
-
-            logging.getLogger(__name__).warning(
-                f"Failed to fetch children for catalog {catalog_id}: {e}"
-            )
+            logger.warning(f"Failed to fetch children for catalog {catalog_id}: {e}")
 
         catalog_data["links"] = catalog_links
         return Catalog(**catalog_data)
@@ -266,7 +278,7 @@ class CatalogsClient(AsyncBaseCatalogsClient):
             for col in collections_list
         ]
 
-        base_url = str(request.base_url).rstrip("/") if request else ""
+        base_url = self._get_base_url(request)
         links = [
             {"rel": "root", "type": "application/json", "href": base_url},
             {
@@ -335,7 +347,7 @@ class CatalogsClient(AsyncBaseCatalogsClient):
             for cat in catalogs_list
         ]
 
-        base_url = str(request.base_url).rstrip("/") if request else ""
+        base_url = self._get_base_url(request)
         links = [
             {"rel": "root", "type": "application/json", "href": base_url},
             {
@@ -391,7 +403,7 @@ class CatalogsClient(AsyncBaseCatalogsClient):
             if isinstance(existing_obj, dict):
                 return Catalog(**existing_obj)
             return existing_obj
-        except Exception:
+        except NotFoundError:
             # Create new catalog
             if isinstance(catalog, dict):
                 db_catalog_dict = catalog
@@ -458,8 +470,6 @@ class CatalogsClient(AsyncBaseCatalogsClient):
         if is_object_uri:
             try:
                 existing = await self.database.find_collection(col_id)
-                # Link existing collection (fetch fresh to avoid race condition)
-                existing = await self.database.find_collection(col_id)
                 if "parent_ids" not in existing:
                     existing["parent_ids"] = []
                 if catalog_id not in existing["parent_ids"]:
@@ -481,13 +491,9 @@ class CatalogsClient(AsyncBaseCatalogsClient):
                 return JSONResponse(content=content, status_code=201)
             except NotFoundError:
                 raise NotFoundError(f"Collection {col_id} not found")
-            except Exception as e:
-                raise NotFoundError(f"Collection {col_id} not found") from e
 
         # Full collection data provided - try to link existing or create new
         try:
-            existing = await self.database.find_collection(col_id)
-            # Link existing collection (fetch fresh to avoid race condition)
             existing = await self.database.find_collection(col_id)
             if "parent_ids" not in existing:
                 existing["parent_ids"] = []
@@ -545,8 +551,6 @@ class CatalogsClient(AsyncBaseCatalogsClient):
             else:
                 content = dict(collection_obj)
             return JSONResponse(content=content, status_code=201)
-        except Exception as e:
-            raise NotFoundError(f"Failed to create/link collection {col_id}") from e
 
     async def get_catalog_collection(
         self,
@@ -605,8 +609,6 @@ class CatalogsClient(AsyncBaseCatalogsClient):
                 raise NotFoundError(f"Catalog {catalog_id} not found")
         except NotFoundError:
             raise
-        except Exception:
-            raise NotFoundError(f"Catalog {catalog_id} not found")
 
         # Get collection and validate it belongs to this catalog
         try:
@@ -615,8 +617,8 @@ class CatalogsClient(AsyncBaseCatalogsClient):
                 collection_id=collection_id,
                 request=request,
             )
-        except Exception:
-            raise NotFoundError(f"Collection {collection_id} not found")
+        except NotFoundError:
+            raise
 
         # Verify collection is in this catalog's parent_ids
         parent_ids = collection_dict.get("parent_ids", [])
@@ -625,7 +627,9 @@ class CatalogsClient(AsyncBaseCatalogsClient):
                 f"Collection {collection_id} not linked to catalog {catalog_id}"
             )
 
-        collection_dict["parent_ids"] = [pid for pid in parent_ids if pid != catalog_id]
+        # Remove this catalog from parent_ids
+        new_parent_ids = [pid for pid in parent_ids if pid != catalog_id]
+        collection_dict["parent_ids"] = new_parent_ids
         await self.database.update_collection(
             collection_id, collection_dict, refresh=True
         )
@@ -642,6 +646,10 @@ class CatalogsClient(AsyncBaseCatalogsClient):
         **kwargs,
     ) -> ItemCollection | Response:
         """Get items from a collection in a catalog with search support."""
+        # Validate and default limit
+        limit = limit or 10
+        if limit <= 0:
+            limit = 10
         # Validate catalog exists
         try:
             catalog = await self.database.find_catalog(catalog_id)
@@ -689,7 +697,7 @@ class CatalogsClient(AsyncBaseCatalogsClient):
             request=request,
         )
 
-        base_url = str(request.base_url).rstrip("/") if request else ""
+        base_url = self._get_base_url(request)
 
         serialized_items = []
         for item in items:
@@ -837,7 +845,7 @@ class CatalogsClient(AsyncBaseCatalogsClient):
         )
 
         # Extract base URL as string for serializer
-        base_url = str(request.base_url).rstrip("/") if request else ""
+        base_url = self._get_base_url(request)
 
         # Create item without request to avoid urljoin errors, then add all links manually
         item = self.item_serializer.db_to_stac(item_dict, None)
@@ -951,7 +959,7 @@ class CatalogsClient(AsyncBaseCatalogsClient):
                     )
                 )
 
-        base_url = str(request.base_url).rstrip("/") if request else ""
+        base_url = self._get_base_url(request)
         links = [
             {"rel": "root", "type": "application/json", "href": base_url},
             {
@@ -1009,7 +1017,11 @@ class CatalogsClient(AsyncBaseCatalogsClient):
         **kwargs,
     ) -> None:
         """Unlink a sub-catalog from its parent."""
-        sub_catalog = await self.database.find_catalog(sub_catalog_id)
+        try:
+            sub_catalog = await self.database.find_catalog(sub_catalog_id)
+        except NotFoundError:
+            raise NotFoundError(f"Catalog {sub_catalog_id} not found")
+
         if "parent_ids" in sub_catalog:
             sub_catalog["parent_ids"] = [
                 pid for pid in sub_catalog["parent_ids"] if pid != catalog_id
