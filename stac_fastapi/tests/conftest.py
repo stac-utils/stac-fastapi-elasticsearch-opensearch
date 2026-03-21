@@ -412,7 +412,7 @@ def build_test_app():
 
 def build_test_app_with_catalogs():
     """Build a test app with catalogs extension enabled."""
-    from stac_fastapi.sfeos_helpers.catalogs import CatalogsExtension
+    from stac_fastapi.core.multi_tenant_catalogs import CatalogsExtension
 
     # Get the base config
     test_config = app_config.copy()
