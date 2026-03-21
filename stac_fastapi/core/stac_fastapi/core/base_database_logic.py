@@ -204,8 +204,12 @@ class BaseDatabaseLogic(abc.ABC):
         token: str | None,
         request: Any = None,
         resource_type: str | None = None,
-    ) -> Any:
-        """Get children of a catalog."""
+    ) -> tuple[list[dict[str, Any]], int, str | None]:
+        """Get children of a catalog.
+
+        Returns:
+            Tuple of (children_list, total_count, next_token).
+        """
         pass
 
     @abc.abstractmethod
@@ -215,8 +219,12 @@ class BaseDatabaseLogic(abc.ABC):
         limit: int,
         token: str | None,
         request: Any = None,
-    ) -> Any:
-        """Get collections of a catalog."""
+    ) -> tuple[list[dict[str, Any]], int, str | None]:
+        """Get collections of a catalog.
+
+        Returns:
+            Tuple of (collections_list, total_count, next_token).
+        """
         pass
 
     @abc.abstractmethod
@@ -226,8 +234,12 @@ class BaseDatabaseLogic(abc.ABC):
         limit: int,
         token: str | None,
         request: Any = None,
-    ) -> Any:
-        """Get sub-catalogs of a catalog."""
+    ) -> tuple[list[dict[str, Any]], int, str | None]:
+        """Get sub-catalogs of a catalog.
+
+        Returns:
+            Tuple of (catalogs_list, total_count, next_token).
+        """
         pass
 
     @abc.abstractmethod

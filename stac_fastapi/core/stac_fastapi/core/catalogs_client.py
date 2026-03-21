@@ -2,7 +2,7 @@
 
 import logging
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 import attr
 from fastapi import Request
@@ -11,7 +11,7 @@ from stac_pydantic.catalog import Catalog
 from stac_pydantic.collection import Collection
 from stac_pydantic.item import Item
 from stac_pydantic.item_collection import ItemCollection
-from starlette.responses import Response
+from starlette.responses import JSONResponse, Response
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.multi_tenant_catalogs.client import AsyncBaseCatalogsClient
@@ -52,6 +52,62 @@ class CatalogsClient(AsyncBaseCatalogsClient):
             return ""
         return str(request.base_url).rstrip("/")
 
+    @staticmethod
+    def _to_dict(obj: Any) -> dict:
+        """Convert Catalog/Collection/Item objects to dict.
+
+        Args:
+            obj: Object to convert (dict, Pydantic model, or other).
+
+        Returns:
+            Dictionary representation of the object.
+        """
+        if isinstance(obj, dict):
+            return obj
+        if hasattr(obj, "model_dump"):
+            return obj.model_dump(mode="json")
+        return dict(obj)
+
+    @staticmethod
+    def _link_to_dict(link: Any) -> dict:
+        """Convert Link objects to dict, filtering None values.
+
+        Args:
+            link: Link object to convert.
+
+        Returns:
+            Dictionary representation of the link.
+        """
+        if hasattr(link, "model_dump"):
+            return link.model_dump(exclude_none=True)
+        if isinstance(link, dict):
+            return {k: v for k, v in link.items() if v is not None}
+        return {k: v for k, v in dict(link).items() if v is not None}
+
+    @staticmethod
+    def _add_parent_id(obj: dict, parent_id: str) -> None:
+        """Safely add a parent ID to an object's parent_ids list.
+
+        Args:
+            obj: Object to update.
+            parent_id: Parent ID to add.
+        """
+        if "parent_ids" not in obj:
+            obj["parent_ids"] = []
+        if parent_id not in obj["parent_ids"]:
+            obj["parent_ids"].append(parent_id)
+
+    @staticmethod
+    def _remove_parent_id(obj: dict, parent_id: str) -> None:
+        """Safely remove a parent ID from an object's parent_ids list.
+
+        Args:
+            obj: Object to update.
+            parent_id: Parent ID to remove.
+        """
+        if "parent_ids" in obj:
+            obj["parent_ids"] = [pid for pid in obj["parent_ids"] if pid != parent_id]
+
     async def get_catalogs(
         self,
         limit: int | None = None,
@@ -76,17 +132,22 @@ class CatalogsClient(AsyncBaseCatalogsClient):
             for cat in catalogs_list
         ]
 
-        return Catalogs(
-            catalogs=catalogs,
-            links=[
-                {"rel": "root", "type": "application/json", "href": base_url},
-                {"rel": "parent", "type": "application/json", "href": base_url},
+        links = [
+            {"rel": "root", "type": "application/json", "href": base_url},
+            {"rel": "parent", "type": "application/json", "href": base_url},
+        ]
+        if request:
+            links.append(
                 {
                     "rel": "self",
                     "type": "application/json",
-                    "href": str(request.url) if request else "",
-                },
-            ],
+                    "href": str(request.url),
+                }
+            )
+
+        return Catalogs(
+            catalogs=catalogs,
+            links=links,
             numberMatched=total_hits,
             numberReturned=len(catalogs),
         )
@@ -95,12 +156,7 @@ class CatalogsClient(AsyncBaseCatalogsClient):
         self, catalog: Catalog, request: Request | None = None, **kwargs
     ) -> Catalog | Response:
         """Create a new catalog."""
-        # Convert Catalog to dict first to avoid link serialization issues
-        if hasattr(catalog, "model_dump"):
-            db_catalog_dict = catalog.model_dump(mode="json")
-        else:
-            db_catalog_dict = dict(catalog)
-
+        db_catalog_dict = self._to_dict(catalog)
         db_catalog_dict["type"] = "Catalog"
         db_catalog_dict["parent_ids"] = db_catalog_dict.get("parent_ids", [])
 
@@ -201,12 +257,7 @@ class CatalogsClient(AsyncBaseCatalogsClient):
         """Update an existing catalog."""
         existing = await self.database.find_catalog(catalog_id)
 
-        # Convert Catalog to dict first
-        if hasattr(catalog, "model_dump"):
-            db_catalog_dict = catalog.model_dump(mode="json")
-        else:
-            db_catalog_dict = dict(catalog)
-
+        db_catalog_dict = self._to_dict(catalog)
         db_catalog_dict["type"] = "Catalog"
         db_catalog_dict["id"] = catalog_id
         db_catalog_dict["parent_ids"] = existing.get("parent_ids", [])
@@ -392,10 +443,7 @@ class CatalogsClient(AsyncBaseCatalogsClient):
         try:
             existing = await self.database.find_catalog(cat_id)
             # Link existing catalog
-            if "parent_ids" not in existing:
-                existing["parent_ids"] = []
-            if catalog_id not in existing["parent_ids"]:
-                existing["parent_ids"].append(catalog_id)
+            self._add_parent_id(existing, catalog_id)
             await self.database.create_catalog(existing, refresh=True)
             existing_obj = self.catalog_serializer.db_to_stac(
                 existing, request, extensions=["CatalogsExtension"]
@@ -405,15 +453,7 @@ class CatalogsClient(AsyncBaseCatalogsClient):
             return existing_obj
         except NotFoundError:
             # Create new catalog
-            if isinstance(catalog, dict):
-                db_catalog_dict = catalog
-            else:
-                # Convert Catalog to dict
-                if hasattr(catalog, "model_dump"):
-                    db_catalog_dict = catalog.model_dump(mode="json")
-                else:
-                    db_catalog_dict = dict(catalog)
-
+            db_catalog_dict = self._to_dict(catalog)
             db_catalog_dict["type"] = "Catalog"
             db_catalog_dict["parent_ids"] = [catalog_id]
 
@@ -442,8 +482,6 @@ class CatalogsClient(AsyncBaseCatalogsClient):
         **kwargs,
     ) -> Collection | Response:
         """Create a new collection or link an existing collection to catalog."""
-        from starlette.responses import JSONResponse
-
         # Validate catalog exists
         try:
             catalog = await self.database.find_catalog(catalog_id)
@@ -470,10 +508,7 @@ class CatalogsClient(AsyncBaseCatalogsClient):
         if is_object_uri:
             try:
                 existing = await self.database.find_collection(col_id)
-                if "parent_ids" not in existing:
-                    existing["parent_ids"] = []
-                if catalog_id not in existing["parent_ids"]:
-                    existing["parent_ids"].append(catalog_id)
+                self._add_parent_id(existing, catalog_id)
                 await self.database.update_collection(col_id, existing, refresh=True)
                 collection_obj = self.collection_serializer.db_to_stac_in_catalog(
                     existing,
@@ -482,12 +517,7 @@ class CatalogsClient(AsyncBaseCatalogsClient):
                     extensions=["CatalogsExtension"],
                 )
                 # Return 201 Created for all collection operations
-                if hasattr(collection_obj, "model_dump"):
-                    content = collection_obj.model_dump(mode="json")
-                elif isinstance(collection_obj, dict):
-                    content = collection_obj
-                else:
-                    content = dict(collection_obj)
+                content = self._to_dict(collection_obj)
                 return JSONResponse(content=content, status_code=201)
             except NotFoundError:
                 raise NotFoundError(f"Collection {col_id} not found")
@@ -495,10 +525,7 @@ class CatalogsClient(AsyncBaseCatalogsClient):
         # Full collection data provided - try to link existing or create new
         try:
             existing = await self.database.find_collection(col_id)
-            if "parent_ids" not in existing:
-                existing["parent_ids"] = []
-            if catalog_id not in existing["parent_ids"]:
-                existing["parent_ids"].append(catalog_id)
+            self._add_parent_id(existing, catalog_id)
             await self.database.update_collection(col_id, existing, refresh=True)
             collection_obj = self.collection_serializer.db_to_stac_in_catalog(
                 existing,
@@ -507,24 +534,11 @@ class CatalogsClient(AsyncBaseCatalogsClient):
                 extensions=["CatalogsExtension"],
             )
             # Return 201 Created for full collection data (even if linking existing)
-            if hasattr(collection_obj, "model_dump"):
-                content = collection_obj.model_dump(mode="json")
-            elif isinstance(collection_obj, dict):
-                content = collection_obj
-            else:
-                content = dict(collection_obj)
+            content = self._to_dict(collection_obj)
             return JSONResponse(content=content, status_code=201)
         except NotFoundError:
             # Create new collection
-            if isinstance(collection, dict):
-                col_dict = collection
-            else:
-                # Convert Collection to dict
-                if hasattr(collection, "model_dump"):
-                    col_dict = collection.model_dump(mode="json")
-                else:
-                    col_dict = dict(collection)
-
+            col_dict = self._to_dict(collection)
             col_dict["parent_ids"] = [catalog_id]
 
             # Filter out dynamic links
@@ -544,12 +558,7 @@ class CatalogsClient(AsyncBaseCatalogsClient):
                 extensions=["CatalogsExtension"],
             )
             # Return 201 Created for new collection
-            if hasattr(collection_obj, "model_dump"):
-                content = collection_obj.model_dump(mode="json")
-            elif isinstance(collection_obj, dict):
-                content = collection_obj
-            else:
-                content = dict(collection_obj)
+            content = self._to_dict(collection_obj)
             return JSONResponse(content=content, status_code=201)
 
     async def get_catalog_collection(
@@ -628,8 +637,7 @@ class CatalogsClient(AsyncBaseCatalogsClient):
             )
 
         # Remove this catalog from parent_ids
-        new_parent_ids = [pid for pid in parent_ids if pid != catalog_id]
-        collection_dict["parent_ids"] = new_parent_ids
+        self._remove_parent_id(collection_dict, catalog_id)
         await self.database.update_collection(
             collection_id, collection_dict, refresh=True
         )
@@ -741,16 +749,7 @@ class CatalogsClient(AsyncBaseCatalogsClient):
 
             if existing_links:
                 for link in existing_links:
-                    # Convert Link objects to dicts
-                    if hasattr(link, "model_dump"):
-                        link_dict = link.model_dump(exclude_none=True)
-                    elif isinstance(link, dict):
-                        link_dict = {k: v for k, v in link.items() if v is not None}
-                    else:
-                        link_dict = {
-                            k: v for k, v in dict(link).items() if v is not None
-                        }
-
+                    link_dict = self._link_to_dict(link)
                     # Skip standard links and links without href
                     if link_dict.get("rel") not in (
                         "self",
@@ -883,14 +882,7 @@ class CatalogsClient(AsyncBaseCatalogsClient):
 
         if existing_links:
             for link in existing_links:
-                # Convert Link objects to dicts
-                if hasattr(link, "model_dump"):
-                    link_dict = link.model_dump(exclude_none=True)
-                elif isinstance(link, dict):
-                    link_dict = {k: v for k, v in link.items() if v is not None}
-                else:
-                    link_dict = {k: v for k, v in dict(link).items() if v is not None}
-
+                link_dict = self._link_to_dict(link)
                 # Skip standard links and links without href
                 if link_dict.get("rel") not in (
                     "self",
@@ -1022,8 +1014,5 @@ class CatalogsClient(AsyncBaseCatalogsClient):
         except NotFoundError:
             raise NotFoundError(f"Catalog {sub_catalog_id} not found")
 
-        if "parent_ids" in sub_catalog:
-            sub_catalog["parent_ids"] = [
-                pid for pid in sub_catalog["parent_ids"] if pid != catalog_id
-            ]
+        self._remove_parent_id(sub_catalog, catalog_id)
         await self.database.create_catalog(sub_catalog, refresh=True)
