@@ -23,7 +23,6 @@ from stac_fastapi.core.extensions.aggregation import (
     EsAggregationExtensionGetRequest,
     EsAggregationExtensionPostRequest,
 )
-from stac_fastapi.core.extensions.catalogs import CatalogsExtension
 from stac_fastapi.core.extensions.collections_search import (
     CollectionsSearchEndpointExtension,
 )
@@ -56,6 +55,7 @@ from stac_fastapi.extensions.core.query import QueryConformanceClasses
 from stac_fastapi.extensions.core.sort import SortConformanceClasses
 from stac_fastapi.extensions.third_party import BulkTransactionExtension
 from stac_fastapi.sfeos_helpers.aggregation import EsAsyncBaseAggregationClient
+from stac_fastapi.sfeos_helpers.catalogs import CatalogsExtension
 from stac_fastapi.sfeos_helpers.database.utils import sentry_initialize
 from stac_fastapi.sfeos_helpers.filter import EsAsyncBaseFiltersClient
 

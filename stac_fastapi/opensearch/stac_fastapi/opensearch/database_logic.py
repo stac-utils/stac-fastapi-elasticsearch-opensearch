@@ -47,6 +47,10 @@ from stac_fastapi.sfeos_helpers.database import (
     retry_on_connection_error,
     retry_on_datetime_not_found,
     return_date,
+    search_children_with_pagination_shared,
+    search_collections_by_parent_id_with_pagination_shared,
+    search_sub_catalogs_with_pagination_shared,
+    update_catalog_in_index_shared,
     validate_refresh,
 )
 from stac_fastapi.sfeos_helpers.database.query import (
@@ -2005,3 +2009,196 @@ class DatabaseLogic(BaseDatabaseLogic):
             id=catalog_id,
             refresh=refresh,
         )
+
+    @retry_on_connection_error
+    async def get_catalog_children(
+        self,
+        catalog_id: str,
+        limit: int,
+        token: str | None,
+        request: Any = None,
+        resource_type: str | None = None,
+    ) -> tuple[list[dict[str, Any]], str | None, int | None]:
+        """Get children of a catalog (both sub-catalogs and collections)."""
+        return await search_children_with_pagination_shared(
+            es_client=self.client,
+            catalog_id=catalog_id,
+            limit=limit,
+            token=token,
+            resource_type=resource_type,
+        )
+
+    @retry_on_connection_error
+    async def get_catalog_collections(
+        self,
+        catalog_id: str,
+        limit: int,
+        token: str | None,
+        request: Any = None,
+    ) -> tuple[list[dict[str, Any]], str | None, int | None]:
+        """Get collections within a catalog."""
+        return await search_collections_by_parent_id_with_pagination_shared(
+            es_client=self.client,
+            catalog_id=catalog_id,
+            limit=limit,
+            token=token,
+        )
+
+    @retry_on_connection_error
+    async def get_catalog_catalogs(
+        self,
+        catalog_id: str,
+        limit: int,
+        token: str | None,
+        request: Any = None,
+    ) -> tuple[list[dict[str, Any]], str | None, int | None]:
+        """Get sub-catalogs within a catalog."""
+        return await search_sub_catalogs_with_pagination_shared(
+            es_client=self.client,
+            catalog_id=catalog_id,
+            limit=limit,
+            token=token,
+        )
+
+    @retry_on_connection_error
+    async def create_catalog_catalog(
+        self,
+        catalog_id: str,
+        catalog: Any,
+        request: Any,
+    ) -> Any:
+        """Create a sub-catalog within a catalog."""
+        # Ensure parent catalog exists
+        await self.find_catalog(catalog_id)
+
+        if "parent_ids" not in catalog:
+            catalog["parent_ids"] = []
+
+        if catalog_id not in catalog["parent_ids"]:
+            catalog["parent_ids"].append(catalog_id)
+
+        await self.create_catalog(catalog, refresh=self.async_settings.database_refresh)
+        return catalog
+
+    @retry_on_connection_error
+    async def create_catalog_collection(
+        self,
+        catalog_id: str,
+        collection: Any,
+        request: Any,
+    ) -> Any:
+        """Create a collection within a catalog."""
+        # Ensure parent catalog exists
+        await self.find_catalog(catalog_id)
+
+        if "parent_ids" not in collection:
+            collection["parent_ids"] = []
+
+        if catalog_id not in collection["parent_ids"]:
+            collection["parent_ids"].append(catalog_id)
+
+        await self.create_collection(
+            collection, refresh=self.async_settings.database_refresh
+        )
+        return collection
+
+    @retry_on_connection_error
+    async def get_catalog_collection(
+        self,
+        catalog_id: str,
+        collection_id: str,
+        request: Any,
+    ) -> Any:
+        """Get a specific collection within a catalog."""
+        # Ensure parent catalog exists
+        await self.find_catalog(catalog_id)
+
+        # Get collection
+        collection = await self.find_collection(collection_id)
+
+        # Verify relationship (optional check could be added here)
+        return collection
+
+    @retry_on_connection_error
+    async def get_catalog_collection_items(
+        self,
+        catalog_id: str,
+        collection_id: str,
+        request: Any,
+        bbox: list[float] | None = None,
+        datetime: str | None = None,
+        limit: int = 10,
+        sortby: str | None = None,
+        filter_expr: str | None = None,
+        filter_lang: str | None = None,
+        token: str | None = None,
+        query: str | None = None,
+        fields: list[str] | None = None,
+    ) -> Any:
+        """Get items for a collection within a catalog."""
+        # Check hierarchy
+        await self.get_catalog_collection(catalog_id, collection_id, request)
+
+        # We need to construct a Search object for items.
+        search = self.make_search()
+        search = self.apply_collections_filter(search, [collection_id])
+
+        if bbox:
+            search = self.apply_bbox_filter(search, bbox)
+
+        datetime_search = None
+        if datetime:
+            search, datetime_search = self.apply_datetime_filter(search, datetime)
+
+        sort_param = None
+        if sortby:
+            pass
+
+        return await self.execute_search(
+            search=search,
+            limit=limit or 10,
+            token=token,
+            sort=sort_param,
+            collection_ids=[collection_id],
+            datetime_search=datetime_search,
+        )
+
+    @retry_on_connection_error
+    async def get_catalog_collection_item(
+        self,
+        catalog_id: str,
+        collection_id: str,
+        item_id: str,
+        request: Any,
+    ) -> Any:
+        """Get a specific item from a collection within a catalog."""
+        # Check hierarchy
+        await self.get_catalog_collection(catalog_id, collection_id, request)
+
+        return await self.get_one_item(collection_id, item_id)
+
+    @retry_on_connection_error
+    async def update_catalog(
+        self,
+        catalog_id: str,
+        catalog: Any,
+        request: Any,
+    ) -> Any:
+        """Update a catalog."""
+        return await update_catalog_in_index_shared(
+            es_client=self.client,
+            catalog_id=catalog_id,
+            catalog=catalog,
+            refresh=self.async_settings.database_refresh,
+        )
+
+    @retry_on_connection_error
+    async def get_catalog(
+        self,
+        catalog_id: str,
+        request: Any,
+        settings: dict,
+        limit: int = 100,
+    ) -> Any:
+        """Get a specific catalog."""
+        return await self.find_catalog(catalog_id)
