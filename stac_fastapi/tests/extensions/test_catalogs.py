@@ -361,6 +361,12 @@ async def test_get_catalog_collection_items(catalogs_app_client, load_test_data,
     create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
     assert create_resp.status_code == 201
 
+    # Link the collection to the catalog
+    link_resp = await catalogs_app_client.post(
+        f"/catalogs/{test_catalog['id']}/collections", json={"id": ctx.collection["id"]}
+    )
+    assert link_resp.status_code == 201
+
     # Get items from a collection through the catalog route
     resp = await catalogs_app_client.get(
         f"/catalogs/{test_catalog['id']}/collections/{ctx.collection['id']}/items"
@@ -414,6 +420,12 @@ async def test_get_catalog_collection_item(catalogs_app_client, load_test_data, 
 
     create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
     assert create_resp.status_code == 201
+
+    # Link the collection to the catalog
+    link_resp = await catalogs_app_client.post(
+        f"/catalogs/{test_catalog['id']}/collections", json={"id": ctx.collection["id"]}
+    )
+    assert link_resp.status_code == 201
 
     # Get a specific item through the catalog route
     resp = await catalogs_app_client.get(

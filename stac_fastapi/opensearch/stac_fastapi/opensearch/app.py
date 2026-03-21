@@ -13,6 +13,7 @@ from stac_fastapi.api.models import (
     create_post_request_model,
     create_request_model,
 )
+from stac_fastapi.core.catalogs_client import CatalogsClient
 from stac_fastapi.core.core import (
     BulkTransactionsClient,
     CoreClient,
@@ -23,11 +24,11 @@ from stac_fastapi.core.extensions.aggregation import (
     EsAggregationExtensionGetRequest,
     EsAggregationExtensionPostRequest,
 )
-from stac_fastapi.core.extensions.catalogs import CatalogsExtension
 from stac_fastapi.core.extensions.collections_search import (
     CollectionsSearchEndpointExtension,
 )
 from stac_fastapi.core.extensions.fields import FieldsExtension
+from stac_fastapi.core.multi_tenant_catalogs import CatalogsExtension
 from stac_fastapi.core.rate_limit import setup_rate_limit
 from stac_fastapi.core.route_dependencies import get_route_dependencies
 from stac_fastapi.core.session import Session
@@ -219,17 +220,8 @@ if ENABLE_COLLECTIONS_SEARCH_ROUTE:
 
 if ENABLE_CATALOGS_ROUTE:
     catalogs_extension = CatalogsExtension(
-        client=CoreClient(
-            database=database_logic,
-            session=session,
-            post_request_model=collection_search_post_request_model,
-            landing_page_id=os.getenv("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"),
-        ),
-        settings=settings,
-        conformance_classes=[
-            "https://api.stacspec.org/v1.0.0-beta.4/multi-tenant-catalogs",
-            "https://api.stacspec.org/v1.0.0-beta.4/multi-tenant-catalogs/transaction",  # Optional conformance class for transactional support
-        ],
+        client=CatalogsClient(database=database_logic),
+        enable_transactions=True,
     )
     extensions.append(catalogs_extension)
 
