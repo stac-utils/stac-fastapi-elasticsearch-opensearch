@@ -2053,7 +2053,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         token: str | None,
         request: Any = None,
         resource_type: str | None = None,
-    ) -> tuple[list[dict[str, Any]], str | None, int | None]:
+    ) -> tuple[list[dict[str, Any]], int | None, str | None]:
         """Get children of a catalog (both sub-catalogs and collections).
 
         Args:
@@ -2066,13 +2066,45 @@ class DatabaseLogic(BaseDatabaseLogic):
         Returns:
             Tuple containing list of children, next token, and total count.
         """
-        return await search_children_with_pagination_shared(
+        # Decode token to search_after
+        search_after = None
+        if token:
+            try:
+                import base64
+                import json
+
+                search_after = json.loads(
+                    base64.urlsafe_b64decode(token.encode()).decode()
+                )
+            except Exception:
+                pass
+
+        (
+            children,
+            total_hits,
+            next_search_after,
+        ) = await search_children_with_pagination_shared(
             es_client=self.client,
             catalog_id=catalog_id,
             limit=limit,
-            token=token,
+            search_after=search_after,
             resource_type=resource_type,
         )
+
+        # Encode next_search_after to token
+        next_token = None
+        if next_search_after:
+            try:
+                import base64
+                import json
+
+                next_token = base64.urlsafe_b64encode(
+                    json.dumps(next_search_after).encode()
+                ).decode()
+            except Exception:
+                pass
+
+        return children, total_hits if total_hits is not None else 0, next_token
 
     @retry_on_connection_error
     async def get_catalog_collections(
@@ -2081,7 +2113,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         limit: int,
         token: str | None,
         request: Any = None,
-    ) -> tuple[list[dict[str, Any]], str | None, int | None]:
+    ) -> tuple[list[dict[str, Any]], int | None, str | None]:
         """Get collections within a catalog.
 
         Args:
@@ -2093,12 +2125,44 @@ class DatabaseLogic(BaseDatabaseLogic):
         Returns:
             Tuple containing list of collections, next token, and total count.
         """
-        return await search_collections_by_parent_id_with_pagination_shared(
+        # Decode token to search_after
+        search_after = None
+        if token:
+            try:
+                import base64
+                import json
+
+                search_after = json.loads(
+                    base64.urlsafe_b64decode(token.encode()).decode()
+                )
+            except Exception:
+                pass
+
+        (
+            collections,
+            total_hits,
+            next_search_after,
+        ) = await search_collections_by_parent_id_with_pagination_shared(
             es_client=self.client,
             catalog_id=catalog_id,
             limit=limit,
-            token=token,
+            search_after=search_after,
         )
+
+        # Encode next_search_after to token
+        next_token = None
+        if next_search_after:
+            try:
+                import base64
+                import json
+
+                next_token = base64.urlsafe_b64encode(
+                    json.dumps(next_search_after).encode()
+                ).decode()
+            except Exception:
+                pass
+
+        return collections, total_hits if total_hits is not None else 0, next_token
 
     @retry_on_connection_error
     async def get_catalog_catalogs(
@@ -2107,7 +2171,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         limit: int,
         token: str | None,
         request: Any = None,
-    ) -> tuple[list[dict[str, Any]], str | None, int | None]:
+    ) -> tuple[list[dict[str, Any]], int | None, str | None]:
         """Get sub-catalogs within a catalog.
 
         Args:
@@ -2119,12 +2183,44 @@ class DatabaseLogic(BaseDatabaseLogic):
         Returns:
             Tuple containing list of sub-catalogs, next token, and total count.
         """
-        return await search_sub_catalogs_with_pagination_shared(
+        # Decode token to search_after
+        search_after = None
+        if token:
+            try:
+                import base64
+                import json
+
+                search_after = json.loads(
+                    base64.urlsafe_b64decode(token.encode()).decode()
+                )
+            except Exception:
+                pass
+
+        (
+            catalogs,
+            total_hits,
+            next_search_after,
+        ) = await search_sub_catalogs_with_pagination_shared(
             es_client=self.client,
             catalog_id=catalog_id,
             limit=limit,
-            token=token,
+            search_after=search_after,
         )
+
+        # Encode next_search_after to token
+        next_token = None
+        if next_search_after:
+            try:
+                import base64
+                import json
+
+                next_token = base64.urlsafe_b64encode(
+                    json.dumps(next_search_after).encode()
+                ).decode()
+            except Exception:
+                pass
+
+        return catalogs, total_hits if total_hits is not None else 0, next_token
 
     @retry_on_connection_error
     async def create_catalog_catalog(
