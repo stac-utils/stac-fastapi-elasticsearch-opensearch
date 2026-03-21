@@ -678,14 +678,42 @@ class CatalogsClient(AsyncBaseCatalogsClient):
 
         serialized_items = []
         for item in items:
-            # Create item with request to get proper links, then override self link
-            serialized_item = self.item_serializer.db_to_stac(item, request)
+            # Create item without request to avoid urljoin errors, then add all links manually
+            serialized_item = self.item_serializer.db_to_stac(item, None)
 
-            # Override self link to use scoped catalog path
-            if hasattr(serialized_item, "links") and serialized_item.links:
-                # Filter out self links and convert to dicts if needed
-                filtered_links = []
-                for link in serialized_item.links:
+            # Create proper links for the item
+            item_links = [
+                {
+                    "rel": "self",
+                    "type": "application/geo+json",
+                    "href": f"{base_url}/catalogs/{catalog_id}/collections/{collection_id}/items/{item.get('id', '')}",
+                },
+                {
+                    "rel": "parent",
+                    "type": "application/json",
+                    "href": f"{base_url}/catalogs/{catalog_id}/collections/{collection_id}",
+                },
+                {
+                    "rel": "collection",
+                    "type": "application/json",
+                    "href": f"{base_url}/collections/{collection_id}",
+                },
+                {
+                    "rel": "root",
+                    "type": "application/json",
+                    "href": base_url,
+                },
+            ]
+
+            # Add any existing links that aren't self/parent/collection/root
+            existing_links = None
+            if isinstance(serialized_item, dict):
+                existing_links = serialized_item.get("links", [])
+            elif hasattr(serialized_item, "links"):
+                existing_links = serialized_item.links
+
+            if existing_links:
+                for link in existing_links:
                     # Convert Link objects to dicts
                     if hasattr(link, "model_dump"):
                         link_dict = link.model_dump(exclude_none=True)
@@ -696,20 +724,20 @@ class CatalogsClient(AsyncBaseCatalogsClient):
                             k: v for k, v in dict(link).items() if v is not None
                         }
 
-                    # Skip self links and links without href
-                    if link_dict.get("rel") != "self" and link_dict.get("href"):
-                        filtered_links.append(link_dict)
+                    # Skip standard links and links without href
+                    if link_dict.get("rel") not in (
+                        "self",
+                        "parent",
+                        "collection",
+                        "root",
+                    ) and link_dict.get("href"):
+                        item_links.append(link_dict)
 
-                # Add scoped self link
-                filtered_links.append(
-                    {
-                        "rel": "self",
-                        "type": "application/geo+json",
-                        "href": f"{base_url}/catalogs/{catalog_id}/collections/{collection_id}/items/{item.get('id', '')}",
-                    }
-                )
-
-                serialized_item.links = filtered_links
+            # Update links in the item (handle both dict and object)
+            if isinstance(serialized_item, dict):
+                serialized_item["links"] = item_links
+            else:
+                serialized_item.links = item_links
 
             serialized_items.append(serialized_item)
 
@@ -790,14 +818,42 @@ class CatalogsClient(AsyncBaseCatalogsClient):
         # Extract base URL as string for serializer
         base_url = str(request.base_url).rstrip("/") if request else ""
 
-        # Create item with request to get proper links, then override self link
-        item = self.item_serializer.db_to_stac(item_dict, request)
+        # Create item without request to avoid urljoin errors, then add all links manually
+        item = self.item_serializer.db_to_stac(item_dict, None)
 
-        # Override self link to use scoped catalog path
-        if hasattr(item, "links") and item.links:
-            # Filter out self links and convert to dicts if needed
-            filtered_links = []
-            for link in item.links:
+        # Create proper links for the item
+        item_links = [
+            {
+                "rel": "self",
+                "type": "application/geo+json",
+                "href": f"{base_url}/catalogs/{catalog_id}/collections/{collection_id}/items/{item_id}",
+            },
+            {
+                "rel": "parent",
+                "type": "application/json",
+                "href": f"{base_url}/catalogs/{catalog_id}/collections/{collection_id}",
+            },
+            {
+                "rel": "collection",
+                "type": "application/json",
+                "href": f"{base_url}/collections/{collection_id}",
+            },
+            {
+                "rel": "root",
+                "type": "application/json",
+                "href": base_url,
+            },
+        ]
+
+        # Add any existing links that aren't self/parent/collection/root
+        existing_links = None
+        if isinstance(item, dict):
+            existing_links = item.get("links", [])
+        elif hasattr(item, "links"):
+            existing_links = item.links
+
+        if existing_links:
+            for link in existing_links:
                 # Convert Link objects to dicts
                 if hasattr(link, "model_dump"):
                     link_dict = link.model_dump(exclude_none=True)
@@ -806,20 +862,20 @@ class CatalogsClient(AsyncBaseCatalogsClient):
                 else:
                     link_dict = {k: v for k, v in dict(link).items() if v is not None}
 
-                # Skip self links and links without href
-                if link_dict.get("rel") != "self" and link_dict.get("href"):
-                    filtered_links.append(link_dict)
+                # Skip standard links and links without href
+                if link_dict.get("rel") not in (
+                    "self",
+                    "parent",
+                    "collection",
+                    "root",
+                ) and link_dict.get("href"):
+                    item_links.append(link_dict)
 
-            # Add scoped self link
-            filtered_links.append(
-                {
-                    "rel": "self",
-                    "type": "application/geo+json",
-                    "href": f"{base_url}/catalogs/{catalog_id}/collections/{collection_id}/items/{item_id}",
-                }
-            )
-
-            item.links = filtered_links
+        # Update links in the item (handle both dict and object)
+        if isinstance(item, dict):
+            item["links"] = item_links
+        else:
+            item.links = item_links
 
         return item
 
