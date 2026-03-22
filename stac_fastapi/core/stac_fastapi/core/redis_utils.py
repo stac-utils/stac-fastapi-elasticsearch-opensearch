@@ -10,6 +10,7 @@ from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 from redis import asyncio as aioredis
+from redis.asyncio.client import Pipeline
 from redis.asyncio.sentinel import Sentinel
 from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import TimeoutError as RedisTimeoutError
@@ -325,7 +326,7 @@ class AsyncRedisQueueManager:
     def __init__(self, redis: aioredis.Redis) -> None:
         """Initialize with an existing async Redis connection."""
         self.queue_settings = ItemQueueSettings()
-        self.redis = redis
+        self.redis: aioredis.Redis = redis
 
     @classmethod
     async def create(cls) -> "AsyncRedisQueueManager":
@@ -425,8 +426,6 @@ class AsyncRedisQueueManager:
         data_key = self._get_data_key(collection_id)
         collections_key = self._get_collections_set_key()
 
-        await self.redis.sadd(collections_key, collection_id)
-
         zset_mapping = {}
         data_mapping = {}
         for item in items:
@@ -438,10 +437,16 @@ class AsyncRedisQueueManager:
             data_mapping[item_id] = json.dumps(item)
 
         if data_mapping:
-            await self.redis.hset(data_key, mapping=data_mapping)
-            await self.redis.zadd(zset_key, zset_mapping)
-
-        queue_length = await self.redis.zcard(zset_key)
+            pipe: Pipeline = self.redis.pipeline(transaction=True)
+            pipe.sadd(collections_key, collection_id)
+            pipe.hset(data_key, mapping=data_mapping)
+            pipe.zadd(zset_key, zset_mapping)
+            pipe.zcard(zset_key)
+            results = await pipe.execute()
+            await pipe.reset()
+            queue_length = results[3]
+        else:
+            queue_length = await self.redis.zcard(zset_key)
 
         logger.debug(
             f"Queued {len(data_mapping)} item(s) for collection '{collection_id}', "
@@ -520,14 +525,21 @@ class AsyncRedisQueueManager:
         zset_key = self._get_zset_key(collection_id)
         data_key = self._get_data_key(collection_id)
 
-        await self.redis.zrem(zset_key, *item_ids)
-        await self.redis.hdel(data_key, *item_ids)
+        pipe: Pipeline = self.redis.pipeline(transaction=True)
+        pipe.zrem(zset_key, *item_ids)
+        pipe.hdel(data_key, *item_ids)
+        pipe.zcard(zset_key)
+        results = await pipe.execute()
+        await pipe.reset()
 
-        remaining = await self.redis.zcard(zset_key)
+        remaining = results[2]
 
         if remaining == 0:
-            await self.redis.srem(self._get_collections_set_key(), collection_id)
-            await self.redis.delete(data_key)
+            pipe = self.redis.pipeline(transaction=True)
+            pipe.srem(self._get_collections_set_key(), collection_id)
+            pipe.delete(data_key)
+            await pipe.execute()
+            await pipe.reset()
 
         return remaining
 
@@ -544,12 +556,21 @@ class AsyncRedisQueueManager:
         zset_key = self._get_zset_key(collection_id)
         data_key = self._get_data_key(collection_id)
 
-        removed = await self.redis.zrem(zset_key, item_id)
-        await self.redis.hdel(data_key, item_id)
+        pipe: Pipeline = self.redis.pipeline(transaction=True)
+        pipe.zrem(zset_key, item_id)
+        pipe.hdel(data_key, item_id)
+        pipe.zcard(zset_key)
+        results = await pipe.execute()
+        await pipe.reset()
 
-        if await self.redis.zcard(zset_key) == 0:
-            await self.redis.srem(self._get_collections_set_key(), collection_id)
-            await self.redis.delete(data_key)
+        removed = results[0]
+
+        if results[2] == 0:
+            pipe = self.redis.pipeline(transaction=True)
+            pipe.srem(self._get_collections_set_key(), collection_id)
+            pipe.delete(data_key)
+            await pipe.execute()
+            await pipe.reset()
 
         return removed > 0
 
@@ -572,8 +593,11 @@ class AsyncRedisQueueManager:
             return
         failed_key = self._get_failed_set_key(collection_id)
         collections_key = self._get_failed_collections_key()
-        await self.redis.sadd(failed_key, *item_ids)
-        await self.redis.sadd(collections_key, collection_id)
+        pipe: Pipeline = self.redis.pipeline(transaction=True)
+        pipe.sadd(failed_key, *item_ids)
+        pipe.sadd(collections_key, collection_id)
+        await pipe.execute()
+        await pipe.reset()
 
     async def close(self):
         """Close Redis connection."""

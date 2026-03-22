@@ -111,12 +111,40 @@ class ItemQueueWorker:
             f"{self.queue_manager.queue_settings.QUEUE_KEY_PREFIX}:lock:{collection_id}"
         )
 
+    _LOCK_TIMEOUT = 300
+
+    async def _lock_refresh_task(
+        self,
+        lock,
+        interval: float = 60.0,
+        lock_lost: asyncio.Event | None = None,
+    ) -> None:
+        """Periodically extend the distributed lock's TTL.
+
+        Runs as a background asyncio task; cancelled by the caller when
+        processing ends. Sets lock_lost event when extend fails so the
+        processing loop can stop promptly.
+        """
+        while True:
+            await asyncio.sleep(interval)
+            try:
+                await lock.extend(additional_time=self._LOCK_TIMEOUT, replace_ttl=True)
+                logger.debug(f"Lock extended: {lock.name}")
+            except Exception:
+                logger.warning(f"Failed to extend lock: {lock.name}", exc_info=True)
+                if lock_lost is not None:
+                    lock_lost.set()
+                break
+
     async def _flush_collection(self, collection_id: str) -> None:
         """Flush pending items for a collection in sequential batches.
 
         Acquires a Redis distributed lock per collection to prevent concurrent
         flushes across multiple worker processes. Keeps draining the queue in
         batch_size chunks until fewer than batch_size items remain.
+
+        The lock TTL is periodically refreshed by a background task to prevent
+        expiration during long-running batch processing.
         """
         state = self._get_state(collection_id)
 
@@ -128,10 +156,12 @@ class ItemQueueWorker:
         lock_key = self._get_collection_lock_key(collection_id)
         redis_lock = self.queue_manager.redis.lock(
             lock_key,
-            timeout=300,
+            timeout=self._LOCK_TIMEOUT,
             blocking_timeout=5,
         )
 
+        refresh_task = None
+        lock_lost = asyncio.Event()
         try:
             if not await redis_lock.acquire(blocking=True):
                 logger.info(
@@ -139,10 +169,14 @@ class ItemQueueWorker:
                 )
                 return
 
+            refresh_task = asyncio.create_task(
+                self._lock_refresh_task(redis_lock, interval=60.0, lock_lost=lock_lost)
+            )
+
             batch_size = self.settings.QUEUE_BATCH_SIZE
             batch_num = 0
 
-            while self.running:
+            while self.running and not lock_lost.is_set():
                 items = await self.queue_manager.get_pending_items(
                     collection_id, limit=batch_size
                 )
@@ -208,8 +242,15 @@ class ItemQueueWorker:
         except Exception:
             logger.exception(f"Unexpected error flushing collection '{collection_id}'")
         finally:
+            if refresh_task is not None:
+                refresh_task.cancel()
+                try:
+                    await refresh_task
+                except asyncio.CancelledError:
+                    pass
             try:
-                await redis_lock.release()
+                if await redis_lock.owned():
+                    await redis_lock.release()
             except Exception:
                 pass
             async with self._lock:
