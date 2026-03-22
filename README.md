@@ -337,7 +337,7 @@ The catalogs extension implements a **safety-first design** that protects collec
 **Children & Collections:**
 - **GET `/catalogs/{catalog_id}/children`**: Retrieve all children (Catalogs and Collections) of this catalog with optional type filtering
 - **GET `/catalogs/{catalog_id}/collections`**: Retrieve collections within a specific catalog
-- **POST `/catalogs/{catalog_id}/collections`**: Create a new collection within a specific catalog
+- **POST `/catalogs/{catalog_id}/collections`**: Create a new collection within a catalog OR link an existing collection by posting its ID
 - **GET `/catalogs/{catalog_id}/collections/{collection_id}`**: Retrieve a specific collection within a catalog
 - **DELETE `/catalogs/{catalog_id}/collections/{collection_id}`**: Unlink a collection from a catalog (collection survives at root if orphaned)
 
@@ -405,6 +405,14 @@ curl -X POST "http://localhost:8081/catalogs/earth-observation/collections" \
       "spatial": {"bbox": [[-180, -90, 180, 90]]},
       "temporal": {"interval": [["2021-09-27T00:00:00Z", null]]}
     }
+  }'
+
+# Link an EXISTING collection to a catalog
+# Simply POST the collection ID to add it to the catalog
+curl -X POST "http://localhost:8081/catalogs/earth-observation/collections" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "existing-collection-id"
   }'
 
 # Get specific collection within a catalog
