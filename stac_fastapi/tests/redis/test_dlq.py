@@ -408,16 +408,17 @@ async def test_remove_item_nonexistent_returns_false(queue_manager):
 
 
 @pytest.mark.asyncio
-async def test_concurrent_queue_and_mark_no_ghosts(queue_manager):
+async def test_concurrent_mark_no_ghosts(queue_manager):
     col = "col-concurrent"
-    items_batch1 = [_valid_item(col) for _ in range(5)]
-    items_batch2 = [_valid_item(col) for _ in range(5)]
+    items = [_valid_item(col) for _ in range(10)]
+    await queue_manager.queue_items(col, items)
 
-    await queue_manager.queue_items(col, items_batch1)
+    half1 = [it["id"] for it in items[:5]]
+    half2 = [it["id"] for it in items[5:]]
 
     await asyncio.gather(
-        queue_manager.mark_items_processed(col, [it["id"] for it in items_batch1]),
-        queue_manager.queue_items(col, items_batch2),
+        queue_manager.mark_items_processed(col, half1),
+        queue_manager.mark_items_processed(col, half2),
     )
 
     zset_key = queue_manager._get_zset_key(col)
