@@ -64,6 +64,7 @@ from .query import (
     populate_sort_shared,
 )
 from .utils import (
+    BulkIndexError,
     ItemAlreadyExistsError,
     add_bbox_shape_to_collection,
     check_item_exists_in_alias,
@@ -111,6 +112,7 @@ __all__ = [
     "check_item_exists_in_alias",
     "check_item_exists_in_alias_sync",
     # Errors
+    "BulkIndexError",
     "ItemAlreadyExistsError",
     "separate_bulk_conflict_errors",
     # Datetime utilities

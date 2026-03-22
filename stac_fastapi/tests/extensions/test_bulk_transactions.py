@@ -1,12 +1,13 @@
 import os
 import uuid
 from copy import deepcopy
+from unittest.mock import patch
 
 import pytest
 from pydantic import ValidationError
 
 from stac_fastapi.extensions.third_party.bulk_transactions import Items
-from stac_fastapi.sfeos_helpers.database import ItemAlreadyExistsError
+from stac_fastapi.sfeos_helpers.database import BulkIndexError, ItemAlreadyExistsError
 
 from ..conftest import MockRequest, create_item
 
@@ -367,3 +368,132 @@ async def test_feature_collection_insert_with_in_batch_duplicates(
 
     # Clean up
     await txn_client.delete_item(unique_id, ctx.item["collection"])
+
+
+@pytest.mark.asyncio
+async def test_bulk_index_error_raised_on_non_conflict_errors_strict_mode(
+    ctx, bulk_txn_client
+):
+    items = {}
+    for _ in range(3):
+        _item = deepcopy(ctx.item)
+        _item["id"] = str(uuid.uuid4())
+        items[_item["id"]] = _item
+
+    mock_other_errors = [
+        {
+            "create": {
+                "_id": f"{list(items.keys())[0]}|{ctx.collection['id']}",
+                "status": 400,
+                "error": {
+                    "type": "mapper_parsing_exception",
+                    "reason": "failed to parse field [geometry]",
+                },
+            }
+        },
+    ]
+
+    os.environ["RAISE_ON_BULK_ERROR"] = "true"
+    bulk_txn_client.database.sync_settings = SearchSettings()
+
+    with patch.object(
+        bulk_txn_client.database, "bulk_sync", return_value=(2, mock_other_errors)
+    ):
+        with pytest.raises(BulkIndexError) as exc_info:
+            bulk_txn_client.bulk_item_insert(Items(items=items), refresh=True)
+
+        assert exc_info.value.collection_id == ctx.collection["id"]
+        assert len(exc_info.value.errors) == 1
+        assert exc_info.value.errors[0]["create"]["status"] == 400
+
+
+@pytest.mark.asyncio
+async def test_bulk_non_conflict_errors_not_raised_in_permissive_mode(
+    ctx, bulk_txn_client
+):
+    items = {}
+    for _ in range(3):
+        _item = deepcopy(ctx.item)
+        _item["id"] = str(uuid.uuid4())
+        items[_item["id"]] = _item
+
+    mock_other_errors = [
+        {
+            "create": {
+                "_id": f"{list(items.keys())[0]}|{ctx.collection['id']}",
+                "status": 500,
+                "error": {
+                    "type": "es_rejected_execution_exception",
+                    "reason": "rejected execution",
+                },
+            }
+        },
+        {
+            "create": {
+                "_id": f"{list(items.keys())[1]}|{ctx.collection['id']}",
+                "status": 400,
+                "error": {
+                    "type": "mapper_parsing_exception",
+                    "reason": "failed to parse",
+                },
+            }
+        },
+    ]
+
+    os.environ["RAISE_ON_BULK_ERROR"] = "false"
+    bulk_txn_client.database.sync_settings = SearchSettings()
+
+    with patch.object(
+        bulk_txn_client.database, "bulk_sync", return_value=(1, mock_other_errors)
+    ):
+        result = bulk_txn_client.bulk_item_insert(Items(items=items), refresh=True)
+
+    assert "Successfully added/updated 1 Items" in result
+    assert "2 errors occurred" in result
+
+
+@pytest.mark.asyncio
+async def test_bulk_conflict_error_takes_precedence_over_other_errors(
+    ctx, bulk_txn_client
+):
+    item_id = str(uuid.uuid4())
+    items = {}
+    _item = deepcopy(ctx.item)
+    _item["id"] = item_id
+    items[item_id] = _item
+
+    # Mix of conflict (409) and non-conflict (400) errors
+    mock_mixed_errors = [
+        {
+            "create": {
+                "_id": f"{item_id}|{ctx.collection['id']}",
+                "status": 409,
+                "error": {
+                    "type": "version_conflict_engine_exception",
+                    "reason": "document already exists",
+                },
+            }
+        },
+        {
+            "create": {
+                "_id": f"other_id|{ctx.collection['id']}",
+                "status": 400,
+                "error": {
+                    "type": "mapper_parsing_exception",
+                    "reason": "failed to parse",
+                },
+            }
+        },
+    ]
+
+    os.environ["RAISE_ON_BULK_ERROR"] = "true"
+    bulk_txn_client.database.sync_settings = SearchSettings()
+
+    with patch.object(
+        bulk_txn_client.database, "bulk_sync", return_value=(0, mock_mixed_errors)
+    ):
+        with pytest.raises(ItemAlreadyExistsError) as exc_info:
+            bulk_txn_client.bulk_item_insert(Items(items=items), refresh=True)
+
+        assert exc_info.value.item_id == item_id
+        assert exc_info.value.collection_id == ctx.collection["id"]

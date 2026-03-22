@@ -1049,11 +1049,15 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     async def bulk_async_prep_create_item(self, item: Item, base_url: str) -> Item:
         """
-        Prepare an item for insertion into the database.
+        Validate and serialize an item for bulk indexing.
 
-        This method performs pre-insertion preparation on the given `item`, such as:
+        This method performs pre-insertion validation and serialization:
         - Verifying that the collection the item belongs to exists.
         - Serializing the item into a database-compatible format.
+
+        Note: Duplicate item detection is not performed here. It is handled
+        atomically by the database engine via ``op_type="create"`` during
+        the bulk indexing phase.
 
         Args:
             item (Item): The item to be prepared for insertion.
@@ -1077,11 +1081,15 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     def bulk_sync_prep_create_item(self, item: Item, base_url: str) -> Item:
         """
-        Prepare an item for insertion into the database.
+        Validate and serialize an item for bulk indexing.
 
-        This method performs pre-insertion preparation on the given `item`, such as:
+        This method performs pre-insertion validation and serialization:
         - Verifying that the collection the item belongs to exists.
         - Serializing the item into a database-compatible format.
+
+        Note: Duplicate item detection is not performed here. It is handled
+        atomically by the database engine via ``op_type="create"`` during
+        the bulk indexing phase.
 
         Args:
             item (Item): The item to be prepared for insertion.

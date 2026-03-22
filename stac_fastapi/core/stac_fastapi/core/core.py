@@ -47,6 +47,7 @@ from stac_fastapi.extensions.third_party.bulk_transactions import (
     Items,
 )
 from stac_fastapi.sfeos_helpers.database import (
+    BulkIndexError,
     ItemAlreadyExistsError,
     separate_bulk_conflict_errors,
 )
@@ -1073,6 +1074,10 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 logger.error(
                     f"Bulk async operation encountered errors for collection {collection_id}: {other_errors} (attempted {attempted})"
                 )
+                if get_bool_env("RAISE_ON_BULK_ERROR"):
+                    raise BulkIndexError(
+                        errors=other_errors, collection_id=collection_id
+                    )
             else:
                 logger.info(
                     f"Bulk async operation succeeded with {success} actions for collection {collection_id}."
@@ -1469,6 +1474,8 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
             raise ItemAlreadyExistsError(item_id=item_id, collection_id=collection_id)
         if other_errors:
             logger.error(f"Bulk sync operation encountered errors: {other_errors}")
+            if get_bool_env("RAISE_ON_BULK_ERROR"):
+                raise BulkIndexError(errors=other_errors, collection_id=collection_id)
         else:
             logger.info(f"Bulk sync operation succeeded with {success} actions.")
         total_skipped = skipped_batch_duplicates + len(conflict_errors)

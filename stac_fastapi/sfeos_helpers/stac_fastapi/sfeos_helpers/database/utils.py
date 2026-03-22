@@ -102,6 +102,30 @@ class ItemAlreadyExistsError(ConflictError):
         super().__init__(message)
 
 
+class BulkIndexError(Exception):
+    """Error raised when non-conflict errors occur during a bulk indexing operation.
+
+    Raised in strict mode (RAISE_ON_BULK_ERROR=true) when the bulk operation
+    encounters errors other than 409 conflicts (e.g., mapping errors, connection
+    errors). Conflict errors are handled separately as skips or
+    ItemAlreadyExistsError.
+
+    Attributes:
+        errors: The list of non-conflict error dicts from the bulk operation.
+        collection_id: The ID of the collection being indexed.
+    """
+
+    def __init__(self, errors: list[dict[str, Any]], collection_id: str):
+        """Initialize the error with the list of errors and collection ID."""
+        self.errors = errors
+        self.collection_id = collection_id
+        message = (
+            f"Bulk indexing for collection {collection_id} encountered "
+            f"{len(errors)} non-conflict error(s): {errors}"
+        )
+        super().__init__(message)
+
+
 async def check_item_exists_in_alias(client: Any, alias: str, doc_id: str) -> bool:
     """Check if an item exists across all indexes for an alias.
 
