@@ -40,6 +40,8 @@ class ItemQueueWorker:
     the next starts).
     """
 
+    _LOCK_TIMEOUT = 300
+
     def __init__(self) -> None:
         self.settings = ItemQueueSettings()
         self.queue_manager: AsyncRedisQueueManager = None  # type: ignore[assignment]
@@ -110,8 +112,6 @@ class ItemQueueWorker:
         return (
             f"{self.queue_manager.queue_settings.QUEUE_KEY_PREFIX}:lock:{collection_id}"
         )
-
-    _LOCK_TIMEOUT = 300
 
     async def _lock_refresh_task(
         self,
