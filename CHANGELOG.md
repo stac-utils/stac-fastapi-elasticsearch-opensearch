@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
-- Added advice to Readme about linking an already exiting Collection to a Catalog, simply by POSTing the collection's ID.
+- Added advice to Readme about linking an already exiting Collection to a Catalog, simply by POSTing the collection's ID. [#646](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/646)
 
 ### Updated
 
