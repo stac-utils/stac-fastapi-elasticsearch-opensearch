@@ -7,6 +7,7 @@ STAC_FASTAPI_ES_DYNAMIC_MAPPING environment variable functionality.
 import json
 
 import pytest
+
 from stac_fastapi.sfeos_helpers.mappings import (
     apply_custom_mappings,
     get_items_mappings,

@@ -8,9 +8,15 @@ from copy import deepcopy
 from typing import Any, Iterable, Type
 
 import attr
+import elasticsearch.helpers as helpers
 import orjson
-import stac_fastapi.sfeos_helpers.filter as filter_module
+from elasticsearch.dsl import Q, Search
+from elasticsearch.exceptions import BadRequestError
+from elasticsearch.exceptions import NotFoundError as ESNotFoundError
 from fastapi import HTTPException
+from starlette.requests import Request
+
+import stac_fastapi.sfeos_helpers.filter as filter_module
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.serializers import (
     CatalogSerializer,
@@ -78,12 +84,6 @@ from stac_fastapi.sfeos_helpers.search_engine import (
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.links import resolve_links
 from stac_fastapi.types.stac import Collection, Item
-from starlette.requests import Request
-
-import elasticsearch.helpers as helpers
-from elasticsearch.dsl import Q, Search
-from elasticsearch.exceptions import BadRequestError
-from elasticsearch.exceptions import NotFoundError as ESNotFoundError
 
 logger = logging.getLogger(__name__)
 

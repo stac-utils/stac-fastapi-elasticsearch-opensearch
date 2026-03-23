@@ -11,6 +11,10 @@ import attr
 from fastapi import APIRouter, FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+from stac_pydantic import Collection
+from starlette.responses import Response
+from typing_extensions import TypedDict
+
 from stac_fastapi.core.models import Catalog
 from stac_fastapi.sfeos_helpers.database import (
     search_children_with_pagination_shared,
@@ -23,9 +27,6 @@ from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.core import BaseCoreClient
 from stac_fastapi.types.errors import NotFoundError
 from stac_fastapi.types.extension import ApiExtension
-from stac_pydantic import Collection
-from starlette.responses import Response
-from typing_extensions import TypedDict
 
 logger = logging.getLogger(__name__)
 
@@ -431,14 +432,16 @@ class CatalogsExtension(ApiExtension):
     async def catalogs(
         self,
         request: Request,
-        limit: int | None = Query(
+        limit: int
+        | None = Query(
             10,
             ge=1,
             description=(
                 "The maximum number of catalogs to return (page size). Defaults to 10."
             ),
         ),
-        token: str | None = Query(
+        token: str
+        | None = Query(
             None,
             description="Pagination token for the next page of results",
         ),
@@ -1360,7 +1363,8 @@ class CatalogsExtension(ApiExtension):
         request: Request,
         limit: int = 10,
         token: str | None = None,
-        resource_type: str | None = Query(
+        resource_type: str
+        | None = Query(
             None,
             alias="type",
             description="Filter by resource type (Catalog or Collection)",

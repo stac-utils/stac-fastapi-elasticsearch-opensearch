@@ -3,6 +3,8 @@ import uuid
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from stac_pydantic import api
+
 from stac_fastapi.sfeos_helpers.database import (
     filter_indexes_by_datetime,
     filter_indexes_by_datetime_range,
@@ -17,7 +19,6 @@ from stac_fastapi.sfeos_helpers.mappings import (
 from stac_fastapi.sfeos_helpers.search_engine.selection.selectors import (
     DatetimeBasedIndexSelector,
 )
-from stac_pydantic import api
 
 from ..conftest import MockRequest, database
 

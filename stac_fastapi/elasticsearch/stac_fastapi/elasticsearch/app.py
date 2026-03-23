@@ -5,6 +5,7 @@ import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import (
     ItemCollectionUri,

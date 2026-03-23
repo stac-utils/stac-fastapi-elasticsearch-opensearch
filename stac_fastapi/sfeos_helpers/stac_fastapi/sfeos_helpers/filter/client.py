@@ -6,6 +6,7 @@ from typing import Any
 
 import attr
 from fastapi import Request
+
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.extensions.filter import ALL_QUERYABLES, DEFAULT_QUERYABLES
 from stac_fastapi.extensions.core.filter.client import AsyncBaseFiltersClient

@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+
 from stac_fastapi.sfeos_helpers.search_engine import DatetimeIndexInserter
 
 try:

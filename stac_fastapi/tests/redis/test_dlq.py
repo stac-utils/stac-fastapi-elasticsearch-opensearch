@@ -15,12 +15,11 @@ while _repo_root != _repo_root.parent and not (_repo_root / "scripts").is_dir():
 if str(_repo_root) not in sys.path:
     sys.path.insert(0, str(_repo_root))
 
+from scripts.item_queue_worker import ItemQueueWorker  # noqa: E402
 from stac_fastapi.core.redis_utils import (  # noqa: E402
     AsyncRedisQueueManager,
     connect_redis,
 )
-
-from scripts.item_queue_worker import ItemQueueWorker  # noqa: E402
 
 from ..conftest import DatabaseLogic, create_collection  # noqa: E402
 

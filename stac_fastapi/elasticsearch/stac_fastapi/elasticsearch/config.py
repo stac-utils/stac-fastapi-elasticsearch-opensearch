@@ -6,13 +6,13 @@ import ssl
 from typing import Any
 
 import certifi
+from elasticsearch._async.client import AsyncElasticsearch
+
+from elasticsearch import Elasticsearch  # type: ignore[attr-defined]
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.sfeos_helpers.database import validate_refresh
 from stac_fastapi.types.config import ApiSettings
-
-from elasticsearch import Elasticsearch  # type: ignore[attr-defined]
-from elasticsearch._async.client import AsyncElasticsearch
 
 
 def _es_config() -> dict[str, Any]:

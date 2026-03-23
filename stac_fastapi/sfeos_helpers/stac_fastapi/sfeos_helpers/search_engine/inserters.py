@@ -4,6 +4,7 @@ import logging
 from typing import Any
 
 from fastapi import HTTPException, status
+
 from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.sfeos_helpers.database import (
     extract_date,

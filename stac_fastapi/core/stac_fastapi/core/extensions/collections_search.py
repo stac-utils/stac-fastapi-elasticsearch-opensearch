@@ -5,12 +5,13 @@ from typing import Any, Type
 from fastapi import APIRouter, Body, FastAPI, Query, Request
 from fastapi.responses import JSONResponse
 from pydantic import AliasChoices, BaseModel, Field
+from stac_pydantic.api.search import ExtendedSearch
+from starlette.responses import Response
+
 from stac_fastapi.api.models import APIRequest
 from stac_fastapi.types.core import BaseCoreClient
 from stac_fastapi.types.extension import ApiExtension
 from stac_fastapi.types.stac import Collections
-from stac_pydantic.api.search import ExtendedSearch
-from starlette.responses import Response
 
 
 class CollectionsSearchRequest(ExtendedSearch):
@@ -33,11 +34,14 @@ def build_get_collections_search_doc(original_endpoint):
 
     async def documented_endpoint(
         request: Request,
-        q: str | list[str] | None = Query(
+        q: str
+        | list[str]
+        | None = Query(
             None,
             description="Free text search query",
         ),
-        query: str | None = Query(
+        query: str
+        | None = Query(
             None,
             description="Additional filtering expressed as a string (legacy support)",
             examples=["platform=landsat AND collection_category=level2"],
@@ -49,38 +53,44 @@ def build_get_collections_search_doc(original_endpoint):
                 "The maximum number of collections to return (page size). Defaults to 10."
             ),
         ),
-        token: str | None = Query(
+        token: str
+        | None = Query(
             None,
             description="Pagination token for the next page of results",
         ),
-        bbox: str | None = Query(
+        bbox: str
+        | None = Query(
             None,
             description=(
                 "Bounding box for spatial filtering in format 'minx,miny,maxx,maxy' "
                 "or 'minx,miny,minz,maxx,maxy,maxz'"
             ),
         ),
-        datetime: str | None = Query(
+        datetime: str
+        | None = Query(
             None,
             description=(
                 "Temporal filter in ISO 8601 format (e.g., "
                 "'2020-01-01T00:00:00Z/2021-01-01T00:00:00Z')"
             ),
         ),
-        sortby: str | None = Query(
+        sortby: str
+        | None = Query(
             None,
             description=(
                 "Sorting criteria in the format 'field' or '-field' for descending order"
             ),
         ),
-        fields: list[str] | None = Query(
+        fields: list[str]
+        | None = Query(
             None,
             description=(
                 "Comma-separated list of fields to include or exclude (use -field to exclude)"
             ),
             alias="fields[]",
         ),
-        filter: str | None = Query(
+        filter: str
+        | None = Query(
             None,
             description=(
                 "Structured filter expression in CQL2 JSON or CQL2-text format"
@@ -89,7 +99,8 @@ def build_get_collections_search_doc(original_endpoint):
                 '{"op": "=", "args": [{"property": "properties.category"}, "level2"]}'
             ],
         ),
-        filter_lang: str | None = Query(
+        filter_lang: str
+        | None = Query(
             None,
             description=(
                 "Filter language. Must be 'cql2-json' or 'cql2-text' if specified"

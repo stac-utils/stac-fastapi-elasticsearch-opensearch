@@ -4,6 +4,7 @@ import uuid
 from copy import deepcopy
 
 import pytest
+
 from stac_fastapi.sfeos_helpers.database import (
     check_item_exists_in_alias,
     check_item_exists_in_alias_sync,
