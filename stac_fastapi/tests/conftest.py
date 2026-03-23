@@ -412,27 +412,20 @@ def build_test_app():
 
 def build_test_app_with_catalogs():
     """Build a test app with catalogs extension enabled."""
-    from stac_fastapi.core.multi_tenant_catalogs import CatalogsExtension
+    from stac_fastapi_catalogs_extension import CatalogsExtension
+
+    from stac_fastapi.core.catalogs_client import CatalogsClient
 
     # Get the base config
     test_config = app_config.copy()
 
     # Get database and settings (already imported above)
     test_database = DatabaseLogic()
-    test_settings = AsyncSettings()
 
     # Add catalogs extension
     catalogs_extension = CatalogsExtension(
-        client=CoreClient(
-            database=test_database,
-            session=None,
-            landing_page_id=os.getenv("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"),
-        ),
-        settings=test_settings,
-        conformance_classes=[
-            "https://api.stacspec.org/v1.0.0-beta.4/multi-tenant-catalogs",
-            "https://api.stacspec.org/v1.0.0-beta.4/multi-tenant-catalogs/transaction",
-        ],
+        client=CatalogsClient(database=test_database),
+        enable_transactions=True,
     )
 
     # Add to extensions if not already present

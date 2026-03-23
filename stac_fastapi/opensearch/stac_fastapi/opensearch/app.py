@@ -13,7 +13,6 @@ from stac_fastapi.api.models import (
     create_post_request_model,
     create_request_model,
 )
-from stac_fastapi.core.catalogs_client import CatalogsClient
 from stac_fastapi.core.core import (
     BulkTransactionsClient,
     CoreClient,
@@ -28,7 +27,6 @@ from stac_fastapi.core.extensions.collections_search import (
     CollectionsSearchEndpointExtension,
 )
 from stac_fastapi.core.extensions.fields import FieldsExtension
-from stac_fastapi.core.multi_tenant_catalogs import CatalogsExtension
 from stac_fastapi.core.rate_limit import setup_rate_limit
 from stac_fastapi.core.route_dependencies import get_route_dependencies
 from stac_fastapi.core.session import Session
@@ -219,6 +217,10 @@ if ENABLE_COLLECTIONS_SEARCH_ROUTE:
 
 
 if ENABLE_CATALOGS_ROUTE:
+    from stac_fastapi_catalogs_extension import CatalogsExtension
+
+    from stac_fastapi.core.catalogs_client import CatalogsClient
+
     catalogs_extension = CatalogsExtension(
         client=CatalogsClient(database=database_logic),
         enable_transactions=True,

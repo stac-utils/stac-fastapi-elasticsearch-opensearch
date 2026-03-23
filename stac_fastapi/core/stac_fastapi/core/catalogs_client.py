@@ -6,6 +6,8 @@ from typing import Any, Literal
 
 import attr
 from fastapi import Request
+from stac_fastapi_catalogs_extension.client import AsyncBaseCatalogsClient
+from stac_fastapi_catalogs_extension.types import Catalogs, Children, ObjectUri
 from stac_pydantic.api.collections import Collections
 from stac_pydantic.catalog import Catalog
 from stac_pydantic.collection import Collection
@@ -14,8 +16,6 @@ from stac_pydantic.item_collection import ItemCollection
 from starlette.responses import JSONResponse, Response
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
-from stac_fastapi.core.multi_tenant_catalogs.client import AsyncBaseCatalogsClient
-from stac_fastapi.core.multi_tenant_catalogs.types import Catalogs, Children, ObjectUri
 from stac_fastapi.core.serializers import (
     CatalogSerializer,
     CollectionSerializer,
