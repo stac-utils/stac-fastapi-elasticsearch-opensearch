@@ -402,7 +402,10 @@ class CoreClient(AsyncBaseCoreClient):
 
                 # Handle different filter formats
                 try:
-                    if filter_lang == "cql2-text" or filter_lang is None:
+                    # If filter_expr is already a dict (from POST request body), use it directly
+                    if isinstance(filter_expr, dict):
+                        parsed_filter = filter_expr
+                    elif filter_lang == "cql2-text" or filter_lang is None:
                         # For cql2-text or when no filter_lang is specified, try both formats
                         try:
                             # First try to parse as JSON

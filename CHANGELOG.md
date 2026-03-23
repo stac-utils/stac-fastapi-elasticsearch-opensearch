@@ -12,22 +12,35 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Implemented header-based filtering for collections and geometry. Supports `X-Filter-Collections` (comma-separated collection IDs) and `X-Filter-Geometry` (GeoJSON) headers to restrict access to specific collections and geographic areas. Applies to `/collections`, `/collections/{id}`, `/collections/{id}/items`, `/collections/{id}/items/{id}`, and `/search` endpoints. Added optional `[geo]` extra with `shapely` dependency for geometry filtering on single item endpoints. [#563](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/563)
 - Added CQL2 Abstract Syntax Tree (AST) structure for efficient query parsing and datetime-based indexes. [#560](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/560)
 - Added geometry intersection optimization: all geometry sources (header, bbox, intersects, CQL2 s_intersects) are now intersected before sending queries to the database. When geometries are disjoint, returns empty 200 response without DB query. Reduces database load and improves performance.
+- Added advice to Readme about linking an already exiting Collection to a Catalog, simply by POSTing the collection's ID. [#646](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/646)
+
+### Updated
+
+- Updated POST /catalogs/catalogId/collections endpoint to accept an id of an existing collection to link it to the catalog. [#644](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/644)
 
 ### Changed
 
-- Added configurable hidden item filtering via HIDE_ITEM_PATH environment variable. [#566](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/566)
-- Added `PUT /catalogs/{catalog_id}` endpoint to update existing catalogs. Allows modification of catalog metadata (title, description, etc.) while preserving internal fields like parent_ids and catalog relationships. [#573](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/673)
-- Added catalog poly-hierarchy support with hierarchical catalog endpoints (`GET /catalogs/{catalog_id}/catalogs` and `POST /catalogs/{catalog_id}/catalogs`), enabling unlimited nesting levels and allowing catalogs to belong to multiple parent catalogs simultaneously. Includes cursor-based pagination and performance optimizations. [#573](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/573)
+### Removed
+
+### Fixed
+
+## [v6.14.0] - 2026-03-19
+
+### Changed
+
+- Updated SFEOS Tools CLI section in README with expanded documentation for `load-data` command and standardized options [#637](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/637)
+
+### Updated
+
 - Updated CI/CD testing to use OpenSearch 3.5.0 instead of 2.19.3. [#631](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/631)
 - Refactored serializers and catalog extension to eliminate duplicated code by extracting helper methods: `_create_child_link()` for child link generation, `_set_collection_defaults()` for STAC Collection field initialization, and `_deserialize_assets()` for asset handling. This improves maintainability by centralizing common logic into single-source-of-truth implementations. [#629](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/629)
 
 ### Fixed
 
+- Added pagination support to GET `/catalogs/{catalog_id}/collections` endpoint with `limit` (default: 10, max: 100) and `token` parameters. Fixed missing `numberReturned` and `numberMatched` context fields. Normalized error handling. [#632](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/632)
 - Fixed `json_patch_item` datetime validation for datetime-based indexes: PATCH operations on datetime fields (`properties/datetime`, `properties/start_datetime`, `properties/end_datetime`) no longer raise an error when the value is unchanged. Validation now compares old and new values before rejecting the operation, consistent with `update_item` (PUT) behavior. [#636](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/636)
+- Fixed issue with POST /collections-search cql2-json filter. [#639](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/639)
 
-### Updated
-
-### Removed
 
 ## [v6.13.0] - 2026-03-14
 
@@ -814,7 +827,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.13.0...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.14.0...main
+[v6.14.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.13.0...v6.14.0
 [v6.13.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.12.0...v6.13.0
 [v6.12.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.11.2...v6.12.0
 [v6.11.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.10.2...v6.11.0
