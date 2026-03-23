@@ -38,7 +38,7 @@ def format_datetime_range(date_str: str) -> str:
             return dt_normalized
 
         if not isinstance(date_str, str):
-            return f"{MIN_DATE_NANOS.isoformat(timespec='auto').replace('+00:00','Z')}/{MAX_DATE_NANOS.isoformat(timespec='auto').replace('+00:00','Z')}"
+            return f"{MIN_DATE_NANOS.isoformat(timespec='auto').replace('+00:00', 'Z')}/{MAX_DATE_NANOS.isoformat(timespec='auto').replace('+00:00', 'Z')}"
 
         if "/" not in date_str:
             return f"{normalize(date_str)}/{normalize(date_str)}"
@@ -46,7 +46,7 @@ def format_datetime_range(date_str: str) -> str:
         try:
             start, end = date_str.split("/", 1)
         except Exception:
-            return f"{MIN_DATE_NANOS.isoformat(timespec='auto').replace('+00:00','Z')}/{MAX_DATE_NANOS.isoformat(timespec='auto').replace('+00:00','Z')}"
+            return f"{MIN_DATE_NANOS.isoformat(timespec='auto').replace('+00:00', 'Z')}/{MAX_DATE_NANOS.isoformat(timespec='auto').replace('+00:00', 'Z')}"
 
         normalized_start = normalize(start)
         normalized_end = normalize(end)

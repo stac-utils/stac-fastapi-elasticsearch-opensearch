@@ -1,7 +1,6 @@
 """Tests for the mapping module."""
 
 import pytest
-
 from stac_fastapi.sfeos_helpers.database.mapping import get_queryables_mapping_shared
 
 

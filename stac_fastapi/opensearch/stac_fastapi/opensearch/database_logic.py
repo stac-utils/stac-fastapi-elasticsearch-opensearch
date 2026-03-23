@@ -1,4 +1,5 @@
 """Database logic."""
+
 import asyncio
 import logging
 import os
@@ -8,13 +9,11 @@ from typing import Any, Iterable, Type
 
 import attr
 import orjson
+import stac_fastapi.sfeos_helpers.filter as filter_module
 from fastapi import HTTPException
 from opensearchpy import RequestError, exceptions, helpers
 from opensearchpy.helpers.query import Q
 from opensearchpy.helpers.search import Search
-from starlette.requests import Request
-
-import stac_fastapi.sfeos_helpers.filter as filter_module
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon, get_bool_env
@@ -79,6 +78,7 @@ from stac_fastapi.sfeos_helpers.search_engine import (
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.links import resolve_links
 from stac_fastapi.types.stac import Collection, Item
+from starlette.requests import Request
 
 logger = logging.getLogger(__name__)
 

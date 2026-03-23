@@ -8,9 +8,6 @@ import orjson
 from fastapi import HTTPException, Path, Request
 from pygeofilter.backends.cql2_json import to_cql2
 from pygeofilter.parsers.cql2_text import parse as parse_cql2_text
-from stac_pydantic.shared import BBox
-from typing_extensions import Annotated
-
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.datetime_utils import format_datetime_range
@@ -22,6 +19,8 @@ from stac_fastapi.extensions.core.aggregation.types import (
     AggregationCollection,
 )
 from stac_fastapi.types.rfc3339 import DateTimeType
+from stac_pydantic.shared import BBox
+from typing_extensions import Annotated
 
 from .format import frequency_agg, metric_agg
 
@@ -250,7 +249,6 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
         search = self.database.make_search()
 
         if aggregate_request is None:
-
             base_args = {
                 "collections": collections,
                 "ids": ids,

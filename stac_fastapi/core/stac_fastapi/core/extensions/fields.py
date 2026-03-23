@@ -1,7 +1,6 @@
 """Fields extension."""
 
 from pydantic import BaseModel, Field
-
 from stac_fastapi.extensions.core import FieldsExtension as FieldsExtensionBase
 from stac_fastapi.extensions.core.fields import request
 

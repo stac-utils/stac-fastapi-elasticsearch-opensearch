@@ -1,4 +1,5 @@
 """This module provides a helper function to create and configure an Instrumentator instance for Prometheus metrics collection in a FastAPI application."""
+
 from prometheus_fastapi_instrumentator import Instrumentator
 
 

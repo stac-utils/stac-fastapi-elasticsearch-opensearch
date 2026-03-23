@@ -55,9 +55,11 @@ DATETIME_RETRY_STRATEGY = AsyncRetrying(
     stop=stop_after_attempt(RETRY_MAX_ATTEMPTS_NOT_FOUND_ERROR),
     wait=wait_fixed(RETRY_WAIT_SECONDS),
     retry=retry_if_exception(
-        lambda e: isinstance(e, NotFoundError)
-        and "Collections '" in str(e)
-        and "' do not exist" in str(e)
+        lambda e: (
+            isinstance(e, NotFoundError)
+            and "Collections '" in str(e)
+            and "' do not exist" in str(e)
+        )
     ),
     reraise=RETRY_RERAISE,
     before_sleep=before_sleep_log(logger, logging.WARNING),
@@ -283,7 +285,6 @@ def merge_to_operations(data: dict) -> list:
     operations = []
 
     for key, value in data.copy().items():
-
         if value is None:
             operations.append(PatchRemove(op="remove", path=key))
 
@@ -319,7 +320,6 @@ def check_commands(
     if path.nest:
         part_nest = ""
         for index, path_part in enumerate(path.parts):
-
             # Create nested dictionaries if not present for merge operations
             if create_nest and not from_path:
                 value = "[:]"
@@ -329,7 +329,7 @@ def check_commands(
                 commands.add(
                     f"if (!ctx._source{part_nest}.containsKey('{path_part}'))"
                     f"{{ctx._source{part_nest}['{path_part}'] = {value};}}"
-                    f"{'' if index == len(path.parts) - 1 else' else '}"  # noqa: E275
+                    f"{'' if index == len(path.parts) - 1 else ' else '}"  # noqa: E275
                 )
 
             else:
@@ -341,7 +341,6 @@ def check_commands(
             part_nest += f"['{path_part}']"
 
     if from_path or op in ["remove", "replace", "test"]:
-
         if isinstance(path.key, int):
             commands.add(
                 f"if ((ctx._source{path.es_nest} instanceof ArrayList"

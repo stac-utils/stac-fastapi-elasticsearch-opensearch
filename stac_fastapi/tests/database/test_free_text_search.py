@@ -125,9 +125,9 @@ async def test_free_text_search_custom_fields_via_env(
 ):
     """Test free-text search with custom fields from FREE_TEXT_FIELDS environment variable."""
     # Set custom fields
-    os.environ[
-        "FREE_TEXT_FIELDS"
-    ] = "properties.title,properties.description,properties.keywords"
+    os.environ["FREE_TEXT_FIELDS"] = (
+        "properties.title,properties.description,properties.keywords"
+    )
 
     try:
         first_item = ctx.item
@@ -491,9 +491,9 @@ async def test_free_text_search_custom_property_with_env_var(
     for custom properties to be automatically indexed as text fields.
     """
     # Set environment variable to include custom property
-    os.environ[
-        "FREE_TEXT_FIELDS"
-    ] = "properties.title,properties.standard_name,properties.custom_field"
+    os.environ["FREE_TEXT_FIELDS"] = (
+        "properties.title,properties.standard_name,properties.custom_field"
+    )
 
     try:
         first_item = ctx.item

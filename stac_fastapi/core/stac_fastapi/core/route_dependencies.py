@@ -104,7 +104,6 @@ def get_routes(route_dependency_conf: dict) -> list:
     # seperate out any path lists
     intermediate_routes = []
     for route in route_dependency_conf["routes"]:
-
         if isinstance(route["path"], list):
             for path in route["path"]:
                 intermediate_routes.append({**route, "path": path})
@@ -115,7 +114,6 @@ def get_routes(route_dependency_conf: dict) -> list:
     # seperate out any method lists
     routes = []
     for route in intermediate_routes:
-
         if isinstance(route["method"], list):
             for method in route["method"]:
                 routes.append({**route, "method": method})
@@ -130,13 +128,11 @@ def get_dependencies(route_dependency_conf: dict) -> list:
     """Get dependencies from route dependency configuration."""
     dependencies = []
     for dependency_conf in route_dependency_conf["dependencies"]:
-
         module_name, method_name = dependency_conf["method"].rsplit(".", 1)
         module = importlib.import_module(module_name)
         dependency = getattr(module, method_name)
 
         if inspect.isclass(dependency):
-
             dependency = dependency(
                 *dependency_conf.get("args", []), **dependency_conf.get("kwargs", {})
             )
@@ -167,7 +163,6 @@ def get_route_dependencies(route_dependencies_env: str = "") -> list:
     route_dependencies_conf = get_route_dependencies_conf(route_dependencies_env)
 
     for route_dependency_conf in route_dependencies_conf:
-
         routes = get_routes(route_dependency_conf)
         dependencies = get_dependencies(route_dependency_conf)
         route_dependencies.append((routes, dependencies))

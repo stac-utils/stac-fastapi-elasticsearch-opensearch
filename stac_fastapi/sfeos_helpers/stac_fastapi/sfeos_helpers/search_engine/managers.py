@@ -7,7 +7,6 @@ from typing import Any, Dict, NamedTuple
 
 from dateutil import parser  # type: ignore
 from fastapi import HTTPException, status
-
 from stac_fastapi.sfeos_helpers.database import (
     extract_date,
     extract_first_date_from_index,

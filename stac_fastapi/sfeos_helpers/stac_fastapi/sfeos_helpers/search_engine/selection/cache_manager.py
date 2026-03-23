@@ -83,7 +83,7 @@ class IndexCacheManager:
 
 
 def _serialize_cache(
-    data: dict[str, list[tuple[dict[str, str]]]]
+    data: dict[str, list[tuple[dict[str, str]]]],
 ) -> dict[str, list[list[dict[str, str]]]]:
     """Convert tuple values to lists for JSON serialization."""
     result = {}
@@ -93,7 +93,7 @@ def _serialize_cache(
 
 
 def _deserialize_cache(
-    data: dict[str, list[list[dict[str, str]]]]
+    data: dict[str, list[list[dict[str, str]]]],
 ) -> dict[str, list[tuple[dict[str, str]]]]:
     """Convert list values back to tuples after JSON deserialization."""
     result: dict[str, list[tuple[dict[str, str]]]] = {}

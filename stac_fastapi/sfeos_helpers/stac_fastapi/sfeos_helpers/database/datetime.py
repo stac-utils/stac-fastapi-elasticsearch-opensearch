@@ -6,9 +6,8 @@ Elasticsearch and OpenSearch query formatting.
 
 import logging
 import re
-from datetime import date
+from datetime import date, timezone
 from datetime import datetime as datetime_type
-from datetime import timezone
 
 from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.types.rfc3339 import DateTimeType

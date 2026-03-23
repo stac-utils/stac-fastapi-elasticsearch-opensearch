@@ -4,7 +4,6 @@ from copy import deepcopy
 
 import pytest
 from pydantic import ValidationError
-
 from stac_fastapi.extensions.third_party.bulk_transactions import Items
 from stac_fastapi.sfeos_helpers.database import ItemAlreadyExistsError
 

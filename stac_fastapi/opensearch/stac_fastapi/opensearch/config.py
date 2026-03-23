@@ -7,7 +7,6 @@ from typing import Any
 
 import certifi
 from opensearchpy import AsyncOpenSearch, OpenSearch
-
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.sfeos_helpers.database import validate_refresh

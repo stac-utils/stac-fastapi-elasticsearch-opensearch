@@ -162,7 +162,7 @@ def check_item_geometry_access(
 
 
 def create_geometry_filter_object(
-    geometry_dict: Optional[Dict[str, Any]]
+    geometry_dict: Optional[Dict[str, Any]],
 ) -> Optional[Any]:
     """Create a SimpleNamespace geometry object for database filtering.
 
@@ -239,7 +239,7 @@ def bbox_to_polygon(bbox: List[float]) -> Dict[str, Any]:
 
 
 def extract_geometry_from_cql2_filter(
-    cql2_filter: Optional[Dict[str, Any]]
+    cql2_filter: Optional[Dict[str, Any]],
 ) -> Optional[Dict[str, Any]]:
     """Extract geometry from CQL2 spatial filter if present.
 
@@ -286,7 +286,7 @@ def extract_geometry_from_cql2_filter(
 
 
 def compute_geometry_intersection(
-    geometries: List[Dict[str, Any]]
+    geometries: List[Dict[str, Any]],
 ) -> Optional[Dict[str, Any]]:
     """Compute intersection of multiple geometries.
 

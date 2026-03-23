@@ -1,7 +1,6 @@
 import pytest
-from redis.exceptions import ConnectionError as RedisConnectionError
-
 import stac_fastapi.core.redis_utils as redis_utils
+from redis.exceptions import ConnectionError as RedisConnectionError
 from stac_fastapi.core.redis_utils import connect_redis, get_prev_link, save_prev_link
 
 

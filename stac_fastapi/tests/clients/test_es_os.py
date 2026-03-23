@@ -4,14 +4,13 @@ from typing import Callable
 
 import pytest
 from fastapi import HTTPException
-from stac_pydantic import Item, api
-
 from stac_fastapi.extensions.core.transaction.request import (
     PatchAddReplaceTest,
     PatchMoveCopy,
     PatchRemove,
 )
 from stac_fastapi.types.errors import ConflictError, NotFoundError
+from stac_pydantic import Item, api
 
 from ..conftest import MockRequest
 
@@ -583,7 +582,6 @@ async def test_json_patch_add_with_bad_nest(ctx, core_client, txn_client):
     ]
 
     with pytest.raises(HTTPException):
-
         await txn_client.patch_item(
             collection_id=collection_id,
             item_id=item_id,
@@ -606,7 +604,6 @@ async def test_json_patch_item_test_wrong_value(ctx, core_client, txn_client):
     ]
 
     with pytest.raises(HTTPException):
-
         await txn_client.patch_item(
             collection_id=collection_id,
             item_id=item_id,
@@ -631,7 +628,6 @@ async def test_json_patch_item_replace_property_does_not_exists(
     ]
 
     with pytest.raises(HTTPException):
-
         await txn_client.patch_item(
             collection_id=collection_id,
             item_id=item_id,
@@ -654,7 +650,6 @@ async def test_json_patch_item_remove_property_does_not_exists(
     ]
 
     with pytest.raises(HTTPException):
-
         await txn_client.patch_item(
             collection_id=collection_id,
             item_id=item_id,
@@ -679,7 +674,6 @@ async def test_json_patch_item_move_property_does_not_exists(
     ]
 
     with pytest.raises(HTTPException):
-
         await txn_client.patch_item(
             collection_id=collection_id,
             item_id=item_id,
@@ -704,7 +698,6 @@ async def test_json_patch_item_copy_property_does_not_exists(
     ]
 
     with pytest.raises(HTTPException):
-
         await txn_client.patch_item(
             collection_id=collection_id,
             item_id=item_id,
@@ -955,7 +948,6 @@ async def test_json_patch_collection_test_wrong_value(ctx, core_client, txn_clie
     ]
 
     with pytest.raises(HTTPException):
-
         await txn_client.patch_collection(
             collection_id=collection_id,
             patch=operations,
@@ -978,7 +970,6 @@ async def test_json_patch_collection_replace_property_does_not_exists(
     ]
 
     with pytest.raises(HTTPException):
-
         await txn_client.patch_collection(
             collection_id=collection_id,
             patch=operations,
@@ -999,7 +990,6 @@ async def test_json_patch_collection_remove_property_does_not_exists(
     ]
 
     with pytest.raises(HTTPException):
-
         await txn_client.patch_collection(
             collection_id=collection_id,
             patch=operations,
@@ -1022,7 +1012,6 @@ async def test_json_patch_collection_move_property_does_not_exists(
     ]
 
     with pytest.raises(HTTPException):
-
         await txn_client.patch_collection(
             collection_id=collection_id,
             patch=operations,
@@ -1045,7 +1034,6 @@ async def test_json_patch_collection_copy_property_does_not_exists(
     ]
 
     with pytest.raises(HTTPException):
-
         await txn_client.patch_collection(
             collection_id=collection_id,
             patch=operations,

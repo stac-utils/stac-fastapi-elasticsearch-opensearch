@@ -10,11 +10,10 @@ from urllib.parse import parse_qs, urlparse, urlsplit
 import ciso8601
 import pytest
 from geojson_pydantic.geometries import Polygon
-from stac_pydantic import api
-
 from stac_fastapi.core.core import CoreClient
 from stac_fastapi.core.datetime_utils import datetime_to_str, now_to_rfc3339_str
 from stac_fastapi.types.core import LandingPageMixin
+from stac_pydantic import api
 
 from ..conftest import create_collection, create_item, refresh_indices
 
@@ -218,7 +217,7 @@ async def test_get_item_collection(app_client, ctx, txn_client):
     item_count = randint(1, 4)
 
     for idx in range(item_count):
-        ctx.item["id"] = f'{ctx.item["id"]}{idx}'
+        ctx.item["id"] = f"{ctx.item['id']}{idx}"
         await create_item(txn_client, ctx.item)
 
     resp = await app_client.get(f"/collections/{ctx.item['collection']}/items")

@@ -4,8 +4,6 @@ from typing import Literal
 
 import attr
 from fastapi import Path
-from typing_extensions import Annotated
-
 from stac_fastapi.extensions.core.aggregation.request import (
     AggregationExtensionGetRequest,
     AggregationExtensionPostRequest,
@@ -14,6 +12,7 @@ from stac_fastapi.extensions.core.filter.request import (
     FilterExtensionGetRequest,
     FilterExtensionPostRequest,
 )
+from typing_extensions import Annotated
 
 FilterLang = Literal["cql-json", "cql2-json", "cql2-text"]
 

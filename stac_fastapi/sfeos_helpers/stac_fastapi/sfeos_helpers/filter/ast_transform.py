@@ -15,11 +15,8 @@ from stac_fastapi.core.extensions.filter import (
     SpatialOp,
 )
 
-
 # Field path constants (should match those in database_logic.py)
-PROPERTIES_DATETIME_FIELD = os.getenv(
-    "STAC_FIELD_PROP_DATETIME", "properties.datetime"
-)
+PROPERTIES_DATETIME_FIELD = os.getenv("STAC_FIELD_PROP_DATETIME", "properties.datetime")
 PROPERTIES_START_DATETIME_FIELD = os.getenv(
     "STAC_FIELD_PROP_START_DATETIME", "properties.start_datetime"
 )

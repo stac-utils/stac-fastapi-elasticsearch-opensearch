@@ -4,7 +4,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
-
 from stac_fastapi.core.queryables import (
     QueryablesCache,
     get_properties_from_cql2_filter,

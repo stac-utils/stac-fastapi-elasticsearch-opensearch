@@ -1,4 +1,5 @@
 """Database logic."""
+
 import asyncio
 import logging
 import os
@@ -7,15 +8,9 @@ from copy import deepcopy
 from typing import Any, Iterable, Type
 
 import attr
-import elasticsearch.helpers as helpers
 import orjson
-from elasticsearch.dsl import Q, Search
-from elasticsearch.exceptions import BadRequestError
-from elasticsearch.exceptions import NotFoundError as ESNotFoundError
-from fastapi import HTTPException
-from starlette.requests import Request
-
 import stac_fastapi.sfeos_helpers.filter as filter_module
+from fastapi import HTTPException
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.serializers import (
     CatalogSerializer,
@@ -83,6 +78,12 @@ from stac_fastapi.sfeos_helpers.search_engine import (
 from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.links import resolve_links
 from stac_fastapi.types.stac import Collection, Item
+from starlette.requests import Request
+
+import elasticsearch.helpers as helpers
+from elasticsearch.dsl import Q, Search
+from elasticsearch.exceptions import BadRequestError
+from elasticsearch.exceptions import NotFoundError as ESNotFoundError
 
 logger = logging.getLogger(__name__)
 
@@ -860,7 +861,6 @@ class DatabaseLogic(BaseDatabaseLogic):
                 f"Selected indexes: {index_param} for collections {collection_ids} and datetime search {datetime_search}"
             )
 
-
         if len(index_param) > ES_MAX_URL_LENGTH - 300:
             index_param = ITEM_INDICES
             query = add_collections_to_body(collection_ids, query)
@@ -1317,7 +1317,6 @@ class DatabaseLogic(BaseDatabaseLogic):
                 "add",
                 "replace",
             ]:
-
                 if operation.path == "collection" and collection_id != operation.value:
                     await self.check_collection_exists(collection_id=operation.value)
                     new_collection_id = operation.value

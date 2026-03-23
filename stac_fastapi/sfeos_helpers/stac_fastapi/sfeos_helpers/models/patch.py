@@ -113,9 +113,9 @@ class ElasticPath(BaseModel):
             )
             data["es_path"] = data["es_nest"] + f"[{data['es_key']}]"
 
-        data[
-            "variable_name"
-        ] = f"{data['nest'].replace('/','_').replace(':','_')}_{str(data['key']).replace(':','_')}"
+        data["variable_name"] = (
+            f"{data['nest'].replace('/', '_').replace(':', '_')}_{str(data['key']).replace(':', '_')}"
+        )
         data["param_key"] = data["path"].translate(replacements)
 
         return data

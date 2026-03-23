@@ -1,4 +1,5 @@
 """Async index selectors with datetime-based filtering."""
+
 import logging
 from typing import Any, cast
 

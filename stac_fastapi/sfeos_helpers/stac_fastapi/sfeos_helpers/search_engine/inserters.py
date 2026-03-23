@@ -4,7 +4,6 @@ import logging
 from typing import Any
 
 from fastapi import HTTPException, status
-
 from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.sfeos_helpers.database import (
     extract_date,
@@ -272,11 +271,11 @@ class DatetimeIndexInserter(BaseIndexInserter):
                 datetime=str(
                     extract_date(latest_item["_source"]["properties"]["datetime"])
                 ),
-                end_datetime=str(
-                    extract_first_date_from_index(aliases_dict["end_datetime"])
-                )
-                if aliases_dict.get("end_datetime")
-                else None,
+                end_datetime=(
+                    str(extract_first_date_from_index(aliases_dict["end_datetime"]))
+                    if aliases_dict.get("end_datetime")
+                    else None
+                ),
             )
 
             is_first_split = not any(

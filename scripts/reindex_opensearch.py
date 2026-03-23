@@ -66,7 +66,6 @@ async def run():
     await reindex(client, collection_index, new_collection_index, collection_aliases)
 
     for collection in collections["hits"]["hits"]:
-
         item_indexes = await client.indices.get_alias(
             name=f"{ITEMS_INDEX_PREFIX}{collection['_id']}*"
         )
