@@ -176,22 +176,14 @@ class CatalogsClient(AsyncBaseCatalogsClient):
             catalog_dict = self._to_dict(catalog)
             catalog_links = list(catalog_dict.get("links", []))
 
-            # Remove parent links for top-level catalogs (no parent_ids)
-            if not parent_ids:
-                catalog_links = [
-                    link for link in catalog_links if link.get("rel") != "parent"
-                ]
-            else:
-                # For nested catalogs, keep only one parent link (to first parent)
-                parent_links = [
-                    link for link in catalog_links if link.get("rel") == "parent"
-                ]
-                if parent_links:
-                    # Remove all parent links, we'll add the correct one
-                    catalog_links = [
-                        link for link in catalog_links if link.get("rel") != "parent"
-                    ]
-                # Add parent link to the first parent
+            # Remove existing parent links, we'll add the correct one
+            catalog_links = [
+                link for link in catalog_links if link.get("rel") != "parent"
+            ]
+
+            # Add parent link - to root for top-level, to first parent for nested
+            if parent_ids:
+                # Nested catalog: parent link to first parent
                 catalog_links.insert(
                     0,
                     {
@@ -199,6 +191,17 @@ class CatalogsClient(AsyncBaseCatalogsClient):
                         "type": "application/json",
                         "href": f"{base_url}/catalogs/{parent_ids[0]}",
                         "title": parent_ids[0],
+                    },
+                )
+            else:
+                # Top-level catalog: parent link to root
+                catalog_links.insert(
+                    0,
+                    {
+                        "rel": "parent",
+                        "type": "application/json",
+                        "href": base_url,
+                        "title": "Root Catalog",
                     },
                 )
 
@@ -254,7 +257,7 @@ class CatalogsClient(AsyncBaseCatalogsClient):
         created_dict["links"] = [
             self._link_to_dict(link) for link in created_dict.get("links", [])
         ]
-        return JSONResponse(content=created_dict)
+        return JSONResponse(content=created_dict, status_code=201)
 
     async def get_catalog(
         self, catalog_id: str, request: Request | None = None, **kwargs
@@ -280,17 +283,12 @@ class CatalogsClient(AsyncBaseCatalogsClient):
         catalog_links = list(catalog_data.get("links", []))
         parent_ids = catalog_dict.get("parent_ids", [])
 
-        # Remove parent links for top-level catalogs (no parent_ids)
-        if not parent_ids:
-            catalog_links = [
-                link for link in catalog_links if link.get("rel") != "parent"
-            ]
-        else:
-            # For nested catalogs, keep only one parent link (to first parent)
-            catalog_links = [
-                link for link in catalog_links if link.get("rel") != "parent"
-            ]
-            # Add parent link to the first parent
+        # Remove existing parent links, we'll add the correct one
+        catalog_links = [link for link in catalog_links if link.get("rel") != "parent"]
+
+        # Add parent link - to root for top-level, to first parent for nested
+        if parent_ids:
+            # Nested catalog: parent link to first parent
             catalog_links.insert(
                 0,
                 {
@@ -298,6 +296,17 @@ class CatalogsClient(AsyncBaseCatalogsClient):
                     "type": "application/json",
                     "href": f"{base_url}/catalogs/{parent_ids[0]}",
                     "title": parent_ids[0],
+                },
+            )
+        else:
+            # Top-level catalog: parent link to root
+            catalog_links.insert(
+                0,
+                {
+                    "rel": "parent",
+                    "type": "application/json",
+                    "href": base_url,
+                    "title": "Root Catalog",
                 },
             )
 
@@ -590,7 +599,7 @@ class CatalogsClient(AsyncBaseCatalogsClient):
             existing_dict["links"] = [
                 self._link_to_dict(link) for link in existing_dict.get("links", [])
             ]
-            return JSONResponse(content=existing_dict)
+            return JSONResponse(content=existing_dict, status_code=201)
         except NotFoundError:
             # Create new catalog
             db_catalog_dict = self._to_dict(catalog)
@@ -614,7 +623,7 @@ class CatalogsClient(AsyncBaseCatalogsClient):
             new_dict["links"] = [
                 self._link_to_dict(link) for link in new_dict.get("links", [])
             ]
-            return JSONResponse(content=new_dict)
+            return JSONResponse(content=new_dict, status_code=201)
 
     async def create_catalog_collection(
         self,
