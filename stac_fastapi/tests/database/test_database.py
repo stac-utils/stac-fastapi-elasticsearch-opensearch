@@ -1,9 +1,25 @@
+import importlib
 import os
 import uuid
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from stac_pydantic import api
+
+import stac_fastapi.sfeos_helpers.database.index as database_index_module
+import stac_fastapi.sfeos_helpers.mappings as mappings_module
+import stac_fastapi.sfeos_helpers.search_engine.index_operations as index_operations_module
+
+if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
+    from opensearchpy.exceptions import RequestError as IndexingError
+
+    from stac_fastapi.opensearch import database_logic as backend_database_logic_module
+
+else:
+    from elasticsearch.exceptions import BadRequestError as IndexingError
+    from stac_fastapi.elasticsearch import (
+        database_logic as backend_database_logic_module,
+    )
 
 from stac_fastapi.sfeos_helpers.database import (
     filter_indexes_by_datetime,
@@ -55,6 +71,106 @@ async def test_index_mapping_items(txn_client, load_test_data):
         actual_mappings["dynamic_templates"] == ES_ITEMS_MAPPINGS["dynamic_templates"]
     )
     await txn_client.delete_collection(collection["id"])
+
+
+@pytest.mark.asyncio
+async def test_item_add_rejects_coerce_false(txn_client, load_test_data, monkeypatch):
+    """Test that item with type mismatch is rejected when coerce is disabled."""
+
+    collection = load_test_data("test_collection.json")
+    collection["id"] = str(uuid.uuid4())
+
+    item = load_test_data("test_item.json")
+    item["id"] = str(uuid.uuid4())
+    item["collection"] = collection["id"]
+    item["properties"]["sat:absolute_orbit"] = "12345"
+
+    with monkeypatch.context() as context:
+        context.setenv("STAC_FASTAPI_ES_COERCE_GLOBAL", "false")
+
+        importlib.reload(mappings_module)
+        importlib.reload(database_index_module)
+        importlib.reload(index_operations_module)
+
+        await backend_database_logic_module.create_index_templates()
+
+        await txn_client.create_collection(
+            api.Collection(**collection), request=MockRequest
+        )
+        await database.async_index_inserter.create_simple_index(
+            database.client, collection["id"]
+        )
+
+        index_kwargs = {
+            "index": index_alias_by_collection_id(collection["id"]),
+            "id": f"{item['id']}|{collection['id']}",
+            "refresh": True,
+        }
+
+        if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
+            index_kwargs["body"] = item
+        else:
+            index_kwargs["document"] = item
+
+        with pytest.raises(IndexingError):
+            await database.client.index(**index_kwargs)
+
+        await txn_client.delete_collection(collection["id"])
+
+
+@pytest.mark.asyncio
+async def test_item_add_accepted_coerce_true(txn_client, load_test_data, monkeypatch):
+    """Test that item with type mismatch is accepted coerce is enabled."""
+
+    collection = load_test_data("test_collection.json")
+    collection["id"] = str(uuid.uuid4())
+
+    item = load_test_data("test_item.json")
+    item["id"] = str(uuid.uuid4())
+    item["collection"] = collection["id"]
+    item["properties"]["sat:absolute_orbit"] = "12345"
+
+    with monkeypatch.context() as context:
+        context.setenv("STAC_FASTAPI_ES_COERCE_GLOBAL", "true")
+
+        importlib.reload(mappings_module)
+        importlib.reload(database_index_module)
+        importlib.reload(index_operations_module)
+
+        await backend_database_logic_module.create_index_templates()
+
+        await txn_client.create_collection(
+            api.Collection(**collection), request=MockRequest
+        )
+        await database.async_index_inserter.create_simple_index(
+            database.client, collection["id"]
+        )
+
+        index_kwargs = {
+            "index": index_alias_by_collection_id(collection["id"]),
+            "id": f"{item['id']}|{collection['id']}",
+            "refresh": True,
+        }
+
+        if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
+            index_kwargs["body"] = item
+        else:
+            index_kwargs["document"] = item
+
+        await database.client.index(**index_kwargs)
+
+        get_response = await database.client.get(
+            index=index_alias_by_collection_id(collection["id"]),
+            id=f"{item['id']}|{collection['id']}",
+        )
+        if hasattr(get_response, "body"):
+            doc = get_response.body["_source"]
+        else:
+            doc = get_response["_source"]
+
+        assert doc["properties"]["sat:absolute_orbit"] == "12345"
+
+        await txn_client.delete_collection(collection["id"])
 
 
 @pytest.mark.datetime_filtering

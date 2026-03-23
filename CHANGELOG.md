@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
-- Added advice to Readme about linking an already exiting Collection to a Catalog, simply by POSTing the collection's ID. [#646](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/646)
+- Added coerce control via `STAC_FASTAPI_ES_COERCE_GLOBAL` env var to enable strict type checking by disabling automatic type conversion at the index level. [#649](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/649)
 
 ### Updated
 
