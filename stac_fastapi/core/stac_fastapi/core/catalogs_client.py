@@ -70,19 +70,26 @@ class CatalogsClient(AsyncBaseCatalogsClient):
 
     @staticmethod
     def _link_to_dict(link: Any) -> dict:
-        """Convert Link objects to dict, filtering None values.
+        """Convert Link objects to dict, filtering None values and unwanted fields.
 
         Args:
             link: Link object to convert.
 
         Returns:
-            Dictionary representation of the link.
+            Dictionary representation of the link with only relevant fields.
         """
+        # Standard link fields to keep
+        allowed_fields = {"href", "rel", "type", "title", "hreflang", "length"}
+
         if hasattr(link, "model_dump"):
-            return link.model_dump(exclude_none=True)
-        if isinstance(link, dict):
-            return {k: v for k, v in link.items() if v is not None}
-        return {k: v for k, v in dict(link).items() if v is not None}
+            data = link.model_dump(exclude_none=True)
+        elif isinstance(link, dict):
+            data = {k: v for k, v in link.items() if v is not None}
+        else:
+            data = {k: v for k, v in dict(link).items() if v is not None}
+
+        # Filter to only allowed fields
+        return {k: v for k, v in data.items() if k in allowed_fields}
 
     @staticmethod
     def _add_parent_id(obj: dict, parent_id: str) -> None:
@@ -133,8 +140,18 @@ class CatalogsClient(AsyncBaseCatalogsClient):
         ]
 
         links = [
-            {"rel": "root", "type": "application/json", "href": base_url},
-            {"rel": "parent", "type": "application/json", "href": base_url},
+            {
+                "rel": "root",
+                "type": "application/json",
+                "href": base_url,
+                "title": "Root Catalog",
+            },
+            {
+                "rel": "parent",
+                "type": "application/json",
+                "href": base_url,
+                "title": "Root Catalog",
+            },
         ]
         if request:
             links.append(
@@ -142,14 +159,74 @@ class CatalogsClient(AsyncBaseCatalogsClient):
                     "rel": "self",
                     "type": "application/json",
                     "href": str(request.url),
+                    "title": "Catalogs",
                 }
             )
 
-        return Catalogs(
-            catalogs=catalogs,
-            links=links,
-            numberMatched=total_hits,
-            numberReturned=len(catalogs),
+        # Filter links to remove unwanted fields
+        filtered_links = [self._link_to_dict(link) for link in links]
+
+        # Convert catalogs to dicts
+        catalogs_dicts = []
+        for i, catalog in enumerate(catalogs):
+            # Get parent_ids from the original database catalog before serialization
+            original_catalog = catalogs_list[i]
+            parent_ids = original_catalog.get("parent_ids", [])
+
+            catalog_dict = self._to_dict(catalog)
+            catalog_links = list(catalog_dict.get("links", []))
+
+            # Remove parent links for top-level catalogs (no parent_ids)
+            if not parent_ids:
+                catalog_links = [
+                    link for link in catalog_links if link.get("rel") != "parent"
+                ]
+            else:
+                # For nested catalogs, keep only one parent link (to first parent)
+                parent_links = [
+                    link for link in catalog_links if link.get("rel") == "parent"
+                ]
+                if parent_links:
+                    # Remove all parent links, we'll add the correct one
+                    catalog_links = [
+                        link for link in catalog_links if link.get("rel") != "parent"
+                    ]
+                # Add parent link to the first parent
+                catalog_links.insert(
+                    0,
+                    {
+                        "rel": "parent",
+                        "type": "application/json",
+                        "href": f"{base_url}/catalogs/{parent_ids[0]}",
+                        "title": parent_ids[0],
+                    },
+                )
+
+            # Add root link if not already present
+            has_root = any(link.get("rel") == "root" for link in catalog_links)
+            if not has_root:
+                catalog_links.insert(
+                    0,
+                    {
+                        "rel": "root",
+                        "type": "application/json",
+                        "href": base_url,
+                        "title": "Root Catalog",
+                    },
+                )
+
+            # Filter all links in the catalog
+            catalog_dict["links"] = [self._link_to_dict(link) for link in catalog_links]
+            catalogs_dicts.append(catalog_dict)
+
+        # Return as JSONResponse to avoid Pydantic re-serialization
+        return JSONResponse(
+            content={
+                "catalogs": catalogs_dicts,
+                "links": filtered_links,
+                "numberMatched": total_hits,
+                "numberReturned": len(catalogs_dicts),
+            }
         )
 
     async def create_catalog(
@@ -173,9 +250,11 @@ class CatalogsClient(AsyncBaseCatalogsClient):
         created_obj = self.catalog_serializer.db_to_stac(
             db_catalog_dict, request, extensions=["CatalogsExtension"]
         )
-        if isinstance(created_obj, dict):
-            return Catalog(**created_obj)
-        return created_obj
+        created_dict = self._to_dict(created_obj)
+        created_dict["links"] = [
+            self._link_to_dict(link) for link in created_dict.get("links", [])
+        ]
+        return JSONResponse(content=created_dict)
 
     async def get_catalog(
         self, catalog_id: str, request: Request | None = None, **kwargs
@@ -199,6 +278,41 @@ class CatalogsClient(AsyncBaseCatalogsClient):
         # Add children endpoint link and child links
         base_url = self._get_base_url(request)
         catalog_links = list(catalog_data.get("links", []))
+        parent_ids = catalog_dict.get("parent_ids", [])
+
+        # Remove parent links for top-level catalogs (no parent_ids)
+        if not parent_ids:
+            catalog_links = [
+                link for link in catalog_links if link.get("rel") != "parent"
+            ]
+        else:
+            # For nested catalogs, keep only one parent link (to first parent)
+            catalog_links = [
+                link for link in catalog_links if link.get("rel") != "parent"
+            ]
+            # Add parent link to the first parent
+            catalog_links.insert(
+                0,
+                {
+                    "rel": "parent",
+                    "type": "application/json",
+                    "href": f"{base_url}/catalogs/{parent_ids[0]}",
+                    "title": parent_ids[0],
+                },
+            )
+
+        # Add root link if not already present
+        has_root = any(link.get("rel") == "root" for link in catalog_links)
+        if not has_root:
+            catalog_links.insert(
+                0,
+                {
+                    "rel": "root",
+                    "type": "application/json",
+                    "href": base_url,
+                    "title": "Root Catalog",
+                },
+            )
 
         # Add children endpoint link
         catalog_links.append(
@@ -206,6 +320,7 @@ class CatalogsClient(AsyncBaseCatalogsClient):
                 "rel": "children",
                 "type": "application/json",
                 "href": f"{base_url}/catalogs/{catalog_id}/children",
+                "title": "Children",
             }
         )
 
@@ -244,8 +359,10 @@ class CatalogsClient(AsyncBaseCatalogsClient):
         except Exception as e:
             logger.warning(f"Failed to fetch children for catalog {catalog_id}: {e}")
 
-        catalog_data["links"] = catalog_links
-        return Catalog(**catalog_data)
+        # Filter links to remove unwanted fields
+        catalog_data["links"] = [self._link_to_dict(link) for link in catalog_links]
+
+        return JSONResponse(content=catalog_data)
 
     async def update_catalog(
         self,
@@ -277,10 +394,11 @@ class CatalogsClient(AsyncBaseCatalogsClient):
             updated, request, extensions=["CatalogsExtension"]
         )
 
-        # Ensure we return a Catalog object
-        if isinstance(updated_obj, dict):
-            return Catalog(**updated_obj)
-        return updated_obj
+        updated_dict = self._to_dict(updated_obj)
+        updated_dict["links"] = [
+            self._link_to_dict(link) for link in updated_dict.get("links", [])
+        ]
+        return JSONResponse(content=updated_dict)
 
     async def delete_catalog(
         self,
@@ -331,16 +449,23 @@ class CatalogsClient(AsyncBaseCatalogsClient):
 
         base_url = self._get_base_url(request)
         links = [
-            {"rel": "root", "type": "application/json", "href": base_url},
+            {
+                "rel": "root",
+                "type": "application/json",
+                "href": base_url,
+                "title": "Root Catalog",
+            },
             {
                 "rel": "parent",
                 "type": "application/json",
                 "href": f"{base_url}/catalogs/{catalog_id}",
+                "title": "Parent Catalog",
             },
             {
                 "rel": "self",
                 "type": "application/json",
                 "href": f"{base_url}/catalogs/{catalog_id}/collections",
+                "title": "Collections",
             },
         ]
 
@@ -353,11 +478,17 @@ class CatalogsClient(AsyncBaseCatalogsClient):
                 }
             )
 
-        return Collections(
-            collections=collections,
-            links=links,
-            numberMatched=total_hits,
-            numberReturned=len(collections),
+        # Filter links and convert collections to dicts
+        filtered_links = [self._link_to_dict(link) for link in links]
+        collections_dicts = [self._to_dict(col) for col in collections]
+
+        return JSONResponse(
+            content={
+                "collections": collections_dicts,
+                "links": filtered_links,
+                "numberMatched": total_hits,
+                "numberReturned": len(collections_dicts),
+            }
         )
 
     async def get_sub_catalogs(
@@ -400,16 +531,23 @@ class CatalogsClient(AsyncBaseCatalogsClient):
 
         base_url = self._get_base_url(request)
         links = [
-            {"rel": "root", "type": "application/json", "href": base_url},
+            {
+                "rel": "root",
+                "type": "application/json",
+                "href": base_url,
+                "title": "Root Catalog",
+            },
             {
                 "rel": "parent",
                 "type": "application/json",
                 "href": f"{base_url}/catalogs/{catalog_id}",
+                "title": "Parent Catalog",
             },
             {
                 "rel": "self",
                 "type": "application/json",
                 "href": f"{base_url}/catalogs/{catalog_id}/catalogs",
+                "title": "Sub-catalogs",
             },
         ]
 
@@ -448,9 +586,11 @@ class CatalogsClient(AsyncBaseCatalogsClient):
             existing_obj = self.catalog_serializer.db_to_stac(
                 existing, request, extensions=["CatalogsExtension"]
             )
-            if isinstance(existing_obj, dict):
-                return Catalog(**existing_obj)
-            return existing_obj
+            existing_dict = self._to_dict(existing_obj)
+            existing_dict["links"] = [
+                self._link_to_dict(link) for link in existing_dict.get("links", [])
+            ]
+            return JSONResponse(content=existing_dict)
         except NotFoundError:
             # Create new catalog
             db_catalog_dict = self._to_dict(catalog)
@@ -470,9 +610,11 @@ class CatalogsClient(AsyncBaseCatalogsClient):
             new_obj = self.catalog_serializer.db_to_stac(
                 db_catalog_dict, request, extensions=["CatalogsExtension"]
             )
-            if isinstance(new_obj, dict):
-                return Catalog(**new_obj)
-            return new_obj
+            new_dict = self._to_dict(new_obj)
+            new_dict["links"] = [
+                self._link_to_dict(link) for link in new_dict.get("links", [])
+            ]
+            return JSONResponse(content=new_dict)
 
     async def create_catalog_collection(
         self,
@@ -596,12 +738,17 @@ class CatalogsClient(AsyncBaseCatalogsClient):
                 f"Collection {collection_id} not linked to catalog {catalog_id}"
             )
 
-        return self.collection_serializer.db_to_stac_in_catalog(
+        collection_obj = self.collection_serializer.db_to_stac_in_catalog(
             collection_dict,
             request,
             catalog_id=catalog_id,
             extensions=["CatalogsExtension"],
         )
+        collection_dict_out = self._to_dict(collection_obj)
+        collection_dict_out["links"] = [
+            self._link_to_dict(link) for link in collection_dict_out.get("links", [])
+        ]
+        return JSONResponse(content=collection_dict_out)
 
     async def unlink_catalog_collection(
         self,
@@ -722,21 +869,25 @@ class CatalogsClient(AsyncBaseCatalogsClient):
                     "rel": "self",
                     "type": "application/geo+json",
                     "href": f"{base_url}/catalogs/{catalog_id}/collections/{collection_id}/items/{item_id}",
+                    "title": "Item",
                 },
                 {
                     "rel": "parent",
                     "type": "application/json",
                     "href": f"{base_url}/catalogs/{catalog_id}/collections/{collection_id}",
+                    "title": "Collection",
                 },
                 {
                     "rel": "collection",
                     "type": "application/json",
                     "href": f"{base_url}/collections/{collection_id}",
+                    "title": "Collection",
                 },
                 {
                     "rel": "root",
                     "type": "application/json",
                     "href": base_url,
+                    "title": "Root Catalog",
                 },
             ]
 
@@ -768,16 +919,23 @@ class CatalogsClient(AsyncBaseCatalogsClient):
             serialized_items.append(serialized_item)
 
         links = [
-            {"rel": "root", "type": "application/json", "href": base_url},
+            {
+                "rel": "root",
+                "type": "application/json",
+                "href": base_url,
+                "title": "Root Catalog",
+            },
             {
                 "rel": "parent",
                 "type": "application/json",
                 "href": f"{base_url}/catalogs/{catalog_id}/collections/{collection_id}",
+                "title": "Collection",
             },
             {
                 "rel": "self",
                 "type": "application/json",
                 "href": f"{base_url}/catalogs/{catalog_id}/collections/{collection_id}/items",
+                "title": "Items",
             },
         ]
 
@@ -790,12 +948,18 @@ class CatalogsClient(AsyncBaseCatalogsClient):
                 }
             )
 
-        return ItemCollection(
-            type="FeatureCollection",
-            features=serialized_items,
-            links=links,
-            numberMatched=total,
-            numberReturned=len(serialized_items),
+        # Filter links and convert items to dicts
+        filtered_links = [self._link_to_dict(link) for link in links]
+        items_dicts = [self._to_dict(item) for item in serialized_items]
+
+        return JSONResponse(
+            content={
+                "type": "FeatureCollection",
+                "features": items_dicts,
+                "links": filtered_links,
+                "numberMatched": total,
+                "numberReturned": len(items_dicts),
+            }
         )
 
     async def get_catalog_collection_item(
@@ -855,21 +1019,25 @@ class CatalogsClient(AsyncBaseCatalogsClient):
                 "rel": "self",
                 "type": "application/geo+json",
                 "href": f"{base_url}/catalogs/{catalog_id}/collections/{collection_id}/items/{item_id}",
+                "title": "Item",
             },
             {
                 "rel": "parent",
                 "type": "application/json",
                 "href": f"{base_url}/catalogs/{catalog_id}/collections/{collection_id}",
+                "title": "Collection",
             },
             {
                 "rel": "collection",
                 "type": "application/json",
                 "href": f"{base_url}/collections/{collection_id}",
+                "title": "Collection",
             },
             {
                 "rel": "root",
                 "type": "application/json",
                 "href": base_url,
+                "title": "Root Catalog",
             },
         ]
 
@@ -898,7 +1066,11 @@ class CatalogsClient(AsyncBaseCatalogsClient):
         else:
             item.links = item_links
 
-        return item
+        item_dict_out = self._to_dict(item)
+        item_dict_out["links"] = [
+            self._link_to_dict(link) for link in item_dict_out.get("links", [])
+        ]
+        return JSONResponse(content=item_dict_out)
 
     async def get_catalog_children(
         self,
@@ -953,16 +1125,23 @@ class CatalogsClient(AsyncBaseCatalogsClient):
 
         base_url = self._get_base_url(request)
         links = [
-            {"rel": "root", "type": "application/json", "href": base_url},
+            {
+                "rel": "root",
+                "type": "application/json",
+                "href": base_url,
+                "title": "Root Catalog",
+            },
             {
                 "rel": "parent",
                 "type": "application/json",
                 "href": f"{base_url}/catalogs/{catalog_id}",
+                "title": "Parent Catalog",
             },
             {
                 "rel": "self",
                 "type": "application/json",
                 "href": f"{base_url}/catalogs/{catalog_id}/children",
+                "title": "Children",
             },
         ]
 
@@ -975,11 +1154,17 @@ class CatalogsClient(AsyncBaseCatalogsClient):
                 }
             )
 
-        return Children(
-            children=children,
-            links=links,
-            numberMatched=total_hits,
-            numberReturned=len(children),
+        # Filter links and convert children to dicts
+        filtered_links = [self._link_to_dict(link) for link in links]
+        children_dicts = [self._to_dict(child) for child in children]
+
+        return JSONResponse(
+            content={
+                "children": children_dicts,
+                "links": filtered_links,
+                "numberMatched": total_hits,
+                "numberReturned": len(children_dicts),
+            }
         )
 
     async def get_catalog_conformance(
