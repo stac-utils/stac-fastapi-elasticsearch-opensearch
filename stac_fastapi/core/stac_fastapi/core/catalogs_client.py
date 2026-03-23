@@ -437,6 +437,20 @@ class CatalogsClient(AsyncBaseCatalogsClient):
         except Exception as e:
             raise NotFoundError(f"Catalog {catalog_id} not found") from e
 
+        if limit is None:
+            # 1. Try to get from kwargs
+            limit = kwargs.get("limit")
+            # 2. Try to get from request query params
+            if limit is None and request:
+                query_limit = request.query_params.get("limit")
+                if query_limit is not None:
+                    limit = int(query_limit)
+
+        if token is None:
+            token = kwargs.get("token") or (
+                request.query_params.get("token") if request else None
+            )
+
         limit = limit or 10
         (
             collections_list,

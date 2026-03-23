@@ -109,25 +109,31 @@ async def search_collections_by_parent_id_with_pagination_shared(
     Raises:
         Exception: Re-raises any database connection or query errors to the caller.
     """
-    sort_fields = [{"id": {"order": "asc"}}]
-    query_body = {
-        "query": {
-            "bool": {
-                "must": [
-                    {"term": {"parent_ids": catalog_id}},
-                    {"term": {"type": "Collection"}},
-                ]
-            }
-        },
-        "sort": sort_fields,
+    query = {
+        "bool": {
+            "must": [
+                {"term": {"parent_ids": catalog_id}},
+                {"term": {"type": "Collection"}},
+            ]
+        }
+    }
+
+    search_params = {
+        "query": query,
+        "sort": [{"id": {"order": "asc"}}],
         "size": limit,
         "track_total_hits": True,
     }
+
     if search_after:
-        query_body["search_after"] = search_after
+        search_params["search_after"] = search_after
 
     try:
-        search_result = await es_client.search(index=COLLECTIONS_INDEX, body=query_body)
+        # 2. Use the 'body' parameter.
+        # This is the most compatible way across ES and OpenSearch clients.
+        search_result = await es_client.search(
+            index=COLLECTIONS_INDEX, body=search_params  # DO NOT unpack here
+        )
     except Exception as e:
         logger.error(f"Database error searching collections in {catalog_id}: {e}")
         raise
@@ -159,7 +165,7 @@ async def search_sub_catalogs_with_pagination_shared(
     Returns:
         Tuple of (catalogs, total_count, next_token).
     """
-    query_body = {
+    body = {
         "query": {
             "bool": {
                 "must": [
@@ -170,19 +176,19 @@ async def search_sub_catalogs_with_pagination_shared(
         },
         "sort": [{"id": {"order": "asc"}}],
         "size": limit,
-        "track_total_hits": True,  # Added for accuracy
+        "track_total_hits": True,
     }
     if search_after:
-        query_body["search_after"] = search_after
+        body["search_after"] = search_after
 
     try:
-        search_result = await es_client.search(index=COLLECTIONS_INDEX, body=query_body)
+        search_result = await es_client.search(index=COLLECTIONS_INDEX, body=body)
     except Exception as e:
         logger.error(f"Error searching for catalogs in {catalog_id}: {e}")
         raise
 
     hits_container = search_result.get("hits", {})
-    total_hits = _get_total_hits(hits_container)  # Fixed: Robust total hits
+    total_hits = _get_total_hits(hits_container)
     hits = hits_container.get("hits", [])
 
     catalogs = [hit["_source"] for hit in hits]
@@ -236,23 +242,23 @@ async def search_children_with_pagination_shared(
     if resource_type:
         filter_queries.append({"term": {"type": resource_type}})
 
-    query_body = {
+    body = {
         "query": {"bool": {"filter": filter_queries}},
         "sort": [{"id": {"order": "asc"}}],
         "size": limit,
-        "track_total_hits": True,  # Added for accuracy
+        "track_total_hits": True,
     }
     if search_after:
-        query_body["search_after"] = search_after
+        body["search_after"] = search_after
 
     try:
-        search_result = await es_client.search(index=COLLECTIONS_INDEX, body=query_body)
+        search_result = await es_client.search(index=COLLECTIONS_INDEX, body=body)
     except Exception as e:
         logger.error(f"Error searching for children of {catalog_id}: {e}")
         raise
 
     hits_container = search_result.get("hits", {})
-    total_hits = _get_total_hits(hits_container)  # Fixed: Robust total hits
+    total_hits = _get_total_hits(hits_container)
     hits = hits_container.get("hits", [])
 
     children = [hit["_source"] for hit in hits]
