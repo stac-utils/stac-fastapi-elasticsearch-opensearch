@@ -55,16 +55,6 @@ def to_es(queryables_mapping: dict[str, Any], query: dict[str, Any]) -> dict[str
     Returns:
         dict[str, Any]: The corresponding Elasticsearch query in the form of a dictionary.
     """
-    op = query.get("op")
-    # Be permissive about operator casing coming from request bodies / validators.
-    # In practice we see some clients (and some model validators) emit operators like "IN".
-    if isinstance(op, str):
-        op_lower = op.lower()
-        if op_lower in {"and", "or", "not", "like", "between", "in"}:
-            op = op_lower
-        elif op_lower == "isnull":
-            op = ComparisonOp.IS_NULL
-
     queries: list[dict[str, Any]] = [{}]
     if query["op"] in [LogicalOp.AND, LogicalOp.OR, LogicalOp.NOT]:
         bool_type = {
@@ -186,7 +176,6 @@ def to_es(queryables_mapping: dict[str, Any], query: dict[str, Any]) -> dict[str
             SpatialOp.S_WITHIN: "within",
             SpatialOp.S_DISJOINT: "disjoint",
         }
-
         relation = relation_mapping[query["op"]]
         queries = [{"geo_shape": {field: {"shape": geometry, "relation": relation}}}]
 
