@@ -742,3 +742,40 @@ async def test_queryables_excluded_fields(
     # Clean up
     r = await app_client.delete(f"/collections/{collection_id}")
     r.raise_for_status()
+
+
+# ---------------------------------------------------------------------------
+# CQL2-text strict parsing / truncation-attack regression tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_cql2_text_garbage_rejected_get(app_client):
+    """Garbage tokens appended to a valid filter must be rejected with 400."""
+    resp = await app_client.get(
+        "/search?filter-lang=cql2-text&filter=id%3D'x'%20GARBAGE"
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_cql2_text_trailing_garbage_rejected_get(app_client):
+    """A valid expression followed by garbage is rejected in its entirety (no partial execution)."""
+    resp = await app_client.get(
+        "/search?filter-lang=cql2-text&filter=id%3D'x'%20AND%20INJECTED_GARBAGE%20AND%20id%3D'y'"
+    )
+    assert resp.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_cql2_text_truncation_attack_rejected(app_client, ctx):
+    """Simulated truncation attack: attacker injects garbage to prevent a trailing security filter
+    from being parsed. The whole expression must be rejected, not silently truncated."""
+    from urllib.parse import quote_plus
+
+    item_id = ctx.item["id"]
+    garbage_suffix = f"id='{item_id}' INJECTED_GARBAGE"
+    resp = await app_client.get(
+        f"/search?filter-lang=cql2-text&filter={quote_plus(garbage_suffix)}"
+    )
+    assert resp.status_code == 400

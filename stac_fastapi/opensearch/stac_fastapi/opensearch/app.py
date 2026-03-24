@@ -36,7 +36,6 @@ from stac_fastapi.core.extensions.collections_search import (
 )
 from stac_fastapi.core.extensions.fields import FieldsExtension
 from stac_fastapi.core.rate_limit import setup_rate_limit
-from stac_fastapi.core.route_dependencies import get_route_dependencies
 from stac_fastapi.core.session import Session
 from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.extensions.core import (
@@ -273,7 +272,6 @@ app_config = {
     "search_get_request_model": create_get_request_model(search_extensions),
     "search_post_request_model": post_request_model,
     "items_get_request_model": items_get_request_model,
-    "route_dependencies": get_route_dependencies(),
     "middlewares": [cors_middleware],
 }
 

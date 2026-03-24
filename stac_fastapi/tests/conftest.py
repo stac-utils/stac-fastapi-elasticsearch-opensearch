@@ -12,7 +12,6 @@ from pydantic import ConfigDict
 from stac_pydantic import api
 
 from stac_fastapi.api.app import StacApi
-from stac_fastapi.core.basic_auth import BasicAuth
 from stac_fastapi.core.core import (
     BulkTransactionsClient,
     CoreClient,
@@ -53,6 +52,7 @@ if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
         create_index_templates,
     )
 else:
+    from stac_fastapi.elasticsearch.app import app as elasticsearch_app
     from stac_fastapi.elasticsearch.app import app_config
     from stac_fastapi.elasticsearch.config import (
         AsyncElasticsearchSettings as AsyncSettings,
@@ -212,7 +212,7 @@ async def app():
     if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
         return opensearch_app
 
-    return StacApi(**app_config).app
+    return elasticsearch_app
 
 
 @pytest_asyncio.fixture(scope="session")
@@ -247,56 +247,6 @@ async def app_client_rate_limit(app_rate_limit):
 
 
 @pytest_asyncio.fixture(scope="session")
-async def app_basic_auth():
-    """Fixture to get the FastAPI app with basic auth configured."""
-
-    # Create a copy of the app config
-    test_config = app_config.copy()
-
-    # Create basic auth dependency wrapped in Depends
-    basic_auth = Depends(
-        BasicAuth(credentials=[{"username": "admin", "password": "admin"}])
-    )
-
-    # Define public routes that don't require auth
-    public_paths = {
-        "/": ["GET"],
-        "/conformance": ["GET"],
-        "/collections/{collection_id}/items/{item_id}": ["GET"],
-        "/search": ["GET", "POST"],
-        "/collections": ["GET"],
-        "/collections/{collection_id}": ["GET"],
-        "/collections/{collection_id}/items": ["GET"],
-        "/queryables": ["GET"],
-        "/collections/{collection_id}/queryables": ["GET"],
-        "/_mgmt/ping": ["GET"],
-    }
-
-    # Initialize route dependencies with public paths
-    test_config["route_dependencies"] = [
-        (
-            [{"path": path, "method": method} for method in methods],
-            [],  # No auth for public routes
-        )
-        for path, methods in public_paths.items()
-    ]
-
-    # Add catch-all route with basic auth
-    test_config["route_dependencies"].extend(
-        [
-            (
-                [{"path": "*", "method": "*"}],
-                [basic_auth],
-            )  # Require auth for all other routes
-        ]
-    )
-
-    # Create the app with basic auth
-    api = StacApi(**test_config)
-    return api.app
-
-
-@pytest_asyncio.fixture(scope="session")
 async def app_client_basic_auth(app_basic_auth):
     await create_index_templates()
     await create_collection_index()
@@ -318,34 +268,6 @@ def must_be_bob(
         detail="You're not Bob",
         headers={"WWW-Authenticate": "Basic"},
     )
-
-
-@pytest_asyncio.fixture(scope="session")
-async def route_dependencies_app():
-    """Fixture to get the FastAPI app with custom route dependencies."""
-    # Create a copy of the app config
-    test_config = app_config.copy()
-
-    # Define route dependencies
-    test_config["route_dependencies"] = [
-        ([{"method": "GET", "path": "/collections"}], [Depends(must_be_bob)])
-    ]
-
-    # Create the app with custom route dependencies
-    api = StacApi(**test_config)
-    return api.app
-
-
-@pytest_asyncio.fixture(scope="session")
-async def route_dependencies_client(route_dependencies_app):
-    await create_index_templates()
-    await create_collection_index()
-
-    async with AsyncClient(
-        transport=ASGITransport(app=route_dependencies_app),
-        base_url="http://test-server",
-    ) as c:
-        yield c
 
 
 def build_test_app():
