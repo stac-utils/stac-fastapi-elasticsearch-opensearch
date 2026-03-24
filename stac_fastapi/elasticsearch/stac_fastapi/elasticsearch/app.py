@@ -218,15 +218,22 @@ if ENABLE_COLLECTIONS_SEARCH_ROUTE:
 
 
 if ENABLE_CATALOGS_ROUTE:
-    from stac_fastapi_catalogs_extension import CatalogsExtension
+    try:
+        from stac_fastapi_catalogs_extension import CatalogsExtension
 
-    from stac_fastapi.core.catalogs_client import CatalogsClient
+        from stac_fastapi.core.catalogs_client import CatalogsClient
 
-    catalogs_extension = CatalogsExtension(
-        client=CatalogsClient(database=database_logic),
-        enable_transactions=True,
-    )
-    extensions.append(catalogs_extension)
+        catalogs_extension = CatalogsExtension(
+            client=CatalogsClient(database=database_logic),
+            enable_transactions=True,
+        )
+        extensions.append(catalogs_extension)
+    except ImportError as e:
+        logger.warning(
+            "ENABLE_CATALOGS_ROUTE is set to true, but the catalogs extension is not installed. "
+            "Please install it with: pip install stac-fastapi-core[catalogs]. "
+            f"Error: {e}"
+        )
 
 
 database_logic.extensions = [type(ext).__name__ for ext in extensions]

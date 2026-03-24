@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- Made the stac-fastapi-catalogs-extension an optional dependency, installable via `stac-fastapi-core[catalogs]`. [#647](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/647)
+
 ## [v6.14.0] - 2026-03-19
 
 ### Changed
