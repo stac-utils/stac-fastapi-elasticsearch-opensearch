@@ -11,6 +11,7 @@ import opensearchpy.helpers as helpers
 import orjson
 from fastapi import HTTPException
 from opensearchpy import Q, Search
+from opensearchpy.exceptions import ConflictError as OSConflictError
 from opensearchpy.exceptions import NotFoundError as OSNotFoundError
 from opensearchpy.exceptions import RequestError
 from starlette.requests import Request
@@ -1191,7 +1192,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 refresh=refresh,
                 **({} if upsert else {"op_type": "create"}),
             )
-        except exceptions.ConflictError:
+        except OSConflictError:
             raise ItemAlreadyExistsError(item_id, collection_id)
 
     @retry_on_connection_error
