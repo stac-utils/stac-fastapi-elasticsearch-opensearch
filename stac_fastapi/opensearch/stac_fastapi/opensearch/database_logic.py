@@ -876,7 +876,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         if HIDE_ITEM_PATH:
             q = count_query.get("query")
             count_query["query"] = add_hidden_filter(q, HIDE_ITEM_PATH)
-        breakpoint()
+
         count_task = asyncio.create_task(
             self.client.count(
                 index=index_param,
