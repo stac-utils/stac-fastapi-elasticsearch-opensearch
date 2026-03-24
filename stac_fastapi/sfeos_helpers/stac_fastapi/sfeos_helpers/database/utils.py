@@ -5,7 +5,9 @@ in Elasticsearch/OpenSearch, such as parameter validation.
 """
 
 import logging
-from typing import Any
+import os
+from functools import wraps
+from typing import Any, Callable
 
 from stac_fastapi.core.utilities import bbox2polygon, get_bool_env
 from stac_fastapi.extensions.core.transaction.request import (
@@ -14,9 +16,52 @@ from stac_fastapi.extensions.core.transaction.request import (
     PatchRemove,
 )
 from stac_fastapi.sfeos_helpers.models.patch import ElasticPath, ESCommandSet
-from stac_fastapi.types.errors import ConflictError
+from stac_fastapi.types.errors import ConflictError, NotFoundError
+
+try:
+    from opensearchpy.exceptions import ConnectionError, ConnectionTimeout
+except ImportError:
+    from elasticsearch.exceptions import ConnectionError, ConnectionTimeout
+
+from tenacity import (
+    AsyncRetrying,
+    before_sleep_log,
+    retry_if_exception,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_fixed,
+)
 
 logger = logging.getLogger(__name__)
+
+RETRY_MAX_ATTEMPTS_CONNECTION_ERROR = int(
+    os.getenv("RETRY_MAX_ATTEMPTS_CONNECTION_ERROR", "5")
+)
+RETRY_MAX_ATTEMPTS_NOT_FOUND_ERROR = int(
+    os.getenv("RETRY_MAX_ATTEMPTS_NOT_FOUND_ERROR", "3")
+)
+RETRY_WAIT_SECONDS = float(os.getenv("RETRY_WAIT_SECONDS", "0.5"))
+RETRY_RERAISE = get_bool_env("RETRY_RERAISE", default=True)
+
+CONNECTION_RETRY_STRATEGY = AsyncRetrying(
+    stop=stop_after_attempt(RETRY_MAX_ATTEMPTS_CONNECTION_ERROR),
+    wait=wait_fixed(RETRY_WAIT_SECONDS),
+    retry=retry_if_exception_type((ConnectionError, ConnectionTimeout)),
+    reraise=RETRY_RERAISE,
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+)
+
+DATETIME_RETRY_STRATEGY = AsyncRetrying(
+    stop=stop_after_attempt(RETRY_MAX_ATTEMPTS_NOT_FOUND_ERROR),
+    wait=wait_fixed(RETRY_WAIT_SECONDS),
+    retry=retry_if_exception(
+        lambda e: isinstance(e, NotFoundError)
+        and "Collections '" in str(e)
+        and "' do not exist" in str(e)
+    ),
+    reraise=RETRY_RERAISE,
+    before_sleep=before_sleep_log(logger, logging.WARNING),
+)
 
 
 class ItemAlreadyExistsError(ConflictError):
@@ -195,6 +240,35 @@ def validate_refresh(value: str | bool) -> str:
         f"Invalid value for `refresh`: '{value}'. Expected 'true', 'false', or 'wait_for'. Defaulting to 'false'."
     )
     return "false"
+
+
+def validate_datetime_operations(
+    operations: list, existing_source: dict, validator: Callable
+) -> None:
+    """Validate datetime field changes in patch operations.
+
+    Compares operation values against existing document values.
+    Only validates when the value actually changes.
+
+    Args:
+        operations: List of patch operations.
+        existing_source: The existing document source from the search response.
+        validator: Callable that validates a field path.
+    """
+    for operation in operations:
+        if operation.op == "remove":
+            validator(operation.path)
+        elif operation.op in ["add", "replace"]:
+            path_parts = operation.path.strip("/").split("/")
+            existing_value = existing_source
+            for part in path_parts:
+                if isinstance(existing_value, dict):
+                    existing_value = existing_value.get(part)
+                else:
+                    existing_value = None
+                    break
+            if existing_value != operation.value:
+                validator(operation.path)
 
 
 def merge_to_operations(data: dict) -> list:
@@ -455,6 +529,62 @@ def sentry_initialize(
     sentry_sdk.init(**sentry_config)
 
     logger.info(f"Sentry initialized for environment: {environment}")
+
+
+def retry_on_datetime_not_found(func) -> Callable:
+    """Retries datetime search queries on NotFoundError.
+
+    Args:
+        func: The async function to be decorated.
+
+    Returns:
+        A decorated function with retry logic for datetime-based searches.
+
+    Note:
+        Retry logic is only applied when `datetime_search` is provided as a
+        non-empty dictionary. For non-datetime queries or empty datetime
+        dictionaries, the function executes without retry attempts.
+    """
+
+    @wraps(func)
+    async def wrapper(self, *args, **kwargs):
+        from stac_fastapi.sfeos_helpers.search_engine.inserters import (
+            DatetimeIndexInserter,
+        )
+
+        datetime_search = kwargs.get("datetime_search")
+        if (
+            isinstance(self.async_index_inserter, DatetimeIndexInserter)
+            and datetime_search
+        ):
+            async for attempt in DATETIME_RETRY_STRATEGY.copy():
+                with attempt:
+                    if attempt.retry_state.attempt_number > 1:
+                        await self.async_index_inserter.refresh_cache()
+                    return await func(self, *args, **kwargs)
+
+        return await func(self, *args, **kwargs)
+
+    return wrapper
+
+
+def retry_on_connection_error(func) -> Callable:
+    """Retries on ConnectionError, ConnectionTimeout etc.
+
+    Args:
+        func: The async function to be decorate.
+
+    Returns:
+        A decorated function with retry logic for connection errors .
+    """
+
+    @wraps(func)
+    async def wrapper(*args, **kwargs):
+        async for attempt in CONNECTION_RETRY_STRATEGY.copy():
+            with attempt:
+                return await func(*args, **kwargs)
+
+    return wrapper
 
 
 def add_hidden_filter(

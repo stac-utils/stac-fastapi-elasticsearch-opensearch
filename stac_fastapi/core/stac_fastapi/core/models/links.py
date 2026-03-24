@@ -114,13 +114,24 @@ class CollectionLinks(BaseLinks):
     collection_id: str = attr.ib()
     extensions: list[str] = attr.ib(default=attr.Factory(list))
     parent_url: str | None = attr.ib(default=None, kw_only=True)
+    self_url: str | None = attr.ib(default=None, kw_only=True)
 
     def link_self(self) -> dict:
-        """Return the self link."""
+        """Return the self link.
+
+        The self link points to the current location of the resource:
+        - If self_url is provided (scoped context), use it
+        - Otherwise, use the global collections endpoint
+        """
+        href = (
+            self.self_url
+            if self.self_url
+            else urljoin(self.base_url, f"collections/{self.collection_id}")
+        )
         return dict(
             rel=Relations.self.value,
             type=MimeTypes.json.value,
-            href=urljoin(self.base_url, f"collections/{self.collection_id}"),
+            href=href,
         )
 
     def link_parent(self) -> dict[str, Any]:

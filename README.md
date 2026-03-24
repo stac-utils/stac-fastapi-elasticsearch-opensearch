@@ -5,7 +5,7 @@
   <img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/sfeos.png" width=1000>
 </p>
 
-**Jump to:** [Project Introduction](#project-introduction---what-is-sfeos) | [Quick Start](#quick-start) | [Table of Contents](#table-of-contents)
+**Jump to:** [Project Introduction](#project-introduction---what-is-sfeos) | [Quick Start](#quick-start) | [Table of Contents](#table-of-contents) | [SFEOS-tools CLI](#sfeos-tools-cli) |
 
   [![Downloads](https://static.pepy.tech/badge/stac-fastapi-core?color=blue)](https://pepy.tech/project/stac-fastapi-core)
   [![GitHub contributors](https://img.shields.io/github/contributors/stac-utils/stac-fastapi-elasticsearch-opensearch?color=blue)](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/graphs/contributors)
@@ -28,9 +28,10 @@ The following organizations have contributed time and/or funding to support the 
 
 ## Latest News
 
-- **01/11/2026:** Feature: **Hierarchical Catalog Support**. Sub-catalogs are now fully supported! Catalogs can now contain other catalogs for unlimited nesting levels. This enables complex organizational hierarchies with multi-parent support for both catalogs and collections.
-- **01/09/2026:** New Feature: **Custom Index Mappings**. You can now customize Elasticsearch/OpenSearch index mappings directly via environment variables without changing source code. Use `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` to merge custom field definitions (e.g., for STAC extensions like SAR or Cube) or `STAC_FASTAPI_ES_MAPPINGS_FILE` to load mappings from a JSON file. See [Custom Index Mappings](#custom-index-mappings) for details.
-- **12/09/2025:** Feature Merge: **Multi-Tenant Catalogs**. The [`STAC API - Multi-Tenant Catalogs Endpoint Extension`](https://github.com/stac-api-extensions/multi-tenant-catalogs) is now in main! This enables a registry of catalogs and supports **poly-hierarchy** (collections belonging to multiple catalogs simultaneously). Enable it via `ENABLE_CATALOGS_EXTENSION`. _Coming next: Support for nested sub-catalogs._
+- **03/19/2026: SKOS to STAC Ingestion Demo.** 📓 Check out the interactive [SKOS-catalogs-ingestion-demo.ipynb](https://github.com/StacLabs/sfeos-tools/blob/main/demo-notebooks/SKOS-catalogs-ingestion-demo.ipynb) notebook! This tutorial demonstrates automated semantic ingestion from SKOS/RDF-XML files into hierarchical STAC catalogs, showcasing poly-hierarchy, contextual breadcrumbs, and data safety features of the Multi-Tenant Catalogs extension. Thanks to support from CloudFerro! 
+- **01/11/2026: Hierarchical Catalog Support.** Sub-catalogs are now fully supported! Catalogs can now contain other catalogs for unlimited nesting levels. This enables complex organizational hierarchies with multi-parent support for both catalogs and collections.
+- **01/09/2026: Custom Index Mappings.** You can now customize Elasticsearch/OpenSearch index mappings directly via environment variables without changing source code. Use `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` to merge custom field definitions (e.g., for STAC extensions like SAR or Cube) or `STAC_FASTAPI_ES_MAPPINGS_FILE` to load mappings from a JSON file. See [Custom Index Mappings](#custom-index-mappings) for details.
+- **12/09/2025: Multi-Tenant Catalogs.** The [`STAC API - Multi-Tenant Catalogs Endpoint Extension`](https://github.com/stac-api-extensions/multi-tenant-catalogs) is now in main! This enables a registry of catalogs and supports **poly-hierarchy** (collections belonging to multiple catalogs simultaneously). Enable it via `ENABLE_CATALOGS_ROUTE`. _Coming next: Support for nested sub-catalogs._
 - **11/07/2025:** 🌍 The SFEOS STAC Viewer is now available at: https://healy-hyperspatial.github.io/sfeos-web. Use this site to examine your data and test your STAC API!
 - **10/24/2025:** Added `previous_token` pagination using Redis for efficient navigation. This feature allows users to navigate backwards through large result sets by storing pagination state in Redis. To use this feature, ensure Redis is configured (see [Redis for navigation](#redis-for-navigation)) and set `REDIS_ENABLE=true` in your environment.
 - **10/23/2025:** The `EXCLUDED_FROM_QUERYABLES` environment variable was added to exclude fields from the `queryables` endpoint. See [docs](#excluding-fields-from-queryables).
@@ -123,7 +124,6 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
   - [Configure the API](#configure-the-api)
   - [Collection Pagination](#collection-pagination)
   - [SFEOS Tools CLI](#sfeos-tools-cli)
-  - [Ingesting Sample Data CLI Tool](#ingesting-sample-data-cli-tool)
   - [Redis for navigation](#redis-for-navigation)
   - [Elasticsearch Mappings](#elasticsearch-mappings)
   - [Custom Index Mappings](#custom-index-mappings)
@@ -133,6 +133,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
   - [Auth](#auth)
   - [Aggregation](#aggregation)
   - [Rate Limiting](#rate-limiting)
+  - [Prometheus metrics](#prometheus-metrics)
   - [Hidden Items Filtering](#hidden-items-filtering)
   - [Error Monitoring with Sentry](#error-monitoring-with-sentry)
 
@@ -255,6 +256,75 @@ This implementation follows the [Multi-Tenant Virtual Catalogs Endpoint](https:/
 - **Flexible Querying**: Support for standard STAC API query parameters when browsing collections within catalogs
 - **Safety-First Data Protection**: Collection and catalog data is never deleted through the catalogs route; only containers can be destroyed
 
+### Installation
+
+To use the Catalogs extension, install the Elasticsearch or OpenSearch package with the catalogs extra:
+
+```bash
+# For Elasticsearch backend
+pip install stac-fastapi-elasticsearch[catalogs]
+
+# For OpenSearch backend
+pip install stac-fastapi-opensearch[catalogs]
+```
+
+Alternatively, if you're installing the core package directly:
+
+```bash
+pip install stac-fastapi-core[catalogs]
+```
+
+This ensures you have the `stac-fastapi-catalogs-extension` dependency required for the `/catalogs` endpoint.
+
+### DAG Specification & Dynamic Link Generation
+
+SFEOS implements the [STAC API - Multi-Tenant Catalogs Endpoint Extension](https://github.com/stac-api-extensions/multi-tenant-catalogs) (v1.0.0-beta.4) with full support for Directed Acyclic Graph (DAG) structures and strict STAC core compliance:
+
+#### Link Relations
+
+All link relations are generated dynamically at runtime based on the `parent_ids` field and request context:
+
+- **`rel="parent"`** - Exactly one parent link per resource, context-aware:
+  - Global endpoints (`/collections/{id}`, `/catalogs/{id}`): Points to root `/` or first parent
+  - Scoped endpoints (`/catalogs/{id}/collections/{id}`): Points to the contextual catalog
+  - Ensures proper breadcrumb navigation in STAC Browser
+
+- **`rel="related"`** - Alternative parents in poly-hierarchy:
+  - Exposes all other parent catalogs beyond the contextual parent
+  - Allows advanced clients to discover the full organizational graph
+  - Only included when a resource has multiple parents
+
+- **`rel="canonical"`** - Authoritative global endpoint:
+  - Points to the primary, global URI for the resource
+  - Example: `/catalogs/{id}/collections/{id}` → canonical: `/collections/{id}`
+  - Enables clients to deduplicate resources across different contexts
+
+- **`rel="duplicate"`** - Alternative scoped URIs (RFC 6249):
+  - Lists all parent-scoped endpoints where the resource can be accessed
+  - Example: Collection in 2 catalogs has duplicate links to both scoped URIs
+  - Helps clients identify identical resources in different organizational contexts
+
+- **`rel="child"`** - Direct children:
+  - Generated dynamically by querying the database for actual children
+  - Never persisted statically, preventing stale links
+  - Enables STAC Browser folder navigation
+
+#### Contextual vs Global Navigation
+
+**Global Endpoints** (`/collections/{id}`):
+- Parent → root `/`
+- Related → all catalog parents
+- Canonical → self
+- Duplicate → all scoped URIs
+
+**Scoped Endpoints** (`/catalogs/{id}/collections/{id}`):
+- Parent → contextual catalog
+- Related → other catalog parents
+- Canonical → global endpoint
+- Duplicate → all scoped URIs
+
+**Key Principle**: No static links are persisted in the database. All relationships are computed on-the-fly based on the `parent_ids` array, ensuring data consistency and preventing orphaned references.
+
 ### Safety Architecture
 
 The catalogs extension implements a **safety-first design** that protects collection data:
@@ -287,7 +357,7 @@ The catalogs extension implements a **safety-first design** that protects collec
 **Children & Collections:**
 - **GET `/catalogs/{catalog_id}/children`**: Retrieve all children (Catalogs and Collections) of this catalog with optional type filtering
 - **GET `/catalogs/{catalog_id}/collections`**: Retrieve collections within a specific catalog
-- **POST `/catalogs/{catalog_id}/collections`**: Create a new collection within a specific catalog
+- **POST `/catalogs/{catalog_id}/collections`**: Create a new collection within a catalog OR link an existing collection by posting its ID
 - **GET `/catalogs/{catalog_id}/collections/{collection_id}`**: Retrieve a specific collection within a catalog
 - **DELETE `/catalogs/{catalog_id}/collections/{collection_id}`**: Unlink a collection from a catalog (collection survives at root if orphaned)
 
@@ -355,6 +425,14 @@ curl -X POST "http://localhost:8081/catalogs/earth-observation/collections" \
       "spatial": {"bbox": [[-180, -90, 180, 90]]},
       "temporal": {"interval": [["2021-09-27T00:00:00Z", null]]}
     }
+  }'
+
+# Link an EXISTING collection to a catalog
+# Simply POST the collection ID to add it to the catalog
+curl -X POST "http://localhost:8081/catalogs/earth-observation/collections" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "existing-collection-id"
   }'
 
 # Get specific collection within a catalog
@@ -563,10 +641,10 @@ There are two main ways to run the API locally:
   docker compose up elasticsearch app-elasticsearch
   ```
 
-- **Configuration**: By default, Docker Compose uses Elasticsearch 8.x and OpenSearch 2.11.1. To use different versions, create a `.env` file:
+- **Configuration**: By default, Docker Compose uses Elasticsearch 8.x and OpenSearch 3.5.0. To use different versions, create a `.env` file:
   ```shell
   ELASTICSEARCH_VERSION=8.11.0
-  OPENSEARCH_VERSION=2.11.1
+  OPENSEARCH_VERSION=3.5.0
   ENABLE_DIRECT_RESPONSE=false
   ```
 
@@ -601,7 +679,11 @@ You can customize additional settings in your `.env` file:
 | `ES_TIMEOUT` | Client timeout for Elasticsearch/OpenSearch. | DB client default | Optional |
 | `BACKEND` | Tests-related variable | `elasticsearch` or `opensearch` based on the backend | Optional |
 | `ELASTICSEARCH_VERSION` | Version of Elasticsearch to use. | `8.11.0` | Optional |
-| `OPENSEARCH_VERSION` | OpenSearch version | `2.11.1` | Optional |
+| `OPENSEARCH_VERSION` | OpenSearch version | `3.5.0` | Optional |
+| `RETRY_MAX_ATTEMPTS_CONNECTION_ERROR` | Specifies the maximum number of retry attempts for connection errors (ConnectionError, ConnectionTimeout) before giving up. | `5` | Optional |
+| `RETRY_MAX_ATTEMPTS_NOT_FOUND_ERROR` | Specifies the maximum number of retry attempts for `IndexNotFoundException` error before giving up. This is particularly useful for datetime-based index searches where indices may need to be refreshed. | `3` | Optional |
+| `RETRY_WAIT_SECONDS` | Specifies the number of seconds to wait between retry attempts. | `0.5` | Optional |
+| `RETRY_RERAISE` | Specifies whether the original exception should be re-raised after all retry attempts are exhausted. | `true` | Optional |
 
 ### 3. API Metadata
 
@@ -620,7 +702,7 @@ You can customize additional settings in your `.env` file:
 | `ENABLE_COLLECTIONS_SEARCH` | Enable collection search extensions (sort, fields, free text search, structured filtering, and datetime filtering) on the core `/collections` endpoint. | `true` | Optional |
 | `ENABLE_COLLECTIONS_SEARCH_ROUTE` | Enable the custom `/collections-search` endpoint (both GET and POST methods). When disabled, the custom endpoint will not be available, but collection search extensions will still be available on the core `/collections` endpoint if `ENABLE_COLLECTIONS_SEARCH` is true. | `false` | Optional |
 | `ENABLE_TRANSACTIONS_EXTENSIONS` | Enables or disables the Transactions and Bulk Transactions API extensions. This is useful for deployments where mutating the catalog via the API should be prevented. If set to `true`, the POST `/collections` route for search will be unavailable in the API. | `true` | Optional |
-| `ENABLE_CATALOGS_ROUTE` | Enable the **/catalogs** endpoint for hierarchical catalog browsing and navigation. | `false` | Optional |
+| `ENABLE_CATALOGS_ROUTE` | Enable the **/catalogs** endpoint for hierarchical catalog browsing and navigation. **Note:** Requires the catalogs extension to be installed via `stac-fastapi-elasticsearch[catalogs]`, `stac-fastapi-opensearch[catalogs]`, or `stac-fastapi-core[catalogs]`. See [Catalogs Route](#catalogs-route) for installation instructions. | `false` | Optional |
 | `STAC_INDEX_ASSETS` | Controls if Assets are indexed when added to Elasticsearch/Opensearch. This allows asset fields to be included in search queries. | `false` | Optional |
 
 ### 5. Limits & Performance
@@ -632,6 +714,8 @@ You can customize additional settings in your `.env` file:
 | `STAC_DEFAULT_COLLECTION_LIMIT` | Configures the default number of STAC collections returned when no limit parameter is specified in the request. | `300` | Optional |
 | `STAC_GLOBAL_ITEM_MAX_LIMIT` | Configures the maximum number of STAC items that can be returned in a single search request. | N/A | Optional |
 | `STAC_DEFAULT_ITEM_LIMIT` | Configures the default number of STAC items returned when no limit parameter is specified in the request. | `10` | Optional |
+| `COUNT_TIMEOUT` | Configures the timeout for the count task with search queries. If the count query takes longer than timeout, the search results are returned without the total count. Set to 0 to disable the timeout.. | `0.5` | Optional |
+
 
 ### 6. Database Indexing & Behavior
 
@@ -1006,97 +1090,92 @@ The system uses a precise naming convention:
 
 ## SFEOS Tools CLI
 
-- **Overview**: [SFEOS Tools](https://github.com/Healy-Hyperspatial/sfeos-tools) is an installable CLI package for managing and maintaining SFEOS deployments. This CLI package provides utilities for managing and maintaining SFEOS deployments.
+[SFEOS Tools](https://github.com/StacLabs/sfeos-tools) is a CLI package for managing SFEOS deployments. It provides utilities for database operations, data loading, and catalog ingestion.
 
-- **Installation**:
-  ```shell
-  # For Elasticsearch (from PyPI)
-  pip install sfeos-tools[elasticsearch]
-  
-  # For OpenSearch (from PyPI)
-  pip install sfeos-tools[opensearch]
-  
-  ```
+### Installation
 
-- **Available Commands**:
-  - `add-bbox-shape`: Add bbox_shape field to existing collections for spatial search support
-  - `reindex`: Reindex all STAC indices (collections and per-collection items) to new versioned indices and update aliases; supports both Elasticsearch and OpenSearch backends. Use this when you need to apply mapping changes, update index settings, or migrate to a new index structure. The command handles the entire process including creating new indices, reindexing data, and atomically updating aliases with zero downtime.
+```bash
+# For Elasticsearch
+pip install sfeos-tools[elasticsearch]
 
-- **Basic Usage**:
-  ```shell
-  sfeos-tools add-bbox-shape --backend elasticsearch
-  sfeos-tools add-bbox-shape --backend opensearch
-  ```
+# For OpenSearch
+pip install sfeos-tools[opensearch]
 
-- **Connection Options**: Configure database connection via CLI flags or environment variables:
-  - `--host`: Database host (default: `localhost` or `ES_HOST` env var)
-  - `--port`: Database port (default: `9200` or `ES_PORT` env var)
-  - `--use-ssl` / `--no-ssl`: Use SSL connection (default: `true` or `ES_USE_SSL` env var)
-  - `--user`: Database username (default: `ES_USER` env var)
-  - `--password`: Database password (default: `ES_PASS` env var)
+# For viewer (Streamlit-based)
+pip install sfeos-tools[viewer]
 
-- **Examples**:
-  ```shell
-  # Local Docker Compose (no SSL)
-  sfeos-tools add-bbox-shape --backend elasticsearch --no-ssl
-  
-  # Remote server with SSL
-  sfeos-tools add-bbox-shape \
-    --backend elasticsearch \
-    --host db.example.com \
-    --port 9200 \
-    --user admin \
-    --password secret
-  
-  # Cloud deployment with environment variables
-  ES_HOST=my-es-cluster.cloud.com ES_PORT=9243 ES_USER=elastic ES_PASS=changeme \
-    sfeos-tools add-bbox-shape --backend elasticsearch
-  
-  # Using --help for more information
-  sfeos-tools --help
-  sfeos-tools add-bbox-shape --help
-  sfeos-tools reindex --help
+# For development
+pip install sfeos-tools[dev]
+```
 
-  ```
+### Basic Usage
 
-- **Documentation**:
-  For complete documentation, examples, and advanced usage, please visit the [SFEOS Tools GitHub repository](https://github.com/Healy-Hyperspatial/sfeos-tools).
+```bash
+sfeos-tools --help
+sfeos-tools --version
+```
 
-- **Contributing**:
-  Contributions, bug reports, and feature requests are welcome! Please file them on the [SFEOS Tools issue tracker](https://github.com/Healy-Hyperspatial/sfeos-tools/issues).
+### Common Commands
 
-## Ingesting Sample Data CLI Tool
+**Database Operations:**
+- `add-bbox-shape`: Add spatial search support to existing collections
+- `reindex`: Reindex all STAC indices with zero downtime
 
-- **Overview**: The `data_loader.py` script provides a convenient way to load STAC items into the database.
+**Data Management:**
+- `load-data`: Load STAC collections and items from local JSON files into the API
+- `ingest-catalog`: Ingest SKOS/RDF-XML files to create STAC catalogs
 
-- **Usage**:
-  ```shell
-  python3 data_loader.py --base-url http://localhost:8080
-  ```
+**Viewer:**
+- `viewer`: Launch interactive Streamlit-based web viewer for exploring STAC data
 
-- **Options**:
-  ```
-  --base-url TEXT       Base URL of the STAC API  [required]
-  --collection-id TEXT  ID of the collection to which items are added
-  --use-bulk            Use bulk insert method for items
-  --data-dir PATH       Directory containing collection.json and feature
-                        collection file
-  --help                Show this message and exit.
-  ```
+### Data Loading with `load-data`
 
-- **Example Workflows**:
-  - **Loading Sample Data**: 
-    ```shell
-    python3 data_loader.py --base-url http://localhost:8080
-    ```
-  - **Loading Data to a Specific Collection**:
-    ```shell
-    python3 data_loader.py --base-url http://localhost:8080 --collection-id my-collection
-    ```
-  - **Using Bulk Insert for Performance**:
-    ```shell
-    python3 data_loader.py --base-url http://localhost:8080 --use-bulk
-    ```
+The `load-data` command provides flexible options for populating your STAC API with collections and items:
+
+**Basic Usage:**
+```bash
+# Load from default directory (sample_data/)
+sfeos-tools load-data --stac-url http://localhost:8080
+
+# Load with custom collection ID
+sfeos-tools load-data --stac-url http://localhost:8080 --collection-id my-collection
+
+# Load from custom directory
+sfeos-tools load-data --stac-url http://localhost:8080 --data-dir /path/to/stac/data
+
+# Use bulk insert for large datasets (faster performance)
+sfeos-tools load-data --stac-url http://localhost:8080 --use-bulk
+```
+
+**Data Directory Structure:**
+
+Your data directory should contain:
+- `collection.json`: STAC collection definition
+- One or more `.json` files: Feature collections with STAC items
+
+**Common Workflows:**
+- **Populating a new STAC API deployment** with test or production data
+- **Migrating data** between STAC API instances
+- **Bulk loading** large numbers of STAC items with optimized performance
+- **Creating collections** programmatically from JSON definitions
+
+### Standardized Options
+
+**Database Commands** (`add-bbox-shape`, `reindex`):
+- `--backend`: Database backend (elasticsearch or opensearch) - required
+- `--host`: Database host (default: localhost or ES_HOST env var)
+- `--port`: Database port (default: 9200 for ES, 9202 for OS, or ES_PORT env var)
+- `--use-ssl/--no-ssl`: SSL connection (default: true or ES_USE_SSL env var)
+- `--user`: Database username (default: ES_USER env var)
+- `--password`: Database password (default: ES_PASS env var)
+
+**STAC API Commands** (`load-data`, `ingest-catalog`, `viewer`):
+- `--stac-url`: STAC API base URL (default: http://localhost:8080)
+- `--user`: Username for basic authentication (optional)
+- `--password`: Password for basic authentication (optional)
+- `--use-ssl/--no-ssl`: SSL verification (optional)
+
+For complete documentation, examples, and advanced usage, visit the [SFEOS Tools GitHub repository](https://github.com/StacLabs/sfeos-tools).
 
 ## Redis for Navigation
 
@@ -1547,6 +1626,22 @@ This prevents Elasticsearch from creating mappings for unused metadata fields, r
   - Ensures fair resource allocation among all clients
   
 - **Examples**: Implementation examples are available in the [examples/rate_limit](examples/rate_limit) directory.
+
+
+## Prometheus metrics
+
+- **Installation**: Install the `metrics` extra alongside your backend:
+  ```bash
+  pip install stac-fastapi-elasticsearch[metrics]  # Elasticsearch backend
+  pip install stac-fastapi-opensearch[metrics]     # OpenSearch backend
+  ```
+
+- **Usage**: Once installed, `/metrics` is live on startup. If the package is missing, the app starts normally and logs a warning.
+
+- **Metrics exposed** (Prometheus text format):
+  - `http_requests_total` — request count by method, path, and status code
+  - `http_request_duration_seconds` — request latency histogram
+  - `http_requests_inprogress` — in-flight request gauge
 
 
 ## Hidden Items Filtering

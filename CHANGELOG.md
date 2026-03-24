@@ -11,11 +11,65 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 
-### Updated
-
 ### Fixed
 
 ### Removed
+
+### Updated
+
+
+## [v6.14.1] - 2026-03-24
+
+### Added
+
+- Added advice to Readme about linking an already exiting Collection to a Catalog, simply by POSTing the collection's ID. [#646](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/646)
+- Add catalogs option to es/os install. [#653](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/653)
+
+### Updated
+
+- Updated POST /catalogs/catalogId/collections endpoint to accept an id of an existing collection to link it to the catalog. [#644](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/644)
+
+### Fixed
+
+- Made the stac-fastapi-catalogs-extension an optional dependency, installable via `stac-fastapi-core[catalogs]`. [#652](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/652)
+
+## [v6.14.0] - 2026-03-19
+
+### Changed
+
+- Updated SFEOS Tools CLI section in README with expanded documentation for `load-data` command and standardized options [#637](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/637)
+
+### Updated
+
+- Updated CI/CD testing to use OpenSearch 3.5.0 instead of 2.19.3. [#631](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/631)
+- Refactored serializers and catalog extension to eliminate duplicated code by extracting helper methods: `_create_child_link()` for child link generation, `_set_collection_defaults()` for STAC Collection field initialization, and `_deserialize_assets()` for asset handling. This improves maintainability by centralizing common logic into single-source-of-truth implementations. [#629](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/629)
+
+### Fixed
+
+- Ensure that queryable mapping, when processing CQL2 queries, does not add duplicate fields to ES/OS queries.[#616](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/616)
+- Added pagination support to GET `/catalogs/{catalog_id}/collections` endpoint with `limit` (default: 10, max: 100) and `token` parameters. Fixed missing `numberReturned` and `numberMatched` context fields. Normalized error handling. [#632](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/632)
+- Fixed `json_patch_item` datetime validation for datetime-based indexes: PATCH operations on datetime fields (`properties/datetime`, `properties/start_datetime`, `properties/end_datetime`) no longer raise an error when the value is unchanged. Validation now compares old and new values before rejecting the operation, consistent with `update_item` (PUT) behavior. [#636](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/636)
+- Fixed issue with POST /collections-search cql2-json filter. [#639](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/639)
+
+
+## [v6.13.0] - 2026-03-14
+
+### Added
+
+- Added `filter_indexes_by_datetime_range` for selecting indexes using range intersection between query `[start_datetime, end_datetime]` and index temporal extent, used when `USE_DATETIME=false`.
+- Added Prometheus metrics support via `prometheus-fastapi-instrumentator`. Install the optional extra (`pip install stac-fastapi-elasticsearch[metrics]` or `pip install stac-fastapi-opensearch[metrics]`) to expose a `/metrics` endpoint with request counts, latency histograms, and in-progress gauges. [#622](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/622)
+- Implemented the Multi-Tenant Catalogs DAG specification (v1.0.0-beta.4). Structural links (`parent`, `child`) are now dynamically generated at runtime to support true poly-hierarchy. Scoped endpoints now feature locked contextual breadcrumbs (`rel="parent"`) with alternative parents exposed as `rel="related"`. Added `rel="canonical"` and `rel="duplicate"` links to Collections to support graph deduplication, and optimized catalog list endpoints to prevent N+1 queries. [#624](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/624)
+- Added datetime-only index filtering: when no collections are specified but a datetime range is provided, `DatetimeBasedIndexSelector` now filters indexes across all collections by the given time range instead of falling back to a wildcard.
+- Retry for datetime searches on `NotFoundError` error retry for database connection errors `ConnectionError`, `ConnectionTimeout` to resolve cache race conditions. [#605](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/605)
+
+### Changed
+
+- Improved `item_queue_worker.py` error handling: bulk errors are now logged immediately and failed item IDs are extracted from all bulk operation types.
+- Fixed local OS tests fail by setting `DATABASE_REFRESH=true` in Docker Compose so documents are refreshed immediately after create/update/delete operations, preventing stale read-after-write results that caused item update/delete tests to fail.[#627](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/627)
+
+### Fixed
+
+- Fixed application logs not being visible when running via uvicorn by adding `force=True` to `logging.basicConfig`, preventing uvicorn's logging configuration from overriding the application's log setup.
 
 ## [v6.12.0] - 2026-02-26
 
@@ -31,6 +85,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Updated
 
+### Fixed
+
+- Fixed `numberMatched=null` responses by adding a configurable `COUNT_TIMEOUT` and awaiting the count task with `asyncio.wait_for`, preventing premature returns while avoiding delays to `/search` responses when the count operation is slow.[#610](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/610)
 - stac-fastapi libraries to v6.2.1. [#606](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/606)
 
 ## [v6.11.0] - 2026-02-18
@@ -780,7 +837,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.12.0...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.14.1...main
+[v6.14.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.14.0...v6.14.1
+[v6.14.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.13.0...v6.14.0
+[v6.13.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.12.0...v6.13.0
 [v6.12.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.11.2...v6.12.0
 [v6.11.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.10.2...v6.11.0
 [v6.10.2]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.10.1...v6.10.2
