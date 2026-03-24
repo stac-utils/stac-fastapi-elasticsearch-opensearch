@@ -1,3 +1,4 @@
+import copy
 import json
 import logging
 import os
@@ -77,6 +78,1106 @@ async def test_search_filter_extension_eq_post(app_client, ctx):
     assert resp.status_code == 200
     resp_json = resp.json()
     assert len(resp_json["features"]) == 1
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_search_request_cql2_equal_operator(
+    app_client, mock_datetime_env, load_test_data, caplog
+):
+    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip("Datetime index filtering not enabled")
+
+    collection_id = "test-collection-1"
+    item_id = "test-item-1"
+    item_datetime = "2025-11-05T23:59:59.999000Z"
+    expected_index = f"items_start_datetime_{collection_id}_2025-11-05"
+
+    collection = load_test_data("test_collection.json")
+    collection["id"] = collection_id
+
+    item = copy.deepcopy(load_test_data("test_item.json"))
+    item["id"] = item_id
+    item["collection"] = collection_id
+    item["properties"]["datetime"] = item_datetime
+    item["properties"]["start_datetime"] = "2025-11-05T00:00:00Z"
+    item["properties"]["end_datetime"] = "2025-11-05T23:59:59.999000Z"
+
+    resp = await app_client.post("/collections", json=collection)
+    resp = await app_client.post(f"/collections/{collection_id}/items", json=item)
+
+    params = {
+        "filter-lang": "cql2-json",
+        "filter": {
+            "op": "and",
+            "args": [
+                {"op": "=", "args": [{"property": "collection"}, collection_id]},
+                {"op": "=", "args": [{"property": "datetime"}, item_datetime]},
+            ],
+        },
+    }
+
+    resp = await app_client.post("/search", json=params)
+    resp_json = resp.json()
+
+    assert len(resp_json["features"]) == 1
+    assert resp_json["features"][0]["id"] == item_id
+    assert resp_json["features"][0]["collection"] == collection_id
+    assert f"Selected indexes: {expected_index}" in caplog.text
+
+    get_resp = await app_client.get(
+        "/search",
+        params={
+            "filter": (
+                f"(datetime = TIMESTAMP('{item_datetime}') "
+                f"AND collection = '{collection_id}')"
+            ),
+        },
+    )
+    assert get_resp.status_code == 200
+    get_resp_json = get_resp.json()
+
+    assert len(get_resp_json["features"]) == 1
+    assert get_resp_json["features"][0]["id"] == item_id
+    assert get_resp_json["features"][0]["collection"] == collection_id
+    assert f"Selected indexes: {expected_index}" in caplog.text
+
+    await app_client.delete(f"/collections/{collection_id}")
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_search_request_cql2_greater_than_operator(
+    app_client, mock_datetime_env, load_test_data, caplog
+):
+    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip("Datetime index filtering not enabled")
+
+    collection_id = "test-collection-1"
+    item_id_1 = "test-item-1"
+    item_id_2 = "test-item-2"
+
+    datetime_1 = "2025-11-05T12:00:00.000000Z"
+    datetime_2 = "2025-11-15T12:00:00.000000Z"
+    datetime_search = "2025-11-10T00:00:00Z"
+
+    expected_index_1 = f"items_start_datetime_{collection_id}_2025-11-05"
+    expected_index_2 = f"items_start_datetime_{collection_id}_2025-11-15"
+
+    collection = load_test_data("test_collection.json")
+    collection["id"] = collection_id
+    await app_client.post("/collections", json=collection)
+
+    item_1 = copy.deepcopy(load_test_data("test_item.json"))
+    item_1["id"] = item_id_1
+    item_1["collection"] = collection_id
+    item_1["properties"]["datetime"] = datetime_1
+    item_1["properties"]["start_datetime"] = "2025-11-05T00:00:00Z"
+    item_1["properties"]["end_datetime"] = "2025-11-05T23:59:59.999000Z"
+    await app_client.post(f"/collections/{collection_id}/items", json=item_1)
+
+    item_2 = copy.deepcopy(load_test_data("test_item.json"))
+    item_2["id"] = item_id_2
+    item_2["collection"] = collection_id
+    item_2["properties"]["datetime"] = datetime_2
+    item_2["properties"]["start_datetime"] = "2025-11-15T00:00:00Z"
+    item_2["properties"]["end_datetime"] = "2025-11-15T23:59:59.999000Z"
+    await app_client.post(f"/collections/{collection_id}/items", json=item_2)
+
+    params = {
+        "filter-lang": "cql2-json",
+        "filter": {
+            "op": "and",
+            "args": [
+                {"op": "=", "args": [{"property": "collection"}, collection_id]},
+                {"op": ">", "args": [{"property": "datetime"}, datetime_search]},
+            ],
+        },
+    }
+
+    resp = await app_client.post("/search", json=params)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["features"]) == 1
+    assert resp_json["features"][0]["id"] == item_id_2
+    assert resp_json["features"][0]["collection"] == collection_id
+
+    # Should find index 1 but not index 2 because index 2's start_datetime is not greater than the search datetime
+    assert expected_index_1 in caplog.text and expected_index_2 not in caplog.text
+
+    get_resp = await app_client.get(
+        "/search",
+        params={
+            "filter": (
+                f"(datetime > TIMESTAMP('{datetime_search}') "
+                f"AND collection = '{collection_id}')"
+            ),
+            "filter-lang": "cql2-text",
+        },
+    )
+    assert get_resp.status_code == 200
+    get_resp_json = get_resp.json()
+    assert len(get_resp_json["features"]) == 1
+    assert get_resp_json["features"][0]["id"] == item_id_2
+    assert get_resp_json["features"][0]["collection"] == collection_id
+    assert expected_index_1 in caplog.text and expected_index_2 not in caplog.text
+
+    await app_client.delete(f"/collections/{collection_id}")
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_search_request_cql2_less_than_operator(
+    app_client, mock_datetime_env, load_test_data, caplog
+):
+    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip("Datetime index filtering not enabled")
+
+    collection_id = "test-collection-1"
+    item_id_1 = "test-item-1"
+    item_id_2 = "test-item-2"
+
+    datetime_1 = "2025-11-05T12:00:00.000000Z"
+    datetime_2 = "2025-11-15T12:00:00.000000Z"
+    datetime_search = "2025-11-10T00:00:00Z"
+
+    expected_index_1 = f"items_start_datetime_{collection_id}_2025-11-05"
+    expected_index_2 = f"items_start_datetime_{collection_id}_2025-11-15"
+
+    collection = load_test_data("test_collection.json")
+    collection["id"] = collection_id
+    await app_client.post("/collections", json=collection)
+
+    item_1 = copy.deepcopy(load_test_data("test_item.json"))
+    item_1["id"] = item_id_1
+    item_1["collection"] = collection_id
+    item_1["properties"]["datetime"] = datetime_1
+    item_1["properties"]["start_datetime"] = "2025-11-05T00:00:00Z"
+    item_1["properties"]["end_datetime"] = "2025-11-05T23:59:59.999000Z"
+    await app_client.post(f"/collections/{collection_id}/items", json=item_1)
+
+    item_2 = copy.deepcopy(load_test_data("test_item.json"))
+    item_2["id"] = item_id_2
+    item_2["collection"] = collection_id
+    item_2["properties"]["datetime"] = datetime_2
+    item_2["properties"]["start_datetime"] = "2025-11-15T00:00:00Z"
+    item_2["properties"]["end_datetime"] = "2025-11-15T23:59:59.999000Z"
+    await app_client.post(f"/collections/{collection_id}/items", json=item_2)
+
+    params = {
+        "filter-lang": "cql2-json",
+        "filter": {
+            "op": "and",
+            "args": [
+                {"op": "=", "args": [{"property": "collection"}, collection_id]},
+                {"op": "<", "args": [{"property": "datetime"}, datetime_search]},
+            ],
+        },
+    }
+
+    resp = await app_client.post("/search", json=params)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["features"]) == 1
+    assert resp_json["features"][0]["id"] == item_id_1
+    assert resp_json["features"][0]["collection"] == collection_id
+
+    # Should find index 1 but not index 2 because index 2's start_datetime is not less than the search datetime
+    assert expected_index_1 in caplog.text and expected_index_2 not in caplog.text
+
+    get_resp = await app_client.get(
+        "/search",
+        params={
+            "filter": (
+                f"(datetime < TIMESTAMP('{datetime_search}') "
+                f"AND collection = '{collection_id}')"
+            ),
+            "filter-lang": "cql2-text",
+        },
+    )
+    assert get_resp.status_code == 200
+    get_resp_json = get_resp.json()
+    assert len(get_resp_json["features"]) == 1
+    assert get_resp_json["features"][0]["id"] == item_id_1
+    assert get_resp_json["features"][0]["collection"] == collection_id
+    assert expected_index_1 in caplog.text and expected_index_2 not in caplog.text
+
+    await app_client.delete(f"/collections/{collection_id}")
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_search_request_cql2_between_operator(
+    app_client, mock_datetime_env, load_test_data, caplog
+):
+    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip("Datetime index filtering not enabled")
+
+    collection_id = "test-collection-1"
+    item_id_1 = "test-item-1"
+    item_id_2 = "test-item-2"
+
+    datetime_1 = "2025-11-05T12:00:00.000000Z"
+    datetime_2 = "2025-11-25T12:00:00.000000Z"
+    between_start = "2025-11-01T00:00:00Z"
+    between_end = "2025-11-20T23:59:59Z"
+
+    expected_index_1 = f"items_start_datetime_{collection_id}_2025-11-05"
+    expected_index_2 = f"items_start_datetime_{collection_id}_2025-11-25"
+
+    collection = load_test_data("test_collection.json")
+    collection["id"] = collection_id
+    await app_client.post("/collections", json=collection)
+
+    # Item 1 - should be found
+    item_1 = copy.deepcopy(load_test_data("test_item.json"))
+    item_1["id"] = item_id_1
+    item_1["collection"] = collection_id
+    item_1["properties"]["datetime"] = datetime_1
+    item_1["properties"]["start_datetime"] = "2025-11-05T00:00:00Z"
+    item_1["properties"]["end_datetime"] = "2025-11-05T23:59:59.999000Z"
+    await app_client.post(f"/collections/{collection_id}/items", json=item_1)
+
+    # Item 2 - should NOT be found
+    item_2 = copy.deepcopy(load_test_data("test_item.json"))
+    item_2["id"] = item_id_2
+    item_2["collection"] = collection_id
+    item_2["properties"]["datetime"] = datetime_2
+    item_2["properties"]["start_datetime"] = "2025-11-25T00:00:00Z"
+    item_2["properties"]["end_datetime"] = "2025-11-25T23:59:59.999000Z"
+    await app_client.post(f"/collections/{collection_id}/items", json=item_2)
+
+    params = {
+        "filter-lang": "cql2-json",
+        "filter": {
+            "op": "and",
+            "args": [
+                {"op": "=", "args": [{"property": "collection"}, collection_id]},
+                {
+                    "op": "between",
+                    "args": [
+                        {"property": "datetime"},
+                        between_start,
+                        between_end,
+                    ],
+                },
+            ],
+        },
+    }
+
+    resp = await app_client.post("/search", json=params)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["features"]) == 1
+    assert resp_json["features"][0]["id"] == item_id_1
+    assert resp_json["features"][0]["collection"] == collection_id
+
+    # Should find index 1 but not index 2 because index 2's datetime is outside the range
+    assert expected_index_1 in caplog.text and expected_index_2 not in caplog.text
+
+    get_resp = await app_client.get(
+        "/search",
+        params={
+            "filter": (
+                f"(datetime BETWEEN TIMESTAMP('{between_start}') "
+                f"AND TIMESTAMP('{between_end}') "
+                f"AND collection = '{collection_id}')"
+            ),
+            "filter-lang": "cql2-text",
+        },
+    )
+    assert get_resp.status_code == 200
+    get_resp_json = get_resp.json()
+    assert len(get_resp_json["features"]) == 1
+    assert get_resp_json["features"][0]["id"] == item_id_1
+    assert get_resp_json["features"][0]["collection"] == collection_id
+    assert expected_index_1 in caplog.text and expected_index_2 not in caplog.text
+
+    await app_client.delete(f"/collections/{collection_id}")
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_search_request_cql2_in_operator(
+    app_client, mock_datetime_env, load_test_data, caplog
+):
+    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip("Datetime index filtering not enabled")
+
+    collection_id = "test-collection-1"
+    item_id_1 = "test-item-1"
+    item_id_2 = "test-item-2"
+
+    item_datetime = "2025-11-15T12:00:00.000000Z"
+    expected_index = f"items_start_datetime_{collection_id}_2025-11-15"
+
+    collection = load_test_data("test_collection.json")
+    collection["id"] = collection_id
+    await app_client.post("/collections", json=collection)
+
+    item_1 = copy.deepcopy(load_test_data("test_item.json"))
+    item_1["id"] = item_id_1
+    item_1["collection"] = collection_id
+    item_1["properties"]["datetime"] = item_datetime
+    item_1["properties"]["platform"] = "landsat-8"
+    item_1["properties"]["start_datetime"] = "2025-11-15T00:00:00Z"
+    item_1["properties"]["end_datetime"] = "2025-11-15T23:59:59.999000Z"
+    await app_client.post(f"/collections/{collection_id}/items", json=item_1)
+
+    item_2 = copy.deepcopy(load_test_data("test_item.json"))
+    item_2["id"] = item_id_2
+    item_2["collection"] = collection_id
+    item_2["properties"]["datetime"] = item_datetime
+    item_2["properties"]["platform"] = "modis"
+    item_2["properties"]["start_datetime"] = "2025-11-15T00:00:00Z"
+    item_2["properties"]["end_datetime"] = "2025-11-15T23:59:59.999000Z"
+    await app_client.post(f"/collections/{collection_id}/items", json=item_2)
+
+    params = {
+        "filter-lang": "cql2-json",
+        "filter": {
+            "op": "and",
+            "args": [
+                {"op": "=", "args": [{"property": "collection"}, collection_id]},
+                {
+                    "op": "in",
+                    "args": [
+                        {"property": "properties.platform"},
+                        ["landsat-8", "sentinel-2"],
+                    ],
+                },
+            ],
+        },
+    }
+
+    resp = await app_client.post("/search", json=params)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["features"]) == 1
+    assert resp_json["features"][0]["id"] == item_id_1
+    assert resp_json["features"][0]["collection"] == collection_id
+    assert f"Selected indexes: {expected_index}" in caplog.text
+
+    get_resp = await app_client.get(
+        "/search",
+        params={
+            "filter": (
+                f"platform IN ('landsat-8', 'sentinel-2') "
+                f"AND collection = '{collection_id}'"
+            ),
+            "filter-lang": "cql2-text",
+        },
+    )
+    assert get_resp.status_code == 200
+    get_resp_json = get_resp.json()
+    assert len(get_resp_json["features"]) == 1
+    assert get_resp_json["features"][0]["id"] == item_id_1
+    assert get_resp_json["features"][0]["collection"] == collection_id
+    assert f"Selected indexes: {expected_index}" in caplog.text
+
+    await app_client.delete(f"/collections/{collection_id}")
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_search_request_cql2_not_equal_operator(
+    app_client, mock_datetime_env, load_test_data, caplog
+):
+    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip("Datetime index filtering not enabled")
+
+    collection_id = "test-collection-1"
+    item_id_1 = "test-item-1"
+    item_id_2 = "test-item-2"
+
+    item_datetime = "2025-11-15T12:00:00.000000Z"
+    expected_index = f"items_start_datetime_{collection_id}_2025-11-15"
+
+    collection = load_test_data("test_collection.json")
+    collection["id"] = collection_id
+    await app_client.post("/collections", json=collection)
+
+    item_1 = copy.deepcopy(load_test_data("test_item.json"))
+    item_1["id"] = item_id_1
+    item_1["collection"] = collection_id
+    item_1["properties"]["datetime"] = item_datetime
+    item_1["properties"]["platform"] = "landsat-8"
+    item_1["properties"]["start_datetime"] = "2025-11-15T00:00:00Z"
+    item_1["properties"]["end_datetime"] = "2025-11-15T23:59:59.999000Z"
+    await app_client.post(f"/collections/{collection_id}/items", json=item_1)
+
+    item_2 = copy.deepcopy(load_test_data("test_item.json"))
+    item_2["id"] = item_id_2
+    item_2["collection"] = collection_id
+    item_2["properties"]["datetime"] = item_datetime
+    item_2["properties"]["platform"] = "sentinel-2"
+    item_2["properties"]["start_datetime"] = "2025-11-15T00:00:00Z"
+    item_2["properties"]["end_datetime"] = "2025-11-15T23:59:59.999000Z"
+    await app_client.post(f"/collections/{collection_id}/items", json=item_2)
+
+    params = {
+        "filter-lang": "cql2-json",
+        "filter": {
+            "op": "and",
+            "args": [
+                {"op": "=", "args": [{"property": "collection"}, collection_id]},
+                {
+                    "op": "<>",
+                    "args": [
+                        {"property": "properties.platform"},
+                        "landsat-8",
+                    ],
+                },
+            ],
+        },
+    }
+
+    resp = await app_client.post("/search", json=params)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["features"]) == 1
+    assert resp_json["features"][0]["id"] == item_id_2
+    assert resp_json["features"][0]["collection"] == collection_id
+    assert f"Selected indexes: {expected_index}" in caplog.text
+
+    get_resp = await app_client.get(
+        "/search",
+        params={
+            "filter": (
+                f"platform <> 'landsat-8' " f"AND collection = '{collection_id}'"
+            ),
+            "filter-lang": "cql2-text",
+        },
+    )
+    assert get_resp.status_code == 200
+    get_resp_json = get_resp.json()
+    assert len(get_resp_json["features"]) == 1
+    assert get_resp_json["features"][0]["id"] == item_id_2
+    assert get_resp_json["features"][0]["collection"] == collection_id
+    assert f"Selected indexes: {expected_index}" in caplog.text
+
+    await app_client.delete(f"/collections/{collection_id}")
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_search_request_cql2_and_operator(
+    app_client, mock_datetime_env, load_test_data, caplog
+):
+    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip("Datetime index filtering not enabled")
+
+    collection_id = "test-collection-1"
+    item_id_1 = "test-item-1"
+    item_id_2 = "test-item-2"
+
+    item_datetime = "2025-11-15T12:00:00.000000Z"
+    expected_index = f"items_start_datetime_{collection_id}_2025-11-15"
+
+    collection = load_test_data("test_collection.json")
+    collection["id"] = collection_id
+    await app_client.post("/collections", json=collection)
+
+    item_1 = copy.deepcopy(load_test_data("test_item.json"))
+    item_1["id"] = item_id_1
+    item_1["collection"] = collection_id
+    item_1["properties"]["datetime"] = item_datetime
+    item_1["properties"]["platform"] = "landsat-8"
+    item_1["properties"]["eo:cloud_cover"] = 10
+    item_1["properties"]["start_datetime"] = "2025-11-15T00:00:00Z"
+    item_1["properties"]["end_datetime"] = "2025-11-15T23:59:59.999000Z"
+    await app_client.post(f"/collections/{collection_id}/items", json=item_1)
+
+    item_2 = copy.deepcopy(load_test_data("test_item.json"))
+    item_2["id"] = item_id_2
+    item_2["collection"] = collection_id
+    item_2["properties"]["datetime"] = item_datetime
+    item_2["properties"]["platform"] = "landsat-8"
+    item_2["properties"]["eo:cloud_cover"] = 80
+    item_2["properties"]["start_datetime"] = "2025-11-15T00:00:00Z"
+    item_2["properties"]["end_datetime"] = "2025-11-15T23:59:59.999000Z"
+    await app_client.post(f"/collections/{collection_id}/items", json=item_2)
+
+    params = {
+        "filter-lang": "cql2-json",
+        "filter": {
+            "op": "and",
+            "args": [
+                {"op": "=", "args": [{"property": "collection"}, collection_id]},
+                {"op": "=", "args": [{"property": "properties.platform"}, "landsat-8"]},
+                {"op": "<", "args": [{"property": "properties.eo:cloud_cover"}, 50]},
+                {"op": ">", "args": [{"property": "properties.eo:cloud_cover"}, 0]},
+            ],
+        },
+    }
+
+    resp = await app_client.post("/search", json=params)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["features"]) == 1
+    assert resp_json["features"][0]["id"] == item_id_1
+    assert resp_json["features"][0]["collection"] == collection_id
+    assert f"Selected indexes: {expected_index}" in caplog.text
+
+    get_resp = await app_client.get(
+        "/search",
+        params={
+            "filter": (
+                f"collection = '{collection_id}' "
+                f"AND platform = 'landsat-8' "
+                f"AND eo:cloud_cover < 50 "
+                f"AND eo:cloud_cover > 0"
+            ),
+            "filter-lang": "cql2-text",
+        },
+    )
+    assert get_resp.status_code == 200
+    get_resp_json = get_resp.json()
+    assert len(get_resp_json["features"]) == 1
+    assert get_resp_json["features"][0]["id"] == item_id_1
+    assert get_resp_json["features"][0]["collection"] == collection_id
+    assert f"Selected indexes: {expected_index}" in caplog.text
+
+    await app_client.delete(f"/collections/{collection_id}")
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_search_request_cql2_or_operator(
+    app_client, mock_datetime_env, load_test_data, caplog
+):
+    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip("Datetime index filtering not enabled")
+
+    collection_id = "test-collection-1"
+    item_id_1 = "test-item-1"
+    item_id_2 = "test-item-2"
+    item_id_3 = "test-item-3"
+
+    item_datetime = "2025-11-15T12:00:00.000000Z"
+    expected_index = f"items_start_datetime_{collection_id}_2025-11-15"
+
+    collection = load_test_data("test_collection.json")
+    collection["id"] = collection_id
+    await app_client.post("/collections", json=collection)
+
+    # Item 1: landsat-8 platform (should match OR condition)
+    item_1 = copy.deepcopy(load_test_data("test_item.json"))
+    item_1["id"] = item_id_1
+    item_1["collection"] = collection_id
+    item_1["properties"]["datetime"] = item_datetime
+    item_1["properties"]["platform"] = "landsat-8"
+    item_1["properties"]["start_datetime"] = "2025-11-15T00:00:00Z"
+    item_1["properties"]["end_datetime"] = "2025-11-15T23:59:59.999000Z"
+    await app_client.post(f"/collections/{collection_id}/items", json=item_1)
+
+    # Item 2: sentinel-2 platform (should match OR condition)
+    item_2 = copy.deepcopy(load_test_data("test_item.json"))
+    item_2["id"] = item_id_2
+    item_2["collection"] = collection_id
+    item_2["properties"]["datetime"] = item_datetime
+    item_2["properties"]["platform"] = "sentinel-2"
+    item_2["properties"]["start_datetime"] = "2025-11-15T00:00:00Z"
+    item_2["properties"]["end_datetime"] = "2025-11-15T23:59:59.999000Z"
+    await app_client.post(f"/collections/{collection_id}/items", json=item_2)
+
+    # Item 3: modis platform (should NOT match OR condition)
+    item_3 = copy.deepcopy(load_test_data("test_item.json"))
+    item_3["id"] = item_id_3
+    item_3["collection"] = collection_id
+    item_3["properties"]["datetime"] = item_datetime
+    item_3["properties"]["platform"] = "modis"
+    item_3["properties"]["start_datetime"] = "2025-11-15T00:00:00Z"
+    item_3["properties"]["end_datetime"] = "2025-11-15T23:59:59.999000Z"
+    await app_client.post(f"/collections/{collection_id}/items", json=item_3)
+
+    # POST request with OR operator - should find item 1 and item 2
+    params = {
+        "filter-lang": "cql2-json",
+        "filter": {
+            "op": "and",
+            "args": [
+                {"op": "=", "args": [{"property": "collection"}, collection_id]},
+                {
+                    "op": "or",
+                    "args": [
+                        {
+                            "op": "=",
+                            "args": [{"property": "properties.platform"}, "landsat-8"],
+                        },
+                        {
+                            "op": "=",
+                            "args": [{"property": "properties.platform"}, "sentinel-2"],
+                        },
+                    ],
+                },
+            ],
+        },
+    }
+
+    resp = await app_client.post("/search", json=params)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["features"]) == 2
+
+    returned_ids = [feature["id"] for feature in resp_json["features"]]
+    assert item_id_1 in returned_ids
+    assert item_id_2 in returned_ids
+    assert item_id_3 not in returned_ids
+
+    assert f"Selected indexes: {expected_index}" in caplog.text
+
+    # GET request with OR operator - should find item 1 and item 2
+    get_resp = await app_client.get(
+        "/search",
+        params={
+            "filter": (
+                f"collection = '{collection_id}' "
+                f"AND (platform = 'landsat-8' OR platform = 'sentinel-2')"
+            ),
+            "filter-lang": "cql2-text",
+        },
+    )
+    assert get_resp.status_code == 200
+    get_resp_json = get_resp.json()
+    assert len(get_resp_json["features"]) == 2
+
+    returned_ids = [feature["id"] for feature in get_resp_json["features"]]
+    assert item_id_1 in returned_ids
+    assert item_id_2 in returned_ids
+    assert item_id_3 not in returned_ids
+
+    assert f"Selected indexes: {expected_index}" in caplog.text
+
+    await app_client.delete(f"/collections/{collection_id}")
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_search_filter_extension_not_in_excludes_items_matching_list(
+    app_client, mock_datetime_env, load_test_data, caplog
+):
+    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip("Datetime index filtering not enabled")
+
+    suffix = uuid.uuid4().hex[:8]
+    collection_id = f"test-collection-not-in-{suffix}"
+    item_id_1 = f"test-item-not-in-1-{suffix}"
+    item_id_2 = f"test-item-not-in-2-{suffix}"
+    item_id_3 = f"test-item-not-in-3-{suffix}"
+    item_datetime = "2025-11-15T12:00:00.000000Z"
+    expected_index = f"items_start_datetime_{collection_id}_2025-11-15"
+
+    collection = load_test_data("test_collection.json")
+    collection["id"] = collection_id
+    try:
+        collection_resp = await app_client.post("/collections", json=collection)
+        assert collection_resp.status_code == 201
+
+        # Item 1: landsat-8 (should be excluded)
+        item1 = copy.deepcopy(load_test_data("test_item.json"))
+        item1["id"] = item_id_1
+        item1["collection"] = collection_id
+        item1["properties"]["datetime"] = item_datetime
+        item1["properties"]["platform"] = "landsat-8"
+        item1["properties"]["start_datetime"] = "2025-11-15T00:00:00Z"
+        item1["properties"]["end_datetime"] = "2025-11-15T23:59:59.999000Z"
+        item1_resp = await app_client.post(
+            f"/collections/{collection_id}/items", json=item1
+        )
+        assert item1_resp.status_code == 201
+
+        # Item 2: sentinel-2 (should be excluded)
+        item2 = copy.deepcopy(load_test_data("test_item.json"))
+        item2["id"] = item_id_2
+        item2["collection"] = collection_id
+        item2["properties"]["datetime"] = item_datetime
+        item2["properties"]["platform"] = "sentinel-2"
+        item2["properties"]["start_datetime"] = "2025-11-15T00:00:00Z"
+        item2["properties"]["end_datetime"] = "2025-11-15T23:59:59.999000Z"
+        item2_resp = await app_client.post(
+            f"/collections/{collection_id}/items", json=item2
+        )
+        assert item2_resp.status_code == 201
+
+        # Item 3: modis (should be included)
+        item3 = copy.deepcopy(load_test_data("test_item.json"))
+        item3["id"] = item_id_3
+        item3["collection"] = collection_id
+        item3["properties"]["datetime"] = item_datetime
+        item3["properties"]["platform"] = "modis"
+        item3["properties"]["start_datetime"] = "2025-11-15T00:00:00Z"
+        item3["properties"]["end_datetime"] = "2025-11-15T23:59:59.999000Z"
+        item3_resp = await app_client.post(
+            f"/collections/{collection_id}/items", json=item3
+        )
+        assert item3_resp.status_code == 201
+
+        # POST request with NOT IN operator - should exclude landsat-8 and sentinel-2
+        params = {
+            "collections": [collection_id],
+            "filter-lang": "cql2-json",
+            "filter": {
+                "op": "and",
+                "args": [
+                    {"op": "=", "args": [{"property": "collection"}, collection_id]},
+                    {
+                        "op": "not",
+                        "args": [
+                            {
+                                "op": "in",
+                                "args": [
+                                    {"property": "properties.platform"},
+                                    ["landsat-8", "sentinel-2"],
+                                ],
+                            }
+                        ],
+                    },
+                ],
+            },
+        }
+
+        resp = await app_client.post("/search", json=params)
+        assert resp.status_code == 200
+        resp_json = resp.json()
+        assert len(resp_json["features"]) == 1
+        assert resp_json["features"][0]["id"] == item_id_3
+        assert resp_json["features"][0]["collection"] == collection_id
+        assert f"Selected indexes: {expected_index}" in caplog.text
+
+        # GET request with expanded inequality checks - equivalent to NOT IN.
+        get_resp = await app_client.get(
+            "/search",
+            params={
+                "filter": (
+                    f"collection = '{collection_id}' "
+                    f"AND platform <> 'landsat-8' AND platform <> 'sentinel-2'"
+                ),
+                "filter-lang": "cql2-text",
+                "limit": 100,
+            },
+        )
+        assert get_resp.status_code == 200
+        get_resp_json = get_resp.json()
+        assert len(get_resp_json["features"]) == 1
+        assert get_resp_json["features"][0]["id"] == item_id_3
+        assert get_resp_json["features"][0]["collection"] == collection_id
+        assert f"Selected indexes: {expected_index}" in caplog.text
+    finally:
+        await app_client.delete(f"/collections/{collection_id}")
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_search_filter_extension_like_matches_pattern(
+    app_client, mock_datetime_env, load_test_data, caplog
+):
+    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip("Datetime index filtering not enabled")
+
+    suffix = uuid.uuid4().hex[:8]
+    collection_id = f"test-collection-like-{suffix}"
+    item_id_1 = f"test-item-like-1-{suffix}"
+    item_id_2 = f"test-item-like-2-{suffix}"
+    item_id_3 = f"test-item-like-3-{suffix}"
+    item_datetime = "2025-11-15T12:00:00.000000Z"
+    expected_index = f"items_start_datetime_{collection_id}_2025-11-15"
+
+    collection = load_test_data("test_collection.json")
+    collection["id"] = collection_id
+    await app_client.post("/collections", json=collection)
+
+    # Item 1: landsat-8 (should match pattern 'landsat%')
+    item1 = copy.deepcopy(load_test_data("test_item.json"))
+    item1["id"] = item_id_1
+    item1["collection"] = collection_id
+    item1["properties"]["datetime"] = item_datetime
+    item1["properties"]["platform"] = "landsat-8"
+    item1["properties"]["start_datetime"] = "2025-11-15T00:00:00Z"
+    item1["properties"]["end_datetime"] = "2025-11-15T23:59:59.999000Z"
+    await app_client.post(f"/collections/{collection_id}/items", json=item1)
+
+    # Item 2: landsat-9 (should match pattern 'landsat%')
+    item2 = copy.deepcopy(load_test_data("test_item.json"))
+    item2["id"] = item_id_2
+    item2["collection"] = collection_id
+    item2["properties"]["datetime"] = item_datetime
+    item2["properties"]["platform"] = "landsat-9"
+    item2["properties"]["start_datetime"] = "2025-11-15T00:00:00Z"
+    item2["properties"]["end_datetime"] = "2025-11-15T23:59:59.999000Z"
+    await app_client.post(f"/collections/{collection_id}/items", json=item2)
+
+    # Item 3: sentinel-2 (should NOT match pattern 'landsat%')
+    item3 = copy.deepcopy(load_test_data("test_item.json"))
+    item3["id"] = item_id_3
+    item3["collection"] = collection_id
+    item3["properties"]["datetime"] = item_datetime
+    item3["properties"]["platform"] = "sentinel-2"
+    item3["properties"]["start_datetime"] = "2025-11-15T00:00:00Z"
+    item3["properties"]["end_datetime"] = "2025-11-15T23:59:59.999000Z"
+    await app_client.post(f"/collections/{collection_id}/items", json=item3)
+
+    # POST request with LIKE operator - should match landsat-8 and landsat-9
+    params = {
+        "collections": [collection_id],
+        "filter-lang": "cql2-json",
+        "filter": {
+            "op": "and",
+            "args": [
+                {"op": "=", "args": [{"property": "collection"}, collection_id]},
+                {
+                    "op": "like",
+                    "args": [
+                        {"property": "properties.platform"},
+                        "landsat%",
+                    ],
+                },
+            ],
+        },
+    }
+
+    resp = await app_client.post("/search", json=params)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["features"]) == 2
+
+    # Verify both matching items are returned
+    returned_ids = [feature["id"] for feature in resp_json["features"]]
+    assert item_id_1 in returned_ids
+    assert item_id_2 in returned_ids
+    assert item_id_3 not in returned_ids
+
+    assert f"Selected indexes: {expected_index}" in caplog.text
+
+    # GET request with LIKE operator - should match landsat-8 and landsat-9
+    get_resp = await app_client.get(
+        "/search",
+        params={
+            "filter": (
+                f"collection = '{collection_id}' " f"AND platform LIKE 'landsat%'"
+            ),
+            "filter-lang": "cql2-text",
+            "limit": 100,
+        },
+    )
+    assert get_resp.status_code == 200
+    get_resp_json = get_resp.json()
+    assert len(get_resp_json["features"]) == 2
+
+    returned_ids = [feature["id"] for feature in get_resp_json["features"]]
+    assert item_id_1 in returned_ids
+    assert item_id_2 in returned_ids
+    assert item_id_3 not in returned_ids
+
+    assert f"Selected indexes: {expected_index}" in caplog.text
+
+    await app_client.delete(f"/collections/{collection_id}")
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_search_filter_extension_is_null_returns_items_with_null_field(
+    app_client, mock_datetime_env, load_test_data, caplog
+):
+    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip("Datetime index filtering not enabled")
+
+    suffix = uuid.uuid4().hex[:8]
+    collection_id = f"test-collection-isnull-{suffix}"
+    item_id_1 = f"test-item-isnull-1-{suffix}"
+    item_id_2 = f"test-item-isnull-2-{suffix}"
+    item_id_3 = f"test-item-isnull-3-{suffix}"
+    item_datetime = "2025-11-15T12:00:00.000000Z"
+    expected_index = f"items_start_datetime_{collection_id}_2025-11-15"
+
+    collection = load_test_data("test_collection.json")
+    collection["id"] = collection_id
+    await app_client.post("/collections", json=collection)
+
+    # Item 1: has platform field (not null)
+    item1 = copy.deepcopy(load_test_data("test_item.json"))
+    item1["id"] = item_id_1
+    item1["collection"] = collection_id
+    item1["properties"]["datetime"] = item_datetime
+    item1["properties"]["platform"] = "landsat-8"
+    item1["properties"]["start_datetime"] = "2025-11-15T00:00:00Z"
+    item1["properties"]["end_datetime"] = "2025-11-15T23:59:59.999000Z"
+    await app_client.post(f"/collections/{collection_id}/items", json=item1)
+
+    # Item 2: has platform field (not null)
+    item2 = copy.deepcopy(load_test_data("test_item.json"))
+    item2["id"] = item_id_2
+    item2["collection"] = collection_id
+    item2["properties"]["datetime"] = item_datetime
+    item2["properties"]["platform"] = "sentinel-2"
+    item2["properties"]["start_datetime"] = "2025-11-15T00:00:00Z"
+    item2["properties"]["end_datetime"] = "2025-11-15T23:59:59.999000Z"
+    await app_client.post(f"/collections/{collection_id}/items", json=item2)
+
+    # Item 3: does NOT have platform field (null)
+    item3 = copy.deepcopy(load_test_data("test_item.json"))
+    item3["id"] = item_id_3
+    item3["collection"] = collection_id
+    item3["properties"]["datetime"] = item_datetime
+    # platform field is omitted
+    if "platform" in item3["properties"]:
+        del item3["properties"]["platform"]
+    item3["properties"]["start_datetime"] = "2025-11-15T00:00:00Z"
+    item3["properties"]["end_datetime"] = "2025-11-15T23:59:59.999000Z"
+    await app_client.post(f"/collections/{collection_id}/items", json=item3)
+
+    # POST request with IS NULL operator - should return item with null platform
+    params = {
+        "collections": [collection_id],
+        "filter-lang": "cql2-json",
+        "filter": {
+            "op": "and",
+            "args": [
+                {"op": "=", "args": [{"property": "collection"}, collection_id]},
+                {
+                    "op": "isNull",
+                    "args": [
+                        {"property": "properties.platform"},
+                    ],
+                },
+            ],
+        },
+    }
+
+    resp = await app_client.post("/search", json=params)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["features"]) == 1
+    assert resp_json["features"][0]["id"] == item_id_3
+    assert resp_json["features"][0]["collection"] == collection_id
+    assert "platform" not in resp_json["features"][0]["properties"]
+    assert f"Selected indexes: {expected_index}" in caplog.text
+
+    # GET request with IS NULL operator - should return item with null platform
+    get_resp = await app_client.get(
+        "/search",
+        params={
+            "filter": (f"collection = '{collection_id}' " f"AND platform IS NULL"),
+            "filter-lang": "cql2-text",
+            "limit": 100,
+        },
+    )
+    assert get_resp.status_code == 200
+    get_resp_json = get_resp.json()
+    assert len(get_resp_json["features"]) == 1
+    assert get_resp_json["features"][0]["id"] == item_id_3
+    assert get_resp_json["features"][0]["collection"] == collection_id
+    assert "platform" not in get_resp_json["features"][0]["properties"]
+    assert f"Selected indexes: {expected_index}" in caplog.text
+
+    await app_client.delete(f"/collections/{collection_id}")
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+async def test_search_filter_extension_is_not_null_returns_items_with_field(
+    app_client, mock_datetime_env, load_test_data, caplog
+):
+    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip("Datetime index filtering not enabled")
+
+    suffix = uuid.uuid4().hex[:8]
+    collection_id = f"test-collection-notnull-{suffix}"
+    item_id_1 = f"test-item-notnull-1-{suffix}"
+    item_id_2 = f"test-item-notnull-2-{suffix}"
+    item_id_3 = f"test-item-notnull-3-{suffix}"
+    item_datetime = "2025-11-15T12:00:00.000000Z"
+    expected_index = f"items_start_datetime_{collection_id}_2025-11-15"
+
+    collection = load_test_data("test_collection.json")
+    collection["id"] = collection_id
+    await app_client.post("/collections", json=collection)
+
+    # Item 1: has platform field
+    item1 = copy.deepcopy(load_test_data("test_item.json"))
+    item1["id"] = item_id_1
+    item1["collection"] = collection_id
+    item1["properties"]["datetime"] = item_datetime
+    item1["properties"]["platform"] = "landsat-8"
+    item1["properties"]["start_datetime"] = "2025-11-15T00:00:00Z"
+    item1["properties"]["end_datetime"] = "2025-11-15T23:59:59.999000Z"
+    await app_client.post(f"/collections/{collection_id}/items", json=item1)
+
+    # Item 2: has platform field
+    item2 = copy.deepcopy(load_test_data("test_item.json"))
+    item2["id"] = item_id_2
+    item2["collection"] = collection_id
+    item2["properties"]["datetime"] = item_datetime
+    item2["properties"]["platform"] = "sentinel-2"
+    item2["properties"]["start_datetime"] = "2025-11-15T00:00:00Z"
+    item2["properties"]["end_datetime"] = "2025-11-15T23:59:59.999000Z"
+    await app_client.post(f"/collections/{collection_id}/items", json=item2)
+
+    # Item 3: does NOT have platform field
+    item3 = copy.deepcopy(load_test_data("test_item.json"))
+    item3["id"] = item_id_3
+    item3["collection"] = collection_id
+    item3["properties"]["datetime"] = item_datetime
+    if "platform" in item3["properties"]:
+        del item3["properties"]["platform"]
+    item3["properties"]["start_datetime"] = "2025-11-15T00:00:00Z"
+    item3["properties"]["end_datetime"] = "2025-11-15T23:59:59.999000Z"
+    await app_client.post(f"/collections/{collection_id}/items", json=item3)
+
+    # POST request with NOT IS NULL operator - should return items with platform
+    params = {
+        "collections": [collection_id],
+        "filter-lang": "cql2-json",
+        "filter": {
+            "op": "and",
+            "args": [
+                {"op": "=", "args": [{"property": "collection"}, collection_id]},
+                {
+                    "op": "not",
+                    "args": [
+                        {
+                            "op": "isNull",
+                            "args": [{"property": "properties.platform"}],
+                        }
+                    ],
+                },
+            ],
+        },
+    }
+
+    resp = await app_client.post("/search", json=params)
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["features"]) == 2
+
+    returned_ids = [feature["id"] for feature in resp_json["features"]]
+    assert item_id_1 in returned_ids
+    assert item_id_2 in returned_ids
+    assert item_id_3 not in returned_ids
+
+    assert f"Selected indexes: {expected_index}" in caplog.text
+
+    # GET request with IS NOT NULL operator - should return items with platform
+    get_resp = await app_client.get(
+        "/search",
+        params={
+            "filter": (f"collection = '{collection_id}' " f"AND platform IS NOT NULL"),
+            "filter-lang": "cql2-text",
+            "limit": 100,
+        },
+    )
+    assert get_resp.status_code == 200
+    get_resp_json = get_resp.json()
+    assert len(get_resp_json["features"]) == 2
+
+    returned_ids = [feature["id"] for feature in get_resp_json["features"]]
+    assert item_id_1 in returned_ids
+    assert item_id_2 in returned_ids
+    assert item_id_3 not in returned_ids
+
+    assert f"Selected indexes: {expected_index}" in caplog.text
+
+    await app_client.delete(f"/collections/{collection_id}")
 
 
 @pytest.mark.asyncio
