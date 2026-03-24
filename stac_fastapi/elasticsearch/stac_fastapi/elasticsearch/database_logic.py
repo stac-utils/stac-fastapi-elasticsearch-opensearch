@@ -2200,17 +2200,6 @@ class DatabaseLogic(BaseDatabaseLogic):
         # Ensure parent catalog exists
         await self.find_catalog(catalog_id)
 
-        # Set parent logic in the catalog object if not present or incorrect?
-        # Typically the user sends the body with links, but we might want to enforce valid relation.
-        # For now, we assume the user provides a valid STAC Catalog object.
-        # We should logically ensure that the parent link points to catalog_id, or we just indexed it.
-
-        # We need to make sure 'parent_ids' includes the catalog_id for hierarchical search
-        # This implementation detail depends on how we store hierarchy.
-        # Using the simplified model where we just store the catalog.
-        # Ideally, we should add catalog_id to a "parent_ids" field in the document for efficient search.
-
-        # Check if catalog has 'parent_ids' field, if not initialize
         if "parent_ids" not in catalog:
             catalog["parent_ids"] = []
 
