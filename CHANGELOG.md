@@ -12,17 +12,30 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Implemented header-based filtering for collections and geometry. Supports `X-Filter-Collections` (comma-separated collection IDs) and `X-Filter-Geometry` (GeoJSON) headers to restrict access to specific collections and geographic areas. Applies to `/collections`, `/collections/{id}`, `/collections/{id}/items`, `/collections/{id}/items/{id}`, and `/search` endpoints. Added optional `[geo]` extra with `shapely` dependency for geometry filtering on single item endpoints. [#563](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/563)
 - Added CQL2 Abstract Syntax Tree (AST) structure for efficient query parsing and datetime-based indexes. [#560](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/560)
 - Added geometry intersection optimization: all geometry sources (header, bbox, intersects, CQL2 s_intersects) are now intersected before sending queries to the database. When geometries are disjoint, returns empty 200 response without DB query. Reduces database load and improves performance.
+
+### Changed
+
+### Fixed
+
+### Removed
+
+### Updated
+
+
+## [v6.14.1] - 2026-03-24
+
+### Added
+
 - Added advice to Readme about linking an already exiting Collection to a Catalog, simply by POSTing the collection's ID. [#646](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/646)
+- Add catalogs option to es/os install. [#653](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/653)
 
 ### Updated
 
 - Updated POST /catalogs/catalogId/collections endpoint to accept an id of an existing collection to link it to the catalog. [#644](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/644)
 
-### Changed
-
-### Removed
-
 ### Fixed
+
+- Made the stac-fastapi-catalogs-extension an optional dependency, installable via `stac-fastapi-core[catalogs]`. [#652](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/652)
 
 ## [v6.14.0] - 2026-03-19
 
@@ -828,7 +841,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.14.0...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.14.1...main
+[v6.14.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.14.0...v6.14.1
 [v6.14.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.13.0...v6.14.0
 [v6.13.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.12.0...v6.13.0
 [v6.12.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.11.2...v6.12.0

@@ -55,6 +55,9 @@ geo = [
 sentry = [
     "sentry-sdk~=2.49.0",
 ]
+catalogs = [
+    "stac-fastapi-catalogs-extension>=0.1.2",
+]
 
 [project.urls]
 Homepage = "https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch"

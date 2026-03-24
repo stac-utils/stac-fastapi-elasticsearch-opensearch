@@ -258,6 +258,26 @@ This implementation follows the [Multi-Tenant Virtual Catalogs Endpoint](https:/
 - **Flexible Querying**: Support for standard STAC API query parameters when browsing collections within catalogs
 - **Safety-First Data Protection**: Collection and catalog data is never deleted through the catalogs route; only containers can be destroyed
 
+### Installation
+
+To use the Catalogs extension, install the Elasticsearch or OpenSearch package with the catalogs extra:
+
+```bash
+# For Elasticsearch backend
+pip install stac-fastapi-elasticsearch[catalogs]
+
+# For OpenSearch backend
+pip install stac-fastapi-opensearch[catalogs]
+```
+
+Alternatively, if you're installing the core package directly:
+
+```bash
+pip install stac-fastapi-core[catalogs]
+```
+
+This ensures you have the `stac-fastapi-catalogs-extension` dependency required for the `/catalogs` endpoint.
+
 ### DAG Specification & Dynamic Link Generation
 
 SFEOS implements the [STAC API - Multi-Tenant Catalogs Endpoint Extension](https://github.com/stac-api-extensions/multi-tenant-catalogs) (v1.0.0-beta.4) with full support for Directed Acyclic Graph (DAG) structures and strict STAC core compliance:
@@ -709,7 +729,7 @@ You can customize additional settings in your `.env` file:
 | `ENABLE_COLLECTIONS_SEARCH` | Enable collection search extensions (sort, fields, free text search, structured filtering, and datetime filtering) on the core `/collections` endpoint. | `true` | Optional |
 | `ENABLE_COLLECTIONS_SEARCH_ROUTE` | Enable the custom `/collections-search` endpoint (both GET and POST methods). When disabled, the custom endpoint will not be available, but collection search extensions will still be available on the core `/collections` endpoint if `ENABLE_COLLECTIONS_SEARCH` is true. | `false` | Optional |
 | `ENABLE_TRANSACTIONS_EXTENSIONS` | Enables or disables the Transactions and Bulk Transactions API extensions. This is useful for deployments where mutating the catalog via the API should be prevented. If set to `true`, the POST `/collections` route for search will be unavailable in the API. | `true` | Optional |
-| `ENABLE_CATALOGS_ROUTE` | Enable the **/catalogs** endpoint for hierarchical catalog browsing and navigation. | `false` | Optional |
+| `ENABLE_CATALOGS_ROUTE` | Enable the **/catalogs** endpoint for hierarchical catalog browsing and navigation. **Note:** Requires the catalogs extension to be installed via `stac-fastapi-elasticsearch[catalogs]`, `stac-fastapi-opensearch[catalogs]`, or `stac-fastapi-core[catalogs]`. See [Catalogs Route](#catalogs-route) for installation instructions. | `false` | Optional |
 | `STAC_INDEX_ASSETS` | Controls if Assets are indexed when added to Elasticsearch/Opensearch. This allows asset fields to be included in search queries. | `false` | Optional |
 
 ### 5. Limits & Performance
