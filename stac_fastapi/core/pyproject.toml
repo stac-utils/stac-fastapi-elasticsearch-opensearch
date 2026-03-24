@@ -36,7 +36,6 @@ dependencies = [
     "stac-fastapi.types==6.2.1",
     "stac-fastapi.api==6.2.1",
     "stac-fastapi.extensions==6.2.1",
-    "stac-fastapi-catalogs-extension>=0.1.2",
     "orjson~=3.11.0",
     "overrides~=7.4.0",
     "geojson-pydantic~=1.0.0",
@@ -52,6 +51,9 @@ redis = [
 ]
 sentry = [
     "sentry-sdk~=2.49.0",
+]
+catalogs = [
+    "stac-fastapi-catalogs-extension>=0.1.2",
 ]
 
 [project.urls]

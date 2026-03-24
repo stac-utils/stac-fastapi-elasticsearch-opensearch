@@ -11,7 +11,7 @@ RUN apt-get update && \
 
 COPY . /app/
 
-RUN pip3 install --no-cache-dir -e ./stac_fastapi/core && \
+RUN pip3 install --no-cache-dir -e ./stac_fastapi/core[catalogs] && \
     pip3 install --no-cache-dir -e ./stac_fastapi/sfeos_helpers && \
     pip3 install --no-cache-dir ./stac_fastapi/opensearch[server]
 
