@@ -1,5 +1,9 @@
 <!-- markdownlint-disable MD033 MD041 -->
 
+## New Atomic Maps releases 
+
+To create a new release update the version in [am_version.py](./stac_fastapi/opensearch/stac_fastapi/opensearch/am_version.py)
+
 
 <p align="left">
   <img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/sfeos.png" width=1000>

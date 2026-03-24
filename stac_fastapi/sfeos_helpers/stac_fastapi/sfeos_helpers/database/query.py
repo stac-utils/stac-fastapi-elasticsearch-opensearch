@@ -15,6 +15,14 @@ ES_MAX_URL_LENGTH = 4096
 
 
 def is_numeric(val: str) -> bool:
+    """Check if a string value can be parsed as a float.
+
+    Args:
+        val (str): The string value to check.
+
+    Returns:
+        bool: True if the value is numeric, False otherwise.
+    """
     try:
         float(val)
         return True
@@ -23,6 +31,14 @@ def is_numeric(val: str) -> bool:
 
 
 def is_date(val: str) -> bool:
+    """Check if a string value matches a basic ISO 8601 date format.
+
+    Args:
+        val (str): The string value to check.
+
+    Returns:
+        bool: True if the value matches YYYY-MM-DD or YYYY-MM-DDTHH:MM:SSZ format, False otherwise.
+    """
     # Basic ISO8601 date match: YYYY-MM-DD or YYYY-MM-DDTHH:MM:SSZ
     iso_date_pattern = re.compile(r"^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2}:\d{2}Z?)?$")
     return bool(iso_date_pattern.match(val))
@@ -33,7 +49,7 @@ RESERVED_CHARS = r'[+\-=&|><!\(\){}\[\]\^"~*?:\\/]'
 
 
 def escape_reserved_chars(s: str) -> str:
-    """Escape all reserved characters for query_string, including /"""
+    """Escape all reserved characters for query_string, including forward slash."""
     return re.sub(
         RESERVED_CHARS,
         lambda m: "\\" + m.group(0),
@@ -42,6 +58,17 @@ def escape_reserved_chars(s: str) -> str:
 
 
 def process_ftq(q: str) -> str:
+    """Process a free-text query token for use in an Elasticsearch/OpenSearch query_string.
+
+    Numeric and date values are returned as-is. Other values are escaped and wrapped
+    in a wildcard OR pattern covering the original, lowercase, and uppercase forms.
+
+    Args:
+        q (str): The raw query token to process.
+
+    Returns:
+        str: The processed query string, or None if the input is blank.
+    """
     q = q.strip()
     if not q:
         return None
@@ -66,6 +93,19 @@ def apply_free_text_filter_shared(
     free_text_queries: Optional[List[str]],
     fields: Optional[List[str]] = None,
 ) -> Any:
+    """Apply a free-text filter to an Elasticsearch/OpenSearch search object.
+
+    Supports boolean operators (AND/OR/NOT), comma-separated OR terms, and
+    space-separated AND terms. Each query token is processed via process_ftq.
+
+    Args:
+        search (Any): The search object to apply the filter to.
+        free_text_queries (Optional[List[str]]): A list of free-text query strings.
+        fields (Optional[List[str]]): A list of fields to search. Defaults to all fields.
+
+    Returns:
+        Any: The search object with the free-text filter applied.
+    """
     if not free_text_queries:
         return search
 

@@ -283,6 +283,8 @@ api = StacApi(**app_config)
 
 
 class CustomLanding(LandingPage):
+    """Landing page model extended with the STAC API version field."""
+
     stac_api_version: str = Field(
         default=api.app.version,
         description="API release version",
@@ -293,6 +295,7 @@ original_landing_page = api.client.landing_page
 
 
 async def patched_landing_page(**kwargs):
+    """Return the landing page with the STAC API version injected."""
     # Call the original with all kwargs (including request)
     result = await original_landing_page(**kwargs)
 
@@ -355,19 +358,23 @@ core_client = app_config["client"]
 
 
 async def tile_route(collection_id: str, z: int, x: int, y: int, request: Request):
+    """Route a vector tile request for a collection to the core client."""
     return await core_client.get_tile(collection_id, z, x, y, request)
 
 
 async def tilejson_route(collection_id: str, request: Request):
+    """Route a tilejson metadata request for a collection to the core client."""
     return await core_client.get_tilejson(collection_id, request)
 
 
 async def clear_tile_cache_route():
+    """Clear the in-memory vector tile cache and return a confirmation message."""
     core_client.clear_tile_cache()
     return {"message": "Tile cache cleared successfully"}
 
 
 async def stac_tile_route(z: int, x: int, y: int, request: Request):
+    """Route a STAC-wide vector tile request to the core client."""
     return await core_client.get_stac_tile(z, x, y, request)
 
 

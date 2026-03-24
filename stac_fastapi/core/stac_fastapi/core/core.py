@@ -990,11 +990,7 @@ class CoreClient(AsyncBaseCoreClient):
         )
 
     async def get_tilejson(self, collection_id: str, request: Request):
-        collection = await self.get_collection(
-            collection_id=collection_id, request=request
-        )
-        """
-        Get tilejson metadata for a collection.
+        """Get tilejson metadata for a collection.
 
         Args:
             collection_id (str): The ID of the collection.
@@ -1004,6 +1000,9 @@ class CoreClient(AsyncBaseCoreClient):
             dict: The tilejson metadata for the collection.
 
         """
+        collection = await self.get_collection(
+            collection_id=collection_id, request=request
+        )
 
         if not collection:
             raise HTTPException(status_code=404, detail="Collection not found")
@@ -1068,7 +1067,6 @@ class CoreClient(AsyncBaseCoreClient):
             Response: A compressed (gzip) vector tile response.
 
         """
-
         geom_field = None
         if "geomField" in request.query_params:
             geom_field = request.query_params["geomField"]
@@ -1253,8 +1251,8 @@ class CoreClient(AsyncBaseCoreClient):
         )
 
     async def get_stac_tile(self, z: int, x: int, y: int, request: Request):
-        """
-        Get a vector tile for all data_types in the STAC catalog and Web Mercator coordinates.
+        """Get a vector tile for all data_types in the STAC catalog and Web Mercator coordinates.
+
         Each data_type becomes a separate MVT layer.
         Uses properties.exposure_point as geometry when available.
 
@@ -1267,7 +1265,6 @@ class CoreClient(AsyncBaseCoreClient):
         Returns:
             Response: Gzipped vector tile (MVT) for all data_types.
         """
-
         cache_key = (z, x, y)
         if "filter" in request.query_params:
             cache_key += (request.query_params["filter"],)
