@@ -131,7 +131,7 @@ def apply_custom_mappings(
 
 
 def get_mappings(
-    is_items: bool,
+    is_items: bool = True,
     dynamic_mapping: str | None = None,
     custom_mappings: str | None = None,
 ) -> dict[str, Any]:
@@ -153,9 +153,9 @@ def get_mappings(
     # Assign the appropriate base mappings and environment variable names based on whether we're configuring items or collections
     _BASE_MAPPINGS = _BASE_ITEMS_MAPPINGS if is_items else _BASE_ES_COLLECTIONS_MAPPINGS
     CUSTOM_MAPPINGS_ = (
-        "STAC_FASTAPI_ES_MAPPINGS"
+        "STAC_FASTAPI_ES_CUSTOM_MAPPINGS"
         if is_items
-        else "STAC_FASTAPI_ES_COLLECTIONS_MAPPINGS"
+        else "STAC_FASTAPI_ES_COLLECTIONS_CUSTOM_MAPPINGS"
     )
     CUSTOM_MAPPINGS_FILE = (
         "STAC_FASTAPI_ES_MAPPINGS_FILE"
@@ -355,7 +355,7 @@ _BASE_ES_MAPPINGS_DYNAMIC_TEMPLATES = [
 ]
 # ES_MAPPINGS_DYNAMIC_TEMPLATES with environment-based configuration applied at module load time
 ES_MAPPINGS_DYNAMIC_TEMPLATES = get_dynamic_template(
-    "STAC_FASTAPI_ES_DYNAMIC_TEMPLATES", "STAC_FASTAPI_ES_DYNAMIC_TEMPLATES_FILE"
+    "STAC_FASTAPI_ES_CUSTOM_DYNAMIC_TEMPLATES", "STAC_FASTAPI_ES_DYNAMIC_TEMPLATES_FILE"
 )
 
 # Base items mappings without dynamic configuration applied

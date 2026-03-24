@@ -260,7 +260,7 @@ class TestGetItemsMappings:
     )
     def test_dynamic_mapping_values(self, dynamic_mapping, expected):
         """Test dynamic mapping configuration with various values."""
-        mappings = get_mappings(is_items=True, dynamic_mapping=dynamic_mapping)
+        mappings = get_mappings(dynamic_mapping=dynamic_mapping)
         assert mappings["dynamic"] == expected
 
     def test_custom_mappings_merged_preserving_defaults(self):
@@ -272,7 +272,7 @@ class TestGetItemsMappings:
                 }
             }
         )
-        mappings = get_mappings(is_items=True, custom_mappings=custom)
+        mappings = get_mappings(custom_mappings=custom)
 
         # Custom field added
         assert mappings["properties"]["properties"]["properties"]["custom:field"] == {
@@ -294,21 +294,21 @@ class TestGetItemsMappings:
                 }
             }
         )
-        mappings = get_mappings(is_items=True, custom_mappings=custom)
+        mappings = get_mappings(custom_mappings=custom)
         assert mappings["properties"]["properties"]["properties"]["datetime"] == {
             "type": "date"
         }
 
     def test_returns_independent_copies(self):
         """Test that each call returns a new independent copy of mappings."""
-        mappings1 = get_mappings(is_items=True)
-        mappings2 = get_mappings(is_items=True)
+        mappings1 = get_mappings()
+        mappings2 = get_mappings()
         mappings1["properties"]["test"] = "value"
         assert "test" not in mappings2["properties"]
 
     def test_has_required_base_structure(self):
         """Test that returned mappings have required base structure."""
-        mappings = get_mappings(is_items=True)
+        mappings = get_mappings()
         assert "numeric_detection" in mappings
         assert "dynamic_templates" in mappings
         assert all(
@@ -354,9 +354,7 @@ class TestSTACExtensionUseCases:
     )
     def test_add_extension_fields(self, extension_name, custom_fields):
         """Test adding STAC extension fields via custom mappings."""
-        mappings = get_mappings(
-            is_items=True, custom_mappings=json.dumps(custom_fields)
-        )
+        mappings = get_mappings(custom_mappings=json.dumps(custom_fields))
 
         props = mappings["properties"]["properties"]["properties"]
         for field_name, field_config in custom_fields["properties"]["properties"][
@@ -379,7 +377,7 @@ class TestSTACExtensionUseCases:
             }
         }
         mappings = get_mappings(
-            True, dynamic_mapping="false", custom_mappings=json.dumps(query_fields)
+            dynamic_mapping="false", custom_mappings=json.dumps(query_fields)
         )
 
         assert mappings["dynamic"] is False
