@@ -1,6 +1,6 @@
 """Extracts datetime patterns from CQL2 AST."""
 
-from typing import Any, List, Tuple, Union
+from typing import Any, List, Optional, Tuple, Union
 
 from stac_fastapi.core.extensions.filter import (
     AdvancedComparisonNode,
@@ -78,7 +78,81 @@ class DatetimeOptimizer:
 
     def optimize_query_structure(self, ast: CqlNode) -> CqlNode:
         """Optimize AST structure for better query performance."""
-        return self._reorder_for_datetime_priority(ast)
+        ast = self._apply_demorgan(ast)
+        ast = self._flatten_and_conditions(ast)
+
+        ast = self._reorder_for_datetime_priority(ast)
+
+        return ast
+
+    def _apply_demorgan(self, node: CqlNode) -> CqlNode:
+        """Apply De Morgan's law special case to transform NOT (A AND B) into (NOT A) OR (NOT B)."""
+        if isinstance(node, LogicalNode):
+            if node.op == LogicalOp.NOT and len(node.children) == 1:
+                child = node.children[0]
+
+                if isinstance(child, LogicalNode) and child.op == LogicalOp.AND:
+                    not_children = []
+                    for and_child in child.children:
+                        not_children.append(
+                            LogicalNode(op=LogicalOp.NOT, children=[and_child])
+                        )
+                    not_children = [self._apply_demorgan(c) for c in not_children]
+
+                    return LogicalNode(op=LogicalOp.OR, children=not_children)
+
+                elif isinstance(child, LogicalNode) and child.op == LogicalOp.OR:
+                    not_children = []
+                    for or_child in child.children:
+                        not_children.append(
+                            LogicalNode(op=LogicalOp.NOT, children=[or_child])
+                        )
+
+                    not_children = [self._apply_demorgan(c) for c in not_children]
+
+                    return LogicalNode(op=LogicalOp.AND, children=not_children)
+
+                else:
+                    processed_children = [
+                        self._apply_demorgan(child) for child in node.children
+                    ]
+                    return LogicalNode(op=node.op, children=processed_children)
+
+            else:
+                processed_children = [
+                    self._apply_demorgan(child) for child in node.children
+                ]
+                return LogicalNode(op=node.op, children=processed_children)
+
+        return node
+
+    def _flatten_and_conditions(self, node: CqlNode) -> CqlNode:
+        """Flatten nested AND operations in the AST."""
+        if isinstance(node, LogicalNode):
+            if node.op == LogicalOp.AND:
+                flattened_children = []
+                for child in node.children:
+                    flattened_child = self._flatten_and_conditions(child)
+
+                    if (
+                        isinstance(flattened_child, LogicalNode)
+                        and flattened_child.op == LogicalOp.AND
+                    ):
+                        flattened_children.extend(flattened_child.children)
+                    else:
+                        flattened_children.append(flattened_child)
+
+                if len(flattened_children) == 1:
+                    return flattened_children[0]
+
+                return LogicalNode(op=LogicalOp.AND, children=flattened_children)
+
+            elif node.op in [LogicalOp.OR, LogicalOp.NOT]:
+                processed_children = [
+                    self._flatten_and_conditions(child) for child in node.children
+                ]
+                return LogicalNode(op=node.op, children=processed_children)
+        return node
 
     def _reorder_for_datetime_priority(self, node: CqlNode) -> CqlNode:
         """Reorder query tree to prioritize datetime filters."""
@@ -130,6 +204,7 @@ def extract_from_ast(node: CqlNode, field_name: str) -> List[Any]:
         if isinstance(n, LogicalNode):
             for child in n.children:
                 recurse(child)
+
             if n.op == LogicalOp.AND:
                 datetime_nodes: List[ComparisonNode] = []
                 for child in n.children:
@@ -139,6 +214,7 @@ def extract_from_ast(node: CqlNode, field_name: str) -> List[Any]:
                 if len(datetime_nodes) == 2:
                     gte_node = None
                     lte_node = None
+
                     for d_node in datetime_nodes:
                         if d_node.op == ComparisonOp.GTE:
                             gte_node = d_node
@@ -171,15 +247,21 @@ def extract_from_ast(node: CqlNode, field_name: str) -> List[Any]:
     return values if values else None
 
 
-def extract_collection_datetime(node: CqlNode) -> List[Tuple[List[str], str]]:
+def extract_collection_datetime(
+    node: CqlNode,
+    all_collection_ids: Optional[List[str]] = None,
+) -> List[Tuple[List[str], str]]:
     """Extract collections, datetime range from CQL AST.
+
+    Args:
+        node: The CQL AST node
+        all_collection_ids: List of all collection ids for collection exclusion logic
 
     Returns:
         List of tuples where each tuple contains:
         - collections: List[str] collection id(s)
         - datetime_range: str or empty string if no datetime constraint
     """
-    # pairs: List[Tuple[List[str], str]] = []
 
     def extract_from_node(
         n: CqlNode, current_collections: List[str] = None
@@ -191,80 +273,79 @@ def extract_collection_datetime(node: CqlNode) -> List[Tuple[List[str], str]]:
         results: List[Tuple[List[str], str]] = []
 
         if isinstance(n, LogicalNode):
-            if n.op == LogicalOp.AND:
-                # For AND, collect all child results first
+            if n.op == LogicalOp.OR:
+                all_or_results = []
+
+                for child in n.children:
+                    child_results = extract_from_node(child, current_collections.copy())
+                    all_or_results.extend(child_results)
+
+                for coll, rng in all_or_results:
+                    if rng == "":
+                        return [([], "")]
+
+                results.extend(all_or_results)
+
+            elif n.op == LogicalOp.AND:
                 child_results_list = []
                 for child in n.children:
                     child_results = extract_from_node(child, current_collections.copy())
-                    child_results_list.append(child_results)
+                    if child_results:
+                        child_results_list.append(child_results)
 
                 if not child_results_list:
                     return results
 
-                # If there's only one child, just return its results
                 if len(child_results_list) == 1:
                     return child_results_list[0]
 
-                # Combine results from multiple children
-                # Start with results from first child
                 combined_results = child_results_list[0]
 
-                # For each subsequent child, combine with existing results
                 for next_child_results in child_results_list[1:]:
                     new_combined = []
 
-                    # Special handling for combining two ranges in an AND
-                    # This is the most common case: GTE and LTE
                     if len(combined_results) == 1 and len(next_child_results) == 1:
                         coll1, range1 = combined_results[0]
                         coll2, range2 = next_child_results[0]
 
-                        # Merge collections
                         merged_coll = list(set(coll1 + coll2))
                         merged_coll.sort()
 
-                        # Check if we have one start range and one end range
                         is_start1 = range1.endswith("/..")
                         is_end1 = range1.startswith("../")
                         is_start2 = range2.endswith("/..")
                         is_end2 = range2.startswith("../")
 
-                        # If we have both a start and end range, combine them
                         if (is_start1 and is_end2) or (is_start2 and is_end1):
                             if is_start1 and is_end2:
-                                start_value = range1[:-3]  # Remove "/.."
-                                end_value = range2[3:]  # Remove "../"
+                                start_value = range1[:-3]
+                                end_value = range2[3:]
                             else:
-                                start_value = range2[:-3]  # Remove "/.."
-                                end_value = range1[3:]  # Remove "../"
+                                start_value = range2[:-3]
+                                end_value = range1[3:]
 
                             new_combined.append(
                                 (merged_coll, f"{start_value}/{end_value}")
                             )
                         else:
-                            # Fall back to normal processing
                             for existing_coll, existing_range in combined_results:
                                 for new_coll, new_range in next_child_results:
-                                    # Merge collections
+
                                     merged_coll = list(set(existing_coll + new_coll))
                                     merged_coll.sort()
 
-                                    # Merge ranges based on type
                                     if not existing_range and not new_range:
-                                        # No ranges, just collections
                                         new_combined.append((merged_coll, ""))
+
                                     elif existing_range and not new_range:
-                                        # Only existing has range
                                         new_combined.append(
                                             (merged_coll, existing_range)
                                         )
                                     elif not existing_range and new_range:
-                                        # Only new has range
                                         new_combined.append((merged_coll, new_range))
+
                                     else:
-                                        # Both have ranges - need to combine with AND logic
                                         if ".." in existing_range or ".." in new_range:
-                                            # Handle NEQ ranges - keep them separate as they represent exclusions
                                             if ".." in existing_range:
                                                 new_combined.append(
                                                     (merged_coll, existing_range)
@@ -274,7 +355,6 @@ def extract_collection_datetime(node: CqlNode) -> List[Tuple[List[str], str]]:
                                                     (merged_coll, new_range)
                                                 )
                                         else:
-                                            # Both are regular ranges or exact dates
                                             if "/" in existing_range:
                                                 e_parts = existing_range.split("/")
                                                 e_start = (
@@ -305,7 +385,6 @@ def extract_collection_datetime(node: CqlNode) -> List[Tuple[List[str], str]]:
                                             else:
                                                 n_start = n_end = new_range
 
-                                            # Take the most restrictive
                                             start = None
                                             end = None
                                             if e_start and n_start:
@@ -344,14 +423,11 @@ def extract_collection_datetime(node: CqlNode) -> List[Tuple[List[str], str]]:
                                                     (merged_coll, f"../{end}")
                                                 )
                     else:
-                        # Multiple results case - use the existing logic
                         for existing_coll, existing_range in combined_results:
                             for new_coll, new_range in next_child_results:
-                                # Merge collections
                                 merged_coll = list(set(existing_coll + new_coll))
                                 merged_coll.sort()
 
-                                # Merge ranges based on type
                                 if not existing_range and not new_range:
                                     new_combined.append((merged_coll, ""))
                                 elif existing_range and not new_range:
@@ -380,44 +456,134 @@ def extract_collection_datetime(node: CqlNode) -> List[Tuple[List[str], str]]:
 
                 results.extend(combined_results)
 
-            elif n.op == LogicalOp.OR:
-                for child in n.children:
-                    child_results = extract_from_node(child, current_collections.copy())
-                    results.extend(child_results)
-
             elif n.op == LogicalOp.NOT:
-                # Handle NOT operator by inverting the meaning of the child results
                 for child in n.children:
-                    child_results = extract_from_node(child, current_collections.copy())
-                    for coll, rng in child_results:
-                        if rng:
-                            if "/" in rng and ".." not in rng:
-                                parts = rng.split("/")
-                                if len(parts) == 2:
-                                    start_val = parts[0]
-                                    end_val = parts[1]
-                                    results.append((coll, f"../{start_val}"))
-                                    results.append((coll, f"{end_val}/.."))
-                            elif "/" in rng:
-                                parts = rng.split("/")
-                                if len(parts) == 2:
-                                    if parts[0] == "..":
-                                        # NOT (../X) becomes X/..
-                                        results.append((coll, f"{parts[1]}/.."))
-                                    elif parts[1] == "..":
-                                        # NOT (X/..) becomes ../X
-                                        results.append((coll, f"../{parts[0]}"))
-                                    else:
-                                        # NOT (X/Y) becomes ../X and Y/..
-                                        results.append((coll, f"../{parts[0]}"))
-                                        results.append((coll, f"{parts[1]}/.."))
+                    if (
+                        isinstance(child, ComparisonNode)
+                        and child.field == "collection"
+                        and child.op == ComparisonOp.EQ
+                    ):
+                        if all_collection_ids:
+                            excluded = child.value
+                            if isinstance(excluded, list):
+                                excluded_list = excluded
                             else:
-                                # NOT (exact date) becomes ../X and X/..
-                                results.append((coll, f"../{rng}"))
-                                results.append((coll, f"{rng}/.."))
+                                excluded_list = [excluded]
+                            included_collections = [
+                                c for c in all_collection_ids if c not in excluded_list
+                            ]
+                            if included_collections:
+                                results.append((included_collections, ""))
+                            continue
+
+                    elif (
+                        isinstance(child, AdvancedComparisonNode)
+                        and child.op == AdvancedComparisonOp.BETWEEN
+                        and child.field
+                        in ["datetime", "start_datetime", "end_datetime"]
+                    ):
+                        if (
+                            isinstance(child.value, (list, tuple))
+                            and len(child.value) == 2
+                        ):
+                            start_date, end_date = child.value[0], child.value[1]
+                            results.append(
+                                (current_collections.copy(), f"../{start_date}")
+                            )
+                            results.append(
+                                (current_collections.copy(), f"{end_date}/..")
+                            )
+
+                    elif (
+                        isinstance(child, AdvancedComparisonNode)
+                        and child.op == AdvancedComparisonOp.IN
+                        and child.field
+                        in ["datetime", "start_datetime", "end_datetime"]
+                    ):
+                        if isinstance(child.value, list) and len(child.value) > 0:
+                            dates = sorted(child.value)
+
+                            results.append(
+                                (current_collections.copy(), f"../{dates[0]}")
+                            )
+
+                            for i in range(len(dates) - 1):
+                                results.append(
+                                    (
+                                        current_collections.copy(),
+                                        f"{dates[i]}/{dates[i+1]}",
+                                    )
+                                )
+
+                            results.append(
+                                (current_collections.copy(), f"{dates[-1]}/..")
+                            )
+
+                    elif isinstance(child, ComparisonNode) and child.field in [
+                        "datetime",
+                        "start_datetime",
+                        "end_datetime",
+                    ]:
+                        if child.op == ComparisonOp.LT:
+                            results.append(
+                                (current_collections.copy(), f"{child.value}/..")
+                            )
+                        elif child.op == ComparisonOp.LTE:
+                            results.append(
+                                (current_collections.copy(), f"{child.value}/..")
+                            )
+                        elif child.op == ComparisonOp.GT:
+                            results.append(
+                                (current_collections.copy(), f"../{child.value}")
+                            )
+                        elif child.op == ComparisonOp.GTE:
+                            results.append(
+                                (current_collections.copy(), f"../{child.value}")
+                            )
+                        elif child.op == ComparisonOp.EQ:
+                            results.append(
+                                (current_collections.copy(), f"../{child.value}")
+                            )
+                            results.append(
+                                (current_collections.copy(), f"{child.value}/..")
+                            )
                         else:
-                            # If the child had no range (just collections), NOT doesn't change that
-                            results.append((coll, ""))
+                            results.append((current_collections.copy(), ""))
+
+                    elif (
+                        isinstance(child, ComparisonNode)
+                        and child.field != "collection"
+                    ):
+                        results.append((current_collections.copy(), ""))
+
+                    elif isinstance(child, LogicalNode):
+                        child_results = extract_from_node(
+                            child, current_collections.copy()
+                        )
+                        for coll, rng in child_results:
+                            if rng:
+                                if "/" in rng and ".." not in rng:
+                                    parts = rng.split("/")
+                                    if len(parts) == 2:
+                                        results.append((coll, f"../{parts[0]}"))
+                                        results.append((coll, f"{parts[1]}/.."))
+                                elif "/" in rng:
+                                    parts = rng.split("/")
+                                    if len(parts) == 2:
+                                        if parts[0] == "..":
+                                            results.append((coll, f"{parts[1]}/.."))
+                                        elif parts[1] == "..":
+                                            results.append((coll, f"../{parts[0]}"))
+                                        else:
+                                            results.append((coll, f"../{parts[0]}"))
+                                            results.append((coll, f"{parts[1]}/.."))
+                                else:
+                                    results.append((coll, f"../{rng}"))
+                                    results.append((coll, f"{rng}/.."))
+                            else:
+                                results.append((coll, ""))
+                    else:
+                        results.append((current_collections.copy(), ""))
 
         elif isinstance(n, ComparisonNode):
             if n.field == "collection":
@@ -459,9 +625,28 @@ def extract_collection_datetime(node: CqlNode) -> List[Tuple[List[str], str]]:
 
     all_results = extract_from_node(node)
 
-    # Process results
     final_results = []
     seen = set()
+
+    has_collections = any(colls for colls, _ in all_results)
+
+    if not has_collections:
+        datetime_only_results: List[Tuple[List[Any], Optional[Any]]] = []
+        seen_dates = set()
+
+        for _, date_range in all_results:
+            if date_range and date_range not in seen_dates:
+                seen_dates.add(date_range)
+                datetime_only_results.append(([], date_range))
+
+        return datetime_only_results
+
+    needs_all_indexes = any(
+        not colls and dt_range == "" for colls, dt_range in all_results
+    )
+
+    if needs_all_indexes:
+        return [([], "")]
 
     for collections, date_range in all_results:
         if not collections:

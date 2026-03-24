@@ -1,5 +1,4 @@
 """Database logic."""
-
 import asyncio
 import logging
 import os
@@ -359,7 +358,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         )
 
         # If count task is done, use its result
-        if count_task.done():
+        if count_task.done() and not count_task.cancelled():
             try:
                 matched = count_task.result().get("count")
             except Exception as e:
@@ -754,9 +753,9 @@ class DatabaseLogic(BaseDatabaseLogic):
         """
         Apply a CQL2 filter to an Opensearch Search object.
 
-        This method transforms a CQL2 filter dictionary into an OpenSearch query using
-        an AST tree-based approach. If the filter is None, the original Search object is returned
-        unmodified.
+        This method transforms a dictionary representing a CQL2 filter into an Opensearch query
+        and applies it to the provided Search object. If the filter is None, the original Search
+        object is returned unmodified.
 
         Args:
             search (Search): The Opensearch Search object to which the filter will be applied.
@@ -771,18 +770,23 @@ class DatabaseLogic(BaseDatabaseLogic):
         """
         if _filter is not None:
             try:
-                es_query, metadata = build_cql2_filter(_filter)
-                search = search.filter(es_query)
+                all_collection_ids = (
+                    await self.async_index_selector.get_all_collection_ids()
+                )
+                es_query, metadata = build_cql2_filter(
+                    await self.get_queryables_mapping(), _filter, all_collection_ids
+                )
+                search = search.query(es_query)
                 search._cql2_metadata = metadata
 
             except Exception as e:
                 logger.warning(
-                    "Failed to build CQL2 filter using AST tree approach, falling back to dictionary-based method. "
+                    "Failed to build CQL2 filter using AST tree approach, falling back to dictionary-based method."
                     f"Error: {str(e)}. Filter: {_filter}"
                 )
                 queryables_mapping = await self.get_queryables_mapping()
                 es_query = filter_module.to_es(queryables_mapping, _filter)
-                search = search.filter(es_query)
+                search = search.query(es_query)
 
         return search
 
@@ -847,17 +851,10 @@ class DatabaseLogic(BaseDatabaseLogic):
                 self.async_index_selector,
                 self.apply_datetime_filter,
                 search,
-                datetime_search,
-            )
-            logger.debug(
-                f"Resolve indexes from CQL2 metadata: {index_param} for collections {collection_ids} and cql2 metadata {cql2_metadata}"
             )
         else:
             index_param = await self.async_index_selector.select_indexes(
                 collection_ids, datetime_search
-            )
-            logger.debug(
-                f"Selected indexes: {index_param} for collections {collection_ids} and datetime search {datetime_search}"
             )
         if len(index_param) > ES_MAX_URL_LENGTH - 300:
             index_param = ITEM_INDICES
@@ -933,7 +930,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             if es_response["hits"]["total"]["relation"] == "eq"
             else None
         )
-        if count_task.done():
+        if count_task.done() and not count_task.cancelled():
             try:
                 matched = count_task.result().get("count")
             except Exception as e:

@@ -15,7 +15,7 @@
 
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 DEFAULT_QUERYABLES: dict[str, dict[str, Any]] = {
     "id": {
@@ -105,7 +105,7 @@ class LogicalNode(CqlNode):
     """Logical operators (AND, OR, NOT)."""
 
     op: LogicalOp
-    children: List["CqlNode"]
+    children: list["CqlNode"]
 
 
 @dataclass
@@ -132,7 +132,7 @@ class SpatialNode(CqlNode):
 
     op: SpatialOp
     field: str
-    geometry: Dict[str, Any]
+    geometry: dict[str, Any]
 
 
 @dataclass
@@ -140,8 +140,8 @@ class DateTimeRangeNode(CqlNode):
     """Datetime range queries."""
 
     field: str = "properties.datetime"
-    start: Optional[str] = None
-    end: Optional[str] = None
+    start: str | None = None
+    end: str | None = None
 
 
 @dataclass
@@ -149,4 +149,4 @@ class DateTimeExactNode(CqlNode):
     """Exact datetime queries."""
 
     field: str = "properties.datetime"
-    value: Optional[str] = None
+    value: str | None = None

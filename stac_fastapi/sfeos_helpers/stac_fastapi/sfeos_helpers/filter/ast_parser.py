@@ -74,13 +74,23 @@ class Cql2AstParser:
                 field = str(args[0])
 
             if op == AdvancedComparisonOp.BETWEEN:
-                if len(args) != 3:
+                # Format: [{'property': '...'}, [lower, upper]]
+                if len(args) == 2 and isinstance(args[1], list) and len(args[1]) == 2:
+                    value = (args[1][0], args[1][1])
+                # Format: [{'property': '...'}, lower, upper]
+                elif len(args) == 3:
+                    value = (args[1], args[2])
+                else:
                     raise ValueError(
-                        f"BETWEEN operator requires (property, lower, upper), got {args}"
+                        f"BETWEEN operator supports either [property, [lower, upper]] or [property, lower, upper], "
+                        f"got format with {len(args)} args: {args}"
                     )
-                value = (args[1], args[2])
 
             elif op == AdvancedComparisonOp.IN:
+                if len(args) != 2:
+                    raise ValueError(
+                        f"IN operator expects [property, values_list], got {len(args)} args"
+                    )
                 if not isinstance(args[1], list):
                     raise ValueError(f"IN operator expects list, got {type(args[1])}")
                 value = args[1]
@@ -88,10 +98,9 @@ class Cql2AstParser:
             elif op == AdvancedComparisonOp.LIKE:
                 if len(args) != 2:
                     raise ValueError(
-                        f"LIKE operator requires (property, pattern), got {args}"
+                        f"LIKE operator expects [property, pattern], got {len(args)} args"
                     )
                 value = args[1]
-
             return AdvancedComparisonNode(op=op, field=field, value=value)
 
         elif "op" in node and node["op"] in [

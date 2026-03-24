@@ -1,5 +1,4 @@
 """Database logic."""
-
 import asyncio
 import logging
 import os
@@ -168,7 +167,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     # constants for field names
     # they are used in multiple methods
-    # and could be overwritten in subclasses used with alternate elasticsearch mappings.
+    # and could be overwritten in subclasses used with alternate opensearch mappings.
     PROPERTIES_DATETIME_FIELD = os.getenv(
         "STAC_FIELD_PROP_DATETIME", "properties.datetime"
     )
@@ -183,7 +182,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     @staticmethod
     def __nested_field__(field: str):
-        """Convert elasticsearch field to nested field format."""
+        """Convert opensearch field to nested field format."""
         return field.replace(".", "__")
 
     """CORE LOGIC"""
@@ -361,7 +360,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         )
 
         # If count task is done, use its result
-        if count_task.done():
+        if count_task.done() and not count_task.cancelled():
             try:
                 matched = count_task.result().get("count")
             except Exception as e:
@@ -756,9 +755,9 @@ class DatabaseLogic(BaseDatabaseLogic):
         """
         Apply a CQL2 filter to an Elasticsearch Search object.
 
-        This method transforms a CQL2 filter dictionary into an Elasticsearch query using
-        an AST tree-based approach. If the filter is None, the original Search object is returned
-        unmodified.
+        This method transforms a dictionary representing a CQL2 filter into an Elasticsearch query
+        and applies it to the provided Search object. If the filter is None, the original Search
+        object is returned unmodified.
 
         Args:
             search (Search): The Elasticsearch Search object to which the filter will be applied.
@@ -773,18 +772,23 @@ class DatabaseLogic(BaseDatabaseLogic):
         """
         if _filter is not None:
             try:
-                es_query, metadata = build_cql2_filter(_filter)
-                search = search.filter(es_query)
+                all_collection_ids = (
+                    await self.async_index_selector.get_all_collection_ids()
+                )
+                es_query, metadata = build_cql2_filter(
+                    await self.get_queryables_mapping(), _filter, all_collection_ids
+                )
+                search = search.query(es_query)
                 search._cql2_metadata = metadata
 
             except Exception as e:
                 logger.warning(
-                    "Failed to build CQL2 filter using AST tree approach, falling back to dictionary-based method. "
+                    "Failed to build CQL2 filter using AST tree approach, falling back to dictionary-based method."
                     f"Error: {str(e)}. Filter: {_filter}"
                 )
                 queryables_mapping = await self.get_queryables_mapping()
                 es_query = filter_module.to_es(queryables_mapping, _filter)
-                search = search.filter(es_query)
+                search = search.query(es_query)
 
         return search
 
@@ -838,7 +842,12 @@ class DatabaseLogic(BaseDatabaseLogic):
             NotFoundError: If the collections specified in `collection_ids` do not exist.
         """
         search_after = None
+
+        if token:
+            search_after = orjson.loads(urlsafe_b64decode(token))
+
         query = search.query.to_dict() if search.query else None
+
         cql2_metadata = getattr(search, "_cql2_metadata", None)
 
         # Special case for cql2-json index selection
@@ -848,19 +857,11 @@ class DatabaseLogic(BaseDatabaseLogic):
                 self.async_index_selector,
                 self.apply_datetime_filter,
                 search,
-                datetime_search,
-            )
-            logger.debug(
-                f"Resolve indexes from CQL2 metadata : {index_param} for collections {collection_ids} and cql2 metadata {cql2_metadata}"
             )
         else:
             index_param = await self.async_index_selector.select_indexes(
                 collection_ids, datetime_search
             )
-            logger.debug(
-                f"Selected indexes: {index_param} for collections {collection_ids} and datetime search {datetime_search}"
-            )
-
         if len(index_param) > ES_MAX_URL_LENGTH - 300:
             index_param = ITEM_INDICES
             query = add_collections_to_body(collection_ids, query)
@@ -872,9 +873,6 @@ class DatabaseLogic(BaseDatabaseLogic):
         HIDE_ITEM_PATH = os.getenv("HIDE_ITEM_PATH", None)
         if HIDE_ITEM_PATH:
             query = add_hidden_filter(query, HIDE_ITEM_PATH)
-
-        if token:
-            search_after = orjson.loads(urlsafe_b64decode(token))
 
         search_task = asyncio.create_task(
             self.client.search(
@@ -928,7 +926,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             if es_response["hits"]["total"]["relation"] == "eq"
             else None
         )
-        if count_task.done():
+        if count_task.done() and not count_task.cancelled():
             try:
                 matched = count_task.result().get("count")
             except Exception as e:
@@ -1317,6 +1315,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 "add",
                 "replace",
             ]:
+
                 if operation.path == "collection" and collection_id != operation.value:
                     await self.check_collection_exists(collection_id=operation.value)
                     new_collection_id = operation.value

@@ -1,6 +1,5 @@
 """AST-based query transformation for Elasticsearch/OpenSearch."""
 
-import os
 from typing import Any, Dict, Union
 
 from stac_fastapi.core.extensions.filter import (
@@ -15,31 +14,12 @@ from stac_fastapi.core.extensions.filter import (
     SpatialOp,
 )
 
-# Field path constants (should match those in database_logic.py)
-PROPERTIES_DATETIME_FIELD = os.getenv("STAC_FIELD_PROP_DATETIME", "properties.datetime")
-PROPERTIES_START_DATETIME_FIELD = os.getenv(
-    "STAC_FIELD_PROP_START_DATETIME", "properties.start_datetime"
-)
-PROPERTIES_END_DATETIME_FIELD = os.getenv(
-    "STAC_FIELD_PROP_END_DATETIME", "properties.end_datetime"
-)
-COLLECTION_FIELD = os.getenv("STAC_FIELD_COLLECTION", "collection")
-GEOMETRY_FIELD = os.getenv("STAC_FIELD_GEOMETRY", "geometry")
+from .transform import to_es_field
 
 
-def _get_es_field_path(field: str) -> str:
-    """Get the correct Elasticsearch field path for a given logical field."""
-    field_mapping = {
-        "datetime": PROPERTIES_DATETIME_FIELD,
-        "start_datetime": PROPERTIES_START_DATETIME_FIELD,
-        "end_datetime": PROPERTIES_END_DATETIME_FIELD,
-        "collection": COLLECTION_FIELD,
-        "geometry": GEOMETRY_FIELD,
-    }
-    return field_mapping.get(field, field)
-
-
-def to_es_via_ast(query: Union[Dict[str, Any], CqlNode]) -> Dict[str, Any]:
+def to_es_via_ast(
+    queryables_mapping: Dict[str, Any], query: Union[Dict[str, Any], CqlNode]
+) -> Dict[str, Any]:
     """Transform CQL2 query to Elasticsearch/Opensearch query via AST."""
     from .ast_parser import Cql2AstParser
 
@@ -48,58 +28,174 @@ def to_es_via_ast(query: Union[Dict[str, Any], CqlNode]) -> Dict[str, Any]:
     else:
         parser = Cql2AstParser()
         ast = parser.parse(query)
-
-    result = _transform_ast_node(ast)
+    result = _transform_ast_node(queryables_mapping, ast)
     return result
 
 
-def _transform_ast_node(node: Any) -> Dict[str, Any]:
+def _convert_cql2_geometry_to_geojson(geometry):
+    """Convert CQL2 geometry format to GeoJSON format."""
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    if isinstance(geometry, dict) and "type" in geometry and "coordinates" in geometry:
+        logger.debug(f"Geometry already in GeoJSON format: {geometry}")
+        return geometry
+
+    if isinstance(geometry, dict) and "op" in geometry:
+        op = geometry["op"]
+        args = geometry.get("args", [])
+        logger.debug(f"Converting CQL2 geometry: op={op}, args={args}")
+
+        if op == "polygon":
+            if not args:
+                logger.warning("Polygon geometry has no args")
+                return geometry
+
+            coordinates = args[0] if args else []
+
+            if not isinstance(coordinates, list):
+                logger.warning(
+                    f"Polygon coordinates is not a list: {type(coordinates)}"
+                )
+                return geometry
+
+            if (
+                len(coordinates) > 0
+                and isinstance(coordinates[0], list)
+                and len(coordinates[0]) > 0
+                and isinstance(coordinates[0][0], list)
+            ):
+                logger.debug("Polygon already in correct format (list of rings)")
+                pass
+
+            elif (
+                len(coordinates) > 0
+                and isinstance(coordinates[0], list)
+                and len(coordinates[0]) > 0
+                and not isinstance(coordinates[0][0], list)
+            ):
+                logger.debug("Wrapping single ring in outer array")
+                coordinates = [coordinates]
+
+            elif len(coordinates) > 0 and not isinstance(coordinates[0], list):
+                logger.warning(f"Unexpected polygon coordinate format: {coordinates}")
+
+                if len(coordinates) >= 6 and len(coordinates) % 2 == 0:
+                    ring = []
+                    for i in range(0, len(coordinates), 2):
+                        ring.append([coordinates[i], coordinates[i + 1]])
+                    coordinates = [ring]
+
+            result = {"type": "Polygon", "coordinates": coordinates}
+            logger.debug(f"Converted polygon to: {result}")
+            return result
+
+        elif op == "point":
+            if len(args) >= 2:
+                result = {"type": "Point", "coordinates": [args[0], args[1]]}
+                logger.debug(f"Converted point to: {result}")
+                return result
+
+        elif op == "linestring":
+            if args:
+                coordinates = args[0] if args else []
+                result = {"type": "LineString", "coordinates": coordinates}
+                logger.debug(f"Converted linestring to: {result}")
+                return result
+
+    logger.warning(f"Unable to convert geometry to GeoJSON: {geometry}")
+    return geometry
+
+
+def _transform_ast_node(
+    queryables_mapping: Dict[str, Any], node: Any
+) -> Dict[str, Any]:
     """Transform AST node to Elasticsearch/Opensearch query."""
     if isinstance(node, LogicalNode):
-        bool_type = {
-            LogicalOp.AND: "must",
-            LogicalOp.OR: "should",
-            LogicalOp.NOT: "must_not",
-        }[node.op]
+        if node.op == LogicalOp.AND:
+            must_clauses = []
+            must_not_clauses = []
 
-        if node.op == LogicalOp.NOT:
-            return {"bool": {bool_type: _transform_ast_node(node.children[0])}}
-        else:
+            for child in node.children:
+                child_query = _transform_ast_node(queryables_mapping, child)
+
+                if isinstance(child_query, dict) and "bool" in child_query:
+                    bool_query = child_query["bool"]
+
+                    if len(bool_query) == 1 and "must_not" in bool_query:
+                        must_not_clauses.append(bool_query["must_not"])
+                    else:
+                        must_clauses.append(child_query)
+                else:
+                    must_clauses.append(child_query)
+
+            bool_query = {}
+            if must_clauses:
+                bool_query["must"] = (
+                    must_clauses if len(must_clauses) > 1 else must_clauses[0]
+                )
+            if must_not_clauses:
+                bool_query["must_not"] = (
+                    must_not_clauses
+                    if len(must_not_clauses) > 1
+                    else must_not_clauses[0]
+                )
+
+            return {"bool": bool_query}
+
+        elif node.op == LogicalOp.OR:
             return {
                 "bool": {
-                    bool_type: [_transform_ast_node(child) for child in node.children]
+                    "should": [
+                        _transform_ast_node(queryables_mapping, child)
+                        for child in node.children
+                    ]
                 }
             }
+        elif node.op == LogicalOp.NOT:
+            child_query = _transform_ast_node(queryables_mapping, node.children[0])
+            return {"bool": {"must_not": child_query}}
 
     elif isinstance(node, ComparisonNode):
-        field = _get_es_field_path(node.field)
+        fields = to_es_field(queryables_mapping, node.field)
         value = node.value
 
         if isinstance(value, dict) and "timestamp" in value:
             value = value["timestamp"]
 
-        if node.op == ComparisonOp.EQ:
-            return {"term": {field: value}}
-        elif node.op == ComparisonOp.NEQ:
-            return {"bool": {"must_not": [{"term": {field: value}}]}}
-        elif node.op in [
-            ComparisonOp.LT,
-            ComparisonOp.LTE,
-            ComparisonOp.GT,
-            ComparisonOp.GTE,
-        ]:
-            range_op = {
-                ComparisonOp.LT: "lt",
-                ComparisonOp.LTE: "lte",
-                ComparisonOp.GT: "gt",
-                ComparisonOp.GTE: "gte",
-            }[node.op]
-            return {"range": {field: {range_op: value}}}
-        elif node.op == ComparisonOp.IS_NULL:
-            return {"bool": {"must_not": {"exists": {"field": field}}}}
+        queries = []
+        for field in fields:
+            if node.op == ComparisonOp.EQ:
+                queries.append({"term": {field: value}})
+            elif node.op == ComparisonOp.NEQ:
+                queries.append({"term": {field: value}})
+            elif node.op in [
+                ComparisonOp.LT,
+                ComparisonOp.LTE,
+                ComparisonOp.GT,
+                ComparisonOp.GTE,
+            ]:
+                range_op = {
+                    ComparisonOp.LT: "lt",
+                    ComparisonOp.LTE: "lte",
+                    ComparisonOp.GT: "gt",
+                    ComparisonOp.GTE: "gte",
+                }[node.op]
+                queries.append({"range": {field: {range_op: value}}})
+            elif node.op == ComparisonOp.IS_NULL:
+                queries.append({"bool": {"must_not": {"exists": {"field": field}}}})
+
+        if node.op == ComparisonOp.NEQ:
+            if len(queries) == 1:
+                return {"bool": {"must_not": queries[0]}}
+            else:
+                return {"bool": {"must_not": {"bool": {"should": queries}}}}
+        else:
+            return queries[0] if len(queries) == 1 else {"bool": {"should": queries}}
 
     elif isinstance(node, AdvancedComparisonNode):
-        field = _get_es_field_path(node.field)
+        fields = to_es_field(queryables_mapping, node.field)
 
         if node.op == AdvancedComparisonOp.BETWEEN:
             if isinstance(node.value, (list, tuple)) and len(node.value) == 2:
@@ -108,12 +204,19 @@ def _transform_ast_node(node: Any) -> Dict[str, Any]:
                     gte = gte["timestamp"]
                 if isinstance(lte, dict) and "timestamp" in lte:
                     lte = lte["timestamp"]
-                return {"range": {field: {"gte": gte, "lte": lte}}}
+
+                queries = [
+                    {"range": {field: {"gte": gte, "lte": lte}}} for field in fields
+                ]
+                return (
+                    queries[0] if len(queries) == 1 else {"bool": {"should": queries}}
+                )
 
         elif node.op == AdvancedComparisonOp.IN:
             if not isinstance(node.value, list):
                 raise ValueError(f"IN operator expects list, got {type(node.value)}")
-            return {"terms": {field: node.value}}
+            queries = [{"terms": {field: node.value}} for field in fields]
+            return queries[0] if len(queries) == 1 else {"bool": {"should": queries}}
 
         elif node.op == AdvancedComparisonOp.LIKE:
             pattern = str(node.value)
@@ -139,12 +242,14 @@ def _transform_ast_node(node: Any) -> Dict[str, Any]:
                     es_pattern += pattern[i]
                 i += 1
 
-            return {
-                "wildcard": {field: {"value": es_pattern, "case_insensitive": True}}
-            }
+            queries = [
+                {"wildcard": {field: {"value": es_pattern, "case_insensitive": True}}}
+                for field in fields
+            ]
+            return queries[0] if len(queries) == 1 else {"bool": {"should": queries}}
 
     elif isinstance(node, SpatialNode):
-        field = _get_es_field_path(node.field)
+        fields = to_es_field(queryables_mapping, node.field)
 
         relation_mapping = {
             SpatialOp.S_INTERSECTS: "intersects",
@@ -154,6 +259,11 @@ def _transform_ast_node(node: Any) -> Dict[str, Any]:
         }
 
         relation = relation_mapping[node.op]
-        return {"geo_shape": {field: {"shape": node.geometry, "relation": relation}}}
+        geometry = _convert_cql2_geometry_to_geojson(node.geometry)
+        queries = [
+            {"geo_shape": {field: {"shape": geometry, "relation": relation}}}
+            for field in fields
+        ]
+        return queries[0] if len(queries) == 1 else {"bool": {"should": queries}}
 
     raise ValueError("Unsupported AST node")
