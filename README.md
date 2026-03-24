@@ -258,7 +258,17 @@ This implementation follows the [Multi-Tenant Virtual Catalogs Endpoint](https:/
 
 ### Installation
 
-To use the Catalogs extension, install the core package with the catalogs extra:
+To use the Catalogs extension, install the Elasticsearch or OpenSearch package with the catalogs extra:
+
+```bash
+# For Elasticsearch backend
+pip install stac-fastapi-elasticsearch[catalogs]
+
+# For OpenSearch backend
+pip install stac-fastapi-opensearch[catalogs]
+```
+
+Alternatively, if you're installing the core package directly:
 
 ```bash
 pip install stac-fastapi-core[catalogs]
@@ -692,7 +702,7 @@ You can customize additional settings in your `.env` file:
 | `ENABLE_COLLECTIONS_SEARCH` | Enable collection search extensions (sort, fields, free text search, structured filtering, and datetime filtering) on the core `/collections` endpoint. | `true` | Optional |
 | `ENABLE_COLLECTIONS_SEARCH_ROUTE` | Enable the custom `/collections-search` endpoint (both GET and POST methods). When disabled, the custom endpoint will not be available, but collection search extensions will still be available on the core `/collections` endpoint if `ENABLE_COLLECTIONS_SEARCH` is true. | `false` | Optional |
 | `ENABLE_TRANSACTIONS_EXTENSIONS` | Enables or disables the Transactions and Bulk Transactions API extensions. This is useful for deployments where mutating the catalog via the API should be prevented. If set to `true`, the POST `/collections` route for search will be unavailable in the API. | `true` | Optional |
-| `ENABLE_CATALOGS_ROUTE` | Enable the **/catalogs** endpoint for hierarchical catalog browsing and navigation. **Note:** Requires `stac-fastapi-core[catalogs]` to be installed. See [Catalogs Route](#catalogs-route) for installation instructions. | `false` | Optional |
+| `ENABLE_CATALOGS_ROUTE` | Enable the **/catalogs** endpoint for hierarchical catalog browsing and navigation. **Note:** Requires the catalogs extension to be installed via `stac-fastapi-elasticsearch[catalogs]`, `stac-fastapi-opensearch[catalogs]`, or `stac-fastapi-core[catalogs]`. See [Catalogs Route](#catalogs-route) for installation instructions. | `false` | Optional |
 | `STAC_INDEX_ASSETS` | Controls if Assets are indexed when added to Elasticsearch/Opensearch. This allows asset fields to be included in search queries. | `false` | Optional |
 
 ### 5. Limits & Performance
