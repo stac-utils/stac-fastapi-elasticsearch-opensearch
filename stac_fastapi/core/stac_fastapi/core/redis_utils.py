@@ -443,7 +443,7 @@ class AsyncRedisQueueManager:
             pipe.zadd(zset_key, zset_mapping)
             pipe.zcard(zset_key)
             results = await pipe.execute()
-            await pipe.reset()
+
             queue_length = results[3]
         else:
             queue_length = await self.redis.zcard(zset_key)
@@ -530,7 +530,6 @@ class AsyncRedisQueueManager:
         pipe.hdel(data_key, *item_ids)
         pipe.zcard(zset_key)
         results = await pipe.execute()
-        await pipe.reset()
 
         remaining = results[2]
 
@@ -539,7 +538,6 @@ class AsyncRedisQueueManager:
             pipe.srem(self._get_collections_set_key(), collection_id)
             pipe.delete(data_key)
             await pipe.execute()
-            await pipe.reset()
 
         return remaining
 
@@ -561,7 +559,6 @@ class AsyncRedisQueueManager:
         pipe.hdel(data_key, item_id)
         pipe.zcard(zset_key)
         results = await pipe.execute()
-        await pipe.reset()
 
         removed = results[0]
 
@@ -570,7 +567,6 @@ class AsyncRedisQueueManager:
             pipe.srem(self._get_collections_set_key(), collection_id)
             pipe.delete(data_key)
             await pipe.execute()
-            await pipe.reset()
 
         return removed > 0
 
@@ -597,7 +593,6 @@ class AsyncRedisQueueManager:
         pipe.sadd(failed_key, *item_ids)
         pipe.sadd(collections_key, collection_id)
         await pipe.execute()
-        await pipe.reset()
 
     async def close(self):
         """Close Redis connection."""
