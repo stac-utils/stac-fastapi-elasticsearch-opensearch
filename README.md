@@ -945,16 +945,6 @@ pip install stac-fastapi-elasticsearch[redis]
   - This makes the modified Items with lowercase identifiers visible to users accessing my-collection in the STAC API
   - Using aliases allows you to switch between different index versions without changing the API endpoint
 
-## Auth
-
-- **Overview**: Authentication is an optional feature that can be enabled through Route Dependencies.
-- **Implementation Options**:
-  - Basic authentication
-  - OAuth2 with Keycloak
-  - Custom route dependencies
-- **Configuration**: Authentication can be configured using the `STAC_FASTAPI_ROUTE_DEPENDENCIES` environment variable.
-- **Examples and Documentation**: Detailed examples and implementation guides can be found in the [examples/auth](examples/auth) directory.
-
 ## Aggregation
 
 - **Supported Aggregations**:

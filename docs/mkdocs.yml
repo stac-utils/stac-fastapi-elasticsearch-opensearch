@@ -71,7 +71,6 @@ nav:
             - links: api/stac_fastapi/core/models/links.md
             - search: api/stac_fastapi/core/models/search.md
           - rate_limit: api/stac_fastapi/core/rate_limit.md
-          - route_dependencies: api/stac_fastapi/core/route_dependencies.md
           - serializers: api/stac_fastapi/core/serializers.md
           - session: api/stac_fastapi/core/session.md
           - utilities: api/stac_fastapi/core/utilities.md
