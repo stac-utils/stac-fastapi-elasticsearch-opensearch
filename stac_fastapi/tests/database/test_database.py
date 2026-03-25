@@ -85,37 +85,42 @@ async def test_item_add_rejects_coerce_false(txn_client, load_test_data, monkeyp
     item["collection"] = collection["id"]
     item["properties"]["sat:absolute_orbit"] = "12345"
 
-    with monkeypatch.context() as context:
-        context.setenv("STAC_FASTAPI_ES_COERCE_GLOBAL", "false")
+    try:
+        with monkeypatch.context() as context:
+            context.setenv("STAC_FASTAPI_ES_COERCE_GLOBAL", "false")
 
+            importlib.reload(mappings_module)
+            importlib.reload(database_index_module)
+            importlib.reload(index_operations_module)
+
+            await backend_database_logic_module.create_index_templates()
+
+            await txn_client.create_collection(
+                api.Collection(**collection), request=MockRequest
+            )
+            await database.async_index_inserter.create_simple_index(
+                database.client, collection["id"]
+            )
+
+            index_kwargs = {
+                "index": index_alias_by_collection_id(collection["id"]),
+                "id": f"{item['id']}|{collection['id']}",
+                "refresh": True,
+            }
+
+            if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
+                index_kwargs["body"] = item
+            else:
+                index_kwargs["document"] = item
+
+            with pytest.raises(IndexingError):
+                await database.client.index(**index_kwargs)
+
+            await txn_client.delete_collection(collection["id"])
+    finally:
         importlib.reload(mappings_module)
         importlib.reload(database_index_module)
         importlib.reload(index_operations_module)
-
-        await backend_database_logic_module.create_index_templates()
-
-        await txn_client.create_collection(
-            api.Collection(**collection), request=MockRequest
-        )
-        await database.async_index_inserter.create_simple_index(
-            database.client, collection["id"]
-        )
-
-        index_kwargs = {
-            "index": index_alias_by_collection_id(collection["id"]),
-            "id": f"{item['id']}|{collection['id']}",
-            "refresh": True,
-        }
-
-        if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
-            index_kwargs["body"] = item
-        else:
-            index_kwargs["document"] = item
-
-        with pytest.raises(IndexingError):
-            await database.client.index(**index_kwargs)
-
-        await txn_client.delete_collection(collection["id"])
 
 
 @pytest.mark.asyncio
@@ -130,47 +135,53 @@ async def test_item_add_accepted_coerce_true(txn_client, load_test_data, monkeyp
     item["collection"] = collection["id"]
     item["properties"]["sat:absolute_orbit"] = "12345"
 
-    with monkeypatch.context() as context:
-        context.setenv("STAC_FASTAPI_ES_COERCE_GLOBAL", "true")
+    try:
+        with monkeypatch.context() as context:
+            context.setenv("STAC_FASTAPI_ES_COERCE_GLOBAL", "true")
 
+            importlib.reload(mappings_module)
+            importlib.reload(database_index_module)
+            importlib.reload(index_operations_module)
+
+            await backend_database_logic_module.create_index_templates()
+
+            await txn_client.create_collection(
+                api.Collection(**collection), request=MockRequest
+            )
+            await database.async_index_inserter.create_simple_index(
+                database.client, collection["id"]
+            )
+
+            index_kwargs = {
+                "index": index_alias_by_collection_id(collection["id"]),
+                "id": f"{item['id']}|{collection['id']}",
+                "refresh": True,
+            }
+
+            if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
+                index_kwargs["body"] = item
+            else:
+                index_kwargs["document"] = item
+
+            await database.client.index(**index_kwargs)
+
+            get_response = await database.client.get(
+                index=index_alias_by_collection_id(collection["id"]),
+                id=f"{item['id']}|{collection['id']}",
+            )
+            if hasattr(get_response, "body"):
+                doc = get_response.body["_source"]
+            else:
+                doc = get_response["_source"]
+
+            assert doc["properties"]["sat:absolute_orbit"] == "12345"
+
+            await txn_client.delete_collection(collection["id"])
+
+    finally:
         importlib.reload(mappings_module)
         importlib.reload(database_index_module)
         importlib.reload(index_operations_module)
-
-        await backend_database_logic_module.create_index_templates()
-
-        await txn_client.create_collection(
-            api.Collection(**collection), request=MockRequest
-        )
-        await database.async_index_inserter.create_simple_index(
-            database.client, collection["id"]
-        )
-
-        index_kwargs = {
-            "index": index_alias_by_collection_id(collection["id"]),
-            "id": f"{item['id']}|{collection['id']}",
-            "refresh": True,
-        }
-
-        if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
-            index_kwargs["body"] = item
-        else:
-            index_kwargs["document"] = item
-
-        await database.client.index(**index_kwargs)
-
-        get_response = await database.client.get(
-            index=index_alias_by_collection_id(collection["id"]),
-            id=f"{item['id']}|{collection['id']}",
-        )
-        if hasattr(get_response, "body"):
-            doc = get_response.body["_source"]
-        else:
-            doc = get_response["_source"]
-
-        assert doc["properties"]["sat:absolute_orbit"] == "12345"
-
-        await txn_client.delete_collection(collection["id"])
 
 
 @pytest.mark.datetime_filtering
