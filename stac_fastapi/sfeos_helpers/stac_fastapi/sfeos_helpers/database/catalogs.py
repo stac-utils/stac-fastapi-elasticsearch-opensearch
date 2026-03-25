@@ -5,12 +5,48 @@ direct Elasticsearch/OpenSearch client access. These functions are used by
 the CatalogsExtension to maintain database-agnostic code in the core module.
 """
 
+import base64
+import json
 import logging
 from typing import Any
 
 from stac_fastapi.sfeos_helpers.mappings import COLLECTIONS_INDEX
 
 logger = logging.getLogger(__name__)
+
+
+def decode_token_to_search_after(token: str | None) -> list | None:
+    """Decode a base64-encoded pagination token to search_after list.
+
+    Args:
+        token: Base64-encoded JSON string representing search_after values.
+
+    Returns:
+        List of sort values for search_after, or None if token is invalid/empty.
+    """
+    if not token:
+        return None
+    try:
+        return json.loads(base64.urlsafe_b64decode(token.encode()).decode())
+    except Exception:
+        return None
+
+
+def encode_search_after_to_token(search_after: list | None) -> str | None:
+    """Encode search_after list to a base64-encoded pagination token.
+
+    Args:
+        search_after: List of sort values from the last hit of the previous page.
+
+    Returns:
+        Base64-encoded JSON string, or None if search_after is empty/invalid.
+    """
+    if not search_after:
+        return None
+    try:
+        return base64.urlsafe_b64encode(json.dumps(search_after).encode()).decode()
+    except Exception:
+        return None
 
 
 def _get_total_hits(hits_container: dict[str, Any]) -> int:
@@ -73,25 +109,31 @@ async def search_collections_by_parent_id_with_pagination_shared(
     Raises:
         Exception: Re-raises any database connection or query errors to the caller.
     """
-    sort_fields = [{"id": {"order": "asc"}}]
-    query_body = {
-        "query": {
-            "bool": {
-                "must": [
-                    {"term": {"parent_ids": catalog_id}},
-                    {"term": {"type": "Collection"}},
-                ]
-            }
-        },
-        "sort": sort_fields,
+    query = {
+        "bool": {
+            "must": [
+                {"term": {"parent_ids": catalog_id}},
+                {"term": {"type": "Collection"}},
+            ]
+        }
+    }
+
+    search_params = {
+        "query": query,
+        "sort": [{"id": {"order": "asc"}}],
         "size": limit,
         "track_total_hits": True,
     }
+
     if search_after:
-        query_body["search_after"] = search_after
+        search_params["search_after"] = search_after
 
     try:
-        search_result = await es_client.search(index=COLLECTIONS_INDEX, body=query_body)
+        # 2. Use the 'body' parameter.
+        # This is the most compatible way across ES and OpenSearch clients.
+        search_result = await es_client.search(
+            index=COLLECTIONS_INDEX, body=search_params  # DO NOT unpack here
+        )
     except Exception as e:
         logger.error(f"Database error searching collections in {catalog_id}: {e}")
         raise
@@ -123,7 +165,7 @@ async def search_sub_catalogs_with_pagination_shared(
     Returns:
         Tuple of (catalogs, total_count, next_token).
     """
-    query_body = {
+    body = {
         "query": {
             "bool": {
                 "must": [
@@ -134,19 +176,19 @@ async def search_sub_catalogs_with_pagination_shared(
         },
         "sort": [{"id": {"order": "asc"}}],
         "size": limit,
-        "track_total_hits": True,  # Added for accuracy
+        "track_total_hits": True,
     }
     if search_after:
-        query_body["search_after"] = search_after
+        body["search_after"] = search_after
 
     try:
-        search_result = await es_client.search(index=COLLECTIONS_INDEX, body=query_body)
+        search_result = await es_client.search(index=COLLECTIONS_INDEX, body=body)
     except Exception as e:
         logger.error(f"Error searching for catalogs in {catalog_id}: {e}")
         raise
 
     hits_container = search_result.get("hits", {})
-    total_hits = _get_total_hits(hits_container)  # Fixed: Robust total hits
+    total_hits = _get_total_hits(hits_container)
     hits = hits_container.get("hits", [])
 
     catalogs = [hit["_source"] for hit in hits]
@@ -200,23 +242,23 @@ async def search_children_with_pagination_shared(
     if resource_type:
         filter_queries.append({"term": {"type": resource_type}})
 
-    query_body = {
+    body = {
         "query": {"bool": {"filter": filter_queries}},
         "sort": [{"id": {"order": "asc"}}],
         "size": limit,
-        "track_total_hits": True,  # Added for accuracy
+        "track_total_hits": True,
     }
     if search_after:
-        query_body["search_after"] = search_after
+        body["search_after"] = search_after
 
     try:
-        search_result = await es_client.search(index=COLLECTIONS_INDEX, body=query_body)
+        search_result = await es_client.search(index=COLLECTIONS_INDEX, body=body)
     except Exception as e:
         logger.error(f"Error searching for children of {catalog_id}: {e}")
         raise
 
     hits_container = search_result.get("hits", {})
-    total_hits = _get_total_hits(hits_container)  # Fixed: Robust total hits
+    total_hits = _get_total_hits(hits_container)
     hits = hits_container.get("hits", [])
 
     children = [hit["_source"] for hit in hits]

@@ -68,7 +68,7 @@ jobs:
 
     strategy:
       matrix:
-        python-version: [ "3.11", "3.12", "3.13", "3.14"]
+        python-version: [ "3.12", "3.13", "3.14"]
         backend: [ "elasticsearch8", "opensearch"]
 
     name: Python ${{ matrix.python-version }} testing with ${{ matrix.backend }}
@@ -97,7 +97,7 @@ jobs:
 
       - name: Install core library stac-fastapi
         run: |
-          pip install ./stac_fastapi/core
+          pip install ./stac_fastapi/core[catalogs]
 
       - name: Install helpers library stac-fastapi
         run: |
