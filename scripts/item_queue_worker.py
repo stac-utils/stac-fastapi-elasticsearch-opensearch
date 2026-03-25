@@ -17,6 +17,9 @@ import asyncio
 import logging
 import time
 
+from redis.exceptions import ConnectionError as RedisConnectionError
+from redis.exceptions import LockError
+
 from stac_fastapi.core.redis_utils import AsyncRedisQueueManager, ItemQueueSettings
 
 logger = logging.getLogger(__name__)
@@ -130,8 +133,27 @@ class ItemQueueWorker:
             try:
                 await lock.extend(additional_time=self._LOCK_TIMEOUT, replace_ttl=True)
                 logger.debug(f"Lock extended: {lock.name}")
+            except LockError:
+                logger.warning(
+                    f"Lock lost (deleted or acquired by another process): {lock.name}",
+                    exc_info=True,
+                )
+                if lock_lost is not None:
+                    lock_lost.set()
+                break
+            except (RedisConnectionError, OSError):
+                logger.error(
+                    f"Redis connection error while extending lock: {lock.name}",
+                    exc_info=True,
+                )
+                if lock_lost is not None:
+                    lock_lost.set()
+                break
             except Exception:
-                logger.warning(f"Failed to extend lock: {lock.name}", exc_info=True)
+                logger.error(
+                    f"Unexpected error extending lock: {lock.name}",
+                    exc_info=True,
+                )
                 if lock_lost is not None:
                     lock_lost.set()
                 break
