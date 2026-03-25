@@ -32,6 +32,7 @@ import os
 from typing import Any, Literal, Protocol
 
 from stac_fastapi.core.utilities import get_bool_env
+from stac_fastapi.sfeos_helpers.models.dynamic_template import DynamicTemplatesModel
 
 logger = logging.getLogger(__name__)
 
@@ -54,7 +55,7 @@ def merge_mappings(base: dict[str, Any], custom: dict[str, Any]) -> None:
 
 
 def merge_dynamic_templates(base: list[dict], custom: list[dict]) -> list[dict]:
-    """Recursively merge custom dynamic templates into base dynamic templates.
+    """Merge custom dynamic templates into base by matching template names.
 
     Custom dynamic templates will overwrite base dynamic templates if keys collide.
 
@@ -65,12 +66,16 @@ def merge_dynamic_templates(base: list[dict], custom: list[dict]) -> list[dict]:
     Returns:
         The merged dynamic templates list.
     """
-    merged = {list(d.keys())[0]: list(d.values())[0] for d in base}
-    print(json.dumps(merged, indent=2))
-    for d in custom:
-        key = list(d.keys())[0]
-        merged[key] = d[key]
-    return [{k: v} for k, v in merged.items()]
+    try:
+        DynamicTemplatesModel(templates=custom)
+        merged = {list(d.keys())[0]: list(d.values())[0] for d in base}
+        for d in custom:
+            key = list(d.keys())[0]
+            merged[key] = d[key]
+        return [{k: v} for k, v in merged.items()]
+    except Exception as e:
+        logger.error(f"Error occurred during custom dynamic template validation: {e}")
+        return base  # Return base templates if validation fails
 
 
 def parse_dynamic_mapping_config(
@@ -126,7 +131,7 @@ def apply_custom_mappings(
 
 
 def get_mappings(
-    is_items: bool,
+    is_items: bool = True,
     dynamic_mapping: str | None = None,
     custom_mappings: str | None = None,
 ) -> dict[str, Any]:
@@ -148,9 +153,9 @@ def get_mappings(
     # Assign the appropriate base mappings and environment variable names based on whether we're configuring items or collections
     _BASE_MAPPINGS = _BASE_ITEMS_MAPPINGS if is_items else _BASE_ES_COLLECTIONS_MAPPINGS
     CUSTOM_MAPPINGS_ = (
-        "STAC_FASTAPI_ES_MAPPINGS"
+        "STAC_FASTAPI_ES_CUSTOM_MAPPINGS"
         if is_items
-        else "STAC_FASTAPI_ES_COLLECTIONS_MAPPINGS"
+        else "STAC_FASTAPI_ES_COLLECTIONS_CUSTOM_MAPPINGS"
     )
     CUSTOM_MAPPINGS_FILE = (
         "STAC_FASTAPI_ES_MAPPINGS_FILE"
@@ -174,7 +179,7 @@ def get_mappings(
     )
 
     apply_custom_mappings(mappings, custom_config)
-    print("ey_ey1", json.dumps(mappings, indent=2))
+
     return mappings
 
 
@@ -214,7 +219,7 @@ def get_custom_config(
     return custom_config
 
 
-def get_dynamic_templete(
+def get_dynamic_template(
     ENV_VAR_CUSTOM_MAPPINGS: str,
     ENV_VAR_CUSTOM_MAPPINGS_FILE: str,
     custom_mappings: str | None = None,
@@ -349,8 +354,8 @@ _BASE_ES_MAPPINGS_DYNAMIC_TEMPLATES = [
     },
 ]
 # ES_MAPPINGS_DYNAMIC_TEMPLATES with environment-based configuration applied at module load time
-ES_MAPPINGS_DYNAMIC_TEMPLATES = get_dynamic_templete(
-    "STAC_FASTAPI_ES_DYNAMIC_TEMPLATES", "STAC_FASTAPI_ES_DYNAMIC_TEMPLATES_FILE"
+ES_MAPPINGS_DYNAMIC_TEMPLATES = get_dynamic_template(
+    "STAC_FASTAPI_ES_CUSTOM_DYNAMIC_TEMPLATES", "STAC_FASTAPI_ES_DYNAMIC_TEMPLATES_FILE"
 )
 
 # Base items mappings without dynamic configuration applied
