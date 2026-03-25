@@ -51,12 +51,14 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
 
             if field.startswith("properties."):
                 result.add(field.removeprefix("properties."))
-            else:
+
+            elif not field.startswith("assets."):
                 result.add(f"properties.{field}")
 
             if field.startswith("assets."):
                 result.add(field.removeprefix("assets."))
-            else:
+
+            elif not field.startswith("properties."):
                 result.add(f"assets.{field}")
 
         return result
