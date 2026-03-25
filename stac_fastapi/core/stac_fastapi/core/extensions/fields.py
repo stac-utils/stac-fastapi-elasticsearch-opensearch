@@ -1,7 +1,5 @@
 """Fields extension."""
 
-from typing import Optional, Set
-
 from pydantic import BaseModel, Field
 
 from stac_fastapi.extensions.core import FieldsExtension as FieldsExtensionBase
@@ -25,14 +23,14 @@ class PostFieldsExtension(request.PostFieldsExtension):
     #         "collection",
     #     }
     # )
-    include: Optional[Set[str]] = set()
-    exclude: Optional[Set[str]] = set()
+    include: set[str] | None = set()
+    exclude: set[str] | None = set()
 
 
 class FieldsExtensionPostRequest(BaseModel):
     """Additional fields and schema for the POST request."""
 
-    fields: Optional[PostFieldsExtension] = Field(PostFieldsExtension())
+    fields: PostFieldsExtension | None = Field(PostFieldsExtension())
 
 
 class FieldsExtension(FieldsExtensionBase):

@@ -23,7 +23,6 @@ from stac_fastapi.core.extensions.aggregation import (
     EsAggregationExtensionGetRequest,
     EsAggregationExtensionPostRequest,
 )
-from stac_fastapi.core.extensions.catalogs import CatalogsExtension
 from stac_fastapi.core.extensions.collections_search import (
     CollectionsSearchEndpointExtension,
 )
@@ -69,7 +68,7 @@ if sentry_enable:
         ca_certs=os.getenv("SENTRY_CA_CERTS", None),
     )
 
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(level=logging.INFO, force=True)
 logger = logging.getLogger(__name__)
 
 TRANSACTIONS_EXTENSIONS = get_bool_env("ENABLE_TRANSACTIONS_EXTENSIONS", default=True)
@@ -114,7 +113,9 @@ search_extensions = [
     SortExtension(),
     TokenPaginationExtension(),
     filter_extension,
-    FreeTextExtension(),
+    FreeTextExtension(
+        conformance_classes=[FreeTextConformanceClasses.SEARCH],
+    ),
 ]
 
 
@@ -216,19 +217,22 @@ if ENABLE_COLLECTIONS_SEARCH_ROUTE:
 
 
 if ENABLE_CATALOGS_ROUTE:
-    catalogs_extension = CatalogsExtension(
-        client=CoreClient(
-            database=database_logic,
-            session=session,
-            post_request_model=collection_search_post_request_model,
-            landing_page_id=os.getenv("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"),
-        ),
-        settings=settings,
-        conformance_classes=[
-            "https://api.stacspec.org/v1.0.0-beta.1/multi-tenant-catalogs",
-        ],
-    )
-    extensions.append(catalogs_extension)
+    try:
+        from stac_fastapi_catalogs_extension import CatalogsExtension
+
+        from stac_fastapi.core.catalogs_client import CatalogsClient
+
+        catalogs_extension = CatalogsExtension(
+            client=CatalogsClient(database=database_logic),
+            enable_transactions=True,
+        )
+        extensions.append(catalogs_extension)
+    except ImportError as e:
+        logger.warning(
+            "ENABLE_CATALOGS_ROUTE is set to true, but the catalogs extension is not installed. "
+            "Please install it with: pip install stac-fastapi-core[catalogs]. "
+            f"Error: {e}"
+        )
 
 
 database_logic.extensions = [type(ext).__name__ for ext in extensions]
@@ -247,6 +251,9 @@ items_get_request_model = create_request_model(
         ),
         filter_extension,
         FieldsExtension(conformance_classes=[FieldsConformanceClasses.ITEMS]),
+        FreeTextExtension(
+            conformance_classes=[FreeTextConformanceClasses.ITEMS],
+        ),
     ],
     request_type="GET",
 )
@@ -254,7 +261,7 @@ items_get_request_model = create_request_model(
 app_config = {
     "title": os.getenv("STAC_FASTAPI_TITLE", "stac-fastapi-opensearch"),
     "description": os.getenv("STAC_FASTAPI_DESCRIPTION", "stac-fastapi-opensearch"),
-    "api_version": os.getenv("STAC_FASTAPI_VERSION", "6.10.2"),
+    "api_version": os.getenv("STAC_FASTAPI_VERSION", "6.14.1"),
     "settings": settings,
     "extensions": extensions,
     "client": CoreClient(
@@ -288,6 +295,17 @@ async def lifespan(app: FastAPI):
 app = api.app
 app.router.lifespan_context = lifespan
 app.root_path = os.getenv("STAC_FASTAPI_ROOT_PATH", "")
+
+try:
+    from stac_fastapi.sfeos_helpers.metrics import get_instrumentator
+
+    metrics = get_instrumentator()
+    metrics.instrument(app).expose(app, endpoint="/metrics")
+except ImportError:
+    logger.warning(
+        "prometheus-fastapi-instrumentator not installed; metrics endpoint disabled"
+    )
+
 # Add rate limit
 setup_rate_limit(app, rate_limit=os.getenv("STAC_FASTAPI_RATE_LIMIT"))
 

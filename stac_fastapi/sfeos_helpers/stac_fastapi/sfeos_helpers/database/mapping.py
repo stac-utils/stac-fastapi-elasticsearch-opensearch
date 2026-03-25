@@ -115,12 +115,13 @@ async def get_queryables_mapping_shared(
 
             queryables_mapping[field_name].append(field_fqn)
 
-    if get_bool_env("STAC_ALTERNATE_ASSETS"):
-        for field_name, q_value in queryables_mapping.items():
-            if field_name.startswith("alternate"):
-                queryables_mapping[f"primary.{field_name}"] = q_value.copy()
-                queryables_mapping[field_name].extend(
-                    queryables_mapping[f"alternate.{field_name}"]
-                )
+            if get_bool_env("STAC_ALTERNATE_ASSETS"):
+                if field_name.startswith("alternate:"):
+                    queryables_mapping[f"primary.{field_name}"].append(field_fqn.copy())
+
+                if field_name.startswith("alternate.alternate:"):
+                    queryables_mapping[field_name.removeprefix("alternate.")].append(
+                        field_fqn.copy()
+                    )
 
     return queryables_mapping
