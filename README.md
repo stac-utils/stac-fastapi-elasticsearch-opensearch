@@ -1140,12 +1140,12 @@ SFEOS provides environment variables to customize Elasticsearch/OpenSearch index
 
 | Variable | Index | Description | Default |
 |----------|------|-------------|---------|
-| `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` | items | JSON string of property mappings for to merge with defaults | None |
-| `STAC_FASTAPI_ES_MAPPINGS_FILE` | items | Path to a JSON file containing property mappings for to merge with defaults | None |
-| `STAC_FASTAPI_ES_COLLECTIONS_MAPPINGS` | collections| Path to a JSON file containing property mappings for to merge with defaults | None |
-| `STAC_FASTAPI_ES_COLLECTIONS_MAPPINGS_FILE` | collections| Path to a JSON file containing property mappings for to merge with defaults | None |
-| `STAC_FASTAPI_ES_CUSTOM_DYNAMIC_TEMPLATES` | dynamic template| Path to a JSON file containing property mappings for to merge with defaults | None |
-| `STAC_FASTAPI_ES_DYNAMIC_TEMPLATES_FILE` | dynamic template| Path to a JSON file containing property mappings for to merge with defaults | None |
+| `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` | items | JSON string of property mappings to merge with defaults | None |
+| `STAC_FASTAPI_ES_MAPPINGS_FILE` | items | Path to a JSON file containing property mappings to merge with defaults | None |
+| `STAC_FASTAPI_ES_COLLECTIONS_MAPPINGS` | collections| JSON string of property mappings to merge with defaults | None |
+| `STAC_FASTAPI_ES_COLLECTIONS_MAPPINGS_FILE` | collections| Path to a JSON file containing property mappings to merge with defaults | None |
+| `STAC_FASTAPI_ES_CUSTOM_DYNAMIC_TEMPLATES` | dynamic template| JSON string of templates to merge with defaults | None |
+| `STAC_FASTAPI_ES_DYNAMIC_TEMPLATES_FILE` | dynamic template| Path to a JSON file containing templates to merge with defaults | None |
 | `STAC_FASTAPI_ES_DYNAMIC_MAPPING` | dynamic mapping | Controls dynamic mapping: `true`, `false`, or `strict` | `true` |
 
 ### Custom Mappings
