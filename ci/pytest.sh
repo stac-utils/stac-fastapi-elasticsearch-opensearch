@@ -7,9 +7,9 @@ echo "\nOpenSearch is ready"
 
 echo "Installing test tools"
 pip install --upgrade pip setuptools wheel
-pip install ./stac_fastapi/core
+pip install ./stac_fastapi/core[catalogs]
 pip install ./stac_fastapi/sfeos_helpers
-pip install ./stac_fastapi/opensearch[dev,server]
+pip install ./stac_fastapi/opensearch[dev,server,catalogs]
 pip install pytest-timeout
 
 echo "Running OpenSearch tests"
