@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Added `ENABLE_STAC_VALIDATOR` environment variable to enable stac-validator for validating STAC items and collections on ingestion. [#663](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/663)
+
 ### Changed
 
 ### Fixed
