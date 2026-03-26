@@ -89,21 +89,9 @@ def geometry_intersects_filter(
         filter_geometry: GeoJSON geometry dict from header filter.
 
     Returns:
-        True if geometries intersect (or if shapely not available), False otherwise.
-
-    Note:
-        Requires shapely to be installed. If shapely is not available,
-        this function returns True (allows access) to avoid breaking
-        deployments without shapely.
+        True if geometries intersect, False otherwise (including on error).
     """
-    try:
-        from shapely.geometry import shape
-    except ImportError:
-        logger.warning(
-            "shapely not installed - geometry filter check skipped. "
-            "Install shapely for full geometry filtering support."
-        )
-        return True  # Allow access if shapely not available
+    from shapely.geometry import shape
 
     try:
         item_shape = shape(item_geometry)
@@ -111,8 +99,7 @@ def geometry_intersects_filter(
         return item_shape.intersects(filter_shape)
     except Exception as e:
         logger.warning(f"Geometry intersection check failed: {e}")
-        # On error, allow access (fail open)
-        return True
+        return False
 
 
 def check_collection_access(
@@ -297,11 +284,6 @@ def compute_geometry_intersection(
         GeoJSON geometry dict representing the intersection, or None if:
         - The list is empty
         - Geometries are disjoint (intersection is empty)
-        - Shapely is not available (returns first geometry as fallback)
-
-    Note:
-        Requires shapely to be installed for actual intersection computation.
-        If shapely is not available, returns the first geometry as fallback.
     """
     if not geometries:
         return None
@@ -309,30 +291,19 @@ def compute_geometry_intersection(
     if len(geometries) == 1:
         return geometries[0]
 
-    try:
-        from shapely.geometry import mapping, shape
-    except ImportError:
-        logger.warning(
-            "shapely not installed - geometry intersection skipped. "
-            "Install shapely for full geometry intersection support."
-        )
-        return geometries[0]
+    from shapely.geometry import mapping, shape
 
-    try:
-        result = shape(geometries[0])
+    result = shape(geometries[0])
 
-        for geom_dict in geometries[1:]:
-            other = shape(geom_dict)
-            result = result.intersection(other)
+    for geom_dict in geometries[1:]:
+        other = shape(geom_dict)
+        result = result.intersection(other)
 
-            if result.is_empty:
-                logger.debug("Geometry intersection resulted in empty geometry")
-                return None
+        if result.is_empty:
+            logger.debug("Geometry intersection resulted in empty geometry")
+            return None
 
-        return mapping(result)
-    except Exception as e:
-        logger.warning(f"Geometry intersection failed: {e}")
-        return geometries[0]
+    return mapping(result)
 
 
 def collect_geometries_for_intersection(
@@ -450,8 +421,10 @@ def _extract_collections_recursive(node: Any) -> Set[str]:
             collections.update(_extract_collections_recursive(arg))
 
     elif op == "not":
-        if args:
-            collections.update(_extract_collections_recursive(args[0]))
+        # NOT semantics cannot be expressed as a simple allowed-set, so we skip
+        # this branch to avoid incorrect intersections (e.g. NOT (collection='X')
+        # means "everything except X", not just "X").
+        pass
 
     return collections
 
