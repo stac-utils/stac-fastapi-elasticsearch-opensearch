@@ -85,19 +85,38 @@ def validate_item(item_data: dict | Item) -> Item:
 
     # Optionally run STAC validator
     if os.getenv("ENABLE_STAC_VALIDATOR"):
-        from stac_validator import stac_validator
+        try:
+            from stac_validator import stac_validator
+        except ImportError as e:
+            raise ImportError(
+                "STAC validator is not installed. "
+                "Install it with: pip install stac-fastapi-core[validator] "
+                "or pip install stac-fastapi-elasticsearch[validator] "
+                "or pip install stac-fastapi-opensearch[validator]"
+            ) from e
 
         stac = stac_validator.StacValidate(verbose=True)
         is_valid = stac.validate_dict(item_dict)
-        logger.info(stac.message)
 
         if not is_valid:
-            error_msg = (
-                stac.message[0].get("error_message", "Unknown validation error")
-                if stac.message
-                else "Validation failed"
-            )
-            raise ValidationError(error_msg)
+            # Log detailed error information
+            if stac.message:
+                error_details = stac.message[0]
+                error_msg = error_details.get(
+                    "error_message", "Unknown validation error"
+                )
+                failed_schema = error_details.get("failed_schema", "")
+                error_verbose = error_details.get("error_verbose", {})
+
+                logger.error(f"STAC validation failed: {error_msg}")
+                if failed_schema:
+                    logger.error(f"Failed schema: {failed_schema}")
+                if error_verbose:
+                    logger.error(f"Validation details: {error_verbose}")
+            else:
+                error_msg = "Validation failed"
+                logger.error("STAC validation failed with no error message")
+            raise ValueError(f"STAC validation failed: {error_msg}")
 
     return item_obj
 
@@ -128,19 +147,43 @@ def validate_collection(collection_data: dict | Collection) -> Collection:
 
     # Optionally run STAC validator
     if os.getenv("ENABLE_STAC_VALIDATOR"):
-        from stac_validator import stac_validator
+        try:
+            from stac_validator import stac_validator
+        except ImportError as e:
+            raise ImportError(
+                "STAC validator is not installed. "
+                "Install it with: pip install stac-fastapi-core[validator] "
+                "or pip install stac-fastapi-elasticsearch[validator] "
+                "or pip install stac-fastapi-opensearch[validator]"
+            ) from e
 
         stac = stac_validator.StacValidate(verbose=True)
         is_valid = stac.validate_dict(collection_dict)
-        logger.info(stac.message)
+        try:
+            logger.info(stac.message)
+        except ValueError:
+            # Logger may be closed during test teardown, ignore
+            pass
 
         if not is_valid:
-            error_msg = (
-                stac.message[0].get("error_message", "Unknown validation error")
-                if stac.message
-                else "Validation failed"
-            )
-            raise ValidationError(error_msg)
+            # Log detailed error information
+            if stac.message:
+                error_details = stac.message[0]
+                error_msg = error_details.get(
+                    "error_message", "Unknown validation error"
+                )
+                failed_schema = error_details.get("failed_schema", "")
+                error_verbose = error_details.get("error_verbose", {})
+
+                logger.error(f"STAC validation failed: {error_msg}")
+                if failed_schema:
+                    logger.error(f"Failed schema: {failed_schema}")
+                if error_verbose:
+                    logger.error(f"Validation details: {error_verbose}")
+            else:
+                error_msg = "Validation failed"
+                logger.error("STAC validation failed with no error message")
+            raise ValueError(f"STAC validation failed: {error_msg}")
 
     return collection_obj
 
