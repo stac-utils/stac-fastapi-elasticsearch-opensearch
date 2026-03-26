@@ -59,6 +59,92 @@ partialItemValidator = TypeAdapter(PartialItem)
 partialCollectionValidator = TypeAdapter(PartialCollection)
 
 
+def validate_item(item_data: dict | Item) -> Item:
+    """Validate a STAC item using optional STAC validator.
+
+    If item_data is already an Item object, Pydantic validation is skipped
+    (assuming it was already validated by FastAPI). Only STAC validator is run if enabled.
+
+    Args:
+        item_data: Item data as dict or Item object.
+
+    Returns:
+        Validated Item object.
+
+    Raises:
+        ValidationError: If validation fails.
+    """
+    # If already an Item object, skip Pydantic validation (FastAPI already validated it)
+    if isinstance(item_data, Item):
+        item_obj = item_data
+        item_dict = item_data.model_dump(mode="json")
+    else:
+        # For dict input, validate with Pydantic first
+        item_obj = Item(**item_data)
+        item_dict = item_data
+
+    # Optionally run STAC validator
+    if os.getenv("ENABLE_STAC_VALIDATOR"):
+        from stac_validator import stac_validator
+
+        stac = stac_validator.StacValidate(verbose=True)
+        is_valid = stac.validate_dict(item_dict)
+        logger.info(stac.message)
+
+        if not is_valid:
+            error_msg = (
+                stac.message[0].get("error_message", "Unknown validation error")
+                if stac.message
+                else "Validation failed"
+            )
+            raise ValidationError(error_msg)
+
+    return item_obj
+
+
+def validate_collection(collection_data: dict | Collection) -> Collection:
+    """Validate a STAC collection using optional STAC validator.
+
+    If collection_data is already a Collection object, Pydantic validation is skipped
+    (assuming it was already validated by FastAPI). Only STAC validator is run if enabled.
+
+    Args:
+        collection_data: Collection data as dict or Collection object.
+
+    Returns:
+        Validated Collection object.
+
+    Raises:
+        ValidationError: If validation fails.
+    """
+    # If already a Collection object, skip Pydantic validation (FastAPI already validated it)
+    if isinstance(collection_data, Collection):
+        collection_obj = collection_data
+        collection_dict = collection_data.model_dump(mode="json")
+    else:
+        # For dict input, validate with Pydantic first
+        collection_obj = Collection(**collection_data)
+        collection_dict = collection_data
+
+    # Optionally run STAC validator
+    if os.getenv("ENABLE_STAC_VALIDATOR"):
+        from stac_validator import stac_validator
+
+        stac = stac_validator.StacValidate(verbose=True)
+        is_valid = stac.validate_dict(collection_dict)
+        logger.info(stac.message)
+
+        if not is_valid:
+            error_msg = (
+                stac.message[0].get("error_message", "Unknown validation error")
+                if stac.message
+                else "Validation failed"
+            )
+            raise ValidationError(error_msg)
+
+    return collection_obj
+
+
 @attr.s
 class CoreClient(AsyncBaseCoreClient):
     """Client for core endpoints defined by the STAC specification.
@@ -1010,6 +1096,12 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         # Convert Pydantic model to dict for uniform processing
         item_dict = item.model_dump(mode="json")
 
+        # Validate single item
+        try:
+            validate_item(item_dict)
+        except ValidationError:
+            raise
+
         # Check if Redis queue is enabled for async item processing
         use_queue = get_bool_env("ENABLE_REDIS_QUEUE", default=False)
 
@@ -1019,15 +1111,22 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 database=self.database, settings=self.settings
             )
             features = item_dict["features"]
-            all_prepped = [
-                bulk_client.preprocess_item(
-                    feature, base_url, BulkTransactionMethod.INSERT
-                )
-                for feature in features
-            ]
-            # Filter out None values (skipped duplicates from DB check)
-            processed_items = [item for item in all_prepped if item is not None]
-            skipped_db_duplicates = len(all_prepped) - len(processed_items)
+            processed_items = []
+            skipped_db_duplicates = 0
+            for feature in features:
+                try:
+                    validated = validate_item(feature)
+                    prepped = bulk_client.preprocess_item(
+                        validated.model_dump(mode="json"),
+                        base_url,
+                        BulkTransactionMethod.INSERT,
+                    )
+                    if prepped is not None:
+                        processed_items.append(prepped)
+                    else:
+                        skipped_db_duplicates += 1
+                except ValidationError:
+                    raise
 
             # Deduplicate items within the batch by ID (keep last occurrence)
             # This matches ES behavior where later items overwrite earlier ones
@@ -1124,6 +1223,12 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             NotFound: If the specified collection is not found in the database.
 
         """
+        # Validate item
+        try:
+            validate_item(item)
+        except ValidationError:
+            raise
+
         item_dict = item.model_dump(mode="json")
         base_url = str(kwargs["request"].base_url)
 
@@ -1250,6 +1355,12 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         Raises:
             ConflictError: If the collection already exists.
         """
+        # Validate collection
+        try:
+            validate_collection(collection)
+        except ValidationError:
+            raise
+
         collection = collection.model_dump(mode="json")
         request = kwargs["request"]
 
@@ -1284,6 +1395,12 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             A STAC collection that has been updated in the database.
 
         """
+        # Validate collection
+        try:
+            validate_collection(collection)
+        except ValidationError:
+            raise
+
         collection = collection.model_dump(mode="json")
 
         request = kwargs["request"]
@@ -1438,7 +1555,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         skipped_db_duplicates = 0
         for item in items.items.values():
             try:
-                validated = Item(**item) if not isinstance(item, Item) else item
+                validated = validate_item(item)
                 prepped = self.preprocess_item(
                     validated.model_dump(mode="json"), base_url, items.method
                 )
