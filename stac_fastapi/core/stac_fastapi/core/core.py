@@ -1096,12 +1096,6 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         # Convert Pydantic model to dict for uniform processing
         item_dict = item.model_dump(mode="json")
 
-        # Validate single item
-        try:
-            validate_item(item_dict)
-        except ValidationError:
-            raise
-
         # Check if Redis queue is enabled for async item processing
         use_queue = get_bool_env("ENABLE_REDIS_QUEUE", default=False)
 
@@ -1173,6 +1167,12 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                     f"Bulk async operation succeeded with {success} actions for collection {collection_id}."
                 )
             return f"Successfully added {success} Items. {skipped} skipped (duplicates). {attempted - success} errors occurred."
+        else:
+            # Validate single item
+            try:
+                validate_item(item_dict)
+            except ValidationError:
+                raise
 
         if use_queue:
             from stac_fastapi.core.redis_utils import AsyncRedisQueueManager
