@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- Fixed bulk duplicate detection: replaced manual `exist_ok` pre-check with ES/OS native `op_type="create"`. Bulk operations now correctly raise `ItemAlreadyExistsError` when `RAISE_ON_BULK_ERROR=true`, or count duplicates as "skipped" when `false`, instead of throwing raw `BulkIndexError`. [#638](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/638)
+
 ### Removed
 
 ### Updated
@@ -50,7 +52,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Added pagination support to GET `/catalogs/{catalog_id}/collections` endpoint with `limit` (default: 10, max: 100) and `token` parameters. Fixed missing `numberReturned` and `numberMatched` context fields. Normalized error handling. [#632](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/632)
 - Fixed `json_patch_item` datetime validation for datetime-based indexes: PATCH operations on datetime fields (`properties/datetime`, `properties/start_datetime`, `properties/end_datetime`) no longer raise an error when the value is unchanged. Validation now compares old and new values before rejecting the operation, consistent with `update_item` (PUT) behavior. [#636](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/636)
 - Fixed issue with POST /collections-search cql2-json filter. [#639](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/639)
-
 
 ## [v6.13.0] - 2026-03-14
 

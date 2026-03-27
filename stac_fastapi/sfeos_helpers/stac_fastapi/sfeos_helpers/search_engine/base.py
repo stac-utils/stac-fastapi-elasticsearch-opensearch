@@ -24,13 +24,15 @@ class BaseIndexInserter(ABC):
 
     @abstractmethod
     async def prepare_bulk_actions(
-        self, collection_id: str, items: List[Dict[str, Any]]
+        self, collection_id: str, items: List[Dict[str, Any]], op_type: str = "create"
     ) -> list[dict[str, Any]]:
         """Prepare bulk actions for multiple items asynchronously.
 
         Args:
             collection_id (str): Collection identifier.
             items (List[Dict[str, Any]]): List of items to process.
+            op_type (str): The operation type for the bulk actions. "create" for insert-only
+                (rejects duplicates), "index" for upsert. Defaults to "create".
 
         Returns:
             List[Dict[str, Any]]: List of bulk actions.
