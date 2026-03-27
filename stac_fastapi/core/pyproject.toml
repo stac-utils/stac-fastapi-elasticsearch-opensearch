@@ -56,7 +56,7 @@ catalogs = [
     "stac-fastapi-catalogs-extension>=0.1.2",
 ]
 validator = [
-    "stac-validator>=3.10.2"
+    "stac-validator~=3.11.0"
 ]
 
 [project.urls]

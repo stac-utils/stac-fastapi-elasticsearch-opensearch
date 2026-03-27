@@ -34,7 +34,12 @@ from stac_fastapi.core.serializers import (
     ItemSerializer,
 )
 from stac_fastapi.core.session import Session
-from stac_fastapi.core.utilities import filter_fields, get_bool_env
+from stac_fastapi.core.utilities import (
+    filter_fields,
+    get_bool_env,
+    validate_collection,
+    validate_item,
+)
 from stac_fastapi.extensions.core.transaction import AsyncBaseTransactionsClient
 from stac_fastapi.extensions.core.transaction.request import (
     PartialCollection,
@@ -57,135 +62,6 @@ logger = logging.getLogger(__name__)
 
 partialItemValidator = TypeAdapter(PartialItem)
 partialCollectionValidator = TypeAdapter(PartialCollection)
-
-
-def validate_item(item_data: dict | Item) -> Item:
-    """Validate a STAC item using optional STAC validator.
-
-    If item_data is already an Item object, Pydantic validation is skipped
-    (assuming it was already validated by FastAPI). Only STAC validator is run if enabled.
-
-    Args:
-        item_data: Item data as dict or Item object.
-
-    Returns:
-        Validated Item object.
-
-    Raises:
-        ValidationError: If validation fails.
-    """
-    # If already an Item object, skip Pydantic validation (FastAPI already validated it)
-    if isinstance(item_data, Item):
-        item_obj = item_data
-        item_dict = item_data.model_dump(mode="json")
-    else:
-        # For dict input, validate with Pydantic first
-        item_obj = Item(**item_data)
-        item_dict = item_data
-
-    # Optionally run STAC validator
-    if os.getenv("ENABLE_STAC_VALIDATOR"):
-        try:
-            from stac_validator import stac_validator
-        except ImportError as e:
-            raise ImportError(
-                "STAC validator is not installed. "
-                "Install it with: pip install stac-fastapi-core[validator] "
-                "or pip install stac-fastapi-elasticsearch[validator] "
-                "or pip install stac-fastapi-opensearch[validator]"
-            ) from e
-
-        stac = stac_validator.StacValidate(verbose=True)
-        is_valid = stac.validate_dict(item_dict)
-
-        if not is_valid:
-            # Log detailed error information
-            if stac.message:
-                error_details = stac.message[0]
-                error_msg = error_details.get(
-                    "error_message", "Unknown validation error"
-                )
-                failed_schema = error_details.get("failed_schema", "")
-                error_verbose = error_details.get("error_verbose", {})
-
-                logger.error(f"STAC validation failed: {error_msg}")
-                if failed_schema:
-                    logger.error(f"Failed schema: {failed_schema}")
-                if error_verbose:
-                    logger.error(f"Validation details: {error_verbose}")
-            else:
-                error_msg = "Validation failed"
-                logger.error("STAC validation failed with no error message")
-            raise ValueError(f"STAC validation failed: {error_msg}")
-
-    return item_obj
-
-
-def validate_collection(collection_data: dict | Collection) -> Collection:
-    """Validate a STAC collection using optional STAC validator.
-
-    If collection_data is already a Collection object, Pydantic validation is skipped
-    (assuming it was already validated by FastAPI). Only STAC validator is run if enabled.
-
-    Args:
-        collection_data: Collection data as dict or Collection object.
-
-    Returns:
-        Validated Collection object.
-
-    Raises:
-        ValidationError: If validation fails.
-    """
-    # If already a Collection object, skip Pydantic validation (FastAPI already validated it)
-    if isinstance(collection_data, Collection):
-        collection_obj = collection_data
-        collection_dict = collection_data.model_dump(mode="json")
-    else:
-        # For dict input, validate with Pydantic first
-        collection_obj = Collection(**collection_data)
-        collection_dict = collection_data
-
-    # Optionally run STAC validator
-    if os.getenv("ENABLE_STAC_VALIDATOR"):
-        try:
-            from stac_validator import stac_validator
-        except ImportError as e:
-            raise ImportError(
-                "STAC validator is not installed. "
-                "Install it with: pip install stac-fastapi-core[validator] "
-                "or pip install stac-fastapi-elasticsearch[validator] "
-                "or pip install stac-fastapi-opensearch[validator]"
-            ) from e
-
-        stac = stac_validator.StacValidate(verbose=True)
-        is_valid = stac.validate_dict(collection_dict)
-        try:
-            logger.info(stac.message)
-        except ValueError:
-            # Logger may be closed during test teardown, ignore
-            pass
-
-        if not is_valid:
-            # Log detailed error information
-            if stac.message:
-                error_details = stac.message[0]
-                error_msg = error_details.get(
-                    "error_message", "Unknown validation error"
-                )
-                failed_schema = error_details.get("failed_schema", "")
-                error_verbose = error_details.get("error_verbose", {})
-
-                logger.error(f"STAC validation failed: {error_msg}")
-                if failed_schema:
-                    logger.error(f"Failed schema: {failed_schema}")
-                if error_verbose:
-                    logger.error(f"Validation details: {error_verbose}")
-            else:
-                error_msg = "Validation failed"
-                logger.error("STAC validation failed with no error message")
-            raise ValueError(f"STAC validation failed: {error_msg}")
-
-    return collection_obj
 
 
 @attr.s

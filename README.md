@@ -109,6 +109,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
       - [Using Pre-built Docker Images](#using-pre-built-docker-images)
       - [Using Docker Compose](#using-docker-compose)
   - [Configuration Reference](#configuration-reference)
+  - [STAC Validation](#stac-validation)
   - [Free-Text Search (`q` parameter)](#free-text-search-q-parameter)
   - [Excluding Fields from Queryables](#excluding-fields-from-queryables)
   - [Datetime-Based Index Management](#datetime-based-index-management)
@@ -703,7 +704,8 @@ You can customize additional settings in your `.env` file:
 | `ENABLE_COLLECTIONS_SEARCH_ROUTE` | Enable the custom `/collections-search` endpoint (both GET and POST methods). When disabled, the custom endpoint will not be available, but collection search extensions will still be available on the core `/collections` endpoint if `ENABLE_COLLECTIONS_SEARCH` is true. | `false` | Optional |
 | `ENABLE_TRANSACTIONS_EXTENSIONS` | Enables or disables the Transactions and Bulk Transactions API extensions. This is useful for deployments where mutating the catalog via the API should be prevented. If set to `true`, the POST `/collections` route for search will be unavailable in the API. | `true` | Optional |
 | `ENABLE_CATALOGS_ROUTE` | Enable the **/catalogs** endpoint for hierarchical catalog browsing and navigation. **Note:** Requires the catalogs extension to be installed via `stac-fastapi-elasticsearch[catalogs]`, `stac-fastapi-opensearch[catalogs]`, or `stac-fastapi-core[catalogs]`. See [Catalogs Route](#catalogs-route) for installation instructions. | `false` | Optional |
-| `ENABLE_STAC_VALIDATOR` | Enable [stac-validator](https://github.com/stac-utils/stac-validator) to validate STAC items and collections on ingestion. This is especially useful for items or collections that use extensions. | `false` | Optional |
+| `ENABLE_STAC_VALIDATOR` | Enable [stac-validator](https://github.com/stac-utils/stac-validator) to validate STAC items and collections on ingestion. This is especially useful for items or collections that use extensions. Use with `SCHEMA CACHE SIZE`| `false` | Optional |
+| `SCHEMA_CACHE_SIZE` | Configures the maximum number of STAC schemas that can be cached in memory. Used with `ENABLE_STAC_VALIDATOR` to cache validated schemas for faster subsequent validations.| `32` | Optional |
 | `STAC_INDEX_ASSETS` | Controls if Assets are indexed when added to Elasticsearch/Opensearch. This allows asset fields to be included in search queries. | `false` | Optional |
 
 ### 5. Limits & Performance
@@ -748,6 +750,87 @@ You can customize additional settings in your `.env` file:
 
 > [!NOTE]
 > The variables `ES_HOST`, `ES_PORT`, `ES_USE_SSL`, `ES_VERIFY_CERTS` and `ES_TIMEOUT` apply to both Elasticsearch and OpenSearch backends, so there is no need to rename the key names to `OS_` even if you're using OpenSearch.
+
+## STAC Validation
+
+STAC FastAPI provides comprehensive validation of STAC items and collections on ingestion to ensure data quality and compliance with the STAC specification.
+
+### Native Pydantic Validation
+
+By default, all STAC items and collections are validated using **Pydantic** (via `stac-pydantic`) during ingestion. This validation:
+
+- Enforces required fields and correct data types
+- Validates spatial and temporal properties
+- Ensures compliance with the STAC specification
+- Provides fast, built-in validation without external dependencies
+
+This validation is always enabled and happens automatically when items or collections are created or updated through the API.
+
+### Optional STAC Validator
+
+For stricter validation beyond Pydantic's type checking, you can enable the **stac-validator** package, which validates STAC data against official JSON schemas and extension specifications.
+
+#### Enabling STAC Validator
+
+1. **Install the validator**:
+   ```bash
+   pip install stac-fastapi-core[validator]
+   # or
+   pip install stac-fastapi-elasticsearch[validator]
+   # or
+   pip install stac-fastapi-opensearch[validator]
+   ```
+
+2. **Enable validation via environment variable**:
+   ```bash
+   export ENABLE_STAC_VALIDATOR=true
+   ```
+
+When enabled, the STAC validator will:
+- Validate items and collections against the official STAC JSON schemas
+- Check compliance with STAC extensions (e.g., EO, SAR, Projection)
+- Catch schema violations that Pydantic doesn't enforce
+- Provide detailed error messages with schema paths and validation details
+
+#### Schema Cache Configuration
+
+The STAC validator caches JSON schemas to improve performance. Control the cache size with the `SCHEMA_CACHE_SIZE` environment variable:
+
+```bash
+# Set cache size to 64 schemas (default is 32)
+export SCHEMA_CACHE_SIZE=64
+```
+
+**When to adjust**:
+- **Increase** if you use many STAC extensions or custom schemas
+- **Decrease** if memory is constrained
+- **Default (32)** works well for most deployments
+
+#### Example: Validation in Action
+
+```bash
+# Enable STAC validator with custom cache size
+export ENABLE_STAC_VALIDATOR=true
+export SCHEMA_CACHE_SIZE=64
+
+# Now POST/PUT requests will validate against STAC schemas
+curl -X POST http://localhost:8000/collections \
+  -H "Content-Type: application/json" \
+  -d @collection.json
+```
+
+If validation fails, you'll receive a detailed error response:
+```json
+{
+  "detail": "STAC validation failed: 'eo:bands' does not match any of the regexes: '^(?!eo:)'. Error is in assets -> SR_B2"
+}
+```
+
+#### Performance Considerations
+
+- **Pydantic validation** is very fast and always enabled
+- **STAC validator** adds overhead due to schema downloads and validation; enable only if you need strict schema compliance
+- Schema caching significantly improves performance for repeated validations
 
 ## Free-Text Search (`q` parameter)
 

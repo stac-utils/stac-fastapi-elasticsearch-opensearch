@@ -9,9 +9,15 @@ import os
 import re
 from typing import Any
 
+from stac_pydantic import Collection
+from stac_pydantic import Item as PydanticItem
+
 from stac_fastapi.types.stac import Item
 
 MAX_LIMIT = 10000
+SCHEMA_CACHE_SIZE = int(os.getenv("SCHEMA_CACHE_SIZE", "32"))
+
+logger = logging.getLogger(__name__)
 
 
 def get_bool_env(name: str, default: bool | str = False) -> bool:
@@ -273,3 +279,107 @@ def get_excluded_from_items(obj: dict, field_path: str) -> None:
             return
 
     current.pop(final, None)
+
+
+def validate_stac(
+    stac_data: dict | PydanticItem | Collection,
+    pydantic_model: type[PydanticItem] | type[Collection] = PydanticItem,
+) -> PydanticItem | Collection:
+    """Validate a STAC item or collection using optional STAC validator.
+
+    If stac_data is already a Pydantic model object, Pydantic validation is skipped
+    (assuming it was already validated by FastAPI). Only STAC validator is run if enabled.
+
+    Args:
+        stac_data: STAC data as dict or Pydantic model object.
+        pydantic_model: The Pydantic model class to use for validation (Item or Collection).
+
+    Returns:
+        Validated STAC object (Item or Collection).
+
+    Raises:
+        ValueError: If STAC validation fails.
+    """
+    # If already a Pydantic model object, skip Pydantic validation (FastAPI already validated it)
+    if isinstance(stac_data, (PydanticItem, Collection)):
+        stac_obj = stac_data
+        stac_dict = stac_data.model_dump(mode="json")
+    else:
+        # For dict input, validate with Pydantic first
+        stac_obj = pydantic_model(**stac_data)
+        stac_dict = stac_data
+
+    # Optionally run STAC validator
+    if get_bool_env("ENABLE_STAC_VALIDATOR"):
+        try:
+            from stac_validator import stac_validator
+        except ImportError as e:
+            raise ImportError(
+                "STAC validator is not installed. "
+                "Install it with: pip install stac-fastapi-core[validator] "
+                "or pip install stac-fastapi-elasticsearch[validator] "
+                "or pip install stac-fastapi-opensearch[validator]"
+            ) from e
+
+        from stac_validator.utilities import set_schema_cache_size
+
+        set_schema_cache_size(SCHEMA_CACHE_SIZE)
+
+        stac = stac_validator.StacValidate(verbose=True)
+        is_valid = stac.validate_dict(stac_dict)
+
+        if not is_valid:
+            # Log detailed error information
+            if stac.message:
+                error_details = stac.message[0]
+                error_msg = error_details.get(
+                    "error_message", "Unknown validation error"
+                )
+                failed_schema = error_details.get("failed_schema", "")
+                error_verbose = error_details.get("error_verbose", {})
+
+                logger.error(f"STAC validation failed: {error_msg}")
+                if failed_schema:
+                    logger.error(f"Failed schema: {failed_schema}")
+                if error_verbose:
+                    logger.error(f"Validation details: {error_verbose}")
+            else:
+                error_msg = "Validation failed"
+                logger.error("STAC validation failed with no error message")
+            raise ValueError(f"STAC validation failed: {error_msg}")
+
+    return stac_obj
+
+
+def validate_item(stac_data: dict | PydanticItem) -> PydanticItem:
+    """Validate a STAC item using optional STAC validator.
+
+    Convenience wrapper around validate_stac for items.
+
+    Args:
+        stac_data: Item data as dict or Item object.
+
+    Returns:
+        Validated Item object.
+
+    Raises:
+        ValueError: If validation fails.
+    """
+    return validate_stac(stac_data, pydantic_model=PydanticItem)
+
+
+def validate_collection(collection_data: dict | Collection) -> Collection:
+    """Validate a STAC collection using optional STAC validator.
+
+    Convenience wrapper around validate_stac for collections.
+
+    Args:
+        collection_data: Collection data as dict or Collection object.
+
+    Returns:
+        Validated Collection object.
+
+    Raises:
+        ValueError: If validation fails.
+    """
+    return validate_stac(collection_data, pydantic_model=Collection)

@@ -163,3 +163,45 @@ async def test_stac_validator_allows_valid_item(txn_client, load_test_data):
             await txn_client.delete_collection(test_collection["id"])
         except Exception:
             pass
+
+
+def test_schema_cache_size_environment_variable():
+    """Test that SCHEMA_CACHE_SIZE environment variable is properly read."""
+    # Test that the environment variable is read correctly
+    # The default value should be 32 when not set
+    original_value = os.environ.get("SCHEMA_CACHE_SIZE")
+
+    try:
+        # Test default value (32)
+        if "SCHEMA_CACHE_SIZE" in os.environ:
+            del os.environ["SCHEMA_CACHE_SIZE"]
+
+        # Import after clearing env var to get default
+        import importlib
+
+        import stac_fastapi.core.utilities as utilities_module
+
+        importlib.reload(utilities_module)
+        assert utilities_module.SCHEMA_CACHE_SIZE == 32
+
+        # Test custom value
+        os.environ["SCHEMA_CACHE_SIZE"] = "64"
+        importlib.reload(utilities_module)
+        assert utilities_module.SCHEMA_CACHE_SIZE == 64
+
+        # Test another custom value
+        os.environ["SCHEMA_CACHE_SIZE"] = "16"
+        importlib.reload(utilities_module)
+        assert utilities_module.SCHEMA_CACHE_SIZE == 16
+    finally:
+        # Clean up and restore original value
+        if original_value is not None:
+            os.environ["SCHEMA_CACHE_SIZE"] = original_value
+        else:
+            os.environ.pop("SCHEMA_CACHE_SIZE", None)
+        # Reload to restore original state
+        import importlib
+
+        import stac_fastapi.core.utilities as utilities_module
+
+        importlib.reload(utilities_module)
