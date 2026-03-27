@@ -6,13 +6,32 @@ from pydantic import BaseModel, field_validator, model_validator
 
 
 class MappingConfig(BaseModel):
-    """mapping model."""
+    """Defines the mapping configuration applied to fields.
+
+    This model represents the mapping settings to control how matched fields are indexed and stored.
+
+    Attributes:
+        type: The field data type (e.g., "text", "keyword", "long", "date").
+    """
 
     type: str
 
 
 class DynamicTemplateDefinition(BaseModel):
-    """Dynamic Template model."""
+    """Defines a dynamic template.
+
+    A dynamic template controls how fields are mapped based on
+    field names, paths, or detected data types.
+
+    Attributes:
+        match_mapping_type: Match fields by detected data type.
+        unmatch_mapping_type: Exclude fields by detected data type.
+        match: Pattern to match field names.
+        unmatch: Pattern to exclude field names.
+        path_match: Pattern to match full dotted field paths.
+        path_unmatch: Pattern to exclude full dotted field paths.
+        mapping: Mapping configuration applied to matched fields.
+    """
 
     match_mapping_type: str | None = None
     unmatch_mapping_type: str | None = None
@@ -50,7 +69,16 @@ class DynamicTemplatesModel(BaseModel):
     @classmethod
     def validate_single_key_dict(cls, v):
         """Validate that each item in the templates list is a dict with exactly one key."""
-        for item in v:
+        for i, item in enumerate(v):
             if len(item) != 1:
-                raise ValueError("Each template must have exactly one key")
+                raise ValueError(
+                    f"Template at index {i} must have exactly one key, got {len(item)}"
+                )
+
+            template_name = next(iter(item.keys()))
+            if not template_name or not isinstance(template_name, str):
+                raise ValueError(
+                    f"Template name must be a non-empty string, got {template_name}"
+                )
+
         return v
