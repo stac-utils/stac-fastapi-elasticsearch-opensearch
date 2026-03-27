@@ -1037,7 +1037,6 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                     prepped = bulk_client.preprocess_item(
                         validated.model_dump(mode="json"),
                         base_url,
-                        BulkTransactionMethod.INSERT,
                     )
                     if prepped is not None:
                         processed_items.append(prepped)
@@ -1060,20 +1059,11 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 return f"No items to insert. {skipped_batch_duplicates} items were skipped (duplicates)."
 
             if use_queue:
-                from stac_fastapi.core.redis_utils import AsyncRedisQueueManager
+                from stac_fastapi.core.utilities import queue_items_if_enabled
 
-                queue_manager = await AsyncRedisQueueManager.create()
-                try:
-                    queue_len = await queue_manager.queue_items(
-                        collection_id, processed_items
-                    )
-                    logger.info(
-                        f"Queued {len(processed_items)} items for collection '{collection_id}'. "
-                        f"Queue length: {queue_len}"
-                    )
-                    return f"Successfully queued {len(processed_items)} items for processing."
-                finally:
-                    await queue_manager.close()
+                result = await queue_items_if_enabled(collection_id, processed_items)
+                if result:
+                    return result
 
             success, errors = await self.database.bulk_async(
                 collection_id=collection_id,
@@ -1108,34 +1098,25 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 validate_item(item_dict)
             except ValidationError:
                 raise
-          
-        if use_queue:
-            from stac_fastapi.core.redis_utils import AsyncRedisQueueManager
 
-            bulk_client = BulkTransactionsClient(
-                database=self.database, settings=self.settings
+            if use_queue:
+                from stac_fastapi.core.utilities import queue_items_if_enabled
+
+                bulk_client = BulkTransactionsClient(
+                    database=self.database, settings=self.settings
+                )
+                processed_item = bulk_client.preprocess_item(item_dict, base_url)
+
+                result = await queue_items_if_enabled(
+                    collection_id, processed_item, item_ids=item_dict.get("id")
+                )
+                if result:
+                    return result
+
+            await self.database.create_item(
+                item_dict, base_url=base_url, upsert=False, **kwargs
             )
-            processed_item = bulk_client.preprocess_item(item_dict, base_url)
-
-            queue_manager = await AsyncRedisQueueManager.create()
-            try:
-                queue_len = await queue_manager.queue_items(
-                    collection_id, processed_item
-                )
-                logger.info(
-                    f"Queued item '{item_dict.get('id')}' for collection '{collection_id}'. "
-                    f"Queue length: {queue_len}"
-                )
-                return (
-                    f"Successfully queued item '{item_dict.get('id')}' for processing."
-                )
-            finally:
-                await queue_manager.close()
-
-        await self.database.create_item(
-            item_dict, base_url=base_url, upsert=False, **kwargs
-        )
-        return ItemSerializer.db_to_stac(item_dict, base_url)
+            return ItemSerializer.db_to_stac(item_dict, base_url)
 
     @overrides
     async def update_item(
@@ -1437,7 +1418,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         """Create es engine."""
         self.client = self.settings.create_client
 
-    def preprocess_item(self, item: stac_types.Item, base_url) -> stac_types.Item:
+    def preprocess_item(self, item: stac_types.Item, base_url: str) -> stac_types.Item:
         """Preprocess an item to match the data model.
 
         Args:

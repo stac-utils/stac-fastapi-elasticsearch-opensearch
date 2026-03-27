@@ -14,6 +14,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 
+- Refactored Redis queue handling in `create_item()` by extracting duplicate queue code into a new `queue_items_if_enabled()` utility function in `utilities.py`. [#663](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/663)
+
 ### Fixed
 
 - Fixed bulk duplicate detection: replaced manual `exist_ok` pre-check with ES/OS native `op_type="create"`. Bulk operations now correctly raise `ItemAlreadyExistsError` when `RAISE_ON_BULK_ERROR=true`, or count duplicates as "skipped" when `false`, instead of throwing raw `BulkIndexError`. [#638](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/638)
