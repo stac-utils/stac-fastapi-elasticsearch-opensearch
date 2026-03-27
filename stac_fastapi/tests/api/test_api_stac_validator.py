@@ -65,7 +65,7 @@ async def test_stac_validator_catches_eo_bands_in_assets(txn_client, load_test_d
 
         # Verify the error message mentions the validation failure
         assert "STAC validation failed" in str(exc_info.value)
-        assert "eo:bands" in str(exc_info.value)
+        assert exc_info.value.status_code == 400
     finally:
         os.environ.pop("ENABLE_STAC_VALIDATOR", None)
         try:

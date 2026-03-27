@@ -19,6 +19,25 @@ SCHEMA_CACHE_SIZE = int(os.getenv("SCHEMA_CACHE_SIZE", "32"))
 
 logger = logging.getLogger(__name__)
 
+# Singleton STAC validator instance to reuse schema cache across requests
+_stac_validator_instance = None
+
+
+def _get_stac_validator():
+    """Get or create the singleton STAC validator instance.
+
+    This ensures the schema cache persists across all validation calls
+    within the application lifetime, improving performance.
+    """
+    global _stac_validator_instance
+    if _stac_validator_instance is None:
+        from stac_validator import stac_validator
+        from stac_validator.utilities import set_schema_cache_size
+
+        set_schema_cache_size(SCHEMA_CACHE_SIZE)
+        _stac_validator_instance = stac_validator.StacValidate(verbose=True)
+    return _stac_validator_instance
+
 
 def get_bool_env(name: str, default: bool | str = False) -> bool:
     """
@@ -312,7 +331,8 @@ def validate_stac(
     # Optionally run STAC validator
     if get_bool_env("ENABLE_STAC_VALIDATOR"):
         try:
-            from stac_validator import stac_validator
+            # Check if stac_validator is installed
+            import stac_validator  # noqa: F401
         except ImportError as e:
             raise ImportError(
                 "STAC validator is not installed. "
@@ -321,22 +341,36 @@ def validate_stac(
                 "or pip install stac-fastapi-opensearch[validator]"
             ) from e
 
-        from stac_validator.utilities import set_schema_cache_size
-
-        set_schema_cache_size(SCHEMA_CACHE_SIZE)
-
-        stac = stac_validator.StacValidate(verbose=True)
+        # Use singleton validator instance to reuse schema cache
+        stac = _get_stac_validator()
         is_valid = stac.validate_dict(stac_dict)
 
         if not is_valid:
             # Log detailed error information
+            error_msg = "Validation failed"
             if stac.message:
                 error_details = stac.message[0]
-                error_msg = error_details.get(
-                    "error_message", "Unknown validation error"
-                )
+                error_msg = error_details.get("error_message", "")
                 failed_schema = error_details.get("failed_schema", "")
                 error_verbose = error_details.get("error_verbose", {})
+
+                # Build comprehensive error message
+                if error_msg:
+                    # Use the error_message as-is if available
+                    pass
+                elif error_verbose and isinstance(error_verbose, dict):
+                    # Try to extract meaningful details from error_verbose
+                    validator = error_verbose.get("validator", "")
+                    path = error_verbose.get("path_in_document", [])
+
+                    if validator:
+                        error_msg = f"{validator}"
+                        if path:
+                            error_msg += f" at {'.'.join(str(p) for p in path)}"
+                    else:
+                        error_msg = "Unknown validation error"
+                else:
+                    error_msg = "Unknown validation error"
 
                 logger.error(f"STAC validation failed: {error_msg}")
                 if failed_schema:
@@ -344,7 +378,6 @@ def validate_stac(
                 if error_verbose:
                     logger.error(f"Validation details: {error_verbose}")
             else:
-                error_msg = "Validation failed"
                 logger.error("STAC validation failed with no error message")
             raise ValueError(f"STAC validation failed: {error_msg}")
 
