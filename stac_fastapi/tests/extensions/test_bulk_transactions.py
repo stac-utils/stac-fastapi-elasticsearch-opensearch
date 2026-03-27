@@ -103,6 +103,8 @@ async def test_feature_collection_insert(
 
 @pytest.mark.asyncio
 async def test_bulk_item_insert_validation_error(ctx, core_client, bulk_txn_client):
+    from fastapi import HTTPException
+
     items = {}
     # Add 9 valid items
     for _ in range(9):
@@ -118,8 +120,8 @@ async def test_bulk_item_insert_validation_error(ctx, core_client, bulk_txn_clie
     )  # Remove datetime to make it invalid
     items[invalid_item["id"]] = invalid_item
 
-    # The bulk insert should raise a ValidationError due to the invalid item
-    with pytest.raises(ValidationError):
+    # The bulk insert should raise an HTTPException due to the invalid item
+    with pytest.raises(HTTPException):
         bulk_txn_client.bulk_item_insert(Items(items=items), refresh=True)
 
 

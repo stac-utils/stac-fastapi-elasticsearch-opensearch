@@ -24,7 +24,7 @@ services:
       - DATABASE_REFRESH=true
       - ENABLE_COLLECTIONS_SEARCH_ROUTE=true
       - ENABLE_CATALOGS_ROUTE=true
-      - ENABLE_STAC_VALIDATOR=true
+      - ENABLE_STAC_VALIDATOR=false
       - REDIS_ENABLE=true
       - REDIS_HOST=redis
       - REDIS_PORT=6379
@@ -66,7 +66,7 @@ services:
       - STAC_FASTAPI_RATE_LIMIT=200/minute
       - ENABLE_COLLECTIONS_SEARCH_ROUTE=true
       - ENABLE_CATALOGS_ROUTE=true
-      - ENABLE_STAC_VALIDATOR=true
+      - ENABLE_STAC_VALIDATOR=false
       - REDIS_ENABLE=true
       - REDIS_HOST=redis
       - REDIS_PORT=6379
