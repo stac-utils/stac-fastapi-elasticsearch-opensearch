@@ -298,7 +298,7 @@ def validate_stac(
         Validated STAC object (Item or Collection).
 
     Raises:
-        ValueError: If STAC validation fails.
+        ValidationError: If STAC validation fails.
     """
     # If already a Pydantic model object, skip Pydantic validation (FastAPI already validated it)
     if isinstance(stac_data, (PydanticItem, Collection)):

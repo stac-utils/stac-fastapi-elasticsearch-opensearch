@@ -1042,8 +1042,10 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                         processed_items.append(prepped)
                     else:
                         skipped_db_duplicates += 1
-                except ValidationError:
-                    raise
+                except (ValidationError, ValueError) as e:
+                    raise HTTPException(
+                        status_code=400, detail=f"Invalid item in collection: {e}"
+                    )
 
             # Deduplicate items within the batch by ID (keep last occurrence)
             seen_ids: dict = {}
@@ -1096,8 +1098,8 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             # Validate single item
             try:
                 validate_item(item_dict)
-            except ValidationError:
-                raise
+            except (ValidationError, ValueError) as e:
+                raise HTTPException(status_code=400, detail=f"Invalid item: {e}")
 
             if use_queue:
                 from stac_fastapi.core.utilities import queue_items_if_enabled
@@ -1140,8 +1142,8 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         # Validate item
         try:
             validate_item(item)
-        except ValidationError:
-            raise
+        except (ValidationError, ValueError) as e:
+            raise HTTPException(status_code=400, detail=f"Invalid item: {e}")
 
         item_dict = item.model_dump(mode="json")
         base_url = str(kwargs["request"].base_url)
@@ -1270,8 +1272,8 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         # Validate collection
         try:
             validate_collection(collection)
-        except ValidationError:
-            raise
+        except (ValidationError, ValueError) as e:
+            raise HTTPException(status_code=400, detail=f"Invalid collection: {e}")
 
         collection = collection.model_dump(mode="json")
         request = kwargs["request"]
@@ -1310,8 +1312,8 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         # Validate collection
         try:
             validate_collection(collection)
-        except ValidationError:
-            raise
+        except (ValidationError, ValueError) as e:
+            raise HTTPException(status_code=400, detail=f"Invalid collection: {e}")
 
         collection = collection.model_dump(mode="json")
 
@@ -1468,9 +1470,9 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
                     validated.model_dump(mode="json"), base_url
                 )
                 processed_items.append(prepped)
-            except ValidationError:
+            except (ValidationError, ValueError) as e:
                 # Immediately raise on the first invalid item (strict mode)
-                raise
+                raise HTTPException(status_code=400, detail=f"Invalid item: {e}")
 
         # Deduplicate items within the batch by ID (keep last occurrence)
         seen_ids: dict = {}

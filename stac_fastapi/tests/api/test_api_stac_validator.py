@@ -205,3 +205,53 @@ def test_schema_cache_size_environment_variable():
         import stac_fastapi.core.utilities as utilities_module
 
         importlib.reload(utilities_module)
+
+
+@pytest.mark.asyncio
+async def test_stac_validator_returns_400_on_invalid_item(app_client, load_test_data):
+    """Test that invalid STAC items return 400 Bad Request response."""
+    os.environ["ENABLE_STAC_VALIDATOR"] = "true"
+
+    try:
+        # Create a test collection first
+        test_collection = load_test_data("test_collection.json")
+        test_collection["id"] = f"test-collection-400-{uuid.uuid4()}"
+
+        resp = await app_client.post(
+            "/collections",
+            json=test_collection,
+        )
+        assert resp.status_code == 201
+
+        # Create invalid item with EO v2.0.0 extension (eo:bands not allowed in assets)
+        base_item = load_test_data("test_item.json")
+        invalid_item = deepcopy(base_item)
+        invalid_item["id"] = "invalid-item-400"
+        invalid_item["collection"] = test_collection["id"]
+        invalid_item["stac_extensions"] = [
+            "https://stac-extensions.github.io/eo/v2.0.0/schema.json"
+        ]
+        # EO v2.0.0 doesn't allow eo:bands in assets - should fail validation
+
+        # POST invalid item and verify 400 response
+        resp = await app_client.post(
+            f"/collections/{test_collection['id']}/items",
+            json=invalid_item,
+        )
+
+        # Should return 400 Bad Request, not 500
+        assert (
+            resp.status_code == 400
+        ), f"Expected 400, got {resp.status_code}: {resp.text}"
+
+        # Verify error message mentions validation failure
+        response_data = resp.json()
+        assert "detail" in response_data
+        assert "Invalid item" in response_data["detail"]
+
+    finally:
+        os.environ.pop("ENABLE_STAC_VALIDATOR", None)
+        try:
+            await app_client.delete(f"/collections/{test_collection['id']}")
+        except Exception:
+            pass
