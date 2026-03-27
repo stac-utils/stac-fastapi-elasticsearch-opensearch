@@ -35,9 +35,10 @@ from stac_fastapi.core.serializers import (
 )
 from stac_fastapi.core.session import Session
 from stac_fastapi.core.utilities import (
+    async_validate_collection,
+    async_validate_item,
     filter_fields,
     get_bool_env,
-    validate_collection,
     validate_item,
 )
 from stac_fastapi.extensions.core.transaction import AsyncBaseTransactionsClient
@@ -1033,7 +1034,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             skipped_db_duplicates = 0
             for feature in features:
                 try:
-                    validated = validate_item(feature)
+                    validated = await async_validate_item(feature)
                     prepped = bulk_client.preprocess_item(
                         validated.model_dump(mode="json"),
                         base_url,
@@ -1097,7 +1098,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         else:
             # Validate single item
             try:
-                validate_item(item_dict)
+                await async_validate_item(item_dict)
             except (ValidationError, ValueError) as e:
                 raise HTTPException(status_code=400, detail=f"Invalid item: {e}")
 
@@ -1141,7 +1142,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         """
         # Validate item
         try:
-            validate_item(item)
+            await async_validate_item(item)
         except (ValidationError, ValueError) as e:
             raise HTTPException(status_code=400, detail=f"Invalid item: {e}")
 
@@ -1271,7 +1272,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         """
         # Validate collection
         try:
-            validate_collection(collection)
+            await async_validate_collection(collection)
         except (ValidationError, ValueError) as e:
             raise HTTPException(status_code=400, detail=f"Invalid collection: {e}")
 
@@ -1311,7 +1312,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         """
         # Validate collection
         try:
-            validate_collection(collection)
+            await async_validate_collection(collection)
         except (ValidationError, ValueError) as e:
             raise HTTPException(status_code=400, detail=f"Invalid collection: {e}")
 

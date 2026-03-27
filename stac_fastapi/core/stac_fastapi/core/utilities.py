@@ -4,6 +4,7 @@ This module contains functions for transforming geospatial coordinates,
 such as converting bounding boxes to polygon representations.
 """
 
+import asyncio
 import logging
 import os
 import re
@@ -416,6 +417,60 @@ def validate_collection(collection_data: dict | Collection) -> Collection:
         ValueError: If validation fails.
     """
     return validate_stac(collection_data, pydantic_model=Collection)
+
+
+async def async_validate_stac(
+    stac_data: dict | PydanticItem | Collection,
+    pydantic_model: type[PydanticItem] | type[Collection] = PydanticItem,
+) -> PydanticItem | Collection:
+    """Asynchronous wrapper for validate_stac.
+
+    Offloads the CPU-bound STAC validation to a separate thread to prevent
+    blocking the FastAPI asyncio event loop during API requests.
+
+    Args:
+        stac_data: STAC data as dict or Pydantic model.
+        pydantic_model: The Pydantic model class to use for validation.
+
+    Returns:
+        Validated STAC object (Item or Collection).
+
+    Raises:
+        ValueError: If validation fails.
+    """
+    return await asyncio.to_thread(validate_stac, stac_data, pydantic_model)
+
+
+async def async_validate_item(stac_data: dict | PydanticItem) -> PydanticItem:
+    """Async convenience wrapper around async_validate_stac for items.
+
+    Args:
+        stac_data: Item data as dict or Item object.
+
+    Returns:
+        Validated Item object.
+
+    Raises:
+        ValueError: If validation fails.
+    """
+    return await async_validate_stac(stac_data, pydantic_model=PydanticItem)
+
+
+async def async_validate_collection(
+    collection_data: dict | Collection,
+) -> Collection:
+    """Async convenience wrapper around async_validate_stac for collections.
+
+    Args:
+        collection_data: Collection data as dict or Collection object.
+
+    Returns:
+        Validated Collection object.
+
+    Raises:
+        ValueError: If validation fails.
+    """
+    return await async_validate_stac(collection_data, pydantic_model=Collection)
 
 
 async def queue_items_if_enabled(
