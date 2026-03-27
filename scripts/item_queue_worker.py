@@ -160,6 +160,7 @@ class ItemQueueWorker:
                     success, errors = await self.db.bulk_async(
                         collection_id=collection_id,
                         processed_items=items,
+                        op_type="index",
                     )
                 except Exception:
                     logger.exception(

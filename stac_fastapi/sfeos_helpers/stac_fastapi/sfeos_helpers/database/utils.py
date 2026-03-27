@@ -64,6 +64,28 @@ DATETIME_RETRY_STRATEGY = AsyncRetrying(
 )
 
 
+def separate_bulk_conflict_errors(
+    errors: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Separate 409 conflict errors from other errors in bulk operation results.
+
+    Args:
+        errors: List of error dicts from ES/OS bulk helpers.
+
+    Returns:
+        Tuple of (conflict_errors, other_errors).
+    """
+    conflict_errors = []
+    other_errors = []
+    for error in errors:
+        action_data: dict[str, Any] = next(iter(error.values()), {})
+        if action_data.get("status") == 409:
+            conflict_errors.append(error)
+        else:
+            other_errors.append(error)
+    return conflict_errors, other_errors
+
+
 class ItemAlreadyExistsError(ConflictError):
     """Error raised when attempting to create an item that already exists.
 
@@ -77,6 +99,30 @@ class ItemAlreadyExistsError(ConflictError):
         self.item_id = item_id
         self.collection_id = collection_id
         message = f"Item {item_id} in collection {collection_id} already exists"
+        super().__init__(message)
+
+
+class BulkIndexError(Exception):
+    """Error raised when non-conflict errors occur during a bulk indexing operation.
+
+    Raised in strict mode (RAISE_ON_BULK_ERROR=true) when the bulk operation
+    encounters errors other than 409 conflicts (e.g., mapping errors, connection
+    errors). Conflict errors are handled separately as skips or
+    ItemAlreadyExistsError.
+
+    Attributes:
+        errors: The list of non-conflict error dicts from the bulk operation.
+        collection_id: The ID of the collection being indexed.
+    """
+
+    def __init__(self, errors: list[dict[str, Any]], collection_id: str):
+        """Initialize the error with the list of errors and collection ID."""
+        self.errors = errors
+        self.collection_id = collection_id
+        message = (
+            f"Bulk indexing for collection {collection_id} encountered "
+            f"{len(errors)} non-conflict error(s): {errors}"
+        )
         super().__init__(message)
 
 
