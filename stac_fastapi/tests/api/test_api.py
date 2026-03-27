@@ -110,7 +110,6 @@ async def test_api_headers(app_client):
 @pytest.mark.asyncio
 async def test_router(app):
     api_routes = set([f"{list(route.methods)[0]} {route.path}" for route in app.routes])
-    print(f"API routes: {api_routes}")
     assert len(api_routes - ROUTES) == 0
 
 
