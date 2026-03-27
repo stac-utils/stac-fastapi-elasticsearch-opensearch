@@ -135,13 +135,15 @@ class DatetimeIndexInserter(BaseIndexInserter):
         )
 
     async def prepare_bulk_actions(
-        self, collection_id: str, items: list[dict[str, Any]]
+        self, collection_id: str, items: list[dict[str, Any]], op_type: str = "create"
     ) -> list[dict[str, Any]]:
         """Prepare bulk actions for multiple items.
 
         Args:
             collection_id (str): Collection identifier.
             items (list[dict[str, Any]]): List of items to process.
+            op_type (str): The operation type for the bulk actions. "create" for insert-only
+                (rejects duplicates), "index" for upsert. Defaults to "create".
 
         Returns:
             list[dict[str, Any]]: List of bulk actions ready for execution.
@@ -160,6 +162,7 @@ class DatetimeIndexInserter(BaseIndexInserter):
 
         actions = [
             {
+                "_op_type": op_type,
                 "_index": first_target_index,
                 "_id": mk_item_id(first_item["id"], first_item["collection"]),
                 "_source": first_item,
@@ -172,6 +175,7 @@ class DatetimeIndexInserter(BaseIndexInserter):
             )
             actions.append(
                 {
+                    "_op_type": op_type,
                     "_index": target_index,
                     "_id": mk_item_id(item["id"], item["collection"]),
                     "_source": item,
@@ -391,13 +395,15 @@ class SimpleIndexInserter(BaseIndexInserter):
         return index_alias_by_collection_id(collection_id)
 
     async def prepare_bulk_actions(
-        self, collection_id: str, items: list[dict[str, Any]]
+        self, collection_id: str, items: list[dict[str, Any]], op_type: str = "create"
     ) -> list[dict[str, Any]]:
         """Prepare bulk actions for simple indexing.
 
         Args:
             collection_id (str): Collection identifier.
             items (list[dict[str, Any]]): List of items to process.
+            op_type (str): The operation type for the bulk actions. "create" for insert-only
+                (rejects duplicates), "index" for upsert. Defaults to "create".
 
         Returns:
             list[dict[str, Any]]: List of bulk actions with collection alias as target.
@@ -405,6 +411,7 @@ class SimpleIndexInserter(BaseIndexInserter):
         target_index = index_alias_by_collection_id(collection_id)
         return [
             {
+                "_op_type": op_type,
                 "_index": target_index,
                 "_id": mk_item_id(item["id"], item["collection"]),
                 "_source": item,

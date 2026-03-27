@@ -482,13 +482,12 @@ class CatalogSerializer(Serializer):
 
         catalog_links = resolve_links(catalog.get("links", []), base_url)
 
-        if "CatalogsExtension" in extensions:
-            # Generate poly-hierarchy links using helper method
-            context_parent_id = request.path_params.get("parent_catalog_id")
-            dynamic_links = cls.generate_poly_hierarchy_links(
-                base_url, catalog.get("id"), "Catalog", parent_ids, context_parent_id
-            )
-            catalog_links.extend(dynamic_links)
+        # Generate poly-hierarchy links using helper method (catalog_id is the context)
+        context_parent_id = request.path_params.get("parent_catalog_id")
+        dynamic_links = cls.generate_poly_hierarchy_links(
+            base_url, catalog.get("id"), "Catalog", parent_ids, context_parent_id
+        )
+        catalog_links.extend(dynamic_links)
 
         catalog["links"] = catalog_links
         return stac_types.Catalog(**catalog)

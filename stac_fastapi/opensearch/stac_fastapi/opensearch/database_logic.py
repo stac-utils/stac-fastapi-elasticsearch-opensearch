@@ -7,11 +7,13 @@ from copy import deepcopy
 from typing import Any, Iterable, Type
 
 import attr
+import opensearchpy.helpers as helpers
 import orjson
 from fastapi import HTTPException
-from opensearchpy import RequestError, exceptions, helpers
-from opensearchpy.helpers.query import Q
-from opensearchpy.helpers.search import Search
+from opensearchpy import Q, Search
+from opensearchpy.exceptions import ConflictError as OSConflictError
+from opensearchpy.exceptions import NotFoundError as OSNotFoundError
+from opensearchpy.exceptions import RequestError
 from starlette.requests import Request
 
 import stac_fastapi.sfeos_helpers.filter as filter_module
@@ -47,7 +49,15 @@ from stac_fastapi.sfeos_helpers.database import (
     retry_on_connection_error,
     retry_on_datetime_not_found,
     return_date,
+    search_children_with_pagination_shared,
+    search_collections_by_parent_id_with_pagination_shared,
+    search_sub_catalogs_with_pagination_shared,
+    update_catalog_in_index_shared,
     validate_refresh,
+)
+from stac_fastapi.sfeos_helpers.database.catalogs import (
+    decode_token_to_search_after,
+    encode_search_after_to_token,
 )
 from stac_fastapi.sfeos_helpers.database.query import (
     ES_MAX_URL_LENGTH,
@@ -407,7 +417,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 )
 
             return response["hits"]["hits"][0]["_source"]
-        except exceptions.NotFoundError:
+        except OSNotFoundError:
             raise NotFoundError(
                 f"Item {item_id} does not exist inside Collection {collection_id}"
             )
@@ -903,7 +913,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         try:
             es_response = await search_task
-        except exceptions.NotFoundError:
+        except OSNotFoundError:
             raise NotFoundError(f"Collections '{collection_ids}' do not exist")
 
         count_timeout = float(os.getenv("COUNT_TIMEOUT", 0.5))
@@ -998,7 +1008,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         try:
             db_response = await search_task
-        except exceptions.NotFoundError:
+        except OSNotFoundError:
             raise NotFoundError(f"Collections '{collection_ids}' do not exist")
 
         return db_response
@@ -1048,124 +1058,81 @@ class DatabaseLogic(BaseDatabaseLogic):
         except Exception:
             return False
 
-    async def async_prep_create_item(
-        self, item: Item, base_url: str, exist_ok: bool = False
-    ) -> Item:
+    async def async_prep_create_item(self, item: Item, base_url: str) -> Item:
         """
         Preps an item for insertion into the database.
 
         Args:
             item (Item): The item to be prepped for insertion.
             base_url (str): The base URL used to create the item's self URL.
-            exist_ok (bool): Indicates whether the item can exist already.
 
         Returns:
             Item: The prepped item.
 
-        Raises:
-            ItemAlreadyExistsError: If the item already exists in the database.
-
         """
         await self.check_collection_exists(collection_id=item["collection"])
 
-        if not exist_ok and await self._check_item_exists_in_collection(
-            item["collection"], item["id"]
-        ):
-            raise ItemAlreadyExistsError(item["id"], item["collection"])
-
         return self.item_serializer.stac_to_db(item, base_url)
 
-    async def bulk_async_prep_create_item(
-        self, item: Item, base_url: str, exist_ok: bool = False
-    ) -> Item | None:
+    async def bulk_async_prep_create_item(self, item: Item, base_url: str) -> Item:
         """
-        Prepare an item for insertion into the database.
+        Validate and serialize an item for bulk indexing.
 
-        This method performs pre-insertion preparation on the given `item`, such as:
+        This method performs pre-insertion validation and serialization:
         - Verifying that the collection the item belongs to exists.
-        - Optionally checking if an item with the same ID already exists in the database.
         - Serializing the item into a database-compatible format.
+
+        Note: Duplicate item detection is not performed here. It is handled
+        atomically by the database engine via ``op_type="create"`` during
+        the bulk indexing phase.
 
         Args:
             item (Item): The item to be prepared for insertion.
             base_url (str): The base URL used to construct the item's self URL.
-            exist_ok (bool): Indicates whether the item can already exist in the database.
-                            If False, a `ConflictError` is raised if the item exists.
 
         Returns:
             Item: The prepared item, serialized into a database-compatible format.
 
         Raises:
             NotFoundError: If the collection that the item belongs to does not exist in the database.
-            ConflictError: If an item with the same ID already exists in the collection and `exist_ok` is False,
-                        and `RAISE_ON_BULK_ERROR` is set to `true`.
         """
         logger.debug(f"Preparing item {item['id']} in collection {item['collection']}.")
 
         # Check if the collection exists
         await self.check_collection_exists(collection_id=item["collection"])
-
-        # Check if the item already exists in the database (across all datetime indexes)
-        if not exist_ok and await self._check_item_exists_in_collection(
-            item["collection"], item["id"]
-        ):
-            if self.async_settings.raise_on_bulk_error:
-                raise ItemAlreadyExistsError(item["id"], item["collection"])
-            else:
-                logger.warning(
-                    f"Item {item['id']} in collection {item['collection']} already exists. "
-                    "Skipping as `RAISE_ON_BULK_ERROR` is set to false."
-                )
-                return None
 
         # Serialize the item into a database-compatible format
         prepped_item = self.item_serializer.stac_to_db(item, base_url)
         logger.debug(f"Item {item['id']} prepared successfully.")
         return prepped_item
 
-    def bulk_sync_prep_create_item(
-        self, item: Item, base_url: str, exist_ok: bool = False
-    ) -> Item | None:
+    def bulk_sync_prep_create_item(self, item: Item, base_url: str) -> Item:
         """
-        Prepare an item for insertion into the database.
+        Validate and serialize an item for bulk indexing.
 
-        This method performs pre-insertion preparation on the given `item`, such as:
+        This method performs pre-insertion validation and serialization:
         - Verifying that the collection the item belongs to exists.
-        - Optionally checking if an item with the same ID already exists in the database.
         - Serializing the item into a database-compatible format.
+
+        Note: Duplicate item detection is not performed here. It is handled
+        atomically by the database engine via ``op_type="create"`` during
+        the bulk indexing phase.
 
         Args:
             item (Item): The item to be prepared for insertion.
             base_url (str): The base URL used to construct the item's self URL.
-            exist_ok (bool): Indicates whether the item can already exist in the database.
-                            If False, a `ConflictError` is raised if the item exists.
 
         Returns:
             Item: The prepared item, serialized into a database-compatible format.
 
         Raises:
             NotFoundError: If the collection that the item belongs to does not exist in the database.
-            ConflictError: If an item with the same ID already exists in the collection and `exist_ok` is False,
-                        and `RAISE_ON_BULK_ERROR` is set to `true`.
         """
         logger.debug(f"Preparing item {item['id']} in collection {item['collection']}.")
 
         # Check if the collection exists
         if not self.sync_client.exists(index=COLLECTIONS_INDEX, id=item["collection"]):
             raise NotFoundError(f"Collection {item['collection']} does not exist")
-
-        # Check if the item already exists in the database (across all datetime indexes)
-        if not exist_ok and self._check_item_exists_in_collection_sync(
-            item["collection"], item["id"]
-        ):
-            if self.sync_settings.raise_on_bulk_error:
-                raise ItemAlreadyExistsError(item["id"], item["collection"])
-            else:
-                logger.warning(
-                    f"Item {item['id']} in collection {item['collection']} already exists. "
-                    "Skipping as `RAISE_ON_BULK_ERROR` is set to false."
-                )
-                return None
 
         # Serialize the item into a database-compatible format
         prepped_item = self.item_serializer.stac_to_db(item, base_url)
@@ -1177,7 +1144,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         self,
         item: Item,
         base_url: str = "",
-        exist_ok: bool = False,
+        upsert: bool = False,
         **kwargs: Any,
     ):
         """Database logic for creating one item.
@@ -1185,11 +1152,13 @@ class DatabaseLogic(BaseDatabaseLogic):
         Args:
             item (Item): The item to be created.
             base_url (str, optional): The base URL for the item. Defaults to an empty string.
-            exist_ok (bool, optional): Whether to allow the item to exist already. Defaults to False.
+            upsert (bool, optional): If False (default), performs an insert-only operation
+                that rejects duplicates (op_type="create"). If True, performs an upsert
+                that overwrites existing items (op_type="index").
             **kwargs: Additional keyword arguments like refresh.
 
         Raises:
-            ConflictError: If the item already exists in the database.
+            ItemAlreadyExistsError: If the item already exists and upsert is False.
 
         Returns:
             None
@@ -1210,7 +1179,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             f"Creating item {item_id} in collection {collection_id} with refresh={refresh}"
         )
 
-        if exist_ok and isinstance(self.async_index_inserter, DatetimeIndexInserter):
+        if upsert and isinstance(self.async_index_inserter, DatetimeIndexInserter):
             existing_item = await self.get_one_item(collection_id, item_id)
             primary_datetime_name = self.async_index_inserter.primary_datetime_name
 
@@ -1235,20 +1204,22 @@ class DatabaseLogic(BaseDatabaseLogic):
                         "properties/end_datetime"
                     )
 
-        item = await self.async_prep_create_item(
-            item=item, base_url=base_url, exist_ok=exist_ok
-        )
+        item = await self.async_prep_create_item(item=item, base_url=base_url)
 
         target_index = await self.async_index_inserter.get_target_index(
             collection_id, item
         )
 
-        await self.client.index(
-            index=target_index,
-            id=mk_item_id(item_id, collection_id),
-            body=item,
-            refresh=refresh,
-        )
+        try:
+            await self.client.index(
+                index=target_index,
+                id=mk_item_id(item_id, collection_id),
+                body=item,
+                refresh=refresh,
+                **({} if upsert else {"op_type": "create"}),
+            )
+        except OSConflictError:
+            raise ItemAlreadyExistsError(item_id, collection_id)
 
     @retry_on_connection_error
     async def merge_patch_item(
@@ -1354,11 +1325,11 @@ class DatabaseLogic(BaseDatabaseLogic):
                     body={"script": script},
                     refresh=True,
                 )
-        except exceptions.NotFoundError:
+        except OSNotFoundError:
             raise NotFoundError(
                 f"Item {item_id} does not exist inside Collection {collection_id}"
             )
-        except exceptions.RequestError as exc:
+        except RequestError as exc:
             raise HTTPException(
                 status_code=400, detail=exc.info["error"]["caused_by"]
             ) from exc
@@ -1421,7 +1392,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 body={"query": {"term": {"_id": mk_item_id(item_id, collection_id)}}},
                 refresh=refresh,
             )
-        except exceptions.NotFoundError:
+        except OSNotFoundError:
             raise NotFoundError(
                 f"Item {item_id} in collection {collection_id} not found"
             )
@@ -1441,7 +1412,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 index=index_name, params={"allow_no_indices": "false"}
             )
             return mapping
-        except exceptions.NotFoundError:
+        except OSNotFoundError:
             raise NotFoundError(f"Mapping for index {index_name} not found")
 
     @retry_on_connection_error
@@ -1544,7 +1515,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             collection = await self.client.get(
                 index=COLLECTIONS_INDEX, id=collection_id
             )
-        except exceptions.NotFoundError:
+        except OSNotFoundError:
             raise NotFoundError(f"Collection {collection_id} not found")
 
         return collection["_source"]
@@ -1552,7 +1523,7 @@ class DatabaseLogic(BaseDatabaseLogic):
     @retry_on_connection_error
     async def update_collection(
         self, collection_id: str, collection: Collection, **kwargs: Any
-    ):
+    ) -> None:
         """Update a collection from the database.
 
         Args:
@@ -1581,20 +1552,31 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         await self.find_collection(collection_id=collection_id)
 
-        if collection_id != collection["id"]:
+        # Convert dict to proper format if needed
+        collection_dict = (
+            collection
+            if isinstance(collection, dict)
+            else collection.model_dump()
+            if hasattr(collection, "model_dump")
+            else dict(collection)
+        )
+
+        if collection_id != collection_dict.get("id"):
             logger.info(
-                f"Collection ID change detected: {collection_id} -> {collection['id']}"
+                f"Collection ID change detected: {collection_id} -> {collection_dict.get('id')}"
             )
 
-            await self.create_collection(collection, refresh=refresh)
+            await self.create_collection(collection_dict, refresh=refresh)
 
             await self.client.reindex(
                 body={
-                    "dest": {"index": f"{ITEMS_INDEX_PREFIX}{collection['id']}"},
+                    "dest": {
+                        "index": f"{ITEMS_INDEX_PREFIX}{collection_dict.get('id')}"
+                    },
                     "source": {"index": f"{ITEMS_INDEX_PREFIX}{collection_id}"},
                     "script": {
                         "lang": "painless",
-                        "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection["id"]}'); ctx._source.collection = '{collection["id"]}' ;""",
+                        "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection_dict.get("id")}'); ctx._source.collection = '{collection_dict.get("id")}' ;""",
                     },
                 },
                 wait_for_completion=True,
@@ -1608,12 +1590,12 @@ class DatabaseLogic(BaseDatabaseLogic):
                 "ENABLE_COLLECTIONS_SEARCH_ROUTE"
             ):
                 # Convert bbox to bbox_shape for geospatial queries (ES/OS specific)
-                add_bbox_shape_to_collection(collection)
+                add_bbox_shape_to_collection(collection_dict)
 
             await self.client.index(
                 index=COLLECTIONS_INDEX,
                 id=collection_id,
-                body=collection,
+                body=collection_dict,
                 refresh=refresh,
             )
 
@@ -1691,7 +1673,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 refresh=True,
             )
 
-        except exceptions.RequestError as exc:
+        except RequestError as exc:
             raise HTTPException(
                 status_code=400, detail=exc.info["error"]["caused_by"]
             ) from exc
@@ -1751,6 +1733,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         self,
         collection_id: str,
         processed_items: list[Item],
+        op_type: str = "create",
         **kwargs: Any,
     ) -> tuple[int, list[dict[str, Any]]]:
         """
@@ -1759,6 +1742,8 @@ class DatabaseLogic(BaseDatabaseLogic):
         Args:
             collection_id (str): The ID of the collection to which the items belong.
             processed_items (list[Item]): A list of `Item` objects to be inserted into the database.
+            op_type (str): The operation type for the bulk actions. "create" for insert-only
+                (rejects duplicates at ES/OS level), "index" for upsert. Defaults to "create".
             **kwargs (Any): Additional keyword arguments, including:
                 - refresh (str, optional): Whether to refresh the index after the bulk insert.
                 Can be "true", "false", or "wait_for". Defaults to the value of `self.sync_settings.database_refresh`.
@@ -1789,7 +1774,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         # Log the bulk insert attempt
         logger.info(
-            f"Performing bulk insert for collection {collection_id} with refresh={refresh}"
+            f"Performing bulk insert for collection {collection_id} with refresh={refresh}, op_type={op_type}"
         )
 
         # Handle empty processed_items
@@ -1797,9 +1782,15 @@ class DatabaseLogic(BaseDatabaseLogic):
             logger.warning(f"No items to insert for collection {collection_id}")
             return 0, []
 
-        raise_on_error = self.async_settings.raise_on_bulk_error
+        # When op_type="create", force raise_on_error=False so that 409 conflicts
+        # are returned in the errors list instead of raising BulkIndexError.
+        # The caller is responsible for separating conflicts from other errors.
+        if op_type == "create":
+            raise_on_error = False
+        else:
+            raise_on_error = self.async_settings.raise_on_bulk_error
         actions = await self.async_index_inserter.prepare_bulk_actions(
-            collection_id, processed_items
+            collection_id, processed_items, op_type=op_type
         )
 
         success, errors = await helpers.async_bulk(
@@ -1818,14 +1809,17 @@ class DatabaseLogic(BaseDatabaseLogic):
         self,
         collection_id: str,
         processed_items: list[Item],
+        op_type: str = "create",
         **kwargs: Any,
     ) -> tuple[int, list[dict[str, Any]]]:
         """
-        Perform a bulk insert of items into the database asynchronously.
+        Perform a bulk insert of items into the database synchronously.
 
         Args:
             collection_id (str): The ID of the collection to which the items belong.
             processed_items (list[Item]): A list of `Item` objects to be inserted into the database.
+            op_type (str): The operation type for the bulk actions. "create" for insert-only
+                (rejects duplicates at ES/OS level), "index" for upsert. Defaults to "create".
             **kwargs (Any): Additional keyword arguments, including:
                 - refresh (str, optional): Whether to refresh the index after the bulk insert.
                 Can be "true", "false", or "wait_for". Defaults to the value of `self.sync_settings.database_refresh`.
@@ -1856,7 +1850,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         # Log the bulk insert attempt
         logger.info(
-            f"Performing bulk insert for collection {collection_id} with refresh={refresh}"
+            f"Performing bulk insert for collection {collection_id} with refresh={refresh}, op_type={op_type}"
         )
 
         # Handle empty processed_items
@@ -1864,10 +1858,15 @@ class DatabaseLogic(BaseDatabaseLogic):
             logger.warning(f"No items to insert for collection {collection_id}")
             return 0, []
 
-        raise_on_error = self.sync_settings.raise_on_bulk_error
+        # When op_type="create", force raise_on_error=False so that 409 conflicts
+        # are returned in the errors list instead of raising BulkIndexError.
+        if op_type == "create":
+            raise_on_error = False
+        else:
+            raise_on_error = self.sync_settings.raise_on_bulk_error
         success, errors = helpers.bulk(
             self.sync_client,
-            mk_actions(collection_id, processed_items),
+            mk_actions(collection_id, processed_items, op_type=op_type),
             refresh=refresh,
             raise_on_error=raise_on_error,
         )
@@ -2015,7 +2014,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             if response["_source"].get("type") != "Catalog":
                 raise NotFoundError(f"Catalog {catalog_id} not found")
             return response["_source"]
-        except exceptions.NotFoundError:
+        except OSNotFoundError:
             raise NotFoundError(f"Catalog {catalog_id} not found")
 
     @retry_on_connection_error
@@ -2031,3 +2030,250 @@ class DatabaseLogic(BaseDatabaseLogic):
             id=catalog_id,
             refresh=refresh,
         )
+
+    @retry_on_connection_error
+    async def get_catalog_children(
+        self,
+        catalog_id: str,
+        limit: int,
+        token: str | None,
+        request: Any = None,
+        resource_type: str | None = None,
+    ) -> tuple[list[dict[str, Any]], int | None, str | None]:
+        """Get children of a catalog (both sub-catalogs and collections)."""
+        # Decode token to search_after
+        search_after = decode_token_to_search_after(token)
+
+        (
+            children,
+            total_hits,
+            next_search_after,
+        ) = await search_children_with_pagination_shared(
+            es_client=self.client,
+            catalog_id=catalog_id,
+            limit=limit,
+            search_after=search_after,
+            resource_type=resource_type,
+        )
+
+        # Encode next_search_after to token
+        next_token = encode_search_after_to_token(next_search_after)
+
+        return children, total_hits if total_hits is not None else 0, next_token
+
+    @retry_on_connection_error
+    async def get_catalog_collections(
+        self,
+        catalog_id: str,
+        limit: int,
+        token: str | None,
+        request: Any = None,
+    ) -> tuple[list[dict[str, Any]], int | None, str | None]:
+        """Get collections within a catalog."""
+        # Decode token to search_after
+        search_after = decode_token_to_search_after(token)
+
+        (
+            collections,
+            total_hits,
+            next_search_after,
+        ) = await search_collections_by_parent_id_with_pagination_shared(
+            es_client=self.client,
+            catalog_id=catalog_id,
+            limit=limit,
+            search_after=search_after,
+        )
+
+        # Encode next_search_after to token
+        next_token = encode_search_after_to_token(next_search_after)
+
+        return collections, total_hits if total_hits is not None else 0, next_token
+
+    @retry_on_connection_error
+    async def get_catalog_catalogs(
+        self,
+        catalog_id: str,
+        limit: int,
+        token: str | None,
+        request: Any = None,
+    ) -> tuple[list[dict[str, Any]], int | None, str | None]:
+        """Get sub-catalogs within a catalog."""
+        # Decode token to search_after
+        search_after = decode_token_to_search_after(token)
+
+        (
+            catalogs,
+            total_hits,
+            next_search_after,
+        ) = await search_sub_catalogs_with_pagination_shared(
+            es_client=self.client,
+            catalog_id=catalog_id,
+            limit=limit,
+            search_after=search_after,
+        )
+
+        # Encode next_search_after to token
+        next_token = encode_search_after_to_token(next_search_after)
+
+        return catalogs, total_hits if total_hits is not None else 0, next_token
+
+    @retry_on_connection_error
+    async def create_catalog_catalog(
+        self,
+        catalog_id: str,
+        catalog: Any,
+        request: Any,
+    ) -> Any:
+        """Create a sub-catalog within a catalog."""
+        # Ensure parent catalog exists
+        await self.find_catalog(catalog_id)
+
+        if "parent_ids" not in catalog:
+            catalog["parent_ids"] = []
+
+        if catalog_id not in catalog["parent_ids"]:
+            catalog["parent_ids"].append(catalog_id)
+
+        await self.create_catalog(catalog, refresh=self.async_settings.database_refresh)
+        return catalog
+
+    @retry_on_connection_error
+    async def create_catalog_collection(
+        self,
+        catalog_id: str,
+        collection: Any,
+        request: Any,
+    ) -> Any:
+        """Create a collection within a catalog."""
+        # Ensure parent catalog exists
+        await self.find_catalog(catalog_id)
+
+        if "parent_ids" not in collection:
+            collection["parent_ids"] = []
+
+        if catalog_id not in collection["parent_ids"]:
+            collection["parent_ids"].append(catalog_id)
+
+        await self.create_collection(
+            collection, refresh=self.async_settings.database_refresh
+        )
+        return collection
+
+    @retry_on_connection_error
+    async def get_catalog_collection(
+        self,
+        catalog_id: str,
+        collection_id: str,
+        request: Any,
+    ) -> Any:
+        """Get a specific collection within a catalog.
+
+        Args:
+            catalog_id (str): The ID of the parent catalog.
+            collection_id (str): The ID of the collection.
+            request (Any): The request object.
+
+        Returns:
+            The collection object.
+
+        Raises:
+            NotFoundError: If the collection or catalog does not exist or are not related.
+        """
+        # Ensure parent catalog exists
+        await self.find_catalog(catalog_id)
+
+        # Get collection
+        collection = await self.find_collection(collection_id)
+
+        # Verify relationship: catalog_id must be in parent_ids
+        parent_ids = collection.get("parent_ids", [])
+        if catalog_id not in parent_ids:
+            raise NotFoundError(
+                f"Collection {collection_id} is not linked to catalog {catalog_id}"
+            )
+
+        return collection
+
+    @retry_on_connection_error
+    async def get_catalog_collection_items(
+        self,
+        catalog_id: str,
+        collection_id: str,
+        request: Any,
+        bbox: list[float] | None = None,
+        datetime: str | None = None,
+        limit: int = 10,
+        sortby: str | None = None,
+        filter_expr: str | None = None,
+        filter_lang: str | None = None,
+        token: str | None = None,
+        query: str | None = None,
+        fields: list[str] | None = None,
+    ) -> Any:
+        """Get items for a collection within a catalog."""
+        # Check hierarchy
+        await self.get_catalog_collection(catalog_id, collection_id, request)
+
+        # We need to construct a Search object for items.
+        search = self.make_search()
+        search = self.apply_collections_filter(search, [collection_id])
+
+        if bbox:
+            search = self.apply_bbox_filter(search, bbox)
+
+        datetime_search = None
+        if datetime:
+            search, datetime_search = self.apply_datetime_filter(search, datetime)
+
+        sort_param = None
+        if sortby:
+            pass
+
+        return await self.execute_search(
+            search=search,
+            limit=limit or 10,
+            token=token,
+            sort=sort_param,
+            collection_ids=[collection_id],
+            datetime_search=datetime_search,
+        )
+
+    @retry_on_connection_error
+    async def get_catalog_collection_item(
+        self,
+        catalog_id: str,
+        collection_id: str,
+        item_id: str,
+        request: Any,
+    ) -> Any:
+        """Get a specific item from a collection within a catalog."""
+        # Check hierarchy
+        await self.get_catalog_collection(catalog_id, collection_id, request)
+
+        return await self.get_one_item(collection_id, item_id)
+
+    @retry_on_connection_error
+    async def update_catalog(
+        self,
+        catalog_id: str,
+        catalog: Any,
+        request: Any,
+    ) -> Any:
+        """Update a catalog."""
+        return await update_catalog_in_index_shared(
+            es_client=self.client,
+            catalog_id=catalog_id,
+            catalog=catalog,
+            refresh=self.async_settings.database_refresh,
+        )
+
+    @retry_on_connection_error
+    async def get_catalog(
+        self,
+        catalog_id: str,
+        request: Any,
+        settings: dict,
+        limit: int = 100,
+    ) -> Any:
+        """Get a specific catalog."""
+        return await self.find_catalog(catalog_id)

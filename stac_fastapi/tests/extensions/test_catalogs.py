@@ -361,6 +361,12 @@ async def test_get_catalog_collection_items(catalogs_app_client, load_test_data,
     create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
     assert create_resp.status_code == 201
 
+    # Link the collection to the catalog
+    link_resp = await catalogs_app_client.post(
+        f"/catalogs/{test_catalog['id']}/collections", json={"id": ctx.collection["id"]}
+    )
+    assert link_resp.status_code == 201
+
     # Get items from a collection through the catalog route
     resp = await catalogs_app_client.get(
         f"/catalogs/{test_catalog['id']}/collections/{ctx.collection['id']}/items"
@@ -414,6 +420,12 @@ async def test_get_catalog_collection_item(catalogs_app_client, load_test_data, 
 
     create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
     assert create_resp.status_code == 201
+
+    # Link the collection to the catalog
+    link_resp = await catalogs_app_client.post(
+        f"/catalogs/{test_catalog['id']}/collections", json={"id": ctx.collection["id"]}
+    )
+    assert link_resp.status_code == 201
 
     # Get a specific item through the catalog route
     resp = await catalogs_app_client.get(
@@ -2894,57 +2906,6 @@ async def test_catalogs_list_includes_parent_links(catalogs_app_client, load_tes
 
 
 @pytest.mark.asyncio
-async def test_catalogs_list_includes_child_links(catalogs_app_client, load_test_data):
-    """Test that GET /catalogs list includes child links for catalogs with children."""
-    # Create parent catalog
-    parent_catalog = load_test_data("test_catalog.json")
-    parent_id = f"parent-{uuid.uuid4()}"
-    parent_catalog["id"] = parent_id
-    parent_resp = await catalogs_app_client.post("/catalogs", json=parent_catalog)
-    assert parent_resp.status_code == 201
-
-    # Create child catalog under parent
-    child_catalog = load_test_data("test_catalog.json")
-    child_id = f"child-{uuid.uuid4()}"
-    child_catalog["id"] = child_id
-    child_resp = await catalogs_app_client.post(
-        f"/catalogs/{parent_id}/catalogs", json=child_catalog
-    )
-    assert child_resp.status_code == 201
-
-    # Get all catalogs list with increased limit to ensure we get all catalogs
-    list_resp = await catalogs_app_client.get("/catalogs?limit=100")
-    assert list_resp.status_code == 200
-
-    catalogs_data = list_resp.json()
-    catalogs = catalogs_data["catalogs"]
-
-    # Find the parent catalog in the list
-    parent_in_list = next((c for c in catalogs if c["id"] == parent_id), None)
-    assert (
-        parent_in_list is not None
-    ), f"Parent catalog {parent_id} should be in list. Available catalogs: {[c['id'] for c in catalogs]}"
-
-    # Verify parent has child link (child links are dynamically generated)
-    child_links = [
-        link for link in parent_in_list.get("links", []) if link.get("rel") == "child"
-    ]
-
-    # If child links are present, verify they point to the correct child
-    if child_links:
-        child_hrefs = [link["href"] for link in child_links]
-        # At least one child link should reference our child catalog
-        assert any(
-            child_id in href for href in child_hrefs
-        ), f"Child link should reference {child_id}, got hrefs: {child_hrefs}"
-
-        # Verify child link has title
-        assert all(
-            "title" in link for link in child_links
-        ), "All child links should have titles"
-
-
-@pytest.mark.asyncio
 async def test_posted_catalog_dynamic_links_not_persisted(
     catalogs_app_client, load_test_data
 ):
@@ -3635,3 +3596,194 @@ async def test_catalog_collections_endpoint_excludes_catalogs(
     assert (
         child_catalog_id not in collection_ids
     ), f"Catalog {child_catalog_id} should NOT be in collections endpoint results"
+
+
+@pytest.mark.asyncio
+async def test_catalogs_list_includes_child_links(catalogs_app_client, load_test_data):
+    """Test that /catalogs endpoint includes child links for each catalog.
+
+    This verifies that:
+    1. Each catalog in the list has a "children" link
+    2. Each catalog has "child" links for its direct children
+    3. Child links point to the correct endpoints
+    """
+    # Create parent catalogs
+    parent_catalog_1 = load_test_data("test_catalog.json")
+    parent_id_1 = f"parent-catalog-1-{uuid.uuid4()}"
+    parent_catalog_1["id"] = parent_id_1
+    parent_catalog_1["title"] = "Parent Catalog 1"
+
+    parent_resp_1 = await catalogs_app_client.post("/catalogs", json=parent_catalog_1)
+    assert parent_resp_1.status_code == 201
+
+    parent_catalog_2 = load_test_data("test_catalog.json")
+    parent_id_2 = f"parent-catalog-2-{uuid.uuid4()}"
+    parent_catalog_2["id"] = parent_id_2
+    parent_catalog_2["title"] = "Parent Catalog 2"
+
+    parent_resp_2 = await catalogs_app_client.post("/catalogs", json=parent_catalog_2)
+    assert parent_resp_2.status_code == 201
+
+    # Create child catalogs
+    child_catalog = load_test_data("test_catalog.json")
+    child_id = f"child-catalog-{uuid.uuid4()}"
+    child_catalog["id"] = child_id
+    child_catalog["title"] = "Child Catalog"
+
+    child_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_id_1}/catalogs", json=child_catalog
+    )
+    assert child_resp.status_code == 201
+
+    # Create a collection under parent_id_1
+    collection = load_test_data("test_collection.json")
+    collection_id = f"test-collection-{uuid.uuid4()}"
+    collection["id"] = collection_id
+    collection["title"] = "Test Collection"
+
+    coll_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_id_1}/collections", json=collection
+    )
+    assert coll_resp.status_code in [200, 201]
+
+    # Get all catalogs with a high limit to ensure we get all created catalogs
+    resp = await catalogs_app_client.get("/catalogs?limit=100")
+    assert resp.status_code == 200
+
+    catalogs_response = resp.json()
+    catalogs = catalogs_response.get("catalogs", [])
+
+    # Find the parent catalog we created
+    parent_catalog = next(
+        (cat for cat in catalogs if cat.get("id") == parent_id_1), None
+    )
+    assert parent_catalog is not None, f"Parent catalog {parent_id_1} not found"
+
+    # Verify parent catalog has links
+    links = parent_catalog.get("links", [])
+    assert len(links) > 0, "Parent catalog should have links"
+
+    # Check for children endpoint link
+    children_links = [link for link in links if link.get("rel") == "children"]
+    assert (
+        len(children_links) == 1
+    ), "Parent catalog should have exactly one 'children' link"
+    assert f"/catalogs/{parent_id_1}/children" in children_links[0].get(
+        "href", ""
+    ), "Children link should point to /catalogs/{id}/children endpoint"
+
+    # Check for child links
+    child_links = [link for link in links if link.get("rel") == "child"]
+    assert (
+        len(child_links) >= 2
+    ), f"Parent catalog should have at least 2 child links (1 catalog + 1 collection), got {len(child_links)}"
+
+    # Verify child links point to correct endpoints
+    child_hrefs = [link.get("href", "") for link in child_links]
+
+    # Should have a link to the child catalog
+    assert any(
+        f"/catalogs/{parent_id_1}/catalogs/{child_id}" in href for href in child_hrefs
+    ), f"Should have child link to /catalogs/{parent_id_1}/catalogs/{child_id}"
+
+    # Should have a link to the collection
+    assert any(
+        f"/catalogs/{parent_id_1}/collections/{collection_id}" in href
+        for href in child_hrefs
+    ), f"Should have child link to /catalogs/{parent_id_1}/collections/{collection_id}"
+
+    # Verify parent catalog 2 has no child links (it has no children)
+    parent_catalog_2_obj = next(
+        (cat for cat in catalogs if cat.get("id") == parent_id_2), None
+    )
+    assert parent_catalog_2_obj is not None, f"Parent catalog {parent_id_2} not found"
+
+    links_2 = parent_catalog_2_obj.get("links", [])
+    child_links_2 = [link for link in links_2 if link.get("rel") == "child"]
+    assert (
+        len(child_links_2) == 0
+    ), f"Parent catalog 2 should have no child links, got {len(child_links_2)}"
+
+
+@pytest.mark.asyncio
+async def test_sub_catalogs_list_includes_child_links(
+    catalogs_app_client, load_test_data
+):
+    """Test that /catalogs/{id}/catalogs endpoint includes child links for each sub-catalog.
+
+    This verifies that sub-catalogs in the list also have proper child links.
+    """
+    # Create parent catalog
+    parent_catalog = load_test_data("test_catalog.json")
+    parent_id = f"parent-catalog-{uuid.uuid4()}"
+    parent_catalog["id"] = parent_id
+
+    parent_resp = await catalogs_app_client.post("/catalogs", json=parent_catalog)
+    assert parent_resp.status_code == 201
+
+    # Create sub-catalogs
+    sub_catalog_1 = load_test_data("test_catalog.json")
+    sub_id_1 = f"sub-catalog-1-{uuid.uuid4()}"
+    sub_catalog_1["id"] = sub_id_1
+    sub_catalog_1["title"] = "Sub Catalog 1"
+
+    sub_resp_1 = await catalogs_app_client.post(
+        f"/catalogs/{parent_id}/catalogs", json=sub_catalog_1
+    )
+    assert sub_resp_1.status_code == 201
+
+    sub_catalog_2 = load_test_data("test_catalog.json")
+    sub_id_2 = f"sub-catalog-2-{uuid.uuid4()}"
+    sub_catalog_2["id"] = sub_id_2
+    sub_catalog_2["title"] = "Sub Catalog 2"
+
+    sub_resp_2 = await catalogs_app_client.post(
+        f"/catalogs/{parent_id}/catalogs", json=sub_catalog_2
+    )
+    assert sub_resp_2.status_code == 201
+
+    # Create a collection under sub_catalog_1
+    collection = load_test_data("test_collection.json")
+    collection_id = f"test-collection-{uuid.uuid4()}"
+    collection["id"] = collection_id
+
+    coll_resp = await catalogs_app_client.post(
+        f"/catalogs/{sub_id_1}/collections", json=collection
+    )
+    assert coll_resp.status_code in [200, 201]
+
+    # Get sub-catalogs
+    resp = await catalogs_app_client.get(f"/catalogs/{parent_id}/catalogs")
+    assert resp.status_code == 200
+
+    catalogs_response = resp.json()
+    sub_catalogs = catalogs_response.get("catalogs", [])
+
+    # Find sub_catalog_1
+    sub_cat_1 = next((cat for cat in sub_catalogs if cat.get("id") == sub_id_1), None)
+    assert sub_cat_1 is not None, f"Sub catalog {sub_id_1} not found"
+
+    # Verify it has child links
+    links = sub_cat_1.get("links", [])
+    child_links = [link for link in links if link.get("rel") == "child"]
+
+    assert (
+        len(child_links) >= 1
+    ), "Sub catalog 1 should have at least 1 child link (the collection)"
+
+    # Verify the child link points to the collection
+    child_hrefs = [link.get("href", "") for link in child_links]
+    assert any(
+        f"/catalogs/{sub_id_1}/collections/{collection_id}" in href
+        for href in child_hrefs
+    ), f"Should have child link to collection {collection_id}"
+
+    # Verify sub_catalog_2 has no child links
+    sub_cat_2 = next((cat for cat in sub_catalogs if cat.get("id") == sub_id_2), None)
+    assert sub_cat_2 is not None, f"Sub catalog {sub_id_2} not found"
+
+    links_2 = sub_cat_2.get("links", [])
+    child_links_2 = [link for link in links_2 if link.get("rel") == "child"]
+    assert (
+        len(child_links_2) == 0
+    ), f"Sub catalog 2 should have no child links, got {len(child_links_2)}"
