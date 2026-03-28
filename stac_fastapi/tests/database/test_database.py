@@ -3,6 +3,7 @@ import uuid
 from unittest.mock import AsyncMock, patch
 
 import pytest
+import pytest_asyncio
 from stac_pydantic import api
 
 from stac_fastapi.sfeos_helpers.database import (
@@ -10,6 +11,7 @@ from stac_fastapi.sfeos_helpers.database import (
     filter_indexes_by_datetime_range,
     index_alias_by_collection_id,
 )
+from stac_fastapi.sfeos_helpers.filter.cql2 import resolve_cql2_indexes
 from stac_fastapi.sfeos_helpers.mappings import (
     COLLECTIONS_INDEX,
     ES_COLLECTIONS_MAPPINGS,
@@ -20,7 +22,491 @@ from stac_fastapi.sfeos_helpers.search_engine.selection.selectors import (
     DatetimeBasedIndexSelector,
 )
 
-from ..conftest import MockRequest, database
+from ..conftest import (
+    MockRequest,
+    create_collection_index,
+    create_index_templates,
+    database,
+)
+
+
+@pytest_asyncio.fixture(scope="module", autouse=True)
+async def setup_database_indexes():
+    await create_collection_index()
+    await create_index_templates()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("cql2_filter", "collection_ids", "expected_metadata"),
+    [
+        pytest.param(
+            {
+                "op": "not",
+                "args": [
+                    {
+                        "op": "between",
+                        "args": [
+                            {"property": "datetime"},
+                            {"timestamp": "2024-01-10T00:00:000000Z"},
+                            {"timestamp": "2024-01-20T00:00:000000Z"},
+                        ],
+                    }
+                ],
+            },
+            [],
+            [
+                ([], "../{'timestamp': '2024-01-10T00:00:000000Z'}"),
+                ([], "{'timestamp': '2024-01-20T00:00:000000Z'}/.."),
+            ],
+            id="not-between-datetime",
+        ),
+        pytest.param(
+            {
+                "op": "or",
+                "args": [
+                    {
+                        "op": "and",
+                        "args": [
+                            {
+                                "op": "=",
+                                "args": [{"property": "collection"}, "collection-1"],
+                            },
+                            {
+                                "op": "between",
+                                "args": [
+                                    {"property": "datetime"},
+                                    {"timestamp": "2024-01-01T00:00:000000Z"},
+                                    {"timestamp": "2024-01-10T00:00:000000Z"},
+                                ],
+                            },
+                            {
+                                "op": "between",
+                                "args": [
+                                    {"property": "datetime"},
+                                    {"timestamp": "2024-01-05T00:00:000000Z"},
+                                    {"timestamp": "2024-01-15T00:00:000000Z"},
+                                ],
+                            },
+                        ],
+                    },
+                    {
+                        "op": "and",
+                        "args": [
+                            {
+                                "op": "=",
+                                "args": [{"property": "collection"}, "collection-2"],
+                            },
+                            {
+                                "op": "between",
+                                "args": [
+                                    {"property": "datetime"},
+                                    {"timestamp": "2024-02-01T00:00:000000Z"},
+                                    {"timestamp": "2024-02-03T00:00:000000Z"},
+                                ],
+                            },
+                        ],
+                    },
+                ],
+            },
+            ["collection-1", "collection-2", "collection-3"],
+            [
+                (
+                    ["collection-1"],
+                    "{'timestamp': '2024-01-05T00:00:000000Z'}/{'timestamp': '2024-01-10T00:00:000000Z'}",
+                ),
+                (
+                    ["collection-2"],
+                    "{'timestamp': '2024-02-01T00:00:000000Z'}/{'timestamp': '2024-02-03T00:00:000000Z'}",
+                ),
+            ],
+            id="or-nested-overlapping-datetime-ranges",
+        ),
+        pytest.param(
+            {
+                "op": "or",
+                "args": [
+                    {
+                        "op": "and",
+                        "args": [
+                            {
+                                "op": "=",
+                                "args": [
+                                    {"property": "collection"},
+                                    "test-indexes-1",
+                                ],
+                            },
+                            {
+                                "op": "between",
+                                "args": [
+                                    {"property": "datetime"},
+                                    "2025-11-08T23:59:59.999000Z",
+                                    "2025-11-10T23:59:59.999000Z",
+                                ],
+                            },
+                        ],
+                    },
+                    {
+                        "op": "and",
+                        "args": [
+                            {
+                                "op": "=",
+                                "args": [
+                                    {"property": "collection"},
+                                    "test-indexes-2",
+                                ],
+                            },
+                            {
+                                "op": "between",
+                                "args": [
+                                    {"property": "datetime"},
+                                    "2025-11-11T23:59:59.998000Z",
+                                    "2025-11-11T23:59:59.999900Z",
+                                ],
+                            },
+                        ],
+                    },
+                ],
+            },
+            [
+                "test-indexes-1",
+                "test-indexes-2",
+                "test-indexes-3",
+            ],
+            [
+                (
+                    ["test-indexes-1"],
+                    "2025-11-08T23:59:59.999000Z/2025-11-10T23:59:59.999000Z",
+                ),
+                (
+                    ["test-indexes-2"],
+                    "2025-11-11T23:59:59.998000Z/2025-11-11T23:59:59.999900Z",
+                ),
+            ],
+            id="or-for-different-collections-datetime",
+        ),
+        pytest.param(
+            {
+                "op": "and",
+                "args": [
+                    {
+                        "op": "=",
+                        "args": [
+                            {"property": "collection"},
+                            "collection-1",
+                        ],
+                    },
+                    {
+                        "op": "not",
+                        "args": [
+                            {
+                                "op": "between",
+                                "args": [
+                                    {"property": "datetime"},
+                                    "2025-03-01T00:00:00Z",
+                                    "2025-03-31T23:59:59Z",
+                                ],
+                            }
+                        ],
+                    },
+                ],
+            },
+            ["collection-1", "collection-2", "collection-3"],
+            [
+                (["collection-1"], "../2025-03-01T00:00:00Z"),
+                (["collection-1"], "2025-03-31T23:59:59Z/.."),
+            ],
+            id="not-between-collection-datetime",
+        ),
+        pytest.param(
+            {
+                "op": "and",
+                "args": [
+                    {
+                        "op": "not",
+                        "args": [
+                            {
+                                "op": "in",
+                                "args": [
+                                    {"property": "collection"},
+                                    ["collection-a"],
+                                ],
+                            }
+                        ],
+                    },
+                    {
+                        "op": "between",
+                        "args": [
+                            {"property": "datetime"},
+                            "2025-04-10T00:00:00Z",
+                            "2025-04-20T00:00:00Z",
+                        ],
+                    },
+                ],
+            },
+            ["collection-a", "collection-b"],
+            [(["collection-b"], "2025-04-10T00:00:00Z/2025-04-20T00:00:00Z")],
+            id="not-in-datetime-with-collection",
+        ),
+        pytest.param(
+            {
+                "op": "or",
+                "args": [
+                    {
+                        "op": "and",
+                        "args": [
+                            {
+                                "op": "=",
+                                "args": [
+                                    {"property": "collection"},
+                                    "collection-1",
+                                ],
+                            },
+                            {
+                                "op": "between",
+                                "args": [
+                                    {"property": "datetime"},
+                                    "2025-05-01T00:00:00Z",
+                                    "2025-05-05T23:59:59Z",
+                                ],
+                            },
+                        ],
+                    },
+                    {
+                        "op": "and",
+                        "args": [
+                            {
+                                "op": "=",
+                                "args": [
+                                    {"property": "collection"},
+                                    "collection-1",
+                                ],
+                            },
+                            {
+                                "op": "between",
+                                "args": [
+                                    {"property": "datetime"},
+                                    "2025-06-01T00:00:00Z",
+                                    "2025-06-05T23:59:59Z",
+                                ],
+                            },
+                        ],
+                    },
+                ],
+            },
+            ["collection-1", "collection-2"],
+            [
+                (["collection-1"], "2025-05-01T00:00:00Z/2025-05-05T23:59:59Z"),
+                (["collection-1"], "2025-06-01T00:00:00Z/2025-06-05T23:59:59Z"),
+            ],
+            id="same-collection-disjoint-or-ranges",
+        ),
+        pytest.param(
+            {
+                "op": "not",
+                "args": [
+                    {
+                        "op": "in",
+                        "args": [
+                            {"property": "collection"},
+                            ["collection-1"],
+                        ],
+                    }
+                ],
+            },
+            ["collection-1", "collection-2", "collection-3"],
+            [(["collection-2", "collection-3"], "")],
+            id="not-in-collection-empty-result",
+        ),
+        pytest.param(
+            {
+                "op": "not",
+                "args": [
+                    {
+                        "op": "in",
+                        "args": [
+                            {"property": "collection"},
+                            ["collection-a"],
+                        ],
+                    }
+                ],
+            },
+            ["collection-a"],
+            [],
+            id="empty-collections",
+        ),
+        pytest.param(
+            {
+                "op": ">=",
+                "args": [
+                    {"property": "datetime"},
+                    "2022-01-01T00:00:00Z",
+                ],
+            },
+            [],
+            [([], "2022-01-01T00:00:00Z/..")],
+            id="datetime-gte",
+        ),
+        pytest.param(
+            {
+                "op": "<=",
+                "args": [
+                    {"property": "datetime"},
+                    "2022-01-01T00:00:00Z",
+                ],
+            },
+            [],
+            [([], "../2022-01-01T00:00:00Z")],
+            id="datetime-lte",
+        ),
+        pytest.param(
+            {
+                "op": ">",
+                "args": [
+                    {"property": "datetime"},
+                    "2022-01-01T00:00:00Z",
+                ],
+            },
+            [],
+            [([], "2022-01-01T00:00:00Z/..")],
+            id="datetime-gt",
+        ),
+        pytest.param(
+            {
+                "op": "<",
+                "args": [
+                    {"property": "datetime"},
+                    "2022-01-01T00:00:00Z",
+                ],
+            },
+            [],
+            [([], "../2022-01-01T00:00:00Z")],
+            id="datetime-lt",
+        ),
+        pytest.param(
+            {
+                "op": "<",
+                "args": [
+                    {"property": "datetime"},
+                    "2022-01-01T00:00:00Z",
+                ],
+            },
+            [],
+            [([], "../2022-01-01T00:00:00Z")],
+            id="datetime-open-lt",
+        ),
+        pytest.param(
+            {
+                "op": ">",
+                "args": [
+                    {"property": "datetime"},
+                    "2020-01-01T00:00:00Z",
+                ],
+            },
+            [],
+            [([], "2020-01-01T00:00:00Z/..")],
+            id="datetime-open-gt",
+        ),
+    ],
+)
+async def test_apply_cql2_filter_checks_search_and_metadata(
+    monkeypatch,
+    cql2_filter,
+    collection_ids,
+    expected_metadata,
+):
+    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip()
+
+    queryables_mapping = {
+        "collection": ["collection", "collection.keyword"],
+        "datetime": "properties.datetime",
+    }
+    queryables_mapping_mock = AsyncMock(return_value=queryables_mapping)
+    collection_ids_mock = AsyncMock(return_value=collection_ids)
+    monkeypatch.setattr(database, "get_queryables_mapping", queryables_mapping_mock)
+    monkeypatch.setattr(
+        database.async_index_selector,
+        "get_all_collection_ids",
+        collection_ids_mock,
+    )
+    search, metadata = await database.apply_cql2_filter(
+        database.make_search(),
+        cql2_filter,
+    )
+    assert search.to_dict().get("query") is not None
+    assert metadata == expected_metadata
+    queryables_mapping_mock.assert_awaited_once()
+    collection_ids_mock.assert_awaited_once()
+
+
+@pytest.mark.datetime_filtering
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("metadata", "expected_index_param", "expected_collection_ids"),
+    [
+        pytest.param(
+            [
+                (["col-a"], "2020-02-01T00:00:00Z/2020-02-28T23:59:59Z"),
+                (["col-b"], "2020-02-01T00:00:00Z/2020-02-28T23:59:59Z"),
+                (["col-a"], "2020-02-01T00:00:00Z/2020-02-28T23:59:59Z"),
+            ],
+            "items_start_datetime_col-a_2020-02-08,items_start_datetime_col-b_2020-02-15",
+            {"col-a", "col-b"},
+            id="test-collections-and-datetime",
+        ),
+        pytest.param(
+            [(["col-a"], "")],
+            "items_start_datetime_col-a_2020-02-08,items_start_datetime_col-a_2020-06-10",
+            {"col-a"},
+            id="test-only-collection",
+        ),
+        pytest.param(
+            [([], "2020-02-15T00:00:00Z")],
+            "items_start_datetime_col-a_2020-02-08,items_start_datetime_col-b_2020-02-15",
+            set(),
+            id="test-only-datetime",
+        ),
+        pytest.param(
+            [([], "../2020-02-20T23:59:59Z")],
+            "items_start_datetime_col-a_2020-02-08,items_start_datetime_col-b_2020-02-15",
+            set(),
+            id="test-open-start-datetime",
+        ),
+        pytest.param(
+            [([], "2020-06-01T00:00:00Z/..")],
+            "items_start_datetime_col-a_2020-06-10",
+            set(),
+            id="test-open-end-datetime",
+        ),
+        pytest.param(
+            [([], "2020-02-01T00:00:00Z/2020-02-28T23:59:59Z")],
+            "items_start_datetime_col-a_2020-02-08,items_start_datetime_col-b_2020-02-15",
+            set(),
+            id="test-bounded-datetime",
+        ),
+    ],
+)
+async def test_resolve_cql2_indexes_with_collections_datetime(
+    monkeypatch,
+    metadata,
+    expected_index_param,
+    expected_collection_ids,
+):
+    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip()
+
+    index_selector = _make_selector(monkeypatch)
+    search = database.make_search()
+
+    index_param, collection_ids = await resolve_cql2_indexes(
+        metadata,
+        index_selector,
+        database.apply_datetime_filter,
+        search,
+    )
+    assert index_param == expected_index_param
+    assert set(collection_ids) == expected_collection_ids
 
 
 @pytest.mark.asyncio

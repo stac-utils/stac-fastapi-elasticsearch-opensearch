@@ -375,6 +375,22 @@ def extract_collection_datetime(
 
                     elif (
                         isinstance(child, AdvancedComparisonNode)
+                        and child.field == "collection"
+                        and child.op == AdvancedComparisonOp.IN
+                    ):
+                        if all_collection_ids:
+                            excluded = (
+                                child.value if isinstance(child.value, list) else []
+                            )
+                            included_collections = [
+                                c for c in all_collection_ids if c not in excluded
+                            ]
+                            if included_collections:
+                                results.append((included_collections, ""))
+                            continue
+
+                    elif (
+                        isinstance(child, AdvancedComparisonNode)
                         and child.op == AdvancedComparisonOp.BETWEEN
                         and child.field
                         in ["datetime", "start_datetime", "end_datetime"]
