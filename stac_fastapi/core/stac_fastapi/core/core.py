@@ -1030,13 +1030,9 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         # Handle FeatureCollection (bulk insert)
         if item_dict["type"] == "FeatureCollection":
-            bulk_client = BulkTransactionsClient(
-                database=self.database, settings=self.settings
-            )
             raw_features = item_dict.get("features", [])
 
             # Deduplicate items within the batch by ID FIRST (keep last occurrence)
-            # This avoids validating duplicate items that will be discarded anyway
             seen_ids: dict = {}
             for feature in raw_features:
                 feature_id = feature.get("id")
@@ -1045,6 +1041,28 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             unique_features = list(seen_ids.values())
             skipped_batch_duplicates = len(raw_features) - len(unique_features)
 
+            # Initialize bulk client for preprocessing
+            bulk_client = BulkTransactionsClient(
+                database=self.database, settings=self.settings
+            )
+
+            # PATH A: REDIS QUEUE ENABLED
+            # Preprocess items (to add routing keys) then queue them
+            if use_queue:
+                preprocessed_for_queue = []
+                for feature in unique_features:
+                    prepped = bulk_client.preprocess_item(feature, base_url)
+                    if prepped is not None:
+                        preprocessed_for_queue.append(prepped)
+
+                result = await queue_items_if_enabled(
+                    collection_id, preprocessed_for_queue
+                )
+                if result:
+                    return result
+
+            # PATH B: DIRECT DATABASE INSERTION (No Queue)
+            # Validate and preprocess items before database insertion
             processed_items = []
             skipped_db_duplicates = 0
             skipped_validation_errors = 0
@@ -1095,12 +1113,6 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                     detail=f"No items to insert. {total_skipped} items were skipped (duplicates or invalid).",
                 )
 
-            # Queue items if enabled
-            if use_queue:
-                result = await queue_items_if_enabled(collection_id, processed_items)
-                if result:
-                    return result
-
             # Insert into Database
             attempted = len(processed_items)
             success, errors = await self.database.bulk_async(
@@ -1144,22 +1156,26 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         # Handle Single Item
         else:
+            bulk_client = BulkTransactionsClient(
+                database=self.database, settings=self.settings
+            )
+
+            # PATH A: REDIS QUEUE ENABLED
+            # Preprocess item (to add routing keys) then queue it
+            if use_queue:
+                preprocessed_item = bulk_client.preprocess_item(item_dict, base_url)
+                result = await queue_items_if_enabled(
+                    collection_id, preprocessed_item, item_ids=item_dict.get("id")
+                )
+                if result:
+                    return result
+
+            # PATH B: DIRECT DATABASE INSERTION (No Queue)
+            # Validate before database insertion
             try:
                 await async_validate_item(item_dict)
             except (ValidationError, ValueError) as e:
                 raise HTTPException(status_code=400, detail=f"Invalid item: {e}")
-
-            if use_queue:
-                bulk_client = BulkTransactionsClient(
-                    database=self.database, settings=self.settings
-                )
-                processed_item = bulk_client.preprocess_item(item_dict, base_url)
-
-                result = await queue_items_if_enabled(
-                    collection_id, processed_item, item_ids=item_dict.get("id")
-                )
-                if result:
-                    return result
 
             await self.database.create_item(
                 item_dict, base_url=base_url, upsert=False, **kwargs
@@ -1185,12 +1201,6 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             NotFound: If the specified collection is not found in the database.
 
         """
-        # Validate item
-        try:
-            await async_validate_item(item)
-        except (ValidationError, ValueError) as e:
-            raise HTTPException(status_code=400, detail=f"Invalid item: {e}")
-
         item_dict = item.model_dump(mode="json")
         base_url = str(kwargs["request"].base_url)
 
@@ -1199,27 +1209,30 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         use_queue = get_bool_env("ENABLE_REDIS_QUEUE", default=False)
 
+        # Handle inline imports once to keep code DRY
         if use_queue:
-            from stac_fastapi.core.redis_utils import AsyncRedisQueueManager
+            from stac_fastapi.core.utilities import queue_items_if_enabled
 
+        # PATH A: REDIS QUEUE ENABLED
+        # Skip validation, push raw item to Redis immediately
+        if use_queue:
             bulk_client = BulkTransactionsClient(
                 database=self.database, settings=self.settings
             )
             processed_item = bulk_client.preprocess_item(item_dict, base_url)
 
-            queue_manager = await AsyncRedisQueueManager.create()
-            try:
-                queue_len = await queue_manager.queue_items(
-                    collection_id, processed_item
-                )
-                logger.info(
-                    f"Queued update for item '{item_id}' in collection '{collection_id}'. "
-                    f"Queue length: {queue_len}"
-                )
-            finally:
-                await queue_manager.close()
+            result = await queue_items_if_enabled(
+                collection_id, processed_item, item_ids=item_id
+            )
+            if result:
+                return result
 
-            return ItemSerializer.db_to_stac(item_dict, base_url)
+        # PATH B: DIRECT DATABASE INSERTION (No Queue)
+        # Validate before database insertion
+        try:
+            await async_validate_item(item)
+        except (ValidationError, ValueError) as e:
+            raise HTTPException(status_code=400, detail=f"Invalid item: {e}")
 
         await self.database.create_item(
             item_dict, base_url=base_url, upsert=True, **kwargs

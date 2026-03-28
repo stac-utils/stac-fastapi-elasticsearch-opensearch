@@ -348,7 +348,7 @@ def validate_stac(
 
         if not is_valid:
             # Log detailed error information
-            error_msg = "Validation failed"
+            error_msg = "Unknown validation error"
             if stac.message:
                 error_details = stac.message[0]
                 error_msg = error_details.get("error_message", "")
@@ -363,8 +363,13 @@ def validate_stac(
                     # Try to extract meaningful details from error_verbose
                     validator = error_verbose.get("validator", "")
                     path = error_verbose.get("path_in_document", [])
+                    message = error_verbose.get("message", "")
 
-                    if validator:
+                    if message:
+                        error_msg = message
+                        if path:
+                            error_msg += f" at {'.'.join(str(p) for p in path)}"
+                    elif validator:
                         error_msg = f"{validator}"
                         if path:
                             error_msg += f" at {'.'.join(str(p) for p in path)}"
