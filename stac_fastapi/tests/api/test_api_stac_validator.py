@@ -109,6 +109,116 @@ async def test_stac_validator_catches_invalid_cloud_cover(txn_client, load_test_
 
 
 @pytest.mark.asyncio
+async def test_stac_validator_feature_collection_with_invalid_item_raise_on_error(
+    txn_client, load_test_data
+):
+    """Test that STAC validator fails entire FeatureCollection when RAISE_ON_BULK_ERROR is true."""
+    from fastapi import HTTPException
+
+    os.environ["ENABLE_STAC_VALIDATOR"] = "true"
+    os.environ["RAISE_ON_BULK_ERROR"] = "true"
+
+    try:
+        test_collection = load_test_data("test_collection.json")
+        test_collection["id"] = f"test-collection-fc-{uuid.uuid4()}"
+        await create_collection(txn_client, collection=test_collection)
+
+        base_item = load_test_data("test_item.json")
+
+        # Create FeatureCollection with 2 valid items and 1 invalid item
+        features = []
+        for i in range(2):
+            item = deepcopy(base_item)
+            item["id"] = f"valid-item-{i}"
+            item["collection"] = test_collection["id"]
+            features.append(item)
+
+        # Add invalid item (invalid cloud_cover)
+        invalid_item = deepcopy(base_item)
+        invalid_item["id"] = "invalid-item-fc"
+        invalid_item["collection"] = test_collection["id"]
+        invalid_item["properties"]["eo:cloud_cover"] = 150  # Invalid: > 100
+
+        features.append(invalid_item)
+
+        feature_collection = {
+            "type": "FeatureCollection",
+            "features": features,
+        }
+
+        # With RAISE_ON_BULK_ERROR=true, should fail on first invalid item
+        with pytest.raises(HTTPException) as exc_info:
+            await create_item(txn_client, feature_collection)
+
+        assert "Validation failed" in str(exc_info.value)
+        assert exc_info.value.status_code == 400
+    finally:
+        os.environ.pop("ENABLE_STAC_VALIDATOR", None)
+        os.environ.pop("RAISE_ON_BULK_ERROR", None)
+        try:
+            await txn_client.delete_collection(test_collection["id"])
+        except Exception:
+            pass
+
+
+@pytest.mark.asyncio
+async def test_stac_validator_feature_collection_with_invalid_item_skip_on_error(
+    txn_client, core_client, load_test_data
+):
+    """Test that STAC validator skips invalid items when RAISE_ON_BULK_ERROR is false."""
+    from ..conftest import MockRequest
+
+    os.environ["ENABLE_STAC_VALIDATOR"] = "true"
+    os.environ["RAISE_ON_BULK_ERROR"] = "false"
+
+    try:
+        test_collection = load_test_data("test_collection.json")
+        test_collection["id"] = f"test-collection-fc-skip-{uuid.uuid4()}"
+        await create_collection(txn_client, collection=test_collection)
+
+        base_item = load_test_data("test_item.json")
+
+        # Create FeatureCollection with 2 valid items and 1 invalid item
+        features = []
+        for i in range(2):
+            item = deepcopy(base_item)
+            item["id"] = f"valid-item-{i}"
+            item["collection"] = test_collection["id"]
+            features.append(item)
+
+        # Add invalid item (invalid cloud_cover)
+        invalid_item = deepcopy(base_item)
+        invalid_item["id"] = "invalid-item-fc"
+        invalid_item["collection"] = test_collection["id"]
+        invalid_item["properties"]["eo:cloud_cover"] = 150  # Invalid: > 100
+
+        features.append(invalid_item)
+
+        feature_collection = {
+            "type": "FeatureCollection",
+            "features": features,
+        }
+
+        # With RAISE_ON_BULK_ERROR=false, should skip invalid item and insert valid ones
+        await create_item(txn_client, feature_collection)
+
+        # Verify only 2 valid items exist in the collection
+        fc = await core_client.item_collection(
+            test_collection["id"], request=MockRequest()
+        )
+        assert len(fc["features"]) == 2
+        item_ids = {f["id"] for f in fc["features"]}
+        assert item_ids == {"valid-item-0", "valid-item-1"}
+    finally:
+        os.environ.pop("ENABLE_STAC_VALIDATOR", None)
+        os.environ.pop("RAISE_ON_BULK_ERROR", None)
+        try:
+            await txn_client.delete_collection(test_collection["id"])
+        except Exception:
+            pass
+
+
+@pytest.mark.asyncio
 async def test_stac_validator_catches_invalid_snow_cover(txn_client, load_test_data):
     """Test that STAC validator catches invalid eo:snow_cover values."""
     from fastapi import HTTPException

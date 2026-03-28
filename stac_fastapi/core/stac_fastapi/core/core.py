@@ -1024,68 +1024,107 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         # Check if Redis queue is enabled for async item processing
         use_queue = get_bool_env("ENABLE_REDIS_QUEUE", default=False)
 
+        # Handle inline imports once to keep code DRY
+        if use_queue:
+            from stac_fastapi.core.utilities import queue_items_if_enabled
+
         # Handle FeatureCollection (bulk insert)
         if item_dict["type"] == "FeatureCollection":
             bulk_client = BulkTransactionsClient(
                 database=self.database, settings=self.settings
             )
-            features = item_dict["features"]
+            raw_features = item_dict.get("features", [])
+
+            # Deduplicate items within the batch by ID FIRST (keep last occurrence)
+            # This avoids validating duplicate items that will be discarded anyway
+            seen_ids: dict = {}
+            for feature in raw_features:
+                feature_id = feature.get("id")
+                if feature_id is not None:
+                    seen_ids[feature_id] = feature
+            unique_features = list(seen_ids.values())
+            skipped_batch_duplicates = len(raw_features) - len(unique_features)
+
             processed_items = []
             skipped_db_duplicates = 0
-            for feature in features:
+            skipped_validation_errors = 0
+
+            raise_on_error = get_bool_env("RAISE_ON_BULK_ERROR", default=False)
+
+            # Validate and Preprocess only the unique features
+            for feature in unique_features:
+                item_id = feature.get("id", "unknown_id")
+
+                # Validate
                 try:
                     validated = await async_validate_item(feature)
-                    prepped = bulk_client.preprocess_item(
-                        validated.model_dump(mode="json"),
-                        base_url,
-                    )
-                    if prepped is not None:
-                        processed_items.append(prepped)
-                    else:
-                        skipped_db_duplicates += 1
                 except (ValidationError, ValueError) as e:
-                    raise HTTPException(
-                        status_code=400, detail=f"Invalid item in collection: {e}"
-                    )
+                    if raise_on_error:
+                        # If strict mode is on, fail the whole batch immediately
+                        raise HTTPException(
+                            status_code=400,
+                            detail=f"Validation failed for item '{item_id}': {e}",
+                        )
+                    else:
+                        # If strict mode is off, skip the bad item and continue
+                        logger.warning(
+                            f"Skipping item '{item_id}' due to validation error: {e}"
+                        )
+                        skipped_validation_errors += 1
+                        continue
 
-            # Deduplicate items within the batch by ID (keep last occurrence)
-            seen_ids: dict = {}
-            for item in processed_items:
-                seen_ids[item["id"]] = item
-            unique_items = list(seen_ids.values())
-            skipped_batch_duplicates = len(processed_items) - len(unique_items)
-            processed_items = unique_items
+                # Preprocess
+                prepped = bulk_client.preprocess_item(
+                    validated.model_dump(mode="json"),
+                    base_url,
+                )
 
-            attempted = len(processed_items)
+                if prepped is not None:
+                    processed_items.append(prepped)
+                else:
+                    skipped_db_duplicates += 1
 
             if not processed_items:
-                return f"No items to insert. {skipped_batch_duplicates} items were skipped (duplicates)."
+                total_skipped = (
+                    skipped_batch_duplicates
+                    + skipped_db_duplicates
+                    + skipped_validation_errors
+                )
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"No items to insert. {total_skipped} items were skipped (duplicates or invalid).",
+                )
 
+            # Queue items if enabled
             if use_queue:
-                from stac_fastapi.core.utilities import queue_items_if_enabled
-
                 result = await queue_items_if_enabled(collection_id, processed_items)
                 if result:
                     return result
 
+            # Insert into Database
+            attempted = len(processed_items)
             success, errors = await self.database.bulk_async(
                 collection_id=collection_id,
                 processed_items=processed_items,
                 op_type="create",
                 **kwargs,
             )
+
+            # Handle Errors
             conflict_errors, other_errors = separate_bulk_conflict_errors(errors)
-            if conflict_errors and get_bool_env("RAISE_ON_BULK_ERROR"):
+
+            if conflict_errors and raise_on_error:
                 doc_id = next(iter(conflict_errors[0].values())).get("_id", "")
                 item_id = doc_id.split("|")[0] if "|" in doc_id else doc_id
                 raise ItemAlreadyExistsError(
                     item_id=item_id, collection_id=collection_id
                 )
+
             if other_errors:
                 logger.error(
                     f"Bulk async operation encountered errors for collection {collection_id}: {other_errors} (attempted {attempted})"
                 )
-                if get_bool_env("RAISE_ON_BULK_ERROR"):
+                if raise_on_error:
                     raise BulkIndexError(
                         errors=other_errors, collection_id=collection_id
                     )
@@ -1093,18 +1132,24 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 logger.info(
                     f"Bulk async operation succeeded with {success} actions for collection {collection_id}."
                 )
-            total_skipped = skipped_batch_duplicates + len(conflict_errors)
+
+            total_skipped = (
+                skipped_batch_duplicates
+                + skipped_db_duplicates
+                + skipped_validation_errors
+                + len(conflict_errors)
+            )
+
             return f"Successfully added {success} Items. {total_skipped} skipped (duplicates). {len(other_errors)} errors occurred."
+
+        # Handle Single Item
         else:
-            # Validate single item
             try:
                 await async_validate_item(item_dict)
             except (ValidationError, ValueError) as e:
                 raise HTTPException(status_code=400, detail=f"Invalid item: {e}")
 
             if use_queue:
-                from stac_fastapi.core.utilities import queue_items_if_enabled
-
                 bulk_client = BulkTransactionsClient(
                     database=self.database, settings=self.settings
                 )
