@@ -9,12 +9,15 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
-- Added `ENABLE_STAC_VALIDATOR` environment variable to enable stac-validator for validating STAC items and collections on ingestion. [#663](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/663)
-- Added `SCHEMA_CACHE_SIZE` environment variable to control the size of the schema cache used by the stac-validator. [#663](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/663)
+- Added `ENABLE_STAC_VALIDATOR` environment variable to enable strict STAC schema validation on ingestion. [#665](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/665)
+- Added `SCHEMA_CACHE_SIZE` environment variable to control the size of the schema cache used by the stac-validator. [#665](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/665)
+- Added `[validator]` installation extra to `stac-fastapi-core`, `elasticsearch`, and `opensearch` packages. [#665](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/665)
 
 ### Changed
 
-- Refactored Redis queue handling in `create_item()` by extracting duplicate queue code into a new `queue_items_if_enabled()` utility function in `utilities.py`. [#663](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/663)
+- **Background Worker Validation:** The Redis `ItemQueueWorker` now intercepts and validates items prior to database insertion, safely routing invalid STAC items to a Dead Letter Queue (DLQ) for debugging. [#665](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/665)
+- **Non-Blocking API Validation:** Wrapped direct-API STAC validation in `asyncio.to_thread` to prevent CPU-bound schema checking from blocking the FastAPI event loop. [#665](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/665)
+- Refactored Redis queue handling in `create_item()` by extracting duplicate queue code into a new `queue_items_if_enabled()` utility function in `utilities.py`. [#665](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/665)
 
 ### Fixed
 
