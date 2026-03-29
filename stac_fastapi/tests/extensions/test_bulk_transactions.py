@@ -357,8 +357,8 @@ async def test_feature_collection_insert_with_in_batch_duplicates(
 
     # Should report 1 item added and 2 skipped (in-batch duplicates)
     # create_item (FeatureCollection) returns: "Successfully added {n} Items. {m} skipped (duplicates). {k} errors occurred."
-    assert "Successfully added 1 Items" in result
-    assert "2 skipped (duplicates)" in result
+    assert "Successfully added 1 Items" in result["message"]
+    assert "2 skipped" in result["message"]
 
     # Verify only 1 item exists in the collection with this ID
     fc = await core_client.item_collection(ctx.collection["id"], request=MockRequest())

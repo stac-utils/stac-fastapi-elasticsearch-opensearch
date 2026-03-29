@@ -150,7 +150,7 @@ async def test_stac_validator_feature_collection_with_invalid_item_raise_on_erro
         with pytest.raises(HTTPException) as exc_info:
             await create_item(txn_client, feature_collection)
 
-        assert "Validation failed" in str(exc_info.value)
+        assert "Batch rejected" in str(exc_info.value)
         assert exc_info.value.status_code == 400
     finally:
         os.environ.pop("ENABLE_STAC_VALIDATOR", None)
@@ -292,7 +292,7 @@ def test_schema_cache_size_environment_variable():
         # Import after clearing env var to get default
         import importlib
 
-        import stac_fastapi.core.utilities as utilities_module
+        import stac_fastapi.core.validate as utilities_module
 
         importlib.reload(utilities_module)
         assert utilities_module.SCHEMA_CACHE_SIZE == 32

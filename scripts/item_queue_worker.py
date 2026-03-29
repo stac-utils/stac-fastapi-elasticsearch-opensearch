@@ -18,11 +18,8 @@ import logging
 import time
 
 from stac_fastapi.core.redis_utils import AsyncRedisQueueManager, ItemQueueSettings
-from stac_fastapi.core.utilities import (
-    async_validate_batch_with_go,
-    async_validate_item,
-    get_bool_env,
-)
+from stac_fastapi.core.utilities import get_bool_env
+from stac_fastapi.core.validate import async_validate_batch_with_go, async_validate_item
 
 logger = logging.getLogger(__name__)
 

@@ -13,7 +13,7 @@ import os
 import httpx
 from stac_pydantic import Collection, Item
 
-from stac_fastapi.core.stac_fastapi.core.utilities import get_bool_env
+from stac_fastapi.core.utilities import get_bool_env
 
 logger = logging.getLogger(__name__)
 

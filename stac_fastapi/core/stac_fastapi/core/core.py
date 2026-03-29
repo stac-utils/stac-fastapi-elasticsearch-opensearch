@@ -1592,7 +1592,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
 
             valid_items, invalid_details = validate_batch_with_go(unique_items)
 
-        elif get_bool_env("ENABLE_STAC_VALIDATOR"):
+        else:
             for item in unique_items:
                 item_id = item.get("id", "unknown_id")
                 try:
@@ -1600,9 +1600,6 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
                     valid_items.append(item)
                 except (ValidationError, ValueError) as e:
                     invalid_details[item_id] = str(e)
-        else:
-            # Fast path: No validation
-            valid_items = unique_items
 
         # This endpoint historically has strict mode enabled by default.
         # We fail the entire batch immediately if any item is invalid.
