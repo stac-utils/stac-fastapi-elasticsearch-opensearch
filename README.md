@@ -28,6 +28,7 @@ The following organizations have contributed time and/or funding to support the 
 
 ## Latest News
 
+- **03/29/2026: High-Speed Go Validator & Batch Processing:** Added support for `ENABLE_GO_VALIDATOR` to offload STAC schema validation to a concurrent Go microservice. Bulk insertions are now validated in massive batches with zero-blocking on the FastAPI event loop, safely routing invalid items to a Dead Letter Queue (DLQ) when used with the Redis background worker.
 - **03/19/2026: SKOS to STAC Ingestion Demo.** 📓 Check out the interactive [SKOS-catalogs-ingestion-demo.ipynb](https://github.com/StacLabs/sfeos-tools/blob/main/demo-notebooks/SKOS-catalogs-ingestion-demo.ipynb) notebook! This tutorial demonstrates automated semantic ingestion from SKOS/RDF-XML files into hierarchical STAC catalogs, showcasing poly-hierarchy, contextual breadcrumbs, and data safety features of the Multi-Tenant Catalogs extension. Thanks to support from CloudFerro! 
 - **01/11/2026: Hierarchical Catalog Support.** Sub-catalogs are now fully supported! Catalogs can now contain other catalogs for unlimited nesting levels. This enables complex organizational hierarchies with multi-parent support for both catalogs and collections.
 - **01/09/2026: Custom Index Mappings.** You can now customize Elasticsearch/OpenSearch index mappings directly via environment variables without changing source code. Use `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` to merge custom field definitions (e.g., for STAC extensions like SAR or Cube) or `STAC_FASTAPI_ES_MAPPINGS_FILE` to load mappings from a JSON file. See [Custom Index Mappings](#custom-index-mappings) for details.
@@ -35,13 +36,13 @@ The following organizations have contributed time and/or funding to support the 
 - **11/07/2025:** 🌍 The SFEOS STAC Viewer is now available at: https://healy-hyperspatial.github.io/sfeos-web. Use this site to examine your data and test your STAC API!
 - **10/24/2025:** Added `previous_token` pagination using Redis for efficient navigation. This feature allows users to navigate backwards through large result sets by storing pagination state in Redis. To use this feature, ensure Redis is configured (see [Redis for navigation](#redis-for-navigation)) and set `REDIS_ENABLE=true` in your environment.
 - **10/23/2025:** The `EXCLUDED_FROM_QUERYABLES` environment variable was added to exclude fields from the `queryables` endpoint. See [docs](#excluding-fields-from-queryables).
-- **10/15/2025:** 🚀 SFEOS Tools v0.1.0 Released! - The new `sfeos-tools` CLI is now available on [PyPI](https://pypi.org/project/sfeos-tools/)
-- **10/15/2025:** Added `reindex` command to **[SFEOS-tools](https://github.com/Healy-Hyperspatial/sfeos-tools)** for zero-downtime index updates when changing mappings or settings. The new `reindex` command makes it easy to apply mapping changes, update index settings, or migrate to new index structures without any service interruption, ensuring high availability of your STAC API during maintenance operations.
 
 <details style="border: 1px solid #eaecef; border-radius: 6px; padding: 10px; margin-bottom: 16px; background-color: #f9f9f9;">
 <summary style="cursor: pointer; font-weight: bold; margin: -10px -10px 0; padding: 10px; background-color: #f0f0f0; border-bottom: 1px solid #eaecef; border-top-left-radius: 6px; border-top-right-radius: 6px;">View Older News (Click to Expand)</summary>
 
 -------------
+- **10/15/2025:** 🚀 SFEOS Tools v0.1.0 Released! - The new `sfeos-tools` CLI is now available on [PyPI](https://pypi.org/project/sfeos-tools/)
+- **10/15/2025:** Added `reindex` command to **[SFEOS-tools](https://github.com/Healy-Hyperspatial/sfeos-tools)** for zero-downtime index updates when changing mappings or settings. The new `reindex` command makes it easy to apply mapping changes, update index settings, or migrate to new index structures without any service interruption, ensuring high availability of your STAC API during maintenance operations.
 - **10/12/2025:** Collections search **bbox** functionality added! The collections search extension now supports bbox queries. Collections will need to be updated via the API or with the new **[SFEOS-tools](https://github.com/Healy-Hyperspatial/sfeos-tools)** CLI package to support geospatial discoverability. 🙏 Thanks again to **CloudFerro** for their sponsorship of this work!
 - **10/04/2025:** The **[CloudFerro](https://cloudferro.com/)** logo has been added to the sponsors and supporters list above. Their sponsorship of the ongoing collections search extension work has been invaluable. This is in addition to the many other important changes and updates their developers have added to the project.
 - **09/25/2025:** v6.5.0 adds a new GET/POST /collections-search endpoint (disabled by default via ENABLE_COLLECTIONS_SEARCH_ROUTE) to avoid conflicts with the Transactions Extension, and enhances collections search with structured filtering (CQL2 JSON/text), query, and datetime filtering. These changes make collection discovery more powerful and configurable while preserving compatibility with transaction-enabled deployments.
@@ -706,6 +707,8 @@ You can customize additional settings in your `.env` file:
 | `ENABLE_CATALOGS_ROUTE` | Enable the **/catalogs** endpoint for hierarchical catalog browsing and navigation. **Note:** Requires the catalogs extension to be installed via `stac-fastapi-elasticsearch[catalogs]`, `stac-fastapi-opensearch[catalogs]`, or `stac-fastapi-core[catalogs]`. See [Catalogs Route](#catalogs-route) for installation instructions. | `false` | Optional |
 | `ENABLE_STAC_VALIDATOR` | Enable [stac-validator](https://github.com/stac-utils/stac-validator) to validate STAC items and collections on ingestion. This is especially useful for items or collections that use extensions. Use with `SCHEMA CACHE SIZE`| `false` | Optional |
 | `SCHEMA_CACHE_SIZE` | Configures the maximum number of STAC schemas that can be cached in memory. Used with `ENABLE_STAC_VALIDATOR` to cache validated schemas for faster subsequent validations.| `32` | Optional |
+| `ENABLE_GO_VALIDATOR` | Enables the high-performance Go microservice to validate STAC items and collections on ingestion. Highly recommended for bulk insertions as it validates massive batches concurrently without blocking the API. Use with `GO_STAC_VALIDATOR_URL`. | `false` | Optional |
+| `GO_STAC_VALIDATOR_URL` | The full endpoint URL of the Go STAC validator service. Used when `ENABLE_GO_VALIDATOR` is true. | `http://gostac-validator:8080/validate` | Optional |
 | `STAC_INDEX_ASSETS` | Controls if Assets are indexed when added to Elasticsearch/Opensearch. This allows asset fields to be included in search queries. | `false` | Optional |
 
 ### 5. Limits & Performance
@@ -753,22 +756,59 @@ You can customize additional settings in your `.env` file:
 
 ## STAC Validation
 
-STAC FastAPI provides comprehensive validation of STAC items and collections on ingestion to ensure data quality and compliance with the STAC specification.
+STAC FastAPI provides a flexible, 3-tier validation architecture for STAC items and collections on ingestion. This ensures data quality and compliance with the STAC specification while allowing you to balance strict schema enforcement with high-throughput ingestion performance.
 
-### Native Pydantic Validation
+### 1. Native Pydantic Validation (Always Enabled)
 
-By default, all STAC items and collections are validated using **Pydantic** (via `stac-pydantic`) during ingestion. This validation:
+By default, all STAC items and collections are validated using **Pydantic** (via `stac-pydantic`) at the API routing layer. This validation:
 
-- Enforces required fields and correct data types
-- Validates spatial and temporal properties
-- Ensures compliance with the STAC specification
-- Provides fast, built-in validation without external dependencies
+- Enforces required STAC fields and correct data types.
+- Validates spatial and temporal properties.
+- Provides extremely fast, built-in validation without external dependencies.
 
-This validation is always enabled and happens automatically when items or collections are created or updated through the API.
+This validation is always enabled and happens automatically before data reaches the database or the Redis queue.
 
-### Optional STAC Validator
+### 2. High-Speed Go Validator (Recommended for Production)
 
-For stricter validation beyond Pydantic's type checking, you can enable the **stac-validator** package, which validates STAC data against official JSON schemas and extension specifications.
+For deployments that require strict STAC schema validation (including STAC Extensions like SAR, EO, and Point Cloud) but also need to process massive bulk insertions, SFEOS provides integration with a highly concurrent **Go STAC Validator** microservice.
+
+Unlike Python, which validates items one by one, the Go service natively accepts arrays of STAC items (`FeatureCollections`) and validates them concurrently across multiple goroutines. This completely eliminates network bottlenecks and CPU blocking on the FastAPI event loop.
+
+#### Enabling the Go Validator
+
+To use the Go Validator, you must run the Go microservice alongside your API. We provide a ready-to-use Docker Compose configuration for this:
+
+```bash
+# Start the stack with the Go Validator sidecar container included
+docker compose -f docker-compose.yml -f docker-compose.go-validator.yml up
+```
+
+Then, enable it in your environment:
+
+```bash
+export ENABLE_GO_VALIDATOR=true
+export GO_STAC_VALIDATOR_URL=http://gostac-validator:8080/validate
+```
+
+#### Batch Error Responses
+
+When the Go Validator is enabled, bulk API insertions (like POSTing a `FeatureCollection`) that contain invalid items will instantly return a `400 Bad Request` with a detailed dictionary mapping specific item_ids to their exact schema failures:
+
+```json
+{
+  "detail": {
+    "message": "Bulk insertion rejected. 2 items failed validation.",
+    "errors": {
+      "landsat-scene-1": "Go Validator Rejected STAC: 'properties.datetime' is required (at /properties)",
+      "landsat-scene-2": "Go Validator Rejected STAC: additional properties 'eo:bands' not allowed (at /properties)"
+    }
+  }
+}
+```
+
+### 3. Python STAC Validator (Fallback)
+
+If you cannot deploy the Go microservice container but still require strict validation beyond Pydantic's type checking, you can enable the Python-based `stac-validator` package.
 
 #### Enabling STAC Validator
 
@@ -794,7 +834,7 @@ When enabled, the STAC validator will:
 
 #### Schema Cache Configuration
 
-The STAC validator caches JSON schemas to improve performance. Control the cache size with the `SCHEMA_CACHE_SIZE` environment variable:
+STAC validator caches JSON schemas to improve performance. Control the cache size with the `SCHEMA_CACHE_SIZE` environment variable:
 
 ```bash
 # Set cache size to 64 schemas (default is 32)
@@ -828,9 +868,11 @@ If validation fails, you'll receive a detailed error response:
 
 #### Performance Considerations
 
-- **Pydantic validation** is very fast and always enabled
-- **STAC validator** adds overhead due to schema downloads and validation; enable only if you need strict schema compliance
-- Schema caching significantly improves performance for repeated validations
+- **Pydantic validation** Very fast and always enabled
+- **Go validator** (ENABLE_GO_VALIDATOR): Adds minimal overhead. Validates batches concurrently. **Highly recommended** if ENABLE_REDIS_QUEUE=true to ensure bad data never poisons the queue.
+- **STAC validator (Python)** (ENABLE_STAC_VALIDATOR): Loops sequentially. Adding 1,000 items requires 1,000 separate schema checks, which can be CPU intensive. Best suited for smaller, single-item insertions or when running the Go container isn't possible.
+
+**Note**: If both validators are enabled in the environment, SFEOS will prioritize the Go Validator for speed and bypass the Python validator.
 
 ## Free-Text Search (`q` parameter)
 

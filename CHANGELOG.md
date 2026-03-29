@@ -9,14 +9,18 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
-- Added `ENABLE_STAC_VALIDATOR` environment variable to enable strict STAC schema validation on ingestion. [#665](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/665)
-- Added `SCHEMA_CACHE_SIZE` environment variable to control the size of the schema cache used by the stac-validator. [#665](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/665)
+- Added `ENABLE_STAC_VALIDATOR` environment variable to enable strict STAC schema validation on ingestion via the Python `stac-validator`. [#665](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/665)
+- Added `ENABLE_GO_VALIDATOR` and `GO_STAC_VALIDATOR_URL` environment variables to support ultra-fast, concurrent STAC validation via an external Go microservice. [#665](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/665)
+- Added batch STAC validation utilities (`async_validate_batch_with_go` and `validate_batch_with_go`) to process `FeatureCollection` arrays in a single network request. [#665](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/665)
+- Added `SCHEMA_CACHE_SIZE` environment variable to control the size of the schema cache used by the Python stac-validator. [#665](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/665)
 - Added `[validator]` installation extra to `stac-fastapi-core`, `elasticsearch`, and `opensearch` packages. [#665](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/665)
 
 ### Changed
 
-- **Background Worker Validation:** The Redis `ItemQueueWorker` now intercepts and validates items prior to database insertion, safely routing invalid STAC items to a Dead Letter Queue (DLQ) for debugging. [#665](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/665)
-- **Non-Blocking API Validation:** Wrapped direct-API STAC validation in `asyncio.to_thread` to prevent CPU-bound schema checking from blocking the FastAPI event loop. [#665](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/665)
+- **Smart API Validation Routing:** API endpoints (`create_item`, `update_item`) now intelligently bypass synchronous STAC validation when `ENABLE_REDIS_QUEUE` is active, allowing the API to return instantly while the background worker handles validation. [#665](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/665)
+- **Detailed API Error Responses:** Bulk insertion endpoints now return detailed `400 Bad Request` JSON payloads mapping specific `item_id`s to their validation errors, and will no longer return `201 Created` if 0 items were successfully inserted. [#665](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/665)
+- **Background Worker Validation:** The Redis `ItemQueueWorker` now intercepts and validates items prior to database insertion. It leverages high-speed Go batch validation (if enabled) or falls back to Python validation, safely routing invalid STAC items to a Dead Letter Queue (DLQ). [#665](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/665)
+- **Non-Blocking API Validation:** Wrapped direct-API Python STAC validation in `asyncio.to_thread` to prevent CPU-bound schema checking from blocking the FastAPI event loop. [#665](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/665)
 - Refactored Redis queue handling in `create_item()` by extracting duplicate queue code into a new `queue_items_if_enabled()` utility function in `utilities.py`. [#665](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/665)
 
 ### Fixed

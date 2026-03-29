@@ -18,6 +18,11 @@ import logging
 import time
 
 from stac_fastapi.core.redis_utils import AsyncRedisQueueManager, ItemQueueSettings
+from stac_fastapi.core.utilities import (
+    async_validate_batch_with_go,
+    async_validate_item,
+    get_bool_env,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -120,8 +125,6 @@ class ItemQueueWorker:
         """
         from pydantic import ValidationError
 
-        from stac_fastapi.core.utilities import async_validate_item
-
         state = self._get_state(collection_id)
 
         async with self._lock:
@@ -163,16 +166,24 @@ class ItemQueueWorker:
                 valid_items = []
                 invalid_item_ids = set()
 
-                for item in items:
-                    try:
-                        await async_validate_item(item)
-                        valid_items.append(item)
-                    except (ValidationError, ValueError) as e:
-                        item_id = item.get("id", "unknown_id")
-                        logger.error(
-                            f"Worker validation failed for '{item_id}' in collection '{collection_id}': {e}"
-                        )
-                        invalid_item_ids.add(item_id)
+                if get_bool_env("ENABLE_GO_VALIDATOR"):
+                    # FAST PATH: One HTTP request for the whole batch
+                    logger.debug(f"Sending batch of {len(items)} to Go Validator...")
+                    valid_items, invalid_item_ids = await async_validate_batch_with_go(
+                        items
+                    )
+                else:
+                    # SLOW PATH: Fallback to Python 1-by-1 validation
+                    for item in items:
+                        try:
+                            await async_validate_item(item)
+                            valid_items.append(item)
+                        except (ValidationError, ValueError) as e:
+                            item_id = item.get("id", "unknown_id")
+                            logger.error(
+                                f"Worker validation failed for '{item_id}' in collection '{collection_id}': {e}"
+                            )
+                            invalid_item_ids.add(item_id)
 
                 # Handle invalid items (Dead Letter Queue)
                 if invalid_item_ids:
