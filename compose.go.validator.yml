@@ -128,6 +128,7 @@ services:
     restart: always
     environment:
       - ADDR=:8080
+      - MAX_BODY_SIZE_MB=256
     ports:
       - "8081:8080"
     healthcheck:
