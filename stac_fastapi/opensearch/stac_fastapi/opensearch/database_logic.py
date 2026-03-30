@@ -368,7 +368,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         )
 
         # If count task is done, use its result
-        if count_task.done():
+        if count_task.done() and not count_task.cancelled():
             try:
                 matched = count_task.result().get("count")
             except Exception as e:
