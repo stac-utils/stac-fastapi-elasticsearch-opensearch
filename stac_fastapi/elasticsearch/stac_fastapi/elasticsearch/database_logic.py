@@ -779,6 +779,8 @@ class DatabaseLogic(BaseDatabaseLogic):
             Search: The modified Search object with the filter applied if a filter is provided,
                     otherwise the original Search object.
         """
+        metadata = None
+
         if _filter is not None:
             try:
                 all_collection_ids = (
@@ -788,9 +790,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                     await self.get_queryables_mapping(), _filter, all_collection_ids
                 )
                 search = search.query(es_query)
-                search._cql2_metadata = metadata
-
-            except Exception as e:
+            except (ValueError, KeyError, TypeError, AttributeError) as e:
                 logger.warning(
                     "Failed to build CQL2 filter using AST tree approach, falling back to dictionary-based method."
                     f"Error: {str(e)}. Filter: {_filter}"
@@ -799,7 +799,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 es_query = filter_module.to_es(queryables_mapping, _filter)
                 search = search.query(es_query)
 
-        return search
+        return search, metadata
 
     @staticmethod
     def populate_sort(sortby: list) -> dict[str, dict[str, str]] | None:
@@ -826,6 +826,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         sort: dict[str, dict[str, str]] | None,
         collection_ids: list[str] | None,
         datetime_search: str,
+        cql2_metadata: dict[str, Any] | None = None,
         ignore_unavailable: bool = True,
     ) -> tuple[Iterable[dict[str, Any]], int | None, str | None]:
         """Execute a search query with limit and other optional parameters.
@@ -857,8 +858,6 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         query = search.query.to_dict() if search.query else None
 
-        cql2_metadata = getattr(search, "_cql2_metadata", None)
-
         # Special case for cql2-json index selection
         if cql2_metadata:
             index_param, collection_ids = await resolve_cql2_indexes(
@@ -871,9 +870,6 @@ class DatabaseLogic(BaseDatabaseLogic):
             index_param = await self.async_index_selector.select_indexes(
                 collection_ids, datetime_search
             )
-        index_param = await self.async_index_selector.select_indexes(
-            collection_ids, datetime_search
-        )
         if len(index_param) > ES_MAX_URL_LENGTH - 300:
             index_param = ITEM_INDICES
             query = add_collections_to_body(collection_ids, query)

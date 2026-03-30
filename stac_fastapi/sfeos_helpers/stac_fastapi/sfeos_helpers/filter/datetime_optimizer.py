@@ -8,8 +8,6 @@ from stac_fastapi.core.extensions.filter import (
     ComparisonNode,
     ComparisonOp,
     CqlNode,
-    DateTimeExactNode,
-    DateTimeRangeNode,
     LogicalNode,
     LogicalOp,
 )
@@ -20,61 +18,12 @@ class DatetimeOptimizer:
 
     def __init__(self) -> None:
         """Initialize the datetime optimizer."""
-        self.datetime_nodes: List[Union[DateTimeRangeNode, DateTimeExactNode]] = []
-
-    def extract_datetime_nodes(
-        self, node: CqlNode
-    ) -> List[Union[DateTimeRangeNode, DateTimeExactNode]]:
-        """Extract datetime nodes from AST."""
-        datetime_nodes = []
-
-        def _traverse(current: CqlNode):
-            if isinstance(current, ComparisonNode):
-                if self._is_datetime_field(current.field):
-                    if current.op == ComparisonOp.EQ:
-                        datetime_nodes.append(
-                            DateTimeExactNode(field=current.field, value=current.value)
-                        )
-                    elif current.op == ComparisonOp.GTE:
-                        datetime_nodes.append(
-                            DateTimeRangeNode(field=current.field, start=current.value)
-                        )
-                    elif current.op == ComparisonOp.LTE:
-                        datetime_nodes.append(
-                            DateTimeRangeNode(field=current.field, end=current.value)
-                        )
-
-            elif isinstance(current, AdvancedComparisonNode):
-                if (
-                    current.op == AdvancedComparisonOp.BETWEEN
-                    and self._is_datetime_field(current.field)
-                ):
-                    if (
-                        isinstance(current.value, (list, tuple))
-                        and len(current.value) == 2
-                    ):
-                        datetime_nodes.append(
-                            DateTimeRangeNode(
-                                field=current.field,
-                                start=current.value[0],
-                                end=current.value[1],
-                            )
-                        )
-
-            if isinstance(current, LogicalNode):
-                for child in current.children:
-                    _traverse(child)
-
-        _traverse(node)
-        return datetime_nodes
+        self.datetime_nodes: List[Union[ComparisonNode, AdvancedComparisonNode]] = []
 
     def _is_datetime_field(self, field: str) -> bool:
         """Datetime field checker."""
         field_lower = field.lower()
-        return any(
-            dt_field in field_lower
-            for dt_field in ["datetime", "start_datetime", "end_datetime"]
-        )
+        return field_lower in {"datetime", "start_datetime", "end_datetime"}
 
     def optimize_query_structure(self, ast: CqlNode) -> CqlNode:
         """Optimize AST structure for better query performance."""
@@ -247,6 +196,102 @@ def extract_from_ast(node: CqlNode, field_name: str) -> List[Any]:
     return values if values else None
 
 
+def _merge_date_ranges(range1: str, range2: str) -> Tuple[Optional[str], List[str]]:
+    """Merge two date range strings and return the merged range and any additional ranges.
+
+    Args:
+        range1: First date range string
+        range2: Second date range string
+
+    Returns:
+        Tuple of (merged_range, additional_ranges) where merged_range is the intersection or combination,
+        and additional_ranges are any ranges that couldn't be merged
+    """
+    additional_ranges = []
+
+    if ".." in range1 or ".." in range2:
+        if ".." in range1:
+            additional_ranges.append(range1)
+        if ".." in range2:
+            additional_ranges.append(range2)
+        return None, additional_ranges
+
+    if "/" in range1:
+        parts1 = range1.split("/")
+        start1 = None if parts1[0] == ".." else parts1[0]
+        end1 = None if parts1[1] == ".." else parts1[1]
+    else:
+        start1 = end1 = range1
+
+    if "/" in range2:
+        parts2 = range2.split("/")
+        start2 = None if parts2[0] == ".." else parts2[0]
+        end2 = None if parts2[1] == ".." else parts2[1]
+    else:
+        start2 = end2 = range2
+
+    start = None
+    end = None
+
+    if start1 and start2:
+        start = max(start1, start2)
+    elif start1:
+        start = start1
+    elif start2:
+        start = start2
+
+    if end1 and end2:
+        end = min(end1, end2)
+    elif end1:
+        end = end1
+    elif end2:
+        end = end2
+
+    if start and end:
+        if start <= end:
+            if start == end:
+                return start, []
+            else:
+                return f"{start}/{end}", []
+    elif start:
+        return f"{start}/..", []
+    elif end:
+        return f"../{end}", []
+
+    return None, []
+
+
+def _merge_and_results(
+    results1: List[Tuple[List[str], str]], results2: List[Tuple[List[str], str]]
+) -> List[Tuple[List[str], str]]:
+    """Merge two sets of AND branch results."""
+    if not results1 or not results2:
+        return []
+
+    merged_results = []
+
+    for coll1, range1 in results1:
+        for coll2, range2 in results2:
+            merged_coll = list(set(coll1 + coll2))
+            merged_coll.sort()
+
+            if not range1 and not range2:
+                merged_results.append((merged_coll, ""))
+            elif range1 and not range2:
+                merged_results.append((merged_coll, range1))
+            elif not range1 and range2:
+                merged_results.append((merged_coll, range2))
+            else:
+                merged_range, additional = _merge_date_ranges(range1, range2)
+                if merged_range:
+                    merged_results.append((merged_coll, merged_range))
+                if additional:
+                    for add_range in additional:
+                        merged_results.append((merged_coll, add_range))
+
+    return merged_results
+
+
 def extract_collection_datetime(
     node: CqlNode,
     all_collection_ids: Optional[List[str]] = None,
@@ -302,157 +347,9 @@ def extract_collection_datetime(
                 combined_results = child_results_list[0]
 
                 for next_child_results in child_results_list[1:]:
-                    new_combined = []
-
-                    if len(combined_results) == 1 and len(next_child_results) == 1:
-                        coll1, range1 = combined_results[0]
-                        coll2, range2 = next_child_results[0]
-
-                        merged_coll = list(set(coll1 + coll2))
-                        merged_coll.sort()
-
-                        is_start1 = range1.endswith("/..")
-                        is_end1 = range1.startswith("../")
-                        is_start2 = range2.endswith("/..")
-                        is_end2 = range2.startswith("../")
-
-                        if (is_start1 and is_end2) or (is_start2 and is_end1):
-                            if is_start1 and is_end2:
-                                start_value = range1[:-3]
-                                end_value = range2[3:]
-                            else:
-                                start_value = range2[:-3]
-                                end_value = range1[3:]
-
-                            new_combined.append(
-                                (merged_coll, f"{start_value}/{end_value}")
-                            )
-                        else:
-                            for existing_coll, existing_range in combined_results:
-                                for new_coll, new_range in next_child_results:
-
-                                    merged_coll = list(set(existing_coll + new_coll))
-                                    merged_coll.sort()
-
-                                    if not existing_range and not new_range:
-                                        new_combined.append((merged_coll, ""))
-
-                                    elif existing_range and not new_range:
-                                        new_combined.append(
-                                            (merged_coll, existing_range)
-                                        )
-                                    elif not existing_range and new_range:
-                                        new_combined.append((merged_coll, new_range))
-
-                                    else:
-                                        if ".." in existing_range or ".." in new_range:
-                                            if ".." in existing_range:
-                                                new_combined.append(
-                                                    (merged_coll, existing_range)
-                                                )
-                                            if ".." in new_range:
-                                                new_combined.append(
-                                                    (merged_coll, new_range)
-                                                )
-                                        else:
-                                            if "/" in existing_range:
-                                                e_parts = existing_range.split("/")
-                                                e_start = (
-                                                    None
-                                                    if e_parts[0] == ".."
-                                                    else e_parts[0]
-                                                )
-                                                e_end = (
-                                                    None
-                                                    if e_parts[1] == ".."
-                                                    else e_parts[1]
-                                                )
-                                            else:
-                                                e_start = e_end = existing_range
-
-                                            if "/" in new_range:
-                                                n_parts = new_range.split("/")
-                                                n_start = (
-                                                    None
-                                                    if n_parts[0] == ".."
-                                                    else n_parts[0]
-                                                )
-                                                n_end = (
-                                                    None
-                                                    if n_parts[1] == ".."
-                                                    else n_parts[1]
-                                                )
-                                            else:
-                                                n_start = n_end = new_range
-
-                                            start = None
-                                            end = None
-                                            if e_start and n_start:
-                                                start = max(e_start, n_start)
-                                            elif e_start:
-                                                start = e_start
-                                            elif n_start:
-                                                start = n_start
-
-                                            if e_end and n_end:
-                                                end = min(e_end, n_end)
-                                            elif e_end:
-                                                end = e_end
-                                            elif n_end:
-                                                end = n_end
-
-                                            if start and end:
-                                                if start <= end:
-                                                    if start == end:
-                                                        new_combined.append(
-                                                            (merged_coll, start)
-                                                        )
-                                                    else:
-                                                        new_combined.append(
-                                                            (
-                                                                merged_coll,
-                                                                f"{start}/{end}",
-                                                            )
-                                                        )
-                                            elif start:
-                                                new_combined.append(
-                                                    (merged_coll, f"{start}/..")
-                                                )
-                                            elif end:
-                                                new_combined.append(
-                                                    (merged_coll, f"../{end}")
-                                                )
-                    else:
-                        for existing_coll, existing_range in combined_results:
-                            for new_coll, new_range in next_child_results:
-                                merged_coll = list(set(existing_coll + new_coll))
-                                merged_coll.sort()
-
-                                if not existing_range and not new_range:
-                                    new_combined.append((merged_coll, ""))
-                                elif existing_range and not new_range:
-                                    new_combined.append((merged_coll, existing_range))
-                                elif not existing_range and new_range:
-                                    new_combined.append((merged_coll, new_range))
-                                else:
-                                    if ".." in existing_range or ".." in new_range:
-                                        if ".." in existing_range:
-                                            new_combined.append(
-                                                (merged_coll, existing_range)
-                                            )
-                                        if ".." in new_range:
-                                            new_combined.append(
-                                                (merged_coll, new_range)
-                                            )
-                                    else:
-                                        new_combined.append(
-                                            (
-                                                merged_coll,
-                                                f"{existing_range}/{new_range}",
-                                            )
-                                        )
-
-                    combined_results = new_combined
+                    combined_results = _merge_and_results(
+                        combined_results, next_child_results
+                    )
 
                 results.extend(combined_results)
 
@@ -471,6 +368,22 @@ def extract_collection_datetime(
                                 excluded_list = [excluded]
                             included_collections = [
                                 c for c in all_collection_ids if c not in excluded_list
+                            ]
+                            if included_collections:
+                                results.append((included_collections, ""))
+                            continue
+
+                    elif (
+                        isinstance(child, AdvancedComparisonNode)
+                        and child.field == "collection"
+                        and child.op == AdvancedComparisonOp.IN
+                    ):
+                        if all_collection_ids:
+                            excluded = (
+                                child.value if isinstance(child.value, list) else []
+                            )
+                            included_collections = [
+                                c for c in all_collection_ids if c not in excluded
                             ]
                             if included_collections:
                                 results.append((included_collections, ""))

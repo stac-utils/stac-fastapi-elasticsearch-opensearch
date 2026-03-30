@@ -133,20 +133,3 @@ class SpatialNode(CqlNode):
     op: SpatialOp
     field: str
     geometry: dict[str, Any]
-
-
-@dataclass
-class DateTimeRangeNode(CqlNode):
-    """Datetime range queries."""
-
-    field: str = "properties.datetime"
-    start: str | None = None
-    end: str | None = None
-
-
-@dataclass
-class DateTimeExactNode(CqlNode):
-    """Exact datetime queries."""
-
-    field: str = "properties.datetime"
-    value: str | None = None
