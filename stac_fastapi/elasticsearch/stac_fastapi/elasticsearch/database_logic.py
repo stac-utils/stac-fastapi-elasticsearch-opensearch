@@ -73,6 +73,7 @@ from stac_fastapi.sfeos_helpers.database.utils import (
     operations_to_script,
     validate_datetime_operations,
 )
+from stac_fastapi.sfeos_helpers.filter import build_cql2_filter, resolve_cql2_indexes
 from stac_fastapi.sfeos_helpers.mappings import (
     AGGREGATION_MAPPING,
     COLLECTIONS_INDEX,
@@ -368,7 +369,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         )
 
         # If count task is done, use its result
-        if count_task.done():
+        if count_task.done() and not count_task.cancelled():
             try:
                 matched = count_task.result().get("count")
             except Exception as e:
@@ -778,11 +779,27 @@ class DatabaseLogic(BaseDatabaseLogic):
             Search: The modified Search object with the filter applied if a filter is provided,
                     otherwise the original Search object.
         """
-        if _filter is not None:
-            es_query = filter_module.to_es(await self.get_queryables_mapping(), _filter)
-            search = search.query(es_query)
+        metadata = None
 
-        return search
+        if _filter is not None:
+            try:
+                all_collection_ids = (
+                    await self.async_index_selector.get_all_collection_ids()
+                )
+                es_query, metadata = build_cql2_filter(
+                    await self.get_queryables_mapping(), _filter, all_collection_ids
+                )
+                search = search.query(es_query)
+            except (ValueError, KeyError, TypeError, AttributeError) as e:
+                logger.warning(
+                    "Failed to build CQL2 filter using AST tree approach, falling back to dictionary-based method."
+                    f"Error: {str(e)}. Filter: {_filter}"
+                )
+                queryables_mapping = await self.get_queryables_mapping()
+                es_query = filter_module.to_es(queryables_mapping, _filter)
+                search = search.query(es_query)
+
+        return search, metadata
 
     @staticmethod
     def populate_sort(sortby: list) -> dict[str, dict[str, str]] | None:
@@ -809,6 +826,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         sort: dict[str, dict[str, str]] | None,
         collection_ids: list[str] | None,
         datetime_search: str,
+        cql2_metadata: dict[str, Any] | None = None,
         ignore_unavailable: bool = True,
     ) -> tuple[Iterable[dict[str, Any]], int | None, str | None]:
         """Execute a search query with limit and other optional parameters.
@@ -840,9 +858,18 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         query = search.query.to_dict() if search.query else None
 
-        index_param = await self.async_index_selector.select_indexes(
-            collection_ids, datetime_search
-        )
+        # Special case for cql2-json index selection
+        if cql2_metadata:
+            index_param, collection_ids = await resolve_cql2_indexes(
+                cql2_metadata,
+                self.async_index_selector,
+                self.apply_datetime_filter,
+                search,
+            )
+        else:
+            index_param = await self.async_index_selector.select_indexes(
+                collection_ids, datetime_search
+            )
         if len(index_param) > ES_MAX_URL_LENGTH - 300:
             index_param = ITEM_INDICES
             query = add_collections_to_body(collection_ids, query)
