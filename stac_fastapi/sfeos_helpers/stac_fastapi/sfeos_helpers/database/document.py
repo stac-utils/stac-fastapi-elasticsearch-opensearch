@@ -24,17 +24,22 @@ def mk_item_id(item_id: str, collection_id: str) -> str:
 
 
 def mk_actions(
-    collection_id: str, processed_items: list[Item]
+    collection_id: str,
+    processed_items: list[Item],
+    op_type: str = "create",
 ) -> list[dict[str, Any] | dict[str, str | dict]]:
     """Create Elasticsearch bulk actions for a list of processed items.
 
     Args:
         collection_id (str): The identifier for the collection the items belong to.
         processed_items (list[Item]): The list of processed items to be bulk indexed.
+        op_type (str): The operation type for the bulk actions. "create" for insert-only
+            (rejects duplicates), "index" for upsert. Defaults to "create".
 
     Returns:
         list[dict[str, Any] | dict[str, str | dict]]: The list of bulk actions to be executed,
         each action being a dictionary with the following keys:
+        - `_op_type`: the operation type ("create" or "index").
         - `_index`: the index to store the document in.
         - `_id`: the document's identifier.
         - `_source`: the source of the document.
@@ -42,6 +47,7 @@ def mk_actions(
     index_alias = index_alias_by_collection_id(collection_id)
     return [
         {
+            "_op_type": op_type,
             "_index": index_alias,
             "_id": mk_item_id(item["id"], item["collection"]),
             "_source": item,
