@@ -972,6 +972,7 @@ class CoreClient(AsyncBaseCoreClient):
                     )
 
         # Apply CQL2 filter (cql2_filter was extracted earlier for collection/geometry)
+        cql2_metadata = None
         if cql2_filter is not None:
             try:
                 query_fields = get_properties_from_cql2_filter(cql2_filter)
