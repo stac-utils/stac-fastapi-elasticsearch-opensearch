@@ -407,6 +407,128 @@ async def setup_database_indexes():
             [([], "2020-01-01T00:00:00Z/..")],
             id="datetime-open-gt",
         ),
+        pytest.param(
+            {
+                "op": "<>",
+                "args": [{"property": "datetime"}, "2024-01-15T00:00:00Z"],
+            },
+            [],
+            [([], "../2024-01-15T00:00:00Z"), ([], "2024-01-15T00:00:00Z/..")],
+            id="datetime-not-equal",
+        ),
+        pytest.param(
+            {
+                "op": "isNull",
+                "args": [{"property": "datetime"}],
+            },
+            [],
+            [],
+            id="isnull-datetime",
+        ),
+        pytest.param(
+            {
+                "op": "not",
+                "args": [
+                    {
+                        "op": "in",
+                        "args": [
+                            {"property": "datetime"},
+                            ["2024-01-01T00:00:00Z", "2024-01-15T00:00:00Z"],
+                        ],
+                    }
+                ],
+            },
+            [],
+            [
+                ([], "../2024-01-01T00:00:00Z"),
+                ([], "2024-01-01T00:00:00Z/2024-01-15T00:00:00Z"),
+                ([], "2024-01-15T00:00:00Z/.."),
+            ],
+            id="datetime-not-in",
+        ),
+        pytest.param(
+            {
+                "op": ">=",
+                "args": [{"property": "start_datetime"}, "2023-01-01T00:00:00Z"],
+            },
+            [],
+            [([], "2023-01-01T00:00:00Z/..")],
+            id="start_datetime-gte",
+        ),
+        pytest.param(
+            {
+                "op": "<=",
+                "args": [{"property": "start_datetime"}, "2023-12-31T23:59:59Z"],
+            },
+            [],
+            [([], "../2023-12-31T23:59:59Z")],
+            id="start_datetime-lte",
+        ),
+        pytest.param(
+            {
+                "op": "between",
+                "args": [
+                    {"property": "start_datetime"},
+                    "2023-06-01T00:00:00Z",
+                    "2023-06-30T23:59:59Z",
+                ],
+            },
+            [],
+            [([], "2023-06-01T00:00:00Z/2023-06-30T23:59:59Z")],
+            id="start_datetime-between",
+        ),
+        pytest.param(
+            {
+                "op": ">=",
+                "args": [{"property": "end_datetime"}, "2023-01-01T00:00:00Z"],
+            },
+            [],
+            [([], "2023-01-01T00:00:00Z/..")],
+            id="end_datetime-gte",
+        ),
+        pytest.param(
+            {
+                "op": "<=",
+                "args": [{"property": "end_datetime"}, "2023-12-31T23:59:59Z"],
+            },
+            [],
+            [([], "../2023-12-31T23:59:59Z")],
+            id="end_datetime-lte",
+        ),
+        pytest.param(
+            {
+                "op": "between",
+                "args": [
+                    {"property": "end_datetime"},
+                    "2023-06-01T00:00:00Z",
+                    "2023-06-30T23:59:59Z",
+                ],
+            },
+            [],
+            [([], "2023-06-01T00:00:00Z/2023-06-30T23:59:59Z")],
+            id="end_datetime-between",
+        ),
+        pytest.param(
+            {
+                "op": "and",
+                "args": [
+                    {
+                        "op": ">=",
+                        "args": [
+                            {"property": "start_datetime"},
+                            "2023-01-01T00:00:00Z",
+                        ],
+                    },
+                    {
+                        "op": "<=",
+                        "args": [{"property": "end_datetime"}, "2023-12-31T23:59:59Z"],
+                    },
+                ],
+            },
+            [],
+            [([], "2023-01-01T00:00:00Z/.."), ([], "../2023-12-31T23:59:59Z")],
+            id="start-and-end-datetime-combined",
+        ),
     ],
 )
 async def test_apply_cql2_filter_checks_search_and_metadata(
@@ -421,6 +543,8 @@ async def test_apply_cql2_filter_checks_search_and_metadata(
     queryables_mapping = {
         "collection": ["collection", "collection.keyword"],
         "datetime": "properties.datetime",
+        "start_datetime": "properties.start_datetime",
+        "end_datetime": "properties.end_datetime",
     }
     queryables_mapping_mock = AsyncMock(return_value=queryables_mapping)
     collection_ids_mock = AsyncMock(return_value=collection_ids)
@@ -484,6 +608,18 @@ async def test_apply_cql2_filter_checks_search_and_metadata(
             "items_start_datetime_col-a_2020-02-08,items_start_datetime_col-b_2020-02-15",
             set(),
             id="test-bounded-datetime",
+        ),
+        pytest.param(
+            [([], "2019-01-01T00:00:00Z/2019-12-31T23:59:59Z")],
+            "",
+            set(),
+            id="test-disjoint-range-before-all-indexes",
+        ),
+        pytest.param(
+            [([], "2021-01-01T00:00:00Z/2021-12-31T23:59:59Z")],
+            "",
+            set(),
+            id="test-disjoint-range-after-all-indexes",
         ),
     ],
 )
