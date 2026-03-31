@@ -687,6 +687,7 @@ You can customize additional settings in your `.env` file:
 | `RETRY_MAX_ATTEMPTS_NOT_FOUND_ERROR` | Specifies the maximum number of retry attempts for `IndexNotFoundException` error before giving up. This is particularly useful for datetime-based index searches where indices may need to be refreshed. | `3` | Optional |
 | `RETRY_WAIT_SECONDS` | Specifies the number of seconds to wait between retry attempts. | `0.5` | Optional |
 | `RETRY_RERAISE` | Specifies whether the original exception should be re-raised after all retry attempts are exhausted. | `true` | Optional |
+| `ES_MAX_URL_LENGTH` | Maximum URL length for Elasticsearch/OpenSearch requests. When the combined length of index names in a query exceeds this limit (minus a 300-character buffer), the API falls back to querying all item indices with a collection filter in the request body. This value should match the `http.max_initial_line_length` setting in your Elasticsearch/OpenSearch server configuration. | `4096` | Optional |
 
 ### 3. API Metadata
 
