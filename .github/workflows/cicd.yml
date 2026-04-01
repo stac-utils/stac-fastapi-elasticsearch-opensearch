@@ -66,18 +66,6 @@ jobs:
         ports:
           - 6379:6379
 
-      gostac-validator:
-        image: ghcr.io/staclabs/gostac-validator:latest
-        ports:
-          - 8080:8080
-        env:
-          ADDR: ":8080"
-        options: >-
-          --health-cmd="wget -qO- http://localhost:8080/health || exit 1"
-          --health-interval=10s
-          --health-timeout=5s
-          --health-retries=5
-
     strategy:
       matrix:
         python-version: [ "3.12", "3.13", "3.14"]
