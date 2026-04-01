@@ -36,7 +36,6 @@ from stac_fastapi.core.serializers import (
 from stac_fastapi.core.session import Session
 from stac_fastapi.core.utilities import filter_fields, get_bool_env
 from stac_fastapi.core.validate import (
-    async_validate_batch_with_go,
     async_validate_collection,
     async_validate_item,
     validate_item,
@@ -1049,12 +1048,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             valid_features = []
             invalid_details = {}  # Store id -> error string
 
-            if get_bool_env("ENABLE_GO_VALIDATOR") and not use_queue:
-                valid_features, invalid_details = await async_validate_batch_with_go(
-                    unique_features
-                )
-
-            elif get_bool_env("ENABLE_STAC_VALIDATOR") and not use_queue:
+            if get_bool_env("ENABLE_STAC_VALIDATOR") and not use_queue:
                 for feature in unique_features:
                     item_id = feature.get("id", "unknown_id")
                     try:
@@ -1191,10 +1185,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         # ==========================================================
         else:
             # 1. VALIDATION LAYER (Single Item)
-            if (
-                get_bool_env("ENABLE_GO_VALIDATOR")
-                or get_bool_env("ENABLE_STAC_VALIDATOR")
-            ) and not use_queue:
+            if get_bool_env("ENABLE_STAC_VALIDATOR") and not use_queue:
                 try:
                     await async_validate_item(item_dict)
                 except (ValidationError, ValueError) as e:
@@ -1587,19 +1578,13 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         valid_items = []
         invalid_details = {}
 
-        if get_bool_env("ENABLE_GO_VALIDATOR"):
-            from stac_fastapi.core.utilities import validate_batch_with_go
-
-            valid_items, invalid_details = validate_batch_with_go(unique_items)
-
-        else:
-            for item in unique_items:
-                item_id = item.get("id", "unknown_id")
-                try:
-                    validate_item(item)
-                    valid_items.append(item)
-                except (ValidationError, ValueError) as e:
-                    invalid_details[item_id] = str(e)
+        for item in unique_items:
+            item_id = item.get("id", "unknown_id")
+            try:
+                validate_item(item)
+                valid_items.append(item)
+            except (ValidationError, ValueError) as e:
+                invalid_details[item_id] = str(e)
 
         # This endpoint historically has strict mode enabled by default.
         # We fail the entire batch immediately if any item is invalid.

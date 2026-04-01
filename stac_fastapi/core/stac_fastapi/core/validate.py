@@ -2,7 +2,6 @@
 
 Provides validation for STAC items and collections using multiple validation backends:
 - Pydantic validation (always enabled)
-- Go Validator microservice (high-performance, concurrent)
 - Python STAC Validator (fallback, sequential)
 """
 
@@ -10,7 +9,6 @@ import asyncio
 import logging
 import os
 
-import httpx
 from stac_pydantic import Collection, Item
 
 from stac_fastapi.core.utilities import get_bool_env
@@ -18,9 +16,6 @@ from stac_fastapi.core.utilities import get_bool_env
 logger = logging.getLogger(__name__)
 
 SCHEMA_CACHE_SIZE = int(os.getenv("SCHEMA_CACHE_SIZE", "32"))
-GO_VALIDATOR_URL = os.getenv(
-    "GO_STAC_VALIDATOR_URL", "http://gostac-validator:8080/validate"
-)
 
 
 # Singleton STAC validator instance to reuse schema cache across requests
@@ -45,153 +40,6 @@ def _get_stac_validator():
         set_schema_cache_size(SCHEMA_CACHE_SIZE)
         _stac_validator_instance = stac_validator.StacValidate(verbose=True)
     return _stac_validator_instance
-
-
-def validate_batch_with_go(items: list[dict]) -> tuple[list[dict], dict[str, str]]:
-    """Validate a batch of STAC items using the Go Validator service.
-
-    Sends items to the Go Validator microservice for concurrent validation.
-    Separates valid items from invalid ones based on the validator response.
-
-    Args:
-        items: List of STAC item dictionaries to validate.
-
-    Returns:
-        Tuple of (valid_items_list, invalid_items_dict) where invalid_items_dict
-        maps item IDs to their validation error messages.
-    """
-    valid_items = []
-    invalid_items = {}
-
-    with httpx.Client(timeout=30.0) as client:
-        try:
-            response = client.post(GO_VALIDATOR_URL, json=items)
-            response.raise_for_status()
-
-            batch_data = response.json()
-            results = batch_data.get("results", [])
-
-            for idx, item in enumerate(items):
-                item_id = item.get("id", f"unknown_id_{idx}")
-
-                if idx < len(results) and results[idx].get("valid", False):
-                    valid_items.append(item)
-                else:
-                    err_msg = "Unknown validation error"
-                    if idx < len(results) and results[idx].get("errors"):
-                        err_msg = results[idx]["errors"][0].get("message", err_msg)
-                        loc = results[idx]["errors"][0].get("instance_location", "")
-                        err_msg = f"{err_msg} (at {loc})"
-
-                    invalid_items[item_id] = err_msg
-
-        except Exception:
-            for item in items:
-                invalid_items[
-                    item.get("id", "unknown_id")
-                ] = "Go Validator unreachable or failed."
-
-    return valid_items, invalid_items
-
-
-async def async_validate_batch_with_go(
-    items: list[dict],
-) -> tuple[list[dict], dict[str, str]]:
-    """Asynchronously validate a batch of STAC items using the Go Validator service.
-
-    Sends items to the Go Validator microservice for concurrent validation.
-    Separates valid items from invalid ones based on the validator response.
-
-    Args:
-        items: List of STAC item dictionaries to validate.
-
-    Returns:
-        Tuple of (valid_items_list, invalid_items_dict) where invalid_items_dict
-        maps item IDs to their validation error messages.
-    """
-    valid_items = []
-    invalid_items = {}  # Changed from set to dict
-
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        try:
-            response = await client.post(GO_VALIDATOR_URL, json=items)
-            response.raise_for_status()
-
-            batch_data = response.json()
-            results = batch_data.get("results", [])
-
-            for idx, item in enumerate(items):
-                item_id = item.get("id", f"unknown_id_{idx}")
-
-                if idx < len(results) and results[idx].get("valid", False):
-                    valid_items.append(item)
-                else:
-                    err_msg = "Unknown validation error"
-                    if idx < len(results) and results[idx].get("errors"):
-                        err_msg = results[idx]["errors"][0].get("message", err_msg)
-                        loc = results[idx]["errors"][0].get("instance_location", "")
-                        err_msg = f"{err_msg} (at {loc})"
-
-                    logger.error(f"Batch validation failed for '{item_id}': {err_msg}")
-                    # Map the ID to the specific error
-                    invalid_items[item_id] = err_msg
-
-        except Exception as exc:
-            logger.error(f"Batch validation request failed: {exc}")
-            for item in items:
-                item_id = item.get("id", "unknown_id")
-                invalid_items[
-                    item_id
-                ] = "Go Validator unreachable or failed to process."
-
-    return valid_items, invalid_items
-
-
-def _validate_with_go_service(stac_dict: dict) -> None:
-    """Validate a STAC item or collection using the Go Validator service.
-
-    Sends a single STAC item or collection to the Go Validator microservice
-    for high-speed schema validation. Raises an error if validation fails.
-
-    Args:
-        stac_dict: STAC item or collection data as a dictionary.
-
-    Raises:
-        RuntimeError: If the Go Validator service is unreachable.
-        ValueError: If the STAC data fails validation.
-    """
-    with httpx.Client(timeout=30.0) as client:
-        try:
-            response = client.post(GO_VALIDATOR_URL, json=stac_dict)
-            response.raise_for_status()
-        except httpx.RequestError as exc:
-            logger.error(f"Networking error to Go Validator: {exc}")
-            raise RuntimeError(
-                f"Go Validator unreachable at {GO_VALIDATOR_URL}"
-            ) from exc
-
-        # Parse the Go BatchResponse
-        batch_data = response.json()
-
-        # Check if there are ANY invalid items in the response
-        if batch_data.get("invalid_count", 0) > 0:
-            # Dig into the results array to find the specific error
-            results = batch_data.get("results", [])
-            for res in results:
-                if not res.get("valid", True):
-                    errors = res.get("errors", [])
-                    msg = (
-                        errors[0].get("message", "Invalid STAC")
-                        if errors
-                        else "Validation failed"
-                    )
-                    loc = errors[0].get("instance_location", "unknown")
-
-                    full_msg = f"Go Validator Rejected STAC: {msg} (at {loc})"
-                    logger.error(full_msg)
-
-                    # Raise the ValueError so create_item catches it and returns a 400
-                    raise ValueError(full_msg)
 
 
 def validate_stac(
@@ -223,12 +71,7 @@ def validate_stac(
         stac_obj = pydantic_model(**stac_data)
         stac_dict = stac_data
 
-    # 2. Logic for Go Validator (High Performance)
-    if get_bool_env("ENABLE_GO_VALIDATOR"):
-        _validate_with_go_service(stac_dict)
-        return stac_obj
-
-    # 3. Logic for Python STAC Validator (Legacy/Optional)
+    # 2. Logic for Python STAC Validator (Legacy/Optional)
     if get_bool_env("ENABLE_STAC_VALIDATOR"):
         try:
             # Check if stac_validator is installed
