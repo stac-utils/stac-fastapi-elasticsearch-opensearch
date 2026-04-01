@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 - Fixed bulk duplicate detection: replaced manual `exist_ok` pre-check with ES/OS native `op_type="create"`. Bulk operations now correctly raise `ItemAlreadyExistsError` when `RAISE_ON_BULK_ERROR=true`, or count duplicates as "skipped" when `false`, instead of throwing raw `BulkIndexError`. [#638](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/638)
 - Fixed `add_collections_to_body` to handle empty `collection_ids` gracefully, preventing an invalid empty `terms` filter from being added to the query body. [#656](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/656)
+- Made Redis queue operations atomic using pipelines (MULTI/EXEC) in `queue_items`, `mark_items_processed`, `remove_item`, and `save_failed_items` to prevent ghost entries where IDs exist in ZSET but data is missing from HASH.
+- Added periodic lock refresh (every 60s) to `item_queue_worker` to prevent distributed lock expiration during long-running batch processing. The worker now stops processing when the lock is lost and checks `owned()` before releasing to avoid releasing another worker's lock.
 
 ### Removed
 
