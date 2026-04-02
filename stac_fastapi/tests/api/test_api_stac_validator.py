@@ -184,16 +184,22 @@ async def test_stac_validator_feature_collection_with_invalid_item_skip_on_error
             item = deepcopy(base_item)
             item["id"] = f"valid-item-{i}"
             item["collection"] = test_collection["id"]
+            # Remove eo:bands from properties (violates EO v1.0.0 spec - should only be in assets)
+            if "eo:bands" in item.get("properties", {}):
+                del item["properties"]["eo:bands"]
             features.append(item)
 
         # Add invalid item (invalid cloud_cover)
         invalid_item = deepcopy(base_item)
         invalid_item["id"] = "invalid-item-fc"
         invalid_item["collection"] = test_collection["id"]
+        # Remove eo:bands from properties (violates EO v1.0.0 spec - should only be in assets)
+        if "eo:bands" in invalid_item.get("properties", {}):
+            del invalid_item["properties"]["eo:bands"]
         invalid_item["properties"]["eo:cloud_cover"] = 150  # Invalid: > 100
 
         features.append(invalid_item)
-
+        print("features:", features)
         feature_collection = {
             "type": "FeatureCollection",
             "features": features,

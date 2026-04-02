@@ -1077,46 +1077,15 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
             raise_on_error = get_bool_env("RAISE_ON_BULK_ERROR", default=False)
 
-            # 2. VALIDATION LAYER
-            valid_features, validation_errors = await self._validate_feature_collection(
-                unique_features, use_queue
-            )
-            validation_error_count = sum(
-                len(item_ids) if isinstance(item_ids, list) else 1
-                for item_ids in validation_errors.values()
-            )
-
-            # STRICT MODE: Reject entire batch if any validation errors
-            if validation_errors and raise_on_error:
-                raise HTTPException(
-                    status_code=400,
-                    detail={
-                        "message": f"Batch rejected. {validation_error_count} items failed validation.",
-                        "errors": validation_errors,
-                    },
-                )
-
-            # PARTIAL MODE: Reject if no valid items remain
-            if not valid_features:
-                raise HTTPException(
-                    status_code=400,
-                    detail={
-                        "message": f"No valid items to insert. Skipped {skipped_batch_duplicates} duplicates.",
-                        "validation_errors": validation_errors,
-                    },
-                )
-
-            # 3. PREPROCESSING LAYER
+            # 2. PREPROCESSING LAYER (must happen before validation to add required links)
             bulk_client = BulkTransactionsClient(
                 database=self.database, settings=self.settings
             )
             processed_items = []
             skipped_db_duplicates = 0
-            logger.info(
-                f"Starting preprocessing of {len(valid_features)} valid features"
-            )
+            logger.info(f"Starting preprocessing of {len(unique_features)} features")
 
-            for feature in valid_features:
+            for feature in unique_features:
                 try:
                     prepped = bulk_client.preprocess_item(feature, base_url)
                     if prepped is not None:
@@ -1135,36 +1104,74 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                     )
                     skipped_db_duplicates += 1
 
-            logger.info(
-                f"After preprocessing: {len(processed_items)} items ready for database insertion, {skipped_db_duplicates} skipped"
-            )
-
-            if not processed_items:
-                total_skipped = (
-                    skipped_batch_duplicates
-                    + skipped_db_duplicates
-                    + validation_error_count
+            # 3. VALIDATION LAYER (after preprocessing so items have required links)
+            # Skip validation if using queue - worker will validate asynchronously
+            if use_queue:
+                logger.info(
+                    f"After preprocessing: {len(processed_items)} items ready for queueing (validation will happen in worker)"
                 )
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"No items to insert. {total_skipped} items were skipped (duplicates or invalid).",
+                valid_items = processed_items
+                validation_errors: dict[str, list[str]] = {}
+                validation_error_count = 0
+            else:
+                logger.info(
+                    f"After preprocessing: {len(processed_items)} items ready for validation"
+                )
+                (
+                    valid_items,
+                    validation_errors,
+                ) = await self._validate_feature_collection(
+                    processed_items, skip_validation=False
+                )
+                validation_error_count = sum(
+                    len(item_ids) if isinstance(item_ids, list) else 1
+                    for item_ids in validation_errors.values()
+                )
+
+                # STRICT MODE: Reject entire batch if any validation errors
+                if validation_errors and raise_on_error:
+                    raise HTTPException(
+                        status_code=400,
+                        detail={
+                            "message": f"Batch rejected. {validation_error_count} items failed validation.",
+                            "errors": validation_errors,
+                        },
+                    )
+
+                # PARTIAL MODE: Reject if no valid items remain (only in strict mode)
+                if not valid_items and raise_on_error:
+                    total_skipped = (
+                        skipped_batch_duplicates
+                        + skipped_db_duplicates
+                        + validation_error_count
+                    )
+                    raise HTTPException(
+                        status_code=400,
+                        detail={
+                            "message": f"No valid items to insert. Skipped {total_skipped} items (duplicates or invalid).",
+                            "validation_errors": validation_errors,
+                        },
+                    )
+
+                logger.info(
+                    f"After validation: {len(valid_items)} valid items ready for database insertion"
                 )
 
             # 4. ROUTING LAYER (Queue vs Database)
 
             # PATH A: REDIS QUEUE ENABLED
             if use_queue:
-                result = await queue_items_if_enabled(collection_id, processed_items)
+                result = await queue_items_if_enabled(collection_id, valid_items)
                 if result:
                     if validation_error_count > 0 or skipped_batch_duplicates > 0:
                         result += f" (Skipped {validation_error_count} invalid, {skipped_batch_duplicates} duplicates)"
                     return result
 
             # PATH B: DIRECT DATABASE INSERTION
-            attempted = len(processed_items)
+            attempted = len(valid_items)
             success, errors = await self.database.bulk_async(
                 collection_id=collection_id,
-                processed_items=processed_items,
+                processed_items=valid_items,
                 op_type="create",
                 **kwargs,
             )
@@ -1185,7 +1192,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
             successfully_added_ids = [
                 item.get("id")
-                for item in processed_items
+                for item in valid_items
                 if item.get("id") not in failed_item_ids
             ]
 

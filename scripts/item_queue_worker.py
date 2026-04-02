@@ -18,7 +18,8 @@ import logging
 import time
 
 from stac_fastapi.core.redis_utils import AsyncRedisQueueManager, ItemQueueSettings
-from stac_fastapi.core.validate import async_validate_item
+from stac_fastapi.core.utilities import get_bool_env
+from stac_fastapi.core.validate import async_validate_batch_with_stac_validator
 
 logger = logging.getLogger(__name__)
 
@@ -119,8 +120,6 @@ class ItemQueueWorker:
         flushes across multiple worker processes. Validates items before database
         insertion. Invalid items are sent to the DLQ. Only valid items are inserted.
         """
-        from pydantic import ValidationError
-
         state = self._get_state(collection_id)
 
         async with self._lock:
@@ -158,20 +157,25 @@ class ItemQueueWorker:
                     f"Collection '{collection_id}' batch #{batch_num}: pulled {len(items)} items from queue"
                 )
 
-                # VALIDATION LAYER: Intercept items before database insertion
-                valid_items = []
-                invalid_item_ids = set()
+                # VALIDATION LAYER: Use batch validation for efficiency (if enabled)
+                if get_bool_env("ENABLE_STAC_VALIDATOR"):
+                    (
+                        valid_items,
+                        validation_errors,
+                    ) = await async_validate_batch_with_stac_validator(items)
 
-                for item in items:
-                    try:
-                        await async_validate_item(item)
-                        valid_items.append(item)
-                    except (ValidationError, ValueError) as e:
-                        item_id = item.get("id", "unknown_id")
-                        logger.error(
-                            f"Worker validation failed for '{item_id}' in collection '{collection_id}': {e}"
-                        )
-                        invalid_item_ids.add(item_id)
+                    # Extract invalid item IDs from grouped validation errors
+                    invalid_item_ids = set()
+                    for error_msg, item_ids in validation_errors.items():
+                        for item_id in item_ids:
+                            invalid_item_ids.add(item_id)
+                            logger.error(
+                                f"Worker validation failed for '{item_id}' in collection '{collection_id}': {error_msg}"
+                            )
+                else:
+                    # Skip STAC validation when disabled
+                    valid_items = items
+                    invalid_item_ids = set()
 
                 # Handle invalid items (Dead Letter Queue)
                 if invalid_item_ids:

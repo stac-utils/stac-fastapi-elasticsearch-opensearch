@@ -37,7 +37,14 @@ def _get_batch_validator():
 
     Returns:
         The batch validator instance (validate_dicts function with cached schemas).
+
+    Raises:
+        ImportError: If stac-validator is not installed and ENABLE_STAC_VALIDATOR is true.
     """
+    # Only attempt import if validation is enabled
+    if not get_bool_env("ENABLE_STAC_VALIDATOR"):
+        return None
+
     global _batch_validator_instance
     if _batch_validator_instance is None:
         with _validator_lock:
@@ -62,32 +69,21 @@ def _get_batch_validator():
 def _get_single_validator():
     """Get or create the singleton single-item validator instance.
 
-    Initializes and caches a single StacValidator instance with schema caching
-    to improve performance for single-item validation.
-    Uses double-checked locking for thread safety.
+    For single-item validation, we use the batch validator with a single item
+    to get consistent dictionary-based results across all validation paths.
 
     Returns:
-        The StacValidator instance with cached schemas.
-    """
-    global _single_validator_instance
-    if _single_validator_instance is None:
-        with _validator_lock:
-            if _single_validator_instance is None:
-                try:
-                    from stac_validator import StacValidator
-                    from stac_validator.utilities import set_schema_cache_size
+        The batch validator function (validate_dicts).
 
-                    set_schema_cache_size(SCHEMA_CACHE_SIZE)
-                    _single_validator_instance = StacValidator()
-                except ImportError as e:
-                    logger.error("stac_validator not available")
-                    raise ImportError(
-                        "STAC validator is not installed. "
-                        "Install it with: pip install stac-fastapi-core[validator] "
-                        "or pip install stac-fastapi-elasticsearch[validator] "
-                        "or pip install stac-fastapi-opensearch[validator]"
-                    ) from e
-    return _single_validator_instance
+    Raises:
+        ImportError: If stac-validator is not installed and ENABLE_STAC_VALIDATOR is true.
+    """
+    # Only attempt import if validation is enabled
+    if not get_bool_env("ENABLE_STAC_VALIDATOR"):
+        return None
+
+    # Reuse the batch validator for single items to get consistent dict results
+    return _get_batch_validator()
 
 
 def _extract_error_message(validation_result: dict) -> str:
@@ -152,9 +148,25 @@ def validate_batch_with_stac_validator(
         # Group errors by message to avoid duplication
         errors_by_message: dict[str, list[str]] = {}
 
-        for idx, result in enumerate(results):
-            item = items[idx]
-            item_id = item.get("id", f"unknown_id_{idx}")
+        # Build a map of items by ID for reliable matching
+        # validate_dicts may not preserve order when using multiprocessing, so we match by item_id
+        items_by_id = {
+            item.get("id", f"unknown_id_{idx}"): item for idx, item in enumerate(items)
+        }
+
+        for result in results:
+            # Match result to item by item_id from the validation result
+            # This is critical because validate_dicts with multiprocessing doesn't preserve order
+            result_item_id = result.get("item_id")
+
+            if not result_item_id or result_item_id not in items_by_id:
+                logger.warning(
+                    f"Could not match validation result to item: {result_item_id}"
+                )
+                continue
+
+            item = items_by_id[result_item_id]
+            item_id = result_item_id
 
             if result.get("valid_stac", False):
                 valid_items.append(item)
@@ -213,13 +225,17 @@ def validate_stac(
 
     # 2. STAC Validator (optional, enabled via ENABLE_STAC_VALIDATOR env var)
     if get_bool_env("ENABLE_STAC_VALIDATOR"):
-        # Use cached single-item validator instance (avoid multi-processing overhead)
-        validator = _get_single_validator()
-        validation_result = validator.validate_dict(stac_dict)
+        # Use batch validator with single item for consistent dict-based results
+        validate_dicts = _get_single_validator()
+        results = validate_dicts(
+            [stac_dict],
+            max_workers=0,  # Sequential processing for single item
+            show_progress=False,
+        )
 
-        if not validation_result.get("valid_stac", False):
+        if results and not results[0].get("valid_stac", False):
             item_id = stac_dict.get("id", "unknown_id")
-            error_msg = _extract_error_message(validation_result)
+            error_msg = _extract_error_message(results[0])
             raise ValueError(f"STAC validation failed for '{item_id}': {error_msg}")
 
     return stac_obj
