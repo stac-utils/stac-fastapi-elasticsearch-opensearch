@@ -24,7 +24,6 @@ MAX_VALIDATION_WORKERS = int(os.getenv("MAX_VALIDATION_WORKERS", "0"))
 
 # Global instances to cache validators and avoid repeated initialization
 _batch_validator_instance = None
-_single_validator_instance = None
 _validator_lock = threading.Lock()
 
 
@@ -64,26 +63,6 @@ def _get_batch_validator():
                         "or pip install stac-fastapi-opensearch[validator]"
                     ) from e
     return _batch_validator_instance
-
-
-def _get_single_validator():
-    """Get or create the singleton single-item validator instance.
-
-    For single-item validation, we use the batch validator with a single item
-    to get consistent dictionary-based results across all validation paths.
-
-    Returns:
-        The batch validator function (validate_dicts).
-
-    Raises:
-        ImportError: If stac-validator is not installed and ENABLE_STAC_VALIDATOR is true.
-    """
-    # Only attempt import if validation is enabled
-    if not get_bool_env("ENABLE_STAC_VALIDATOR"):
-        return None
-
-    # Reuse the batch validator for single items to get consistent dict results
-    return _get_batch_validator()
 
 
 def _extract_error_message(validation_result: dict) -> str:
@@ -226,7 +205,7 @@ def validate_stac(
     # 2. STAC Validator (optional, enabled via ENABLE_STAC_VALIDATOR env var)
     if get_bool_env("ENABLE_STAC_VALIDATOR"):
         # Use batch validator with single item for consistent dict-based results
-        validate_dicts = _get_single_validator()
+        validate_dicts = _get_batch_validator()
         results = validate_dicts(
             [stac_dict],
             max_workers=0,  # Sequential processing for single item

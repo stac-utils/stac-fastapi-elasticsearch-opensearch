@@ -117,8 +117,15 @@ class ItemQueueWorker:
         """Flush pending items for a collection in sequential batches.
 
         Acquires a Redis distributed lock per collection to prevent concurrent
-        flushes across multiple worker processes. Validates items before database
-        insertion. Invalid items are sent to the DLQ. Only valid items are inserted.
+        flushes across multiple worker processes. Keeps draining the queue in
+        batch_size chunks until fewer than batch_size items remain.
+
+        The lock TTL is periodically refreshed by a background task to prevent
+        expiration during long-running batch processing.
+
+        If strict validation is enabled via `ENABLE_STAC_VALIDATOR`, items are
+        validated concurrently before database insertion. Invalid items are routed
+        to the Dead Letter Queue (DLQ), and only valid items are inserted.
         """
         state = self._get_state(collection_id)
 
