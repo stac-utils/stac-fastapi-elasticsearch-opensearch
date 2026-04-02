@@ -36,9 +36,8 @@ from stac_fastapi.core.serializers import (
 from stac_fastapi.core.session import Session
 from stac_fastapi.core.utilities import filter_fields, get_bool_env
 from stac_fastapi.core.validate import (
-    async_validate_collection,
-    async_validate_item,
-    validate_item,
+    async_validate_batch_with_stac_validator,
+    async_validate_stac,
 )
 from stac_fastapi.extensions.core.transaction import AsyncBaseTransactionsClient
 from stac_fastapi.extensions.core.transaction.request import (
@@ -994,6 +993,37 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     settings: ApiBaseSettings = attr.ib()
     session: Session = attr.ib(default=attr.Factory(Session.create_from_env))
 
+    async def _validate_single_item(self, item_dict: dict) -> None:
+        """Validate a single STAC item.
+
+        Args:
+            item_dict: The item dictionary to validate.
+
+        Raises:
+            HTTPException: If validation fails.
+        """
+        try:
+            await async_validate_stac(item_dict)
+        except (ValidationError, ValueError) as e:
+            raise HTTPException(status_code=400, detail=f"Invalid item: {e}")
+
+    async def _validate_feature_collection(
+        self, features: list[dict], skip_validation: bool
+    ) -> tuple[list[dict], dict[str, list[str]]]:
+        """Validate a collection of STAC features.
+
+        Args:
+            features: List of feature dictionaries to validate.
+            skip_validation: Whether to skip validation (e.g., when using queue).
+
+        Returns:
+            Tuple of (valid_features, validation_errors) where validation_errors
+            maps error messages to lists of affected item IDs.
+        """
+        if get_bool_env("ENABLE_STAC_VALIDATOR") and not skip_validation:
+            return await async_validate_batch_with_stac_validator(features)
+        return features, {}
+
     @overrides
     async def create_item(
         self, collection_id: str, item: Item | ItemCollection, **kwargs
@@ -1031,6 +1061,9 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         # ==========================================================
         if item_dict["type"] == "FeatureCollection":
             raw_features = item_dict.get("features", [])
+            logger.info(
+                f"Processing FeatureCollection with {len(raw_features)} features for collection {collection_id}"
+            )
 
             # 1. Deduplicate by ID FIRST (keep last occurrence)
             seen_ids: dict = {}
@@ -1040,47 +1073,36 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                     seen_ids[feature_id] = feature
             unique_features = list(seen_ids.values())
             skipped_batch_duplicates = len(raw_features) - len(unique_features)
+            logger.info(f"After deduplication: {len(unique_features)} unique features")
 
             raise_on_error = get_bool_env("RAISE_ON_BULK_ERROR", default=False)
-            skipped_validation_errors = 0
 
-            # 2. VALIDATION LAYER (Batch Optimized & 3-Way Split)
-            valid_features = []
-            invalid_details = {}  # Store id -> error string
+            # 2. VALIDATION LAYER
+            valid_features, validation_errors = await self._validate_feature_collection(
+                unique_features, use_queue
+            )
+            validation_error_count = sum(
+                len(item_ids) if isinstance(item_ids, list) else 1
+                for item_ids in validation_errors.values()
+            )
 
-            if get_bool_env("ENABLE_STAC_VALIDATOR") and not use_queue:
-                for feature in unique_features:
-                    item_id = feature.get("id", "unknown_id")
-                    try:
-                        await async_validate_item(feature)
-                        valid_features.append(feature)
-                    except (ValidationError, ValueError) as e:
-                        logger.warning(
-                            f"Skipping item '{item_id}' due to validation error: {e}"
-                        )
-                        invalid_details[item_id] = str(e)
-            else:
-                valid_features = unique_features
-
-            skipped_validation_errors = len(invalid_details)
-
-            # STRICT MODE: Fail the entire batch if ANY item is invalid
-            if invalid_details and raise_on_error:
+            # STRICT MODE: Reject entire batch if any validation errors
+            if validation_errors and raise_on_error:
                 raise HTTPException(
                     status_code=400,
                     detail={
-                        "message": f"Batch rejected. {skipped_validation_errors} items failed validation.",
-                        "errors": invalid_details,
+                        "message": f"Batch rejected. {validation_error_count} items failed validation.",
+                        "errors": validation_errors,
                     },
                 )
 
-            # PARTIAL MODE: If literally NOTHING is valid, fail with 400 instead of 201
+            # PARTIAL MODE: Reject if no valid items remain
             if not valid_features:
                 raise HTTPException(
                     status_code=400,
                     detail={
                         "message": f"No valid items to insert. Skipped {skipped_batch_duplicates} duplicates.",
-                        "validation_errors": invalid_details,
+                        "validation_errors": validation_errors,
                     },
                 )
 
@@ -1090,19 +1112,38 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             )
             processed_items = []
             skipped_db_duplicates = 0
+            logger.info(
+                f"Starting preprocessing of {len(valid_features)} valid features"
+            )
 
             for feature in valid_features:
-                prepped = bulk_client.preprocess_item(feature, base_url)
-                if prepped is not None:
-                    processed_items.append(prepped)
-                else:
+                try:
+                    prepped = bulk_client.preprocess_item(feature, base_url)
+                    if prepped is not None:
+                        processed_items.append(prepped)
+                        logger.debug(
+                            f"Successfully preprocessed item {feature.get('id', 'unknown')}"
+                        )
+                    else:
+                        skipped_db_duplicates += 1
+                        logger.debug(
+                            f"Item {feature.get('id', 'unknown')} returned None from preprocessing"
+                        )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to preprocess item {feature.get('id', 'unknown')}: {e}"
+                    )
                     skipped_db_duplicates += 1
+
+            logger.info(
+                f"After preprocessing: {len(processed_items)} items ready for database insertion, {skipped_db_duplicates} skipped"
+            )
 
             if not processed_items:
                 total_skipped = (
                     skipped_batch_duplicates
                     + skipped_db_duplicates
-                    + skipped_validation_errors
+                    + validation_error_count
                 )
                 raise HTTPException(
                     status_code=400,
@@ -1115,8 +1156,8 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             if use_queue:
                 result = await queue_items_if_enabled(collection_id, processed_items)
                 if result:
-                    if skipped_validation_errors > 0 or skipped_batch_duplicates > 0:
-                        result += f" (Skipped {skipped_validation_errors} invalid, {skipped_batch_duplicates} duplicates)"
+                    if validation_error_count > 0 or skipped_batch_duplicates > 0:
+                        result += f" (Skipped {validation_error_count} invalid, {skipped_batch_duplicates} duplicates)"
                     return result
 
             # PATH B: DIRECT DATABASE INSERTION
@@ -1130,6 +1171,23 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
             # Handle Database Errors
             conflict_errors, other_errors = separate_bulk_conflict_errors(errors)
+
+            # Extract IDs of successfully added items (attempted - failed)
+            failed_item_ids = set()
+            for error in errors:
+                error_doc = next(iter(error.values()))
+                doc_id = error_doc.get("_id", "")
+                if "|" in doc_id:
+                    item_id = doc_id.split("|")[0]
+                else:
+                    item_id = doc_id
+                failed_item_ids.add(item_id)
+
+            successfully_added_ids = [
+                item.get("id")
+                for item in processed_items
+                if item.get("id") not in failed_item_ids
+            ]
 
             if conflict_errors and raise_on_error:
                 doc_id = next(iter(conflict_errors[0].values())).get("_id", "")
@@ -1154,42 +1212,79 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             total_skipped = (
                 skipped_batch_duplicates
                 + skipped_db_duplicates
-                + skipped_validation_errors
+                + validation_error_count
                 + len(conflict_errors)
             )
 
+            # Format conflict errors with descriptive messages
+            def format_conflict_errors(conflicts):
+                conflict_details = {}
+                for c in conflicts:
+                    doc_id = next(iter(c.values())).get("_id", "")
+                    if "|" in doc_id:
+                        item_id, coll_id = doc_id.split("|", 1)
+                        conflict_details[
+                            item_id
+                        ] = f"Item '{item_id}' already exists in collection '{coll_id}'"
+                    else:
+                        conflict_details[doc_id] = f"Item '{doc_id}' already exists"
+                return conflict_details
+
             # If absolutely nothing was inserted, do not return a 201 Created!
             if success == 0:
-                # Extract IDs of conflicts to show the user
-                conflict_ids = [
-                    next(iter(c.values())).get("_id", "") for c in conflict_errors
-                ]
-
                 raise HTTPException(
                     status_code=400,
                     detail={
                         "message": f"No items were added. {total_skipped} skipped. {len(other_errors)} errors.",
-                        "validation_errors": invalid_details,
-                        "conflict_errors": conflict_ids,
+                        "validation_errors": validation_errors,
+                        "conflict_errors": format_conflict_errors(conflict_errors)
+                        if conflict_errors
+                        else {},
                     },
                 )
 
-            # If at least 1 item succeeded, return the summary string (which gets a 201)
-            return {
-                "message": f"Successfully added {success} Items. {total_skipped} skipped.",
-                "validation_errors": invalid_details,
+            # If at least 1 item succeeded, return the summary with all error details
+            # Use database response values directly
+            total_processed = len(raw_features)
+            message_parts = [f"Processed {total_processed} items: {success} added"]
+            if skipped_batch_duplicates > 0:
+                message_parts.append(f"{skipped_batch_duplicates} input duplicates")
+            if validation_error_count > 0:
+                message_parts.append(f"{validation_error_count} validation errors")
+            if skipped_db_duplicates > 0:
+                message_parts.append(f"{skipped_db_duplicates} preprocessing skipped")
+            if len(conflict_errors) > 0:
+                message_parts.append(f"{len(conflict_errors)} conflicts")
+            if len(other_errors) > 0:
+                message_parts.append(f"{len(other_errors)} database errors")
+
+            message = " | ".join(message_parts)
+
+            response: dict[str, str | list[str] | dict[str, list[str]] | list[dict]] = {
+                "message": message,
             }
+
+            if successfully_added_ids:
+                response["successfully_added"] = successfully_added_ids
+
+            if validation_errors:
+                response["validation_errors"] = validation_errors
+
+            if conflict_errors:
+                response["conflict_errors"] = format_conflict_errors(conflict_errors)
+
+            if other_errors:
+                response["database_errors"] = other_errors
+
+            return response
 
         # ==========================================================
         # SINGLE ITEM INSERTION
         # ==========================================================
         else:
-            # 1. VALIDATION LAYER (Single Item)
+            # 1. VALIDATION LAYER
             if get_bool_env("ENABLE_STAC_VALIDATOR") and not use_queue:
-                try:
-                    await async_validate_item(item_dict)
-                except (ValidationError, ValueError) as e:
-                    raise HTTPException(status_code=400, detail=f"Invalid item: {e}")
+                await self._validate_single_item(item_dict)
 
             # 2. PREPROCESSING LAYER
             bulk_client = BulkTransactionsClient(
@@ -1262,10 +1357,8 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         # PATH B: DIRECT DATABASE INSERTION (No Queue)
         # Validate before database insertion
-        try:
-            await async_validate_item(item)
-        except (ValidationError, ValueError) as e:
-            raise HTTPException(status_code=400, detail=f"Invalid item: {e}")
+        if get_bool_env("ENABLE_STAC_VALIDATOR"):
+            await self._validate_single_item(item_dict)
 
         await self.database.create_item(
             item_dict, base_url=base_url, upsert=True, **kwargs
@@ -1362,10 +1455,11 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             ConflictError: If the collection already exists.
         """
         # Validate collection
-        try:
-            await async_validate_collection(collection)
-        except (ValidationError, ValueError) as e:
-            raise HTTPException(status_code=400, detail=f"Invalid collection: {e}")
+        if get_bool_env("ENABLE_STAC_VALIDATOR"):
+            try:
+                await async_validate_stac(collection, pydantic_model=Collection)
+            except (ValidationError, ValueError) as e:
+                raise HTTPException(status_code=400, detail=f"Invalid collection: {e}")
 
         collection = collection.model_dump(mode="json")
         request = kwargs["request"]
@@ -1403,7 +1497,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         """
         # Validate collection
         try:
-            await async_validate_collection(collection)
+            await async_validate_stac(collection, pydantic_model=Collection)
         except (ValidationError, ValueError) as e:
             raise HTTPException(status_code=400, detail=f"Invalid collection: {e}")
 
@@ -1574,28 +1668,32 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         if not unique_items:
             return f"No items to insert. {skipped_batch_duplicates} items were skipped (duplicates)."
 
-        # 2. VALIDATION LAYER (Synchronous Batch Optimized & 3-Way Split)
-        valid_items = []
-        invalid_details = {}
+        # 2. VALIDATION LAYER (Use batch validator for efficiency)
+        if get_bool_env("ENABLE_STAC_VALIDATOR"):
+            from stac_fastapi.core.validate import validate_batch_with_stac_validator
 
-        for item in unique_items:
-            item_id = item.get("id", "unknown_id")
-            try:
-                validate_item(item)
-                valid_items.append(item)
-            except (ValidationError, ValueError) as e:
-                invalid_details[item_id] = str(e)
-
-        # This endpoint historically has strict mode enabled by default.
-        # We fail the entire batch immediately if any item is invalid.
-        if invalid_details:
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "message": f"Bulk insertion rejected. {len(invalid_details)} items failed validation.",
-                    "errors": invalid_details,
-                },
+            valid_items, validation_errors = validate_batch_with_stac_validator(
+                unique_items
             )
+
+            # Count total validation errors (validation_errors maps error_msg -> [item_ids])
+            validation_error_count = sum(
+                len(item_ids) if isinstance(item_ids, list) else 1
+                for item_ids in validation_errors.values()
+            )
+
+            # This endpoint historically has strict mode enabled by default.
+            # We fail the entire batch immediately if any item is invalid.
+            if validation_errors:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "message": f"Bulk insertion rejected. {validation_error_count} items failed validation.",
+                        "errors": validation_errors,
+                    },
+                )
+        else:
+            valid_items = unique_items
 
         # 3. PREPROCESSING LAYER
         processed_items = []
