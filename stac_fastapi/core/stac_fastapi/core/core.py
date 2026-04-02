@@ -1149,6 +1149,14 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             HTTPException: If no valid items remain to be inserted, or if the batch is
             rejected under strict mode (RAISE_ON_BULK_ERROR=True).
         """
+        try:
+            await self.database.find_collection(collection_id=collection_id)
+        except Exception:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Collection '{collection_id}' not found",
+            )
+
         raw_features = item_dict.get("features", [])
         logger.info(
             f"Processing FeatureCollection with {len(raw_features)} features for collection {collection_id}"
