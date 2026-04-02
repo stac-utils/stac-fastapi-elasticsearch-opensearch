@@ -388,6 +388,7 @@ class BaseDatabaseLogic(abc.ABC):
         sort: dict[str, dict[str, str]] | None,
         collection_ids: list[str] | None,
         datetime_search: str,
+        cql2_metadata: dict[str, Any] | None = None,
         ignore_unavailable: bool = True,
     ) -> tuple[Iterable[dict[str, Any]], int | None, str | None]:
         """Execute the search."""
