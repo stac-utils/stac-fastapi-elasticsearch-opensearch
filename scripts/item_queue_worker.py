@@ -212,6 +212,8 @@ class ItemQueueWorker:
                     f"Collection '{collection_id}' batch #{batch_num}: flushing {len(items)} items"
                 )
 
+                t0 = time.monotonic()
+
                 try:
                     success, errors = await self.db.bulk_async(
                         collection_id=collection_id,
@@ -252,8 +254,9 @@ class ItemQueueWorker:
                             f"Collection '{collection_id}': failed to save {len(failed_ids)} item(s) to DLQ; items remain in pending queue"
                         )
 
+                elapsed = time.monotonic() - t0
                 logger.info(
-                    f"Collection '{collection_id}' batch #{batch_num}: {success} succeeded, {len(errors)} errors"
+                    f"Collection '{collection_id}' batch #{batch_num}: {success} succeeded, {len(errors)} errors, took {elapsed:.3f}s"
                 )
 
                 state.last_flush_time = time.monotonic()
