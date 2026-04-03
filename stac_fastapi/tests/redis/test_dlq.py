@@ -4,7 +4,7 @@ import os
 import sys
 import uuid
 from pathlib import Path
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import pytest_asyncio
@@ -243,3 +243,288 @@ async def test_flush_dlq_save_failure_keeps_failed_in_pending(
     assert await queue_manager.redis.scard(failed_key) == 0
 
     queue_manager.save_failed_items = original_save
+
+
+@pytest.mark.asyncio
+async def test_queue_items_populates_all_structures(queue_manager):
+    col = "col-atomic-1"
+    items = [_valid_item(col) for _ in range(3)]
+
+    length = await queue_manager.queue_items(col, items)
+    assert length == 3
+
+    zset_key = queue_manager._get_zset_key(col)
+    data_key = queue_manager._get_data_key(col)
+    collections_key = queue_manager._get_collections_set_key()
+
+    assert await queue_manager.redis.zcard(zset_key) == 3
+    assert await queue_manager.redis.hlen(data_key) == 3
+    assert col in await queue_manager.redis.smembers(collections_key)
+
+
+@pytest.mark.asyncio
+async def test_queue_items_deduplicates(queue_manager):
+    col = "col-dedup"
+    item = _valid_item(col, "dup-id")
+
+    await queue_manager.queue_items(col, [item])
+    length = await queue_manager.queue_items(col, [item])
+    assert length == 1
+
+    data_key = queue_manager._get_data_key(col)
+    assert await queue_manager.redis.hlen(data_key) == 1
+
+
+@pytest.mark.asyncio
+async def test_queue_items_empty_list_returns_zero(queue_manager):
+    assert await queue_manager.queue_items("col-empty", []) == 0
+
+
+@pytest.mark.asyncio
+async def test_queue_items_skips_items_without_id(queue_manager):
+    col = "col-no-id"
+    good = _valid_item(col)
+    bad = {"collection": col, "properties": {"datetime": "2024-01-01T00:00:00Z"}}
+
+    length = await queue_manager.queue_items(col, [good, bad])
+    assert length == 1
+
+
+@pytest.mark.asyncio
+async def test_mark_processed_removes_from_zset_and_hash(queue_manager):
+    col = "col-mark-1"
+    items = [_valid_item(col) for _ in range(3)]
+    await queue_manager.queue_items(col, items)
+
+    to_remove = [items[0]["id"], items[1]["id"]]
+    remaining = await queue_manager.mark_items_processed(col, to_remove)
+    assert remaining == 1
+
+    zset_key = queue_manager._get_zset_key(col)
+    data_key = queue_manager._get_data_key(col)
+
+    zset_members = await queue_manager.redis.zrange(zset_key, 0, -1)
+    assert set(zset_members) == {items[2]["id"]}
+
+    hash_keys = await queue_manager.redis.hkeys(data_key)
+    assert set(hash_keys) == {items[2]["id"]}
+
+
+@pytest.mark.asyncio
+async def test_mark_processed_no_ghosts_in_zset(queue_manager):
+    col = "col-no-ghost"
+    items = [_valid_item(col) for _ in range(5)]
+    await queue_manager.queue_items(col, items)
+
+    ids_to_remove = [it["id"] for it in items[:3]]
+    await queue_manager.mark_items_processed(col, ids_to_remove)
+
+    zset_key = queue_manager._get_zset_key(col)
+    data_key = queue_manager._get_data_key(col)
+
+    zset_ids = set(await queue_manager.redis.zrange(zset_key, 0, -1))
+    hash_ids = set(await queue_manager.redis.hkeys(data_key))
+    assert zset_ids == hash_ids
+
+
+@pytest.mark.asyncio
+async def test_mark_processed_cleans_up_when_empty(queue_manager):
+    col = "col-cleanup"
+    items = [_valid_item(col) for _ in range(2)]
+    await queue_manager.queue_items(col, items)
+
+    all_ids = [it["id"] for it in items]
+    remaining = await queue_manager.mark_items_processed(col, all_ids)
+    assert remaining == 0
+
+    collections_key = queue_manager._get_collections_set_key()
+    assert col not in await queue_manager.redis.smembers(collections_key)
+
+    data_key = queue_manager._get_data_key(col)
+    assert await queue_manager.redis.exists(data_key) == 0
+
+
+@pytest.mark.asyncio
+async def test_mark_processed_empty_list_is_noop(queue_manager):
+    col = "col-noop"
+    items = [_valid_item(col) for _ in range(2)]
+    await queue_manager.queue_items(col, items)
+
+    remaining = await queue_manager.mark_items_processed(col, [])
+    assert remaining == 2
+
+
+@pytest.mark.asyncio
+async def test_mark_processed_nonexistent_ids(queue_manager):
+    col = "col-nonexist"
+    items = [_valid_item(col) for _ in range(2)]
+    await queue_manager.queue_items(col, items)
+
+    remaining = await queue_manager.mark_items_processed(
+        col, ["fake-id-1", "fake-id-2"]
+    )
+    assert remaining == 2
+
+
+@pytest.mark.asyncio
+async def test_remove_item_removes_from_both_structures(queue_manager):
+    col = "col-rem-1"
+    items = [_valid_item(col) for _ in range(2)]
+    await queue_manager.queue_items(col, items)
+
+    result = await queue_manager.remove_item(col, items[0]["id"])
+    assert result is True
+
+    zset_key = queue_manager._get_zset_key(col)
+    data_key = queue_manager._get_data_key(col)
+
+    zset_ids = set(await queue_manager.redis.zrange(zset_key, 0, -1))
+    hash_ids = set(await queue_manager.redis.hkeys(data_key))
+    assert zset_ids == hash_ids == {items[1]["id"]}
+
+
+@pytest.mark.asyncio
+async def test_remove_item_cleans_up_when_last(queue_manager):
+    col = "col-rem-last"
+    item = _valid_item(col)
+    await queue_manager.queue_items(col, [item])
+
+    result = await queue_manager.remove_item(col, item["id"])
+    assert result is True
+
+    collections_key = queue_manager._get_collections_set_key()
+    assert col not in await queue_manager.redis.smembers(collections_key)
+
+
+@pytest.mark.asyncio
+async def test_remove_item_nonexistent_returns_false(queue_manager):
+    col = "col-rem-none"
+    item = _valid_item(col)
+    await queue_manager.queue_items(col, [item])
+
+    result = await queue_manager.remove_item(col, "does-not-exist")
+    assert result is False
+    assert await queue_manager.get_queue_length(col) == 1
+
+
+@pytest.mark.asyncio
+async def test_concurrent_mark_no_ghosts(queue_manager):
+    col = "col-concurrent"
+    items = [_valid_item(col) for _ in range(10)]
+    await queue_manager.queue_items(col, items)
+
+    half1 = [it["id"] for it in items[:5]]
+    half2 = [it["id"] for it in items[5:]]
+
+    await asyncio.gather(
+        queue_manager.mark_items_processed(col, half1),
+        queue_manager.mark_items_processed(col, half2),
+    )
+
+    zset_key = queue_manager._get_zset_key(col)
+    data_key = queue_manager._get_data_key(col)
+
+    zset_ids = set(await queue_manager.redis.zrange(zset_key, 0, -1))
+    hash_ids = set(await queue_manager.redis.hkeys(data_key))
+    assert zset_ids == hash_ids
+
+
+@pytest.mark.asyncio
+async def test_concurrent_remove_no_ghosts(queue_manager):
+    col = "col-conc-rem"
+    items = [_valid_item(col) for _ in range(10)]
+    await queue_manager.queue_items(col, items)
+
+    await asyncio.gather(*[queue_manager.remove_item(col, it["id"]) for it in items])
+
+    zset_key = queue_manager._get_zset_key(col)
+    data_key = queue_manager._get_data_key(col)
+
+    assert await queue_manager.redis.zcard(zset_key) == 0
+    assert await queue_manager.redis.hlen(data_key) == 0
+
+
+@pytest.mark.asyncio
+async def test_lock_refresh_calls_extend():
+    mock_lock = AsyncMock()
+    mock_lock.name = "test-lock"
+    mock_lock.extend = AsyncMock()
+
+    worker = ItemQueueWorker.__new__(ItemQueueWorker)
+
+    task = asyncio.create_task(worker._lock_refresh_task(mock_lock, interval=0.05))
+    await asyncio.sleep(0.15)
+    task.cancel()
+    try:
+        await task
+    except asyncio.CancelledError:
+        pass
+
+    assert mock_lock.extend.call_count >= 2
+    mock_lock.extend.assert_called_with(additional_time=300, replace_ttl=True)
+
+
+@pytest.mark.asyncio
+async def test_lock_refresh_stops_on_extend_failure():
+    mock_lock = AsyncMock()
+    mock_lock.name = "test-lock"
+    mock_lock.extend = AsyncMock(side_effect=Exception("lock lost"))
+
+    worker = ItemQueueWorker.__new__(ItemQueueWorker)
+    lock_lost = asyncio.Event()
+
+    task = asyncio.create_task(
+        worker._lock_refresh_task(mock_lock, interval=0.05, lock_lost=lock_lost)
+    )
+    await asyncio.sleep(0.15)
+
+    assert task.done()
+    assert lock_lost.is_set()
+    await task
+
+
+@pytest.mark.asyncio
+async def test_lock_refresh_cancellation():
+    mock_lock = AsyncMock()
+    mock_lock.name = "test-lock"
+    mock_lock.extend = AsyncMock()
+
+    worker = ItemQueueWorker.__new__(ItemQueueWorker)
+
+    task = asyncio.create_task(worker._lock_refresh_task(mock_lock, interval=100))
+    await asyncio.sleep(0.01)
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+
+@pytest.mark.asyncio
+async def test_flush_starts_and_cancels_refresh(queue_manager):
+    col = "col-lock-refresh"
+    items = [_valid_item(col) for _ in range(2)]
+    await queue_manager.queue_items(col, items)
+
+    worker = _make_worker(queue_manager, MagicMock())
+    worker.db.bulk_async = AsyncMock(return_value=(2, []))
+
+    with patch.object(
+        worker, "_lock_refresh_task", wraps=worker._lock_refresh_task
+    ) as mock_refresh:
+        await worker._flush_collection(col)
+        mock_refresh.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_flush_release_checks_owned(queue_manager):
+    col = "col-owned-check"
+    items = [_valid_item(col)]
+    await queue_manager.queue_items(col, items)
+
+    worker = _make_worker(queue_manager, MagicMock())
+    worker.db.bulk_async = AsyncMock(return_value=(1, []))
+
+    await worker._flush_collection(col)
+
+    lock_key = worker._get_collection_lock_key(col)
+    assert await queue_manager.redis.exists(lock_key) == 0

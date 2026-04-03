@@ -103,6 +103,8 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
   - [Examples](#examples)
   - [Performance](#performance)
     - [Direct Response Mode](#direct-response-mode)
+    - [CQL2 JSON Search with AST-based Parsing]
+(#cql2-json-search-with-ast-based-parsing)
   - [Quick Start](#quick-start)
     - [Installation](#installation)
     - [Running Locally](#running-locally)
@@ -591,6 +593,30 @@ These examples provide practical reference implementations for various deploymen
 - **Default setting**: `false` for safety.
 - **More information**: See [issue #347](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/347) for background and implementation details.
 
+### CQL2 JSON Search with AST-based Parsing
+
+SFEOS now uses an Abstract Syntax Tree (AST) in CQL2-JSON search queries for efficient query parsing and datetime extraction, enabling the selection and management of the appropriate searchable indexes.
+
+#### AST-based Query Processing
+
+The CQL2 implementation uses an Abstract Syntax Tree (AST) structure that replaces the previous dictionary-based processing. This enables:
+
+1. **Structured Query Representation**: Queries are parsed into a tree structure with different node types
+2. **Efficient Parameter Access**: Easy traversal and extraction of query parameters
+3. **Optimized Index Selection**: Selection of appropriate fields for selection and management of indexes
+
+#### AST Node Types
+
+The AST supports various node types representing different query operations:
+
+- **Logical Nodes**: `AND`, `OR`, `NOT` operators for combining conditions
+- **Comparison Nodes**: `=`, `<>`, `<`, `<=`, `>`, `>=`, `isNull` operations
+- **Advanced Comparison Nodes**: `LIKE`, `BETWEEN`, `IN` operations
+- **Spatial Nodes**: `s_intersects`, `s_contains`, `s_within`, `s_disjoint` for geospatial queries
+- **Datetime Nodes**: Special handling for datetime range and exact value queries
+
+The AST-based approach enables efficient extraction of datetime parameters (`datetime`, `start_datetime`, `end_datetime`) from complex queries.
+
 ## Quick Start
 
 This section helps you get up and running with stac-fastapi-elasticsearch-opensearch quickly.
@@ -684,6 +710,7 @@ You can customize additional settings in your `.env` file:
 | `RETRY_MAX_ATTEMPTS_NOT_FOUND_ERROR` | Specifies the maximum number of retry attempts for `IndexNotFoundException` error before giving up. This is particularly useful for datetime-based index searches where indices may need to be refreshed. | `3` | Optional |
 | `RETRY_WAIT_SECONDS` | Specifies the number of seconds to wait between retry attempts. | `0.5` | Optional |
 | `RETRY_RERAISE` | Specifies whether the original exception should be re-raised after all retry attempts are exhausted. | `true` | Optional |
+| `ES_MAX_URL_LENGTH` | Maximum URL length for Elasticsearch/OpenSearch requests. When the combined length of index names in a query exceeds this limit (minus a 300-character buffer), the API falls back to querying all item indices with a collection filter in the request body. This value should match the `http.max_initial_line_length` setting in your Elasticsearch/OpenSearch server configuration. | `4096` | Optional |
 
 ### 3. API Metadata
 

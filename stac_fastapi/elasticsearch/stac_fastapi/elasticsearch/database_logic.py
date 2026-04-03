@@ -11,6 +11,7 @@ import elasticsearch.helpers as helpers
 import orjson
 from elasticsearch.dsl import Q, Search
 from elasticsearch.exceptions import BadRequestError
+from elasticsearch.exceptions import ConflictError as ESConflictError
 from elasticsearch.exceptions import NotFoundError as ESNotFoundError
 from fastapi import HTTPException
 from starlette.requests import Request
@@ -72,6 +73,7 @@ from stac_fastapi.sfeos_helpers.database.utils import (
     operations_to_script,
     validate_datetime_operations,
 )
+from stac_fastapi.sfeos_helpers.filter import build_cql2_filter, resolve_cql2_indexes
 from stac_fastapi.sfeos_helpers.mappings import (
     AGGREGATION_MAPPING,
     COLLECTIONS_INDEX,
@@ -777,11 +779,27 @@ class DatabaseLogic(BaseDatabaseLogic):
             Search: The modified Search object with the filter applied if a filter is provided,
                     otherwise the original Search object.
         """
-        if _filter is not None:
-            es_query = filter_module.to_es(await self.get_queryables_mapping(), _filter)
-            search = search.query(es_query)
+        metadata = None
 
-        return search
+        if _filter is not None:
+            try:
+                all_collection_ids = (
+                    await self.async_index_selector.get_all_collection_ids()
+                )
+                es_query, metadata = build_cql2_filter(
+                    await self.get_queryables_mapping(), _filter, all_collection_ids
+                )
+                search = search.query(es_query)
+            except (ValueError, KeyError, TypeError, AttributeError) as e:
+                logger.warning(
+                    "Failed to build CQL2 filter using AST tree approach, falling back to dictionary-based method."
+                    f"Error: {str(e)}. Filter: {_filter}"
+                )
+                queryables_mapping = await self.get_queryables_mapping()
+                es_query = filter_module.to_es(queryables_mapping, _filter)
+                search = search.query(es_query)
+
+        return search, metadata
 
     @staticmethod
     def populate_sort(sortby: list) -> dict[str, dict[str, str]] | None:
@@ -808,6 +826,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         sort: dict[str, dict[str, str]] | None,
         collection_ids: list[str] | None,
         datetime_search: str,
+        cql2_metadata: dict[str, Any] | None = None,
         ignore_unavailable: bool = True,
     ) -> tuple[Iterable[dict[str, Any]], int | None, str | None]:
         """Execute a search query with limit and other optional parameters.
@@ -839,9 +858,18 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         query = search.query.to_dict() if search.query else None
 
-        index_param = await self.async_index_selector.select_indexes(
-            collection_ids, datetime_search
-        )
+        # Special case for cql2-json index selection
+        if cql2_metadata:
+            index_param, collection_ids = await resolve_cql2_indexes(
+                cql2_metadata,
+                self.async_index_selector,
+                self.apply_datetime_filter,
+                search,
+            )
+        else:
+            index_param = await self.async_index_selector.select_indexes(
+                collection_ids, datetime_search
+            )
         if len(index_param) > ES_MAX_URL_LENGTH - 300:
             index_param = ITEM_INDICES
             query = add_collections_to_body(collection_ids, query)
@@ -1028,124 +1056,81 @@ class DatabaseLogic(BaseDatabaseLogic):
         except Exception:
             return False
 
-    async def async_prep_create_item(
-        self, item: Item, base_url: str, exist_ok: bool = False
-    ) -> Item:
+    async def async_prep_create_item(self, item: Item, base_url: str) -> Item:
         """
         Preps an item for insertion into the database.
 
         Args:
             item (Item): The item to be prepped for insertion.
             base_url (str): The base URL used to create the item's self URL.
-            exist_ok (bool): Indicates whether the item can exist already.
 
         Returns:
             Item: The prepped item.
 
-        Raises:
-            ItemAlreadyExistsError: If the item already exists in the database.
-
         """
         await self.check_collection_exists(collection_id=item["collection"])
 
-        if not exist_ok and await self._check_item_exists_in_collection(
-            item["collection"], item["id"]
-        ):
-            raise ItemAlreadyExistsError(item["id"], item["collection"])
-
         return self.item_serializer.stac_to_db(item, base_url)
 
-    async def bulk_async_prep_create_item(
-        self, item: Item, base_url: str, exist_ok: bool = False
-    ) -> Item | None:
+    async def bulk_async_prep_create_item(self, item: Item, base_url: str) -> Item:
         """
-        Prepare an item for insertion into the database.
+        Validate and serialize an item for bulk indexing.
 
-        This method performs pre-insertion preparation on the given `item`, such as:
+        This method performs pre-insertion validation and serialization:
         - Verifying that the collection the item belongs to exists.
-        - Optionally checking if an item with the same ID already exists in the database.
         - Serializing the item into a database-compatible format.
+
+        Note: Duplicate item detection is not performed here. It is handled
+        atomically by the database engine via ``op_type="create"`` during
+        the bulk indexing phase.
 
         Args:
             item (Item): The item to be prepared for insertion.
             base_url (str): The base URL used to construct the item's self URL.
-            exist_ok (bool): Indicates whether the item can already exist in the database.
-                            If False, a `ConflictError` is raised if the item exists.
 
         Returns:
             Item: The prepared item, serialized into a database-compatible format.
 
         Raises:
             NotFoundError: If the collection that the item belongs to does not exist in the database.
-            ConflictError: If an item with the same ID already exists in the collection and `exist_ok` is False,
-                        and `RAISE_ON_BULK_ERROR` is set to `true`.
         """
         logger.debug(f"Preparing item {item['id']} in collection {item['collection']}.")
 
         # Check if the collection exists
         await self.check_collection_exists(collection_id=item["collection"])
-
-        # Check if the item already exists in the database (across all datetime indexes)
-        if not exist_ok and await self._check_item_exists_in_collection(
-            item["collection"], item["id"]
-        ):
-            if self.async_settings.raise_on_bulk_error:
-                raise ItemAlreadyExistsError(item["id"], item["collection"])
-            else:
-                logger.warning(
-                    f"Item {item['id']} in collection {item['collection']} already exists. "
-                    "Skipping as `RAISE_ON_BULK_ERROR` is set to false."
-                )
-                return None
 
         # Serialize the item into a database-compatible format
         prepped_item = self.item_serializer.stac_to_db(item, base_url)
         logger.debug(f"Item {item['id']} prepared successfully.")
         return prepped_item
 
-    def bulk_sync_prep_create_item(
-        self, item: Item, base_url: str, exist_ok: bool = False
-    ) -> Item | None:
+    def bulk_sync_prep_create_item(self, item: Item, base_url: str) -> Item:
         """
-        Prepare an item for insertion into the database.
+        Validate and serialize an item for bulk indexing.
 
-        This method performs pre-insertion preparation on the given `item`, such as:
+        This method performs pre-insertion validation and serialization:
         - Verifying that the collection the item belongs to exists.
-        - Optionally checking if an item with the same ID already exists in the database.
         - Serializing the item into a database-compatible format.
+
+        Note: Duplicate item detection is not performed here. It is handled
+        atomically by the database engine via ``op_type="create"`` during
+        the bulk indexing phase.
 
         Args:
             item (Item): The item to be prepared for insertion.
             base_url (str): The base URL used to construct the item's self URL.
-            exist_ok (bool): Indicates whether the item can already exist in the database.
-                            If False, a `ConflictError` is raised if the item exists.
 
         Returns:
             Item: The prepared item, serialized into a database-compatible format.
 
         Raises:
             NotFoundError: If the collection that the item belongs to does not exist in the database.
-            ConflictError: If an item with the same ID already exists in the collection and `exist_ok` is False,
-                        and `RAISE_ON_BULK_ERROR` is set to `true`.
         """
         logger.debug(f"Preparing item {item['id']} in collection {item['collection']}.")
 
         # Check if the collection exists
         if not self.sync_client.exists(index=COLLECTIONS_INDEX, id=item["collection"]):
             raise NotFoundError(f"Collection {item['collection']} does not exist")
-
-        # Check if the item already exists in the database (across all datetime indexes)
-        if not exist_ok and self._check_item_exists_in_collection_sync(
-            item["collection"], item["id"]
-        ):
-            if self.sync_settings.raise_on_bulk_error:
-                raise ItemAlreadyExistsError(item["id"], item["collection"])
-            else:
-                logger.warning(
-                    f"Item {item['id']} in collection {item['collection']} already exists. "
-                    "Skipping as `RAISE_ON_BULK_ERROR` is set to false."
-                )
-                return None
 
         # Serialize the item into a database-compatible format
         prepped_item = self.item_serializer.stac_to_db(item, base_url)
@@ -1157,7 +1142,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         self,
         item: Item,
         base_url: str = "",
-        exist_ok: bool = False,
+        upsert: bool = False,
         **kwargs: Any,
     ):
         """Database logic for creating one item.
@@ -1165,13 +1150,15 @@ class DatabaseLogic(BaseDatabaseLogic):
         Args:
             item (Item): The item to be created.
             base_url (str, optional): The base URL for the item. Defaults to an empty string.
-            exist_ok (bool, optional): Whether to allow the item to exist already. Defaults to False.
+            upsert (bool, optional): If False (default), performs an insert-only operation
+                that rejects duplicates (op_type="create"). If True, performs an upsert
+                that overwrites existing items (op_type="index").
             **kwargs: Additional keyword arguments.
                 - refresh (str): Whether to refresh the index after the operation. Can be "true", "false", or "wait_for".
                 - refresh (bool): Whether to refresh the index after the operation. Defaults to the value in `self.async_settings.database_refresh`.
 
         Raises:
-            ConflictError: If the item already exists in the database.
+            ItemAlreadyExistsError: If the item already exists and upsert is False.
 
         Returns:
             None
@@ -1191,7 +1178,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             f"Creating item {item_id} in collection {collection_id} with refresh={refresh}"
         )
 
-        if exist_ok and isinstance(self.async_index_inserter, DatetimeIndexInserter):
+        if upsert and isinstance(self.async_index_inserter, DatetimeIndexInserter):
             existing_item = await self.get_one_item(collection_id, item_id)
             primary_datetime_name = self.async_index_inserter.primary_datetime_name
 
@@ -1217,20 +1204,22 @@ class DatabaseLogic(BaseDatabaseLogic):
                     )
 
         # Prepare the item for insertion
-        item = await self.async_prep_create_item(
-            item=item, base_url=base_url, exist_ok=exist_ok
-        )
+        item = await self.async_prep_create_item(item=item, base_url=base_url)
 
         target_index = await self.async_index_inserter.get_target_index(
             collection_id, item
         )
         # Index the item in the database
-        await self.client.index(
-            index=target_index,
-            id=mk_item_id(item_id, collection_id),
-            document=item,
-            refresh=refresh,
-        )
+        try:
+            await self.client.index(
+                index=target_index,
+                id=mk_item_id(item_id, collection_id),
+                document=item,
+                refresh=refresh,
+                **({} if upsert else {"op_type": "create"}),
+            )
+        except ESConflictError:
+            raise ItemAlreadyExistsError(item_id, collection_id)
 
     @retry_on_connection_error
     async def merge_patch_item(
@@ -1770,6 +1759,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         self,
         collection_id: str,
         processed_items: list[Item],
+        op_type: str = "create",
         **kwargs: Any,
     ) -> tuple[int, list[dict[str, Any]]]:
         """
@@ -1778,6 +1768,8 @@ class DatabaseLogic(BaseDatabaseLogic):
         Args:
             collection_id (str): The ID of the collection to which the items belong.
             processed_items (list[Item]): A list of `Item` objects to be inserted into the database.
+            op_type (str): The operation type for the bulk actions. "create" for insert-only
+                (rejects duplicates at ES/OS level), "index" for upsert. Defaults to "create".
             **kwargs (Any): Additional keyword arguments, including:
                 - refresh (str, optional): Whether to refresh the index after the bulk insert.
                 Can be "true", "false", or "wait_for". Defaults to the value of `self.sync_settings.database_refresh`.
@@ -1808,7 +1800,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         # Log the bulk insert attempt
         logger.info(
-            f"Performing bulk insert for collection {collection_id} with refresh={refresh}"
+            f"Performing bulk insert for collection {collection_id} with refresh={refresh}, op_type={op_type}"
         )
 
         # Handle empty processed_items
@@ -1816,10 +1808,15 @@ class DatabaseLogic(BaseDatabaseLogic):
             logger.warning(f"No items to insert for collection {collection_id}")
             return 0, []
 
-        # Perform the bulk insert
-        raise_on_error = self.async_settings.raise_on_bulk_error
+        # When op_type="create", force raise_on_error=False so that 409 conflicts
+        # are returned in the errors list instead of raising BulkIndexError.
+        # The caller is responsible for separating conflicts from other errors.
+        if op_type == "create":
+            raise_on_error = False
+        else:
+            raise_on_error = self.async_settings.raise_on_bulk_error
         actions = await self.async_index_inserter.prepare_bulk_actions(
-            collection_id, processed_items
+            collection_id, processed_items, op_type=op_type
         )
         success, errors = await helpers.async_bulk(
             self.client,
@@ -1839,6 +1836,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         self,
         collection_id: str,
         processed_items: list[Item],
+        op_type: str = "create",
         **kwargs: Any,
     ) -> tuple[int, list[dict[str, Any]]]:
         """
@@ -1847,6 +1845,8 @@ class DatabaseLogic(BaseDatabaseLogic):
         Args:
             collection_id (str): The ID of the collection to which the items belong.
             processed_items (list[Item]): A list of `Item` objects to be inserted into the database.
+            op_type (str): The operation type for the bulk actions. "create" for insert-only
+                (rejects duplicates at ES/OS level), "index" for upsert. Defaults to "create".
             **kwargs (Any): Additional keyword arguments, including:
                 - refresh (str, optional): Whether to refresh the index after the bulk insert.
                 Can be "true", "false", or "wait_for". Defaults to the value of `self.sync_settings.database_refresh`.
@@ -1877,7 +1877,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         # Log the bulk insert attempt
         logger.info(
-            f"Performing bulk insert for collection {collection_id} with refresh={refresh}"
+            f"Performing bulk insert for collection {collection_id} with refresh={refresh}, op_type={op_type}"
         )
 
         # Handle empty processed_items
@@ -1885,11 +1885,15 @@ class DatabaseLogic(BaseDatabaseLogic):
             logger.warning(f"No items to insert for collection {collection_id}")
             return 0, []
 
-        # Perform the bulk insert
-        raise_on_error = self.sync_settings.raise_on_bulk_error
+        # When op_type="create", force raise_on_error=False so that 409 conflicts
+        # are returned in the errors list instead of raising BulkIndexError.
+        if op_type == "create":
+            raise_on_error = False
+        else:
+            raise_on_error = self.sync_settings.raise_on_bulk_error
         success, errors = helpers.bulk(
             self.sync_client,
-            mk_actions(collection_id, processed_items),
+            mk_actions(collection_id, processed_items, op_type=op_type),
             refresh=refresh,
             raise_on_error=raise_on_error,
         )
