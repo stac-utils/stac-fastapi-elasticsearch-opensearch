@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.0.2] - 2026-04-03
+
+### Fixed
+- Added missing tag_check job to the pipeline.
+
 ## [1.0.1] - 2026-04-03
 
 ### Added
