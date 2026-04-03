@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.0.1] - 2026-04-03
+
+### Added
+- Time tracking for bulk_async in STAC item queue worker
+
+### Changed
+- Removal of unnecessary logs during indexing
+
+### Fixed
+- Fix index creation during split.
+
 ## [1.0.0] - 2026-04-02
 
 ### Removed

@@ -1322,3 +1322,32 @@ async def test_select_indexes_boundary_date_match(monkeypatch):
 
     assert "items_start_datetime_col-a_2020-02-08" in result
     assert "items_start_datetime_col-b_2020-02-15" in result
+
+
+@pytest.mark.datetime_filtering
+def test_filter_datetime_insertion_bug_noon_on_boundary_date():
+    collection_indexes = [
+        (
+            {
+                "start_datetime": "items_start_datetime_mycol_2025-06-06",
+                "end_datetime": "items_end_datetime_mycol_2025-06-06",
+            },
+        ),
+        (
+            {
+                "start_datetime": "items_start_datetime_mycol_2025-06-07",
+                "end_datetime": "items_end_datetime_mycol_2025-06-07",
+            },
+        ),
+    ]
+    datetime_search = {
+        "start_datetime": {
+            "gte": "2025-06-06T12:00:00Z",
+            "lte": "2025-06-06T12:00:00Z",
+        },
+        "end_datetime": {"gte": "2025-06-06T12:00:00Z", "lte": "2025-06-06T12:00:00Z"},
+    }
+
+    result = filter_indexes_by_datetime(collection_indexes, datetime_search)
+
+    assert "items_start_datetime_mycol_2025-06-06" in result

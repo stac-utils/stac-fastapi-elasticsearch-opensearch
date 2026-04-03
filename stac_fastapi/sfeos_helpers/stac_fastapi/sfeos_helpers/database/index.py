@@ -143,13 +143,13 @@ def filter_indexes_by_datetime(
         gte = _parse_search_date(criteria.get("gte"))
         lte = _parse_search_date(criteria.get("lte"))
 
-        if gte and value_end < gte:
+        if gte and value_end.date() < gte.date():
             return False
         if start_value_begin:
-            if lte and start_value_begin > lte:
+            if lte and start_value_begin.date() > lte.date():
                 return False
         else:
-            if lte and value_begin > lte:
+            if lte and value_begin.date() > lte.date():
                 return False
 
         return True
