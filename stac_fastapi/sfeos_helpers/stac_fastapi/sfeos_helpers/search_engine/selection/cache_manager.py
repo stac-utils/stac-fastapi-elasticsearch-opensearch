@@ -157,7 +157,7 @@ class IndexAliasLoader:
         Returns:
             str: The main collection alias.
         """
-        temporal_keywords = ["datetime", "start_datetime", "end_datetime"]
+        temporal_keywords = ["start_datetime", "end_datetime"]
 
         for alias in aliases:
             if not any(keyword in alias for keyword in temporal_keywords):
@@ -186,8 +186,6 @@ class IndexAliasLoader:
                 aliases_dict["start_datetime"] = alias
             elif "end_datetime" in alias:
                 aliases_dict["end_datetime"] = alias
-            elif "datetime" in alias:
-                aliases_dict["datetime"] = alias
 
         return aliases_dict
 

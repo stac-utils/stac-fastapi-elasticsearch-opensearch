@@ -5,7 +5,6 @@ from typing import Any
 
 from fastapi import HTTPException, status
 
-from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.sfeos_helpers.database import (
     extract_date,
     extract_first_date_from_index,
@@ -36,24 +35,6 @@ class DatetimeIndexInserter(BaseIndexInserter):
         self.index_operations = index_operations
         self.datetime_manager = DatetimeIndexManager(client, index_operations)
         self.index_selector = DatetimeBasedIndexSelector(client)
-
-    @property
-    def use_datetime(self) -> bool:
-        """Get USE_DATETIME setting dynamically.
-
-        Returns:
-            bool: Current value of USE_DATETIME environment variable.
-        """
-        return get_bool_env("USE_DATETIME", default=True)
-
-    @property
-    def primary_datetime_name(self) -> str:
-        """Get primary datetime field name based on current USE_DATETIME setting.
-
-        Returns:
-            str: "datetime" if USE_DATETIME is True, else "start_datetime".
-        """
-        return "datetime" if self.use_datetime else "start_datetime"
 
     @staticmethod
     def should_create_collection_index() -> bool:
@@ -90,33 +71,19 @@ class DatetimeIndexInserter(BaseIndexInserter):
         For datetime-based indexing, the primary datetime field cannot be modified
         because it determines the index where the item is stored.
 
-        When USE_DATETIME=True, 'properties.datetime' is protected.
-        When USE_DATETIME=False, 'properties.start_datetime' and 'properties.end_datetime' are protected.
-
         Args:
             field_path (str): The path of the field being updated.
         """
         # TODO: In the future, updating these fields will be able to move an item between indices by changing the time-based aliases
-        if self.use_datetime:
-            if field_path == "properties/datetime":
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=(
-                        "Updating 'properties.datetime' is not yet supported for datetime-based indexing. "
-                        "This feature will be available in a future release, enabling automatic "
-                        "index and time-based alias updates when datetime values change."
-                    ),
-                )
-        else:
-            if field_path in ("properties/start_datetime", "properties/end_datetime"):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=(
-                        f"Updating '{field_path}' is not yet supported for datetime-based indexing. "
-                        "This feature will be available in a future release, enabling automatic "
-                        "index and time-based alias updates when datetime values change."
-                    ),
-                )
+        if field_path in ("properties/start_datetime", "properties/end_datetime"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Updating '{field_path}' is not yet supported for datetime-based indexing. "
+                    "This feature will be available in a future release, enabling automatic "
+                    "index and time-based alias updates when datetime values change."
+                ),
+            )
 
     async def get_target_index(
         self, collection_id: str, product: dict[str, Any]
@@ -153,7 +120,7 @@ class DatetimeIndexInserter(BaseIndexInserter):
             logger.error(msg)
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=msg)
 
-        items.sort(key=lambda item: item["properties"][self.primary_datetime_name])
+        items.sort(key=lambda item: item["properties"]["start_datetime"])
 
         first_item = items[0]
         first_target_index = await self._get_target_index_internal(
@@ -201,14 +168,7 @@ class DatetimeIndexInserter(BaseIndexInserter):
         Returns:
             str: Target index name.
         """
-        product_datetimes = self.datetime_manager.validate_product_datetimes(
-            product, self.use_datetime
-        )
-        primary_datetime_value = (
-            product_datetimes.datetime
-            if self.use_datetime
-            else product_datetimes.start_datetime
-        )
+        product_datetimes = self.datetime_manager.validate_product_datetimes(product)
 
         all_indexes = await self.index_selector.get_collection_indexes(
             collection_id, use_cache=use_cache
@@ -216,28 +176,25 @@ class DatetimeIndexInserter(BaseIndexInserter):
 
         if not all_indexes:
             target_index = await self.datetime_manager.handle_new_collection(
-                collection_id, self.primary_datetime_name, product_datetimes
+                collection_id, product_datetimes
             )
             await self.refresh_cache()
             return target_index
 
-        all_indexes = sorted(
-            all_indexes, key=lambda x: x[0][self.primary_datetime_name]
-        )
+        all_indexes = sorted(all_indexes, key=lambda x: x[0]["start_datetime"])
 
         target_index = await self.index_selector.select_indexes(
-            [collection_id], primary_datetime_value, for_insertion=True
+            [collection_id], product_datetimes.start_datetime, for_insertion=True
         )
 
-        start_date = extract_date(primary_datetime_value)
+        start_date = extract_date(product_datetimes.start_datetime)
         earliest_index_date = extract_first_date_from_index(
-            all_indexes[0][0][self.primary_datetime_name]
+            all_indexes[0][0]["start_datetime"]
         )
 
         if start_date < earliest_index_date:
             target_index = await self.datetime_manager.handle_early_date(
                 collection_id,
-                self.primary_datetime_name,
                 product_datetimes,
                 all_indexes[0][0],
                 True,
@@ -246,16 +203,15 @@ class DatetimeIndexInserter(BaseIndexInserter):
             return target_index
 
         if not target_index:
-            target_index = all_indexes[-1][0][self.primary_datetime_name]
+            target_index = all_indexes[-1][0]["start_datetime"]
 
         aliases_dict, is_first_index = self._find_aliases_for_index(
             all_indexes, target_index
         )
 
-        if target_index != all_indexes[-1][0][self.primary_datetime_name]:
+        if target_index != all_indexes[-1][0]["start_datetime"]:
             await self.datetime_manager.handle_early_date(
                 collection_id,
-                self.primary_datetime_name,
                 product_datetimes,
                 aliases_dict,
                 is_first_index,
@@ -273,9 +229,7 @@ class DatetimeIndexInserter(BaseIndexInserter):
                 start_datetime=str(
                     extract_date(latest_item["_source"]["properties"]["start_datetime"])
                 ),
-                datetime=str(
-                    extract_date(latest_item["_source"]["properties"]["datetime"])
-                ),
+                datetime=None,
                 end_datetime=str(
                     extract_first_date_from_index(aliases_dict["end_datetime"])
                 )
@@ -284,13 +238,11 @@ class DatetimeIndexInserter(BaseIndexInserter):
             )
 
             is_first_split = not any(
-                is_index_closed(idx[0].get(self.primary_datetime_name))
-                for idx in all_indexes
+                is_index_closed(idx[0].get("start_datetime")) for idx in all_indexes
             )
 
             await self.datetime_manager.handle_oversized_index(
                 collection_id,
-                self.primary_datetime_name,
                 product_datetimes,
                 latest_index_datetimes,
                 aliases_dict,
@@ -300,19 +252,18 @@ class DatetimeIndexInserter(BaseIndexInserter):
             all_indexes = await self.index_selector.get_collection_indexes(
                 collection_id, use_cache=use_cache
             )
-            all_indexes = sorted(
-                all_indexes, key=lambda x: x[0][self.primary_datetime_name]
-            )
+            all_indexes = sorted(all_indexes, key=lambda x: x[0]["start_datetime"])
             return (
                 await self.index_selector.select_indexes(
-                    [collection_id], primary_datetime_value, for_insertion=True
+                    [collection_id],
+                    product_datetimes.start_datetime,
+                    for_insertion=True,
                 )
-                or all_indexes[-1][0][self.primary_datetime_name]
+                or all_indexes[-1][0]["start_datetime"]
             )
 
         await self.datetime_manager.handle_early_date(
             collection_id,
-            self.primary_datetime_name,
             product_datetimes,
             aliases_dict,
             is_first_index,
@@ -321,10 +272,8 @@ class DatetimeIndexInserter(BaseIndexInserter):
         all_indexes = await self.index_selector.get_collection_indexes(
             collection_id, use_cache=use_cache
         )
-        all_indexes = sorted(
-            all_indexes, key=lambda x: x[0][self.primary_datetime_name]
-        )
-        return all_indexes[-1][0][self.primary_datetime_name]
+        all_indexes = sorted(all_indexes, key=lambda x: x[0]["start_datetime"])
+        return all_indexes[-1][0]["start_datetime"]
 
     @staticmethod
     def _find_aliases_for_index(

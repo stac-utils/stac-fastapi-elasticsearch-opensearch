@@ -1183,28 +1183,26 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         if upsert and isinstance(self.async_index_inserter, DatetimeIndexInserter):
             existing_item = await self.get_one_item(collection_id, item_id)
-            primary_datetime_name = self.async_index_inserter.primary_datetime_name
 
             existing_primary_datetime = existing_item.get("properties", {}).get(
-                primary_datetime_name
+                "start_datetime"
             )
-            new_primary_datetime = item.get("properties", {}).get(primary_datetime_name)
+            new_primary_datetime = item.get("properties", {}).get("start_datetime")
 
             if existing_primary_datetime != new_primary_datetime:
                 self.async_index_inserter.validate_datetime_field_update(
-                    f"properties/{primary_datetime_name}"
+                    "properties/start_datetime"
                 )
 
-            if primary_datetime_name == "start_datetime":
-                existing_end_datetime = existing_item.get("properties", {}).get(
-                    "end_datetime"
-                )
-                new_end_datetime = item.get("properties", {}).get("end_datetime")
+            existing_end_datetime = existing_item.get("properties", {}).get(
+                "end_datetime"
+            )
+            new_end_datetime = item.get("properties", {}).get("end_datetime")
 
-                if existing_end_datetime != new_end_datetime:
-                    self.async_index_inserter.validate_datetime_field_update(
-                        "properties/end_datetime"
-                    )
+            if existing_end_datetime != new_end_datetime:
+                self.async_index_inserter.validate_datetime_field_update(
+                    "properties/end_datetime"
+                )
 
         item = await self.async_prep_create_item(item=item, base_url=base_url)
 

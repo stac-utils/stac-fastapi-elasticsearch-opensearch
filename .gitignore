@@ -152,3 +152,6 @@ helm-chart/stac-fastapi/Chart.lock
 helm-chart/stac-fastapi/*.tgz
 helm-chart/test-results/
 helm-chart/tmp/
+
+#  pycharm
+.idea/
