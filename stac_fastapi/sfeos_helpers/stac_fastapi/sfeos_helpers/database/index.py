@@ -115,7 +115,6 @@ def _parse_search_date(date_str: str | None) -> datetime | None:
 def filter_indexes_by_datetime(
     collection_indexes: list[tuple[dict[str, str], ...]],
     datetime_search: dict[str, dict[str, str | None]],
-    use_datetime: bool,
 ) -> list[str]:
     """
     Filter Elasticsearch index aliases based on datetime search criteria.
@@ -130,9 +129,6 @@ def filter_indexes_by_datetime(
         datetime_search (dict[str, dict[str, str | None]]): A dictionary with keys 'datetime',
             'start_datetime', and 'end_datetime', each containing 'gte' and 'lte' criteria as ISO format
             datetime strings or None.
-        use_datetime (bool): Flag determining which datetime field to filter on:
-            - True: Filters using 'datetime' alias.
-            - False: Filters using 'start_datetime' and 'end_datetime' aliases.
 
     Returns:
         list[str]: A list of start_datetime aliases that match all provided search criteria.
@@ -167,7 +163,6 @@ def filter_indexes_by_datetime(
         index_dict = index_tuple[0]
         start_datetime_alias = index_dict.get("start_datetime")
         end_datetime_alias = index_dict.get("end_datetime")
-        datetime_alias = index_dict.get("datetime")
 
         if start_datetime_alias:
             start_date = _extract_date_from_alias(start_datetime_alias)
@@ -185,19 +180,9 @@ def filter_indexes_by_datetime(
                 start_begin,
             ):
                 continue
-        if datetime_alias:
-            datetime_date = _extract_date_from_alias(datetime_alias)
-            if not check_criteria(
-                datetime_date[0], datetime_date[1], datetime_search.get("datetime", {})
-            ):
-                continue
 
-        primary_datetime_alias = (
-            datetime_alias if use_datetime else start_datetime_alias
-        )
-
-        if primary_datetime_alias is not None:
-            filtered_indexes.append(primary_datetime_alias)
+        if start_datetime_alias is not None:
+            filtered_indexes.append(start_datetime_alias)
 
     return filtered_indexes
 

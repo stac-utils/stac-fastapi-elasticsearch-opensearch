@@ -364,23 +364,14 @@ class AsyncRedisQueueManager:
     def _extract_score(item: dict) -> float:
         """Extract the primary datetime from item properties and convert to timestamp.
 
-        Uses the USE_DATETIME env variable to determine the field:
-        - USE_DATETIME=True  -> properties.datetime
-        - USE_DATETIME=False -> properties.start_datetime
-
         Args:
             item: Item dict with properties containing datetime fields.
 
         Returns:
             float: Unix timestamp used as ZSET score, 0.0 on parse failure.
         """
-        from stac_fastapi.core.utilities import get_bool_env
-
-        use_datetime = get_bool_env("USE_DATETIME", default=True)
-        field_name = "datetime" if use_datetime else "start_datetime"
-
         props = item.get("properties", {})
-        dt_value = props.get(field_name, "")
+        dt_value = props.get("start_datetime")
         if not dt_value:
             return 0.0
         try:
