@@ -19,7 +19,6 @@ logger = logging.getLogger(__name__)
 # Suppress verbose logging from stac_validator
 logging.getLogger("stac_validator.utilities").setLevel(logging.WARNING)
 
-SCHEMA_CACHE_SIZE = int(os.getenv("SCHEMA_CACHE_SIZE", "32"))
 MAX_VALIDATION_WORKERS = int(os.getenv("MAX_VALIDATION_WORKERS", "0"))
 
 # Global instances to cache validators and avoid repeated initialization
@@ -50,9 +49,7 @@ def _get_batch_validator():
             if _batch_validator_instance is None:
                 try:
                     from stac_validator.batch_validator import validate_dicts
-                    from stac_validator.utilities import set_schema_cache_size
 
-                    set_schema_cache_size(SCHEMA_CACHE_SIZE)
                     _batch_validator_instance = validate_dicts
                 except ImportError as e:
                     logger.error("stac_validator batch_validator not available")

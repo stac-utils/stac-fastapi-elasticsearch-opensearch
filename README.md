@@ -731,8 +731,7 @@ You can customize additional settings in your `.env` file:
 | `ENABLE_COLLECTIONS_SEARCH_ROUTE` | Enable the custom `/collections-search` endpoint (both GET and POST methods). When disabled, the custom endpoint will not be available, but collection search extensions will still be available on the core `/collections` endpoint if `ENABLE_COLLECTIONS_SEARCH` is true. | `false` | Optional |
 | `ENABLE_TRANSACTIONS_EXTENSIONS` | Enables or disables the Transactions and Bulk Transactions API extensions. This is useful for deployments where mutating the catalog via the API should be prevented. If set to `true`, the POST `/collections` route for search will be unavailable in the API. | `true` | Optional |
 | `ENABLE_CATALOGS_ROUTE` | Enable the **/catalogs** endpoint for hierarchical catalog browsing and navigation. **Note:** Requires the catalogs extension to be installed via `stac-fastapi-elasticsearch[catalogs]`, `stac-fastapi-opensearch[catalogs]`, or `stac-fastapi-core[catalogs]`. See [Catalogs Route](#catalogs-route) for installation instructions. | `false` | Optional |
-| `ENABLE_STAC_VALIDATOR` | Enable [stac-validator](https://github.com/stac-utils/stac-validator) to validate STAC items and collections on ingestion. This is especially useful for items or collections that use extensions. Use with `SCHEMA CACHE SIZE`| `false` | Optional |
-| `SCHEMA_CACHE_SIZE` | Configures the maximum number of STAC schemas that can be cached in memory. Used with `ENABLE_STAC_VALIDATOR` to cache validated schemas for faster subsequent validations.| `32` | Optional |
+| `ENABLE_STAC_VALIDATOR` | Enable [stac-validator](https://github.com/stac-utils/stac-validator) to validate STAC items and collections on ingestion. This is especially useful for items or collections that use extensions. | `false` | Optional |
 | `STAC_INDEX_ASSETS` | Controls if Assets are indexed when added to Elasticsearch/Opensearch. This allows asset fields to be included in search queries. | `false` | Optional |
 
 ### 5. Limits & Performance
@@ -818,26 +817,11 @@ When enabled, the STAC validator will:
 - Catch schema violations that Pydantic doesn't enforce
 - Provide detailed error messages with schema paths and validation details
 
-#### Schema Cache Configuration
-
-STAC validator caches JSON schemas to improve performance. Control the cache size with the `SCHEMA_CACHE_SIZE` environment variable:
-
-```bash
-# Set cache size to 64 schemas (default is 32)
-export SCHEMA_CACHE_SIZE=64
-```
-
-**When to adjust**:
-- **Increase** if you use many STAC extensions or custom schemas
-- **Decrease** if memory is constrained
-- **Default (32)** works well for most deployments
-
 #### Example: Validation in Action
 
 ```bash
-# Enable STAC validator with custom cache size
+# Enable STAC validator
 export ENABLE_STAC_VALIDATOR=true
-export SCHEMA_CACHE_SIZE=64
 
 # Now POST/PUT requests will validate against STAC schemas
 curl -X POST http://localhost:8000/collections \

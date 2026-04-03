@@ -129,4 +129,3 @@ jobs:
           REDIS_HOST: localhost
           REDIS_PORT: 6379
           BACKEND: ${{ matrix.backend == 'elasticsearch8' && 'elasticsearch' || 'opensearch' }}
-          GO_STAC_VALIDATOR_URL: http://localhost:8080/validate

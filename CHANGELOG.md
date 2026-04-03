@@ -10,7 +10,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 
 - Added `ENABLE_STAC_VALIDATOR` environment variable to enable strict STAC schema validation on ingestion via the Python `stac-validator`. [#665](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/665)
-- Added `SCHEMA_CACHE_SIZE` environment variable to control the size of the schema cache used by the Python stac-validator. [#665](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/665)
 - Added `[validator]` installation extra to `stac-fastapi-core`, `elasticsearch`, and `opensearch` packages. [#665](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/665)
 - Added CQL2 Abstract Syntax Tree (AST) structure for efficient query parsing and datetime-based indexes. [#659](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/659)
 - Made `ES_MAX_URL_LENGTH` configurable via environment variable (default: `4096`). This value should match the `http.max_initial_line_length` setting in your Elasticsearch/OpenSearch server configuration. [#656](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/656)
