@@ -9,11 +9,21 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Removed
+
+### Updated
+
+## [v6.15.0] - 2026-04-04
+
+### Added
+
 - Added coerce control via `STAC_FASTAPI_ES_COERCE_GLOBAL` env var to enable strict type checking by disabling automatic type conversion at the index level. [#649](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/649)
 - Added CQL2 Abstract Syntax Tree (AST) structure for efficient query parsing and datetime-based indexes. [#659](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/659)
 - Made `ES_MAX_URL_LENGTH` configurable via environment variable (default: `4096`). This value should match the `http.max_initial_line_length` setting in your Elasticsearch/OpenSearch server configuration. [#656](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/656)
-
-### Changed
 
 ### Fixed
 
@@ -21,10 +31,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Fixed `add_collections_to_body` to handle empty `collection_ids` gracefully, preventing an invalid empty `terms` filter from being added to the query body. [#656](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/656)
 - Made Redis queue operations atomic using pipelines (MULTI/EXEC) in `queue_items`, `mark_items_processed`, `remove_item`, and `save_failed_items` to prevent ghost entries where IDs exist in ZSET but data is missing from HASH.
 - Added periodic lock refresh (every 60s) to `item_queue_worker` to prevent distributed lock expiration during long-running batch processing. The worker now stops processing when the lock is lost and checks `owned()` before releasing to avoid releasing another worker's lock.
-
-### Removed
-
-### Updated
 
 
 ## [v6.14.1] - 2026-03-24
@@ -845,7 +851,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.14.1...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.15.0...main
+[v6.15.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.14.1...v6.15.0
 [v6.14.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.14.0...v6.14.1
 [v6.14.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.13.0...v6.14.0
 [v6.13.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.12.0...v6.13.0
