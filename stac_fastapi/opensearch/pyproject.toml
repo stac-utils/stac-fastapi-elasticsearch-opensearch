@@ -32,8 +32,6 @@ dependencies = [
     "sfeos-helpers==6.15.0",
     "opensearch-py~=2.8.0",
     "opensearch-py[async]~=2.8.0",
-    "uvicorn~=0.23.0",
-    "starlette>=0.35.0,<0.36.0",
 ]
 
 [project.urls]
@@ -45,7 +43,7 @@ catalogs = [
 ]
 dev = [
     "pytest~=8.0",
-    "pytest-cov~=4.0.0",
+    "pytest-cov>=4.0,<7.2",
     "pytest-asyncio~=0.21.0",
     "pre-commit~=3.0.0",
     "ciso8601~=2.3.0",
@@ -56,8 +54,8 @@ dev = [
     "stac-fastapi-core[redis]==6.15.0",
 ]
 docs = [
-    "mkdocs~=1.4.0",
-    "mkdocs-material~=9.0.0",
+    "mkdocs>=1.4,<1.7",
+    "mkdocs-material>=9.0,<9.8",
     "pdocs~=1.2.0",
 ]
 redis = [
