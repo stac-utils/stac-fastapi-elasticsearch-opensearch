@@ -265,7 +265,7 @@ items_get_request_model = create_request_model(
 app_config = {
     "title": os.getenv("STAC_FASTAPI_TITLE", "stac-fastapi-elasticsearch"),
     "description": os.getenv("STAC_FASTAPI_DESCRIPTION", "stac-fastapi-elasticsearch"),
-    "api_version": os.getenv("STAC_FASTAPI_VERSION", "6.14.1"),
+    "api_version": os.getenv("STAC_FASTAPI_VERSION", "6.15.0"),
     "settings": settings,
     "extensions": extensions,
     "client": CoreClient(
