@@ -90,7 +90,7 @@ session = Session.create_from_settings(settings)
 database_logic = DatabaseLogic()
 
 filter_extension = FilterExtension(
-    client=EsAsyncBaseFiltersClient(database=database_logic)
+    client=EsAsyncBaseFiltersClient(database=database_logic, settings=settings)
 )
 filter_extension.conformance_classes.append(
     FilterConformanceClasses.ADVANCED_COMPARISON_OPERATORS

@@ -441,6 +441,53 @@ class DatabaseLogic(BaseDatabaseLogic):
             collection_id=collection_id, mappings=mappings
         )
 
+    async def get_all_collection_queryables(self) -> list[dict]:
+        """Retrieve all queryables from all collections.
+
+        Generates queryables on-the-fly from each collection's item index mappings
+        rather than retrieving pre-stored values, ensuring consistency with
+        get_queryables_mapping().
+
+        Returns:
+            A list of queryables dictionaries, one from each active collection.
+        """
+        response = await self.client.search(
+            index=COLLECTIONS_INDEX,
+            body={
+                "_source": ["id"],
+                "query": {"term": {"type": "Collection"}},
+                "size": 10000,
+            },
+        )
+        hits = response.get("hits", {}).get("hits", [])
+        if len(hits) == 10000:
+            logger.warning(
+                "Root queryables union reached the 10,000 collection limit. "
+                "Some collections may be excluded from the union."
+            )
+
+        collection_ids = [
+            hit["_source"]["id"] for hit in hits if hit.get("_source", {}).get("id")
+        ]
+
+        filters_client = filter_module.EsAsyncBaseFiltersClient(
+            database=self, settings=self.async_settings
+        )
+
+        async def fetch_queryables(collection_id: str) -> dict | None:
+            try:
+                return await filters_client.get_queryables(collection_id=collection_id)
+            except Exception as e:
+                logger.warning(
+                    f"Failed to retrieve queryables for collection {collection_id}: {e}"
+                )
+                return None
+
+        results = await asyncio.gather(
+            *[fetch_queryables(cid) for cid in collection_ids]
+        )
+        return [q for q in results if q]
+
     @staticmethod
     def make_search():
         """Database logic to create a Search instance."""
