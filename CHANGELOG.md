@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Removed
 
+### Security
+
+- GitHub Actions: Pinned all workflow actions to strict SHA digests to mitigate supply-chain vulnerabilities and resolve Zizmor scanner findings. [#670](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/670)
+
 ### Updated
 
 ## [v6.15.0] - 2026-04-04
