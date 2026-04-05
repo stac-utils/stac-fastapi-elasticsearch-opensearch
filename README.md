@@ -103,6 +103,8 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
   - [Examples](#examples)
   - [Performance](#performance)
     - [Direct Response Mode](#direct-response-mode)
+    - [CQL2 JSON Search with AST-based Parsing]
+(#cql2-json-search-with-ast-based-parsing)
   - [Quick Start](#quick-start)
     - [Installation](#installation)
     - [Running Locally](#running-locally)
@@ -594,6 +596,30 @@ These examples provide practical reference implementations for various deploymen
 - **Default setting**: `false` for safety.
 - **More information**: See [issue #347](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/347) for background and implementation details.
 
+### CQL2 JSON Search with AST-based Parsing
+
+SFEOS now uses an Abstract Syntax Tree (AST) in CQL2-JSON search queries for efficient query parsing and datetime extraction, enabling the selection and management of the appropriate searchable indexes.
+
+#### AST-based Query Processing
+
+The CQL2 implementation uses an Abstract Syntax Tree (AST) structure that replaces the previous dictionary-based processing. This enables:
+
+1. **Structured Query Representation**: Queries are parsed into a tree structure with different node types
+2. **Efficient Parameter Access**: Easy traversal and extraction of query parameters
+3. **Optimized Index Selection**: Selection of appropriate fields for selection and management of indexes
+
+#### AST Node Types
+
+The AST supports various node types representing different query operations:
+
+- **Logical Nodes**: `AND`, `OR`, `NOT` operators for combining conditions
+- **Comparison Nodes**: `=`, `<>`, `<`, `<=`, `>`, `>=`, `isNull` operations
+- **Advanced Comparison Nodes**: `LIKE`, `BETWEEN`, `IN` operations
+- **Spatial Nodes**: `s_intersects`, `s_contains`, `s_within`, `s_disjoint` for geospatial queries
+- **Datetime Nodes**: Special handling for datetime range and exact value queries
+
+The AST-based approach enables efficient extraction of datetime parameters (`datetime`, `start_datetime`, `end_datetime`) from complex queries.
+
 ## Quick Start
 
 This section helps you get up and running with stac-fastapi-elasticsearch-opensearch quickly.
@@ -737,6 +763,7 @@ You can customize additional settings in your `.env` file:
 | `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` | JSON string of custom Elasticsearch/OpenSearch property mappings to merge with defaults. See [Custom Index Mappings](#custom-index-mappings). | `None` | Optional |
 | `STAC_FASTAPI_ES_MAPPINGS_FILE` | Path to a JSON file containing custom Elasticsearch/OpenSearch property mappings to merge with defaults. See [Custom Index Mappings](#custom-index-mappings). | `None` | Optional |
 | `STAC_FASTAPI_ES_DYNAMIC_MAPPING` | Controls dynamic mapping behavior for item indices. Values: `true` (default), `false`, or `strict`. See [Custom Index Mappings](#custom-index-mappings). | `true` | Optional |
+| `STAC_FASTAPI_ES_COERCE_GLOBAL` | Sets the index-level coerce setting. When true (default), coercion is allowed (e.g., "10" → 10, 5.0 → 5). When false, coercion is disabled, documents with type mismatches are rejected unless overridden at the field level. | `true` | Optional |
 
 ### 7. Filtering, Exclusions & Queryables
 

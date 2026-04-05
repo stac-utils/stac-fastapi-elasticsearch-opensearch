@@ -864,6 +864,8 @@ class CoreClient(AsyncBaseCoreClient):
                 search=search, intersects=getattr(search_request, "intersects")
             )
 
+        collection_ids = getattr(search_request, "collections", None)
+
         if hasattr(search_request, "query") and getattr(search_request, "query"):
             query_fields = set(getattr(search_request, "query").keys())
             await self.queryables_cache.validate(query_fields)
@@ -878,6 +880,7 @@ class CoreClient(AsyncBaseCoreClient):
 
         # Apply CQL2 filter (support both 'filter_expr' and canonical 'filter')
         cql2_filter = None
+        cql2_metadata = None
         if hasattr(search_request, "filter_expr"):
             cql2_filter = getattr(search_request, "filter_expr", None)
         if cql2_filter is None and hasattr(search_request, "filter"):
@@ -887,7 +890,9 @@ class CoreClient(AsyncBaseCoreClient):
             try:
                 query_fields = get_properties_from_cql2_filter(cql2_filter)
                 await self.queryables_cache.validate(query_fields)
-                search = await self.database.apply_cql2_filter(search, cql2_filter)
+                search, cql2_metadata = await self.database.apply_cql2_filter(
+                    search, cql2_filter
+                )
             except HTTPException:
                 raise
             except Exception as e:
@@ -924,8 +929,9 @@ class CoreClient(AsyncBaseCoreClient):
             limit=limit,
             token=token_param,
             sort=sort,
-            collection_ids=getattr(search_request, "collections", None),
+            collection_ids=collection_ids,
             datetime_search=datetime_search,
+            cql2_metadata=cql2_metadata,
         )
 
         fields = getattr(search_request, "fields", None)
