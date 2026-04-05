@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Updated
 
-- Updated, loosened fastapi, uvicorn and starlette libraries and moved shared deps to core
+- Updated, loosened fastapi, uvicorn and starlette libraries and moved shared deps to core. [#687](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/687)
 
 ## [v6.15.0] - 2026-04-04
 
