@@ -42,9 +42,9 @@ catalogs = [
     "stac-fastapi-core[catalogs]==6.15.0",
 ]
 dev = [
-    "pytest~=8.0",
+    "pytest>=8,<10",
     "pytest-cov>=4.0,<7.2",
-    "pytest-asyncio~=0.21.0",
+    "pytest-asyncio>=0.21,<1.4",
     "pre-commit~=3.0.0",
     "ciso8601~=2.3.0",
     "httpx>=0.24.0,<0.28.0",
@@ -55,7 +55,7 @@ dev = [
 ]
 docs = [
     "mkdocs>=1.4,<1.7",
-    "mkdocs-material~=9.0.0",
+    "mkdocs-material>=9.0,<9.8",
     "pdocs~=1.2.0",
 ]
 redis = [
