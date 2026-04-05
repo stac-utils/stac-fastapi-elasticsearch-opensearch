@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 
+- Added dependabot to check for updates to gh-actions weekly. [#686](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/686)
+
 ### Fixed
 
 ### Removed
