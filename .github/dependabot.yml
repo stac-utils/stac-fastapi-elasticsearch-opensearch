@@ -1,14 +1,34 @@
 version: 2
 updates:
-  - package-ecosystem: github-actions
+  # Check GitHub Actions for updates
+  - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: daily
-  - package-ecosystem: pip
+      interval: "daily"
+    labels:
+      - "dependencies"
+      - "github_actions"
+
+  # Check Python dependencies in workflows
+  - package-ecosystem: "pip"
     directory: "/.github/workflows"
     schedule:
-      interval: daily
-  - package-ecosystem: pip
+      interval: "daily"
+
+  # Check Python dependencies in Elasticsearch module
+  - package-ecosystem: "pip"
     directory: "/stac_fastapi/elasticsearch"
     schedule:
-      interval: daily
+      interval: "daily"
+
+  # Check Python dependencies in Core module
+  - package-ecosystem: "pip"
+    directory: "/stac_fastapi/core"
+    schedule:
+      interval: "daily"
+
+  # Check Python dependencies in OpenSearch module
+  - package-ecosystem: "pip"
+    directory: "/stac_fastapi/opensearch"
+    schedule:
+      interval: "daily"
