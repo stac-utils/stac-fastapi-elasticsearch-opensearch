@@ -31,8 +31,6 @@ dependencies = [
     "stac-fastapi-core==6.15.0",
     "sfeos-helpers==6.15.0",
     "elasticsearch[async]~=8.19.1",
-    "uvicorn~=0.23.0",
-    "starlette>=0.35.0,<0.36.0",
 ]
 
 [project.urls]
@@ -65,7 +63,7 @@ redis = [
     "stac-fastapi-core[redis]==6.15.0",
 ]
 server = [
-    "uvicorn[standard]~=0.23.0",
+    "uvicorn[standard]>=0.23,<0.44",
 ]
 
 [project.scripts]
