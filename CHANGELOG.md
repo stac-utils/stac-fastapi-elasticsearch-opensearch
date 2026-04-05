@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 
+- Added dependabot to check for updates to gh-actions weekly. [#686](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/686)
+
 ### Fixed
 
 ### Removed
@@ -20,6 +22,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - GitHub Actions: Pinned all workflow actions to strict SHA digests to mitigate supply-chain vulnerabilities and resolve Zizmor scanner findings. [#670](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/670)
 
 ### Updated
+
+- Updated, loosened fastapi, uvicorn and starlette libraries and moved shared deps to core. [#687](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/687)
 
 ## [v6.15.0] - 2026-04-04
 
