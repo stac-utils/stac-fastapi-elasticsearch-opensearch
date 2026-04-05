@@ -11,6 +11,8 @@ The filter package is organized as follows:
 - cql2.py: CQL2 pattern conversion helpers
 - transform.py: Query transformation functions
 - client.py: Filter client implementation
+- ast_parser.py: AST parser for CQL2 queries
+- datetime_optimizer.py: Datetime optimization for query structure
 
 When adding new functionality to this package, consider:
 1. Will this code be used by both Elasticsearch and OpenSearch implementations?
@@ -22,15 +24,26 @@ Function Naming Conventions:
 - Parameter names should be consistent across similar functions
 """
 
+from stac_fastapi.core.extensions.filter import (
+    AdvancedComparisonOp,
+    ComparisonOp,
+    LogicalOp,
+)
+
+from .ast_parser import Cql2AstParser
+from .ast_transform import to_es_via_ast
 from .client import EsAsyncBaseFiltersClient
 
 # Re-export the main functions and classes for backward compatibility
 from .cql2 import (
     _replace_like_patterns,
+    build_cql2_filter,
     cql2_like_patterns,
     cql2_like_to_es,
+    resolve_cql2_indexes,
     valid_like_substitutions,
 )
+from .datetime_optimizer import DatetimeOptimizer
 from .transform import to_es, to_es_field
 
 __all__ = [
@@ -40,5 +53,14 @@ __all__ = [
     "_replace_like_patterns",
     "to_es_field",
     "to_es",
+    "to_es_via_ast",
     "EsAsyncBaseFiltersClient",
+    "Cql2AstParser",
+    "AdvancedComparisonOp",
+    "ComparisonOp",
+    "LogicalOp",
+    "DatetimeOptimizer",
+    "extract_from_ast",
+    "resolve_cql2_indexes",
+    "build_cql2_filter",
 ]
