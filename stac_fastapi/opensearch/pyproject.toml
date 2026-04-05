@@ -43,7 +43,7 @@ catalogs = [
 ]
 dev = [
     "pytest~=8.0",
-    "pytest-cov~=4.0.0",
+    "pytest-cov>=4.0,<7.2",
     "pytest-asyncio~=0.21.0",
     "pre-commit~=3.0.0",
     "ciso8601~=2.3.0",
