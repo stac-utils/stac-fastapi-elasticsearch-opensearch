@@ -56,7 +56,7 @@ dev = [
     "stac-fastapi-core[redis]==6.15.0",
 ]
 docs = [
-    "mkdocs~=1.4.0",
+    "mkdocs>=1.4,<1.7",
     "mkdocs-material~=9.0.0",
     "pdocs~=1.2.0",
 ]
