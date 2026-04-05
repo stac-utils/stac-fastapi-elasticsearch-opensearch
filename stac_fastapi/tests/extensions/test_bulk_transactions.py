@@ -103,24 +103,33 @@ async def test_feature_collection_insert(
 
 @pytest.mark.asyncio
 async def test_bulk_item_insert_validation_error(ctx, core_client, bulk_txn_client):
-    items = {}
-    # Add 9 valid items
-    for _ in range(9):
-        _item = deepcopy(ctx.item)
-        _item["id"] = str(uuid.uuid4())
-        items[_item["id"]] = _item
+    import os
 
-    # Add 1 invalid item (e.g., missing "datetime")
-    invalid_item = deepcopy(ctx.item)
-    invalid_item["id"] = str(uuid.uuid4())
-    invalid_item["properties"].pop(
-        "datetime", None
-    )  # Remove datetime to make it invalid
-    items[invalid_item["id"]] = invalid_item
+    from fastapi import HTTPException
 
-    # The bulk insert should raise a ValidationError due to the invalid item
-    with pytest.raises(ValidationError):
-        bulk_txn_client.bulk_item_insert(Items(items=items), refresh=True)
+    os.environ["ENABLE_STAC_VALIDATOR"] = "true"
+
+    try:
+        items = {}
+        # Add 9 valid items
+        for _ in range(9):
+            _item = deepcopy(ctx.item)
+            _item["id"] = str(uuid.uuid4())
+            items[_item["id"]] = _item
+
+        # Add 1 invalid item (e.g., missing "datetime")
+        invalid_item = deepcopy(ctx.item)
+        invalid_item["id"] = str(uuid.uuid4())
+        invalid_item["properties"].pop(
+            "datetime", None
+        )  # Remove datetime to make it invalid
+        items[invalid_item["id"]] = invalid_item
+
+        # The bulk insert should raise an HTTPException due to the invalid item
+        with pytest.raises(HTTPException):
+            bulk_txn_client.bulk_item_insert(Items(items=items), refresh=True)
+    finally:
+        os.environ.pop("ENABLE_STAC_VALIDATOR", None)
 
 
 @pytest.mark.asyncio
@@ -354,9 +363,9 @@ async def test_feature_collection_insert_with_in_batch_duplicates(
     )
 
     # Should report 1 item added and 2 skipped (in-batch duplicates)
-    # create_item (FeatureCollection) returns: "Successfully added {n} Items. {m} skipped (duplicates). {k} errors occurred."
-    assert "Successfully added 1 Items" in result
-    assert "2 skipped (duplicates)" in result
+    # New format: "Processed {n} items: {m} added | {k} input duplicates"
+    assert "1 added" in result["message"]
+    assert "2 input duplicates" in result["message"]
 
     # Verify only 1 item exists in the collection with this ID
     fc = await core_client.item_collection(ctx.collection["id"], request=MockRequest())

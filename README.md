@@ -35,13 +35,13 @@ The following organizations have contributed time and/or funding to support the 
 - **11/07/2025:** 🌍 The SFEOS STAC Viewer is now available at: https://healy-hyperspatial.github.io/sfeos-web. Use this site to examine your data and test your STAC API!
 - **10/24/2025:** Added `previous_token` pagination using Redis for efficient navigation. This feature allows users to navigate backwards through large result sets by storing pagination state in Redis. To use this feature, ensure Redis is configured (see [Redis for navigation](#redis-for-navigation)) and set `REDIS_ENABLE=true` in your environment.
 - **10/23/2025:** The `EXCLUDED_FROM_QUERYABLES` environment variable was added to exclude fields from the `queryables` endpoint. See [docs](#excluding-fields-from-queryables).
-- **10/15/2025:** 🚀 SFEOS Tools v0.1.0 Released! - The new `sfeos-tools` CLI is now available on [PyPI](https://pypi.org/project/sfeos-tools/)
-- **10/15/2025:** Added `reindex` command to **[SFEOS-tools](https://github.com/Healy-Hyperspatial/sfeos-tools)** for zero-downtime index updates when changing mappings or settings. The new `reindex` command makes it easy to apply mapping changes, update index settings, or migrate to new index structures without any service interruption, ensuring high availability of your STAC API during maintenance operations.
 
 <details style="border: 1px solid #eaecef; border-radius: 6px; padding: 10px; margin-bottom: 16px; background-color: #f9f9f9;">
 <summary style="cursor: pointer; font-weight: bold; margin: -10px -10px 0; padding: 10px; background-color: #f0f0f0; border-bottom: 1px solid #eaecef; border-top-left-radius: 6px; border-top-right-radius: 6px;">View Older News (Click to Expand)</summary>
 
 -------------
+- **10/15/2025:** 🚀 SFEOS Tools v0.1.0 Released! - The new `sfeos-tools` CLI is now available on [PyPI](https://pypi.org/project/sfeos-tools/)
+- **10/15/2025:** Added `reindex` command to **[SFEOS-tools](https://github.com/Healy-Hyperspatial/sfeos-tools)** for zero-downtime index updates when changing mappings or settings. The new `reindex` command makes it easy to apply mapping changes, update index settings, or migrate to new index structures without any service interruption, ensuring high availability of your STAC API during maintenance operations.
 - **10/12/2025:** Collections search **bbox** functionality added! The collections search extension now supports bbox queries. Collections will need to be updated via the API or with the new **[SFEOS-tools](https://github.com/Healy-Hyperspatial/sfeos-tools)** CLI package to support geospatial discoverability. 🙏 Thanks again to **CloudFerro** for their sponsorship of this work!
 - **10/04/2025:** The **[CloudFerro](https://cloudferro.com/)** logo has been added to the sponsors and supporters list above. Their sponsorship of the ongoing collections search extension work has been invaluable. This is in addition to the many other important changes and updates their developers have added to the project.
 - **09/25/2025:** v6.5.0 adds a new GET/POST /collections-search endpoint (disabled by default via ENABLE_COLLECTIONS_SEARCH_ROUTE) to avoid conflicts with the Transactions Extension, and enhances collections search with structured filtering (CQL2 JSON/text), query, and datetime filtering. These changes make collection discovery more powerful and configurable while preserving compatibility with transaction-enabled deployments.
@@ -111,6 +111,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
       - [Using Pre-built Docker Images](#using-pre-built-docker-images)
       - [Using Docker Compose](#using-docker-compose)
   - [Configuration Reference](#configuration-reference)
+  - [STAC Validation](#stac-validation)
   - [Free-Text Search (`q` parameter)](#free-text-search-q-parameter)
   - [Excluding Fields from Queryables](#excluding-fields-from-queryables)
   - [Datetime-Based Index Management](#datetime-based-index-management)
@@ -730,6 +731,7 @@ You can customize additional settings in your `.env` file:
 | `ENABLE_COLLECTIONS_SEARCH_ROUTE` | Enable the custom `/collections-search` endpoint (both GET and POST methods). When disabled, the custom endpoint will not be available, but collection search extensions will still be available on the core `/collections` endpoint if `ENABLE_COLLECTIONS_SEARCH` is true. | `false` | Optional |
 | `ENABLE_TRANSACTIONS_EXTENSIONS` | Enables or disables the Transactions and Bulk Transactions API extensions. This is useful for deployments where mutating the catalog via the API should be prevented. If set to `true`, the POST `/collections` route for search will be unavailable in the API. | `true` | Optional |
 | `ENABLE_CATALOGS_ROUTE` | Enable the **/catalogs** endpoint for hierarchical catalog browsing and navigation. **Note:** Requires the catalogs extension to be installed via `stac-fastapi-elasticsearch[catalogs]`, `stac-fastapi-opensearch[catalogs]`, or `stac-fastapi-core[catalogs]`. See [Catalogs Route](#catalogs-route) for installation instructions. | `false` | Optional |
+| `ENABLE_STAC_VALIDATOR` | Enable [stac-validator](https://github.com/stac-utils/stac-validator) to validate STAC items and collections on ingestion. This is especially useful for items or collections that use extensions. | `false` | Optional |
 | `STAC_INDEX_ASSETS` | Controls if Assets are indexed when added to Elasticsearch/Opensearch. This allows asset fields to be included in search queries. | `false` | Optional |
 
 ### 5. Limits & Performance
@@ -775,6 +777,70 @@ You can customize additional settings in your `.env` file:
 
 > [!NOTE]
 > The variables `ES_HOST`, `ES_PORT`, `ES_USE_SSL`, `ES_VERIFY_CERTS` and `ES_TIMEOUT` apply to both Elasticsearch and OpenSearch backends, so there is no need to rename the key names to `OS_` even if you're using OpenSearch.
+
+## STAC Validation
+
+STAC FastAPI provides a flexible, 2-tier validation architecture for STAC items and collections on ingestion. This ensures data quality and compliance with the STAC specification while allowing you to balance strict schema enforcement with high-throughput ingestion performance.
+
+### 1. Native Pydantic Validation (Always Enabled)
+
+By default, all STAC items and collections are validated using **Pydantic** (via `stac-pydantic`) at the API routing layer. This validation:
+
+- Enforces required STAC fields and correct data types.
+- Validates spatial and temporal properties.
+- Provides extremely fast, built-in validation without external dependencies.
+
+This validation is always enabled and happens automatically before data reaches the database or the Redis queue.
+
+### 2. Python STAC Validator
+
+If you require strict validation beyond Pydantic's type checking, you can enable the Python-based `stac-validator` package.
+
+#### Enabling STAC Validator
+
+1. **Install the validator**:
+   ```bash
+   pip install stac-fastapi-core[validator]
+   # or
+   pip install stac-fastapi-elasticsearch[validator]
+   # or
+   pip install stac-fastapi-opensearch[validator]
+   ```
+
+2. **Enable validation via environment variable**:
+   ```bash
+   export ENABLE_STAC_VALIDATOR=true
+   ```
+
+When enabled, the STAC validator will:
+- Validate items and collections against the official STAC JSON schemas
+- Check compliance with STAC extensions (e.g., EO, SAR, Projection)
+- Catch schema violations that Pydantic doesn't enforce
+- Provide detailed error messages with schema paths and validation details
+
+#### Example: Validation in Action
+
+```bash
+# Enable STAC validator
+export ENABLE_STAC_VALIDATOR=true
+
+# Now POST/PUT requests will validate against STAC schemas
+curl -X POST http://localhost:8000/collections \
+  -H "Content-Type: application/json" \
+  -d @collection.json
+```
+
+If validation fails, you'll receive a detailed error response:
+```json
+{
+  "detail": "STAC validation failed: 'eo:bands' does not match any of the regexes: '^(?!eo:)'. Error is in assets -> SR_B2"
+}
+```
+
+#### Performance Considerations
+
+- **Pydantic validation** Very fast and always enabled
+- **STAC validator (Python)** (ENABLE_STAC_VALIDATOR): Uses multi-processing for feature-collections
 
 ## Free-Text Search (`q` parameter)
 

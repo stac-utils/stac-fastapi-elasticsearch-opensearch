@@ -35,6 +35,10 @@ from stac_fastapi.core.serializers import (
 )
 from stac_fastapi.core.session import Session
 from stac_fastapi.core.utilities import filter_fields, get_bool_env
+from stac_fastapi.core.validate import (
+    async_validate_batch_with_stac_validator,
+    async_validate_stac,
+)
 from stac_fastapi.extensions.core.transaction import AsyncBaseTransactionsClient
 from stac_fastapi.extensions.core.transaction.request import (
     PartialCollection,
@@ -995,129 +999,340 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     settings: ApiBaseSettings = attr.ib()
     session: Session = attr.ib(default=attr.Factory(Session.create_from_env))
 
+    async def _validate_single_item(self, item_dict: dict) -> None:
+        """Validate a single STAC item.
+
+        Args:
+            item_dict: The item dictionary to validate.
+
+        Raises:
+            HTTPException: If validation fails.
+        """
+        try:
+            await async_validate_stac(item_dict)
+        except (ValidationError, ValueError) as e:
+            raise HTTPException(status_code=400, detail=f"Invalid item: {e}")
+
+    async def _validate_feature_collection(
+        self, features: list[dict], skip_validation: bool
+    ) -> tuple[list[dict], dict[str, list[str]]]:
+        """Validate a collection of STAC features.
+
+        Args:
+            features: List of feature dictionaries to validate.
+            skip_validation: Whether to skip validation (e.g., when using queue).
+
+        Returns:
+            Tuple of (valid_features, validation_errors) where validation_errors
+            maps error messages to lists of affected item IDs.
+        """
+        if get_bool_env("ENABLE_STAC_VALIDATOR") and not skip_validation:
+            return await async_validate_batch_with_stac_validator(features)
+        return features, {}
+
     @overrides
     async def create_item(
         self, collection_id: str, item: Item | ItemCollection, **kwargs
-    ) -> stac_types.Item | str:
-        """
-        Create an item or a feature collection of items in the specified collection.
+    ) -> stac_types.Item | str | dict:
+        """Create an item or a feature collection of items in the specified collection.
+
+        Acts as a traffic router, inspecting the payload type and delegating to the
+        appropriate single-item or bulk-item processing pipeline.
 
         Args:
             collection_id (str): The ID of the collection to add the item(s) to.
-            item (Item | ItemCollection): A single item or a collection of items to be added.
-            **kwargs: Additional keyword arguments, such as `request` and `refresh`.
+            item (Item | ItemCollection): A single item or a collection of items.
+            **kwargs: Additional keyword arguments, such as `request`.
 
         Returns:
-            stac_types.Item | str: The created item if a single item is added, or a summary string
-            indicating the number of items successfully added and errors if a collection of items is added.
+            stac_types.Item | str | dict:
+                - Single item (DB): The created `Item` object.
+                - Single item (Queue): A success string.
+                - FeatureCollection: A dictionary summarizing successes, failures, and duplicates.
 
         Raises:
-            NotFoundError: If the specified collection is not found in the database.
-            ConflictError: If an item with the same ID already exists in the collection.
+            HTTPException: If payload validation or bulk database insertion fails.
         """
         request = kwargs.get("request")
         base_url = str(request.base_url)
-
-        # Convert Pydantic model to dict for uniform processing
         item_dict = item.model_dump(mode="json")
-
-        # Check if Redis queue is enabled for async item processing
         use_queue = get_bool_env("ENABLE_REDIS_QUEUE", default=False)
 
-        # Handle FeatureCollection (bulk insert)
-        if item_dict["type"] == "FeatureCollection":
-            bulk_client = BulkTransactionsClient(
-                database=self.database, settings=self.settings
+        # Route the request to the dedicated handler
+        if item_dict.get("type") == "FeatureCollection":
+            return await self._create_feature_collection(
+                collection_id, item_dict, base_url, use_queue, **kwargs
             )
-            features = item_dict["features"]
-            processed_items = [
-                bulk_client.preprocess_item(feature, base_url) for feature in features
-            ]
-
-            # Deduplicate items within the batch by ID (keep last occurrence)
-            seen_ids: dict = {}
-            for item in processed_items:
-                seen_ids[item["id"]] = item
-            unique_items = list(seen_ids.values())
-            skipped_batch_duplicates = len(processed_items) - len(unique_items)
-            processed_items = unique_items
-
-            attempted = len(processed_items)
-
-            if not processed_items:
-                return f"No items to insert. {skipped_batch_duplicates} items were skipped (duplicates)."
-
-            if use_queue:
-                from stac_fastapi.core.redis_utils import AsyncRedisQueueManager
-
-                queue_manager = await AsyncRedisQueueManager.create()
-                try:
-                    queue_len = await queue_manager.queue_items(
-                        collection_id, processed_items
-                    )
-                    logger.info(
-                        f"Queued {len(processed_items)} items for collection '{collection_id}'. "
-                        f"Queue length: {queue_len}"
-                    )
-                    return f"Successfully queued {len(processed_items)} items for processing."
-                finally:
-                    await queue_manager.close()
-
-            success, errors = await self.database.bulk_async(
-                collection_id=collection_id,
-                processed_items=processed_items,
-                op_type="create",
-                **kwargs,
+        else:
+            return await self._create_single_item(
+                collection_id, item_dict, base_url, use_queue, **kwargs
             )
-            conflict_errors, other_errors = separate_bulk_conflict_errors(errors)
-            if conflict_errors and get_bool_env("RAISE_ON_BULK_ERROR"):
-                doc_id = next(iter(conflict_errors[0].values())).get("_id", "")
-                item_id = doc_id.split("|")[0] if "|" in doc_id else doc_id
-                raise ItemAlreadyExistsError(
-                    item_id=item_id, collection_id=collection_id
-                )
-            if other_errors:
-                logger.error(
-                    f"Bulk async operation encountered errors for collection {collection_id}: {other_errors} (attempted {attempted})"
-                )
-                if get_bool_env("RAISE_ON_BULK_ERROR"):
-                    raise BulkIndexError(
-                        errors=other_errors, collection_id=collection_id
-                    )
-            else:
-                logger.info(
-                    f"Bulk async operation succeeded with {success} actions for collection {collection_id}."
-                )
-            total_skipped = skipped_batch_duplicates + len(conflict_errors)
-            return f"Successfully added {success} Items. {total_skipped} skipped (duplicates). {len(other_errors)} errors occurred."
 
-        if use_queue:
-            from stac_fastapi.core.redis_utils import AsyncRedisQueueManager
+    async def _create_single_item(
+        self,
+        collection_id: str,
+        item_dict: dict,
+        base_url: str,
+        use_queue: bool,
+        **kwargs,
+    ) -> stac_types.Item | str:
+        """Handle the ingestion pipeline for a single STAC Item.
 
-            bulk_client = BulkTransactionsClient(
-                database=self.database, settings=self.settings
-            )
-            processed_item = bulk_client.preprocess_item(item_dict, base_url)
+        Executes preprocessing, optional STAC schema validation, and routes the
+        item to either the Redis queue or the database.
 
-            queue_manager = await AsyncRedisQueueManager.create()
-            try:
-                queue_len = await queue_manager.queue_items(
-                    collection_id, processed_item
-                )
-                logger.info(
-                    f"Queued item '{item_dict.get('id')}' for collection '{collection_id}'. "
-                    f"Queue length: {queue_len}"
-                )
-                return (
-                    f"Successfully queued item '{item_dict.get('id')}' for processing."
-                )
-            finally:
-                await queue_manager.close()
+        Args:
+            collection_id (str): The ID of the destination collection.
+            item_dict (dict): The raw dictionary representation of the item.
+            base_url (str): The base URL of the incoming request.
+            use_queue (bool): Whether to push to Redis instead of the database.
+            **kwargs: Additional arguments passed through the API.
 
-        await self.database.create_item(
-            item_dict, base_url=base_url, upsert=False, **kwargs
+        Returns:
+            stac_types.Item | str: The created STAC item (if DB insert) or a success string (if Queued).
+
+        Raises:
+            HTTPException: If preprocessing fails or the item is a duplicate.
+            ValueError: If strict STAC validation fails.
+        """
+        # 1. PREPROCESSING LAYER
+        bulk_client = BulkTransactionsClient(
+            database=self.database, settings=self.settings
         )
-        return ItemSerializer.db_to_stac(item_dict, base_url)
+        preprocessed_item = bulk_client.preprocess_item(item_dict, base_url)
+
+        if preprocessed_item is None:
+            raise HTTPException(
+                status_code=400, detail="Item preprocessing failed or duplicate."
+            )
+
+        # 2. VALIDATION LAYER
+        if get_bool_env("ENABLE_STAC_VALIDATOR") and not use_queue:
+            await self._validate_single_item(preprocessed_item)
+
+        # 3. ROUTING LAYER (Queue vs Database)
+        if use_queue:
+            from stac_fastapi.core.utilities import queue_items_if_enabled
+
+            result = await queue_items_if_enabled(
+                collection_id, preprocessed_item, item_ids=item_dict.get("id")
+            )
+            if result:
+                return result
+
+        # 4. DATABASE INSERTION LAYER
+        await self.database.create_item(
+            preprocessed_item, base_url=base_url, upsert=False, **kwargs
+        )
+        return ItemSerializer.db_to_stac(preprocessed_item, base_url)
+
+    async def _create_feature_collection(
+        self,
+        collection_id: str,
+        item_dict: dict,
+        base_url: str,
+        use_queue: bool,
+        **kwargs,
+    ) -> dict:
+        """Handle high-throughput ingestion pipeline for a bulk FeatureCollection.
+
+        Executes payload deduplication, preprocessing, concurrent STAC schema validation,
+        and safely routes the batch to either the Redis queue or the database while
+        grouping and formatting any errors encountered.
+
+        Args:
+            collection_id (str): The ID of the destination collection.
+            item_dict (dict): The FeatureCollection payload.
+            base_url (str): The base URL of the incoming request.
+            use_queue (bool): Whether to push to Redis instead of the database.
+            **kwargs: Additional arguments passed through the API.
+
+        Returns:
+            dict: A detailed response payload containing overall messages, successfully
+            added item IDs, validation errors, database errors, and conflict errors.
+
+        Raises:
+            HTTPException: If no valid items remain to be inserted, or if the batch is
+            rejected under strict mode (RAISE_ON_BULK_ERROR=True).
+        """
+        try:
+            await self.database.find_collection(collection_id=collection_id)
+        except Exception:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Collection '{collection_id}' not found",
+            )
+
+        raw_features = item_dict.get("features", [])
+        logger.info(
+            f"Processing FeatureCollection with {len(raw_features)} features for collection {collection_id}"
+        )
+
+        # 1. DEDUPLICATION LAYER
+        seen_ids: dict = {}
+        for feature in raw_features:
+            feature_id = feature.get("id")
+            if feature_id is not None:
+                seen_ids[feature_id] = feature
+        unique_features = list(seen_ids.values())
+        skipped_batch_duplicates = len(raw_features) - len(unique_features)
+
+        raise_on_error = get_bool_env("RAISE_ON_BULK_ERROR", default=False)
+
+        # 2. PREPROCESSING LAYER
+        bulk_client = BulkTransactionsClient(
+            database=self.database, settings=self.settings
+        )
+        processed_items = []
+        skipped_db_duplicates = 0
+
+        for feature in unique_features:
+            try:
+                prepped = bulk_client.preprocess_item(feature, base_url)
+                if prepped is not None:
+                    processed_items.append(prepped)
+                else:
+                    skipped_db_duplicates += 1
+            except Exception as e:
+                logger.warning(
+                    f"Failed to preprocess item {feature.get('id', 'unknown')}: {e}"
+                )
+                skipped_db_duplicates += 1
+
+        # 3. VALIDATION LAYER
+        if use_queue:
+            valid_items = processed_items
+            validation_errors: dict[str, list[str]] = {}
+            validation_error_count = 0
+        else:
+            valid_items, validation_errors = await self._validate_feature_collection(
+                processed_items, skip_validation=False
+            )
+            validation_error_count = sum(
+                len(item_ids) if isinstance(item_ids, list) else 1
+                for item_ids in validation_errors.values()
+            )
+
+            # Strict mode rejections
+            if validation_errors and raise_on_error:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "message": f"Batch rejected. {validation_error_count} items failed validation.",
+                        "errors": validation_errors,
+                    },
+                )
+            if not valid_items and raise_on_error:
+                total_skipped = (
+                    skipped_batch_duplicates
+                    + skipped_db_duplicates
+                    + validation_error_count
+                )
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "message": f"No valid items to insert. Skipped {total_skipped} items.",
+                        "validation_errors": validation_errors,
+                    },
+                )
+
+        # 4. ROUTING LAYER (Queue vs Database)
+        if use_queue:
+            from stac_fastapi.core.utilities import queue_items_if_enabled
+
+            result = await queue_items_if_enabled(collection_id, valid_items)
+            if result:
+                if validation_error_count > 0 or skipped_batch_duplicates > 0:
+                    result += f" (Skipped {validation_error_count} invalid, {skipped_batch_duplicates} duplicates)"
+                # Wrap the string response in a dict so the return type is consistent
+                return {"message": result}
+
+        # 5. DATABASE INSERTION LAYER
+        # attempted = len(valid_items)
+        success, errors = await self.database.bulk_async(
+            collection_id=collection_id,
+            processed_items=valid_items,
+            op_type="create",
+            **kwargs,
+        )
+
+        # 6. RESPONSE FORMATTING
+        conflict_errors, other_errors = separate_bulk_conflict_errors(errors)
+        failed_item_ids = set()
+
+        for error in errors:
+            doc_id = next(iter(error.values())).get("_id", "")
+            failed_item_ids.add(doc_id.split("|")[0] if "|" in doc_id else doc_id)
+
+        successfully_added_ids = [
+            item.get("id")
+            for item in valid_items
+            if item.get("id") not in failed_item_ids
+        ]
+
+        if conflict_errors and raise_on_error:
+            doc_id = next(iter(conflict_errors[0].values())).get("_id", "")
+            item_id = doc_id.split("|")[0] if "|" in doc_id else doc_id
+            raise ItemAlreadyExistsError(item_id=item_id, collection_id=collection_id)
+
+        if other_errors and raise_on_error:
+            raise BulkIndexError(errors=other_errors, collection_id=collection_id)
+
+        def format_conflict_errors(conflicts):
+            conflict_details = {}
+            for c in conflicts:
+                doc_id = next(iter(c.values())).get("_id", "")
+                if "|" in doc_id:
+                    item_id, coll_id = doc_id.split("|", 1)
+                    conflict_details[
+                        item_id
+                    ] = f"Item '{item_id}' already exists in collection '{coll_id}'"
+                else:
+                    conflict_details[doc_id] = f"Item '{doc_id}' already exists"
+            return conflict_details
+
+        total_skipped = (
+            skipped_batch_duplicates
+            + skipped_db_duplicates
+            + validation_error_count
+            + len(conflict_errors)
+        )
+
+        if success == 0:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": f"No items were added. {total_skipped} skipped. {len(other_errors)} errors.",
+                    "validation_errors": validation_errors,
+                    "conflict_errors": format_conflict_errors(conflict_errors)
+                    if conflict_errors
+                    else {},
+                },
+            )
+
+        message_parts = [f"Processed {len(raw_features)} items: {success} added"]
+        if skipped_batch_duplicates > 0:
+            message_parts.append(f"{skipped_batch_duplicates} input duplicates")
+        if validation_error_count > 0:
+            message_parts.append(f"{validation_error_count} validation errors")
+        if skipped_db_duplicates > 0:
+            message_parts.append(f"{skipped_db_duplicates} preprocessing skipped")
+        if len(conflict_errors) > 0:
+            message_parts.append(f"{len(conflict_errors)} conflicts")
+        if len(other_errors) > 0:
+            message_parts.append(f"{len(other_errors)} database errors")
+
+        response: dict = {"message": " | ".join(message_parts)}
+        if successfully_added_ids:
+            response["successfully_added"] = successfully_added_ids
+        if validation_errors:
+            response["validation_errors"] = validation_errors
+        if conflict_errors:
+            response["conflict_errors"] = format_conflict_errors(conflict_errors)
+        if other_errors:
+            response["database_errors"] = other_errors
+
+        return response
 
     @overrides
     async def update_item(
@@ -1146,27 +1361,28 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         use_queue = get_bool_env("ENABLE_REDIS_QUEUE", default=False)
 
+        # Handle inline imports once to keep code DRY
         if use_queue:
-            from stac_fastapi.core.redis_utils import AsyncRedisQueueManager
+            from stac_fastapi.core.utilities import queue_items_if_enabled
 
+        # PATH A: REDIS QUEUE ENABLED
+        # Skip validation, push raw item to Redis immediately
+        if use_queue:
             bulk_client = BulkTransactionsClient(
                 database=self.database, settings=self.settings
             )
             processed_item = bulk_client.preprocess_item(item_dict, base_url)
 
-            queue_manager = await AsyncRedisQueueManager.create()
-            try:
-                queue_len = await queue_manager.queue_items(
-                    collection_id, processed_item
-                )
-                logger.info(
-                    f"Queued update for item '{item_id}' in collection '{collection_id}'. "
-                    f"Queue length: {queue_len}"
-                )
-            finally:
-                await queue_manager.close()
+            result = await queue_items_if_enabled(
+                collection_id, processed_item, item_ids=item_id
+            )
+            if result:
+                return result
 
-            return ItemSerializer.db_to_stac(item_dict, base_url)
+        # PATH B: DIRECT DATABASE INSERTION (No Queue)
+        # Validate before database insertion
+        if get_bool_env("ENABLE_STAC_VALIDATOR"):
+            await self._validate_single_item(item_dict)
 
         await self.database.create_item(
             item_dict, base_url=base_url, upsert=True, **kwargs
@@ -1262,6 +1478,13 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         Raises:
             ConflictError: If the collection already exists.
         """
+        # Validate collection
+        if get_bool_env("ENABLE_STAC_VALIDATOR"):
+            try:
+                await async_validate_stac(collection, pydantic_model=Collection)
+            except (ValidationError, ValueError) as e:
+                raise HTTPException(status_code=400, detail=f"Invalid collection: {e}")
+
         collection = collection.model_dump(mode="json")
         request = kwargs["request"]
 
@@ -1296,6 +1519,12 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             A STAC collection that has been updated in the database.
 
         """
+        # Validate collection
+        try:
+            await async_validate_stac(collection, pydantic_model=Collection)
+        except (ValidationError, ValueError) as e:
+            raise HTTPException(status_code=400, detail=f"Invalid collection: {e}")
+
         collection = collection.model_dump(mode="json")
 
         request = kwargs["request"]
@@ -1401,7 +1630,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         """Create es engine."""
         self.client = self.settings.create_client
 
-    def preprocess_item(self, item: stac_types.Item, base_url) -> stac_types.Item:
+    def preprocess_item(self, item: stac_types.Item, base_url: str) -> stac_types.Item:
         """Preprocess an item to match the data model.
 
         Args:
@@ -1443,29 +1672,64 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         # Determine op_type from bulk transaction method
         op_type = "index" if items.method == BulkTransactionMethod.UPSERT else "create"
 
-        processed_items = []
-        for item in items.items.values():
-            try:
-                validated = Item(**item) if not isinstance(item, Item) else item
-                prepped = self.preprocess_item(
-                    validated.model_dump(mode="json"), base_url
-                )
-                processed_items.append(prepped)
-            except ValidationError:
-                # Immediately raise on the first invalid item (strict mode)
-                raise
+        # Convert Pydantic models to raw dictionaries for uniform processing
+        raw_items = [
+            item.model_dump(mode="json") if hasattr(item, "model_dump") else item
+            for item in items.items.values()
+        ]
 
-        # Deduplicate items within the batch by ID (keep last occurrence)
+        # 1. DEDUPLICATE FIRST
+        # Doing this before validation saves us from validating the exact same STAC item twice
         seen_ids: dict = {}
-        for item in processed_items:
-            seen_ids[item["id"]] = item
-        unique_items = list(seen_ids.values())
-        skipped_batch_duplicates = len(processed_items) - len(unique_items)
-        processed_items = unique_items
+        for item in raw_items:
+            item_id = item.get("id")
+            if item_id is not None:
+                seen_ids[item_id] = item
 
-        if not processed_items:
+        unique_items = list(seen_ids.values())
+        skipped_batch_duplicates = len(raw_items) - len(unique_items)
+
+        if not unique_items:
             return f"No items to insert. {skipped_batch_duplicates} items were skipped (duplicates)."
 
+        # 2. VALIDATION LAYER (Use batch validator for efficiency)
+        if get_bool_env("ENABLE_STAC_VALIDATOR"):
+            from stac_fastapi.core.validate import validate_batch_with_stac_validator
+
+            valid_items, validation_errors = validate_batch_with_stac_validator(
+                unique_items
+            )
+
+            # Count total validation errors (validation_errors maps error_msg -> [item_ids])
+            validation_error_count = sum(
+                len(item_ids) if isinstance(item_ids, list) else 1
+                for item_ids in validation_errors.values()
+            )
+
+            # This endpoint historically has strict mode enabled by default.
+            # We fail the entire batch immediately if any item is invalid.
+            if validation_errors:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "message": f"Bulk insertion rejected. {validation_error_count} items failed validation.",
+                        "errors": validation_errors,
+                    },
+                )
+        else:
+            valid_items = unique_items
+
+        # 3. PREPROCESSING LAYER
+        processed_items = []
+        for item in valid_items:
+            prepped = self.preprocess_item(item, base_url)
+            if prepped is not None:
+                processed_items.append(prepped)
+
+        if not processed_items:
+            return f"No items to insert after preprocessing. Skipped {skipped_batch_duplicates} duplicates."
+
+        # 4. DATABASE INSERTION LAYER
         collection_id = processed_items[0]["collection"]
         success, errors = self.database.bulk_sync(
             collection_id,
@@ -1473,16 +1737,20 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
             op_type=op_type,
             **kwargs,
         )
+
         conflict_errors, other_errors = separate_bulk_conflict_errors(errors)
+
         if conflict_errors and get_bool_env("RAISE_ON_BULK_ERROR"):
             doc_id = next(iter(conflict_errors[0].values())).get("_id", "")
             item_id = doc_id.split("|")[0] if "|" in doc_id else doc_id
             raise ItemAlreadyExistsError(item_id=item_id, collection_id=collection_id)
+
         if other_errors:
             logger.error(f"Bulk sync operation encountered errors: {other_errors}")
             if get_bool_env("RAISE_ON_BULK_ERROR"):
                 raise BulkIndexError(errors=other_errors, collection_id=collection_id)
         else:
             logger.info(f"Bulk sync operation succeeded with {success} actions.")
+
         total_skipped = skipped_batch_duplicates + len(conflict_errors)
         return f"Successfully added/updated {success} Items. {total_skipped} skipped (duplicates). {len(other_errors)} errors occurred."
