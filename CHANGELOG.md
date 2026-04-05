@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Updated item index name generator (`index_by_collection_id`) to use xxhash instead of hex encoding. [#661](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/661)
+
 ### Changed
 
 - Added dependabot to check for updates to gh-actions weekly. [#686](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/686)
