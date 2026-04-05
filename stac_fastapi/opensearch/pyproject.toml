@@ -55,7 +55,7 @@ dev = [
 ]
 docs = [
     "mkdocs>=1.4,<1.7",
-    "mkdocs-material~=9.0.0",
+    "mkdocs-material>=9.0,<9.8",
     "pdocs~=1.2.0",
 ]
 redis = [
