@@ -14,7 +14,7 @@ This is AQUAVIEW's fork of [stac-fastapi-elasticsearch-opensearch](https://githu
 v<upstream-version>-aquaview.<patch-number>
 ```
 
-Examples: `v6.10.1-aquaview.1`, `v6.10.1-aquaview.2`
+Examples: `v6.15.0-aquaview.1`, `v6.15.0-aquaview.2`
 
 ## Deploy a new version
 
@@ -89,9 +89,17 @@ When all fixes are merged upstream and we no longer need the fork:
 
 ## Current patches
 
-| Branch | Description | Upstream PR |
+| Commit | Description | Upstream PR |
 |--------|-------------|-------------|
-| `fix/es-api-key-auth` | Fix ES_API_KEY to use native api_key param | Pending |
+| `fda2c55` | Cloud Build config for AQUAVIEW deployment | N/A (fork-only) |
+| `9b46035` | Add `geometry_geohex_grid_frequency` aggregation | Not submitted |
+| `c13bbd8` | Add `centroid_geohex_grid_frequency` to DEFAULT_AGGREGATIONS | Not submitted |
+
+### Previously carried patches (now upstream)
+
+| Description | Upstream PR |
+|-------------|-------------|
+| Fix ES_API_KEY to use native api_key param | [#598](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/598) (merged in v6.10.2) |
 
 ## Files specific to this fork
 
