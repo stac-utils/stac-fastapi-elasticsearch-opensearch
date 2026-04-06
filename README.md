@@ -669,7 +669,7 @@ There are two main ways to run the API locally:
 
 - **Configuration**: By default, Docker Compose uses Elasticsearch 8.x and OpenSearch 3.5.0. To use different versions, create a `.env` file:
   ```shell
-  ELASTICSEARCH_VERSION=8.11.0
+  ELASTICSEARCH_VERSION=9.3.2
   OPENSEARCH_VERSION=3.5.0
   ENABLE_DIRECT_RESPONSE=false
   ```
@@ -704,7 +704,7 @@ You can customize additional settings in your `.env` file:
 | `ES_API_KEY` | API Key for external Elasticsearch/OpenSearch. | N/A | Optional |
 | `ES_TIMEOUT` | Client timeout for Elasticsearch/OpenSearch. | DB client default | Optional |
 | `BACKEND` | Tests-related variable | `elasticsearch` or `opensearch` based on the backend | Optional |
-| `ELASTICSEARCH_VERSION` | Version of Elasticsearch to use. | `8.11.0` | Optional |
+| `ELASTICSEARCH_VERSION` | Version of Elasticsearch to use. | `9.3.2` | Optional |
 | `OPENSEARCH_VERSION` | OpenSearch version | `3.5.0` | Optional |
 | `RETRY_MAX_ATTEMPTS_CONNECTION_ERROR` | Specifies the maximum number of retry attempts for connection errors (ConnectionError, ConnectionTimeout) before giving up. | `5` | Optional |
 | `RETRY_MAX_ATTEMPTS_NOT_FOUND_ERROR` | Specifies the maximum number of retry attempts for `IndexNotFoundException` error before giving up. This is particularly useful for datetime-based index searches where indices may need to be refreshed. | `3` | Optional |
