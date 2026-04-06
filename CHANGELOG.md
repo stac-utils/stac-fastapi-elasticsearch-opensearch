@@ -25,6 +25,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 - Updated Elasticsearch version in cicd, compose.yml to 9.3.2 from 8.19.5
 - Updated Elasticsearch[async] Python dependency from ~=8.19.1 to >=8.19.1,<9.4.0
+- Updated, loosened fastapi, uvicorn and starlette libraries and moved shared deps to core. [#687](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/687)
 
 ## [v6.15.0] - 2026-04-04
 
