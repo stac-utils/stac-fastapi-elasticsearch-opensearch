@@ -63,7 +63,7 @@ redis = [
     "stac-fastapi-core[redis]==6.15.0",
 ]
 server = [
-    "uvicorn[standard]>=0.23,<0.44",
+    "uvicorn[standard]>=0.23,<0.45",
 ]
 
 [project.scripts]
