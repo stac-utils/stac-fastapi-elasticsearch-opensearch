@@ -30,8 +30,8 @@ dynamic = ["version"]
 dependencies = [
     "stac-fastapi-core==6.15.0",
     "sfeos-helpers==6.15.0",
-    "opensearch-py~=2.8.0",
-    "opensearch-py[async]~=2.8.0",
+    "opensearch-py>=2.8,<3.2",
+    "opensearch-py[async]>=2.8,<3.2",
 ]
 
 [project.urls]
