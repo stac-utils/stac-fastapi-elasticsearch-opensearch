@@ -59,6 +59,16 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
             "data_type": "frequency_distribution",
             "frequency_distribution_data_type": "string",
         },
+        {
+            "name": "geometry_geohex_grid_frequency",
+            "data_type": "frequency_distribution",
+            "frequency_distribution_data_type": "string",
+        },
+        {
+            "name": "centroid_geohex_grid_frequency",
+            "data_type": "frequency_distribution",
+            "frequency_distribution_data_type": "string",
+        },
     ]
 
     # Geo point aggregations
@@ -239,6 +249,7 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
         centroid_geohex_grid_frequency_precision: int | None = None,
         centroid_geotile_grid_frequency_precision: int | None = None,
         geometry_geohash_grid_frequency_precision: int | None = None,
+        geometry_geohex_grid_frequency_precision: int | None = None,
         geometry_geotile_grid_frequency_precision: int | None = None,
         datetime_frequency_interval: str | None = None,
         **kwargs,
@@ -260,6 +271,7 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
                 "centroid_geohex_grid_frequency_precision": centroid_geohex_grid_frequency_precision,
                 "centroid_geotile_grid_frequency_precision": centroid_geotile_grid_frequency_precision,
                 "geometry_geohash_grid_frequency_precision": geometry_geohash_grid_frequency_precision,
+                "geometry_geohex_grid_frequency_precision": geometry_geohex_grid_frequency_precision,
                 "geometry_geotile_grid_frequency_precision": geometry_geotile_grid_frequency_precision,
                 "datetime_frequency_interval": datetime_frequency_interval,
             }
@@ -391,6 +403,12 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
             self.MAX_GEOHASH_PRECISION,
         )
 
+        geometry_geohex_grid_precision = self.extract_precision(
+            aggregate_request.geometry_geohex_grid_frequency_precision,
+            0,
+            self.MAX_GEOHEX_PRECISION,
+        )
+
         geometry_geotile_grid_precision = self.extract_precision(
             aggregate_request.geometry_geotile_grid_frequency_precision,
             0,
@@ -410,6 +428,7 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
                 centroid_geohex_grid_precision,
                 centroid_geotile_grid_precision,
                 geometry_geohash_grid_precision,
+                geometry_geohex_grid_precision,
                 geometry_geotile_grid_precision,
                 datetime_frequency_interval,
                 aggregate_request.datetime,

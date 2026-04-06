@@ -32,6 +32,7 @@ class EsAggregationExtensionGetRequest(
     centroid_geohex_grid_frequency_precision: int | None = attr.ib(default=None)
     centroid_geotile_grid_frequency_precision: int | None = attr.ib(default=None)
     geometry_geohash_grid_frequency_precision: int | None = attr.ib(default=None)
+    geometry_geohex_grid_frequency_precision: int | None = attr.ib(default=None)
     geometry_geotile_grid_frequency_precision: int | None = attr.ib(default=None)
     datetime_frequency_interval: str | None = attr.ib(default=None)
 
@@ -45,5 +46,6 @@ class EsAggregationExtensionPostRequest(
     centroid_geohex_grid_frequency_precision: int | None = None
     centroid_geotile_grid_frequency_precision: int | None = None
     geometry_geohash_grid_frequency_precision: int | None = None
+    geometry_geohex_grid_frequency_precision: int | None = None
     geometry_geotile_grid_frequency_precision: int | None = None
     datetime_frequency_interval: str | None = None

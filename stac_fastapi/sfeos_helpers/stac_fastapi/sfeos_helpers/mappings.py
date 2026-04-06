@@ -375,6 +375,12 @@ AGGREGATION_MAPPING: dict[str, dict[str, Any]] = {
             "precision": 0,
         }
     },
+    "geometry_geohex_grid_frequency": {
+        "geohex_grid": {
+            "field": "geometry",
+            "precision": 0,
+        }
+    },
 }
 
 ES_MAPPING_TYPE_TO_JSON: dict[
