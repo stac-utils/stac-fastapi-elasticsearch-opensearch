@@ -23,6 +23,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Updated
 
+- Updated Elasticsearch version in cicd, compose.yml to 9.3.2 from 8.19.5
+- Updated Elasticsearch[async] Python dependency from ~=8.19.1 to >=8.19.1,<9.4.0
+
 ## [v6.15.0] - 2026-04-04
 
 ### Added

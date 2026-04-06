@@ -15,8 +15,8 @@ jobs:
     timeout-minutes: 20
 
     services:
-      elasticsearch_8_svc:
-        image: docker.elastic.co/elasticsearch/elasticsearch:8.19.5
+      elasticsearch_9_3:
+        image: docker.elastic.co/elasticsearch/elasticsearch:9.3.2
         env:
           cluster.name: stac-cluster
           node.name: es01
@@ -69,7 +69,7 @@ jobs:
     strategy:
       matrix:
         python-version: [ "3.12", "3.13", "3.14"]
-        backend: [ "elasticsearch8", "opensearch"]
+        backend: [ "elasticsearch", "opensearch"]
 
     name: Python ${{ matrix.python-version }} testing with ${{ matrix.backend }}
 
@@ -120,7 +120,7 @@ jobs:
           pipenv run pytest -svvv --timeout=300
         env:
           ENVIRONMENT: testing
-          ES_PORT: ${{ matrix.backend == 'elasticsearch8' && '9200' || '9202' }}
+          ES_PORT: ${{ matrix.backend == 'elasticsearch' && '9200' || '9202' }}
           ES_HOST: 172.17.0.1
           ES_USE_SSL: false
           DATABASE_REFRESH: true
@@ -128,4 +128,4 @@ jobs:
           REDIS_ENABLE: true
           REDIS_HOST: localhost
           REDIS_PORT: 6379
-          BACKEND: ${{ matrix.backend == 'elasticsearch8' && 'elasticsearch' || 'opensearch' }}
+          BACKEND: ${{ matrix.backend == 'elasticsearch' || 'opensearch' }}
