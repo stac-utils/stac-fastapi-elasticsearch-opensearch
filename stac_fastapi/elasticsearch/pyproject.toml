@@ -30,7 +30,7 @@ dynamic = ["version"]
 dependencies = [
     "stac-fastapi-core==6.15.0",
     "sfeos-helpers==6.15.0",
-    "elasticsearch[async]~=8.19.1",
+    "elasticsearch[async]>=8.19.1,<9.4.0",
 ]
 
 [project.urls]
