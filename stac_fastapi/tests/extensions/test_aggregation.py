@@ -44,7 +44,7 @@ async def test_get_catalog_aggregations(app_client):
     resp = await app_client.get("/aggregations")
 
     assert resp.status_code == 200
-    assert len(resp.json()["aggregations"]) == 9
+    assert len(resp.json()["aggregations"]) == 7
 
 
 @pytest.mark.asyncio
@@ -53,7 +53,7 @@ async def test_post_catalog_aggregations(app_client):
     resp = await app_client.post("/aggregations")
 
     assert resp.status_code == 200
-    assert len(resp.json()["aggregations"]) == 9
+    assert len(resp.json()["aggregations"]) == 7
 
 
 @pytest.mark.asyncio
@@ -782,3 +782,43 @@ async def test_post_aggregate_geometry_geohash_frequency(app_client, ctx):
     assert resp.status_code == 200
     assert len(resp.json()["aggregations"][0]["buckets"]) > 1
     assert resp.json()["aggregations"][0]["buckets"][0]["key"] == "r6hhb"
+
+
+@pytest.mark.asyncio
+async def test_get_aggregate_geometry_geohex_frequency(app_client, ctx):
+
+    # geohex_grid on geo_shape requires ES commercial license; not supported on OpenSearch
+    backend = os.getenv("BACKEND", "elasticsearch").lower()
+    if backend == "elasticsearch":
+        pytest.skip("requires commercial ES license")
+    if backend == "opensearch":
+        pytest.skip("geohex_grid on geo_shape not supported on OpenSearch")
+
+    resp = await app_client.get(
+        "/aggregate?aggregations=geometry_geohex_grid_frequency&geometry_geohex_grid_frequency_precision=5&collections=test-collection"
+    )
+
+    assert resp.status_code == 200
+    assert len(resp.json()["aggregations"][0]["buckets"]) > 1
+
+
+@pytest.mark.asyncio
+async def test_post_aggregate_geometry_geohex_frequency(app_client, ctx):
+
+    # geohex_grid on geo_shape requires ES commercial license; not supported on OpenSearch
+    backend = os.getenv("BACKEND", "elasticsearch").lower()
+    if backend == "elasticsearch":
+        pytest.skip("requires commercial ES license")
+    if backend == "opensearch":
+        pytest.skip("geohex_grid on geo_shape not supported on OpenSearch")
+
+    params = {
+        "aggregations": ["geometry_geohex_grid_frequency"],
+        "geometry_geohex_grid_frequency_precision": 5,
+        "collections": ["test-collection"],
+    }
+
+    resp = await app_client.post("/aggregate", json=params)
+
+    assert resp.status_code == 200
+    assert len(resp.json()["aggregations"][0]["buckets"]) > 1
