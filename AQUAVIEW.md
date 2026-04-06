@@ -92,8 +92,9 @@ When all fixes are merged upstream and we no longer need the fork:
 | Commit | Description | Upstream PR |
 |--------|-------------|-------------|
 | `fda2c55` | Cloud Build config for AQUAVIEW deployment | N/A (fork-only) |
-| `9b46035` | Add `geometry_geohex_grid_frequency` aggregation | Not submitted |
-| `c13bbd8` | Add `centroid_geohex_grid_frequency` to DEFAULT_AGGREGATIONS | Not submitted |
+| `9b46035` | Add `geometry_geohex_grid_frequency` aggregation | [#705](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/705) |
+| `c13bbd8` | Add `centroid_geohex_grid_frequency` to DEFAULT_AGGREGATIONS | [#705](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/705) |
+| `7a83b09` | Add `geometry_geohex_grid_precision` to abstract aggregate signature | [#705](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/705) |
 
 ### Previously carried patches (now upstream)
 
