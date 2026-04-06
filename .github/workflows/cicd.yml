@@ -70,6 +70,11 @@ jobs:
       matrix:
         python-version: [ "3.12", "3.13", "3.14"]
         backend: [ "elasticsearch", "opensearch"]
+        include:
+          - backend: "elasticsearch"
+            port: "9200"
+          - backend: "opensearch"
+            port: "9202"
 
     name: Python ${{ matrix.python-version }} testing with ${{ matrix.backend }}
 
@@ -86,41 +91,25 @@ jobs:
             **/setup.py
 
       - name: Lint code
-        if: ${{ matrix.python-version == 3.11 }}
+        if: ${{ matrix.python-version == '3.12' }}
         run: |
           python -m pip install pre-commit
           pre-commit run --all-files
 
-      - name: Install pipenv
+      - name: Install dependencies
         run: |
-          python -m pip install --upgrade pipenv wheel
-
-      - name: Install core library stac-fastapi
-        run: |
+          python -m pip install --upgrade pip wheel pytest-timeout
           pip install ./stac_fastapi/core[catalogs]
-
-      - name: Install helpers library stac-fastapi
-        run: |
           pip install ./stac_fastapi/sfeos_helpers
-          
-      - name: Install elasticsearch stac-fastapi
-        run: |
           pip install ./stac_fastapi/elasticsearch[dev,server]
-
-      - name: Install opensearch stac-fastapi
-        run: |
           pip install ./stac_fastapi/opensearch[dev,server]
-
-      - name: Install pytest-timeout
-        run: |
-          pip install pytest-timeout
 
       - name: Run test suite
         run: |
-          pipenv run pytest -svvv --timeout=300
+          pytest -svvv --timeout=300
         env:
           ENVIRONMENT: testing
-          ES_PORT: ${{ matrix.backend == 'elasticsearch' && '9200' || '9202' }}
+          ES_PORT: ${{ matrix.port }}
           ES_HOST: 172.17.0.1
           ES_USE_SSL: false
           DATABASE_REFRESH: true
@@ -128,4 +117,4 @@ jobs:
           REDIS_ENABLE: true
           REDIS_HOST: localhost
           REDIS_PORT: 6379
-          BACKEND: ${{ matrix.backend == 'elasticsearch' || 'opensearch' }}
+          BACKEND: ${{ matrix.backend }}
