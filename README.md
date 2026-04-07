@@ -1,9 +1,7 @@
 <!-- markdownlint-disable MD033 MD041 -->
 
 
-<p align="left">
   <img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/sfeos.png" width=1000>
-</p>
 
 **Jump to:** [Project Introduction](#project-introduction---what-is-sfeos) | [Quick Start](#quick-start) | [Table of Contents](#table-of-contents) | [SFEOS-tools CLI](#sfeos-tools-cli) |
 
@@ -19,12 +17,10 @@
 
 The following organizations have contributed time and/or funding to support the development of this project:
 
-<p align="left">
-  <a href="https://healy-hyperspatial.github.io/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/hh-logo-blue.png" alt="Healy Hyperspatial" height="100" hspace="20"></a>
-  <a href="https://atomicmaps.io/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/am-logo-black.png" alt="Atomic Maps" height="100" hspace="20"></a>
-  <a href="https://remotesensing.vito.be/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/VITO.png" alt="VITO Remote Sensing" height="100" hspace="20"></a>
-  <a href="https://cloudferro.com/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/cloudferro-logo.png" alt="CloudFerro" height="105" hspace="20"></a>
-</p>
+<a href="https://healy-hyperspatial.github.io/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/hh-logo-blue.png" alt="Healy Hyperspatial" height="100" hspace="20"></a>
+<a href="https://atomicmaps.io/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/am-logo-black.png" alt="Atomic Maps" height="100" hspace="20"></a>
+<a href="https://remotesensing.vito.be/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/VITO.png" alt="VITO Remote Sensing" height="100" hspace="20"></a>
+<a href="https://cloudferro.com/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/cloudferro-logo.png" alt="CloudFerro" height="105" hspace="20"></a>
 
 ## Latest News
 
@@ -103,8 +99,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
   - [Examples](#examples)
   - [Performance](#performance)
     - [Direct Response Mode](#direct-response-mode)
-    - [CQL2 JSON Search with AST-based Parsing]
-(#cql2-json-search-with-ast-based-parsing)
+    - [CQL2 JSON Search with AST-based Parsing](#cql2-json-search-with-ast-based-parsing)
   - [Quick Start](#quick-start)
     - [Installation](#installation)
     - [Running Locally](#running-locally)
@@ -665,20 +660,33 @@ There are two main ways to run the API locally:
 
 - **Prerequisites**: Ensure [Docker Compose](https://docs.docker.com/compose/install/) or [Podman Compose](https://podman-desktop.io/docs/compose) is installed on your machine.
 
-- **Start the API**:
-  ```shell
-  docker compose up elasticsearch app-elasticsearch
-  ```
+**1. Quick Deployment (Recommended)**
+To quickly run the application using optimized, pre-built images from the GitHub Container Registry (GHCR), use the dedicated deployment compose files:
 
-- **Configuration**: By default, Docker Compose uses Elasticsearch 8.x and OpenSearch 3.5.0. To use different versions, create a `.env` file:
+```shell
+# For Elasticsearch backend
+docker compose -f compose.es.deploy.yml up
+
+# For OpenSearch backend
+docker compose -f compose.os.deploy.yml up
+```
+
+**2. Local Development**
+If you are contributing to the project and want to build the images from your local source code with live-reloading enabled, use the default `compose` file:
+
+```shell
+# For Elasticsearch backend
+docker-compose up elasticsearch app-elasticsearch
+
+# For OpenSearch backend
+docker-compose up opensearch app-opensearch
+```
+- **Configuration**: By default, Docker Compose uses Elasticsearch 9.x and OpenSearch 3.5.0. To use different versions, create a `.env` file:
   ```shell
   ELASTICSEARCH_VERSION=9.3.2
   OPENSEARCH_VERSION=3.5.0
   ENABLE_DIRECT_RESPONSE=false
   ```
-
-- **Compatibility**: The most recent Elasticsearch 7.x versions should also work. See the [opensearch-py docs](https://github.com/opensearch-project/opensearch-py/blob/main/COMPATIBILITY.md) for compatibility information.
-
 
 
 ## Configuration Reference
