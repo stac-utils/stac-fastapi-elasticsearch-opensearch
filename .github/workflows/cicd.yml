@@ -15,8 +15,8 @@ jobs:
     timeout-minutes: 20
 
     services:
-      elasticsearch_8_svc:
-        image: docker.elastic.co/elasticsearch/elasticsearch:8.19.5
+      elasticsearch_9_3:
+        image: docker.elastic.co/elasticsearch/elasticsearch:9.3.2
         env:
           cluster.name: stac-cluster
           node.name: es01
@@ -69,7 +69,12 @@ jobs:
     strategy:
       matrix:
         python-version: [ "3.12", "3.13", "3.14"]
-        backend: [ "elasticsearch8", "opensearch"]
+        backend: [ "elasticsearch", "opensearch"]
+        include:
+          - backend: "elasticsearch"
+            port: "9200"
+          - backend: "opensearch"
+            port: "9202"
 
     name: Python ${{ matrix.python-version }} testing with ${{ matrix.backend }}
 
@@ -83,44 +88,28 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
           cache-dependency-path: |
-            **/setup.py
+            **/pyproject.toml
 
       - name: Lint code
-        if: ${{ matrix.python-version == 3.11 }}
+        if: ${{ matrix.python-version == '3.12' }}
         run: |
           python -m pip install pre-commit
           pre-commit run --all-files
 
-      - name: Install pipenv
+      - name: Install dependencies
         run: |
-          python -m pip install --upgrade pipenv wheel
-
-      - name: Install core library stac-fastapi
-        run: |
+          python -m pip install --upgrade pip wheel pytest-timeout
           pip install ./stac_fastapi/core
-
-      - name: Install helpers library stac-fastapi
-        run: |
           pip install ./stac_fastapi/sfeos_helpers
-          
-      - name: Install elasticsearch stac-fastapi
-        run: |
           pip install ./stac_fastapi/elasticsearch[catalogs,dev,server,validator]
-
-      - name: Install opensearch stac-fastapi
-        run: |
           pip install ./stac_fastapi/opensearch[catalogs,dev,server,validator]
-
-      - name: Install pytest-timeout
-        run: |
-          pip install pytest-timeout
 
       - name: Run test suite
         run: |
-          pipenv run pytest -svvv --timeout=300
+          pytest -svvv --timeout=300
         env:
           ENVIRONMENT: testing
-          ES_PORT: ${{ matrix.backend == 'elasticsearch8' && '9200' || '9202' }}
+          ES_PORT: ${{ matrix.port }}
           ES_HOST: 172.17.0.1
           ES_USE_SSL: false
           DATABASE_REFRESH: true
@@ -128,4 +117,4 @@ jobs:
           REDIS_ENABLE: true
           REDIS_HOST: localhost
           REDIS_PORT: 6379
-          BACKEND: ${{ matrix.backend == 'elasticsearch8' && 'elasticsearch' || 'opensearch' }}
+          BACKEND: ${{ matrix.backend }}

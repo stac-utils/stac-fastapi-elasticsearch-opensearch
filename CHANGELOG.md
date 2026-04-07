@@ -12,6 +12,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Added `ENABLE_STAC_VALIDATOR` environment variable to enable strict STAC schema validation on ingestion via the Python `stac-validator`. [#665](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/665)
 - Added `[validator]` installation extra to `stac-fastapi-core`, `elasticsearch`, and `opensearch` packages. [#665](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/665)
 - Added CQL2 Abstract Syntax Tree (AST) structure for efficient query parsing and datetime-based indexes. [#659](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/659)
+- Added customizable root `/queryables` endpoint with dynamic union (`ROOT_QUERYABLES_UNION`) and static override (`STAC_QUERYABLES_CONFIG`) configuration options. [#612](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/612)
+- Added advice to Readme about linking an already existing Collection to a Catalog, simply by POSTing the collection's ID. [#646](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/646)
 - Made `ES_MAX_URL_LENGTH` configurable via environment variable (default: `4096`). This value should match the `http.max_initial_line_length` setting in your Elasticsearch/OpenSearch server configuration. [#656](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/656)
 
 ### Changed
@@ -32,6 +34,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Updated
 
+- Updated Elasticsearch version in CI/CD compose.yml to 9.3.2 from 8.19.5 [#688](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/688)
+- Updated `elasticsearch[async]` Python dependency from ~=8.19.1 to >=8.19.1,<9.4.0 [#688](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/688)
+- Simplified, cleaned up CI/CD GitHub workflow in `cicd.yml` [#688](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/688)
 - Updated, loosened fastapi, uvicorn and starlette libraries and moved shared deps to core. [#687](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/687)
 
 ## [v6.15.0] - 2026-04-04

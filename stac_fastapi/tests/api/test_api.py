@@ -66,6 +66,8 @@ ROUTES = {
     "POST /catalogs",
     "GET /catalogs/{catalog_id}",
     "PUT /catalogs/{catalog_id}",
+    "GET /catalogs/{catalog_id}/conformance",
+    "GET /catalogs/{catalog_id}/queryables",
     "DELETE /catalogs/{catalog_id}",
     "GET /catalogs/{catalog_id}/catalogs",
     "POST /catalogs/{catalog_id}/catalogs",
@@ -110,6 +112,7 @@ async def test_api_headers(app_client):
 @pytest.mark.asyncio
 async def test_router(app):
     api_routes = set([f"{list(route.methods)[0]} {route.path}" for route in app.routes])
+    print(api_routes)
     assert len(api_routes - ROUTES) == 0
 
 

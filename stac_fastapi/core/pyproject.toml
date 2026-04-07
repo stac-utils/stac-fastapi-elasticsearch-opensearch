@@ -37,18 +37,18 @@ dependencies = [
     "stac-fastapi.api==6.2.1",
     "stac-fastapi.extensions==6.2.1",
     "orjson~=3.11.0",
-    "overrides~=7.4.0",
+    "overrides>=7.4,<7.8",
     "geojson-pydantic~=1.0.0",
     "pygeofilter~=0.3.1",
     "jsonschema~=4.26.0",
     "slowapi~=0.1.9",
-    "uvicorn>=0.23,<0.44",
+    "uvicorn>=0.23,<0.45",
     "starlette>=0.35.0,<1.1.0",
 ]
 
 [project.optional-dependencies]
 redis = [
-    "redis~=6.4.0",
+    "redis>=6.4,<7.5",
     "retry~=0.9.2",
 ]
 sentry = [
