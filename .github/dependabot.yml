@@ -17,22 +17,22 @@ updates:
   - package-ecosystem: "pip"
     directory: "/.github/workflows"
     schedule:
-      interval: "daily"
+      interval: "weekly"
 
   # Check Python dependencies in Elasticsearch module
   - package-ecosystem: "pip"
     directory: "/stac_fastapi/elasticsearch"
     schedule:
-      interval: "daily"
+      interval: "weekly"
 
   # Check Python dependencies in Core module
   - package-ecosystem: "pip"
     directory: "/stac_fastapi/core"
     schedule:
-      interval: "daily"
+      interval: "weekly"
 
   # Check Python dependencies in OpenSearch module
   - package-ecosystem: "pip"
     directory: "/stac_fastapi/opensearch"
     schedule:
-      interval: "daily"
+      interval: "weekly"
