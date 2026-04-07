@@ -104,7 +104,7 @@ jobs:
         uses: ./.github/actions/setup-helm-repos
 
       - name: Run Checkov security scan
-        uses: bridgecrewio/checkov-action@0ce65fae06c148e349f955c3c35ad049c11e838c # master
+        uses: bridgecrewio/checkov-action@002cd2e8cc0fe0535e6f364509e091c1a9870efa # master
         with:
           directory: helm-chart/
           framework: kubernetes
