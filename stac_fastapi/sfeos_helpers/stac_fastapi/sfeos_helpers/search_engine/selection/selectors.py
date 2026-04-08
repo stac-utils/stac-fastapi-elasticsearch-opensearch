@@ -45,18 +45,18 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
             self.alias_loader = IndexAliasLoader(client, self.cache_manager)
             self._initialized = True
 
-    async def refresh_cache(self) -> dict[str, list[tuple[dict[str, str]]]]:
+    async def refresh_cache(self) -> dict[str, list[dict[str, str]]]:
         """Force refresh of the aliases cache.
 
         Returns:
-            dict[str, list[tuple[dict[str, str]]]]: Refreshed dictionary mapping base collection aliases
+            dict[str, list[dict[str, str]]]: Refreshed dictionary mapping base collection aliases
                 to lists of their corresponding item index aliases.
         """
         return await self.alias_loader.refresh_aliases()
 
     async def get_collection_indexes(
         self, collection_id: str, use_cache: bool = True
-    ) -> list[tuple[dict[str, str]]]:
+    ) -> list[dict[str, str]]:
         """Get all index aliases for a specific collection.
 
         Args:
@@ -65,7 +65,7 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
                 If False, load fresh from search engine (insertion path).
 
         Returns:
-            list[tuple[dict[str, str]]]: List of index aliases associated with the collection.
+            list[dict[str, str]]: List of index aliases associated with the collection.
                 Returns empty list if collection is not found in cache.
         """
         return await self.alias_loader.get_collection_indexes(
@@ -102,7 +102,7 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
 
         if collection_ids:
             collections_indexes = [
-                await self.get_collection_indexes(cid, use_cache=not for_insertion)
+                await self.get_collection_indexes(cid, use_cache=True)
                 for cid in collection_ids
             ]
         elif self._has_datetime_values(datetime_search):
@@ -121,12 +121,13 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
             )
 
         result = ",".join(selected_indexes) if selected_indexes else ""
-        logger.info(f"Selected indexes: {result}")
+        if not for_insertion:
+            logger.info(f"Selected indexes: {result}")
         return result
 
     def _filter_indexes(
         self,
-        collection_indexes: list[tuple[dict[str, str]]],
+        collection_indexes: list[dict[str, str]],
         datetime_filters: dict[str, dict[str, Any]],
         for_insertion: bool,
     ) -> list[str]:

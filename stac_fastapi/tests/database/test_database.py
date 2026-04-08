@@ -808,12 +808,10 @@ async def test_item_add_accepted_coerce_true(txn_client, load_test_data, monkeyp
 @pytest.mark.datetime_filtering
 def test_filter_datetime_field_outside_range():
     collection_indexes = [
-        (
-            {
-                "end_datetime": "items_end_datetime_new-collection_2020-02-16",
-                "start_datetime": "items_start_datetime_new-collection_2020-02-08",
-            },
-        )
+        {
+            "end_datetime": "items_end_datetime_new-collection_2020-02-16",
+            "start_datetime": "items_start_datetime_new-collection_2020-02-08",
+        }
     ]
     datetime_search = {
         "start_datetime": {"gte": None, "lte": None},
@@ -828,12 +826,10 @@ def test_filter_datetime_field_outside_range():
 @pytest.mark.datetime_filtering
 def test_filter_start_datetime_field_with_gte():
     collection_indexes = [
-        (
-            {
-                "end_datetime": "items_end_datetime_new-collection_2020-02-16",
-                "start_datetime": "items_start_datetime_new-collection_2020-02-08",
-            },
-        )
+        {
+            "end_datetime": "items_end_datetime_new-collection_2020-02-16",
+            "start_datetime": "items_start_datetime_new-collection_2020-02-08",
+        }
     ]
     datetime_search = {
         "start_datetime": {"gte": "2020-02-01T00:00:00Z", "lte": None},
@@ -848,12 +844,10 @@ def test_filter_start_datetime_field_with_gte():
 @pytest.mark.datetime_filtering
 def test_filter_end_datetime_field_with_lte():
     collection_indexes = [
-        (
-            {
-                "end_datetime": "items_end_datetime_new-collection_2020-02-16",
-                "start_datetime": "items_start_datetime_new-collection_2020-02-08",
-            },
-        )
+        {
+            "end_datetime": "items_end_datetime_new-collection_2020-02-16",
+            "start_datetime": "items_start_datetime_new-collection_2020-02-08",
+        }
     ]
     datetime_search = {
         "start_datetime": {"gte": None, "lte": None},
@@ -868,12 +862,10 @@ def test_filter_end_datetime_field_with_lte():
 @pytest.mark.datetime_filtering
 def test_filter_all_criteria_matching():
     collection_indexes = [
-        (
-            {
-                "end_datetime": "items_end_datetime_new-collection_2020-02-16",
-                "start_datetime": "items_start_datetime_new-collection_2020-02-08",
-            },
-        )
+        {
+            "end_datetime": "items_end_datetime_new-collection_2020-02-16",
+            "start_datetime": "items_start_datetime_new-collection_2020-02-08",
+        }
     ]
     datetime_search = {
         "start_datetime": {"gte": "2020-02-01T00:00:00Z", "lte": None},
@@ -888,12 +880,10 @@ def test_filter_all_criteria_matching():
 @pytest.mark.datetime_filtering
 def test_filter_start_datetime_range_format(mock_datetime_env):
     collection_indexes = [
-        (
-            {
-                "end_datetime": "items_end_datetime_new-collection_2020-02-16",
-                "start_datetime": "items_start_datetime_new-collection_2020-02-08-2022-04-05",
-            },
-        )
+        {
+            "end_datetime": "items_end_datetime_new-collection_2020-02-16",
+            "start_datetime": "items_start_datetime_new-collection_2020-02-08-2022-04-05",
+        }
     ]
     datetime_search = {
         "start_datetime": {"gte": "2020-02-01T00:00:00Z", "lte": None},
@@ -909,12 +899,10 @@ def test_filter_start_datetime_range_format(mock_datetime_env):
 @pytest.mark.datetime_filtering
 def test_filter_start_datetime_range_fails_gte():
     collection_indexes = [
-        (
-            {
-                "end_datetime": "items_end_datetime_new-collection_2020-02-16",
-                "start_datetime": "items_start_datetime_new-collection_2020-02-08-2022-04-05",
-            },
-        )
+        {
+            "end_datetime": "items_end_datetime_new-collection_2020-02-16",
+            "start_datetime": "items_start_datetime_new-collection_2020-02-08-2022-04-05",
+        }
     ]
     datetime_search = {
         "start_datetime": {"gte": "2022-05-01T00:00:00Z", "lte": None},
@@ -942,12 +930,10 @@ def test_filter_empty_collection():
 @pytest.mark.datetime_filtering
 def test_filter_all_criteria_none():
     collection_indexes = [
-        (
-            {
-                "end_datetime": "items_end_datetime_new-collection_2020-02-16",
-                "start_datetime": "items_start_datetime_new-collection_2020-02-08",
-            },
-        )
+        {
+            "end_datetime": "items_end_datetime_new-collection_2020-02-16",
+            "start_datetime": "items_start_datetime_new-collection_2020-02-08",
+        }
     ]
     datetime_search = {
         "start_datetime": {"gte": None, "lte": None},
@@ -962,12 +948,10 @@ def test_filter_all_criteria_none():
 @pytest.mark.datetime_filtering
 def test_filter_end_datetime_outside_range():
     collection_indexes = [
-        (
-            {
-                "end_datetime": "items_end_datetime_new-collection_2020-02-16",
-                "start_datetime": "items_start_datetime_new-collection_2020-02-08",
-            },
-        )
+        {
+            "end_datetime": "items_end_datetime_new-collection_2020-02-16",
+            "start_datetime": "items_start_datetime_new-collection_2020-02-08",
+        }
     ]
     datetime_search = {
         "start_datetime": {"gte": None, "lte": None},
@@ -982,18 +966,14 @@ def test_filter_end_datetime_outside_range():
 @pytest.mark.datetime_filtering
 def test_filter_complex_mixed_criteria():
     collection_indexes = [
-        (
-            {
-                "end_datetime": "items_end_datetime_new-collection_2020-02-16",
-                "start_datetime": "items_start_datetime_new-collection_2020-02-08",
-            },
-        ),
-        (
-            {
-                "end_datetime": "items_end_datetime_new-collection_2020-02-18",
-                "start_datetime": "items_start_datetime_new-collection_2020-02-10",
-            },
-        ),
+        {
+            "end_datetime": "items_end_datetime_new-collection_2020-02-16",
+            "start_datetime": "items_start_datetime_new-collection_2020-02-08",
+        },
+        {
+            "end_datetime": "items_end_datetime_new-collection_2020-02-18",
+            "start_datetime": "items_start_datetime_new-collection_2020-02-10",
+        },
     ]
     datetime_search = {
         "start_datetime": {"gte": "2020-02-01T00:00:00Z", "lte": None},
@@ -1008,12 +988,10 @@ def test_filter_complex_mixed_criteria():
 @pytest.mark.datetime_filtering
 def test_filter_with_single_date_range():
     collection_indexes = [
-        (
-            {
-                "end_datetime": "items_end_datetime_new-collection_2020-02-12",
-                "start_datetime": "items_start_datetime_new-collection_2020-02-12",
-            },
-        )
+        {
+            "end_datetime": "items_end_datetime_new-collection_2020-02-12",
+            "start_datetime": "items_start_datetime_new-collection_2020-02-12",
+        }
     ]
     datetime_search = {
         "start_datetime": {"gte": None, "lte": None},
@@ -1026,24 +1004,18 @@ def test_filter_with_single_date_range():
 
 
 THREE_INDEXES = [
-    (
-        {
-            "end_datetime": "items_end_datetime_col_2025-11-07",
-            "start_datetime": "items_start_datetime_col_2025-11-01-2025-11-05",
-        },
-    ),
-    (
-        {
-            "end_datetime": "items_end_datetime_col_2025-11-12",
-            "start_datetime": "items_start_datetime_col_2025-11-06-2025-11-10",
-        },
-    ),
-    (
-        {
-            "end_datetime": "items_end_datetime_col_2025-11-16",
-            "start_datetime": "items_start_datetime_col_2025-11-11",
-        },
-    ),
+    {
+        "end_datetime": "items_end_datetime_col_2025-11-07",
+        "start_datetime": "items_start_datetime_col_2025-11-01-2025-11-05",
+    },
+    {
+        "end_datetime": "items_end_datetime_col_2025-11-12",
+        "start_datetime": "items_start_datetime_col_2025-11-06-2025-11-10",
+    },
+    {
+        "end_datetime": "items_end_datetime_col_2025-11-16",
+        "start_datetime": "items_start_datetime_col_2025-11-11",
+    },
 ]
 
 
@@ -1154,11 +1126,9 @@ def test_range_empty_collection():
 @pytest.mark.datetime_filtering
 def test_range_index_without_end_datetime():
     collection_indexes = [
-        (
-            {
-                "start_datetime": "items_start_datetime_col_2025-11-05",
-            },
-        )
+        {
+            "start_datetime": "items_start_datetime_col_2025-11-05",
+        }
     ]
     result = filter_indexes_by_datetime_range(
         collection_indexes,
@@ -1170,11 +1140,9 @@ def test_range_index_without_end_datetime():
 @pytest.mark.datetime_filtering
 def test_range_index_without_start_datetime_skipped():
     collection_indexes = [
-        (
-            {
-                "end_datetime": "items_end_datetime_col_2025-11-07",
-            },
-        )
+        {
+            "end_datetime": "items_end_datetime_col_2025-11-07",
+        }
     ]
     result = filter_indexes_by_datetime_range(
         collection_indexes,
@@ -1185,26 +1153,20 @@ def test_range_index_without_start_datetime_skipped():
 
 SELECTOR_ALIASES = {
     "items_col-a": [
-        (
-            {
-                "start_datetime": "items_start_datetime_col-a_2020-02-08",
-                "end_datetime": "items_end_datetime_col-a_2020-02-16",
-            },
-        ),
-        (
-            {
-                "start_datetime": "items_start_datetime_col-a_2020-06-10",
-                "end_datetime": "items_end_datetime_col-a_2020-06-20",
-            },
-        ),
+        {
+            "start_datetime": "items_start_datetime_col-a_2020-02-08",
+            "end_datetime": "items_end_datetime_col-a_2020-02-16",
+        },
+        {
+            "start_datetime": "items_start_datetime_col-a_2020-06-10",
+            "end_datetime": "items_end_datetime_col-a_2020-06-20",
+        },
     ],
     "items_col-b": [
-        (
-            {
-                "start_datetime": "items_start_datetime_col-b_2020-02-15",
-                "end_datetime": "items_end_datetime_col-b_2020-02-25",
-            },
-        ),
+        {
+            "start_datetime": "items_start_datetime_col-b_2020-02-15",
+            "end_datetime": "items_end_datetime_col-b_2020-02-25",
+        },
     ],
 }
 
@@ -1453,18 +1415,14 @@ async def test_select_indexes_boundary_date_match(monkeypatch):
 @pytest.mark.datetime_filtering
 def test_filter_datetime_insertion_bug_noon_on_boundary_date():
     collection_indexes = [
-        (
-            {
-                "start_datetime": "items_start_datetime_mycol_2025-06-06",
-                "end_datetime": "items_end_datetime_mycol_2025-06-06",
-            },
-        ),
-        (
-            {
-                "start_datetime": "items_start_datetime_mycol_2025-06-07",
-                "end_datetime": "items_end_datetime_mycol_2025-06-07",
-            },
-        ),
+        {
+            "start_datetime": "items_start_datetime_mycol_2025-06-06",
+            "end_datetime": "items_end_datetime_mycol_2025-06-06",
+        },
+        {
+            "start_datetime": "items_start_datetime_mycol_2025-06-07",
+            "end_datetime": "items_end_datetime_mycol_2025-06-07",
+        },
     ]
     datetime_search = {
         "start_datetime": {

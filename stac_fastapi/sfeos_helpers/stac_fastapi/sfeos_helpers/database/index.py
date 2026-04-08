@@ -113,7 +113,7 @@ def _parse_search_date(date_str: str | None) -> datetime | None:
 
 
 def filter_indexes_by_datetime(
-    collection_indexes: list[tuple[dict[str, str], ...]],
+    collection_indexes: list[dict[str, str]],
     datetime_search: dict[str, dict[str, str | None]],
 ) -> list[str]:
     """
@@ -124,8 +124,8 @@ def filter_indexes_by_datetime(
     or equal) and 'lte' (less than or equal) bounds.
 
     Args:
-        collection_indexes (List[Tuple[Dict[str, str], ...]]): A list of tuples containing dictionaries
-            with 'datetime', 'start_datetime', and 'end_datetime' aliases.
+        collection_indexes (list[dict[str, str]]): A list of dictionaries with 'start_datetime'
+            and 'end_datetime' aliases.
         datetime_search (dict[str, dict[str, str | None]]): A dictionary with keys 'datetime',
             'start_datetime', and 'end_datetime', each containing 'gte' and 'lte' criteria as ISO format
             datetime strings or None.
@@ -156,11 +156,10 @@ def filter_indexes_by_datetime(
 
     filtered_indexes = []
 
-    for index_tuple in collection_indexes:
-        if not index_tuple:
+    for index_dict in collection_indexes:
+        if not index_dict.get("start_datetime"):
             continue
 
-        index_dict = index_tuple[0]
         start_datetime_alias = index_dict.get("start_datetime")
         end_datetime_alias = index_dict.get("end_datetime")
 
@@ -188,7 +187,7 @@ def filter_indexes_by_datetime(
 
 
 def filter_indexes_by_datetime_range(
-    collection_indexes: list[tuple[dict[str, str], ...]],
+    collection_indexes: list[dict[str, str]],
     datetime_search: dict[str, dict[str, str | None]],
 ) -> list[str]:
     """Filter indexes by range intersection with query datetime range.
@@ -201,8 +200,8 @@ def filter_indexes_by_datetime_range(
     a query for 2025-11-06/2025-11-07 would match because the ranges overlap at 2025-11-06.
 
     Args:
-        collection_indexes: List of tuples containing dictionaries with
-            'start_datetime' and 'end_datetime' alias names that embed date ranges.
+        collection_indexes: List of dictionaries with 'start_datetime' and 'end_datetime'
+            alias names that embed date ranges.
         datetime_search: Dictionary with 'start_datetime' and 'end_datetime' keys,
             each containing 'gte' and 'lte' criteria as ISO format datetime strings.
             The query range is derived from start_datetime.gte and end_datetime.lte.
@@ -218,11 +217,10 @@ def filter_indexes_by_datetime_range(
 
     filtered_indexes = []
 
-    for index_tuple in collection_indexes:
-        if not index_tuple:
+    for index_dict in collection_indexes:
+        if not index_dict.get("start_datetime"):
             continue
 
-        index_dict = index_tuple[0]
         start_datetime_alias = index_dict.get("start_datetime")
         end_datetime_alias = index_dict.get("end_datetime")
 

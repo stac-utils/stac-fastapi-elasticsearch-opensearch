@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.0.5] - 2026-04-08
+
+### Changed
+- Optimized indexing by eliminating repeated ES/OS alias queries: cache updates are now written directly to Redis after each index/alias operation.
+- Flattened the Redis cache data structure from `list[tuple[dict]]` to `list[dict]`, simplifying access and eliminating unnecessary index unwrapping.
+
 ## [1.0.4] - 2026-04-08
 
 ### Changed
