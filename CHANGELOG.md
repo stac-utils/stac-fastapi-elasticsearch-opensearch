@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.0.3] - 2026-04-08
+
+### Added
+- Coerce control via `STAC_FASTAPI_ES_COERCE_GLOBAL` env var to enable strict type checking by disabling automatic type conversion at the index level.
+
 ## [1.0.2] - 2026-04-03
 
 ### Fixed
