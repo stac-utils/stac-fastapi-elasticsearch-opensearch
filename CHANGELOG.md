@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.0.4] - 2026-04-08
+
+### Changed
+- Changed CI/CD from deploy prod on waw3-2 to blunck.
+
 ## [1.0.3] - 2026-04-08
 
 ### Added
