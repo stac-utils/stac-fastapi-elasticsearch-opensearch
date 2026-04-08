@@ -50,7 +50,7 @@ class IndexOperations:
         collection_id: str,
         start_datetime: str,
         end_datetime: str,
-    ) -> str:
+    ) -> tuple[str, str]:
         """Create a datetime-based index for the given collection.
 
         Args:
@@ -60,7 +60,7 @@ class IndexOperations:
             end_datetime (str): End datetime for the index alias.
 
         Returns:
-            str: Created datetime alias name.
+            tuple[str, str]: Tuple of (start_datetime alias name, end_datetime alias name).
         """
         index_name = self.create_index_name(collection_id)
         collection_alias = index_alias_by_collection_id(collection_id)
@@ -77,13 +77,12 @@ class IndexOperations:
         )
         aliases[alias_start_date] = {}
         aliases[alias_end_date] = {}
-        created_alias = alias_start_date
 
         await client.indices.create(
             index=index_name,
             body=self._create_index_body(aliases),
         )
-        return created_alias
+        return alias_start_date, alias_end_date
 
     @staticmethod
     async def change_alias_name(
