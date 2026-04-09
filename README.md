@@ -656,7 +656,7 @@ You can customize additional settings in your `.env` file:
 | `STAC_FASTAPI_ES_COLLECTIONS_MAPPINGS_FILE` | Path to a JSON file containing custom Elasticsearch/OpenSearch property mappings for collections to merge with defaults. See [Custom Index Mappings](#custom-index-mappings). | `None` | Optional |
 | `STAC_FASTAPI_ES_CUSTOM_DYNAMIC_TEMPLATES` | JSON string of custom Elasticsearch/OpenSearch dynamic template to merge with defaults. See [Custom Index Mappings](#custom-index-mappings). | `None` | Optional |
 | `STAC_FASTAPI_ES_DYNAMIC_TEMPLATES_FILE` | Path to a JSON file containing custom Elasticsearch/OpenSearch dynamic template to merge with defaults. See [Custom Index Mappings](#custom-index-mappings). | `None` | Optional |
-| `STAC_FASTAPI_ES_DYNAMIC_MAPPING` | Controls dynamic mapping behavior for item indices. Values: `true` (default), `false`, or `strict`. See [Custom Index Mappings](#custom-index-mappings). | `true` | Optional |
+| `STAC_FASTAPI_ES_DYNAMIC_MAPPING` | Controls dynamic mapping behavior for item and collection indices. Values: `true` (default), `false`, or `strict`. See [Custom Index Mappings](#custom-index-mappings). | `true` | Optional |
 
 ### 7. Filtering, Exclusions & Queryables
 
@@ -1142,7 +1142,7 @@ SFEOS provides environment variables to customize Elasticsearch/OpenSearch index
 |----------|------|-------------|---------|
 | `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` | items | JSON string of property mappings to merge with defaults | None |
 | `STAC_FASTAPI_ES_MAPPINGS_FILE` | items | Path to a JSON file containing property mappings to merge with defaults | None |
-| `STAC_FASTAPI_ES_COLLECTIONS_MAPPINGS` | collections| JSON string of property mappings to merge with defaults | None |
+| `STAC_FASTAPI_ES_COLLECTIONS_CUSTOM_MAPPINGS` | collections| JSON string of property mappings to merge with defaults | None |
 | `STAC_FASTAPI_ES_COLLECTIONS_MAPPINGS_FILE` | collections| Path to a JSON file containing property mappings to merge with defaults | None |
 | `STAC_FASTAPI_ES_CUSTOM_DYNAMIC_TEMPLATES` | dynamic template| JSON string of templates to merge with defaults | None |
 | `STAC_FASTAPI_ES_DYNAMIC_TEMPLATES_FILE` | dynamic template| Path to a JSON file containing templates to merge with defaults | None |
@@ -1152,7 +1152,7 @@ SFEOS provides environment variables to customize Elasticsearch/OpenSearch index
 
 You can customize the Elasticsearch/OpenSearch mappings by providing a JSON configuration. This can be done via:
 
-1. `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` | `STAC_FASTAPI_ES_COLLECTIONS_MAPPINGS`|`STAC_FASTAPI_ES_DYNAMIC_TEMPLATES` environment variable (takes precedence)
+1. `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` | `STAC_FASTAPI_ES_COLLECTIONS_CUSTOM_MAPPINGS`|`STAC_FASTAPI_ES_CUSTOM_DYNAMIC_TEMPLATES` environment variable (takes precedence)
 2. `STAC_FASTAPI_ES_MAPPINGS_FILE`| `STAC_FASTAPI_ES_COLLECTIONS_MAPPINGS_FILE`| `STAC_FASTAPI_ES_DYNAMIC_TEMPLATES_FILE` environment variable (file path)
 
 The configuration should have the same structure as the default ES mappings. The custom mappings are **recursively merged** with the defaults at the root level.
@@ -1288,7 +1288,7 @@ EOF
 # Reference the file
 export STAC_FASTAPI_ES_MAPPINGS_FILE=/path/to/custom-mappings.json
 ```
-Similar approach can be taken for `STAC_FASTAPI_ES_COLLECTIONS_MAPPINGS_FILE` and  `STAC_FASTAPI_ES_DYNAMIC_TEMPLATES_FILE` with json file names `custom-collections-mappings.json` and `custom-dynamic-templates.json` as an example
+A similar approach can be taken for `STAC_FASTAPI_ES_COLLECTIONS_MAPPINGS_FILE` and  `STAC_FASTAPI_ES_DYNAMIC_TEMPLATES_FILE`.
 
 In Docker Compose, you can mount the file:
 
