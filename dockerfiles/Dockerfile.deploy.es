@@ -17,7 +17,7 @@ COPY . /app
 
 RUN pip install --no-cache-dir -e ./stac_fastapi/core
 RUN pip install --no-cache-dir -e ./stac_fastapi/sfeos_helpers
-RUN pip install --no-cache-dir ./stac_fastapi/elasticsearch[server]
+RUN pip install --no-cache-dir ./stac_fastapi/elasticsearch[server,catalogs]
 
 EXPOSE 8080
 
