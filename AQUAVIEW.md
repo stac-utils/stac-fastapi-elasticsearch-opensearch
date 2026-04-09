@@ -95,6 +95,7 @@ When all fixes are merged upstream and we no longer need the fork:
 | `9b46035` | Add `geometry_geohex_grid_frequency` aggregation | [#705](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/705) |
 | `c13bbd8` | Add `centroid_geohex_grid_frequency` to DEFAULT_AGGREGATIONS | [#705](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/705) |
 | `7a83b09` | Add `geometry_geohex_grid_precision` to abstract aggregate signature | [#705](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/705) |
+| `74e728a` | Add catalogs extension dependency to deployment Dockerfile | N/A (fork-only) |
 
 ### Previously carried patches (now upstream)
 
