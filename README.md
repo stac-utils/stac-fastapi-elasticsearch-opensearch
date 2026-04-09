@@ -1620,7 +1620,8 @@ SFEOS supports filtering API responses based on HTTP headers. This enables upstr
 
 | Header | Format | Description |
 |--------|--------|-------------|
-| `X-Filter-Collections` | Comma-separated IDs | Restricts access to specified collections only |
+| `X-Filter-Collections` | Comma-separated IDs | Restricts access to specified collections only (whitelist) |
+| `X-Filter-Collections-Blacklist` | Comma-separated IDs | Excludes specified collections from results (blacklist) |
 | `X-Filter-Geometry` | GeoJSON geometry | Restricts access to items within the specified geometry |
 
 ### Affected Endpoints

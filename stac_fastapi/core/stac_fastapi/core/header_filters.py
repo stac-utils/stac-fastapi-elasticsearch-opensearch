@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 # Header names
 FILTER_COLLECTIONS_HEADER = "X-Filter-Collections"
+FILTER_COLLECTIONS_BLACKLIST_HEADER = "X-Filter-Collections-Blacklist"
 FILTER_GEOMETRY_HEADER = "X-Filter-Geometry"
 
 
@@ -43,6 +44,33 @@ def parse_filter_collections(request: Request) -> Optional[List[str]]:
     # Parse comma-separated list
     collections = [c.strip() for c in header_value.split(",") if c.strip()]
     logger.debug(f"Parsed filter collections from header: {collections}")
+
+    return collections
+
+
+def parse_filter_collections_blacklist(request: Request) -> Optional[List[str]]:
+    """Parse collection blacklist filter from X-Filter-Collections-Blacklist header.
+
+    Args:
+        request: FastAPI Request object.
+
+    Returns:
+        List of blacklisted collection IDs if header is present, None otherwise.
+        Empty list if header value is empty string.
+
+    Example:
+        Header "X-Filter-Collections-Blacklist: col-a,col-b" returns ["col-a", "col-b"]
+    """
+    header_value = request.headers.get(FILTER_COLLECTIONS_BLACKLIST_HEADER)
+
+    if header_value is None:
+        return None
+
+    if not header_value.strip():
+        return []
+
+    collections = [c.strip() for c in header_value.split(",") if c.strip()]
+    logger.debug(f"Parsed blacklisted collections from header: {collections}")
 
     return collections
 
@@ -113,7 +141,7 @@ def check_collection_access(
         resource_type: Type of resource for error message ("Collection" or "Item").
 
     Raises:
-        HTTPException: 404 if collection is not in the allowed list.
+        HTTPException: 404 if collection is not in the allowed list or is blacklisted.
 
     Note:
         Does nothing if no header filter is present (allows all access).
@@ -122,6 +150,10 @@ def check_collection_access(
 
     header_collections = parse_filter_collections(request)
     if header_collections is not None and collection_id not in header_collections:
+        raise HTTPException(status_code=404, detail=f"{resource_type} not found")
+
+    blacklisted = parse_filter_collections_blacklist(request)
+    if blacklisted is not None and collection_id in blacklisted:
         raise HTTPException(status_code=404, detail=f"{resource_type} not found")
 
 
@@ -472,6 +504,7 @@ def collect_request_collections(
 def compute_collection_intersection(
     requested_collections: Optional[Set[str]],
     header_collections: Optional[List[str]],
+    blacklisted_collections: Optional[List[str]] = None,
 ) -> Optional[List[str]]:
     """Compute intersection of requested collections with allowed collections from header.
 
@@ -480,6 +513,8 @@ def compute_collection_intersection(
             None or empty means user didn't specify collections (use all allowed).
         header_collections: List of allowed collection IDs from X-Filter-Collections header.
             None means no header filter (allow all).
+        blacklisted_collections: List of blacklisted collection IDs from
+            X-Filter-Collections-Blacklist header. None means no blacklist.
 
     Returns:
         List of collection IDs to use for filtering:
@@ -492,22 +527,34 @@ def compute_collection_intersection(
         - No header, has request collections -> request collections as list
         - Has header, no request collections -> header collections (allowed set)
         - Has header, has request collections -> intersection of both
+        - Blacklisted collections are always removed from the final result
     """
+    blacklisted_set = set(blacklisted_collections) if blacklisted_collections else set()
+
     # No header filter present - authorization not active
     if header_collections is None:
         if requested_collections:
-            return list(requested_collections)
+            result = list(requested_collections - blacklisted_set) if blacklisted_set else list(requested_collections)
+            return result if result else []
+        if blacklisted_set:
+            # Blacklist is active but no whitelist and no requested collections.
+            # We can't enumerate all collections here, so return None and let
+            # the blacklist be applied at the listing/filtering layer.
+            return None
         return None
 
     # Header present but empty - no collections allowed
     if len(header_collections) == 0:
         return []
 
-    allowed_set = set(header_collections)
+    allowed_set = set(header_collections) - blacklisted_set
+
+    if not allowed_set:
+        return []
 
     # User didn't request specific collections - use all allowed
     if not requested_collections:
-        return header_collections
+        return list(allowed_set)
 
     # Compute intersection
     intersection = requested_collections & allowed_set

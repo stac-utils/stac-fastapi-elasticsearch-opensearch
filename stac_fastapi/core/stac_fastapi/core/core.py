@@ -32,6 +32,7 @@ from stac_fastapi.core.header_filters import (
     compute_geometry_intersection,
     create_geometry_filter_object,
     parse_filter_collections,
+    parse_filter_collections_blacklist,
 )
 from stac_fastapi.core.models.links import PagingLinks
 from stac_fastapi.core.queryables import (
@@ -474,6 +475,14 @@ class CoreClient(AsyncBaseCoreClient):
                 c for c in filtered_collections if c.get("id") in header_collections
             ]
 
+        # Filter out blacklisted collections
+        blacklisted_collections = parse_filter_collections_blacklist(request)
+        if blacklisted_collections is not None:
+            blacklisted_set = set(blacklisted_collections)
+            filtered_collections = [
+                c for c in filtered_collections if c.get("id") not in blacklisted_set
+            ]
+
         links = [
             {"rel": Relations.root.value, "type": MimeTypes.json, "href": base_url},
             {"rel": Relations.parent.value, "type": MimeTypes.json, "href": base_url},
@@ -883,6 +892,7 @@ class CoreClient(AsyncBaseCoreClient):
 
         # Get allowed collections from header (set by stac-auth-proxy)
         header_collections = parse_filter_collections(request)
+        blacklisted_collections = parse_filter_collections_blacklist(request)
 
         # Compute intersection of requested and allowed collections
         final_collections = compute_collection_intersection(
@@ -890,6 +900,7 @@ class CoreClient(AsyncBaseCoreClient):
                 requested_collections if requested_collections else None
             ),
             header_collections=header_collections,
+            blacklisted_collections=blacklisted_collections,
         )
 
         # If intersection is empty, return empty results immediately

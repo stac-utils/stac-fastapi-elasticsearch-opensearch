@@ -13,6 +13,7 @@ from ..conftest import create_collection, create_item, delete_collections_and_it
 
 # Header names
 FILTER_COLLECTIONS_HEADER = "X-Filter-Collections"
+FILTER_COLLECTIONS_BLACKLIST_HEADER = "X-Filter-Collections-Blacklist"
 FILTER_GEOMETRY_HEADER = "X-Filter-Geometry"
 
 
@@ -668,3 +669,110 @@ class TestCollectionIntersection:
         data = response.json()
         # Empty header means no collections allowed
         assert len(data["features"]) == 0
+
+
+class TestBlacklistHeaderFiltering:
+    """Tests for X-Filter-Collections-Blacklist header filtering."""
+
+    @pytest.mark.asyncio
+    async def test_search_excludes_blacklisted_collections(
+        self, app_client, multi_collection_ctx
+    ):
+        """Search excludes collections listed in blacklist header."""
+        response = await app_client.get(
+            "/search",
+            headers={FILTER_COLLECTIONS_BLACKLIST_HEADER: "test-collection-b"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        for feature in data["features"]:
+            assert feature["collection"] != "test-collection-b"
+
+    @pytest.mark.asyncio
+    async def test_search_blacklist_multiple_collections(
+        self, app_client, multi_collection_ctx
+    ):
+        """Blacklist with multiple collections excludes all of them."""
+        response = await app_client.get(
+            "/search",
+            headers={
+                FILTER_COLLECTIONS_BLACKLIST_HEADER: "test-collection-a,test-collection-c"
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        for feature in data["features"]:
+            assert feature["collection"] == "test-collection-b"
+
+    @pytest.mark.asyncio
+    async def test_collections_listing_excludes_blacklisted(
+        self, app_client, multi_collection_ctx
+    ):
+        """GET /collections excludes blacklisted collections."""
+        response = await app_client.get(
+            "/collections",
+            headers={FILTER_COLLECTIONS_BLACKLIST_HEADER: "test-collection-b"},
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        collection_ids = [c["id"] for c in data["collections"]]
+        assert "test-collection-a" in collection_ids
+        assert "test-collection-c" in collection_ids
+        assert "test-collection-b" not in collection_ids
+
+    @pytest.mark.asyncio
+    async def test_get_collection_blocked_by_blacklist(
+        self, app_client, multi_collection_ctx
+    ):
+        """GET /collections/{id} returns 404 for blacklisted collection."""
+        response = await app_client.get(
+            "/collections/test-collection-a",
+            headers={FILTER_COLLECTIONS_BLACKLIST_HEADER: "test-collection-a"},
+        )
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_get_item_blocked_by_blacklist(
+        self, app_client, multi_collection_ctx
+    ):
+        """GET /collections/{id}/items/{item_id} returns 404 for blacklisted collection."""
+        response = await app_client.get(
+            "/collections/test-collection-a/items/test-item-test-collection-a",
+            headers={FILTER_COLLECTIONS_BLACKLIST_HEADER: "test-collection-a"},
+        )
+        assert response.status_code == 404
+
+    @pytest.mark.asyncio
+    async def test_whitelist_and_blacklist_combined(
+        self, app_client, multi_collection_ctx
+    ):
+        """Blacklist removes collections from whitelist."""
+        # Whitelist allows a and b, blacklist removes b
+        response = await app_client.post(
+            "/search",
+            json={},
+            headers={
+                FILTER_COLLECTIONS_HEADER: "test-collection-a,test-collection-b",
+                FILTER_COLLECTIONS_BLACKLIST_HEADER: "test-collection-b",
+            },
+        )
+        assert response.status_code == 200
+        data = response.json()
+
+        for feature in data["features"]:
+            assert feature["collection"] == "test-collection-a"
+
+    @pytest.mark.asyncio
+    async def test_no_blacklist_header_allows_all(
+        self, app_client, multi_collection_ctx
+    ):
+        """Without blacklist header, all collections are accessible."""
+        response = await app_client.get("/search")
+        assert response.status_code == 200
+        data = response.json()
+
+        collections_in_response = {f["collection"] for f in data["features"]}
+        assert len(collections_in_response) == 3
