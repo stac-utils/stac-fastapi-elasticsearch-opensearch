@@ -534,7 +534,11 @@ def compute_collection_intersection(
     # No header filter present - authorization not active
     if header_collections is None:
         if requested_collections:
-            result = list(requested_collections - blacklisted_set) if blacklisted_set else list(requested_collections)
+            result = (
+                list(requested_collections - blacklisted_set)
+                if blacklisted_set
+                else list(requested_collections)
+            )
             return result if result else []
         if blacklisted_set:
             # Blacklist is active but no whitelist and no requested collections.
