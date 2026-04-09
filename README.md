@@ -676,10 +676,10 @@ If you are contributing to the project and want to build the images from your lo
 
 ```shell
 # For Elasticsearch backend
-docker-compose up elasticsearch app-elasticsearch
+docker compose up elasticsearch app-elasticsearch
 
 # For OpenSearch backend
-docker-compose up opensearch app-opensearch
+docker compose up opensearch app-opensearch
 ```
 - **Configuration**: By default, Docker Compose uses Elasticsearch 9.x and OpenSearch 3.5.0. To use different versions, create a `.env` file:
   ```shell
