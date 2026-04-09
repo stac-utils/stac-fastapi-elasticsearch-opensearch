@@ -1,13 +1,46 @@
 # Changelog
 
-All notable changes to this project will be documented in this file.
+## [1.0.5] - 2026-04-08
 
-The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
-and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
+### Changed
+- Optimized indexing by eliminating repeated ES/OS alias queries: cache updates are now written directly to Redis after each index/alias operation.
+- Flattened the Redis cache data structure from `list[tuple[dict]]` to `list[dict]`, simplifying access and eliminating unnecessary index unwrapping.
 
-## [Unreleased]
+## [1.0.4] - 2026-04-08
+
+### Changed
+- Changed CI/CD from deploy prod on waw3-2 to blunck.
+
+## [1.0.3] - 2026-04-08
 
 ### Added
+- Coerce control via `STAC_FASTAPI_ES_COERCE_GLOBAL` env var to enable strict type checking by disabling automatic type conversion at the index level.
+
+## [1.0.2] - 2026-04-03
+
+### Fixed
+- Added missing tag_check job to the pipeline.
+
+## [1.0.1] - 2026-04-03
+
+### Added
+- Time tracking for bulk_async in STAC item queue worker
+
+### Changed
+- Removal of unnecessary logs during indexing
+
+### Fixed
+- Fix index creation during split.
+
+## [1.0.0] - 2026-04-02
+
+### Removed
+- The datetime indexing method has been removed
+
+### Added
+
+- Added CQL2 Abstract Syntax Tree (AST) structure for efficient query parsing and datetime-based indexes. [#659](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/659)
+- Made `ES_MAX_URL_LENGTH` configurable via environment variable (default: `4096`). This value should match the `http.max_initial_line_length` setting in your Elasticsearch/OpenSearch server configuration. [#656](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/656)
 
 - Implemented header-based filtering for collections and geometry. Supports `X-Filter-Collections` (comma-separated collection IDs) and `X-Filter-Geometry` (GeoJSON) headers to restrict access to specific collections and geographic areas. Applies to `/collections`, `/collections/{id}`, `/collections/{id}/items`, `/collections/{id}/items/{id}`, and `/search` endpoints. Added optional `[geo]` extra with `shapely` dependency for geometry filtering on single item endpoints. [#563](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/563)
 - Added CQL2 Abstract Syntax Tree (AST) structure for efficient query parsing and datetime-based indexes. [#659](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/659)
@@ -18,6 +51,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Fixed
 
 - Fixed bulk duplicate detection: replaced manual `exist_ok` pre-check with ES/OS native `op_type="create"`. Bulk operations now correctly raise `ItemAlreadyExistsError` when `RAISE_ON_BULK_ERROR=true`, or count duplicates as "skipped" when `false`, instead of throwing raw `BulkIndexError`. [#638](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/638)
+- Fixed `add_collections_to_body` to handle empty `collection_ids` gracefully, preventing an invalid empty `terms` filter from being added to the query body. [#656](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/656)
+- Made Redis queue operations atomic using pipelines (MULTI/EXEC) in `queue_items`, `mark_items_processed`, `remove_item`, and `save_failed_items` to prevent ghost entries where IDs exist in ZSET but data is missing from HASH.
+- Added periodic lock refresh (every 60s) to `item_queue_worker` to prevent distributed lock expiration during long-running batch processing. The worker now stops processing when the lock is lost and checks `owned()` before releasing to avoid releasing another worker's lock.
 
 ### Removed
 

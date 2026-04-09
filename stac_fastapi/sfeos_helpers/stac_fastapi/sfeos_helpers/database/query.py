@@ -10,7 +10,7 @@ from typing import Any
 from stac_fastapi.core.utilities import bbox2polygon
 from stac_fastapi.sfeos_helpers.mappings import Geometry
 
-ES_MAX_URL_LENGTH = 4096
+ES_MAX_URL_LENGTH = int(os.getenv("ES_MAX_URL_LENGTH", "4096"))
 
 
 def apply_free_text_filter_shared(
@@ -306,12 +306,12 @@ def populate_sort_shared(sortby: list) -> dict[str, dict[str, str]] | None:
 
 
 def add_collections_to_body(
-    collection_ids: list[str], query: dict[str, Any] | None
+    collection_ids: list[str] | None, query: dict[str, Any] | None
 ) -> dict[str, Any]:
     """Add a list of collection ids to the body of a query.
 
     Args:
-        collection_ids (List[str]): A list of collections ids.
+        collection_ids (List[str] | None): A list of collections ids.
         query (dict[str, Any] | None): The query to add collections to. If none, create a query that filters
         the collection ids.
 
@@ -321,6 +321,9 @@ def add_collections_to_body(
     Notes:
         This function is needed in the execute_search function when the size of the URL path will exceed the maximum of ES.
     """
+    if not collection_ids:
+        return query
+
     index_filter = {"terms": {"collection": collection_ids}}
     if query is None:
         query = {"query": {}}

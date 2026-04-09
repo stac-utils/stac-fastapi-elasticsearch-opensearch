@@ -34,6 +34,7 @@ from typing import Any, Literal, Protocol
 from stac_fastapi.core.utilities import get_bool_env
 
 logger = logging.getLogger(__name__)
+COERCE_GLOBAL = get_bool_env("STAC_FASTAPI_ES_COERCE_GLOBAL", default=True)
 
 
 def merge_mappings(base: dict[str, Any], custom: dict[str, Any]) -> None:
@@ -197,6 +198,7 @@ ES_ITEMS_SETTINGS = {
     "index": {
         "sort.field": list(DEFAULT_SORT.keys()),
         "sort.order": [v["order"] for v in DEFAULT_SORT.values()],
+        "mapping.coerce": COERCE_GLOBAL,
     }
 }
 

@@ -5,7 +5,6 @@ from typing import Any
 
 from fastapi import HTTPException, status
 
-from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.sfeos_helpers.database import (
     extract_date,
     extract_first_date_from_index,
@@ -16,7 +15,7 @@ from stac_fastapi.sfeos_helpers.database import (
 
 from .base import BaseIndexInserter
 from .index_operations import IndexOperations
-from .managers import DatetimeIndexManager, ProductDatetimes
+from .managers import DatetimeIndexManager, IndexOperationResult, ProductDatetimes
 from .selection import DatetimeBasedIndexSelector
 
 logger = logging.getLogger(__name__)
@@ -34,26 +33,9 @@ class DatetimeIndexInserter(BaseIndexInserter):
         """
         self.client = client
         self.index_operations = index_operations
-        self.datetime_manager = DatetimeIndexManager(client, index_operations)
         self.index_selector = DatetimeBasedIndexSelector(client)
-
-    @property
-    def use_datetime(self) -> bool:
-        """Get USE_DATETIME setting dynamically.
-
-        Returns:
-            bool: Current value of USE_DATETIME environment variable.
-        """
-        return get_bool_env("USE_DATETIME", default=True)
-
-    @property
-    def primary_datetime_name(self) -> str:
-        """Get primary datetime field name based on current USE_DATETIME setting.
-
-        Returns:
-            str: "datetime" if USE_DATETIME is True, else "start_datetime".
-        """
-        return "datetime" if self.use_datetime else "start_datetime"
+        self.datetime_manager = DatetimeIndexManager(client, index_operations)
+        self._alias_loader = self.index_selector.alias_loader
 
     @staticmethod
     def should_create_collection_index() -> bool:
@@ -84,39 +66,59 @@ class DatetimeIndexInserter(BaseIndexInserter):
         """
         await self.index_selector.refresh_cache()
 
+    async def _apply_cache_update(
+        self, collection_id: str, result: IndexOperationResult
+    ) -> None:
+        """Apply a single cache update from an IndexOperationResult.
+
+        Args:
+            collection_id (str): Collection identifier.
+            result (IndexOperationResult): Result of an index/alias operation.
+        """
+        if result.new_aliases_entry is None:
+            return
+        await self._alias_loader.update_collection_cache(
+            collection_id, result.new_aliases_entry, result.old_start_datetime_alias
+        )
+
+    async def _apply_cache_updates(
+        self, collection_id: str, results: list[IndexOperationResult]
+    ) -> None:
+        """Apply multiple cache updates from a list of IndexOperationResults.
+
+        Args:
+            collection_id (str): Collection identifier.
+            results (list[IndexOperationResult]): Results of index/alias operations.
+        """
+        updates = [
+            (r.new_aliases_entry, r.old_start_datetime_alias)
+            for r in results
+            if r.new_aliases_entry is not None
+        ]
+        if updates:
+            await self._alias_loader.update_collection_cache_batch(
+                collection_id, updates
+            )
+
     def validate_datetime_field_update(self, field_path: str) -> None:
         """Validate if a datetime field can be updated.
 
         For datetime-based indexing, the primary datetime field cannot be modified
         because it determines the index where the item is stored.
 
-        When USE_DATETIME=True, 'properties.datetime' is protected.
-        When USE_DATETIME=False, 'properties.start_datetime' and 'properties.end_datetime' are protected.
-
         Args:
             field_path (str): The path of the field being updated.
         """
         # TODO: In the future, updating these fields will be able to move an item between indices by changing the time-based aliases
-        if self.use_datetime:
-            if field_path == "properties/datetime":
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=(
-                        "Updating 'properties.datetime' is not yet supported for datetime-based indexing. "
-                        "This feature will be available in a future release, enabling automatic "
-                        "index and time-based alias updates when datetime values change."
-                    ),
-                )
-        else:
-            if field_path in ("properties/start_datetime", "properties/end_datetime"):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=(
-                        f"Updating '{field_path}' is not yet supported for datetime-based indexing. "
-                        "This feature will be available in a future release, enabling automatic "
-                        "index and time-based alias updates when datetime values change."
-                    ),
-                )
+        if field_path in ("properties/start_datetime", "properties/end_datetime"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=(
+                    f"Updating '{field_path}' is not yet supported for datetime-based indexing. "
+                    "This feature will be available in a future release, enabling automatic "
+                    "index and time-based alias updates when datetime values change."
+                ),
+            )
 
     async def get_target_index(
         self, collection_id: str, product: dict[str, Any]
@@ -153,7 +155,7 @@ class DatetimeIndexInserter(BaseIndexInserter):
             logger.error(msg)
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=msg)
 
-        items.sort(key=lambda item: item["properties"][self.primary_datetime_name])
+        items.sort(key=lambda item: item["properties"]["start_datetime"])
 
         first_item = items[0]
         first_target_index = await self._get_target_index_internal(
@@ -196,71 +198,61 @@ class DatetimeIndexInserter(BaseIndexInserter):
         Args:
             collection_id (str): Collection identifier.
             product (dict[str, Any]): Product data.
-            check_size (bool): Whetheru to check index size limits.
+            check_size (bool): Whether to check index size limits.
+            use_cache (bool): Whether to use cached index data.
 
         Returns:
             str: Target index name.
         """
-        product_datetimes = self.datetime_manager.validate_product_datetimes(
-            product, self.use_datetime
-        )
-        primary_datetime_value = (
-            product_datetimes.datetime
-            if self.use_datetime
-            else product_datetimes.start_datetime
-        )
+        product_datetimes = self.datetime_manager.validate_product_datetimes(product)
 
         all_indexes = await self.index_selector.get_collection_indexes(
             collection_id, use_cache=use_cache
         )
 
         if not all_indexes:
-            target_index = await self.datetime_manager.handle_new_collection(
-                collection_id, self.primary_datetime_name, product_datetimes
+            result = await self.datetime_manager.handle_new_collection(
+                collection_id, product_datetimes
             )
-            await self.refresh_cache()
-            return target_index
+            await self._apply_cache_update(collection_id, result)
+            return result.target_alias
 
-        all_indexes = sorted(
-            all_indexes, key=lambda x: x[0][self.primary_datetime_name]
-        )
+        all_indexes = sorted(all_indexes, key=lambda x: x["start_datetime"])
 
         target_index = await self.index_selector.select_indexes(
-            [collection_id], primary_datetime_value, for_insertion=True
+            [collection_id], product_datetimes.start_datetime, for_insertion=True
         )
 
-        start_date = extract_date(primary_datetime_value)
+        start_date = extract_date(product_datetimes.start_datetime)
         earliest_index_date = extract_first_date_from_index(
-            all_indexes[0][0][self.primary_datetime_name]
+            all_indexes[0]["start_datetime"]
         )
 
         if start_date < earliest_index_date:
-            target_index = await self.datetime_manager.handle_early_date(
+            result = await self.datetime_manager.handle_early_date(
                 collection_id,
-                self.primary_datetime_name,
                 product_datetimes,
-                all_indexes[0][0],
+                all_indexes[0],
                 True,
             )
-            await self.refresh_cache()
-            return target_index
+            await self._apply_cache_update(collection_id, result)
+            return result.target_alias
 
         if not target_index:
-            target_index = all_indexes[-1][0][self.primary_datetime_name]
+            target_index = all_indexes[-1]["start_datetime"]
 
         aliases_dict, is_first_index = self._find_aliases_for_index(
             all_indexes, target_index
         )
 
-        if target_index != all_indexes[-1][0][self.primary_datetime_name]:
-            await self.datetime_manager.handle_early_date(
+        if target_index != all_indexes[-1]["start_datetime"]:
+            result = await self.datetime_manager.handle_early_date(
                 collection_id,
-                self.primary_datetime_name,
                 product_datetimes,
                 aliases_dict,
                 is_first_index,
             )
-            await self.refresh_cache()
+            await self._apply_cache_update(collection_id, result)
             return target_index
 
         if check_size and await self.datetime_manager.size_manager.is_index_oversized(
@@ -273,9 +265,6 @@ class DatetimeIndexInserter(BaseIndexInserter):
                 start_datetime=str(
                     extract_date(latest_item["_source"]["properties"]["start_datetime"])
                 ),
-                datetime=str(
-                    extract_date(latest_item["_source"]["properties"]["datetime"])
-                ),
                 end_datetime=str(
                     extract_first_date_from_index(aliases_dict["end_datetime"])
                 )
@@ -284,47 +273,43 @@ class DatetimeIndexInserter(BaseIndexInserter):
             )
 
             is_first_split = not any(
-                is_index_closed(idx[0].get(self.primary_datetime_name))
-                for idx in all_indexes
+                is_index_closed(idx.get("start_datetime")) for idx in all_indexes
             )
 
-            await self.datetime_manager.handle_oversized_index(
+            results = await self.datetime_manager.handle_oversized_index(
                 collection_id,
-                self.primary_datetime_name,
                 product_datetimes,
                 latest_index_datetimes,
                 aliases_dict,
                 is_first_split=is_first_split,
             )
-            await self.refresh_cache()
-            all_indexes = await self.index_selector.get_collection_indexes(
-                collection_id, use_cache=use_cache
+            await self._apply_cache_updates(collection_id, results)
+            product_start_date = extract_date(product_datetimes.start_datetime)
+            new_index_start_date = extract_first_date_from_index(
+                results[1].target_alias
             )
-            all_indexes = sorted(
-                all_indexes, key=lambda x: x[0][self.primary_datetime_name]
-            )
-            return (
-                await self.index_selector.select_indexes(
-                    [collection_id], primary_datetime_value, for_insertion=True
-                )
-                or all_indexes[-1][0][self.primary_datetime_name]
-            )
+            if product_start_date < new_index_start_date:
+                return results[0].target_alias
+            return results[1].target_alias
 
-        await self.datetime_manager.handle_early_date(
+        result = await self.datetime_manager.handle_early_date(
             collection_id,
-            self.primary_datetime_name,
             product_datetimes,
             aliases_dict,
             is_first_index,
         )
-        await self.refresh_cache()
-        all_indexes = await self.index_selector.get_collection_indexes(
-            collection_id, use_cache=use_cache
-        )
-        all_indexes = sorted(
-            all_indexes, key=lambda x: x[0][self.primary_datetime_name]
-        )
-        return all_indexes[-1][0][self.primary_datetime_name]
+        await self._apply_cache_update(collection_id, result)
+        if result.new_aliases_entry is None:
+            return all_indexes[-1]["start_datetime"]
+
+        all_indexes = [
+            result.new_aliases_entry
+            if x.get("start_datetime") == result.old_start_datetime_alias
+            else x
+            for x in all_indexes
+        ]
+        all_indexes = sorted(all_indexes, key=lambda x: x["start_datetime"])
+        return all_indexes[-1]["start_datetime"]
 
     @staticmethod
     def _find_aliases_for_index(
@@ -340,9 +325,8 @@ class DatetimeIndexInserter(BaseIndexInserter):
             Tuple of (aliases_dict or None, is_first_element).
         """
         for idx, item in enumerate(all_indexes):
-            aliases_dict = item[0]
-            if target_index in aliases_dict.values():
-                return aliases_dict, idx == 0
+            if target_index in item.values():
+                return item, idx == 0
         return None, False
 
 

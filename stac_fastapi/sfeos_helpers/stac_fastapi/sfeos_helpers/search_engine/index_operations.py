@@ -3,7 +3,6 @@
 import uuid
 from typing import Any, Dict, List, Literal
 
-from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.sfeos_helpers.database import (
     index_alias_by_collection_id,
     index_by_collection_id,
@@ -18,16 +17,6 @@ from stac_fastapi.sfeos_helpers.mappings import (
 
 class IndexOperations:
     """Base class for search engine adapters with common implementations."""
-
-    @property
-    def use_datetime(self) -> bool:
-        """Get USE_DATETIME setting dynamically."""
-        return get_bool_env("USE_DATETIME", default=True)
-
-    @property
-    def primary_datetime_name(self) -> str:
-        """Get primary datetime field name based on current USE_DATETIME setting."""
-        return "datetime" if self.use_datetime else "start_datetime"
 
     async def create_simple_index(self, client: Any, collection_id: str) -> str:
         """Create a simple index for the given collection.
@@ -59,21 +48,19 @@ class IndexOperations:
         self,
         client: Any,
         collection_id: str,
-        start_datetime: str | None,
-        datetime: str | None,
-        end_datetime: str | None,
-    ) -> str:
+        start_datetime: str,
+        end_datetime: str,
+    ) -> tuple[str, str]:
         """Create a datetime-based index for the given collection.
 
         Args:
             client: Search engine client instance.
             collection_id (str): Collection identifier.
-            start_datetime (str | None): Start datetime for the index alias.
-            datetime (str | None): Datetime for the datetime alias.
-            end_datetime (str | None): End datetime for the index alias.
+            start_datetime (str): Start datetime for the index alias.
+            end_datetime (str): End datetime for the index alias.
 
         Returns:
-            str: Created datetime alias name.
+            tuple[str, str]: Tuple of (start_datetime alias name, end_datetime alias name).
         """
         index_name = self.create_index_name(collection_id)
         collection_alias = index_alias_by_collection_id(collection_id)
@@ -82,48 +69,20 @@ class IndexOperations:
             collection_alias: {},
         }
 
-        if start_datetime:
-            alias_start_date = self.create_alias_name(
-                collection_id, "start_datetime", start_datetime
-            )
-            alias_end_date = self.create_alias_name(
-                collection_id, "end_datetime", end_datetime
-            )
-            aliases[alias_start_date] = {}
-            aliases[alias_end_date] = {}
-            created_alias = alias_start_date
-        else:
-            created_alias = self.create_alias_name(collection_id, "datetime", datetime)
-            aliases[created_alias] = {}
+        alias_start_date = self.create_alias_name(
+            collection_id, "start_datetime", start_datetime
+        )
+        alias_end_date = self.create_alias_name(
+            collection_id, "end_datetime", end_datetime
+        )
+        aliases[alias_start_date] = {}
+        aliases[alias_end_date] = {}
 
         await client.indices.create(
             index=index_name,
             body=self._create_index_body(aliases),
         )
-        return created_alias
-
-    @staticmethod
-    async def update_index_alias(client: Any, end_date: str, old_alias: str) -> str:
-        """Update index alias with new end date.
-
-        Args:
-            client: Search engine client instance.
-            end_date (str): End date for the alias.
-            old_alias (str): Current alias name.
-
-        Returns:
-            str: New alias name.
-        """
-        new_alias = f"{old_alias}-{end_date}"
-        aliases_info = await client.indices.get_alias(name=old_alias)
-        actions = []
-
-        for index_name in aliases_info.keys():
-            actions.append({"remove": {"index": index_name, "alias": old_alias}})
-            actions.append({"add": {"index": index_name, "alias": new_alias}})
-
-        await client.indices.update_aliases(body={"actions": actions})
-        return new_alias
+        return alias_start_date, alias_end_date
 
     @staticmethod
     async def change_alias_name(
@@ -171,14 +130,14 @@ class IndexOperations:
     @staticmethod
     def create_alias_name(
         collection_id: str,
-        name: Literal["start_datetime", "datetime", "end_datetime"],
+        name: Literal["start_datetime", "end_datetime"],
         start_date: str,
     ) -> str:
         """Create alias name from collection ID and date.
 
         Args:
             collection_id (str): Collection identifier.
-            name (Literal["start_datetime", "datetime", "end_datetime"]): Type of alias to create.
+            name (Literal["start_datetime", "end_datetime"]): Type of alias to create.
             start_date (str): Date value for the alias.
 
         Returns:
@@ -217,10 +176,9 @@ class IndexOperations:
         """
         query = {
             "size": 1,
-            "sort": [{f"properties.{self.primary_datetime_name}": {"order": "desc"}}],
+            "sort": [{"properties.start_datetime": {"order": "desc"}}],
             "_source": [
                 "properties.start_datetime",
-                "properties.datetime",
             ],
         }
 

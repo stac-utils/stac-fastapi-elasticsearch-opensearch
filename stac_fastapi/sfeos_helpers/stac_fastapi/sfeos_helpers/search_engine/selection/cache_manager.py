@@ -39,28 +39,26 @@ class IndexCacheManager:
                         raise RuntimeError("Redis is required for index alias caching.")
                     self._redis = redis
 
-    async def get_cache(self) -> dict[str, list[tuple[dict[str, str]]]] | None:
+    async def get_cache(self) -> dict[str, list[dict[str, str]]] | None:
         """Get the current cache from Redis.
 
         Returns:
-            dict[str, list[tuple[dict[str, str]]]] | None: Cache data if valid, None if missing.
+            dict[str, list[dict[str, str]]] | None: Cache data if valid, None if missing.
         """
         await self._ensure_redis()
         raw = await self._redis.get(REDIS_DATA_KEY)
         if raw is None:
             return None
-        data = json.loads(raw)
-        return _deserialize_cache(data)
+        return json.loads(raw)
 
-    async def set_cache(self, data: dict[str, list[tuple[dict[str, str]]]]) -> None:
+    async def set_cache(self, data: dict[str, list[dict[str, str]]]) -> None:
         """Set cache data in Redis with TTL.
 
         Args:
-            data (dict[str, list[tuple[dict[str, str]]]]): Cache data to store.
+            data (dict[str, list[dict[str, str]]]): Cache data to store.
         """
         await self._ensure_redis()
-        serialized = json.dumps(_serialize_cache(data))
-        await self._redis.setex(REDIS_DATA_KEY, self._ttl, serialized)
+        await self._redis.setex(REDIS_DATA_KEY, self._ttl, json.dumps(data))
 
     async def clear_cache(self) -> None:
         """Clear the cache in Redis."""
@@ -82,26 +80,6 @@ class IndexCacheManager:
         await self._redis.delete(REDIS_LOCK_KEY)
 
 
-def _serialize_cache(
-    data: dict[str, list[tuple[dict[str, str]]]]
-) -> dict[str, list[list[dict[str, str]]]]:
-    """Convert tuple values to lists for JSON serialization."""
-    result = {}
-    for key, value in data.items():
-        result[key] = [list(t) for t in value]
-    return result
-
-
-def _deserialize_cache(
-    data: dict[str, list[list[dict[str, str]]]]
-) -> dict[str, list[tuple[dict[str, str]]]]:
-    """Convert list values back to tuples after JSON deserialization."""
-    result: dict[str, list[tuple[dict[str, str]]]] = {}
-    for key, value in data.items():
-        result[key] = [tuple(item) for item in value]  # type: ignore[misc]
-    return result
-
-
 class IndexAliasLoader:
     """Asynchronous loader for index aliases."""
 
@@ -115,14 +93,14 @@ class IndexAliasLoader:
         self.client = client
         self.cache_manager = cache_manager
 
-    async def load_aliases(self) -> dict[str, list[tuple[dict[str, str]]]]:
+    async def load_aliases(self) -> dict[str, list[dict[str, str]]]:
         """Load index aliases from search engine.
 
         Returns:
-            dict[str, list[tuple[dict[str, str]]]]: Mapping of main collection aliases to their data.
+            dict[str, list[dict[str, str]]]: Mapping of main collection aliases to their data.
         """
         response = await self.client.indices.get_alias(index=f"{ITEMS_INDEX_PREFIX}*")
-        result: dict[str, list[tuple[dict[str, str]]]] = {}
+        result: dict[str, list[dict[str, str]]] = {}
 
         for index_name, index_info in response.items():
             aliases = index_info.get("aliases", {})
@@ -142,7 +120,7 @@ class IndexAliasLoader:
                     if main_alias not in result:
                         result[main_alias] = []
 
-                    result[main_alias].append((aliases_dict,))
+                    result[main_alias].append(aliases_dict)
 
         await self.cache_manager.set_cache(result)
         return result
@@ -157,7 +135,7 @@ class IndexAliasLoader:
         Returns:
             str: The main collection alias.
         """
-        temporal_keywords = ["datetime", "start_datetime", "end_datetime"]
+        temporal_keywords = ["start_datetime", "end_datetime"]
 
         for alias in aliases:
             if not any(keyword in alias for keyword in temporal_keywords):
@@ -186,14 +164,12 @@ class IndexAliasLoader:
                 aliases_dict["start_datetime"] = alias
             elif "end_datetime" in alias:
                 aliases_dict["end_datetime"] = alias
-            elif "datetime" in alias:
-                aliases_dict["datetime"] = alias
 
         return aliases_dict
 
     async def get_aliases(
         self, use_cache: bool = True
-    ) -> dict[str, list[tuple[dict[str, str]]]]:
+    ) -> dict[str, list[dict[str, str]]]:
         """Get aliases from cache or load from search engine.
 
         When use_cache is False (insertion mode), always loads fresh data from
@@ -205,7 +181,7 @@ class IndexAliasLoader:
                 If False, always load from search engine and refresh cache (write/insertion path).
 
         Returns:
-            dict[str, list[tuple[dict[str, str]]]]: Alias mapping data.
+            dict[str, list[dict[str, str]]]: Alias mapping data.
         """
         if not use_cache:
             return await self.load_aliases()
@@ -226,17 +202,62 @@ class IndexAliasLoader:
         else:
             return await self.load_aliases()
 
-    async def refresh_aliases(self) -> dict[str, list[tuple[dict[str, str]]]]:
+    async def refresh_aliases(self) -> dict[str, list[dict[str, str]]]:
         """Force refresh aliases from search engine.
 
         Returns:
-            dict[str, list[tuple[dict[str, str]]]]: Fresh alias mapping data.
+            dict[str, list[dict[str, str]]]: Fresh alias mapping data.
         """
         return await self.load_aliases()
 
+    async def update_collection_cache(
+        self,
+        collection_id: str,
+        new_aliases_entry: dict[str, str],
+        old_start_datetime_alias: str | None,
+    ) -> None:
+        """Update Redis cache directly after an index/alias operation, without querying OS/ES.
+
+        Args:
+            collection_id: Collection identifier.
+            new_aliases_entry: New aliases dict with start_datetime/end_datetime keys.
+            old_start_datetime_alias: If set, replaces the existing entry with this start alias.
+                If None, appends new_aliases_entry as a new index entry.
+        """
+        await self.update_collection_cache_batch(
+            collection_id, [(new_aliases_entry, old_start_datetime_alias)]
+        )
+
+    async def update_collection_cache_batch(
+        self,
+        collection_id: str,
+        updates: list[tuple[dict[str, str], str | None]],
+    ) -> None:
+        """Apply multiple cache updates in a single Redis get+set round-trip.
+
+        Args:
+            collection_id: Collection identifier.
+            updates: List of (new_aliases_entry, old_start_datetime_alias) pairs.
+        """
+        cached = await self.cache_manager.get_cache()
+        if cached is None:
+            return  # cache expired – next read will call load_aliases() automatically
+        main_alias = index_alias_by_collection_id(collection_id)
+        entries = cached.get(main_alias, [])
+        for new_aliases_entry, old_start_datetime_alias in updates:
+            if old_start_datetime_alias is not None:
+                entries = [
+                    e
+                    for e in entries
+                    if e.get("start_datetime") != old_start_datetime_alias
+                ]
+            entries.append(new_aliases_entry)
+        cached[main_alias] = entries
+        await self.cache_manager.set_cache(cached)
+
     async def get_collection_indexes(
         self, collection_id: str, use_cache: bool = True
-    ) -> list[tuple[dict[str, str]]]:
+    ) -> list[dict[str, str]]:
         """Get index information for a specific collection.
 
         Args:
@@ -245,7 +266,7 @@ class IndexAliasLoader:
                 If False, load fresh from search engine (insertion path).
 
         Returns:
-            list[tuple[dict[str, str]]]: list of tuples with alias dictionaries.
+            list[dict[str, str]]: list of alias dictionaries.
         """
         aliases = await self.get_aliases(use_cache=use_cache)
         main_alias = index_alias_by_collection_id(collection_id)

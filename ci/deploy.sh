@@ -3,7 +3,11 @@
 set -e
 
 if [ -z "$1" ]; then
+<<<<<<< HEAD
     echo "Environment name is required. Possible options are: 'prod/waw3-2-general-01', 'staging/waw3-2-general-01-staging', 'dev/waw3-2-general-01-staging'..."
+=======
+    echo "Environment name is required. Possible options are: 'prod/blunck', 'staging/waw3-2-general-01-staging', 'dev/waw3-2-general-01-staging'..."
+>>>>>>> master
     exit 1
 fi
 
@@ -28,6 +32,12 @@ do
   elif [  $var == "dev/waw3-2-general-01-staging-qa2"  ]; then
     ENV="dev/waw3-2-general-01-staging"
     DEPLOYMENT_NAME="stac-fastapi-os-qa2"
+<<<<<<< HEAD
+=======
+  elif [  $var == "prod/blunck-stac-item-queue-worker"  ]; then
+    ENV="prod/blunck"
+    DEPLOYMENT_NAME="stac-item-queue-worker"
+>>>>>>> master
   else
     ENV=$var
     DEPLOYMENT_NAME="stac-fastapi-os"
