@@ -459,6 +459,14 @@ class DatabaseLogic(BaseDatabaseLogic):
         return search.filter("terms", **{collection_nested_field: collection_ids})
 
     @staticmethod
+    def apply_collections_exclude_filter(search: Search, collection_ids: list[str]):
+        """Database logic to exclude a list of STAC collection ids from results."""
+        collection_nested_field = DatabaseLogic.__nested_field__(
+            DatabaseLogic.COLLECTION_FIELD
+        )
+        return search.exclude("terms", **{collection_nested_field: collection_ids})
+
+    @staticmethod
     def apply_free_text_filter(search: Search, free_text_queries: list[str] | None):
         """Create a free text query for OpenSearch queries.
 

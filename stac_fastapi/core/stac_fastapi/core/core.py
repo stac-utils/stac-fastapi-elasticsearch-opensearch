@@ -922,6 +922,12 @@ class CoreClient(AsyncBaseCoreClient):
                 search=search, collection_ids=final_collections
             )
 
+        # Apply blacklist exclusion filter at the database level
+        if blacklisted_collections:
+            search = self.database.apply_collections_exclude_filter(
+                search=search, collection_ids=blacklisted_collections
+            )
+
         datetime_parsed = format_datetime_range(date_str=search_request.datetime)
         try:
             search, datetime_search = self.database.apply_datetime_filter(
