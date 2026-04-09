@@ -672,7 +672,7 @@ docker compose -f compose.os.deploy.yml up
 ```
 
 **2. Local Development**
-If you are contributing to the project and want to build the images from your local source code with live-reloading enabled, use the default `compose` file:
+If you are contributing to the project and want to build the images from your local source code with live-reloading enabled, use the default `compose.yml` file:
 
 ```shell
 # For Elasticsearch backend
