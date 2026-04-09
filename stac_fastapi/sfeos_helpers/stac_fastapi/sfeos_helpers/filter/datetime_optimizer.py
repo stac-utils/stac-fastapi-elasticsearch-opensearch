@@ -424,11 +424,7 @@ def extract_collection_datetime(
                                 results.append(
                                     (
                                         current_collections.copy(),
-<<<<<<< HEAD
-                                        f"{dates[i]}/{dates[i+1]}",
-=======
                                         f"{dates[i]}/{dates[i + 1]}",
->>>>>>> master
                                     )
                                 )
 

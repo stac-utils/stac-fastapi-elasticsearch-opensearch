@@ -1,11 +1,7 @@
 stages:
   - build
   - tests
-<<<<<<< HEAD
 #  - tag_check
-=======
-  - tag_check
->>>>>>> master
   - deploy_dev
   - deploy_staging
   - deploy_prod
@@ -90,20 +86,6 @@ pytest-datetime:
   script:
     - ./ci/pytest-datetime.sh
 
-<<<<<<< HEAD
-=======
-tag_check:
-  stage: tag_check
-  script: ./ci/tag_image.sh
-  tags:
-    - kubernetes
-  image:
-    name: registry-public.cloudferro.com/kaniko-project/executor:v1.9.2-debug
-    entrypoint: [""]
-  only:
-    - tags
-
->>>>>>> master
 .deploy_template: &deploy_configuration
   image: registry.cloudferro.com/utils/docker_cache:alpine-latest
   when: manual
@@ -182,34 +164,14 @@ reload-qa2:
 deploy-staging:
   <<: *deploy_configuration
   stage: deploy_staging
-<<<<<<< HEAD
 #  only:
 #    - tags
-=======
-  only:
-    - tags
->>>>>>> master
   script: ./ci/deploy.sh staging/waw3-2-general-01-staging
 
 deploy-prod-creo:
   <<: *deploy_configuration
   stage: deploy_prod
-<<<<<<< HEAD
 #  only:
 #    - tags
   script:
     - ./ci/deploy.sh prod/waw3-2-general-01 staging/staging-endure
-=======
-  only:
-    - tags
-  script:
-    - ./ci/deploy.sh prod/blunck staging/staging-endure
-
-deploy-prod-creo-queue-worker:
-  <<: *deploy_configuration
-  stage: deploy_prod
-  only:
-    - tags
-  script:
-    - ./ci/deploy.sh prod/blunck-stac-item-queue-worker
->>>>>>> master
