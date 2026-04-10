@@ -135,7 +135,7 @@ def get_mappings(
     dynamic_mapping: str | None = None,
     custom_mappings: str | None = None,
 ) -> dict[str, Any]:
-    """Get  MAPPINGS for either items or collections with optional dynamic mapping and custom mappings applied.
+    """Get MAPPINGS for either items or collections with optional dynamic mapping and custom mappings applied.
 
     This function creates a fresh copy of the base mappings and applies the
     specified configuration. Useful for testing or programmatic configuration.
