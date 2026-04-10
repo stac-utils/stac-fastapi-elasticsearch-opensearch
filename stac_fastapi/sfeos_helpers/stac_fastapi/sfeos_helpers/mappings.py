@@ -162,6 +162,11 @@ def get_mappings(
         if is_items
         else "STAC_FASTAPI_ES_COLLECTIONS_MAPPINGS_FILE"
     )
+    DYNAMIC_MAPPING = (
+        "STAC_FASTAPI_ES_DYNAMIC_MAPPING"
+        if is_items
+        else "STAC_FASTAPI_ES_COLLECTIONS_DYNAMIC_MAPPING"
+    )
 
     mappings = copy.deepcopy(_BASE_MAPPINGS)
 
@@ -169,7 +174,7 @@ def get_mappings(
     dynamic_config = (
         dynamic_mapping
         if dynamic_mapping is not None
-        else os.getenv("STAC_FASTAPI_ES_DYNAMIC_MAPPING", "true")
+        else os.getenv(DYNAMIC_MAPPING, "true")
     )
     mappings["dynamic"] = parse_dynamic_mapping_config(dynamic_config)
 

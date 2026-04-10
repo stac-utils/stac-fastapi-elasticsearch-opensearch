@@ -656,7 +656,8 @@ You can customize additional settings in your `.env` file:
 | `STAC_FASTAPI_ES_COLLECTIONS_MAPPINGS_FILE` | Path to a JSON file containing custom Elasticsearch/OpenSearch property mappings for collections to merge with defaults. See [Custom Index Mappings](#custom-index-mappings). | `None` | Optional |
 | `STAC_FASTAPI_ES_CUSTOM_DYNAMIC_TEMPLATES` | JSON string of custom Elasticsearch/OpenSearch dynamic template to merge with defaults. See [Custom Index Mappings](#custom-index-mappings). | `None` | Optional |
 | `STAC_FASTAPI_ES_DYNAMIC_TEMPLATES_FILE` | Path to a JSON file containing custom Elasticsearch/OpenSearch dynamic template to merge with defaults. See [Custom Index Mappings](#custom-index-mappings). | `None` | Optional |
-| `STAC_FASTAPI_ES_DYNAMIC_MAPPING` | Controls dynamic mapping behavior for item and collection indices. Values: `true` (default), `false`, or `strict`. See [Custom Index Mappings](#custom-index-mappings). | `true` | Optional |
+| `STAC_FASTAPI_ES_DYNAMIC_MAPPING` | Controls dynamic mapping behavior for item indices. Values: `true` (default), `false`, or `strict`. See [Custom Index Mappings](#custom-index-mappings). | `true` | Optional |
+| `STAC_FASTAPI_ES_COLLECTIONS_DYNAMIC_MAPPING` | Controls dynamic mapping behavior for collection indices. Values: `true` (default), `false`, or `strict`. See [Custom Index Mappings](#custom-index-mappings). | `true` | Optional |
 
 ### 7. Filtering, Exclusions & Queryables
 
@@ -1147,6 +1148,7 @@ SFEOS provides environment variables to customize Elasticsearch/OpenSearch index
 | `STAC_FASTAPI_ES_CUSTOM_DYNAMIC_TEMPLATES` | dynamic template| JSON string of templates to merge with defaults | None |
 | `STAC_FASTAPI_ES_DYNAMIC_TEMPLATES_FILE` | dynamic template| Path to a JSON file containing templates to merge with defaults | None |
 | `STAC_FASTAPI_ES_DYNAMIC_MAPPING` | dynamic mapping | Controls dynamic mapping: `true`, `false`, or `strict` | `true` |
+| `STAC_FASTAPI_ES_COLLECTIONS_DYNAMIC_MAPPING ` | dynamic mapping | Controls dynamic mapping: `true`, `false`, or `strict` | `true` |
 
 ### Custom Mappings
 
