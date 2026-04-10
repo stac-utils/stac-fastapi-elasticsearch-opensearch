@@ -447,6 +447,20 @@ class CoreClient(AsyncBaseCoreClient):
         if datetime:
             parsed_datetime = format_datetime_range(date_str=datetime)
 
+        # read headers now so the DB query already has the right scope;
+        # otherwise numberMatched reflects the unfiltered total
+        header_collections = parse_filter_collections(request)
+        blacklisted_collections = parse_filter_collections_blacklist(request)
+
+        # empty whitelist = deny all, no point hitting the DB
+        if header_collections is not None and len(header_collections) == 0:
+            return stac_types.Collections(
+                collections=[],
+                links=[],
+                numberMatched=0,
+                numberReturned=0,
+            )
+
         collections, next_token, maybe_count = await self.database.get_all_collections(
             token=token,
             limit=limit,
@@ -457,6 +471,8 @@ class CoreClient(AsyncBaseCoreClient):
             filter=parsed_filter,
             query=parsed_query,
             datetime=parsed_datetime,
+            collection_ids=header_collections,
+            blacklisted_collection_ids=blacklisted_collections,
         )
 
         # Apply field filtering if fields parameter was provided
@@ -467,21 +483,6 @@ class CoreClient(AsyncBaseCoreClient):
             ]
         else:
             filtered_collections = collections
-
-        # Filter by header collections if present
-        header_collections = parse_filter_collections(request)
-        if header_collections is not None:
-            filtered_collections = [
-                c for c in filtered_collections if c.get("id") in header_collections
-            ]
-
-        # Filter out blacklisted collections
-        blacklisted_collections = parse_filter_collections_blacklist(request)
-        if blacklisted_collections is not None:
-            blacklisted_set = set(blacklisted_collections)
-            filtered_collections = [
-                c for c in filtered_collections if c.get("id") not in blacklisted_set
-            ]
 
         links = [
             {"rel": Relations.root.value, "type": MimeTypes.json, "href": base_url},

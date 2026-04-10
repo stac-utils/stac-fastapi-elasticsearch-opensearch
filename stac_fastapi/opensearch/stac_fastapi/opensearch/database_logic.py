@@ -207,6 +207,8 @@ class DatabaseLogic(BaseDatabaseLogic):
         filter: dict[str, Any] | None = None,
         query: dict[str, dict[str, Any]] | None = None,
         datetime: str | None = None,
+        collection_ids: list[str] | None = None,
+        blacklisted_collection_ids: list[str] | None = None,
     ) -> tuple[list[dict[str, Any]], str | None, int | None]:
         """Retrieve a list of collections from OpenSearch, supporting pagination.
 
@@ -220,6 +222,8 @@ class DatabaseLogic(BaseDatabaseLogic):
             query (dict[str, dict[str, Any]] | None): Query extension parameters.
             filter (dict[str, Any] | None): Structured query in CQL2 format.
             datetime (str | None): Temporal filter.
+            collection_ids (list[str] | None): Whitelist of collection IDs to include.
+            blacklisted_collection_ids (list[str] | None): Collection IDs to exclude.
 
         Returns:
             A tuple of (collections, next pagination token if any).
@@ -317,6 +321,16 @@ class DatabaseLogic(BaseDatabaseLogic):
         # Exclude Catalogs to prevent them from appearing in the collections endpoint,
         # without strictly requiring "type": "Collection" to support legacy data.
         query_parts.append({"bool": {"must_not": [{"term": {"type": "Catalog"}}]}})
+
+        # whitelist: only these IDs (X-Filter-Collections)
+        if collection_ids is not None:
+            query_parts.append({"terms": {"id": collection_ids}})
+
+        # blacklist: exclude these IDs (X-Filter-Collections-Blacklist)
+        if blacklisted_collection_ids:
+            query_parts.append(
+                {"bool": {"must_not": [{"terms": {"id": blacklisted_collection_ids}}]}}
+            )
 
         # Combine all query parts with AND logic
         if query_parts:
