@@ -36,6 +36,8 @@ from stac_fastapi.sfeos_helpers.models.dynamic_template import DynamicTemplatesM
 
 logger = logging.getLogger(__name__)
 
+COERCE_GLOBAL = get_bool_env("STAC_FASTAPI_ES_COERCE_GLOBAL", default=True)
+
 
 def merge_mappings(base: dict[str, Any], custom: dict[str, Any]) -> None:
     """Recursively merge custom mappings into base mappings.
@@ -302,6 +304,7 @@ ES_ITEMS_SETTINGS = {
     "index": {
         "sort.field": list(DEFAULT_SORT.keys()),
         "sort.order": [v["order"] for v in DEFAULT_SORT.values()],
+        "mapping.coerce": COERCE_GLOBAL,
     }
 }
 

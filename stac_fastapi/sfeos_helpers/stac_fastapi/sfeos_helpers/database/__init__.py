@@ -33,6 +33,7 @@ Function Naming Conventions:
 from .catalogs import (
     search_children_with_pagination_shared,
     search_collections_by_parent_id_shared,
+    search_collections_by_parent_id_with_pagination_shared,
     search_sub_catalogs_with_pagination_shared,
     update_catalog_in_index_shared,
 )
@@ -63,6 +64,7 @@ from .query import (
     populate_sort_shared,
 )
 from .utils import (
+    BulkIndexError,
     ItemAlreadyExistsError,
     add_bbox_shape_to_collection,
     check_item_exists_in_alias,
@@ -70,12 +72,14 @@ from .utils import (
     get_bool_env,
     retry_on_connection_error,
     retry_on_datetime_not_found,
+    separate_bulk_conflict_errors,
     validate_refresh,
 )
 
 __all__ = [
     # Catalog operations
     "search_collections_by_parent_id_shared",
+    "search_collections_by_parent_id_with_pagination_shared",
     "search_sub_catalogs_with_pagination_shared",
     "update_catalog_in_index_shared",
     "search_children_with_pagination_shared",
@@ -108,7 +112,9 @@ __all__ = [
     "check_item_exists_in_alias",
     "check_item_exists_in_alias_sync",
     # Errors
+    "BulkIndexError",
     "ItemAlreadyExistsError",
+    "separate_bulk_conflict_errors",
     # Datetime utilities
     "return_date",
     "extract_date",

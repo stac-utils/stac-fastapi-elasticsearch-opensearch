@@ -46,6 +46,11 @@ from stac_fastapi.extensions.third_party.bulk_transactions import (
     BulkTransactionMethod,
     Items,
 )
+from stac_fastapi.sfeos_helpers.database import (
+    BulkIndexError,
+    ItemAlreadyExistsError,
+    separate_bulk_conflict_errors,
+)
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
 from stac_fastapi.types.core import AsyncBaseCoreClient
@@ -392,7 +397,10 @@ class CoreClient(AsyncBaseCoreClient):
 
                 # Handle different filter formats
                 try:
-                    if filter_lang == "cql2-text" or filter_lang is None:
+                    # If filter_expr is already a dict (from POST request body), use it directly
+                    if isinstance(filter_expr, dict):
+                        parsed_filter = filter_expr
+                    elif filter_lang == "cql2-text" or filter_lang is None:
                         # For cql2-text or when no filter_lang is specified, try both formats
                         try:
                             # First try to parse as JSON
@@ -856,6 +864,8 @@ class CoreClient(AsyncBaseCoreClient):
                 search=search, intersects=getattr(search_request, "intersects")
             )
 
+        collection_ids = getattr(search_request, "collections", None)
+
         if hasattr(search_request, "query") and getattr(search_request, "query"):
             query_fields = set(getattr(search_request, "query").keys())
             await self.queryables_cache.validate(query_fields)
@@ -870,6 +880,7 @@ class CoreClient(AsyncBaseCoreClient):
 
         # Apply CQL2 filter (support both 'filter_expr' and canonical 'filter')
         cql2_filter = None
+        cql2_metadata = None
         if hasattr(search_request, "filter_expr"):
             cql2_filter = getattr(search_request, "filter_expr", None)
         if cql2_filter is None and hasattr(search_request, "filter"):
@@ -879,7 +890,9 @@ class CoreClient(AsyncBaseCoreClient):
             try:
                 query_fields = get_properties_from_cql2_filter(cql2_filter)
                 await self.queryables_cache.validate(query_fields)
-                search = await self.database.apply_cql2_filter(search, cql2_filter)
+                search, cql2_metadata = await self.database.apply_cql2_filter(
+                    search, cql2_filter
+                )
             except HTTPException:
                 raise
             except Exception as e:
@@ -916,8 +929,9 @@ class CoreClient(AsyncBaseCoreClient):
             limit=limit,
             token=token_param,
             sort=sort,
-            collection_ids=getattr(search_request, "collections", None),
+            collection_ids=collection_ids,
             datetime_search=datetime_search,
+            cql2_metadata=cql2_metadata,
         )
 
         fields = getattr(search_request, "fields", None)
@@ -1016,18 +1030,11 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 database=self.database, settings=self.settings
             )
             features = item_dict["features"]
-            all_prepped = [
-                bulk_client.preprocess_item(
-                    feature, base_url, BulkTransactionMethod.INSERT
-                )
-                for feature in features
+            processed_items = [
+                bulk_client.preprocess_item(feature, base_url) for feature in features
             ]
-            # Filter out None values (skipped duplicates from DB check)
-            processed_items = [item for item in all_prepped if item is not None]
-            skipped_db_duplicates = len(all_prepped) - len(processed_items)
 
             # Deduplicate items within the batch by ID (keep last occurrence)
-            # This matches ES behavior where later items overwrite earlier ones
             seen_ids: dict = {}
             for item in processed_items:
                 seen_ids[item["id"]] = item
@@ -1035,11 +1042,10 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             skipped_batch_duplicates = len(processed_items) - len(unique_items)
             processed_items = unique_items
 
-            skipped = skipped_db_duplicates + skipped_batch_duplicates
             attempted = len(processed_items)
 
             if not processed_items:
-                return f"No items to insert. {skipped} items were skipped (duplicates)."
+                return f"No items to insert. {skipped_batch_duplicates} items were skipped (duplicates)."
 
             if use_queue:
                 from stac_fastapi.core.redis_utils import AsyncRedisQueueManager
@@ -1060,17 +1066,30 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             success, errors = await self.database.bulk_async(
                 collection_id=collection_id,
                 processed_items=processed_items,
+                op_type="create",
                 **kwargs,
             )
-            if errors:
-                logger.error(
-                    f"Bulk async operation encountered errors for collection {collection_id}: {errors} (attempted {attempted})"
+            conflict_errors, other_errors = separate_bulk_conflict_errors(errors)
+            if conflict_errors and get_bool_env("RAISE_ON_BULK_ERROR"):
+                doc_id = next(iter(conflict_errors[0].values())).get("_id", "")
+                item_id = doc_id.split("|")[0] if "|" in doc_id else doc_id
+                raise ItemAlreadyExistsError(
+                    item_id=item_id, collection_id=collection_id
                 )
+            if other_errors:
+                logger.error(
+                    f"Bulk async operation encountered errors for collection {collection_id}: {other_errors} (attempted {attempted})"
+                )
+                if get_bool_env("RAISE_ON_BULK_ERROR"):
+                    raise BulkIndexError(
+                        errors=other_errors, collection_id=collection_id
+                    )
             else:
                 logger.info(
                     f"Bulk async operation succeeded with {success} actions for collection {collection_id}."
                 )
-            return f"Successfully added {success} Items. {skipped} skipped (duplicates). {attempted - success} errors occurred."
+            total_skipped = skipped_batch_duplicates + len(conflict_errors)
+            return f"Successfully added {success} Items. {total_skipped} skipped (duplicates). {len(other_errors)} errors occurred."
 
         if use_queue:
             from stac_fastapi.core.redis_utils import AsyncRedisQueueManager
@@ -1078,9 +1097,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             bulk_client = BulkTransactionsClient(
                 database=self.database, settings=self.settings
             )
-            processed_item = bulk_client.preprocess_item(
-                item_dict, base_url, BulkTransactionMethod.INSERT
-            )
+            processed_item = bulk_client.preprocess_item(item_dict, base_url)
 
             queue_manager = await AsyncRedisQueueManager.create()
             try:
@@ -1098,7 +1115,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 await queue_manager.close()
 
         await self.database.create_item(
-            item_dict, base_url=base_url, exist_ok=False, **kwargs
+            item_dict, base_url=base_url, upsert=False, **kwargs
         )
         return ItemSerializer.db_to_stac(item_dict, base_url)
 
@@ -1135,9 +1152,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             bulk_client = BulkTransactionsClient(
                 database=self.database, settings=self.settings
             )
-            processed_item = bulk_client.preprocess_item(
-                item_dict, base_url, BulkTransactionMethod.UPSERT
-            )
+            processed_item = bulk_client.preprocess_item(item_dict, base_url)
 
             queue_manager = await AsyncRedisQueueManager.create()
             try:
@@ -1154,7 +1169,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             return ItemSerializer.db_to_stac(item_dict, base_url)
 
         await self.database.create_item(
-            item_dict, base_url=base_url, exist_ok=True, **kwargs
+            item_dict, base_url=base_url, upsert=True, **kwargs
         )
         return ItemSerializer.db_to_stac(item_dict, base_url)
 
@@ -1386,23 +1401,17 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         """Create es engine."""
         self.client = self.settings.create_client
 
-    def preprocess_item(
-        self, item: stac_types.Item, base_url, method: BulkTransactionMethod
-    ) -> stac_types.Item:
+    def preprocess_item(self, item: stac_types.Item, base_url) -> stac_types.Item:
         """Preprocess an item to match the data model.
 
         Args:
             item: The item to preprocess.
             base_url: The base URL of the request.
-            method: The bulk transaction method.
 
         Returns:
             The preprocessed item.
         """
-        exist_ok = method == BulkTransactionMethod.UPSERT
-        return self.database.bulk_sync_prep_create_item(
-            item=item, base_url=base_url, exist_ok=exist_ok
-        )
+        return self.database.bulk_sync_prep_create_item(item=item, base_url=base_url)
 
     @overrides
     def bulk_item_insert(
@@ -1431,24 +1440,22 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         else:
             base_url = ""
 
+        # Determine op_type from bulk transaction method
+        op_type = "index" if items.method == BulkTransactionMethod.UPSERT else "create"
+
         processed_items = []
-        skipped_db_duplicates = 0
         for item in items.items.values():
             try:
                 validated = Item(**item) if not isinstance(item, Item) else item
                 prepped = self.preprocess_item(
-                    validated.model_dump(mode="json"), base_url, items.method
+                    validated.model_dump(mode="json"), base_url
                 )
-                if prepped is not None:
-                    processed_items.append(prepped)
-                else:
-                    skipped_db_duplicates += 1
+                processed_items.append(prepped)
             except ValidationError:
                 # Immediately raise on the first invalid item (strict mode)
                 raise
 
         # Deduplicate items within the batch by ID (keep last occurrence)
-        # This matches ES behavior where later items overwrite earlier ones
         seen_ids: dict = {}
         for item in processed_items:
             seen_ids[item["id"]] = item
@@ -1456,21 +1463,26 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         skipped_batch_duplicates = len(processed_items) - len(unique_items)
         processed_items = unique_items
 
-        skipped = skipped_db_duplicates + skipped_batch_duplicates
-
         if not processed_items:
-            return f"No items to insert. {skipped} items were skipped (duplicates)."
+            return f"No items to insert. {skipped_batch_duplicates} items were skipped (duplicates)."
 
         collection_id = processed_items[0]["collection"]
-        attempted = len(processed_items)
         success, errors = self.database.bulk_sync(
             collection_id,
             processed_items,
+            op_type=op_type,
             **kwargs,
         )
-        if errors:
-            logger.error(f"Bulk sync operation encountered errors: {errors}")
+        conflict_errors, other_errors = separate_bulk_conflict_errors(errors)
+        if conflict_errors and get_bool_env("RAISE_ON_BULK_ERROR"):
+            doc_id = next(iter(conflict_errors[0].values())).get("_id", "")
+            item_id = doc_id.split("|")[0] if "|" in doc_id else doc_id
+            raise ItemAlreadyExistsError(item_id=item_id, collection_id=collection_id)
+        if other_errors:
+            logger.error(f"Bulk sync operation encountered errors: {other_errors}")
+            if get_bool_env("RAISE_ON_BULK_ERROR"):
+                raise BulkIndexError(errors=other_errors, collection_id=collection_id)
         else:
             logger.info(f"Bulk sync operation succeeded with {success} actions.")
-
-        return f"Successfully added/updated {success} Items. {skipped} skipped (duplicates). {attempted - success} errors occurred."
+        total_skipped = skipped_batch_duplicates + len(conflict_errors)
+        return f"Successfully added/updated {success} Items. {total_skipped} skipped (duplicates). {len(other_errors)} errors occurred."

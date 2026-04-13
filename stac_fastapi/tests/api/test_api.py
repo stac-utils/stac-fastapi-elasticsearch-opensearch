@@ -1,3 +1,4 @@
+import asyncio
 import os
 import random
 import uuid
@@ -65,9 +66,12 @@ ROUTES = {
     "POST /catalogs",
     "GET /catalogs/{catalog_id}",
     "PUT /catalogs/{catalog_id}",
+    "GET /catalogs/{catalog_id}/conformance",
+    "GET /catalogs/{catalog_id}/queryables",
     "DELETE /catalogs/{catalog_id}",
     "GET /catalogs/{catalog_id}/catalogs",
     "POST /catalogs/{catalog_id}/catalogs",
+    "DELETE /catalogs/{catalog_id}/catalogs/{sub_catalog_id}",
     "GET /catalogs/{catalog_id}/children",
     "GET /catalogs/{catalog_id}/collections",
     "POST /catalogs/{catalog_id}/collections",
@@ -104,6 +108,7 @@ async def test_api_headers(app_client):
 @pytest.mark.asyncio
 async def test_router(app):
     api_routes = set([f"{list(route.methods)[0]} {route.path}" for route in app.routes])
+    print(api_routes)
     assert len(api_routes - ROUTES) == 0
 
 
@@ -1178,6 +1183,49 @@ async def test_hide_private_data_from_item(app_client, txn_client, load_test_dat
     assert "private_data" not in item["properties"]
 
     del os.environ["EXCLUDED_FROM_ITEMS"]
+
+
+@pytest.mark.asyncio
+async def test_search_count_timeout(
+    app_client, txn_client, load_test_data, monkeypatch
+):
+    monkeypatch.setenv("COUNT_TIMEOUT", "0.011")
+
+    test_collection = load_test_data("test_collection.json")
+    test_collection_id = "test-collection-count-timeout"
+    test_collection["id"] = test_collection_id
+    await create_collection(txn_client, test_collection)
+
+    test_item = load_test_data("test_item.json")
+    test_item_id = "test-item-count-timeout"
+    test_item["id"] = test_item_id
+    test_item["collection"] = test_collection_id
+    await create_item(txn_client, test_item)
+
+    async def slow_count(*args, **kwargs):
+        await asyncio.sleep(0.01)
+        return {"count": 1}
+
+    backend = os.getenv("BACKEND")
+
+    if backend == "opensearch":
+        from opensearchpy import AsyncOpenSearch
+
+        monkeypatch.setattr(AsyncOpenSearch, "count", slow_count)
+
+    elif backend == "elasticsearch":
+        from elasticsearch import AsyncElasticsearch
+
+        monkeypatch.setattr(AsyncElasticsearch, "count", slow_count)
+
+    resp = await app_client.get(f"/search?collections={test_collection_id}")
+
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert len(resp_json["features"]) == 1
+    assert resp_json["numberReturned"] == 1
+
+    monkeypatch.delenv("COUNT_TIMEOUT")
 
 
 @pytest.mark.asyncio

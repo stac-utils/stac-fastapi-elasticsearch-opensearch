@@ -11,6 +11,7 @@ import elasticsearch.helpers as helpers
 import orjson
 from elasticsearch.dsl import Q, Search
 from elasticsearch.exceptions import BadRequestError
+from elasticsearch.exceptions import ConflictError as ESConflictError
 from elasticsearch.exceptions import NotFoundError as ESNotFoundError
 from fastapi import HTTPException
 from starlette.requests import Request
@@ -52,7 +53,15 @@ from stac_fastapi.sfeos_helpers.database import (
     retry_on_connection_error,
     retry_on_datetime_not_found,
     return_date,
+    search_children_with_pagination_shared,
+    search_collections_by_parent_id_with_pagination_shared,
+    search_sub_catalogs_with_pagination_shared,
+    update_catalog_in_index_shared,
     validate_refresh,
+)
+from stac_fastapi.sfeos_helpers.database.catalogs import (
+    decode_token_to_search_after,
+    encode_search_after_to_token,
 )
 from stac_fastapi.sfeos_helpers.database.query import (
     ES_MAX_URL_LENGTH,
@@ -62,7 +71,9 @@ from stac_fastapi.sfeos_helpers.database.utils import (
     add_hidden_filter,
     merge_to_operations,
     operations_to_script,
+    validate_datetime_operations,
 )
+from stac_fastapi.sfeos_helpers.filter import build_cql2_filter, resolve_cql2_indexes
 from stac_fastapi.sfeos_helpers.mappings import (
     AGGREGATION_MAPPING,
     COLLECTIONS_INDEX,
@@ -304,6 +315,10 @@ class DatabaseLogic(BaseDatabaseLogic):
         if datetime_filter:
             query_parts.append(datetime_filter)
 
+        # Exclude Catalogs to prevent them from appearing in the collections endpoint,
+        # without strictly requiring "type": "Collection" to support legacy data.
+        query_parts.append({"bool": {"must_not": [{"term": {"type": "Catalog"}}]}})
+
         # Combine all query parts with AND logic
         if query_parts:
             body["query"] = (
@@ -425,6 +440,79 @@ class DatabaseLogic(BaseDatabaseLogic):
         return await get_queryables_mapping_shared(
             collection_id=collection_id, mappings=mappings
         )
+
+    async def get_all_collection_queryables(self) -> list[dict]:
+        """Retrieve all queryables from all collections safely.
+
+        Generates queryables on-the-fly from each collection's item index mappings
+        using a scroll to prevent memory spikes, and a semaphore to prevent
+        connection pool exhaustion.
+
+        Returns:
+            A list of queryables dictionaries, one from each active collection.
+        """
+        collection_ids = []
+        scroll_id = None
+
+        try:
+            # 1. Use the Scroll API to safely fetch all IDs
+            response = await self.client.search(
+                index=COLLECTIONS_INDEX,
+                scroll="2m",  # Keep the search context alive for 2 minutes
+                size=1000,  # Fetch in memory-safe chunks of 1000
+                body={
+                    "_source": ["id"],
+                    "query": {"term": {"type": "Collection"}},
+                },
+            )
+
+            scroll_id = response.get("_scroll_id")
+            hits = response.get("hits", {}).get("hits", [])
+
+            while hits:
+                for hit in hits:
+                    if cid := hit.get("_source", {}).get("id"):
+                        collection_ids.append(cid)
+
+                # Fetch the next batch of 1000 IDs
+                response = await self.client.scroll(scroll_id=scroll_id, scroll="2m")
+                scroll_id = response.get("_scroll_id")
+                hits = response.get("hits", {}).get("hits", [])
+
+        finally:
+            # Always clear the scroll context to free up database resources
+            if scroll_id:
+                try:
+                    await self.client.clear_scroll(scroll_id=scroll_id)
+                except Exception as e:
+                    logger.debug(f"Failed to clear scroll context: {e}")
+
+        # Initialize the filters client
+        filters_client = filter_module.EsAsyncBaseFiltersClient(
+            database=self, settings=self.async_settings
+        )
+
+        # 2. Add a Semaphore
+        sem = asyncio.Semaphore(50)  # Only allow 50 concurrent DB requests
+
+        async def fetch_queryables_safely(collection_id: str) -> dict | None:
+            async with sem:
+                try:
+                    return await filters_client.get_queryables(
+                        collection_id=collection_id
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to retrieve queryables for collection {collection_id}: {e}"
+                    )
+                    return None
+
+        # 3. Gather results. The semaphore ensures we only process 50 at a time.
+        results = await asyncio.gather(
+            *[fetch_queryables_safely(cid) for cid in collection_ids]
+        )
+
+        return [q for q in results if q]
 
     @staticmethod
     def make_search():
@@ -764,11 +852,27 @@ class DatabaseLogic(BaseDatabaseLogic):
             Search: The modified Search object with the filter applied if a filter is provided,
                     otherwise the original Search object.
         """
-        if _filter is not None:
-            es_query = filter_module.to_es(await self.get_queryables_mapping(), _filter)
-            search = search.query(es_query)
+        metadata = None
 
-        return search
+        if _filter is not None:
+            try:
+                all_collection_ids = (
+                    await self.async_index_selector.get_all_collection_ids()
+                )
+                es_query, metadata = build_cql2_filter(
+                    await self.get_queryables_mapping(), _filter, all_collection_ids
+                )
+                search = search.query(es_query)
+            except (ValueError, KeyError, TypeError, AttributeError) as e:
+                logger.warning(
+                    "Failed to build CQL2 filter using AST tree approach, falling back to dictionary-based method."
+                    f"Error: {str(e)}. Filter: {_filter}"
+                )
+                queryables_mapping = await self.get_queryables_mapping()
+                es_query = filter_module.to_es(queryables_mapping, _filter)
+                search = search.query(es_query)
+
+        return search, metadata
 
     @staticmethod
     def populate_sort(sortby: list) -> dict[str, dict[str, str]] | None:
@@ -795,6 +899,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         sort: dict[str, dict[str, str]] | None,
         collection_ids: list[str] | None,
         datetime_search: str,
+        cql2_metadata: dict[str, Any] | None = None,
         ignore_unavailable: bool = True,
     ) -> tuple[Iterable[dict[str, Any]], int | None, str | None]:
         """Execute a search query with limit and other optional parameters.
@@ -826,9 +931,18 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         query = search.query.to_dict() if search.query else None
 
-        index_param = await self.async_index_selector.select_indexes(
-            collection_ids, datetime_search
-        )
+        # Special case for cql2-json index selection
+        if cql2_metadata:
+            index_param, collection_ids = await resolve_cql2_indexes(
+                cql2_metadata,
+                self.async_index_selector,
+                self.apply_datetime_filter,
+                search,
+            )
+        else:
+            index_param = await self.async_index_selector.select_indexes(
+                collection_ids, datetime_search
+            )
         if len(index_param) > ES_MAX_URL_LENGTH - 300:
             index_param = ITEM_INDICES
             query = add_collections_to_body(collection_ids, query)
@@ -870,6 +984,15 @@ class DatabaseLogic(BaseDatabaseLogic):
             es_response = await search_task
         except ESNotFoundError:
             raise NotFoundError(f"Collections '{collection_ids}' do not exist")
+
+        count_timeout = float(os.getenv("COUNT_TIMEOUT", 0.5))
+
+        if count_timeout > 0 and not count_task.done():
+            try:
+                logger.debug("Waiting for count task to complete...")
+                await asyncio.wait_for(count_task, timeout=count_timeout)
+            except asyncio.TimeoutError:
+                logger.warning("Count task timed out, returning results without count")
 
         hits = es_response["hits"]["hits"]
         items = (hit["_source"] for hit in hits[:limit])
@@ -1006,124 +1129,81 @@ class DatabaseLogic(BaseDatabaseLogic):
         except Exception:
             return False
 
-    async def async_prep_create_item(
-        self, item: Item, base_url: str, exist_ok: bool = False
-    ) -> Item:
+    async def async_prep_create_item(self, item: Item, base_url: str) -> Item:
         """
         Preps an item for insertion into the database.
 
         Args:
             item (Item): The item to be prepped for insertion.
             base_url (str): The base URL used to create the item's self URL.
-            exist_ok (bool): Indicates whether the item can exist already.
 
         Returns:
             Item: The prepped item.
 
-        Raises:
-            ItemAlreadyExistsError: If the item already exists in the database.
-
         """
         await self.check_collection_exists(collection_id=item["collection"])
 
-        if not exist_ok and await self._check_item_exists_in_collection(
-            item["collection"], item["id"]
-        ):
-            raise ItemAlreadyExistsError(item["id"], item["collection"])
-
         return self.item_serializer.stac_to_db(item, base_url)
 
-    async def bulk_async_prep_create_item(
-        self, item: Item, base_url: str, exist_ok: bool = False
-    ) -> Item | None:
+    async def bulk_async_prep_create_item(self, item: Item, base_url: str) -> Item:
         """
-        Prepare an item for insertion into the database.
+        Validate and serialize an item for bulk indexing.
 
-        This method performs pre-insertion preparation on the given `item`, such as:
+        This method performs pre-insertion validation and serialization:
         - Verifying that the collection the item belongs to exists.
-        - Optionally checking if an item with the same ID already exists in the database.
         - Serializing the item into a database-compatible format.
+
+        Note: Duplicate item detection is not performed here. It is handled
+        atomically by the database engine via ``op_type="create"`` during
+        the bulk indexing phase.
 
         Args:
             item (Item): The item to be prepared for insertion.
             base_url (str): The base URL used to construct the item's self URL.
-            exist_ok (bool): Indicates whether the item can already exist in the database.
-                            If False, a `ConflictError` is raised if the item exists.
 
         Returns:
             Item: The prepared item, serialized into a database-compatible format.
 
         Raises:
             NotFoundError: If the collection that the item belongs to does not exist in the database.
-            ConflictError: If an item with the same ID already exists in the collection and `exist_ok` is False,
-                        and `RAISE_ON_BULK_ERROR` is set to `true`.
         """
         logger.debug(f"Preparing item {item['id']} in collection {item['collection']}.")
 
         # Check if the collection exists
         await self.check_collection_exists(collection_id=item["collection"])
-
-        # Check if the item already exists in the database (across all datetime indexes)
-        if not exist_ok and await self._check_item_exists_in_collection(
-            item["collection"], item["id"]
-        ):
-            if self.async_settings.raise_on_bulk_error:
-                raise ItemAlreadyExistsError(item["id"], item["collection"])
-            else:
-                logger.warning(
-                    f"Item {item['id']} in collection {item['collection']} already exists. "
-                    "Skipping as `RAISE_ON_BULK_ERROR` is set to false."
-                )
-                return None
 
         # Serialize the item into a database-compatible format
         prepped_item = self.item_serializer.stac_to_db(item, base_url)
         logger.debug(f"Item {item['id']} prepared successfully.")
         return prepped_item
 
-    def bulk_sync_prep_create_item(
-        self, item: Item, base_url: str, exist_ok: bool = False
-    ) -> Item | None:
+    def bulk_sync_prep_create_item(self, item: Item, base_url: str) -> Item:
         """
-        Prepare an item for insertion into the database.
+        Validate and serialize an item for bulk indexing.
 
-        This method performs pre-insertion preparation on the given `item`, such as:
+        This method performs pre-insertion validation and serialization:
         - Verifying that the collection the item belongs to exists.
-        - Optionally checking if an item with the same ID already exists in the database.
         - Serializing the item into a database-compatible format.
+
+        Note: Duplicate item detection is not performed here. It is handled
+        atomically by the database engine via ``op_type="create"`` during
+        the bulk indexing phase.
 
         Args:
             item (Item): The item to be prepared for insertion.
             base_url (str): The base URL used to construct the item's self URL.
-            exist_ok (bool): Indicates whether the item can already exist in the database.
-                            If False, a `ConflictError` is raised if the item exists.
 
         Returns:
             Item: The prepared item, serialized into a database-compatible format.
 
         Raises:
             NotFoundError: If the collection that the item belongs to does not exist in the database.
-            ConflictError: If an item with the same ID already exists in the collection and `exist_ok` is False,
-                        and `RAISE_ON_BULK_ERROR` is set to `true`.
         """
         logger.debug(f"Preparing item {item['id']} in collection {item['collection']}.")
 
         # Check if the collection exists
         if not self.sync_client.exists(index=COLLECTIONS_INDEX, id=item["collection"]):
             raise NotFoundError(f"Collection {item['collection']} does not exist")
-
-        # Check if the item already exists in the database (across all datetime indexes)
-        if not exist_ok and self._check_item_exists_in_collection_sync(
-            item["collection"], item["id"]
-        ):
-            if self.sync_settings.raise_on_bulk_error:
-                raise ItemAlreadyExistsError(item["id"], item["collection"])
-            else:
-                logger.warning(
-                    f"Item {item['id']} in collection {item['collection']} already exists. "
-                    "Skipping as `RAISE_ON_BULK_ERROR` is set to false."
-                )
-                return None
 
         # Serialize the item into a database-compatible format
         prepped_item = self.item_serializer.stac_to_db(item, base_url)
@@ -1135,7 +1215,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         self,
         item: Item,
         base_url: str = "",
-        exist_ok: bool = False,
+        upsert: bool = False,
         **kwargs: Any,
     ):
         """Database logic for creating one item.
@@ -1143,13 +1223,15 @@ class DatabaseLogic(BaseDatabaseLogic):
         Args:
             item (Item): The item to be created.
             base_url (str, optional): The base URL for the item. Defaults to an empty string.
-            exist_ok (bool, optional): Whether to allow the item to exist already. Defaults to False.
+            upsert (bool, optional): If False (default), performs an insert-only operation
+                that rejects duplicates (op_type="create"). If True, performs an upsert
+                that overwrites existing items (op_type="index").
             **kwargs: Additional keyword arguments.
                 - refresh (str): Whether to refresh the index after the operation. Can be "true", "false", or "wait_for".
                 - refresh (bool): Whether to refresh the index after the operation. Defaults to the value in `self.async_settings.database_refresh`.
 
         Raises:
-            ConflictError: If the item already exists in the database.
+            ItemAlreadyExistsError: If the item already exists and upsert is False.
 
         Returns:
             None
@@ -1169,7 +1251,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             f"Creating item {item_id} in collection {collection_id} with refresh={refresh}"
         )
 
-        if exist_ok and isinstance(self.async_index_inserter, DatetimeIndexInserter):
+        if upsert and isinstance(self.async_index_inserter, DatetimeIndexInserter):
             existing_item = await self.get_one_item(collection_id, item_id)
             primary_datetime_name = self.async_index_inserter.primary_datetime_name
 
@@ -1195,20 +1277,22 @@ class DatabaseLogic(BaseDatabaseLogic):
                     )
 
         # Prepare the item for insertion
-        item = await self.async_prep_create_item(
-            item=item, base_url=base_url, exist_ok=exist_ok
-        )
+        item = await self.async_prep_create_item(item=item, base_url=base_url)
 
         target_index = await self.async_index_inserter.get_target_index(
             collection_id, item
         )
         # Index the item in the database
-        await self.client.index(
-            index=target_index,
-            id=mk_item_id(item_id, collection_id),
-            document=item,
-            refresh=refresh,
-        )
+        try:
+            await self.client.index(
+                index=target_index,
+                id=mk_item_id(item_id, collection_id),
+                document=item,
+                refresh=refresh,
+                **({} if upsert else {"op_type": "create"}),
+            )
+        except ESConflictError:
+            raise ItemAlreadyExistsError(item_id, collection_id)
 
     @retry_on_connection_error
     async def merge_patch_item(
@@ -1264,10 +1348,6 @@ class DatabaseLogic(BaseDatabaseLogic):
         Returns:
             patched item.
         """
-        for operation in operations:
-            if operation.op in ["add", "replace", "remove"]:
-                self.async_index_inserter.validate_datetime_field_update(operation.path)
-
         new_item_id = None
         new_collection_id = None
         script_operations = []
@@ -1300,6 +1380,13 @@ class DatabaseLogic(BaseDatabaseLogic):
                 raise NotFoundError(
                     f"Item {item_id} does not exist inside Collection {collection_id}"
                 )
+
+            existing_source = search_response["hits"]["hits"][0]["_source"]
+            validate_datetime_operations(
+                operations,
+                existing_source,
+                self.async_index_inserter.validate_datetime_field_update,
+            )
 
             if script_operations:
                 script = operations_to_script(
@@ -1525,7 +1612,7 @@ class DatabaseLogic(BaseDatabaseLogic):
     @retry_on_connection_error
     async def update_collection(
         self, collection_id: str, collection: Collection, **kwargs: Any
-    ):
+    ) -> None:
         """Update a collection in the database.
 
         Args:
@@ -1560,23 +1647,34 @@ class DatabaseLogic(BaseDatabaseLogic):
         # Ensure the collection exists
         await self.find_collection(collection_id=collection_id)
 
+        # Convert dict to proper format if needed
+        collection_dict = (
+            collection
+            if isinstance(collection, dict)
+            else collection.model_dump()
+            if hasattr(collection, "model_dump")
+            else dict(collection)
+        )
+
         # Handle collection ID change
-        if collection_id != collection["id"]:
+        if collection_id != collection_dict.get("id"):
             logger.info(
-                f"Collection ID change detected: {collection_id} -> {collection['id']}"
+                f"Collection ID change detected: {collection_id} -> {collection_dict.get('id')}"
             )
 
             # Create the new collection
-            await self.create_collection(collection, refresh=refresh)
+            await self.create_collection(collection_dict, refresh=refresh)
 
             # Reindex items from the old collection to the new collection
             await self.client.reindex(
                 body={
-                    "dest": {"index": f"{ITEMS_INDEX_PREFIX}{collection['id']}"},
+                    "dest": {
+                        "index": f"{ITEMS_INDEX_PREFIX}{collection_dict.get('id')}"
+                    },
                     "source": {"index": f"{ITEMS_INDEX_PREFIX}{collection_id}"},
                     "script": {
                         "lang": "painless",
-                        "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection["id"]}'); ctx._source.collection = '{collection["id"]}' ;""",  # noqa: E702
+                        "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection_dict.get("id")}'); ctx._source.collection = '{collection_dict.get("id")}' ;""",  # noqa: E702
                     },
                 },
                 wait_for_completion=True,
@@ -1591,13 +1689,13 @@ class DatabaseLogic(BaseDatabaseLogic):
                 "ENABLE_COLLECTIONS_SEARCH_ROUTE"
             ):
                 # Convert bbox to bbox_shape for geospatial queries (ES/OS specific)
-                add_bbox_shape_to_collection(collection)
+                add_bbox_shape_to_collection(collection_dict)
 
             # Update the existing collection
             await self.client.index(
                 index=COLLECTIONS_INDEX,
                 id=collection_id,
-                document=collection,
+                document=collection_dict,
                 refresh=refresh,
             )
 
@@ -1734,6 +1832,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         self,
         collection_id: str,
         processed_items: list[Item],
+        op_type: str = "create",
         **kwargs: Any,
     ) -> tuple[int, list[dict[str, Any]]]:
         """
@@ -1742,6 +1841,8 @@ class DatabaseLogic(BaseDatabaseLogic):
         Args:
             collection_id (str): The ID of the collection to which the items belong.
             processed_items (list[Item]): A list of `Item` objects to be inserted into the database.
+            op_type (str): The operation type for the bulk actions. "create" for insert-only
+                (rejects duplicates at ES/OS level), "index" for upsert. Defaults to "create".
             **kwargs (Any): Additional keyword arguments, including:
                 - refresh (str, optional): Whether to refresh the index after the bulk insert.
                 Can be "true", "false", or "wait_for". Defaults to the value of `self.sync_settings.database_refresh`.
@@ -1772,7 +1873,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         # Log the bulk insert attempt
         logger.info(
-            f"Performing bulk insert for collection {collection_id} with refresh={refresh}"
+            f"Performing bulk insert for collection {collection_id} with refresh={refresh}, op_type={op_type}"
         )
 
         # Handle empty processed_items
@@ -1780,10 +1881,15 @@ class DatabaseLogic(BaseDatabaseLogic):
             logger.warning(f"No items to insert for collection {collection_id}")
             return 0, []
 
-        # Perform the bulk insert
-        raise_on_error = self.async_settings.raise_on_bulk_error
+        # When op_type="create", force raise_on_error=False so that 409 conflicts
+        # are returned in the errors list instead of raising BulkIndexError.
+        # The caller is responsible for separating conflicts from other errors.
+        if op_type == "create":
+            raise_on_error = False
+        else:
+            raise_on_error = self.async_settings.raise_on_bulk_error
         actions = await self.async_index_inserter.prepare_bulk_actions(
-            collection_id, processed_items
+            collection_id, processed_items, op_type=op_type
         )
         success, errors = await helpers.async_bulk(
             self.client,
@@ -1803,6 +1909,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         self,
         collection_id: str,
         processed_items: list[Item],
+        op_type: str = "create",
         **kwargs: Any,
     ) -> tuple[int, list[dict[str, Any]]]:
         """
@@ -1811,12 +1918,14 @@ class DatabaseLogic(BaseDatabaseLogic):
         Args:
             collection_id (str): The ID of the collection to which the items belong.
             processed_items (list[Item]): A list of `Item` objects to be inserted into the database.
+            op_type (str): The operation type for the bulk actions. "create" for insert-only
+                (rejects duplicates at ES/OS level), "index" for upsert. Defaults to "create".
             **kwargs (Any): Additional keyword arguments, including:
                 - refresh (str, optional): Whether to refresh the index after the bulk insert.
                 Can be "true", "false", or "wait_for". Defaults to the value of `self.sync_settings.database_refresh`.
                 - refresh (bool, optional): Whether to refresh the index after the bulk insert.
                 - raise_on_error (bool, optional): Whether to raise an error if any of the bulk operations fail.
-                Defaults to the value of `self.async_settings.raise_on_bulk_error`.
+                Defaults to the value of `self.sync_settings.raise_on_bulk_error`.
 
         Returns:
             tuple[int, list[dict[str, Any]]]: A tuple containing:
@@ -1841,7 +1950,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         # Log the bulk insert attempt
         logger.info(
-            f"Performing bulk insert for collection {collection_id} with refresh={refresh}"
+            f"Performing bulk insert for collection {collection_id} with refresh={refresh}, op_type={op_type}"
         )
 
         # Handle empty processed_items
@@ -1849,11 +1958,15 @@ class DatabaseLogic(BaseDatabaseLogic):
             logger.warning(f"No items to insert for collection {collection_id}")
             return 0, []
 
-        # Perform the bulk insert
-        raise_on_error = self.sync_settings.raise_on_bulk_error
+        # When op_type="create", force raise_on_error=False so that 409 conflicts
+        # are returned in the errors list instead of raising BulkIndexError.
+        if op_type == "create":
+            raise_on_error = False
+        else:
+            raise_on_error = self.sync_settings.raise_on_bulk_error
         success, errors = helpers.bulk(
             self.sync_client,
-            mk_actions(collection_id, processed_items),
+            mk_actions(collection_id, processed_items, op_type=op_type),
             refresh=refresh,
             raise_on_error=raise_on_error,
         )
@@ -1923,6 +2036,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             "sort": formatted_sort,
             "size": limit,
             "query": {"term": {"type": "Catalog"}},
+            "_source": True,  # Ensure all fields including parent_ids are returned
         }
 
         # Handle search_after token
@@ -1930,8 +2044,15 @@ class DatabaseLogic(BaseDatabaseLogic):
         if token:
             try:
                 search_after = token.split("|")
+                # Validate token format: must have correct number of values and be non-empty
                 if len(search_after) != len(formatted_sort):
                     search_after = None
+                else:
+                    # Validate each value is non-empty (check for patterns like "id||date")
+                    for val in search_after:
+                        if not val:
+                            search_after = None
+                            break
             except Exception:
                 search_after = None
 
@@ -2015,3 +2136,311 @@ class DatabaseLogic(BaseDatabaseLogic):
             id=catalog_id,
             refresh=refresh,
         )
+
+    @retry_on_connection_error
+    async def get_catalog_children(
+        self,
+        catalog_id: str,
+        limit: int,
+        token: str | None,
+        request: Any = None,
+        resource_type: str | None = None,
+    ) -> tuple[list[dict[str, Any]], int | None, str | None]:
+        """Get children of a catalog (both sub-catalogs and collections).
+
+        Args:
+            catalog_id (str): The ID of the parent catalog.
+            limit (int): Number of results to return.
+            token (str | None): Pagination token.
+            request (Any): The request object.
+            resource_type (str | None): Type of resource to filter by (e.g. "Collection", "Catalog").
+
+        Returns:
+            Tuple containing list of children, next token, and total count.
+        """
+        # Decode token to search_after
+        search_after = decode_token_to_search_after(token)
+
+        (
+            children,
+            total_hits,
+            next_search_after,
+        ) = await search_children_with_pagination_shared(
+            es_client=self.client,
+            catalog_id=catalog_id,
+            limit=limit,
+            search_after=search_after,
+            resource_type=resource_type,
+        )
+
+        # Encode next_search_after to token
+        next_token = encode_search_after_to_token(next_search_after)
+
+        return children, total_hits if total_hits is not None else 0, next_token
+
+    @retry_on_connection_error
+    async def get_catalog_collections(
+        self,
+        catalog_id: str,
+        limit: int,
+        token: str | None,
+        request: Any = None,
+    ) -> tuple[list[dict[str, Any]], int | None, str | None]:
+        """Get collections within a catalog.
+
+        Args:
+            catalog_id (str): The ID of the parent catalog.
+            limit (int): Number of results to return.
+            token (str | None): Pagination token.
+            request (Any): The request object.
+
+        Returns:
+            Tuple containing list of collections, next token, and total count.
+        """
+        # Decode token to search_after
+        search_after = decode_token_to_search_after(token)
+
+        (
+            collections,
+            total_hits,
+            next_search_after,
+        ) = await search_collections_by_parent_id_with_pagination_shared(
+            es_client=self.client,
+            catalog_id=catalog_id,
+            limit=limit,
+            search_after=search_after,
+        )
+
+        # Encode next_search_after to token
+        next_token = encode_search_after_to_token(next_search_after)
+
+        return collections, total_hits if total_hits is not None else 0, next_token
+
+    @retry_on_connection_error
+    async def get_catalog_catalogs(
+        self,
+        catalog_id: str,
+        limit: int,
+        token: str | None,
+        request: Any = None,
+    ) -> tuple[list[dict[str, Any]], int | None, str | None]:
+        """Get sub-catalogs within a catalog.
+
+        Args:
+            catalog_id (str): The ID of the parent catalog.
+            limit (int): Number of results to return.
+            token (str | None): Pagination token.
+            request (Any): The request object.
+
+        Returns:
+            Tuple containing list of sub-catalogs, next token, and total count.
+        """
+        # Decode token to search_after
+        search_after = decode_token_to_search_after(token)
+
+        (
+            catalogs,
+            total_hits,
+            next_search_after,
+        ) = await search_sub_catalogs_with_pagination_shared(
+            es_client=self.client,
+            catalog_id=catalog_id,
+            limit=limit,
+            search_after=search_after,
+        )
+
+        # Encode next_search_after to token
+        next_token = encode_search_after_to_token(next_search_after)
+
+        return catalogs, total_hits if total_hits is not None else 0, next_token
+
+    @retry_on_connection_error
+    async def create_catalog_catalog(
+        self,
+        catalog_id: str,
+        catalog: Any,
+        request: Any,
+    ) -> Any:
+        """Create a sub-catalog within a catalog.
+
+        Args:
+            catalog_id (str): The ID of the parent catalog.
+            catalog (Any): The catalog object to create.
+            request (Any): The request object.
+
+        Returns:
+            The created catalog.
+
+        Raises:
+            NotFoundError: If the parent catalog does not exist.
+        """
+        # Ensure parent catalog exists
+        await self.find_catalog(catalog_id)
+
+        if "parent_ids" not in catalog:
+            catalog["parent_ids"] = []
+
+        if catalog_id not in catalog["parent_ids"]:
+            catalog["parent_ids"].append(catalog_id)
+
+        await self.create_catalog(catalog, refresh=self.async_settings.database_refresh)
+        return catalog
+
+    @retry_on_connection_error
+    async def create_catalog_collection(
+        self,
+        catalog_id: str,
+        collection: Any,
+        request: Any,
+    ) -> Any:
+        """Create a collection within a catalog.
+
+        Args:
+            catalog_id (str): The ID of the parent catalog.
+            collection (Any): The collection object to create.
+            request (Any): The request object.
+
+        Returns:
+            The created collection.
+
+        Raises:
+            NotFoundError: If the parent catalog does not exist.
+        """
+        # Ensure parent catalog exists
+        await self.find_catalog(catalog_id)
+
+        # Ensure parent_ids field
+        if "parent_ids" not in collection:
+            collection["parent_ids"] = []
+
+        if catalog_id not in collection["parent_ids"]:
+            collection["parent_ids"].append(catalog_id)
+
+        await self.create_collection(
+            collection, refresh=self.async_settings.database_refresh
+        )
+        return collection
+
+    @retry_on_connection_error
+    async def get_catalog_collection(
+        self,
+        catalog_id: str,
+        collection_id: str,
+        request: Any,
+    ) -> Any:
+        """Get a specific collection within a catalog.
+
+        Args:
+            catalog_id (str): The ID of the parent catalog.
+            collection_id (str): The ID of the collection.
+            request (Any): The request object.
+
+        Returns:
+            The collection object.
+
+        Raises:
+            NotFoundError: If the collection or catalog does not exist or are not related.
+        """
+        # Ensure parent catalog exists
+        await self.find_catalog(catalog_id)
+
+        # Get collection
+        collection = await self.find_collection(collection_id)
+
+        # Verify relationship: catalog_id must be in parent_ids
+        parent_ids = collection.get("parent_ids", [])
+        if catalog_id not in parent_ids:
+            raise NotFoundError(
+                f"Collection {collection_id} is not linked to catalog {catalog_id}"
+            )
+
+        return collection
+
+    @retry_on_connection_error
+    async def get_catalog_collection_items(
+        self,
+        catalog_id: str,
+        collection_id: str,
+        request: Any,
+        bbox: list[float] | None = None,
+        datetime: str | None = None,
+        limit: int = 10,
+        sortby: str | None = None,
+        filter_expr: str | None = None,
+        filter_lang: str | None = None,
+        token: str | None = None,
+        query: str | None = None,
+        fields: list[str] | None = None,
+    ) -> Any:
+        """Get items for a collection within a catalog.
+
+        Currently, this just proxies to the standard get_items functionality.
+        The relationship check is performed by `get_catalog_collection`.
+        """
+        # Verify strict hierarchy access if needed
+        await self.get_catalog_collection(catalog_id, collection_id, request)
+
+        # Build a Search object scoped to this collection
+        search = self.make_search()
+        search = self.apply_collections_filter(search, [collection_id])
+
+        if bbox:
+            search = self.apply_bbox_filter(search, bbox)
+
+        datetime_search = None
+        if datetime:
+            search, datetime_search = self.apply_datetime_filter(search, datetime)
+
+        # Sorting for scoped items currently mirrors the global items behavior; the
+        # API layer typically parses sortby, so we leave sort_param as None here.
+        sort_param = None
+        # ...existing code...
+        return await self.execute_search(
+            search=search,
+            limit=limit or 10,
+            token=token,
+            sort=sort_param,
+            collection_ids=[collection_id],
+            datetime_search=datetime_search,
+        )
+
+    @retry_on_connection_error
+    async def get_catalog_collection_item(
+        self,
+        catalog_id: str,
+        collection_id: str,
+        item_id: str,
+        request: Any,
+    ) -> Any:
+        """Get a specific item from a collection within a catalog."""
+        # Check hierarchy
+        await self.get_catalog_collection(catalog_id, collection_id, request)
+
+        return await self.get_one_item(collection_id, item_id)
+
+    @retry_on_connection_error
+    async def update_catalog(
+        self,
+        catalog_id: str,
+        catalog: Any,
+        request: Any,
+    ) -> Any:
+        """Update a catalog."""
+        return await update_catalog_in_index_shared(
+            es_client=self.client,
+            catalog_id=catalog_id,
+            catalog=catalog,
+            refresh=self.async_settings.database_refresh,
+        )
+
+    @retry_on_connection_error
+    async def get_catalog(
+        self,
+        catalog_id: str,
+        request: Any,
+        settings: dict,
+        limit: int = 100,
+    ) -> Any:
+        """Get a specific catalog."""
+        # Typically just find_catalog, but might include extra logic
+        return await self.find_catalog(catalog_id)
