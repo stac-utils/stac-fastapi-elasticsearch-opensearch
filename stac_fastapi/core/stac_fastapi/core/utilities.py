@@ -14,6 +14,9 @@ from stac_fastapi.types.stac import Item
 MAX_LIMIT = 10000
 
 
+logger = logging.getLogger(__name__)
+
+
 def get_bool_env(name: str, default: bool | str = False) -> bool:
     """
     Retrieve a boolean value from an environment variable.
@@ -273,3 +276,48 @@ def get_excluded_from_items(obj: dict, field_path: str) -> None:
             return
 
     current.pop(final, None)
+
+
+async def queue_items_if_enabled(
+    collection_id: str,
+    items: dict | list[dict],
+    item_ids: str | list[str] | None = None,
+) -> str | None:
+    """Queue items to Redis if ENABLE_REDIS_QUEUE is set.
+
+    Handles both single items and bulk items. Returns a status message if queuing
+    was performed, or None if queuing is disabled.
+
+    Args:
+        collection_id: The collection ID to queue items for.
+        items: Single item dict or list of item dicts to queue.
+        item_ids: Optional item ID(s) for logging. If not provided, extracted from items.
+
+    Returns:
+        Status message if items were queued, None if queuing is disabled.
+
+    Raises:
+        Exception: Any exception from the queue manager is propagated.
+    """
+    if not get_bool_env("ENABLE_REDIS_QUEUE", default=False):
+        return None
+
+    from stac_fastapi.core.redis_utils import AsyncRedisQueueManager
+
+    queue_manager = await AsyncRedisQueueManager.create()
+    try:
+        queue_len = await queue_manager.queue_items(collection_id, items)
+
+        # Format logging message based on whether single or bulk items
+        if isinstance(items, list):
+            count = len(items)
+            return f"Successfully queued {count} items for processing."
+        else:
+            item_id = item_ids or items.get("id", "unknown")
+            logger.info(
+                f"Queued item '{item_id}' for collection '{collection_id}'. "
+                f"Queue length: {queue_len}"
+            )
+            return f"Successfully queued item '{item_id}' for processing."
+    finally:
+        await queue_manager.close()

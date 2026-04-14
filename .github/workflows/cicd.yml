@@ -99,10 +99,10 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip wheel pytest-timeout
-          pip install ./stac_fastapi/core[catalogs]
+          pip install ./stac_fastapi/core
           pip install ./stac_fastapi/sfeos_helpers
-          pip install ./stac_fastapi/elasticsearch[dev,server]
-          pip install ./stac_fastapi/opensearch[dev,server]
+          pip install ./stac_fastapi/elasticsearch[catalogs,dev,server,validator]
+          pip install ./stac_fastapi/opensearch[catalogs,dev,server,validator]
 
       - name: Run test suite
         run: |
