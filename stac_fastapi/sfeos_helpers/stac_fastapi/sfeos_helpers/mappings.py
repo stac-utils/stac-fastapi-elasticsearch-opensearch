@@ -32,6 +32,7 @@ import os
 from typing import Any, Literal, Protocol
 
 from stac_fastapi.core.utilities import get_bool_env
+from stac_fastapi.sfeos_helpers.models.dynamic_template import DynamicTemplatesModel
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,30 @@ def merge_mappings(base: dict[str, Any], custom: dict[str, Any]) -> None:
             merge_mappings(base[key], value)
         else:
             base[key] = value
+
+
+def merge_dynamic_templates(base: list[dict], custom: list[dict]) -> list[dict]:
+    """Merge custom dynamic templates into base by matching template names.
+
+    Custom dynamic templates will overwrite base dynamic templates if keys collide.
+
+    Args:
+        base: The base dynamic templates list to merge into.
+        custom: The custom dynamic templates list to merge from.
+
+    Returns:
+        The merged dynamic templates list.
+    """
+    try:
+        DynamicTemplatesModel(templates=custom)
+        merged = {list(d.keys())[0]: list(d.values())[0] for d in base}
+        for d in custom:
+            key = list(d.keys())[0]
+            merged[key] = d[key]
+        return [{k: v} for k, v in merged.items()]
+    except Exception as e:
+        logger.error(f"Error occurred during custom dynamic template validation: {e}")
+        return base  # Return base templates if validation fails
 
 
 def parse_dynamic_mapping_config(
@@ -107,15 +132,18 @@ def apply_custom_mappings(
         logger.error(f"Failed to merge STAC_FASTAPI_ES_CUSTOM_MAPPINGS: {e}")
 
 
-def get_items_mappings(
-    dynamic_mapping: str | None = None, custom_mappings: str | None = None
+def get_mappings(
+    is_items: bool = True,
+    dynamic_mapping: str | None = None,
+    custom_mappings: str | None = None,
 ) -> dict[str, Any]:
-    """Get the ES_ITEMS_MAPPINGS with optional dynamic mapping and custom mappings applied.
+    """Get MAPPINGS for either items or collections with optional dynamic mapping and custom mappings applied.
 
     This function creates a fresh copy of the base mappings and applies the
     specified configuration. Useful for testing or programmatic configuration.
 
     Args:
+        is_items: Whether to return item mappings or collection mappings.
         dynamic_mapping: Override for STAC_FASTAPI_ES_DYNAMIC_MAPPING.
             If None, reads from environment variable.
         custom_mappings: Override for STAC_FASTAPI_ES_CUSTOM_MAPPINGS.
@@ -124,35 +152,112 @@ def get_items_mappings(
     Returns:
         A new dictionary containing the configured mappings.
     """
-    mappings = copy.deepcopy(_BASE_ITEMS_MAPPINGS)
+    # Assign the appropriate base mappings and environment variable names based on whether we're configuring items or collections
+    _BASE_MAPPINGS = _BASE_ITEMS_MAPPINGS if is_items else _BASE_ES_COLLECTIONS_MAPPINGS
+    CUSTOM_MAPPINGS_ = (
+        "STAC_FASTAPI_ES_CUSTOM_MAPPINGS"
+        if is_items
+        else "STAC_FASTAPI_ES_COLLECTIONS_CUSTOM_MAPPINGS"
+    )
+    CUSTOM_MAPPINGS_FILE = (
+        "STAC_FASTAPI_ES_MAPPINGS_FILE"
+        if is_items
+        else "STAC_FASTAPI_ES_COLLECTIONS_MAPPINGS_FILE"
+    )
+    DYNAMIC_MAPPING = (
+        "STAC_FASTAPI_ES_DYNAMIC_MAPPING"
+        if is_items
+        else "STAC_FASTAPI_ES_COLLECTIONS_DYNAMIC_MAPPING"
+    )
+
+    mappings = copy.deepcopy(_BASE_MAPPINGS)
 
     # Apply dynamic mapping configuration
     dynamic_config = (
         dynamic_mapping
         if dynamic_mapping is not None
-        else os.getenv("STAC_FASTAPI_ES_DYNAMIC_MAPPING", "true")
+        else os.getenv(DYNAMIC_MAPPING, "true")
     )
     mappings["dynamic"] = parse_dynamic_mapping_config(dynamic_config)
 
     # Apply custom mappings
+    custom_config = get_custom_config(
+        CUSTOM_MAPPINGS_, CUSTOM_MAPPINGS_FILE, custom_mappings
+    )
+
+    apply_custom_mappings(mappings, custom_config)
+
+    return mappings
+
+
+def get_custom_config(
+    ENV_VAR_CUSTOM_MAPPINGS: str,
+    ENV_VAR_CUSTOM_MAPPINGS_FILE: str,
+    custom_mappings: str | None = None,
+) -> str | None:
+    """Get custom config from environment variables.
+
+    This function checks for custom mappings configuration in the following order:
+    it checks ENV_VAR_CUSTOM_MAPPINGS, if not found, it checks ENV_VAR_CUSTOM_MAPPINGS_FILE for a file path to read the configuration from.
+
+    Args:
+        ENV_VAR_CUSTOM_MAPPINGS: The environment variable name for custom mappings JSON string.
+        ENV_VAR_CUSTOM_MAPPINGS_FILE: The environment variable name for custom mappings file path.
+        custom_mappings: Optional override for custom mappings JSON string. If provided, this value takes precedence over environment variables.
+
+    Returns: The custom mappings JSON string if found, otherwise None.
+    """
     custom_config = (
         custom_mappings
         if custom_mappings is not None
-        else os.getenv("STAC_FASTAPI_ES_CUSTOM_MAPPINGS")
+        else os.getenv(ENV_VAR_CUSTOM_MAPPINGS)
     )
 
     if custom_config is None:
-        mappings_file = os.getenv("STAC_FASTAPI_ES_MAPPINGS_FILE")
+        mappings_file = os.getenv(ENV_VAR_CUSTOM_MAPPINGS_FILE)
         if mappings_file:
             try:
                 with open(mappings_file, "r") as f:
                     custom_config = f.read()
             except Exception as e:
                 logger.error(
-                    f"Failed to read STAC_FASTAPI_ES_MAPPINGS_FILE at {mappings_file}: {e}"
+                    f"Failed to read {ENV_VAR_CUSTOM_MAPPINGS_FILE} at {mappings_file}: {e}"
                 )
+    return custom_config
 
-    apply_custom_mappings(mappings, custom_config)
+
+def get_dynamic_template(
+    ENV_VAR_CUSTOM_MAPPINGS: str,
+    ENV_VAR_CUSTOM_MAPPINGS_FILE: str,
+    custom_mappings: str | None = None,
+) -> list[dict] | None:
+    """Get dynamic templates with custom configuration applied.
+
+    Args:
+        ENV_VAR_CUSTOM_MAPPINGS: The environment variable name for custom dynamic templates JSON string.
+        ENV_VAR_CUSTOM_MAPPINGS_FILE: The environment variable name for custom dynamic templates file path.
+        custom_mappings: Optional override for custom dynamic templates JSON string. If provided, this value
+
+    Returns: The merged dynamic templates list with custom configuration applied.
+    """
+    mappings = copy.deepcopy(_BASE_ES_MAPPINGS_DYNAMIC_TEMPLATES)
+    custom_config = get_custom_config(
+        ENV_VAR_CUSTOM_MAPPINGS, ENV_VAR_CUSTOM_MAPPINGS_FILE, custom_mappings
+    )
+
+    custom_config_json = []  # type: list[dict[str, Any]]
+    try:
+        custom_config_json = json.loads(custom_config) if custom_config else []
+    except Exception as e:
+        logger.error(f"Failed to load {ENV_VAR_CUSTOM_MAPPINGS} as json list: {e}")
+
+    if not isinstance(custom_config_json, list):
+        logger.error(
+            f"Custom dynamic templates configuration from {ENV_VAR_CUSTOM_MAPPINGS} is not a list: {custom_config_json}"
+        )
+        return mappings
+
+    mappings = merge_dynamic_templates(mappings, custom_config_json)
 
     return mappings
 
@@ -203,7 +308,8 @@ ES_ITEMS_SETTINGS = {
     }
 }
 
-ES_MAPPINGS_DYNAMIC_TEMPLATES = [
+# Base dynamic templates to apply
+_BASE_ES_MAPPINGS_DYNAMIC_TEMPLATES = [
     # Common https://github.com/radiantearth/stac-spec/blob/master/item-spec/common-metadata.md
     {
         "descriptions": {
@@ -255,6 +361,10 @@ ES_MAPPINGS_DYNAMIC_TEMPLATES = [
         }
     },
 ]
+# ES_MAPPINGS_DYNAMIC_TEMPLATES with environment-based configuration applied at module load time
+ES_MAPPINGS_DYNAMIC_TEMPLATES = get_dynamic_template(
+    "STAC_FASTAPI_ES_CUSTOM_DYNAMIC_TEMPLATES", "STAC_FASTAPI_ES_DYNAMIC_TEMPLATES_FILE"
+)
 
 # Base items mappings without dynamic configuration applied
 _BASE_ITEMS_MAPPINGS = {
@@ -284,9 +394,9 @@ _BASE_ITEMS_MAPPINGS = {
 }
 
 # ES_ITEMS_MAPPINGS with environment-based configuration applied at module load time
-ES_ITEMS_MAPPINGS = get_items_mappings()
+ES_ITEMS_MAPPINGS = get_mappings(is_items=True)
 
-ES_COLLECTIONS_MAPPINGS = {
+_BASE_ES_COLLECTIONS_MAPPINGS = {
     "numeric_detection": False,
     "dynamic_templates": ES_MAPPINGS_DYNAMIC_TEMPLATES,
     "properties": {
@@ -304,6 +414,9 @@ ES_COLLECTIONS_MAPPINGS = {
         "temporal": {"type": "alias", "path": "extent.temporal.interval"},
     },
 }
+
+# ES_COLLECTIONS_MAPPINGS with environment-based configuration applied at module load time
+ES_COLLECTIONS_MAPPINGS = get_mappings(is_items=False)
 
 # Shared aggregation mapping for both Elasticsearch and OpenSearch
 AGGREGATION_MAPPING: dict[str, dict[str, Any]] = {

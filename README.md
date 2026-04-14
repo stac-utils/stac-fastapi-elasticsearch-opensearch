@@ -768,9 +768,14 @@ You can customize additional settings in your `.env` file:
 | `PROPERTIES_END_DATETIME_FIELD` | Specifies the field used for the upper value of a datetime range for the items in the backend database. | `properties.end_datetime` | Optional |
 | `COLLECTION_FIELD` | Specifies the field used for the collection an item belongs to in the backend database | `collection` | Optional |
 | `GEOMETRY_FIELD` | Specifies the field containing the geometry of the items in the backend database | `geometry` | Optional |
-| `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` | JSON string of custom Elasticsearch/OpenSearch property mappings to merge with defaults. See [Custom Index Mappings](#custom-index-mappings). | `None` | Optional |
-| `STAC_FASTAPI_ES_MAPPINGS_FILE` | Path to a JSON file containing custom Elasticsearch/OpenSearch property mappings to merge with defaults. See [Custom Index Mappings](#custom-index-mappings). | `None` | Optional |
+| `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` | JSON string of custom Elasticsearch/OpenSearch property mappings for items to merge with defaults. See [Custom Index Mappings](#custom-index-mappings). | `None` | Optional |
+| `STAC_FASTAPI_ES_MAPPINGS_FILE` | Path to a JSON file containing custom Elasticsearch/OpenSearch property mappings for items to merge with defaults. See [Custom Index Mappings](#custom-index-mappings). | `None` | Optional |
+| `STAC_FASTAPI_ES_COLLECTIONS_CUSTOM_MAPPINGS` | JSON string of custom Elasticsearch/OpenSearch property mappings for collections to merge with defaults. See [Custom Index Mappings](#custom-index-mappings). | `None` | Optional |
+| `STAC_FASTAPI_ES_COLLECTIONS_MAPPINGS_FILE` | Path to a JSON file containing custom Elasticsearch/OpenSearch property mappings for collections to merge with defaults. See [Custom Index Mappings](#custom-index-mappings). | `None` | Optional |
+| `STAC_FASTAPI_ES_CUSTOM_DYNAMIC_TEMPLATES` | JSON string of custom Elasticsearch/OpenSearch dynamic template to merge with defaults. See [Custom Index Mappings](#custom-index-mappings). | `None` | Optional |
+| `STAC_FASTAPI_ES_DYNAMIC_TEMPLATES_FILE` | Path to a JSON file containing custom Elasticsearch/OpenSearch dynamic template to merge with defaults. See [Custom Index Mappings](#custom-index-mappings). | `None` | Optional |
 | `STAC_FASTAPI_ES_DYNAMIC_MAPPING` | Controls dynamic mapping behavior for item indices. Values: `true` (default), `false`, or `strict`. See [Custom Index Mappings](#custom-index-mappings). | `true` | Optional |
+| `STAC_FASTAPI_ES_COLLECTIONS_DYNAMIC_MAPPING` | Controls dynamic mapping behavior for collection indices. Values: `true` (default), `false`, or `strict`. See [Custom Index Mappings](#custom-index-mappings). | `true` | Optional |
 | `STAC_FASTAPI_ES_COERCE_GLOBAL` | Sets the index-level coerce setting. When true (default), coercion is allowed (e.g., "10" → 10, 5.0 → 5). When false, coercion is disabled, documents with type mismatches are rejected unless overridden at the field level. | `true` | Optional |
 
 ### 7. Filtering, Exclusions & Queryables
@@ -1293,18 +1298,23 @@ SFEOS provides environment variables to customize Elasticsearch/OpenSearch index
 
 ### Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` | JSON string of property mappings to merge with defaults | None |
-| `STAC_FASTAPI_ES_MAPPINGS_FILE` | Path to a JSON file containing property mappings to merge with defaults | None |
-| `STAC_FASTAPI_ES_DYNAMIC_MAPPING` | Controls dynamic mapping: `true`, `false`, or `strict` | `true` |
+| Variable | Index | Description | Default |
+|----------|------|-------------|---------|
+| `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` | items | JSON string of property mappings to merge with defaults | None |
+| `STAC_FASTAPI_ES_MAPPINGS_FILE` | items | Path to a JSON file containing property mappings to merge with defaults | None |
+| `STAC_FASTAPI_ES_COLLECTIONS_CUSTOM_MAPPINGS` | collections| JSON string of property mappings to merge with defaults | None |
+| `STAC_FASTAPI_ES_COLLECTIONS_MAPPINGS_FILE` | collections| Path to a JSON file containing property mappings to merge with defaults | None |
+| `STAC_FASTAPI_ES_CUSTOM_DYNAMIC_TEMPLATES` | dynamic template| JSON string of templates to merge with defaults | None |
+| `STAC_FASTAPI_ES_DYNAMIC_TEMPLATES_FILE` | dynamic template| Path to a JSON file containing templates to merge with defaults | None |
+| `STAC_FASTAPI_ES_DYNAMIC_MAPPING` | dynamic mapping | Controls dynamic mapping: `true`, `false`, or `strict` | `true` |
+| `STAC_FASTAPI_ES_COLLECTIONS_DYNAMIC_MAPPING ` | dynamic mapping | Controls dynamic mapping: `true`, `false`, or `strict` | `true` |
 
 ### Custom Mappings
 
 You can customize the Elasticsearch/OpenSearch mappings by providing a JSON configuration. This can be done via:
 
-1. `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` environment variable (takes precedence)
-2. `STAC_FASTAPI_ES_MAPPINGS_FILE` environment variable (file path)
+1. `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` | `STAC_FASTAPI_ES_COLLECTIONS_CUSTOM_MAPPINGS`|`STAC_FASTAPI_ES_CUSTOM_DYNAMIC_TEMPLATES` environment variable (takes precedence)
+2. `STAC_FASTAPI_ES_MAPPINGS_FILE`| `STAC_FASTAPI_ES_COLLECTIONS_MAPPINGS_FILE`| `STAC_FASTAPI_ES_DYNAMIC_TEMPLATES_FILE` environment variable (file path)
 
 The configuration should have the same structure as the default ES mappings. The custom mappings are **recursively merged** with the defaults at the root level.
 
@@ -1399,6 +1409,20 @@ export STAC_FASTAPI_ES_CUSTOM_MAPPINGS='{
 }'
 ```
 
+**Example - Adding dynamic template:**
+
+```bash
+export STAC_FASTAPI_ES_CUSTOM_DYNAMIC_TEMPLATES='[{
+	"titles": {
+		"match_mapping_type": "string",
+		"match": "title",
+		"mapping": {"type": "text", "fields": {
+				"keyword": {"type": "keyword"}}
+		}
+	}
+}]'
+```
+
 **Example - Using a mappings file (recommended for complex configurations):**
 
 Instead of passing large JSON blobs via environment variables, you can use a file:
@@ -1425,6 +1449,7 @@ EOF
 # Reference the file
 export STAC_FASTAPI_ES_MAPPINGS_FILE=/path/to/custom-mappings.json
 ```
+A similar approach can be taken for `STAC_FASTAPI_ES_COLLECTIONS_MAPPINGS_FILE` and  `STAC_FASTAPI_ES_DYNAMIC_TEMPLATES_FILE`.
 
 In Docker Compose, you can mount the file:
 
@@ -1433,8 +1458,13 @@ services:
   app-elasticsearch:
     volumes:
       - ./custom-mappings.json:/app/mappings.json:ro
+      - ./custom-collections-mappings.json:/app/collections-mappings.json:ro
+      - ./custom-dynamic-templates.json:/app/dynamic-templates.json:ro
     environment:
       - STAC_FASTAPI_ES_MAPPINGS_FILE=/app/mappings.json
+      - STAC_FASTAPI_ES_COLLECTIONS_MAPPINGS_FILE=/app/collections-mappings.json
+      - STAC_FASTAPI_ES_DYNAMIC_TEMPLATES_FILE=/app/dynamic-templates.json
+
 ```
 
 In Kubernetes, use a ConfigMap:

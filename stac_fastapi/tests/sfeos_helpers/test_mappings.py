@@ -10,7 +10,8 @@ import pytest
 
 from stac_fastapi.sfeos_helpers.mappings import (
     apply_custom_mappings,
-    get_items_mappings,
+    get_mappings,
+    merge_dynamic_templates,
     merge_mappings,
     parse_dynamic_mapping_config,
 )
@@ -66,6 +67,80 @@ class TestMergeMappings:
         """Test that values are replaced when types don't match for merging."""
         merge_mappings(base, custom)
         assert base == expected
+
+
+class TestMergeDynamicTemplates:
+    """Tests for the merge_dynamic_templates function."""
+
+    def test_merge_dynamic_template_by_name(self):
+        """Test merge base and custom dynamic templates by matching template names."""
+        base = [
+            {
+                "descriptions": {
+                    "match_mapping_type": "string",
+                    "match": "description",
+                    "mapping": {"type": "text"},
+                }
+            },
+            {
+                "titles": {
+                    "match_mapping_type": "string",
+                    "match": "title",
+                    "mapping": {"type": "text"},
+                }
+            },
+        ]
+        custom = [
+            {
+                "titles": {
+                    "match_mapping_type": "string",
+                    "match": "title",
+                    "mapping": {
+                        "type": "text",
+                        "fields": {"keyword": {"type": "keyword"}},
+                    },
+                }
+            }
+        ]
+        mappings = merge_dynamic_templates(base, custom)
+
+        # Existing templates preserved
+        assert mappings[0] == base[0]
+        # New template added
+        assert mappings[1] == custom[0]
+
+    def test_merge_dynamic_add_templates(self):
+        """Test add custom dynamic templates with base dynamic templates when template with new names are found."""
+        base = [{"descriptions": {"match": "description", "mapping": {"type": "text"}}}]
+        custom = [{"titles": {"match": "title", "mapping": {"type": "text"}}}]
+        mappings = merge_dynamic_templates(base, custom)
+
+        # New value combination of base and custom templates
+        assert mappings == [base[0], custom[0]]
+
+    @pytest.mark.parametrize(
+        "base,custom",
+        [
+            # Custom does not have "mapping" field
+            (
+                [{"titles": {"match": "title", "mapping": {"type": "text"}}}],
+                [{"titles": {"match": "title"}}],
+            ),
+            # Custom does not have one of the required fields for dynamic template
+            (
+                [{"titles": {"match": "title", "mapping": {"type": "text"}}}],
+                [{"Sub-titles": {"mapping": {"type": "keyword"}}}],
+            ),
+        ],
+        ids=[
+            "avoid_adding_missing_mapping_field",
+            "avoid_adding_missing_required_fields",
+        ],
+    )
+    def test_validation_before_adding(self, base, custom):
+        """Test that new templates are not added if they don't meet validation criteria."""
+        mappings = merge_dynamic_templates(base, custom)
+        assert mappings == base
 
 
 class TestParseDynamicMappingConfig:
@@ -172,7 +247,7 @@ class TestApplyCustomMappings:
 
 
 class TestGetItemsMappings:
-    """Tests for the get_items_mappings function."""
+    """Tests for the get_mappings function."""
 
     @pytest.mark.parametrize(
         "dynamic_mapping,expected",
@@ -185,7 +260,7 @@ class TestGetItemsMappings:
     )
     def test_dynamic_mapping_values(self, dynamic_mapping, expected):
         """Test dynamic mapping configuration with various values."""
-        mappings = get_items_mappings(dynamic_mapping=dynamic_mapping)
+        mappings = get_mappings(dynamic_mapping=dynamic_mapping)
         assert mappings["dynamic"] == expected
 
     def test_custom_mappings_merged_preserving_defaults(self):
@@ -197,7 +272,7 @@ class TestGetItemsMappings:
                 }
             }
         )
-        mappings = get_items_mappings(custom_mappings=custom)
+        mappings = get_mappings(custom_mappings=custom)
 
         # Custom field added
         assert mappings["properties"]["properties"]["properties"]["custom:field"] == {
@@ -219,21 +294,21 @@ class TestGetItemsMappings:
                 }
             }
         )
-        mappings = get_items_mappings(custom_mappings=custom)
+        mappings = get_mappings(custom_mappings=custom)
         assert mappings["properties"]["properties"]["properties"]["datetime"] == {
             "type": "date"
         }
 
     def test_returns_independent_copies(self):
         """Test that each call returns a new independent copy of mappings."""
-        mappings1 = get_items_mappings()
-        mappings2 = get_items_mappings()
+        mappings1 = get_mappings()
+        mappings2 = get_mappings()
         mappings1["properties"]["test"] = "value"
         assert "test" not in mappings2["properties"]
 
     def test_has_required_base_structure(self):
         """Test that returned mappings have required base structure."""
-        mappings = get_items_mappings()
+        mappings = get_mappings()
         assert "numeric_detection" in mappings
         assert "dynamic_templates" in mappings
         assert all(
@@ -279,7 +354,7 @@ class TestSTACExtensionUseCases:
     )
     def test_add_extension_fields(self, extension_name, custom_fields):
         """Test adding STAC extension fields via custom mappings."""
-        mappings = get_items_mappings(custom_mappings=json.dumps(custom_fields))
+        mappings = get_mappings(custom_mappings=json.dumps(custom_fields))
 
         props = mappings["properties"]["properties"]["properties"]
         for field_name, field_config in custom_fields["properties"]["properties"][
@@ -301,7 +376,7 @@ class TestSTACExtensionUseCases:
                 }
             }
         }
-        mappings = get_items_mappings(
+        mappings = get_mappings(
             dynamic_mapping="false", custom_mappings=json.dumps(query_fields)
         )
 
