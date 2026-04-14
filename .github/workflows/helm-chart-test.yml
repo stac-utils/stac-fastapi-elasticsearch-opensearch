@@ -82,7 +82,7 @@ jobs:
 
       - name: Upload test reports
         if: always()
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: test-report-${{ matrix.backend }}-k8s-${{ matrix.kubernetes-version }}
           path: test-report-*.json
@@ -104,7 +104,7 @@ jobs:
         uses: ./.github/actions/setup-helm-repos
 
       - name: Run Checkov security scan
-        uses: bridgecrewio/checkov-action@002cd2e8cc0fe0535e6f364509e091c1a9870efa # master
+        uses: bridgecrewio/checkov-action@de2bfaecd21d58ef232e0d2a3391c33c32c460d7 # master
         with:
           directory: helm-chart/
           framework: kubernetes
