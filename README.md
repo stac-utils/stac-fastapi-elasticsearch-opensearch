@@ -1,9 +1,7 @@
 <!-- markdownlint-disable MD033 MD041 -->
 
 
-<p align="left">
   <img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/sfeos.png" width=1000>
-</p>
 
 **Jump to:** [Project Introduction](#project-introduction---what-is-sfeos) | [Quick Start](#quick-start) | [Table of Contents](#table-of-contents) | [SFEOS-tools CLI](#sfeos-tools-cli) |
 
@@ -19,12 +17,10 @@
 
 The following organizations have contributed time and/or funding to support the development of this project:
 
-<p align="left">
-  <a href="https://healy-hyperspatial.github.io/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/hh-logo-blue.png" alt="Healy Hyperspatial" height="100" hspace="20"></a>
-  <a href="https://atomicmaps.io/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/am-logo-black.png" alt="Atomic Maps" height="100" hspace="20"></a>
-  <a href="https://remotesensing.vito.be/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/VITO.png" alt="VITO Remote Sensing" height="100" hspace="20"></a>
-  <a href="https://cloudferro.com/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/cloudferro-logo.png" alt="CloudFerro" height="105" hspace="20"></a>
-</p>
+<a href="https://healy-hyperspatial.github.io/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/hh-logo-blue.png" alt="Healy Hyperspatial" height="100" hspace="20"></a>
+<a href="https://atomicmaps.io/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/am-logo-black.png" alt="Atomic Maps" height="100" hspace="20"></a>
+<a href="https://remotesensing.vito.be/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/VITO.png" alt="VITO Remote Sensing" height="100" hspace="20"></a>
+<a href="https://cloudferro.com/"><img src="https://raw.githubusercontent.com/stac-utils/stac-fastapi-elasticsearch-opensearch/refs/heads/main/assets/cloudferro-logo.png" alt="CloudFerro" height="105" hspace="20"></a>
 
 ## Latest News
 
@@ -103,6 +99,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
   - [Examples](#examples)
   - [Performance](#performance)
     - [Direct Response Mode](#direct-response-mode)
+    - [CQL2 JSON Search with AST-based Parsing](#cql2-json-search-with-ast-based-parsing)
   - [Quick Start](#quick-start)
     - [Installation](#installation)
     - [Running Locally](#running-locally)
@@ -110,7 +107,10 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
       - [Using Docker Compose](#using-docker-compose)
   - [Configuration Reference](#configuration-reference)
   - [Free-Text Search (`q` parameter)](#free-text-search-q-parameter)
-  - [Excluding Fields from Queryables](#excluding-fields-from-queryables)
+  - [Queryables Endpoint](#queryables-endpoint)
+    - [Root Queryables Configuration](#root-queryables-configuration)
+    - [Excluding Fields from Queryables](#excluding-fields-from-queryables)
+    - [Queryables Validation](#queryables-validation)
   - [Datetime-Based Index Management](#datetime-based-index-management)
     - [Overview](#overview)
     - [When to Use](#when-to-use)
@@ -591,6 +591,30 @@ These examples provide practical reference implementations for various deploymen
 - **Default setting**: `false` for safety.
 - **More information**: See [issue #347](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/347) for background and implementation details.
 
+### CQL2 JSON Search with AST-based Parsing
+
+SFEOS now uses an Abstract Syntax Tree (AST) in CQL2-JSON search queries for efficient query parsing and datetime extraction, enabling the selection and management of the appropriate searchable indexes.
+
+#### AST-based Query Processing
+
+The CQL2 implementation uses an Abstract Syntax Tree (AST) structure that replaces the previous dictionary-based processing. This enables:
+
+1. **Structured Query Representation**: Queries are parsed into a tree structure with different node types
+2. **Efficient Parameter Access**: Easy traversal and extraction of query parameters
+3. **Optimized Index Selection**: Selection of appropriate fields for selection and management of indexes
+
+#### AST Node Types
+
+The AST supports various node types representing different query operations:
+
+- **Logical Nodes**: `AND`, `OR`, `NOT` operators for combining conditions
+- **Comparison Nodes**: `=`, `<>`, `<`, `<=`, `>`, `>=`, `isNull` operations
+- **Advanced Comparison Nodes**: `LIKE`, `BETWEEN`, `IN` operations
+- **Spatial Nodes**: `s_intersects`, `s_contains`, `s_within`, `s_disjoint` for geospatial queries
+- **Datetime Nodes**: Special handling for datetime range and exact value queries
+
+The AST-based approach enables efficient extraction of datetime parameters (`datetime`, `start_datetime`, `end_datetime`) from complex queries.
+
 ## Quick Start
 
 This section helps you get up and running with stac-fastapi-elasticsearch-opensearch quickly.
@@ -636,20 +660,33 @@ There are two main ways to run the API locally:
 
 - **Prerequisites**: Ensure [Docker Compose](https://docs.docker.com/compose/install/) or [Podman Compose](https://podman-desktop.io/docs/compose) is installed on your machine.
 
-- **Start the API**:
-  ```shell
-  docker compose up elasticsearch app-elasticsearch
-  ```
+**1. Quick Deployment (Recommended)**
+To quickly run the application using optimized, pre-built images from the GitHub Container Registry (GHCR), use the dedicated deployment compose files:
 
-- **Configuration**: By default, Docker Compose uses Elasticsearch 8.x and OpenSearch 3.5.0. To use different versions, create a `.env` file:
+```shell
+# For Elasticsearch backend
+docker compose -f compose.es.deploy.yml up
+
+# For OpenSearch backend
+docker compose -f compose.os.deploy.yml up
+```
+
+**2. Local Development**
+If you are contributing to the project and want to build the images from your local source code with live-reloading enabled, use the default `compose.yml` file:
+
+```shell
+# For Elasticsearch backend
+docker compose up elasticsearch app-elasticsearch
+
+# For OpenSearch backend
+docker compose up opensearch app-opensearch
+```
+- **Configuration**: By default, Docker Compose uses Elasticsearch 9.x and OpenSearch 3.5.0. To use different versions, create a `.env` file:
   ```shell
-  ELASTICSEARCH_VERSION=8.11.0
+  ELASTICSEARCH_VERSION=9.3.2
   OPENSEARCH_VERSION=3.5.0
   ENABLE_DIRECT_RESPONSE=false
   ```
-
-- **Compatibility**: The most recent Elasticsearch 7.x versions should also work. See the [opensearch-py docs](https://github.com/opensearch-project/opensearch-py/blob/main/COMPATIBILITY.md) for compatibility information.
-
 
 
 ## Configuration Reference
@@ -678,12 +715,13 @@ You can customize additional settings in your `.env` file:
 | `ES_API_KEY` | API Key for external Elasticsearch/OpenSearch. | N/A | Optional |
 | `ES_TIMEOUT` | Client timeout for Elasticsearch/OpenSearch. | DB client default | Optional |
 | `BACKEND` | Tests-related variable | `elasticsearch` or `opensearch` based on the backend | Optional |
-| `ELASTICSEARCH_VERSION` | Version of Elasticsearch to use. | `8.11.0` | Optional |
+| `ELASTICSEARCH_VERSION` | Version of Elasticsearch to use. | `9.3.2` | Optional |
 | `OPENSEARCH_VERSION` | OpenSearch version | `3.5.0` | Optional |
 | `RETRY_MAX_ATTEMPTS_CONNECTION_ERROR` | Specifies the maximum number of retry attempts for connection errors (ConnectionError, ConnectionTimeout) before giving up. | `5` | Optional |
 | `RETRY_MAX_ATTEMPTS_NOT_FOUND_ERROR` | Specifies the maximum number of retry attempts for `IndexNotFoundException` error before giving up. This is particularly useful for datetime-based index searches where indices may need to be refreshed. | `3` | Optional |
 | `RETRY_WAIT_SECONDS` | Specifies the number of seconds to wait between retry attempts. | `0.5` | Optional |
 | `RETRY_RERAISE` | Specifies whether the original exception should be re-raised after all retry attempts are exhausted. | `true` | Optional |
+| `ES_MAX_URL_LENGTH` | Maximum URL length for Elasticsearch/OpenSearch requests. When the combined length of index names in a query exceeds this limit (minus a 300-character buffer), the API falls back to querying all item indices with a collection filter in the request body. This value should match the `http.max_initial_line_length` setting in your Elasticsearch/OpenSearch server configuration. | `4096` | Optional |
 
 ### 3. API Metadata
 
@@ -730,9 +768,15 @@ You can customize additional settings in your `.env` file:
 | `PROPERTIES_END_DATETIME_FIELD` | Specifies the field used for the upper value of a datetime range for the items in the backend database. | `properties.end_datetime` | Optional |
 | `COLLECTION_FIELD` | Specifies the field used for the collection an item belongs to in the backend database | `collection` | Optional |
 | `GEOMETRY_FIELD` | Specifies the field containing the geometry of the items in the backend database | `geometry` | Optional |
-| `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` | JSON string of custom Elasticsearch/OpenSearch property mappings to merge with defaults. See [Custom Index Mappings](#custom-index-mappings). | `None` | Optional |
-| `STAC_FASTAPI_ES_MAPPINGS_FILE` | Path to a JSON file containing custom Elasticsearch/OpenSearch property mappings to merge with defaults. See [Custom Index Mappings](#custom-index-mappings). | `None` | Optional |
+| `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` | JSON string of custom Elasticsearch/OpenSearch property mappings for items to merge with defaults. See [Custom Index Mappings](#custom-index-mappings). | `None` | Optional |
+| `STAC_FASTAPI_ES_MAPPINGS_FILE` | Path to a JSON file containing custom Elasticsearch/OpenSearch property mappings for items to merge with defaults. See [Custom Index Mappings](#custom-index-mappings). | `None` | Optional |
+| `STAC_FASTAPI_ES_COLLECTIONS_CUSTOM_MAPPINGS` | JSON string of custom Elasticsearch/OpenSearch property mappings for collections to merge with defaults. See [Custom Index Mappings](#custom-index-mappings). | `None` | Optional |
+| `STAC_FASTAPI_ES_COLLECTIONS_MAPPINGS_FILE` | Path to a JSON file containing custom Elasticsearch/OpenSearch property mappings for collections to merge with defaults. See [Custom Index Mappings](#custom-index-mappings). | `None` | Optional |
+| `STAC_FASTAPI_ES_CUSTOM_DYNAMIC_TEMPLATES` | JSON string of custom Elasticsearch/OpenSearch dynamic template to merge with defaults. See [Custom Index Mappings](#custom-index-mappings). | `None` | Optional |
+| `STAC_FASTAPI_ES_DYNAMIC_TEMPLATES_FILE` | Path to a JSON file containing custom Elasticsearch/OpenSearch dynamic template to merge with defaults. See [Custom Index Mappings](#custom-index-mappings). | `None` | Optional |
 | `STAC_FASTAPI_ES_DYNAMIC_MAPPING` | Controls dynamic mapping behavior for item indices. Values: `true` (default), `false`, or `strict`. See [Custom Index Mappings](#custom-index-mappings). | `true` | Optional |
+| `STAC_FASTAPI_ES_COLLECTIONS_DYNAMIC_MAPPING` | Controls dynamic mapping behavior for collection indices. Values: `true` (default), `false`, or `strict`. See [Custom Index Mappings](#custom-index-mappings). | `true` | Optional |
+| `STAC_FASTAPI_ES_COERCE_GLOBAL` | Sets the index-level coerce setting. When true (default), coercion is allowed (e.g., "10" → 10, 5.0 → 5). When false, coercion is disabled, documents with type mismatches are rejected unless overridden at the field level. | `true` | Optional |
 
 ### 7. Filtering, Exclusions & Queryables
 
@@ -740,6 +784,8 @@ You can customize additional settings in your `.env` file:
 |----------|-------------|---------|----------|
 | `VALIDATE_QUERYABLES` | Enable validation of query parameters against the collection's queryables. If set to `true`, the API will reject queries containing fields that are not defined in the collection's queryables. | `false` | Optional |
 | `QUERYABLES_CACHE_TTL` | Time-to-live (in seconds) for the queryables cache. Used when `VALIDATE_QUERYABLES` is enabled. | `1800` | Optional |
+| `ROOT_QUERYABLES_UNION` | If set to `true`, the root `/queryables` endpoint dynamically unions queryables from all available collections. | `false` | Optional |
+| `STAC_QUERYABLES_CONFIG` | Path to a static JSON file serving as an override for the root `/queryables` endpoint. Overrides `ROOT_QUERYABLES_UNION` if provided. | `None` | Optional |
 | `HIDE_ITEM_PATH` | Path to boolean field that marks items as hidden (excluded from search) or not. If null, the item is returned. | `None` | Optional |
 | `EXCLUDED_FROM_QUERYABLES` | Comma-separated list of fully qualified field names to exclude from the queryables endpoint and filtering. Use full paths like `properties.auth:schemes,properties.storage:schemes`. Excluded fields and their nested children will not be exposed in queryables. | None | Optional |
 | `EXCLUDED_FROM_ITEMS` | Specifies fields to exclude from STAC item responses. Supports comma-separated field names and dot notation for nested fields (e.g., `private_data,properties.confidential,assets.internal`). | `None` | Optional |
@@ -866,7 +912,50 @@ These Redis configuration variables to enable proper navigation functionality in
 > [!NOTE]
 > Use either the Sentinel configuration (`REDIS_SENTINEL_HOSTS`, `REDIS_SENTINEL_PORTS`, `REDIS_SENTINEL_MASTER_NAME`) OR the Redis configuration (`REDIS_HOST`, `REDIS_PORT`), but not both.
 
-## Excluding Fields from Queryables
+## Queryables Endpoint
+
+The `/queryables` endpoint in STAC APIs provides a JSON Schema detailing which fields can be used in filter expressions. SFEOS provides extensive configuration options to manage how queryables are generated, exposed, and validated.
+
+By default, the root `/queryables` endpoint returns a baseline schema of universal STAC properties (like `id`, `datetime`, and `geometry`). On individual collections (`/collections/{collection_id}/queryables`), the endpoint dynamically surveys the database mapping of the collection's items and accurately exposes its specific properties.
+
+### Root Queryables Configuration
+
+For the root `/queryables` endpoint (`GET /queryables`), you can enhance the baseline response using the following environment variables:
+
+- **`ROOT_QUERYABLES_UNION` (boolean)**: Set to `true` to dynamically scan all available collections in your catalog and merge their queryables into a single, comprehensive schema. This is highly recommended when front-end clients (like STAC Browser) rely on the root endpoint to offer "global" search filters across all diverse collections.
+  
+- **`STAC_QUERYABLES_CONFIG` (string)**: Provide an absolute or relative path to a local JSON file to serve as a static override for the root queryables endpoint. This allows you complete control over the exposed schema without relying on dynamic database resolution. *Note: If provided, this overrides `ROOT_QUERYABLES_UNION`.*
+
+  **Example `queryables_config.json`:**
+  ```json
+  {
+    "$schema": "https://json-schema.org/draft/2019-09/schema",
+    "$id": "https://example.com/queryables.json",
+    "type": "object",
+    "title": "Custom Root Queryables",
+    "properties": {
+      "id": {
+        "description": "ID",
+        "type": "string"
+      },
+      "collection": {
+        "description": "Collection",
+        "type": "string"
+      },
+      "eo:cloud_cover": {
+        "description": "Cloud Cover",
+        "type": "number",
+        "minimum": 0,
+        "maximum": 100
+      }
+    },
+    "additionalProperties": false
+  }
+  ```
+
+> **Performance Note**: Dynamic union queries are automatically cached for the duration specified by `QUERYABLES_CACHE_TTL` (default is 1800 seconds) to prevent database strain.
+
+### Excluding Fields from Queryables
 
 You can exclude specific fields from being exposed in the queryables endpoint and from filtering by setting the `EXCLUDED_FROM_QUERYABLES` environment variable. This is useful for hiding sensitive or internal fields that should not be queryable by API users.
 
@@ -890,7 +979,7 @@ EXCLUDED_FROM_QUERYABLES="properties.auth:schemes,properties.storage:schemes,pro
 - Excluded fields and their nested children will be skipped during field traversal
 - Both the field itself and any nested properties will be excluded
 
-## Queryables Validation
+### Queryables Validation
 
 SFEOS supports validating query parameters against the collection's defined queryables. This ensures that users only query fields that are explicitly exposed and indexed.
 
@@ -1209,18 +1298,23 @@ SFEOS provides environment variables to customize Elasticsearch/OpenSearch index
 
 ### Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` | JSON string of property mappings to merge with defaults | None |
-| `STAC_FASTAPI_ES_MAPPINGS_FILE` | Path to a JSON file containing property mappings to merge with defaults | None |
-| `STAC_FASTAPI_ES_DYNAMIC_MAPPING` | Controls dynamic mapping: `true`, `false`, or `strict` | `true` |
+| Variable | Index | Description | Default |
+|----------|------|-------------|---------|
+| `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` | items | JSON string of property mappings to merge with defaults | None |
+| `STAC_FASTAPI_ES_MAPPINGS_FILE` | items | Path to a JSON file containing property mappings to merge with defaults | None |
+| `STAC_FASTAPI_ES_COLLECTIONS_CUSTOM_MAPPINGS` | collections| JSON string of property mappings to merge with defaults | None |
+| `STAC_FASTAPI_ES_COLLECTIONS_MAPPINGS_FILE` | collections| Path to a JSON file containing property mappings to merge with defaults | None |
+| `STAC_FASTAPI_ES_CUSTOM_DYNAMIC_TEMPLATES` | dynamic template| JSON string of templates to merge with defaults | None |
+| `STAC_FASTAPI_ES_DYNAMIC_TEMPLATES_FILE` | dynamic template| Path to a JSON file containing templates to merge with defaults | None |
+| `STAC_FASTAPI_ES_DYNAMIC_MAPPING` | dynamic mapping | Controls dynamic mapping: `true`, `false`, or `strict` | `true` |
+| `STAC_FASTAPI_ES_COLLECTIONS_DYNAMIC_MAPPING ` | dynamic mapping | Controls dynamic mapping: `true`, `false`, or `strict` | `true` |
 
 ### Custom Mappings
 
 You can customize the Elasticsearch/OpenSearch mappings by providing a JSON configuration. This can be done via:
 
-1. `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` environment variable (takes precedence)
-2. `STAC_FASTAPI_ES_MAPPINGS_FILE` environment variable (file path)
+1. `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` | `STAC_FASTAPI_ES_COLLECTIONS_CUSTOM_MAPPINGS`|`STAC_FASTAPI_ES_CUSTOM_DYNAMIC_TEMPLATES` environment variable (takes precedence)
+2. `STAC_FASTAPI_ES_MAPPINGS_FILE`| `STAC_FASTAPI_ES_COLLECTIONS_MAPPINGS_FILE`| `STAC_FASTAPI_ES_DYNAMIC_TEMPLATES_FILE` environment variable (file path)
 
 The configuration should have the same structure as the default ES mappings. The custom mappings are **recursively merged** with the defaults at the root level.
 
@@ -1315,6 +1409,20 @@ export STAC_FASTAPI_ES_CUSTOM_MAPPINGS='{
 }'
 ```
 
+**Example - Adding dynamic template:**
+
+```bash
+export STAC_FASTAPI_ES_CUSTOM_DYNAMIC_TEMPLATES='[{
+	"titles": {
+		"match_mapping_type": "string",
+		"match": "title",
+		"mapping": {"type": "text", "fields": {
+				"keyword": {"type": "keyword"}}
+		}
+	}
+}]'
+```
+
 **Example - Using a mappings file (recommended for complex configurations):**
 
 Instead of passing large JSON blobs via environment variables, you can use a file:
@@ -1341,6 +1449,7 @@ EOF
 # Reference the file
 export STAC_FASTAPI_ES_MAPPINGS_FILE=/path/to/custom-mappings.json
 ```
+A similar approach can be taken for `STAC_FASTAPI_ES_COLLECTIONS_MAPPINGS_FILE` and  `STAC_FASTAPI_ES_DYNAMIC_TEMPLATES_FILE`.
 
 In Docker Compose, you can mount the file:
 
@@ -1349,8 +1458,13 @@ services:
   app-elasticsearch:
     volumes:
       - ./custom-mappings.json:/app/mappings.json:ro
+      - ./custom-collections-mappings.json:/app/collections-mappings.json:ro
+      - ./custom-dynamic-templates.json:/app/dynamic-templates.json:ro
     environment:
       - STAC_FASTAPI_ES_MAPPINGS_FILE=/app/mappings.json
+      - STAC_FASTAPI_ES_COLLECTIONS_MAPPINGS_FILE=/app/collections-mappings.json
+      - STAC_FASTAPI_ES_DYNAMIC_TEMPLATES_FILE=/app/dynamic-templates.json
+
 ```
 
 In Kubernetes, use a ConfigMap:
