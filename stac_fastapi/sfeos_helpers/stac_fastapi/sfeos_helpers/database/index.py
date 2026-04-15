@@ -3,12 +3,11 @@
 This module provides functions for creating and managing indices in Elasticsearch/OpenSearch.
 """
 
+import hashlib
 import re
 from datetime import datetime
 from functools import lru_cache
 from typing import Any
-
-from xxhash import xxh32
 
 from stac_fastapi.sfeos_helpers.mappings import (
     _ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE,
@@ -33,7 +32,7 @@ def index_by_collection_id(collection_id: str) -> str:
         str: The index name derived from the collection id.
     """
     cleaned = collection_id.translate(_ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE)
-    hashed = xxh32(collection_id.encode("utf-8")).hexdigest()[:8]
+    hashed = hashlib.blake2s(collection_id.encode("utf-8")).hexdigest()[:8]
     return f"{ITEMS_INDEX_PREFIX}{cleaned.lower()}_{hashed}"
 
 
