@@ -31,7 +31,6 @@ dynamic = ["version"]
 dependencies = [
     "tenacity~=9.1.2",
     "stac-fastapi.core==6.15.0",
-    "xxhash~=3.6.0",
 ]
 
 [project.optional-dependencies]
