@@ -292,6 +292,48 @@ def _merge_and_results(
     return merged_results
 
 
+def _is_or_of_nots(node: CqlNode) -> bool:
+    """Check if node is an OR operation where children are NOT operations."""
+    if isinstance(node, LogicalNode) and node.op == LogicalOp.OR:
+        return all(
+            isinstance(child, LogicalNode) and child.op == LogicalOp.NOT
+            for child in node.children
+        )
+    return False
+
+
+def _negated_datetime_ranges(op: ComparisonOp, value: Any) -> List[str]:
+    """Convert a negated datetime comparison into one or more datetime ranges."""
+    if op in [ComparisonOp.GT, ComparisonOp.GTE]:
+        return [f"../{value}"]
+    if op in [ComparisonOp.LT, ComparisonOp.LTE]:
+        return [f"{value}/.."]
+    if op == ComparisonOp.EQ:
+        return [f"../{value}", f"{value}/.."]
+    return []
+
+
+def _negated_advanced_datetime_ranges(
+    op: AdvancedComparisonOp, value: Any
+) -> List[str]:
+    """Convert a negated advanced datetime comparison into one or more datetime ranges."""
+    if op == AdvancedComparisonOp.BETWEEN:
+        if isinstance(value, (list, tuple)) and len(value) == 2:
+            return [f"../{value[0]}", f"{value[1]}/.."]
+        return []
+
+    if op == AdvancedComparisonOp.IN:
+        if isinstance(value, list) and value:
+            dates = sorted(value)
+            ranges = [f"../{dates[0]}"]
+            ranges.extend(f"{dates[i]}/{dates[i + 1]}" for i in range(len(dates) - 1))
+            ranges.append(f"{dates[-1]}/..")
+            return ranges
+        return []
+
+    return []
+
+
 def extract_collection_datetime(
     node: CqlNode,
     all_collection_ids: Optional[List[str]] = None,
@@ -307,6 +349,70 @@ def extract_collection_datetime(
         - collections: List[str] collection id(s)
         - datetime_range: str or empty string if no datetime constraint
     """
+    # Check for OR of NOTs at the root level (De Morgan's law)
+    if _is_or_of_nots(node):
+        datetime_ranges = []
+        excluded_collections = set()
+
+        for child in node.children:
+            if isinstance(child, LogicalNode) and child.op == LogicalOp.NOT:
+                for grandchild in child.children:
+                    if isinstance(grandchild, ComparisonNode):
+                        if (
+                            grandchild.field == "collection"
+                            and grandchild.op == ComparisonOp.EQ
+                        ):
+                            if isinstance(grandchild.value, list):
+                                excluded_collections.update(grandchild.value)
+                            else:
+                                excluded_collections.add(grandchild.value)
+                        elif grandchild.field in [
+                            "datetime",
+                            "start_datetime",
+                            "end_datetime",
+                        ]:
+                            datetime_ranges.extend(
+                                _negated_datetime_ranges(
+                                    grandchild.op,
+                                    grandchild.value,
+                                )
+                            )
+                    elif isinstance(grandchild, AdvancedComparisonNode):
+                        if (
+                            grandchild.field == "collection"
+                            and grandchild.op == AdvancedComparisonOp.IN
+                        ):
+                            if isinstance(grandchild.value, list):
+                                excluded_collections.update(grandchild.value)
+                        elif grandchild.field in [
+                            "datetime",
+                            "start_datetime",
+                            "end_datetime",
+                        ]:
+                            datetime_ranges.extend(
+                                _negated_advanced_datetime_ranges(
+                                    grandchild.op,
+                                    grandchild.value,
+                                )
+                            )
+
+        if all_collection_ids and (datetime_ranges or excluded_collections):
+            results = []
+
+            included_collections = [
+                c for c in all_collection_ids if c not in excluded_collections
+            ]
+            if excluded_collections and included_collections:
+                results.append((included_collections, ""))
+
+            seen_ranges = set()
+            for datetime_range in datetime_ranges:
+                if datetime_range not in seen_ranges:
+                    seen_ranges.add(datetime_range)
+                    results.append((all_collection_ids, datetime_range))
+
+            if results:
+                return results
 
     def extract_from_node(
         n: CqlNode, current_collections: List[str] = None
@@ -326,7 +432,7 @@ def extract_collection_datetime(
                     all_or_results.extend(child_results)
 
                 for coll, rng in all_or_results:
-                    if rng == "":
+                    if not coll and rng == "":
                         return [([], "")]
 
                 results.extend(all_or_results)
