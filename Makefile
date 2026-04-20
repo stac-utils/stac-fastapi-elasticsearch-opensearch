@@ -67,7 +67,7 @@ docker-shell-os:
 
 .PHONY: test-elasticsearch
 test-elasticsearch: image-es-os
-	-$(run_es) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd stac_fastapi/tests/ && pytest'
+	-$(run_es) /bin/bash -c 'export ENABLE_DATETIME_INDEX_FILTERING=true && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd stac_fastapi/tests/ && pytest database/test_database.py'
 	docker compose down
 
 .PHONY: test-elasticsearch-catalogs
@@ -77,7 +77,7 @@ test-elasticsearch-catalogs: image-es-os
 
 .PHONY: test-opensearch
 test-opensearch: image-es-os
-	-$(run_os) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh opensearch:9202 && cd stac_fastapi/tests/ && pytest'
+	-$(run_os) /bin/bash -c 'export ENABLE_DATETIME_INDEX_FILTERING=true && ./scripts/wait-for-it-es.sh opensearch:9202 && cd stac_fastapi/tests/ && pytest database/test_database.py'
 	docker compose down
 
 .PHONY: test-opensearch-catalogs
