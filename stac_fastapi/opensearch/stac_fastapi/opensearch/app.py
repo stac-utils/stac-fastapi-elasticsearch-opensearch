@@ -90,7 +90,7 @@ session = Session.create_from_settings(settings)
 database_logic = DatabaseLogic()
 
 filter_extension = FilterExtension(
-    client=EsAsyncBaseFiltersClient(database=database_logic)
+    client=EsAsyncBaseFiltersClient(database=database_logic, settings=settings)
 )
 filter_extension.conformance_classes.append(
     FilterConformanceClasses.ADVANCED_COMPARISON_OPERATORS
@@ -261,7 +261,7 @@ items_get_request_model = create_request_model(
 app_config = {
     "title": os.getenv("STAC_FASTAPI_TITLE", "stac-fastapi-opensearch"),
     "description": os.getenv("STAC_FASTAPI_DESCRIPTION", "stac-fastapi-opensearch"),
-    "api_version": os.getenv("STAC_FASTAPI_VERSION", "6.14.1"),
+    "api_version": os.getenv("STAC_FASTAPI_VERSION", "6.16.0"),
     "settings": settings,
     "extensions": extensions,
     "client": CoreClient(
