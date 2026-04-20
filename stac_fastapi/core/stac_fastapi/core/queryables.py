@@ -1,11 +1,16 @@
 """A module for managing queryable attributes."""
 
 import asyncio
+import logging
 import os
 import time
 from typing import Any
 
 from fastapi import HTTPException
+
+from stac_fastapi.core.extensions.filter import DEFAULT_QUERYABLES
+
+logger = logging.getLogger(__name__)
 
 
 class QueryablesCache:
@@ -103,3 +108,44 @@ def get_properties_from_cql2_filter(cql2_filter: dict[str, Any]) -> set[str]:
                     prop_name = prop_name.removeprefix("assets.")
                     props.add(prop_name)
     return props
+
+
+def merge_queryables(collection_queryables: list[dict]) -> dict:
+    """
+    Merge a list of queryable schemas into a single queryable schema.
+
+    Args:
+        collection_queryables: A list of dicts, each representing a collection's queryables schema.
+
+    Returns:
+        A dict representing the merged queryables schema containing baseline STAC properties
+        and all properties from the given schemas. If conflicts occur (same property, different types),
+        the first encountered property definition is kept and a warning is logged.
+    """
+    merged_properties: dict[str, Any] = DEFAULT_QUERYABLES.copy()
+
+    for schema in collection_queryables:
+        props = schema.get("properties", {})
+        for prop_name, prop_def in props.items():
+            if prop_name in merged_properties:
+                existing_def = merged_properties[prop_name]
+                # If they contradict in type or $ref, log warning.
+                if existing_def.get("type") != prop_def.get("type") or existing_def.get(
+                    "$ref"
+                ) != prop_def.get("$ref"):
+                    # Only warn if they fundamentally differ
+                    logger.debug(
+                        f"Conflict detected for queryable '{prop_name}'. "
+                        f"Keeping existing definition: {existing_def}. Ignoring: {prop_def}."
+                    )
+            else:
+                merged_properties[prop_name] = prop_def
+
+    return {
+        "$schema": "https://json-schema.org/draft/2019-09/schema",
+        "$id": "https://example.com/queryables",
+        "type": "object",
+        "title": "Queryables",
+        "properties": merged_properties,
+        "additionalProperties": False,
+    }
