@@ -292,6 +292,116 @@ def _merge_and_results(
     return merged_results
 
 
+def _is_or_of_nots(node: CqlNode) -> bool:
+    """Check if node is an OR operation where children are NOT operations."""
+    if isinstance(node, LogicalNode) and node.op == LogicalOp.OR:
+        return all(
+            isinstance(child, LogicalNode) and child.op == LogicalOp.NOT
+            for child in node.children
+        )
+    return False
+
+
+def _negated_datetime_ranges(op: ComparisonOp, value: Any) -> List[str]:
+    """Convert a negated datetime comparison into datetime range(s)."""
+    if op in [ComparisonOp.GT, ComparisonOp.GTE]:
+        return [f"../{value}"]
+    if op in [ComparisonOp.LT, ComparisonOp.LTE]:
+        return [f"{value}/.."]
+    if op == ComparisonOp.EQ:
+        return [f"../{value}", f"{value}/.."]
+    return []
+
+
+def _negated_advanced_datetime_ranges(
+    op: AdvancedComparisonOp, value: Any
+) -> List[str]:
+    """Convert a negated advanced datetime comparison into datetime range(s)."""
+    if op == AdvancedComparisonOp.BETWEEN:
+        if isinstance(value, (list, tuple)) and len(value) == 2:
+            return [f"../{value[0]}", f"{value[1]}/.."]
+        return []
+
+    if op == AdvancedComparisonOp.IN:
+        if isinstance(value, list) and value:
+            dates = sorted(value)
+            ranges = [f"../{dates[0]}"]
+            ranges.extend(f"{dates[i]}/{dates[i + 1]}" for i in range(len(dates) - 1))
+            ranges.append(f"{dates[-1]}/..")
+            return ranges
+        return []
+
+    return []
+
+
+def _extract_negated_leaf_metadata(node: CqlNode) -> Tuple[List[str], List[str]]:
+    """Extract excluded collections and datetime ranges from a negated leaf node."""
+    if isinstance(node, ComparisonNode):
+        if node.field == "collection" and node.op == ComparisonOp.EQ:
+            if isinstance(node.value, list):
+                return node.value, []
+            return [node.value], []
+
+        if node.field in ["start_datetime", "end_datetime"]:
+            return [], _negated_datetime_ranges(node.op, node.value)
+
+    if isinstance(node, AdvancedComparisonNode):
+        if node.field == "collection" and node.op == AdvancedComparisonOp.IN:
+            if isinstance(node.value, list):
+                return node.value, []
+            return [], []
+
+        if node.field in ["start_datetime", "end_datetime"]:
+            return [], _negated_advanced_datetime_ranges(node.op, node.value)
+
+    return [], []
+
+
+def _collect_or_not_branch_metadata(node: CqlNode) -> Tuple[set[str], List[str]]:
+    """Collect metadata from an OR node whose children are negated branches."""
+    excluded_collections: set[str] = set()
+    datetime_ranges: List[str] = []
+
+    if not isinstance(node, LogicalNode) or node.op != LogicalOp.OR:
+        return excluded_collections, datetime_ranges
+
+    for child in node.children:
+        if not isinstance(child, LogicalNode) or child.op != LogicalOp.NOT:
+            continue
+
+        for grandchild in child.children:
+            excluded, ranges = _extract_negated_leaf_metadata(grandchild)
+            excluded_collections.update(excluded)
+            datetime_ranges.extend(ranges)
+
+    return excluded_collections, datetime_ranges
+
+
+def _build_or_not_results(
+    all_collection_ids: Optional[List[str]],
+    excluded_collections: set[str],
+    datetime_ranges: List[str],
+) -> List[Tuple[List[str], str]]:
+    """Build metadata results for an OR-of-NOTs root node."""
+    if not all_collection_ids or not (datetime_ranges or excluded_collections):
+        return []
+
+    results: List[Tuple[List[str], str]] = []
+
+    included_collections = [
+        collection_id
+        for collection_id in all_collection_ids
+        if collection_id not in excluded_collections
+    ]
+    if excluded_collections and included_collections:
+        results.append((included_collections, ""))
+
+    for datetime_range in dict.fromkeys(datetime_ranges):
+        results.append((all_collection_ids, datetime_range))
+
+    return results
+
+
 def extract_collection_datetime(
     node: CqlNode,
     all_collection_ids: Optional[List[str]] = None,
@@ -307,6 +417,17 @@ def extract_collection_datetime(
         - collections: List[str] collection id(s)
         - datetime_range: str or empty string if no datetime constraint
     """
+    # Check for OR of NOTs at the root level (De Morgan's law)
+    if _is_or_of_nots(node):
+        # This preserves the OR branches created from NOT(A AND B):
+        # one branch may exclude collections, while another may negate a datetime
+        # predicate into an open range. Both branches must be extracted.
+        excluded_collections, datetime_ranges = _collect_or_not_branch_metadata(node)
+        results = _build_or_not_results(
+            all_collection_ids, excluded_collections, datetime_ranges
+        )
+        if results:
+            return results
 
     def extract_from_node(
         n: CqlNode, current_collections: List[str] = None
@@ -326,7 +447,7 @@ def extract_collection_datetime(
                     all_or_results.extend(child_results)
 
                 for coll, rng in all_or_results:
-                    if rng == "":
+                    if not coll and rng == "":
                         return [([], "")]
 
                 results.extend(all_or_results)

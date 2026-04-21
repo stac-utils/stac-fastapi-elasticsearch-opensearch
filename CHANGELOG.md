@@ -1,5 +1,10 @@
 # Changelog
 
+## [1.0.6] - 2026-04-09
+
+### Added
+- Added De Morgan's law special cases to be tested for CQL2 filtering and introduced closed index aliases with overlapping ranges to properly validate index selection logic.[#709](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/709)
+
 ## [1.0.5] - 2026-04-08
 
 ### Changed
