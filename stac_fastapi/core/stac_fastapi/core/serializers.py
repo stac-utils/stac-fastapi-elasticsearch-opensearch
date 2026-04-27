@@ -159,10 +159,9 @@ class ItemSerializer(Serializer):
         stac_data["links"] = item_links
         if get_bool_env("STAC_ALTERNATE_ASSETS"):
             for asset in stac_data["assets"]:
-                if "alternate" in asset:
+                if alternate_assets := asset.get("alternate"):
                     asset["alternate"] = [
-                        {"alternate_key": k, **v}
-                        for k, v in asset.get("alternate", {}).items()
+                        {"alternate_key": k, **v} for k, v in alternate_assets.items()
                     ]
 
         if get_bool_env("STAC_INDEX_ASSETS"):
@@ -223,14 +222,6 @@ class ItemSerializer(Serializer):
         if original_links:
             item_links += resolve_links(original_links, base_url)
 
-        if get_bool_env("STAC_ALTERNATE_ASSETS"):
-            for asset in item.get("assets", []):
-                if alternates := asset.get("alternate", []):
-                    asset["alternate"] = {
-                        a.pop("alternate_key", f"asset_{idx}"): a
-                        for idx, a in enumerate(alternates)
-                    }
-
         assets = (
             {
                 a.pop("es_key", f"asset_{idx}"): a
@@ -239,6 +230,14 @@ class ItemSerializer(Serializer):
             if get_bool_env("STAC_INDEX_ASSETS")
             else item.get("assets", {})
         )
+
+        if get_bool_env("STAC_ALTERNATE_ASSETS"):
+            for asset in assets.values():
+                if alternates := asset.get("alternate", []):
+                    asset["alternate"] = {
+                        a.pop("alternate_key", f"alternate_{idx}"): a
+                        for idx, a in enumerate(alternates)
+                    }
 
         stac_item = stac_types.Item(
             type="Feature",
