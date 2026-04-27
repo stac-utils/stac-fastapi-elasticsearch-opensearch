@@ -366,6 +366,7 @@ ES_MAPPINGS_DYNAMIC_TEMPLATES = get_dynamic_template(
     "STAC_FASTAPI_ES_CUSTOM_DYNAMIC_TEMPLATES", "STAC_FASTAPI_ES_DYNAMIC_TEMPLATES_FILE"
 )
 
+_DATE_MAPPING_TYPE = "date_nanos" if get_bool_env("USE_DATETIME_NANOS") else "date"
 # Base items mappings without dynamic configuration applied
 _BASE_ITEMS_MAPPINGS = {
     "numeric_detection": False,
@@ -380,9 +381,9 @@ _BASE_ITEMS_MAPPINGS = {
             "type": "object",
             "properties": {
                 # Common https://github.com/radiantearth/stac-spec/blob/master/item-spec/common-metadata.md
-                "datetime": {"type": "date_nanos"},
-                "start_datetime": {"type": "date_nanos"},
-                "end_datetime": {"type": "date_nanos"},
+                "datetime": {"type": _DATE_MAPPING_TYPE},
+                "start_datetime": {"type": _DATE_MAPPING_TYPE},
+                "end_datetime": {"type": _DATE_MAPPING_TYPE},
                 "created": {"type": "date"},
                 "updated": {"type": "date"},
                 # Satellite Extension https://github.com/stac-extensions/sat
