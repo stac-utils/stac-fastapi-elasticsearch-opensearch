@@ -161,6 +161,14 @@ class BaseDatabaseLogic(abc.ABC):
         pass
 
     @abc.abstractmethod
+    async def get_all_collection_queryables(self) -> list[dict]:
+        """Retrieve all queryables schemas from all collections.
+
+        Returns:
+            A list of queryables dictionaries, one from each active collection.
+        """
+        pass
+
     async def get_all_catalogs(
         self,
         token: str | None,
@@ -388,6 +396,7 @@ class BaseDatabaseLogic(abc.ABC):
         sort: dict[str, dict[str, str]] | None,
         collection_ids: list[str] | None,
         datetime_search: str,
+        cql2_metadata: dict[str, Any] | None = None,
         ignore_unavailable: bool = True,
     ) -> tuple[Iterable[dict[str, Any]], int | None, str | None]:
         """Execute the search."""
