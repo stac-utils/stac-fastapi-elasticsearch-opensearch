@@ -70,3 +70,24 @@ async def test_search_link(response_json):
 
     search_path = urllib.parse.urlsplit(search_link.get("href")).path
     assert search_path == "/search"
+
+
+@pytest.mark.asyncio
+async def test_conformance_classes(response_json, app_client):
+    """Test that conformance classes include required STAC specs."""
+    # Get the /conformance endpoint
+    conformance_resp = await app_client.get("/conformance")
+    assert conformance_resp.status_code == 200
+
+    conformance_data = conformance_resp.json()
+    assert "conformsTo" in conformance_data
+
+    conforms_to = conformance_data["conformsTo"]
+
+    # Check for required conformance classes
+    assert "https://api.stacspec.org/v1.0.0/core" in conforms_to
+
+    # Check landing page also has conformsTo
+    assert "conformsTo" in response_json
+    landing_conforms_to = response_json["conformsTo"]
+    assert "https://api.stacspec.org/v1.0.0/core" in landing_conforms_to
