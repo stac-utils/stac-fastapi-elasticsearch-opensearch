@@ -412,7 +412,10 @@ def build_test_app():
 
 def build_test_app_with_catalogs():
     """Build a test app with catalogs extension enabled."""
-    from stac_fastapi_catalogs_extension import CatalogsExtension
+    from stac_fastapi_catalogs_extension import (
+        CatalogsExtension,
+        CatalogsTransactionExtension,
+    )
 
     from stac_fastapi.core.catalogs_client import CatalogsClient
 
@@ -421,16 +424,31 @@ def build_test_app_with_catalogs():
 
     # Get database and settings (already imported above)
     test_database = DatabaseLogic()
+    test_settings = SearchSettings()
+
+    # Create shared catalogs client
+    catalogs_client = CatalogsClient(database=test_database)
 
     # Add catalogs extension
     catalogs_extension = CatalogsExtension(
-        client=CatalogsClient(database=test_database),
-        enable_transactions=True,
+        client=catalogs_client,
+        settings=test_settings.model_dump(),
+    )
+
+    # Add catalogs transaction extension
+    catalogs_transaction_extension = CatalogsTransactionExtension(
+        client=catalogs_client,
+        settings=test_settings.model_dump(),
     )
 
     # Add to extensions if not already present
     if not any(isinstance(ext, CatalogsExtension) for ext in test_config["extensions"]):
         test_config["extensions"].append(catalogs_extension)
+    if not any(
+        isinstance(ext, CatalogsTransactionExtension)
+        for ext in test_config["extensions"]
+    ):
+        test_config["extensions"].append(catalogs_transaction_extension)
 
     # Update client with new extensions
     test_config["client"] = CoreClient(
