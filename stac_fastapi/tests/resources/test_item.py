@@ -9,7 +9,6 @@ from urllib.parse import parse_qs, urlparse, urlsplit
 
 import ciso8601
 import pytest
-from geojson_pydantic.geometries import Polygon
 from stac_pydantic import api
 
 from stac_fastapi.core.core import CoreClient
@@ -859,7 +858,19 @@ async def test_field_extension_get_excludes_collection_items(app_client, ctx):
 async def test_search_intersects_and_bbox(app_client):
     """Test POST search intersects and bbox are mutually exclusive (core)"""
     bbox = [-118, 34, -117, 35]
-    geoj = Polygon.from_bounds(*bbox).model_dump(exclude_none=True)
+    # Create a GeoJSON polygon from bbox coordinates [minx, miny, maxx, maxy]
+    geoj = {
+        "type": "Polygon",
+        "coordinates": [
+            [
+                [bbox[0], bbox[1]],
+                [bbox[2], bbox[1]],
+                [bbox[2], bbox[3]],
+                [bbox[0], bbox[3]],
+                [bbox[0], bbox[1]],
+            ]
+        ],
+    }
     params = {"bbox": bbox, "intersects": geoj}
     resp = await app_client.post("/search", json=params)
     assert resp.status_code == 400

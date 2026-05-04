@@ -118,6 +118,23 @@ def apply_collections_free_text_filter_shared(
     }
 
 
+def _serialize_coordinates(coords: Any) -> Any:
+    """Recursively serialize coordinates to plain Python types.
+
+    Converts geojson-pydantic Position2D and other Pydantic models to lists/tuples.
+    """
+    if isinstance(coords, (list, tuple)):
+        return [_serialize_coordinates(c) for c in coords]
+    elif hasattr(coords, "model_dump"):
+        # Pydantic model - convert to dict then serialize
+        return _serialize_coordinates(coords.model_dump())
+    elif isinstance(coords, dict):
+        return {k: _serialize_coordinates(v) for k, v in coords.items()}
+    else:
+        # Primitive type (int, float, str, etc.)
+        return coords
+
+
 def apply_intersects_filter_shared(
     intersects: Geometry,
 ) -> dict[str, dict]:
@@ -135,12 +152,29 @@ def apply_intersects_filter_shared(
         with the specified geometry. The returned dictionary should be wrapped in a Q object
         when applied to a search.
     """
+    # Handle both dict and Pydantic model cases
+    if isinstance(intersects, dict):
+        geom_type = intersects.get("type", "").lower()
+        coordinates = intersects.get("coordinates")
+    else:
+        # Convert Pydantic model to dict to ensure proper serialization
+        if hasattr(intersects, "model_dump"):
+            geom_dict = intersects.model_dump()
+            geom_type = geom_dict.get("type", "").lower()
+            coordinates = geom_dict.get("coordinates")
+        else:
+            geom_type = intersects.type.lower()
+            coordinates = intersects.coordinates
+
+    # Ensure coordinates are serializable (convert Pydantic models to plain types)
+    coordinates = _serialize_coordinates(coordinates)
+
     return {
         "geo_shape": {
             "geometry": {
                 "shape": {
-                    "type": intersects.type.lower(),
-                    "coordinates": intersects.coordinates,
+                    "type": geom_type,
+                    "coordinates": coordinates,
                 },
                 "relation": "intersects",
             }
