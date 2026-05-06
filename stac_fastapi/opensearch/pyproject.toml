@@ -30,8 +30,8 @@ dynamic = ["version"]
 dependencies = [
     "stac-fastapi-core==6.16.0",
     "sfeos-helpers==6.16.0",
-    "opensearch-py>=2.8,<3.2",
-    "opensearch-py[async]>=2.8,<3.2",
+    "opensearch-py>=2.8,<3.3",
+    "opensearch-py[async]>=2.8,<3.3",
 ]
 
 [project.urls]
@@ -45,7 +45,7 @@ dev = [
     "pytest>=8,<10",
     "pytest-cov>=4.0,<7.2",
     "pytest-asyncio>=0.21,<1.4",
-    "pre-commit>=3.0,<4.6",
+    "pre-commit>=3.0,<4.7",
     "ciso8601~=2.3.0",
     "httpx>=0.24.0,<0.29.0",
     "redis>=6.4,<7.5",
@@ -62,7 +62,7 @@ redis = [
     "stac-fastapi-core[redis]==6.16.0",
 ]
 server = [
-    "uvicorn[standard]>=0.23,<0.46",
+    "uvicorn[standard]>=0.23,<0.47",
 ]
 
 [project.scripts]

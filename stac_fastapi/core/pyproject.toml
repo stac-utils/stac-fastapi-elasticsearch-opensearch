@@ -38,11 +38,10 @@ dependencies = [
     "stac-fastapi.extensions==6.2.1",
     "orjson~=3.11.0",
     "overrides>=7.4,<7.8",
-    "geojson-pydantic~=1.0.0",
     "pygeofilter~=0.3.1",
     "jsonschema~=4.26.0",
     "slowapi~=0.1.9",
-    "uvicorn>=0.23,<0.46",
+    "uvicorn>=0.23,<0.47",
     "starlette>=0.35.0,<1.1.0",
 ]
 
@@ -55,7 +54,7 @@ sentry = [
     "sentry-sdk>=2.49,<2.59",
 ]
 catalogs = [
-    "stac-fastapi-catalogs-extension>=0.1.2",
+    "stac-fastapi-catalogs-extension==0.2.0",
 ]
 
 [project.urls]
