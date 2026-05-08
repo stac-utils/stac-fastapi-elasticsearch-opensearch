@@ -1,0 +1,65 @@
+services:
+  app-opensearch:
+    container_name: stac-fastapi-os
+    image: ghcr.io/stac-utils/stac-fastapi-os:latest
+    restart: always
+    environment:
+      - STAC_FASTAPI_TITLE=stac-fastapi-opensearch
+      - STAC_FASTAPI_DESCRIPTION=A STAC FastAPI with an Opensearch backend
+      - STAC_FASTAPI_LANDING_PAGE_ID=stac-fastapi-opensearch
+      - APP_HOST=0.0.0.0
+      - APP_PORT=8082
+      - RELOAD=false
+      - ENVIRONMENT=production
+      - WEB_CONCURRENCY=10
+      - ES_HOST=opensearch
+      - ES_PORT=9202
+      - ES_USE_SSL=false
+      - ES_VERIFY_CERTS=false
+      - ES_TIMEOUT=30
+      - BACKEND=opensearch
+      - DATABASE_REFRESH=true
+      - STAC_FASTAPI_RATE_LIMIT=200/minute
+      - ENABLE_COLLECTIONS_SEARCH_ROUTE=true
+      - ENABLE_CATALOGS_ROUTE=true
+      - REDIS_ENABLE=true
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    ports:
+      - "8082:8082"
+    volumes:
+      - ./scripts:/app/scripts
+    depends_on:
+      - opensearch
+      - redis
+    command:
+      bash -c "./scripts/wait-for-it-es.sh os-container:9202 && python -m stac_fastapi.opensearch.app"
+
+  opensearch:
+    container_name: os-container
+    image: opensearchproject/opensearch:${OPENSEARCH_VERSION:-3.5.0}
+    hostname: opensearch
+    environment:
+      - discovery.type=single-node
+      - plugins.security.disabled=true
+      - OPENSEARCH_JAVA_OPTS=-Xms512m -Xmx512m
+      - action.destructive_requires_name=false
+    volumes:
+      - os_data:/usr/share/opensearch/data
+      - ./opensearch/config/opensearch.yml:/usr/share/opensearch/config/opensearch.yml
+      - ./opensearch/snapshots:/usr/share/opensearch/snapshots
+    ports:
+      - "9202:9202"
+
+  redis:
+    image: redis:7-alpine
+    hostname: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server
+
+volumes:
+  os_data:
+  redis_data:

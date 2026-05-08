@@ -69,6 +69,7 @@ from stac_fastapi.sfeos_helpers.database.utils import (
     operations_to_script,
     validate_datetime_operations,
 )
+from stac_fastapi.sfeos_helpers.filter import build_cql2_filter, resolve_cql2_indexes
 from stac_fastapi.sfeos_helpers.mappings import (
     AGGREGATION_MAPPING,
     COLLECTIONS_INDEX,
@@ -439,6 +440,79 @@ class DatabaseLogic(BaseDatabaseLogic):
             collection_id=collection_id, mappings=mappings
         )
 
+    async def get_all_collection_queryables(self) -> list[dict]:
+        """Retrieve all queryables from all collections safely.
+
+        Generates queryables on-the-fly from each collection's item index mappings
+        using a scroll to prevent memory spikes, and a semaphore to prevent
+        connection pool exhaustion.
+
+        Returns:
+            A list of queryables dictionaries, one from each active collection.
+        """
+        collection_ids = []
+        scroll_id = None
+
+        try:
+            # 1. Use the Scroll API to safely fetch all IDs
+            response = await self.client.search(
+                index=COLLECTIONS_INDEX,
+                scroll="2m",  # Keep the search context alive for 2 minutes
+                size=1000,  # Fetch in memory-safe chunks of 1000
+                body={
+                    "_source": ["id"],
+                    "query": {"term": {"type": "Collection"}},
+                },
+            )
+
+            scroll_id = response.get("_scroll_id")
+            hits = response.get("hits", {}).get("hits", [])
+
+            while hits:
+                for hit in hits:
+                    if cid := hit.get("_source", {}).get("id"):
+                        collection_ids.append(cid)
+
+                # Fetch the next batch of 1000 IDs
+                response = await self.client.scroll(scroll_id=scroll_id, scroll="2m")
+                scroll_id = response.get("_scroll_id")
+                hits = response.get("hits", {}).get("hits", [])
+
+        finally:
+            # Always clear the scroll context to free up database resources
+            if scroll_id:
+                try:
+                    await self.client.clear_scroll(scroll_id=scroll_id)
+                except Exception as e:
+                    logger.debug(f"Failed to clear scroll context: {e}")
+
+        # Initialize the filters client
+        filters_client = filter_module.EsAsyncBaseFiltersClient(
+            database=self, settings=self.async_settings
+        )
+
+        # 2. Add a Semaphore
+        sem = asyncio.Semaphore(50)  # Only allow 50 concurrent DB requests
+
+        async def fetch_queryables_safely(collection_id: str) -> dict | None:
+            async with sem:
+                try:
+                    return await filters_client.get_queryables(
+                        collection_id=collection_id
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to retrieve queryables for collection {collection_id}: {e}"
+                    )
+                    return None
+
+        # 3. Gather results. The semaphore ensures we only process 50 at a time.
+        results = await asyncio.gather(
+            *[fetch_queryables_safely(cid) for cid in collection_ids]
+        )
+
+        return [q for q in results if q]
+
     @staticmethod
     def make_search():
         """Database logic to create a Search instance."""
@@ -777,11 +851,28 @@ class DatabaseLogic(BaseDatabaseLogic):
             Search: The modified Search object with the filter applied if a filter is provided,
                     otherwise the original Search object.
         """
-        if _filter is not None:
-            es_query = filter_module.to_es(await self.get_queryables_mapping(), _filter)
-            search = search.filter(es_query)
+        metadata = None
 
-        return search
+        if _filter is not None:
+            try:
+                all_collection_ids = (
+                    await self.async_index_selector.get_all_collection_ids()
+                )
+                es_query, metadata = build_cql2_filter(
+                    await self.get_queryables_mapping(), _filter, all_collection_ids
+                )
+                search = search.filter(es_query)
+
+            except (ValueError, KeyError, TypeError, AttributeError) as e:
+                logger.warning(
+                    "Failed to build CQL2 filter using AST tree approach, falling back to dictionary-based method."
+                    f"Error: {str(e)}. Filter: {_filter}"
+                )
+                queryables_mapping = await self.get_queryables_mapping()
+                es_query = filter_module.to_es(queryables_mapping, _filter)
+                search = search.filter(es_query)
+
+        return search, metadata
 
     @staticmethod
     def populate_sort(sortby: list) -> dict[str, dict[str, str]] | None:
@@ -808,6 +899,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         sort: dict[str, dict[str, str]] | None,
         collection_ids: list[str] | None,
         datetime_search: str,
+        cql2_metadata: dict[str, Any] | None = None,
         ignore_unavailable: bool = True,
     ) -> tuple[Iterable[dict[str, Any]], int | None, str | None]:
         """Execute a search query with limit and other optional parameters.
@@ -835,9 +927,18 @@ class DatabaseLogic(BaseDatabaseLogic):
         search_body: dict[str, Any] = {}
         query = search.query.to_dict() if search.query else None
 
-        index_param = await self.async_index_selector.select_indexes(
-            collection_ids, datetime_search
-        )
+        # Special case for cql2-json index selection
+        if cql2_metadata:
+            index_param, collection_ids = await resolve_cql2_indexes(
+                cql2_metadata,
+                self.async_index_selector,
+                self.apply_datetime_filter,
+                search,
+            )
+        else:
+            index_param = await self.async_index_selector.select_indexes(
+                collection_ids, datetime_search
+            )
         if len(index_param) > ES_MAX_URL_LENGTH - 300:
             index_param = ITEM_INDICES
             query = add_collections_to_body(collection_ids, query)

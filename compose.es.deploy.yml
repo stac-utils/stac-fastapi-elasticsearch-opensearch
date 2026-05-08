@@ -1,0 +1,62 @@
+services:
+  app-elasticsearch:
+    container_name: stac-fastapi-es
+    image: ghcr.io/stac-utils/stac-fastapi-es:latest
+    restart: always
+    environment:
+      - STAC_FASTAPI_TITLE=stac-fastapi-elasticsearch
+      - STAC_FASTAPI_DESCRIPTION=A STAC FastAPI with an Elasticsearch backend
+      - STAC_FASTAPI_LANDING_PAGE_ID=stac-fastapi-elasticsearch
+      - APP_HOST=0.0.0.0
+      - APP_PORT=8080
+      - RELOAD=false
+      - ENVIRONMENT=production
+      - WEB_CONCURRENCY=10
+      - ES_HOST=elasticsearch
+      - ES_PORT=9200
+      - ES_USE_SSL=false
+      - ES_VERIFY_CERTS=false
+      - ES_TIMEOUT=30
+      - BACKEND=elasticsearch
+      - DATABASE_REFRESH=true
+      - ENABLE_COLLECTIONS_SEARCH_ROUTE=true
+      - ENABLE_CATALOGS_ROUTE=true
+      - REDIS_ENABLE=true
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./scripts:/app/scripts
+    depends_on:
+      - elasticsearch
+      - redis
+    command:
+      bash -c "./scripts/wait-for-it-es.sh es-container:9200 && python -m stac_fastapi.elasticsearch.app"
+
+  elasticsearch:
+    container_name: es-container
+    image: docker.elastic.co/elasticsearch/elasticsearch:${ELASTICSEARCH_VERSION:-9.3.2}
+    hostname: elasticsearch
+    environment:
+      ES_JAVA_OPTS: -Xms512m -Xmx1g
+      action.destructive_requires_name: false
+    volumes:
+      - es_data:/usr/share/elasticsearch/data
+      - ./elasticsearch/config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
+      - ./elasticsearch/snapshots:/usr/share/elasticsearch/snapshots
+    ports:
+      - "9200:9200"
+
+  redis:
+    image: redis:7-alpine
+    hostname: redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server
+
+volumes:
+  es_data:
+  redis_data:

@@ -1,6 +1,6 @@
 import json
 
-from stac_fastapi.sfeos_helpers.mappings import get_items_mappings
+from stac_fastapi.sfeos_helpers.mappings import get_mappings
 
 
 class TestMappingsFile:
@@ -15,7 +15,7 @@ class TestMappingsFile:
         monkeypatch.setenv("STAC_FASTAPI_ES_MAPPINGS_FILE", str(mappings_file))
         monkeypatch.delenv("STAC_FASTAPI_ES_CUSTOM_MAPPINGS", raising=False)
 
-        mappings = get_items_mappings()
+        mappings = get_mappings()
 
         assert mappings["properties"]["properties"]["file_field"] == {"type": "keyword"}
 
@@ -34,7 +34,7 @@ class TestMappingsFile:
         monkeypatch.setenv("STAC_FASTAPI_ES_MAPPINGS_FILE", str(mappings_file))
         monkeypatch.setenv("STAC_FASTAPI_ES_CUSTOM_MAPPINGS", json.dumps(env_mappings))
 
-        mappings = get_items_mappings()
+        mappings = get_mappings()
 
         assert mappings["properties"]["properties"]["shared_field"] == {"type": "text"}
 
@@ -43,7 +43,7 @@ class TestMappingsFile:
         monkeypatch.setenv("STAC_FASTAPI_ES_MAPPINGS_FILE", "/non/existent/file.json")
         monkeypatch.delenv("STAC_FASTAPI_ES_CUSTOM_MAPPINGS", raising=False)
 
-        get_items_mappings()
+        get_mappings()
 
         assert "Failed to read STAC_FASTAPI_ES_MAPPINGS_FILE" in caplog.text
 
@@ -55,7 +55,7 @@ class TestMappingsFile:
         monkeypatch.setenv("STAC_FASTAPI_ES_MAPPINGS_FILE", str(mappings_file))
         monkeypatch.delenv("STAC_FASTAPI_ES_CUSTOM_MAPPINGS", raising=False)
 
-        get_items_mappings()
+        get_mappings()
 
         assert "Failed to parse STAC_FASTAPI_ES_CUSTOM_MAPPINGS JSON" in caplog.text
 
@@ -84,7 +84,7 @@ class TestMappingsFile:
         monkeypatch.setenv("STAC_FASTAPI_ES_MAPPINGS_FILE", str(mappings_file))
         monkeypatch.setenv("STAC_FASTAPI_ES_CUSTOM_MAPPINGS", json.dumps(env_mappings))
 
-        mappings = get_items_mappings()
+        mappings = get_mappings()
 
         # Only env var fields should be present
         assert "env_only_field" in mappings["properties"]["properties"]
@@ -102,5 +102,5 @@ class TestMappingsFile:
         monkeypatch.delenv("STAC_FASTAPI_ES_CUSTOM_MAPPINGS", raising=False)
 
         # Should not raise, just use default mappings
-        mappings = get_items_mappings()
+        mappings = get_mappings()
         assert "properties" in mappings

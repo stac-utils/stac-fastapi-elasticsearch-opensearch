@@ -8,7 +8,7 @@ from stac_fastapi.sfeos_helpers.database import (
     filter_indexes_by_datetime_range,
     return_date,
 )
-from stac_fastapi.sfeos_helpers.mappings import ITEM_INDICES
+from stac_fastapi.sfeos_helpers.mappings import ITEM_INDICES, ITEMS_INDEX_PREFIX
 
 from ...database import indices
 from .base import BaseIndexSelector
@@ -210,6 +210,18 @@ class DatetimeBasedIndexSelector(BaseIndexSelector):
                 "lte": dt_dict.get("lte") if not self.use_datetime else None,
             },
         }
+
+    async def get_all_collection_ids(self) -> list[str] | None:
+        """Return all known collection IDs derived from cached alias keys.
+
+        Strips the ITEMS_INDEX_PREFIX from each alias key to derive collection IDs.
+
+        Returns:
+            list[str] | None: List of collection IDs from the alias cache.
+        """
+        aliases = await self.alias_loader.get_aliases()
+        prefix_len = len(ITEMS_INDEX_PREFIX)
+        return [alias[prefix_len:] for alias in aliases.keys()]
 
 
 class UnfilteredIndexSelector(BaseIndexSelector):
