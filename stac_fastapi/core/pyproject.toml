@@ -58,9 +58,6 @@ sentry = [
 catalogs = [
     "stac-fastapi-catalogs-extension==0.1.3",
 ]
-validator = [
-    "stac-validator~=3.11.0"
-]
 
 [project.urls]
 Homepage = "https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch"

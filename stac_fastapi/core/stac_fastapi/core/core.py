@@ -1059,18 +1059,6 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 valid_features, invalid_details = await async_validate_batch_with_go(
                     unique_features
                 )
-
-            elif get_bool_env("ENABLE_STAC_VALIDATOR") and not use_queue:
-                for feature in unique_features:
-                    item_id = feature.get("id", "unknown_id")
-                    try:
-                        await async_validate_item(feature)
-                        valid_features.append(feature)
-                    except (ValidationError, ValueError) as e:
-                        logger.warning(
-                            f"Skipping item '{item_id}' due to validation error: {e}"
-                        )
-                        invalid_details[item_id] = str(e)
             else:
                 valid_features = unique_features
 
@@ -1197,10 +1185,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         # ==========================================================
         else:
             # 1. VALIDATION LAYER (Single Item)
-            if (
-                get_bool_env("ENABLE_GO_VALIDATOR")
-                or get_bool_env("ENABLE_STAC_VALIDATOR")
-            ) and not use_queue:
+            if get_bool_env("ENABLE_GO_VALIDATOR") and not use_queue:
                 try:
                     await async_validate_item(item_dict)
                 except (ValidationError, ValueError) as e:
