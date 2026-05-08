@@ -10,8 +10,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 
 - Added `ENABLE_STAC_VALIDATOR` environment variable to enable strict STAC schema validation on ingestion via the Python `stac-valid` package. [#732](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/732)
-- Added `[validator]` installation extra to `stac-fastapi-core`, `elasticsearch`, and `opensearch` packages. [#665](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/665)
-- Added test for conformance endpoint in catalogs extension. [#732](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/732)
+- Added `[validator]` installation extra to `stac-fastapi-core`, `elasticsearch`, and `opensearch` packages. [#732](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/732)
+- Added test for conformance endpoint in catalogs extension. [#727](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/727)
 
 ### Changed
 
