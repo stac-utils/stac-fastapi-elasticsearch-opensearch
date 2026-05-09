@@ -3787,3 +3787,51 @@ async def test_sub_catalogs_list_includes_child_links(
     assert (
         len(child_links_2) == 0
     ), f"Sub catalog 2 should have no child links, got {len(child_links_2)}"
+
+
+@pytest.mark.asyncio
+async def test_catalogs_list_endpoint(catalogs_app_client, load_test_data):
+    """Test that catalogs list endpoint returns proper structure."""
+    # Get the root catalog
+    resp = await catalogs_app_client.get("/catalogs")
+    assert resp.status_code == 200
+
+    catalogs_response = resp.json()
+
+    # Check for required fields in the catalogs list response
+    assert "catalogs" in catalogs_response
+    assert "links" in catalogs_response
+    assert "numberReturned" in catalogs_response
+
+
+@pytest.mark.asyncio
+async def test_catalog_conformance_endpoint(catalogs_app_client, load_test_data):
+    """Test the /catalogs/{catalog_id}/conformance endpoint."""
+    # First create a catalog
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+
+    catalog_id = test_catalog["id"]
+
+    # Get the conformance endpoint for the catalog
+    conformance_resp = await catalogs_app_client.get(
+        f"/catalogs/{catalog_id}/conformance"
+    )
+    assert conformance_resp.status_code == 200
+
+    conformance_data = conformance_resp.json()
+    assert "conformsTo" in conformance_data
+
+    conforms_to = conformance_data["conformsTo"]
+
+    # Check for required conformance classes
+    assert "https://api.stacspec.org/v1.0.0/core" in conforms_to
+    assert "https://api.stacspec.org/v1.0.0-beta.4/multi-tenant-catalogs" in conforms_to
+    assert "https://api.stacspec.org/v1.0.0-rc.2/children" in conforms_to
+    assert (
+        "https://api.stacspec.org/v1.0.0-beta.4/multi-tenant-catalogs/transaction"
+        in conforms_to
+    )
