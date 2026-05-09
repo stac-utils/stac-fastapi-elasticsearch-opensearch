@@ -24,8 +24,8 @@ services:
       - DATABASE_REFRESH=true
       - ENABLE_COLLECTIONS_SEARCH_ROUTE=true
       - ENABLE_CATALOGS_ROUTE=true
-      - ENABLE_GO_VALIDATOR=true
-      - GO_VALIDATOR_URL=http://gostac-validator:8080/validate
+      - ENABLE_FAST_VALIDATOR=true
+      - FAST_VALIDATOR_URL=http://stac-validator:8000/validate
       - REDIS_ENABLE=true
       - REDIS_HOST=redis
       - REDIS_PORT=6379
@@ -40,8 +40,6 @@ services:
         condition: service_started
       redis:
         condition: service_started
-      gostac-validator:
-        condition: service_healthy
     command:
       bash -c "./scripts/wait-for-it-es.sh es-container:9200 && python -m stac_fastapi.elasticsearch.app"
 
@@ -71,8 +69,8 @@ services:
       - STAC_FASTAPI_RATE_LIMIT=200/minute
       - ENABLE_COLLECTIONS_SEARCH_ROUTE=true
       - ENABLE_CATALOGS_ROUTE=true
-      - ENABLE_GO_VALIDATOR=true
-      - GO_VALIDATOR_URL=http://gostac-validator:8080/validate
+      - ENABLE_FAST_VALIDATOR=true
+      - FAST_VALIDATOR_URL=http://stac-validator:8000/validate
       - REDIS_ENABLE=true
       - REDIS_HOST=redis
       - REDIS_PORT=6379
@@ -87,8 +85,6 @@ services:
         condition: service_started
       redis:
         condition: service_started
-      gostac-validator:
-        condition: service_healthy
     command:
       bash -c "./scripts/wait-for-it-es.sh os-container:9202 && python -m stac_fastapi.opensearch.app"
 
@@ -120,20 +116,12 @@ services:
     ports:
       - "9202:9202"
 
-  gostac-validator:
-    container_name: gostac-validator
-    image: ghcr.io/staclabs/gostac-validator:latest
+  stac-validator:
+    container_name: stac-validator
+    image: ghcr.io/staclabs/stac-validator:latest
     restart: always
-    environment:
-      - ADDR=:8080
-      - MAX_BODY_SIZE_MB=256
     ports:
-      - "8081:8080"
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
+      - "8081:8000"
 
   redis:
     image: redis:7-alpine

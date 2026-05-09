@@ -24,7 +24,7 @@ The following organizations have contributed time and/or funding to support the 
 
 ## Latest News
 
-- **03/29/2026: High-Speed Go Validator & Batch Processing:** Added support for `ENABLE_GO_VALIDATOR` to offload STAC schema validation to a concurrent Go microservice. Bulk insertions are now validated in massive batches with zero-blocking on the FastAPI event loop, safely routing invalid items to a Dead Letter Queue (DLQ) when used with the Redis background worker.
+- **05/09/2026: High-Speed Fast Python Validator & Batch Processing:** Added support for `ENABLE_FAST_VALIDATOR` to offload STAC schema validation to the [fast Python validator](https://github.com/staclabs/stac-validator) microservice. Bulk insertions are now validated in massive batches with zero-blocking on the FastAPI event loop, safely routing invalid items to a Dead Letter Queue (DLQ) when used with the Redis background worker.
 - **03/19/2026: SKOS to STAC Ingestion Demo.** 📓 Check out the interactive [SKOS-catalogs-ingestion-demo.ipynb](https://github.com/StacLabs/sfeos-tools/blob/main/demo-notebooks/SKOS-catalogs-ingestion-demo.ipynb) notebook! This tutorial demonstrates automated semantic ingestion from SKOS/RDF-XML files into hierarchical STAC catalogs, showcasing poly-hierarchy, contextual breadcrumbs, and data safety features of the Multi-Tenant Catalogs extension. Thanks to support from CloudFerro! 
 - **01/11/2026: Hierarchical Catalog Support.** Sub-catalogs are now fully supported! Catalogs can now contain other catalogs for unlimited nesting levels. This enables complex organizational hierarchies with multi-parent support for both catalogs and collections.
 - **01/09/2026: Custom Index Mappings.** You can now customize Elasticsearch/OpenSearch index mappings directly via environment variables without changing source code. Use `STAC_FASTAPI_ES_CUSTOM_MAPPINGS` to merge custom field definitions (e.g., for STAC extensions like SAR or Cube) or `STAC_FASTAPI_ES_MAPPINGS_FILE` to load mappings from a JSON file. See [Custom Index Mappings](#custom-index-mappings) for details.
@@ -743,10 +743,10 @@ You can customize additional settings in your `.env` file:
 | `ENABLE_COLLECTIONS_SEARCH_ROUTE` | Enable the custom `/collections-search` endpoint (both GET and POST methods). When disabled, the custom endpoint will not be available, but collection search extensions will still be available on the core `/collections` endpoint if `ENABLE_COLLECTIONS_SEARCH` is true. | `false` | Optional |
 | `ENABLE_TRANSACTIONS_EXTENSIONS` | Enables or disables the Transactions and Bulk Transactions API extensions. This is useful for deployments where mutating the catalog via the API should be prevented. If set to `true`, the POST `/collections` route for search will be unavailable in the API. | `true` | Optional |
 | `ENABLE_CATALOGS_ROUTE` | Enable the **/catalogs** endpoint for hierarchical catalog browsing and navigation. **Note:** Requires the catalogs extension to be installed via `stac-fastapi-elasticsearch[catalogs]`, `stac-fastapi-opensearch[catalogs]`, or `stac-fastapi-core[catalogs]`. See [Catalogs Route](#catalogs-route) for installation instructions. | `false` | Optional |
+| `ENABLE_FAST_VALIDATOR` | Enables the high-performance fast Python validator microservice to validate STAC items and collections on ingestion. Highly recommended for bulk insertions as it validates massive batches concurrently without blocking the API. Use with `FAST_VALIDATOR_URL`. | `false` | Optional |
+| `FAST_VALIDATOR_URL` | The full endpoint URL of the fast Python STAC validator service. Used when `ENABLE_FAST_VALIDATOR` is true. | `http://stac-validator:8000/validate` | Optional |
 | `ENABLE_STAC_VALIDATOR` | Enable [stac-validator](https://github.com/stac-utils/stac-validator) to validate STAC items and collections on ingestion. This is especially useful for items or collections that use extensions. Use with `SCHEMA CACHE SIZE`| `false` | Optional |
 | `SCHEMA_CACHE_SIZE` | Configures the maximum number of STAC schemas that can be cached in memory. Used with `ENABLE_STAC_VALIDATOR` to cache validated schemas for faster subsequent validations.| `32` | Optional |
-| `ENABLE_GO_VALIDATOR` | Enables the high-performance Go microservice to validate STAC items and collections on ingestion. Highly recommended for bulk insertions as it validates massive batches concurrently without blocking the API. Use with `GO_STAC_VALIDATOR_URL`. | `false` | Optional |
-| `GO_STAC_VALIDATOR_URL` | The full endpoint URL of the Go STAC validator service. Used when `ENABLE_GO_VALIDATOR` is true. | `http://gostac-validator:8080/validate` | Optional |
 | `STAC_INDEX_ASSETS` | Controls if Assets are indexed when added to Elasticsearch/Opensearch. This allows asset fields to be included in search queries. | `false` | Optional |
 
 ### 5. Limits & Performance
@@ -814,39 +814,39 @@ By default, all STAC items and collections are validated using **Pydantic** (via
 
 This validation is always enabled and happens automatically before data reaches the database or the Redis queue.
 
-### 2. High-Speed Go Validator (Recommended for Production)
+### 2. High-Speed Fast Python Validator (Recommended for Production)
 
-For deployments that require strict STAC schema validation (including STAC Extensions like SAR, EO, and Point Cloud) but also need to process massive bulk insertions, SFEOS provides integration with a highly concurrent **Go STAC Validator** microservice.
+For deployments that require strict STAC schema validation (including STAC Extensions like SAR, EO, and Point Cloud) but also need to process massive bulk insertions, SFEOS provides integration with the **fast Python STAC Validator** microservice.
 
-Unlike Python, which validates items one by one, the Go service natively accepts arrays of STAC items (`FeatureCollections`) and validates them concurrently across multiple goroutines. This completely eliminates network bottlenecks and CPU blocking on the FastAPI event loop.
+The fast validator natively accepts arrays of STAC items (`FeatureCollections`) and validates them concurrently. This completely eliminates network bottlenecks and CPU blocking on the FastAPI event loop.
 
-#### Enabling the Go Validator
+#### Enabling the Fast Validator
 
-To use the Go Validator, you must run the Go microservice alongside your API. We provide a ready-to-use Docker Compose configuration for this:
+To use the Fast Validator, you must run the validator microservice alongside your API. The Docker Compose configuration includes this by default:
 
 ```bash
-# Start the stack with the Go Validator sidecar container included
-docker compose -f docker-compose.yml -f docker-compose.go-validator.yml up
+# Start the stack with the fast validator sidecar container included
+docker compose up
 ```
 
 Then, enable it in your environment:
 
 ```bash
-export ENABLE_GO_VALIDATOR=true
-export GO_STAC_VALIDATOR_URL=http://gostac-validator:8080/validate
+export ENABLE_FAST_VALIDATOR=true
+export FAST_VALIDATOR_URL=http://stac-validator:8000/validate
 ```
 
 #### Batch Error Responses
 
-When the Go Validator is enabled, bulk API insertions (like POSTing a `FeatureCollection`) that contain invalid items will instantly return a `400 Bad Request` with a detailed dictionary mapping specific item_ids to their exact schema failures:
+When the Fast Validator is enabled, bulk API insertions (like POSTing a `FeatureCollection`) that contain invalid items will instantly return a `400 Bad Request` with a detailed dictionary mapping specific item_ids to their exact schema failures:
 
 ```json
 {
   "detail": {
     "message": "Bulk insertion rejected. 2 items failed validation.",
     "errors": {
-      "landsat-scene-1": "Go Validator Rejected STAC: 'properties.datetime' is required (at /properties)",
-      "landsat-scene-2": "Go Validator Rejected STAC: additional properties 'eo:bands' not allowed (at /properties)"
+      "landsat-scene-1": "Fast Validator Rejected STAC: 'properties.datetime' is required (at /properties)",
+      "landsat-scene-2": "Fast Validator Rejected STAC: additional properties 'eo:bands' not allowed (at /properties)"
     }
   }
 }
@@ -854,7 +854,7 @@ When the Go Validator is enabled, bulk API insertions (like POSTing a `FeatureCo
 
 ### 3. Python STAC Validator (Fallback)
 
-If you cannot deploy the Go microservice container but still require strict validation beyond Pydantic's type checking, you can enable the Python-based `stac-validator` package.
+If you cannot deploy the fast validator container but still require strict validation beyond Pydantic's type checking, you can enable the Python-based `stac-validator` package.
 
 #### Enabling STAC Validator
 
@@ -915,10 +915,10 @@ If validation fails, you'll receive a detailed error response:
 #### Performance Considerations
 
 - **Pydantic validation** Very fast and always enabled
-- **Go validator** (ENABLE_GO_VALIDATOR): Adds minimal overhead. Validates batches concurrently. **Highly recommended** if ENABLE_REDIS_QUEUE=true to ensure bad data never poisons the queue.
-- **STAC validator (Python)** (ENABLE_STAC_VALIDATOR): Loops sequentially. Adding 1,000 items requires 1,000 separate schema checks, which can be CPU intensive. Best suited for smaller, single-item insertions or when running the Go container isn't possible.
+- **Fast validator** (ENABLE_FAST_VALIDATOR): Adds minimal overhead. Validates batches concurrently. **Highly recommended** if ENABLE_REDIS_QUEUE=true to ensure bad data never poisons the queue.
+- **STAC validator (Python)** (ENABLE_STAC_VALIDATOR): Loops sequentially. Adding 1,000 items requires 1,000 separate schema checks, which can be CPU intensive. Best suited for smaller, single-item insertions or when the fast validator container isn't available.
 
-**Note**: If both validators are enabled in the environment, SFEOS will prioritize the Go Validator for speed and bypass the Python validator.
+**Note**: If both validators are enabled in the environment, SFEOS will prioritize the Fast Validator for speed and bypass the Python validator.
 
 ## Free-Text Search (`q` parameter)
 

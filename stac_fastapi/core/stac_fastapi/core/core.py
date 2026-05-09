@@ -36,7 +36,7 @@ from stac_fastapi.core.serializers import (
 from stac_fastapi.core.session import Session
 from stac_fastapi.core.utilities import filter_fields, get_bool_env
 from stac_fastapi.core.validate import (
-    async_validate_batch_with_go,
+    async_validate_batch_with_fast_validator,
     async_validate_collection,
     async_validate_item,
     validate_item,
@@ -1055,10 +1055,11 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             valid_features = []
             invalid_details = {}  # Store id -> error string
 
-            if get_bool_env("ENABLE_GO_VALIDATOR") and not use_queue:
-                valid_features, invalid_details = await async_validate_batch_with_go(
-                    unique_features
-                )
+            if get_bool_env("ENABLE_FAST_VALIDATOR") and not use_queue:
+                (
+                    valid_features,
+                    invalid_details,
+                ) = await async_validate_batch_with_fast_validator(unique_features)
             else:
                 valid_features = unique_features
 
@@ -1092,6 +1093,10 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             skipped_db_duplicates = 0
 
             for feature in valid_features:
+                # Ensure collection field is set (use collection_id from URL if not present)
+                if "collection" not in feature:
+                    feature["collection"] = collection_id
+
                 prepped = bulk_client.preprocess_item(feature, base_url)
                 if prepped is not None:
                     processed_items.append(prepped)
@@ -1185,11 +1190,23 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         # ==========================================================
         else:
             # 1. VALIDATION LAYER (Single Item)
-            if get_bool_env("ENABLE_GO_VALIDATOR") and not use_queue:
-                try:
-                    await async_validate_item(item_dict)
-                except (ValidationError, ValueError) as e:
-                    raise HTTPException(status_code=400, detail=f"Invalid item: {e}")
+            if get_bool_env("ENABLE_FAST_VALIDATOR") and not use_queue:
+                (
+                    valid_items,
+                    invalid_details,
+                ) = await async_validate_batch_with_fast_validator([item_dict])
+                if invalid_details:
+                    raise HTTPException(
+                        status_code=400,
+                        detail={
+                            "message": "Item validation failed.",
+                            "errors": invalid_details,
+                        },
+                    )
+
+            # Ensure collection field is set (use collection_id from URL if not present)
+            if "collection" not in item_dict:
+                item_dict["collection"] = collection_id
 
             # 2. PREPROCESSING LAYER
             bulk_client = BulkTransactionsClient(
@@ -1578,10 +1595,12 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         valid_items = []
         invalid_details = {}
 
-        if get_bool_env("ENABLE_GO_VALIDATOR"):
-            from stac_fastapi.core.utilities import validate_batch_with_go
+        if get_bool_env("ENABLE_FAST_VALIDATOR"):
+            from stac_fastapi.core.validate import validate_batch_with_fast_validator
 
-            valid_items, invalid_details = validate_batch_with_go(unique_items)
+            valid_items, invalid_details = validate_batch_with_fast_validator(
+                unique_items
+            )
 
         else:
             for item in unique_items:
