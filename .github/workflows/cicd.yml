@@ -123,5 +123,5 @@ jobs:
           REDIS_HOST: 127.0.0.1
           REDIS_PORT: 6379
           ENABLE_FAST_VALIDATOR: true
-          FAST_VALIDATOR_URL: http://127.0.0.1:8000/validate
+          FAST_VALIDATOR_URL: http://localhost:8000/validate
           BACKEND: ${{ matrix.backend }}

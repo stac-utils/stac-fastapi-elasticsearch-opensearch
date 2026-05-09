@@ -1006,8 +1006,8 @@ async def test_search_datetime_with_null_datetime(
         pytest.skip()
 
     # Disable STAC validator for this test as test data may have schema violations
-    original_validator_setting = os.getenv("ENABLE_STAC_VALIDATOR")
-    os.environ.pop("ENABLE_STAC_VALIDATOR", None)
+    original_validator_setting = os.getenv("ENABLE_FAST_VALIDATOR")
+    os.environ.pop("ENABLE_FAST_VALIDATOR", None)
 
     try:
         """Test datetime filtering when properties.datetime is null or set, ensuring start_datetime and end_datetime are set when datetime is null."""
@@ -1139,7 +1139,7 @@ async def test_search_datetime_with_null_datetime(
     finally:
         # Restore original STAC validator setting
         if original_validator_setting:
-            os.environ["ENABLE_STAC_VALIDATOR"] = original_validator_setting
+            os.environ["ENABLE_FAST_VALIDATOR"] = original_validator_setting
 
 
 @pytest.mark.asyncio

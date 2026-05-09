@@ -10,7 +10,7 @@ from ..conftest import create_collection, create_item
 @pytest.mark.asyncio
 async def test_stac_validator_allows_valid_datetime_range(txn_client, load_test_data):
     """Test that STAC validator allows valid datetime range with null datetime."""
-    os.environ["ENABLE_STAC_VALIDATOR"] = "true"
+    os.environ["ENABLE_FAST_VALIDATOR"] = "true"
 
     try:
         test_collection = load_test_data("test_collection.json")
@@ -30,7 +30,7 @@ async def test_stac_validator_allows_valid_datetime_range(txn_client, load_test_
         # This should succeed - valid Pydantic and STAC item
         await create_item(txn_client, valid_item)
     finally:
-        os.environ.pop("ENABLE_STAC_VALIDATOR", None)
+        os.environ.pop("ENABLE_FAST_VALIDATOR", None)
         try:
             await txn_client.delete_collection(test_collection["id"])
         except Exception:
@@ -42,7 +42,7 @@ async def test_stac_validator_catches_eo_bands_in_assets(txn_client, load_test_d
     """Test that STAC validator catches eo:bands in assets when using EO v2.0.0."""
     from fastapi import HTTPException
 
-    os.environ["ENABLE_STAC_VALIDATOR"] = "true"
+    os.environ["ENABLE_FAST_VALIDATOR"] = "true"
 
     try:
         test_collection = load_test_data("test_collection.json")
@@ -70,7 +70,7 @@ async def test_stac_validator_catches_eo_bands_in_assets(txn_client, load_test_d
         )
         assert exc_info.value.status_code == 400
     finally:
-        os.environ.pop("ENABLE_STAC_VALIDATOR", None)
+        os.environ.pop("ENABLE_FAST_VALIDATOR", None)
         try:
             await txn_client.delete_collection(test_collection["id"])
         except Exception:
@@ -82,7 +82,7 @@ async def test_stac_validator_catches_invalid_cloud_cover(txn_client, load_test_
     """Test that STAC validator catches invalid eo:cloud_cover values."""
     from fastapi import HTTPException
 
-    os.environ["ENABLE_STAC_VALIDATOR"] = "true"
+    os.environ["ENABLE_FAST_VALIDATOR"] = "true"
 
     try:
         test_collection = load_test_data("test_collection.json")
@@ -107,7 +107,7 @@ async def test_stac_validator_catches_invalid_cloud_cover(txn_client, load_test_
             or "validation" in str(exc_info.value).lower()
         )
     finally:
-        os.environ.pop("ENABLE_STAC_VALIDATOR", None)
+        os.environ.pop("ENABLE_FAST_VALIDATOR", None)
         try:
             await txn_client.delete_collection(test_collection["id"])
         except Exception:
@@ -121,7 +121,7 @@ async def test_stac_validator_feature_collection_with_invalid_item_raise_on_erro
     """Test that STAC validator fails entire FeatureCollection when RAISE_ON_BULK_ERROR is true."""
     from fastapi import HTTPException
 
-    os.environ["ENABLE_STAC_VALIDATOR"] = "true"
+    os.environ["ENABLE_FAST_VALIDATOR"] = "true"
     os.environ["RAISE_ON_BULK_ERROR"] = "true"
 
     try:
@@ -159,7 +159,7 @@ async def test_stac_validator_feature_collection_with_invalid_item_raise_on_erro
         assert "Batch rejected" in str(exc_info.value)
         assert exc_info.value.status_code == 400
     finally:
-        os.environ.pop("ENABLE_STAC_VALIDATOR", None)
+        os.environ.pop("ENABLE_FAST_VALIDATOR", None)
         os.environ.pop("RAISE_ON_BULK_ERROR", None)
         try:
             await txn_client.delete_collection(test_collection["id"])
@@ -174,7 +174,7 @@ async def test_stac_validator_feature_collection_with_invalid_item_skip_on_error
     """Test that STAC validator skips invalid items when RAISE_ON_BULK_ERROR is false."""
     from ..conftest import MockRequest
 
-    os.environ["ENABLE_STAC_VALIDATOR"] = "true"
+    os.environ["ENABLE_FAST_VALIDATOR"] = "true"
     os.environ["RAISE_ON_BULK_ERROR"] = "false"
 
     try:
@@ -216,7 +216,7 @@ async def test_stac_validator_feature_collection_with_invalid_item_skip_on_error
         item_ids = {f["id"] for f in fc["features"]}
         assert item_ids == {"valid-item-0", "valid-item-1"}
     finally:
-        os.environ.pop("ENABLE_STAC_VALIDATOR", None)
+        os.environ.pop("ENABLE_FAST_VALIDATOR", None)
         os.environ.pop("RAISE_ON_BULK_ERROR", None)
         try:
             await txn_client.delete_collection(test_collection["id"])
@@ -229,7 +229,7 @@ async def test_stac_validator_catches_invalid_snow_cover(txn_client, load_test_d
     """Test that STAC validator catches invalid eo:snow_cover values."""
     from fastapi import HTTPException
 
-    os.environ["ENABLE_STAC_VALIDATOR"] = "true"
+    os.environ["ENABLE_FAST_VALIDATOR"] = "true"
 
     try:
         test_collection = load_test_data("test_collection.json")
@@ -254,7 +254,7 @@ async def test_stac_validator_catches_invalid_snow_cover(txn_client, load_test_d
             or "validation" in str(exc_info.value).lower()
         )
     finally:
-        os.environ.pop("ENABLE_STAC_VALIDATOR", None)
+        os.environ.pop("ENABLE_FAST_VALIDATOR", None)
         try:
             await txn_client.delete_collection(test_collection["id"])
         except Exception:
@@ -264,7 +264,7 @@ async def test_stac_validator_catches_invalid_snow_cover(txn_client, load_test_d
 @pytest.mark.asyncio
 async def test_stac_validator_allows_valid_item(txn_client, load_test_data):
     """Test that STAC validator allows valid STAC items."""
-    os.environ["ENABLE_STAC_VALIDATOR"] = "true"
+    os.environ["ENABLE_FAST_VALIDATOR"] = "true"
 
     try:
         test_collection = load_test_data("test_collection.json")
@@ -280,7 +280,7 @@ async def test_stac_validator_allows_valid_item(txn_client, load_test_data):
         await create_item(txn_client, valid_item)
         # If no exception is raised, the test passes
     finally:
-        os.environ.pop("ENABLE_STAC_VALIDATOR", None)
+        os.environ.pop("ENABLE_FAST_VALIDATOR", None)
         try:
             await txn_client.delete_collection(test_collection["id"])
         except Exception:
@@ -313,7 +313,7 @@ def test_schema_cache_size_environment_variable():
 @pytest.mark.asyncio
 async def test_stac_validator_returns_400_on_invalid_item(app_client, load_test_data):
     """Test that invalid STAC items return 400 Bad Request response."""
-    os.environ["ENABLE_STAC_VALIDATOR"] = "true"
+    os.environ["ENABLE_FAST_VALIDATOR"] = "true"
 
     try:
         # Create a test collection first
@@ -359,122 +359,8 @@ async def test_stac_validator_returns_400_on_invalid_item(app_client, load_test_
             assert "message" in detail or "errors" in detail
 
     finally:
-        os.environ.pop("ENABLE_STAC_VALIDATOR", None)
+        os.environ.pop("ENABLE_FAST_VALIDATOR", None)
         try:
             await app_client.delete(f"/collections/{test_collection['id']}")
-        except Exception:
-            pass
-
-
-# =========================================================================
-# GO VALIDATOR TESTS
-# =========================================================================
-
-
-@pytest.mark.asyncio
-async def test_go_validator_feature_collection_with_invalid_item_raise_on_error(
-    txn_client, load_test_data
-):
-    """Test that GO validator fails entire FeatureCollection when RAISE_ON_BULK_ERROR is true."""
-    from fastapi import HTTPException
-
-    try:
-        test_collection = load_test_data("test_collection.json")
-        test_collection["id"] = f"test-collection-go-fc-{uuid.uuid4()}"
-        await create_collection(txn_client, collection=test_collection)
-
-        # Enable the Go Validator for this test
-        os.environ["ENABLE_GO_VALIDATOR"] = "true"
-        os.environ["RAISE_ON_BULK_ERROR"] = "true"
-
-        base_item = load_test_data("test_item.json")
-
-        # Create FeatureCollection with 2 valid items and 1 invalid item
-        features = []
-        for i in range(2):
-            item = deepcopy(base_item)
-            item["id"] = f"valid-go-item-{i}"
-            item["collection"] = test_collection["id"]
-            features.append(item)
-
-        # Add invalid item (e.g. invalid cloud_cover to trigger extension schema failure)
-        invalid_item = deepcopy(base_item)
-        invalid_item["id"] = "invalid-go-item-fc"
-        invalid_item["collection"] = test_collection["id"]
-        invalid_item["properties"]["eo:cloud_cover"] = 150  # Invalid: > 100
-
-        features.append(invalid_item)
-
-        feature_collection = {
-            "type": "FeatureCollection",
-            "features": features,
-        }
-
-        # With RAISE_ON_BULK_ERROR=true, the API should reject the batch
-        with pytest.raises(HTTPException) as exc_info:
-            await create_item(txn_client, feature_collection)
-
-        assert "Batch rejected" in str(exc_info.value)
-        assert exc_info.value.status_code == 400
-    finally:
-        os.environ.pop("ENABLE_GO_VALIDATOR", None)
-        os.environ.pop("RAISE_ON_BULK_ERROR", None)
-        try:
-            await txn_client.delete_collection(test_collection["id"])
-        except Exception:
-            pass
-
-
-@pytest.mark.asyncio
-async def test_go_validator_feature_collection_with_invalid_item_skip_on_error(
-    txn_client, core_client, load_test_data
-):
-    """Test that GO validator skips invalid items when RAISE_ON_BULK_ERROR is false."""
-    from ..conftest import MockRequest
-
-    try:
-        test_collection = load_test_data("test_collection.json")
-        test_collection["id"] = f"test-collection-go-fc-skip-{uuid.uuid4()}"
-        await create_collection(txn_client, collection=test_collection)
-
-        os.environ["ENABLE_GO_VALIDATOR"] = "true"
-        os.environ["RAISE_ON_BULK_ERROR"] = "false"
-
-        base_item = load_test_data("test_item.json")
-
-        features = []
-        for i in range(2):
-            item = deepcopy(base_item)
-            item["id"] = f"valid-go-item-{i}"
-            item["collection"] = test_collection["id"]
-            features.append(item)
-
-        invalid_item = deepcopy(base_item)
-        invalid_item["id"] = "invalid-go-item-fc"
-        invalid_item["collection"] = test_collection["id"]
-        invalid_item["properties"]["eo:cloud_cover"] = 150  # Invalid
-
-        features.append(invalid_item)
-
-        feature_collection = {
-            "type": "FeatureCollection",
-            "features": features,
-        }
-
-        # With RAISE_ON_BULK_ERROR=false, it should skip the invalid item and insert the valid ones
-        await create_item(txn_client, feature_collection)
-
-        # Verify only 2 valid items exist in the collection
-        fc = await core_client.item_collection(
-            test_collection["id"], request=MockRequest()
-        )
-        assert len(fc["features"]) == 2
-        item_ids = {f["id"] for f in fc["features"]}
-        assert item_ids == {"valid-go-item-0", "valid-go-item-1"}
-    finally:
-        os.environ.pop("ENABLE_GO_VALIDATOR", None)
-        os.environ.pop("RAISE_ON_BULK_ERROR", None)
-        try:
-            await txn_client.delete_collection(test_collection["id"])
         except Exception:
             pass

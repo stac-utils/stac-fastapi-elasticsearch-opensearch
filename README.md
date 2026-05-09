@@ -745,8 +745,6 @@ You can customize additional settings in your `.env` file:
 | `ENABLE_CATALOGS_ROUTE` | Enable the **/catalogs** endpoint for hierarchical catalog browsing and navigation. **Note:** Requires the catalogs extension to be installed via `stac-fastapi-elasticsearch[catalogs]`, `stac-fastapi-opensearch[catalogs]`, or `stac-fastapi-core[catalogs]`. See [Catalogs Route](#catalogs-route) for installation instructions. | `false` | Optional |
 | `ENABLE_FAST_VALIDATOR` | Enables the high-performance fast Python validator microservice to validate STAC items and collections on ingestion. Highly recommended for bulk insertions as it validates massive batches concurrently without blocking the API. Use with `FAST_VALIDATOR_URL`. | `false` | Optional |
 | `FAST_VALIDATOR_URL` | The full endpoint URL of the fast Python STAC validator service. Used when `ENABLE_FAST_VALIDATOR` is true. | `http://stac-validator:8000/validate` | Optional |
-| `ENABLE_STAC_VALIDATOR` | Enable [stac-validator](https://github.com/stac-utils/stac-validator) to validate STAC items and collections on ingestion. This is especially useful for items or collections that use extensions. Use with `SCHEMA CACHE SIZE`| `false` | Optional |
-| `SCHEMA_CACHE_SIZE` | Configures the maximum number of STAC schemas that can be cached in memory. Used with `ENABLE_STAC_VALIDATOR` to cache validated schemas for faster subsequent validations.| `32` | Optional |
 | `STAC_INDEX_ASSETS` | Controls if Assets are indexed when added to Elasticsearch/Opensearch. This allows asset fields to be included in search queries. | `false` | Optional |
 
 ### 5. Limits & Performance
@@ -852,73 +850,10 @@ When the Fast Validator is enabled, bulk API insertions (like POSTing a `Feature
 }
 ```
 
-### 3. Python STAC Validator (Fallback)
-
-If you cannot deploy the fast validator container but still require strict validation beyond Pydantic's type checking, you can enable the Python-based `stac-validator` package.
-
-#### Enabling STAC Validator
-
-1. **Install the validator**:
-   ```bash
-   pip install stac-fastapi-core[validator]
-   # or
-   pip install stac-fastapi-elasticsearch[validator]
-   # or
-   pip install stac-fastapi-opensearch[validator]
-   ```
-
-2. **Enable validation via environment variable**:
-   ```bash
-   export ENABLE_STAC_VALIDATOR=true
-   ```
-
-When enabled, the STAC validator will:
-- Validate items and collections against the official STAC JSON schemas
-- Check compliance with STAC extensions (e.g., EO, SAR, Projection)
-- Catch schema violations that Pydantic doesn't enforce
-- Provide detailed error messages with schema paths and validation details
-
-#### Schema Cache Configuration
-
-STAC validator caches JSON schemas to improve performance. Control the cache size with the `SCHEMA_CACHE_SIZE` environment variable:
-
-```bash
-# Set cache size to 64 schemas (default is 32)
-export SCHEMA_CACHE_SIZE=64
-```
-
-**When to adjust**:
-- **Increase** if you use many STAC extensions or custom schemas
-- **Decrease** if memory is constrained
-- **Default (32)** works well for most deployments
-
-#### Example: Validation in Action
-
-```bash
-# Enable STAC validator with custom cache size
-export ENABLE_STAC_VALIDATOR=true
-export SCHEMA_CACHE_SIZE=64
-
-# Now POST/PUT requests will validate against STAC schemas
-curl -X POST http://localhost:8000/collections \
-  -H "Content-Type: application/json" \
-  -d @collection.json
-```
-
-If validation fails, you'll receive a detailed error response:
-```json
-{
-  "detail": "STAC validation failed: 'eo:bands' does not match any of the regexes: '^(?!eo:)'. Error is in assets -> SR_B2"
-}
-```
-
 #### Performance Considerations
 
-- **Pydantic validation** Very fast and always enabled
-- **Fast validator** (ENABLE_FAST_VALIDATOR): Adds minimal overhead. Validates batches concurrently. **Highly recommended** if ENABLE_REDIS_QUEUE=true to ensure bad data never poisons the queue.
-- **STAC validator (Python)** (ENABLE_STAC_VALIDATOR): Loops sequentially. Adding 1,000 items requires 1,000 separate schema checks, which can be CPU intensive. Best suited for smaller, single-item insertions or when the fast validator container isn't available.
-
-**Note**: If both validators are enabled in the environment, SFEOS will prioritize the Fast Validator for speed and bypass the Python validator.
+- **Pydantic validation**: Very fast and always enabled
+- **Fast validator** (ENABLE_FAST_VALIDATOR): Adds minimal overhead. Validates batches concurrently. **Highly recommended** for production deployments, especially if ENABLE_REDIS_QUEUE=true to ensure bad data never poisons the queue.
 
 ## Free-Text Search (`q` parameter)
 
