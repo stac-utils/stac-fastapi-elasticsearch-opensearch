@@ -36,17 +36,22 @@ def _parse_batch_response(
     )
 
     if batch_data.get("valid_stac", False):
+        logger.debug(f"All {len(items)} items passed validation")
         return items, {}
 
     invalid_items = {}
     valid_item_ids = {item.get("id") for item in items}
 
-    for error in batch_data.get("errors", []):
+    errors = batch_data.get("errors", [])
+    logger.warning(f"Validation errors found: {len(errors)} error(s)")
+    for error in errors:
+        logger.warning(f"  Error: {error}")
         err_msg = error.get("error_message", "Validation failed")
         for item_id in error.get("affected_items", []):
             invalid_items[item_id] = err_msg
             valid_item_ids.discard(item_id)
 
+    logger.warning(f"Invalid items: {list(invalid_items.keys())}")
     valid_items = [item for item in items if item.get("id") in valid_item_ids]
     return valid_items, invalid_items
 
@@ -115,10 +120,12 @@ async def async_validate_batch_with_fast_validator(
             payload = {"type": "FeatureCollection", "features": items}
             response = await client.post(FAST_VALIDATOR_URL, json=payload)
             response.raise_for_status()
-            return _parse_batch_response(items, response.json())
+            response_data = response.json()
+            logger.debug(f"Fast validator response: {response_data}")
+            return _parse_batch_response(items, response_data)
 
         except Exception as e:
-            logger.error(f"Fast validator request failed: {e}")
+            logger.error(f"Fast validator request failed: {e}", exc_info=True)
             return (
                 [],
                 {

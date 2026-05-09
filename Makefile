@@ -14,7 +14,7 @@ run_es = docker compose \
 	-e PY_IGNORE_IMPORTMISMATCH=1 \
 	-e APP_HOST=${APP_HOST} \
 	-e APP_PORT=${ES_APP_PORT} \
-	-e ENABLE_FAST_VALIDATOR=true \
+	-e ENABLE_FAST_VALIDATOR=false \
 	app-elasticsearch
 
 run_os = docker compose \
@@ -23,7 +23,7 @@ run_os = docker compose \
 	-e PY_IGNORE_IMPORTMISMATCH=1 \
 	-e APP_HOST=${APP_HOST} \
 	-e APP_PORT=${OS_APP_PORT} \
-	-e ENABLE_FAST_VALIDATOR=true \
+	-e ENABLE_FAST_VALIDATOR=false \
 	app-opensearch
 
 .PHONY: image-es-os

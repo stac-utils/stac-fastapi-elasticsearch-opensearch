@@ -895,67 +895,58 @@ async def test_search_line_string_intersects(app_client, ctx):
 async def test_big_int_eo_search(
     app_client, txn_client, test_item, test_collection, value, expected
 ):
-    # Disable STAC validator for this test as test data may have schema violations
-    original_validator_setting = os.getenv("ENABLE_FAST_VALIDATOR")
-    os.environ.pop("ENABLE_FAST_VALIDATOR", None)
+    random_str = "".join(random.choice("abcdef") for _ in range(5))
+    collection_id = f"test-collection-eo-{random_str}"
+
+    test_collection["id"] = collection_id
+    test_collection["stac_extensions"] = [
+        "https://stac-extensions.github.io/eo/v2.0.0/schema.json"
+    ]
+
+    test_item["collection"] = collection_id
+    test_item["stac_extensions"] = test_collection["stac_extensions"]
+
+    # Remove "eo:bands" to simplify the test
+    del test_item["properties"]["eo:bands"]
+
+    # Attribute to test
+    attr = "eo:full_width_half_max"
 
     try:
-        random_str = "".join(random.choice("abcdef") for _ in range(5))
-        collection_id = f"test-collection-eo-{random_str}"
+        await create_collection(txn_client, test_collection)
+    except ConflictError:
+        pass
 
-        test_collection["id"] = collection_id
-        test_collection["stac_extensions"] = [
-            "https://stac-extensions.github.io/eo/v2.0.0/schema.json"
-        ]
+    # Create items with deterministic offsets
+    for val in [value, value + 100, value - 100]:
+        item = deepcopy(test_item)
+        item["id"] = str(uuid.uuid4())
+        item["properties"][attr] = val
+        await create_item(txn_client, item)
 
-        test_item["collection"] = collection_id
-        test_item["stac_extensions"] = test_collection["stac_extensions"]
+    # Search for the exact value
+    params = {
+        "collections": [collection_id],
+        "filter": {
+            "args": [
+                {
+                    "args": [
+                        {"property": f"properties.{attr}"},
+                        value,
+                    ],
+                    "op": "=",
+                }
+            ],
+            "op": "and",
+        },
+    }
+    resp = await app_client.post("/search", json=params)
+    resp_json = resp.json()
 
-        # Remove "eo:bands" to simplify the test
-        del test_item["properties"]["eo:bands"]
-
-        # Attribute to test
-        attr = "eo:full_width_half_max"
-
-        try:
-            await create_collection(txn_client, test_collection)
-        except ConflictError:
-            pass
-
-        # Create items with deterministic offsets
-        for val in [value, value + 100, value - 100]:
-            item = deepcopy(test_item)
-            item["id"] = str(uuid.uuid4())
-            item["properties"][attr] = val
-            await create_item(txn_client, item)
-
-        # Search for the exact value
-        params = {
-            "collections": [collection_id],
-            "filter": {
-                "args": [
-                    {
-                        "args": [
-                            {"property": f"properties.{attr}"},
-                            value,
-                        ],
-                        "op": "=",
-                    }
-                ],
-                "op": "and",
-            },
-        }
-        resp = await app_client.post("/search", json=params)
-        resp_json = resp.json()
-
-        # Validate results
-        results = {x["properties"][attr] for x in resp_json["features"]}
-        assert len(results) == expected
-        assert results == {value}
-    finally:
-        # Restore original STAC validator setting
-        if original_validator_setting:
-            os.environ["ENABLE_FAST_VALIDATOR"] = original_validator_setting
+    # Validate results
+    results = {x["properties"][attr] for x in resp_json["features"]}
+    assert len(results) == expected
+    assert results == {value}
 
 
 @pytest.mark.asyncio
