@@ -302,10 +302,23 @@ async def queue_items_if_enabled(
     if not get_bool_env("ENABLE_REDIS_QUEUE", default=False):
         return None
 
+    import json
+
     from stac_fastapi.core.redis_utils import AsyncRedisQueueManager
 
     queue_manager = await AsyncRedisQueueManager.create()
     try:
+        # Log items being queued
+        if isinstance(items, list):
+            for item in items:
+                logger.info(
+                    f"Queuing item '{item.get('id', 'unknown')}': {json.dumps(item, default=str)}"
+                )
+        else:
+            logger.info(
+                f"Queuing item '{items.get('id', 'unknown')}': {json.dumps(items, default=str)}"
+            )
+
         queue_len = await queue_manager.queue_items(collection_id, items)
 
         # Format logging message based on whether single or bulk items

@@ -1093,11 +1093,9 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             skipped_db_duplicates = 0
 
             for feature in valid_features:
-                # Ensure collection field is set (use collection_id from URL if not present)
-                if "collection" not in feature:
-                    feature["collection"] = collection_id
-
-                prepped = bulk_client.preprocess_item(feature, base_url)
+                prepped = bulk_client.preprocess_item(
+                    feature, base_url, collection_id=collection_id
+                )
                 if prepped is not None:
                     processed_items.append(prepped)
                 else:
@@ -1529,16 +1527,23 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         """Create es engine."""
         self.client = self.settings.create_client
 
-    def preprocess_item(self, item: stac_types.Item, base_url: str) -> stac_types.Item:
+    def preprocess_item(
+        self, item: stac_types.Item, base_url: str, collection_id: str | None = None
+    ) -> stac_types.Item:
         """Preprocess an item to match the data model.
 
         Args:
             item: The item to preprocess.
             base_url: The base URL of the request.
+            collection_id: Optional collection ID (used by database layer).
 
         Returns:
             The preprocessed item.
         """
+        # Ensure collection field is set
+        if collection_id and "collection" not in item:
+            item["collection"] = collection_id
+
         return self.database.bulk_sync_prep_create_item(item=item, base_url=base_url)
 
     @overrides
