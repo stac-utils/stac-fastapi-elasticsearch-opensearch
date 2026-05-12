@@ -158,9 +158,9 @@ class ItemSerializer(Serializer):
         item_links = resolve_links(stac_data.get("links", []), base_url)
         stac_data["links"] = item_links
         if get_bool_env("STAC_ALTERNATE_ASSETS"):
-            for asset in stac_data["assets"]:
+            for asset_key, asset in stac_data["assets"].items():
                 if alternate_assets := asset.get("alternate"):
-                    asset["alternate"] = [
+                    asset["alternate"][asset_key] = [
                         {"alternate_key": k, **v} for k, v in alternate_assets.items()
                     ]
 
