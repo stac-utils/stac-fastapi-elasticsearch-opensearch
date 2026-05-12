@@ -25,7 +25,7 @@ class TestMergeMappings:
         base = {
             "properties": {
                 "properties": {
-                    "datetime": {"type": "date_nanos"},
+                    "datetime": {"type": "date"},
                     "created": {"type": "date"},
                 }
             }
@@ -34,14 +34,14 @@ class TestMergeMappings:
         merge_mappings(base, custom)
 
         # Existing fields preserved
-        assert base["properties"]["properties"]["datetime"] == {"type": "date_nanos"}
+        assert base["properties"]["properties"]["datetime"] == {"type": "date"}
         assert base["properties"]["properties"]["created"] == {"type": "date"}
         # New field added
         assert base["properties"]["properties"]["custom_field"] == {"type": "keyword"}
 
     def test_custom_overwrites_on_key_collision(self):
         """Test that custom values overwrite base values when keys collide."""
-        base = {"level1": {"a": {"type": "date_nanos"}}}
+        base = {"level1": {"a": {"type": "date"}}}
         custom = {"level1": {"a": {"type": "date"}}}
         merge_mappings(base, custom)
         assert base["level1"]["a"] == {"type": "date"}
@@ -199,7 +199,7 @@ class TestApplyCustomMappings:
             "numeric_detection": False,
             "properties": {
                 "id": {"type": "keyword"},
-                "properties": {"properties": {"datetime": {"type": "date_nanos"}}},
+                "properties": {"properties": {"datetime": {"type": "date"}}},
             },
         }
         custom_json = json.dumps(
@@ -217,7 +217,7 @@ class TestApplyCustomMappings:
         # Existing fields preserved
         assert mappings["properties"]["id"] == {"type": "keyword"}
         assert mappings["properties"]["properties"]["properties"]["datetime"] == {
-            "type": "date_nanos"
+            "type": "date"
         }
         # New fields added
         assert mappings["properties"]["properties"]["properties"][
@@ -282,7 +282,7 @@ class TestGetItemsMappings:
         assert mappings["properties"]["id"] == {"type": "keyword"}
         assert mappings["properties"]["geometry"] == {"type": "geo_shape"}
         assert mappings["properties"]["properties"]["properties"]["datetime"] == {
-            "type": "date_nanos"
+            "type": "date"
         }
 
     def test_custom_can_override_defaults(self):
@@ -362,7 +362,7 @@ class TestSTACExtensionUseCases:
         ].items():
             assert props[field_name] == field_config
         # Default fields still present
-        assert props["datetime"] == {"type": "date_nanos"}
+        assert props["datetime"] == {"type": "date"}
 
     def test_performance_optimization_with_disabled_dynamic_mapping(self):
         """Test disabling dynamic mapping with selective field indexing."""
