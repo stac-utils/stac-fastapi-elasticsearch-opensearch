@@ -367,10 +367,37 @@ ES_MAPPINGS_DYNAMIC_TEMPLATES = get_dynamic_template(
 )
 
 _DATE_MAPPING_TYPE = "date_nanos" if get_bool_env("USE_DATETIME_NANOS") else "date"
+
+_ALTERNATE_ASSET_RUNTIME_MAPPINGS = (
+    {
+        "all_alternate_names": {
+            "type": "keyword",
+            "script": {
+                "source": """
+                    if (doc.containsKey('assets.alternate:name') && !doc['assets.alternate:name'].empty) {
+                        for (def v : doc['assets.alternate:name']) {
+                            emit(v);
+                        }
+                    }
+                    if (doc.containsKey('assets.alternate.alternate:name') && !doc['assets.alternate.alternate:name'].empty) {
+                        for (def v : doc['assets.alternate.alternate:name']) {
+                            emit(v);
+                        }
+                    }
+                """,
+                "lang": "painless",
+            },
+        }
+    }
+    if get_bool_env("STAC_ALTERNATE_ASSETS")
+    else {}
+)
+
 # Base items mappings without dynamic configuration applied
 _BASE_ITEMS_MAPPINGS = {
     "numeric_detection": False,
     "dynamic_templates": ES_MAPPINGS_DYNAMIC_TEMPLATES,
+    "runtime": _ALTERNATE_ASSET_RUNTIME_MAPPINGS,
     "properties": {
         "id": {"type": "keyword"},
         "collection": {"type": "keyword"},
@@ -418,6 +445,27 @@ _BASE_ES_COLLECTIONS_MAPPINGS = {
 
 # ES_COLLECTIONS_MAPPINGS with environment-based configuration applied at module load time
 ES_COLLECTIONS_MAPPINGS = get_mappings(is_items=False)
+
+ALTERNATE_ASSETS_AGGREGATION_MAPPING: dict[str, dict[str, Any]] = {
+    "primary_alternate_name_frequency": {
+        "terms": {
+            "field": "assets.alternate:name",
+            "size": 10000,
+        }
+    },
+    "alternate_alternate_name_frequency": {
+        "terms": {
+            "field": "assets.alternate.alternate:name",
+            "size": 10000,
+        }
+    },
+    "alternate_name_frequency": {
+        "terms": {
+            "field": "all_alternate_names",
+            "size": 10000,
+        }
+    },
+}
 
 # Shared aggregation mapping for both Elasticsearch and OpenSearch
 AGGREGATION_MAPPING: dict[str, dict[str, Any]] = {
@@ -490,6 +538,13 @@ AGGREGATION_MAPPING: dict[str, dict[str, Any]] = {
         }
     },
 }
+
+AGGREGATION_MAPPING = (
+    AGGREGATION_MAPPING | ALTERNATE_ASSETS_AGGREGATION_MAPPING
+    if get_bool_env("STAC_ALTERNATE_ASSETS")
+    else AGGREGATION_MAPPING
+)
+
 
 ES_MAPPING_TYPE_TO_JSON: dict[
     str, Literal["string", "number", "boolean", "object", "array", "null"]
