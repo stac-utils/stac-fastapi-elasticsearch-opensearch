@@ -1,4 +1,5 @@
 """Database logic."""
+
 import asyncio
 import logging
 import os
@@ -14,6 +15,7 @@ from opensearchpy import Q, Search
 from opensearchpy.exceptions import ConflictError as OSConflictError
 from opensearchpy.exceptions import NotFoundError as OSNotFoundError
 from opensearchpy.exceptions import RequestError
+from stac_fastapi.sfeos_helpers.database.index import index_by_collection_id
 from starlette.requests import Request
 
 import stac_fastapi.sfeos_helpers.filter as filter_module
@@ -76,7 +78,6 @@ from stac_fastapi.sfeos_helpers.mappings import (
     DEFAULT_SORT,
     ES_COLLECTIONS_MAPPINGS,
     ITEM_INDICES,
-    ITEMS_INDEX_PREFIX,
     Geometry,
 )
 from stac_fastapi.sfeos_helpers.search_engine import (
@@ -434,7 +435,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             dict: A dictionary containing the Queryables mappings.
         """
         mappings = await self.client.indices.get_mapping(
-            index=f"{ITEMS_INDEX_PREFIX}{collection_id}",
+            index=f"{ITEMS_ALIAS_PREFIX}{collection_id}",
         )
         return await get_queryables_mapping_shared(
             collection_id=collection_id, mappings=mappings
@@ -1631,9 +1632,11 @@ class DatabaseLogic(BaseDatabaseLogic):
         collection_dict = (
             collection
             if isinstance(collection, dict)
-            else collection.model_dump()
-            if hasattr(collection, "model_dump")
-            else dict(collection)
+            else (
+                collection.model_dump()
+                if hasattr(collection, "model_dump")
+                else dict(collection)
+            )
         )
 
         if collection_id != collection_dict.get("id"):
@@ -1646,9 +1649,9 @@ class DatabaseLogic(BaseDatabaseLogic):
             await self.client.reindex(
                 body={
                     "dest": {
-                        "index": f"{ITEMS_INDEX_PREFIX}{collection_dict.get('id')}"
+                        "index": index_by_collection_id(collection_dict.get("id"))
                     },
-                    "source": {"index": f"{ITEMS_INDEX_PREFIX}{collection_id}"},
+                    "source": {"index": index_alias_by_collection_id(collection_id)},
                     "script": {
                         "lang": "painless",
                         "source": f"""ctx._id = ctx._id.replace('{collection_id}', '{collection_dict.get("id")}'); ctx._source.collection = '{collection_dict.get("id")}' ;""",
@@ -1656,6 +1659,29 @@ class DatabaseLogic(BaseDatabaseLogic):
                 },
                 wait_for_completion=True,
                 refresh=refresh,
+            )
+
+            await self.client.indices.update_aliases(
+                body={
+                    "actions": [
+                        {
+                            "remove": {
+                                "index": index_by_collection_id(collection_id),
+                                "alias": index_alias_by_collection_id(collection_id),
+                            }
+                        },
+                        {
+                            "add": {
+                                "index": index_by_collection_id(
+                                    collection_dict.get("id")
+                                ),
+                                "alias": index_alias_by_collection_id(
+                                    collection_dict.get("id")
+                                ),
+                            }
+                        },
+                    ]
+                }
             )
 
             await self.delete_collection(collection_id=collection_id, **kwargs)

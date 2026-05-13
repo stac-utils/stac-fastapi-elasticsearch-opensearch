@@ -13,6 +13,7 @@ from stac_fastapi.sfeos_helpers.mappings import (
     ES_ITEMS_MAPPINGS,
     ES_ITEMS_SETTINGS,
     ITEMS_INDEX_PREFIX,
+    ITEMS_ALIAS_PREFIX,
 )
 
 
@@ -185,7 +186,7 @@ class IndexOperations:
             str: Formatted alias name with prefix, type, collection ID, and date.
         """
         cleaned = collection_id.translate(_ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE)
-        return f"{ITEMS_INDEX_PREFIX}{name}_{cleaned.lower()}_{start_date}"
+        return f"{ITEMS_ALIAS_PREFIX}{name}_{cleaned.lower()}_{start_date}"
 
     @staticmethod
     def _create_index_body(aliases: Dict[str, Dict]) -> Dict[str, Any]:

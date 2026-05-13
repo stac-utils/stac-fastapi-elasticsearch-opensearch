@@ -1047,6 +1047,7 @@ ENABLE_DATETIME_INDEX_FILTERING=true
 | `ENABLE_DATETIME_INDEX_FILTERING` | Enables time-based index partitioning | `false` | `true` |
 | `DATETIME_INDEX_MAX_SIZE_GB` | Maximum size limit for datetime indexes (GB) - note: add +20% to target size due to ES/OS compression | `25` | `50` |
 | `STAC_ITEMS_INDEX_PREFIX` | Prefix for item indexes | `items_` | `stac_items_` |
+| `STAC_ITEMS_ALIAS_PREFIX` | Prefix for item aliases | `STAC_ITEMS_INDEX_PREFIX` | `stac-items-` |
 | `ENABLE_REDIS_QUEUE` | Enables Redis queue for async item processing | `false` | `true` |
 | `QUEUE_BATCH_SIZE` | Number of items to process in a single batch | `50` | `100` |
 | `QUEUE_FLUSH_INTERVAL` | Maximum seconds to wait before flushing queue (even if batch not full) | `30` | `60` |
@@ -1080,9 +1081,9 @@ The system uses a precise naming convention:
 
 **Aliases:**
 ```
-{ITEMS_INDEX_PREFIX}{collection-id}                                  # Main collection alias
-{ITEMS_INDEX_PREFIX}{collection-id}_{start-datetime}                 # Temporal alias
-{ITEMS_INDEX_PREFIX}{collection-id}_{start-datetime}_{end-datetime}  # Closed index alias
+{ITEMS_ALIAS_PREFIX}{collection-id}                                  # Main collection alias
+{ITEMS_ALIAS_PREFIX}{collection-id}_{start-datetime}                 # Temporal alias
+{ITEMS_ALIAS_PREFIX}{collection-id}_{start-datetime}_{end-datetime}  # Closed index alias
 ```
 
 **Example:**
