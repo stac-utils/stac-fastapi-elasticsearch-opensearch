@@ -48,7 +48,11 @@ def index_alias_by_collection_id(collection_id: str) -> str:
     Returns:
         str: The index alias derived from the collection id.
     """
-    cleaned = collection_id.translate(_ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE)
+    cleaned = (
+        "*"
+        if collection_id == "*"
+        else collection_id.translate(_ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE)
+    )
     return f"{ITEMS_ALIAS_PREFIX}{cleaned}"
 
 
