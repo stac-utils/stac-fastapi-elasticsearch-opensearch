@@ -16,8 +16,8 @@ from stac_fastapi.sfeos_helpers.mappings import (
     ES_ITEMS_MAPPINGS,
     ES_ITEMS_SETTINGS,
     ITEM_INDICES,
-    ITEMS_INDEX_PREFIX,
     ITEMS_ALIAS_PREFIX,
+    ITEMS_INDEX_PREFIX,
 )
 
 

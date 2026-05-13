@@ -15,7 +15,6 @@ from elasticsearch.exceptions import BadRequestError
 from elasticsearch.exceptions import ConflictError as ESConflictError
 from elasticsearch.exceptions import NotFoundError as ESNotFoundError
 from fastapi import HTTPException
-from stac_fastapi.sfeos_helpers.database.index import index_by_collection_id
 from starlette.requests import Request
 
 import stac_fastapi.sfeos_helpers.filter as filter_module
@@ -65,6 +64,7 @@ from stac_fastapi.sfeos_helpers.database.catalogs import (
     decode_token_to_search_after,
     encode_search_after_to_token,
 )
+from stac_fastapi.sfeos_helpers.database.index import index_by_collection_id
 from stac_fastapi.sfeos_helpers.database.query import (
     ES_MAX_URL_LENGTH,
     add_collections_to_body,

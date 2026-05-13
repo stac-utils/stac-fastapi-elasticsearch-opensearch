@@ -15,7 +15,6 @@ from opensearchpy import Q, Search
 from opensearchpy.exceptions import ConflictError as OSConflictError
 from opensearchpy.exceptions import NotFoundError as OSNotFoundError
 from opensearchpy.exceptions import RequestError
-from stac_fastapi.sfeos_helpers.database.index import index_by_collection_id
 from starlette.requests import Request
 
 import stac_fastapi.sfeos_helpers.filter as filter_module
@@ -61,6 +60,7 @@ from stac_fastapi.sfeos_helpers.database.catalogs import (
     decode_token_to_search_after,
     encode_search_after_to_token,
 )
+from stac_fastapi.sfeos_helpers.database.index import index_by_collection_id
 from stac_fastapi.sfeos_helpers.database.query import (
     ES_MAX_URL_LENGTH,
     add_collections_to_body,
@@ -78,6 +78,7 @@ from stac_fastapi.sfeos_helpers.mappings import (
     DEFAULT_SORT,
     ES_COLLECTIONS_MAPPINGS,
     ITEM_INDICES,
+    ITEMS_ALIAS_PREFIX,
     Geometry,
 )
 from stac_fastapi.sfeos_helpers.search_engine import (
