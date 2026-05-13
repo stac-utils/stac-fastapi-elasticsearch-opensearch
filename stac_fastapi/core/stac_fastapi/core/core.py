@@ -1356,10 +1356,24 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         # PATH B: DIRECT DATABASE INSERTION (No Queue)
         # Validate before database insertion
-        try:
-            await async_validate_item(item)
-        except (ValidationError, ValueError) as e:
-            raise HTTPException(status_code=400, detail=f"Invalid item: {e}")
+        if get_bool_env("ENABLE_FAST_VALIDATOR"):
+            (
+                valid_items,
+                invalid_details,
+            ) = await async_validate_batch_with_fast_validator([item_dict])
+            if invalid_details:
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "message": "Item validation failed.",
+                        "errors": invalid_details,
+                    },
+                )
+        else:
+            try:
+                await async_validate_item(item)
+            except (ValidationError, ValueError) as e:
+                raise HTTPException(status_code=400, detail=f"Invalid item: {e}")
 
         await self.database.create_item(
             item_dict, base_url=base_url, upsert=True, **kwargs

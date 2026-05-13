@@ -364,3 +364,56 @@ async def test_stac_validator_returns_400_on_invalid_item(app_client, load_test_
             await app_client.delete(f"/collections/{test_collection['id']}")
         except Exception:
             pass
+
+
+@pytest.mark.asyncio
+async def test_stac_validator_update_item_invalid_data(app_client, load_test_data):
+    """Test that STAC validator catches invalid data when updating an item."""
+    os.environ["ENABLE_FAST_VALIDATOR"] = "true"
+
+    try:
+        test_collection = load_test_data("test_collection.json")
+        test_collection["id"] = f"test-collection-update-{uuid.uuid4()}"
+        resp = await app_client.post("/collections", json=test_collection)
+        assert resp.status_code == 201
+
+        base_item = load_test_data("test_item.json")
+        base_item["collection"] = test_collection["id"]
+        base_item["id"] = "item-to-update"
+
+        # Create the item first
+        resp = await app_client.post(
+            f"/collections/{test_collection['id']}/items", json=base_item
+        )
+        assert resp.status_code == 201
+
+        # Try to update with invalid data (e.g., invalid cloud_cover > 100)
+        invalid_update = deepcopy(base_item)
+        invalid_update["properties"]["eo:cloud_cover"] = 150  # Invalid: > 100
+
+        resp = await app_client.put(
+            f"/collections/{test_collection['id']}/items/{base_item['id']}",
+            json=invalid_update,
+        )
+
+        # Should return 400 Bad Request due to validation failure
+        assert (
+            resp.status_code == 400
+        ), f"Expected 400, got {resp.status_code}: {resp.text}"
+
+        # Verify error message mentions validation failure
+        response_data = resp.json()
+        assert "detail" in response_data
+        detail = response_data["detail"]
+        assert isinstance(
+            detail, (str, dict)
+        ), f"Expected string or dict, got {type(detail)}"
+        if isinstance(detail, dict):
+            assert "message" in detail or "errors" in detail
+
+    finally:
+        os.environ.pop("ENABLE_FAST_VALIDATOR", None)
+        try:
+            await app_client.delete(f"/collections/{test_collection['id']}")
+        except Exception:
+            pass
