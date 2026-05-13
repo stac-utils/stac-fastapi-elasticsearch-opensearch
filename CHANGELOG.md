@@ -10,10 +10,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 
 - Added test for conformance endpoint in catalogs extension. [#727](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/727)
+- Added option ITEMS_ALIAS_PREFIX environment variable to allow for multiple version of item indices. [#736](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/736)
 
 ### Changed
 
 ### Fixed
+
+- Update datetime fields default mapping to date from date_nanos. [#736](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/736)
 
 ### Removed
 
