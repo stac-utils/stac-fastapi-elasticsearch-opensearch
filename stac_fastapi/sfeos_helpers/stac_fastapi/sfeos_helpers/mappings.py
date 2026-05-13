@@ -368,12 +368,11 @@ ES_MAPPINGS_DYNAMIC_TEMPLATES = get_dynamic_template(
 
 _DATE_MAPPING_TYPE = "date_nanos" if get_bool_env("USE_DATETIME_NANOS") else "date"
 
-_ALTERNATE_ASSET_RUNTIME_MAPPINGS = (
-    {
-        "all_alternate_names": {
-            "type": "keyword",
-            "script": {
-                "source": """
+_ALTERNATE_ASSET_RUNTIME_MAPPINGS = {
+    "all_alternate_names": {
+        "type": "keyword",
+        "script": {
+            "source": """
                     if (doc.containsKey('assets.alternate:name') && !doc['assets.alternate:name'].empty) {
                         for (def v : doc['assets.alternate:name']) {
                             emit(v);
@@ -385,19 +384,15 @@ _ALTERNATE_ASSET_RUNTIME_MAPPINGS = (
                         }
                     }
                 """,
-                "lang": "painless",
-            },
-        }
+            "lang": "painless",
+        },
     }
-    if get_bool_env("STAC_ALTERNATE_ASSETS")
-    else {}
-)
+}
 
 # Base items mappings without dynamic configuration applied
 _BASE_ITEMS_MAPPINGS = {
     "numeric_detection": False,
     "dynamic_templates": ES_MAPPINGS_DYNAMIC_TEMPLATES,
-    "runtime": _ALTERNATE_ASSET_RUNTIME_MAPPINGS,
     "properties": {
         "id": {"type": "keyword"},
         "collection": {"type": "keyword"},
@@ -420,6 +415,9 @@ _BASE_ITEMS_MAPPINGS = {
         },
     },
 }
+
+if get_bool_env("STAC_ALTERNATE_ASSETS"):
+    _BASE_ITEMS_MAPPINGS["runtime"] = _ALTERNATE_ASSET_RUNTIME_MAPPINGS
 
 # ES_ITEMS_MAPPINGS with environment-based configuration applied at module load time
 ES_ITEMS_MAPPINGS = get_mappings(is_items=True)
