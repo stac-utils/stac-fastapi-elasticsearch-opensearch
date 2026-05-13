@@ -293,7 +293,7 @@ _ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE = str.maketrans(
     "", "", "".join(ES_INDEX_NAME_UNSUPPORTED_CHARS)
 )
 
-ITEM_INDICES = f"{ITEMS_INDEX_PREFIX}*"
+ITEM_INDICES = f"{ITEMS_ALIAS_PREFIX}*"
 
 DEFAULT_SORT = {
     "properties.datetime": {"order": "desc"},
