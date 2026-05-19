@@ -199,7 +199,6 @@ async def test_stac_validator_feature_collection_with_invalid_item_skip_on_error
         invalid_item["properties"]["eo:cloud_cover"] = 150  # Invalid: > 100
 
         features.append(invalid_item)
-        print("features:", features)
         feature_collection = {
             "type": "FeatureCollection",
             "features": features,
