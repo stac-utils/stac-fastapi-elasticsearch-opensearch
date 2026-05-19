@@ -1520,10 +1520,11 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         """
         # Validate collection
-        try:
-            await async_validate_stac(collection, pydantic_model=Collection)
-        except (ValidationError, ValueError) as e:
-            raise HTTPException(status_code=400, detail=f"Invalid collection: {e}")
+        if get_bool_env("ENABLE_STAC_VALIDATOR"):
+            try:
+                await async_validate_stac(collection, pydantic_model=Collection)
+            except (ValidationError, ValueError) as e:
+                raise HTTPException(status_code=400, detail=f"Invalid collection: {e}")
 
         collection = collection.model_dump(mode="json")
 
