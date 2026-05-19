@@ -13,6 +13,8 @@ import pytest
 from scripts.item_queue_worker import ItemQueueWorker  # noqa: E402
 from stac_fastapi.core.redis_utils import AsyncRedisQueueManager
 
+from ..conftest import MockRequest
+
 
 @pytest.mark.asyncio
 async def test_worker_validates_items_in_queue(txn_client, core_client, load_test_data):
@@ -311,3 +313,57 @@ async def test_worker_handles_all_invalid_batch(
             await txn_client.delete_collection(test_collection["id"])
         except Exception:
             pass
+
+
+@pytest.mark.asyncio
+async def test_update_item_with_queue_returns_queued_response(
+    txn_client, core_client, load_test_data, monkeypatch: pytest.MonkeyPatch
+):
+    """Test that update_item with queue enabled returns a queued status message."""
+    from stac_pydantic import api
+
+    from ..conftest import create_collection
+
+    monkeypatch.setenv("ENABLE_REDIS_QUEUE", "true")
+
+    # 1. Create collection and initial item
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = f"test-collection-update-queue-{uuid.uuid4()}"
+    await create_collection(txn_client, test_collection)
+
+    base_item = load_test_data("test_item.json")
+    base_item["collection"] = test_collection["id"]
+    base_item["id"] = "update-queue-item"
+    if "datetime" not in base_item.get("properties", {}):
+        base_item["properties"]["datetime"] = "2020-01-01T00:00:00Z"
+
+    await txn_client.create_item(
+        collection_id=test_collection["id"],
+        item=api.Item(**base_item),
+        request=MockRequest(),
+    )
+
+    # 2. Update the item with queue enabled
+    updated_item = deepcopy(base_item)
+    updated_item["properties"]["foo"] = "bar"
+
+    response = await txn_client.update_item(
+        collection_id=test_collection["id"],
+        item_id="update-queue-item",
+        item=api.Item(**updated_item),
+        request=MockRequest(),
+    )
+
+    # 3. Assert response body indicates item was queued
+    assert isinstance(response, str)
+    assert "Successfully queued item" in response
+    assert "update-queue-item" in response
+
+    # 4. Verify the item actually landed in Redis queue
+    queue_manager = await AsyncRedisQueueManager.create()
+    try:
+        pending_items = await queue_manager.get_pending_items(test_collection["id"])
+        pending_ids = {item["id"] for item in pending_items}
+        assert "update-queue-item" in pending_ids
+    finally:
+        await queue_manager.close()
