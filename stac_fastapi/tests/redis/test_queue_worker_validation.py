@@ -4,7 +4,6 @@ Tests that the background worker correctly validates items pulled from the queue
 sends invalid items to the DLQ, and only inserts valid items into the database.
 """
 
-import os
 import uuid
 from copy import deepcopy
 
@@ -17,12 +16,14 @@ from ..conftest import MockRequest
 
 
 @pytest.mark.asyncio
-async def test_worker_validates_items_in_queue(txn_client, core_client, load_test_data):
+async def test_worker_validates_items_in_queue(
+    txn_client, core_client, load_test_data, monkeypatch: pytest.MonkeyPatch
+):
     """Test that worker validates items pulled from queue and sends invalid to DLQ."""
     from ..conftest import create_collection
 
-    os.environ["ENABLE_STAC_VALIDATOR"] = "true"
-    os.environ["ENABLE_REDIS_QUEUE"] = "true"
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
+    monkeypatch.setenv("ENABLE_REDIS_QUEUE", "true")
 
     try:
         # Create a test collection
@@ -112,8 +113,6 @@ async def test_worker_validates_items_in_queue(txn_client, core_client, load_tes
             await queue_manager.close()
 
     finally:
-        os.environ.pop("ENABLE_STAC_VALIDATOR", None)
-        os.environ.pop("ENABLE_REDIS_QUEUE", None)
         try:
             await txn_client.delete_collection(test_collection["id"])
         except Exception:
@@ -121,12 +120,14 @@ async def test_worker_validates_items_in_queue(txn_client, core_client, load_tes
 
 
 @pytest.mark.asyncio
-async def test_worker_only_inserts_valid_items(txn_client, core_client, load_test_data):
+async def test_worker_only_inserts_valid_items(
+    txn_client, core_client, load_test_data, monkeypatch: pytest.MonkeyPatch
+):
     """Test a mixed batch with multiple valid and invalid items."""
     from ..conftest import create_collection
 
-    os.environ["ENABLE_STAC_VALIDATOR"] = "true"
-    os.environ["ENABLE_REDIS_QUEUE"] = "true"
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
+    monkeypatch.setenv("ENABLE_REDIS_QUEUE", "true")
 
     try:
         test_collection = load_test_data("test_collection.json")
@@ -211,8 +212,6 @@ async def test_worker_only_inserts_valid_items(txn_client, core_client, load_tes
             await queue_manager.close()
 
     finally:
-        os.environ.pop("ENABLE_STAC_VALIDATOR", None)
-        os.environ.pop("ENABLE_REDIS_QUEUE", None)
         try:
             await txn_client.delete_collection(test_collection["id"])
         except Exception:
@@ -221,13 +220,13 @@ async def test_worker_only_inserts_valid_items(txn_client, core_client, load_tes
 
 @pytest.mark.asyncio
 async def test_worker_handles_all_invalid_batch(
-    txn_client, core_client, load_test_data
+    txn_client, core_client, load_test_data, monkeypatch: pytest.MonkeyPatch
 ):
     """Test that worker safely skips database insertion if every item is invalid."""
     from ..conftest import create_collection
 
-    os.environ["ENABLE_STAC_VALIDATOR"] = "true"
-    os.environ["ENABLE_REDIS_QUEUE"] = "true"
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
+    monkeypatch.setenv("ENABLE_REDIS_QUEUE", "true")
 
     try:
         test_collection = load_test_data("test_collection.json")
@@ -307,8 +306,6 @@ async def test_worker_handles_all_invalid_batch(
             await queue_manager.close()
 
     finally:
-        os.environ.pop("ENABLE_STAC_VALIDATOR", None)
-        os.environ.pop("ENABLE_REDIS_QUEUE", None)
         try:
             await txn_client.delete_collection(test_collection["id"])
         except Exception:
