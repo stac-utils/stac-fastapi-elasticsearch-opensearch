@@ -645,10 +645,7 @@ class CoreClient(AsyncBaseCoreClient):
         Raises:
             HTTPException: 404 if the collection does not exist.
         """
-        try:
-            await self.get_collection(collection_id=collection_id, request=request)
-        except Exception:
-            raise HTTPException(status_code=404, detail="Collection not found")
+        await self.get_collection(collection_id=collection_id, request=request)
 
         # Delegate directly to GET search for consistency
         return await self.get_search(
@@ -1155,13 +1152,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             HTTPException: If no valid items remain to be inserted, or if the batch is
             rejected under strict mode (RAISE_ON_BULK_ERROR=True).
         """
-        try:
-            await self.database.find_collection(collection_id=collection_id)
-        except Exception:
-            raise HTTPException(
-                status_code=404,
-                detail=f"Collection '{collection_id}' not found",
-            )
+        await self.database.find_collection(collection_id=collection_id)
 
         raw_features = item_dict.get("features", [])
         logger.info(
