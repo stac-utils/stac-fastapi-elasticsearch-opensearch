@@ -1,14 +1,12 @@
 """STAC validation module.
 
 Provides validation for STAC items and collections using multiple validation backends:
-- Pydantic validation (always enabled)
-- Python STAC Validator with multi-processing (concurrent batch validation)
+- Pydantic validation (always enabled via FastAPI/stac_pydantic)
+- Fast JSON Schema compiled validation (ultra-fast, sequential STAC validation)
 """
 
 import asyncio
 import logging
-import os
-import threading
 
 from stac_pydantic import Collection, Item
 
@@ -16,89 +14,14 @@ from stac_fastapi.core.utilities import get_bool_env
 
 logger = logging.getLogger(__name__)
 
-# Suppress verbose logging from stac_validator
-logging.getLogger("stac_validator.utilities").setLevel(logging.WARNING)
-
-MAX_VALIDATION_WORKERS = int(os.getenv("MAX_VALIDATION_WORKERS", "0"))
-
-# Global instances to cache validators and avoid repeated initialization
-_batch_validator_instance = None
-_validator_lock = threading.Lock()
-
-
-def _get_batch_validator():
-    """Get or create the singleton batch validator instance.
-
-    Initializes and caches a single batch validator instance with schema caching
-    to improve performance across all validation calls within the application lifetime.
-    Uses double-checked locking for thread safety.
-
-    Returns:
-        The batch validator instance (validate_dicts function with cached schemas).
-
-    Raises:
-        ImportError: If stac-validator is not installed and ENABLE_STAC_VALIDATOR is true.
-    """
-    # Only attempt import if validation is enabled
-    if not get_bool_env("ENABLE_STAC_VALIDATOR"):
-        return None
-
-    global _batch_validator_instance
-    if _batch_validator_instance is None:
-        with _validator_lock:
-            if _batch_validator_instance is None:
-                try:
-                    from stac_validator.batch_validator import validate_dicts
-
-                    _batch_validator_instance = validate_dicts
-                except ImportError as e:
-                    logger.error("stac_validator batch_validator not available")
-                    raise ImportError(
-                        "STAC validator batch_validator is not installed. "
-                        "Install it with: pip install stac-fastapi-core[validator] "
-                        "or pip install stac-fastapi-elasticsearch[validator] "
-                        "or pip install stac-fastapi-opensearch[validator]"
-                    ) from e
-    return _batch_validator_instance
-
-
-def _extract_error_message(validation_result: dict) -> str:
-    """Extract a readable error message from a validation result.
-
-    Args:
-        validation_result: The validation result dictionary from stac_validator.
-
-    Returns:
-        A formatted error message string.
-    """
-    err_msg = validation_result.get("error_message", "")
-
-    if not err_msg:
-        # Fallback to errors array if error_message is empty
-        errors = validation_result.get("errors", [])
-        if errors:
-            err_msg = "; ".join(
-                str(e) if isinstance(e, str) else e.get("message", str(e))
-                for e in errors
-            )
-        else:
-            err_msg = "Validation failed with no error details"
-
-    # Include schema information for debugging
-    failed_schema = validation_result.get("failed_schema", "")
-    if failed_schema:
-        err_msg = f"{err_msg}. For more information check the schema: {failed_schema}"
-
-    return err_msg
-
 
 def validate_batch_with_stac_validator(
     items: list[dict],
 ) -> tuple[list[dict], dict[str, list[str]]]:
-    """Validate a batch of STAC items using stac_validator with multi-processing.
+    """Validate a batch of STAC items using compiled fastjsonschema functions.
 
-    Uses the singleton batch validator instance with cached schemas for concurrent validation
-    across multiple worker processes. Separates valid items from invalid ones.
+    Performs ultra-fast sequential validation in memory. Bypasses multiprocessing
+    to save massive amounts of RAM and Inter-Process Communication (IPC) CPU overhead.
 
     Args:
         items: List of STAC item dictionaries to validate.
@@ -107,65 +30,61 @@ def validate_batch_with_stac_validator(
         Tuple of (valid_items_list, invalid_items_dict) where invalid_items_dict
         maps error messages to lists of affected item IDs.
     """
-    validate_dicts = _get_batch_validator()
-
-    valid_items = []
-    invalid_items = {}
+    # Guard clause: Return immediately if validation is disabled or the batch is empty
+    if not get_bool_env("ENABLE_STAC_VALIDATOR") or not items:
+        return items, {}
 
     try:
-        # Validate all items concurrently using multi-processing
-        # max_workers=None uses CPU count, max_workers=0 uses sequential processing
-        results = validate_dicts(
-            items,
-            max_workers=MAX_VALIDATION_WORKERS if MAX_VALIDATION_WORKERS > 0 else None,
-            show_progress=False,
+        import fastjsonschema
+        import stac_validator.fast_validator as fv_module
+        from stac_validator.fast_validator import get_validator
+
+        # Permanently mute the validator's CLI output for the SFEOS server
+        fv_module.QUIET_MODE = True
+    except ImportError as e:
+        logger.error("stac_validator fast_validator not available")
+        raise ImportError(
+            "STAC validator is not installed. "
+            "Install it with: pip install stac-fastapi-elasticsearch[validator]"
+        ) from e
+
+    valid_items: list[dict] = []
+    invalid_items: dict[str, list[str]] = {}
+
+    for idx, item in enumerate(items):
+        # Reliable ID matching: use exact object ID or fallback to index
+        item_id = item.get("id", f"unknown_id_{idx}")
+
+        stac_type = (
+            "Item" if item.get("type") == "Feature" else item.get("type", "unknown")
         )
+        stac_version = item.get("stac_version", "1.0.0")
+        extensions = item.get("stac_extensions", [])
 
-        # Group errors by message to avoid duplication
-        errors_by_message: dict[str, list[str]] = {}
+        try:
+            # get_validator uses internal caching, so this compiles instantly for repeated schemas
+            validator, _ = get_validator(stac_type, stac_version, extensions)
+            validator(item)
+            valid_items.append(item)
 
-        # Build a map of items by ID for reliable matching
-        # validate_dicts may not preserve order when using multiprocessing, so we match by item_id
-        items_by_id = {
-            item.get("id", f"unknown_id_{idx}"): item for idx, item in enumerate(items)
-        }
-
-        for result in results:
-            # Match result to item by item_id from the validation result
-            # This is critical because validate_dicts with multiprocessing doesn't preserve order
-            result_item_id = result.get("item_id")
-
-            if not result_item_id or result_item_id not in items_by_id:
-                logger.warning(
-                    f"Could not match validation result to item: {result_item_id}"
+        except fastjsonschema.JsonSchemaValueException as e:
+            err_msg = f"{e.name} {e.message.replace(e.name, '').strip()}"
+            if "disallowed definition" in err_msg and "collection" in err_msg:
+                err_msg = (
+                    "STAC Spec Violation: Missing {'rel': 'collection'} in links array."
                 )
-                continue
 
-            item = items_by_id[result_item_id]
-            item_id = result_item_id
+            if err_msg not in invalid_items:
+                invalid_items[err_msg] = []
+            invalid_items[err_msg].append(item_id)
+            logger.error(f"STAC validation failed for '{item_id}': {err_msg}")
 
-            if result.get("valid_stac", False):
-                valid_items.append(item)
-            else:
-                # Extract and format error message
-                err_msg = _extract_error_message(result)
-
-                # Group by error message
-                if err_msg not in errors_by_message:
-                    errors_by_message[err_msg] = []
-                errors_by_message[err_msg].append(item_id)
-                logger.error(f"STAC validation failed for '{item_id}': {err_msg}")
-
-        # Convert grouped errors to final format: error message -> list of item IDs
-        invalid_items = errors_by_message
-
-    except Exception as exc:
-        logger.error(f"Batch validation request failed: {exc}")
-        error_msg = f"Batch validation failed: {str(exc)}"
-        item_ids = [
-            item.get("id", f"unknown_id_{idx}") for idx, item in enumerate(items)
-        ]
-        invalid_items[error_msg] = item_ids
+        except Exception as e:
+            err_msg = str(e)
+            if err_msg not in invalid_items:
+                invalid_items[err_msg] = []
+            invalid_items[err_msg].append(item_id)
+            logger.error(f"STAC validation failed for '{item_id}': {err_msg}")
 
     return valid_items, invalid_items
 
@@ -174,46 +93,63 @@ def validate_stac(
     stac_data: dict | Item | Collection,
     pydantic_model: type[Item] | type[Collection] = Item,
 ) -> Item | Collection:
-    """Validate a single STAC item or collection using optional STAC validator.
-
-    If stac_data is already a Pydantic model object, Pydantic validation is skipped
-    (assuming it was already validated by FastAPI). Only STAC validator is run if enabled.
+    """Validate a single STAC item or collection using the optional STAC validator.
 
     Args:
-        stac_data: STAC data as dict or Pydantic model object.
+        stac_data: STAC data as a raw dict or parsed Pydantic model object.
         pydantic_model: The Pydantic model class to use for validation (Item or Collection).
 
     Returns:
         Validated STAC object (Item or Collection).
 
     Raises:
-        ValueError: If STAC validation fails.
+        ValueError: If strict STAC validation fails.
     """
-    # 1. Pydantic Parsing/Validation
-    # If already a Pydantic model object, skip Pydantic validation (FastAPI already validated it)
+    # 1. Pydantic Parsing/Validation Layer
     if isinstance(stac_data, (Item, Collection)):
         stac_obj = stac_data
-        stac_dict = stac_data.model_dump(mode="json")
+        stac_dict = stac_data.model_dump(mode="json", exclude_none=True)
     else:
-        # For dict input, validate with Pydantic first
         stac_obj = pydantic_model(**stac_data)
-        # Dump the parsed object so defaults and coercions are included
+        # Dump the parsed object so defaults, dates, and coercions are accurately reflected
         stac_dict = stac_obj.model_dump(mode="json", exclude_none=True)
 
-    # 2. STAC Validator (optional, enabled via ENABLE_STAC_VALIDATOR env var)
+    # 2. STAC Validator Layer (optional, enabled via ENABLE_STAC_VALIDATOR env var)
     if get_bool_env("ENABLE_STAC_VALIDATOR"):
-        # Use batch validator with single item for consistent dict-based results
-        validate_dicts = _get_batch_validator()
-        results = validate_dicts(
-            [stac_dict],
-            max_workers=0,  # Sequential processing for single item
-            show_progress=False,
-        )
+        try:
+            import fastjsonschema
+            import stac_validator.fast_validator as fv_module
+            from stac_validator.fast_validator import get_validator
 
-        if results and not results[0].get("valid_stac", False):
+            # Permanently mute the validator's CLI output for the SFEOS server
+            fv_module.QUIET_MODE = True
+        except ImportError as e:
+            raise ImportError("stac_validator not installed.") from e
+
+        stac_type = (
+            "Item"
+            if stac_dict.get("type") == "Feature"
+            else stac_dict.get("type", "unknown")
+        )
+        stac_version = stac_dict.get("stac_version", "1.0.0")
+        extensions = stac_dict.get("stac_extensions", [])
+
+        try:
+            validator, _ = get_validator(stac_type, stac_version, extensions)
+            validator(stac_dict)
+
+        except fastjsonschema.JsonSchemaValueException as e:
             item_id = stac_dict.get("id", "unknown_id")
-            error_msg = _extract_error_message(results[0])
-            raise ValueError(f"STAC validation failed for '{item_id}': {error_msg}")
+            err_msg = f"{e.name} {e.message.replace(e.name, '').strip()}"
+            if "disallowed definition" in err_msg and "collection" in err_msg:
+                err_msg = (
+                    "STAC Spec Violation: Missing {'rel': 'collection'} in links array."
+                )
+            raise ValueError(f"STAC validation failed for '{item_id}': {err_msg}")
+
+        except Exception as e:
+            item_id = stac_dict.get("id", "unknown_id")
+            raise ValueError(f"STAC validation failed for '{item_id}': {str(e)}")
 
     return stac_obj
 
@@ -224,8 +160,8 @@ async def async_validate_stac(
 ) -> Item | Collection:
     """Asynchronous wrapper for validate_stac.
 
-    Offloads the CPU-bound STAC validation to a separate thread to prevent
-    blocking the FastAPI asyncio event loop during API requests.
+    Offloads the validation to a separate thread to prevent blocking
+    the FastAPI asyncio event loop during API requests.
 
     Args:
         stac_data: STAC data as dict or Pydantic model.
@@ -243,9 +179,9 @@ async def async_validate_stac(
 async def async_validate_batch_with_stac_validator(
     items: list[dict],
 ) -> tuple[list[dict], dict[str, list[str]]]:
-    """Asynchronously validate a batch of STAC items using multi-processing.
+    """Asynchronously validate a batch of STAC items.
 
-    Offloads the CPU-bound batch validation to a separate thread to prevent
+    Offloads the CPU-bound validation loop to a separate thread to prevent
     blocking the FastAPI asyncio event loop.
 
     Args:

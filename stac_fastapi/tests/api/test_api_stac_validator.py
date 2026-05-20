@@ -6,13 +6,16 @@ import pytest
 from ..conftest import create_collection, create_item
 
 
-@pytest.mark.asyncio
-async def test_stac_validator_allows_valid_datetime_range(
-    txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
-):
-    """Test that STAC validator allows valid datetime range with null datetime."""
+@pytest.fixture(autouse=True)
+def configure_validation_env(monkeypatch: pytest.MonkeyPatch):
+    """Lock down env so validation tests always run synchronously."""
     monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
+    monkeypatch.setenv("ENABLE_REDIS_QUEUE", "false")
 
+
+@pytest.mark.asyncio
+async def test_stac_validator_allows_valid_datetime_range(txn_client, load_test_data):
+    """Test that STAC validator allows valid datetime range with null datetime."""
     test_collection = load_test_data("test_collection.json")
     test_collection["id"] = f"test-collection-dt-range-{uuid.uuid4()}"
     await create_collection(txn_client, collection=test_collection)
@@ -32,13 +35,9 @@ async def test_stac_validator_allows_valid_datetime_range(
 
 
 @pytest.mark.asyncio
-async def test_stac_validator_catches_eo_bands_in_assets(
-    txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
-):
+async def test_stac_validator_catches_eo_bands_in_assets(txn_client, load_test_data):
     """Test that STAC validator catches eo:bands in assets when using EO v2.0.0."""
     from fastapi import HTTPException
-
-    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
 
     test_collection = load_test_data("test_collection.json")
     test_collection["id"] = f"test-collection-eo-{uuid.uuid4()}"
@@ -64,13 +63,9 @@ async def test_stac_validator_catches_eo_bands_in_assets(
 
 
 @pytest.mark.asyncio
-async def test_stac_validator_catches_invalid_cloud_cover(
-    txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
-):
+async def test_stac_validator_catches_invalid_cloud_cover(txn_client, load_test_data):
     """Test that STAC validator catches invalid eo:cloud_cover values."""
     from fastapi import HTTPException
-
-    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
 
     test_collection = load_test_data("test_collection.json")
     test_collection["id"] = f"test-collection-cloud-{uuid.uuid4()}"
@@ -99,7 +94,6 @@ async def test_stac_validator_feature_collection_with_invalid_item_raise_on_erro
     """Test that STAC validator fails entire FeatureCollection when RAISE_ON_BULK_ERROR is true."""
     from fastapi import HTTPException
 
-    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
     monkeypatch.setenv("RAISE_ON_BULK_ERROR", "true")
 
     test_collection = load_test_data("test_collection.json")
@@ -133,8 +127,15 @@ async def test_stac_validator_feature_collection_with_invalid_item_raise_on_erro
     with pytest.raises(HTTPException) as exc_info:
         await create_item(txn_client, feature_collection)
 
-    assert "Batch rejected" in str(exc_info.value)
     assert exc_info.value.status_code == 400
+
+    # Verify the exact structured detail payload
+    detail = exc_info.value.detail
+    assert "Batch rejected. 1 items failed validation." in detail["message"]
+    assert "errors" in detail
+    error_keys = list(detail["errors"].keys())
+    assert len(error_keys) == 1
+    assert detail["errors"][error_keys[0]] == ["invalid-item-fc"]
 
 
 @pytest.mark.asyncio
@@ -144,7 +145,6 @@ async def test_stac_validator_feature_collection_with_invalid_item_skip_on_error
     """Test that STAC validator skips invalid items when RAISE_ON_BULK_ERROR is false."""
     from ..conftest import MockRequest
 
-    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
     monkeypatch.setenv("RAISE_ON_BULK_ERROR", "false")
 
     test_collection = load_test_data("test_collection.json")
@@ -190,13 +190,9 @@ async def test_stac_validator_feature_collection_with_invalid_item_skip_on_error
 
 
 @pytest.mark.asyncio
-async def test_stac_validator_catches_invalid_snow_cover(
-    txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
-):
+async def test_stac_validator_catches_invalid_snow_cover(txn_client, load_test_data):
     """Test that STAC validator catches invalid eo:snow_cover values."""
     from fastapi import HTTPException
-
-    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
 
     test_collection = load_test_data("test_collection.json")
     test_collection["id"] = f"test-collection-snow-{uuid.uuid4()}"
@@ -219,12 +215,8 @@ async def test_stac_validator_catches_invalid_snow_cover(
 
 
 @pytest.mark.asyncio
-async def test_stac_validator_allows_valid_item(
-    txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
-):
+async def test_stac_validator_allows_valid_item(txn_client, load_test_data):
     """Test that STAC validator allows valid STAC items."""
-    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
-
     test_collection = load_test_data("test_collection.json")
     test_collection["id"] = f"test-collection-valid-{uuid.uuid4()}"
     await create_collection(txn_client, collection=test_collection)
@@ -240,12 +232,8 @@ async def test_stac_validator_allows_valid_item(
 
 
 @pytest.mark.asyncio
-async def test_stac_validator_returns_400_on_invalid_item(
-    app_client, load_test_data, monkeypatch: pytest.MonkeyPatch
-):
+async def test_stac_validator_returns_400_on_invalid_item(app_client, load_test_data):
     """Test that invalid STAC items return 400 Bad Request response."""
-    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
-
     # Create a test collection first
     test_collection = load_test_data("test_collection.json")
     test_collection["id"] = f"test-collection-400-{uuid.uuid4()}"
@@ -275,7 +263,10 @@ async def test_stac_validator_returns_400_on_invalid_item(
     # Should return 400 Bad Request, not 500
     assert resp.status_code == 400, f"Expected 400, got {resp.status_code}: {resp.text}"
 
-    # Verify error message mentions validation failure
+    # Verify the exact translated error string structure
     response_data = resp.json()
     assert "detail" in response_data
-    assert "Invalid item" in response_data["detail"]
+    assert (
+        "Invalid item: STAC validation failed for 'invalid-item-400'"
+        in response_data["detail"]
+    )
