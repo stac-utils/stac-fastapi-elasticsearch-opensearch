@@ -14,7 +14,7 @@ This is AQUAVIEW's fork of [stac-fastapi-elasticsearch-opensearch](https://githu
 v<upstream-version>-aquaview.<patch-number>
 ```
 
-Examples: `v6.15.0-aquaview.1`, `v6.15.0-aquaview.2`
+Examples: `v6.16.0-aquaview.1`, `v6.16.0-aquaview.2`
 
 ## Deploy a new version
 
@@ -89,13 +89,15 @@ When all fixes are merged upstream and we no longer need the fork:
 
 ## Current patches
 
+Synced on top of upstream `v6.16.0`. SHAs below are post-rebase.
+
 | Commit | Description | Upstream PR |
 |--------|-------------|-------------|
-| `fda2c55` | Cloud Build config for AQUAVIEW deployment | N/A (fork-only) |
-| `9b46035` | Add `geometry_geohex_grid_frequency` aggregation | [#705](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/705) |
-| `c13bbd8` | Add `centroid_geohex_grid_frequency` to DEFAULT_AGGREGATIONS | [#705](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/705) |
-| `7a83b09` | Add `geometry_geohex_grid_precision` to abstract aggregate signature | [#705](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/705) |
-| `74e728a` | Add catalogs extension dependency to deployment Dockerfile | N/A (fork-only) |
+| `a7780df` | Cloud Build config for AQUAVIEW deployment | N/A (fork-only) |
+| `2cd2488` | Add `geometry_geohex_grid_frequency` aggregation | [#705](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/705) (closed; `geohex_grid` on `geo_shape` needs commercial ES license, no OS support — fork-only indefinitely) |
+| `2c0dc96` | Add `centroid_geohex_grid_frequency` to DEFAULT_AGGREGATIONS | [#705](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/705) (closed — see above) |
+| `e9ed482` | Add `geometry_geohex_grid_precision` to abstract aggregate signature | [#705](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/705) (closed — see above) |
+| `20c5456` | Add catalogs extension dependency to deployment Dockerfile | N/A (fork-only) |
 
 ### Previously carried patches (now upstream)
 
