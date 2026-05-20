@@ -197,7 +197,8 @@ def validate_stac(
     else:
         # For dict input, validate with Pydantic first
         stac_obj = pydantic_model(**stac_data)
-        stac_dict = stac_data
+        # Dump the parsed object so defaults and coercions are included
+        stac_dict = stac_obj.model_dump(mode="json", exclude_none=True)
 
     # 2. STAC Validator (optional, enabled via ENABLE_STAC_VALIDATOR env var)
     if get_bool_env("ENABLE_STAC_VALIDATOR"):
