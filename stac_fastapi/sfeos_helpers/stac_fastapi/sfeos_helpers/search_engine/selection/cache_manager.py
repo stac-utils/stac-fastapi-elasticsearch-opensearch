@@ -6,7 +6,7 @@ import logging
 from typing import Any
 
 from stac_fastapi.sfeos_helpers.database import index_alias_by_collection_id
-from stac_fastapi.sfeos_helpers.mappings import ITEMS_INDEX_PREFIX
+from stac_fastapi.sfeos_helpers.mappings import ITEMS_ALIAS_PREFIX
 
 logger = logging.getLogger(__name__)
 
@@ -83,7 +83,7 @@ class IndexCacheManager:
 
 
 def _serialize_cache(
-    data: dict[str, list[tuple[dict[str, str]]]]
+    data: dict[str, list[tuple[dict[str, str]]]],
 ) -> dict[str, list[list[dict[str, str]]]]:
     """Convert tuple values to lists for JSON serialization."""
     result = {}
@@ -93,7 +93,7 @@ def _serialize_cache(
 
 
 def _deserialize_cache(
-    data: dict[str, list[list[dict[str, str]]]]
+    data: dict[str, list[list[dict[str, str]]]],
 ) -> dict[str, list[tuple[dict[str, str]]]]:
     """Convert list values back to tuples after JSON deserialization."""
     result: dict[str, list[tuple[dict[str, str]]]] = {}
@@ -121,7 +121,7 @@ class IndexAliasLoader:
         Returns:
             dict[str, list[tuple[dict[str, str]]]]: Mapping of main collection aliases to their data.
         """
-        response = await self.client.indices.get_alias(index=f"{ITEMS_INDEX_PREFIX}*")
+        response = await self.client.indices.get_alias(index=f"{ITEMS_ALIAS_PREFIX}*")
         result: dict[str, list[tuple[dict[str, str]]]] = {}
 
         for index_name, index_info in response.items():
@@ -130,7 +130,7 @@ class IndexAliasLoader:
                 [
                     alias
                     for alias in aliases.keys()
-                    if alias.startswith(ITEMS_INDEX_PREFIX)
+                    if alias.startswith(ITEMS_ALIAS_PREFIX)
                 ]
             )
 
