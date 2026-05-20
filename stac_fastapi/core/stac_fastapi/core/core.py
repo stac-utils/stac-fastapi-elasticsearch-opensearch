@@ -1057,13 +1057,19 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         use_queue = get_bool_env("ENABLE_REDIS_QUEUE", default=False)
 
         # Route the request to the dedicated handler
-        if item_dict.get("type") == "FeatureCollection":
+        item_type = item_dict.get("type")
+        if item_type == "FeatureCollection":
             return await self._create_feature_collection(
                 collection_id, item_dict, base_url, use_queue, **kwargs
             )
-        else:
+        elif item_type == "Feature":
             return await self._create_single_item(
                 collection_id, item_dict, base_url, use_queue, **kwargs
+            )
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported item type: '{item_type}'. Expected 'Feature' or 'FeatureCollection'.",
             )
 
     async def _create_single_item(
