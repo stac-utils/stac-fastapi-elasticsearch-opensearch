@@ -23,6 +23,7 @@ from stac_pydantic.version import STAC_VERSION
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.datetime_utils import format_datetime_range
+from stac_fastapi.core.exceptions import QueuedSuccess
 from stac_fastapi.core.models.links import PagingLinks
 from stac_fastapi.core.queryables import (
     QueryablesCache,
@@ -1115,7 +1116,9 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 collection_id, preprocessed_item, item_ids=item_dict.get("id")
             )
             if result:
-                return result
+                raise QueuedSuccess(
+                    payload=ItemSerializer.db_to_stac(preprocessed_item, base_url)
+                )
 
         # 4. DATABASE INSERTION LAYER
         await self.database.create_item(
@@ -1235,8 +1238,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             if result:
                 if validation_error_count > 0 or skipped_batch_duplicates > 0:
                     result += f" (Skipped {validation_error_count} invalid, {skipped_batch_duplicates} duplicates)"
-                # Wrap the string response in a dict so the return type is consistent
-                return {"message": result}
+                raise QueuedSuccess(payload={"message": result, "status": "queued"})
 
         # 5. DATABASE INSERTION LAYER
         # attempted = len(valid_items)
@@ -1368,7 +1370,9 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 collection_id, processed_item, item_ids=item_id
             )
             if result:
-                return result
+                raise QueuedSuccess(
+                    payload=ItemSerializer.db_to_stac(processed_item, base_url)
+                )
 
         # PATH B: DIRECT DATABASE INSERTION (No Queue)
         # Validate before database insertion

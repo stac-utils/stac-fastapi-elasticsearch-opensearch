@@ -10,6 +10,7 @@ from copy import deepcopy
 import pytest
 
 from scripts.item_queue_worker import ItemQueueWorker  # noqa: E402
+from stac_fastapi.core.exceptions import QueuedSuccess
 from stac_fastapi.core.redis_utils import AsyncRedisQueueManager
 
 from ..conftest import MockRequest
@@ -61,9 +62,9 @@ async def test_worker_validates_items_in_queue(
         # 1. Queue the items
         from ..conftest import create_item
 
-        result = await create_item(txn_client, feature_collection)
-        if result is not None:
-            assert "queued" in result.lower()
+        with pytest.raises(QueuedSuccess) as exc_info:
+            await create_item(txn_client, feature_collection)
+        assert exc_info.value.payload["status"] == "queued"
 
         # 2. Verify they actually made it to the queue
         queue_manager = await AsyncRedisQueueManager.create()
@@ -164,9 +165,9 @@ async def test_worker_only_inserts_valid_items(
         # 1. Queue items
         from ..conftest import create_item
 
-        result = await create_item(txn_client, feature_collection)
-        if result is not None:
-            assert "queued" in result.lower()
+        with pytest.raises(QueuedSuccess) as exc_info:
+            await create_item(txn_client, feature_collection)
+        assert exc_info.value.payload["status"] == "queued"
 
         queue_manager = await AsyncRedisQueueManager.create()
         try:
@@ -256,9 +257,9 @@ async def test_worker_handles_all_invalid_batch(
         # 1. Queue items
         from ..conftest import create_item
 
-        result = await create_item(txn_client, feature_collection)
-        if result is not None:
-            assert "queued" in result.lower()
+        with pytest.raises(QueuedSuccess) as exc_info:
+            await create_item(txn_client, feature_collection)
+        assert exc_info.value.payload["status"] == "queued"
 
         queue_manager = await AsyncRedisQueueManager.create()
         try:
@@ -334,27 +335,29 @@ async def test_update_item_with_queue_returns_queued_response(
     if "datetime" not in base_item.get("properties", {}):
         base_item["properties"]["datetime"] = "2020-01-01T00:00:00Z"
 
-    await txn_client.create_item(
-        collection_id=test_collection["id"],
-        item=api.Item(**base_item),
-        request=MockRequest(),
-    )
+    with pytest.raises(QueuedSuccess):
+        await txn_client.create_item(
+            collection_id=test_collection["id"],
+            item=api.Item(**base_item),
+            request=MockRequest(),
+        )
 
     # 2. Update the item with queue enabled
     updated_item = deepcopy(base_item)
     updated_item["properties"]["foo"] = "bar"
 
-    response = await txn_client.update_item(
-        collection_id=test_collection["id"],
-        item_id="update-queue-item",
-        item=api.Item(**updated_item),
-        request=MockRequest(),
-    )
+    with pytest.raises(QueuedSuccess) as exc_info:
+        await txn_client.update_item(
+            collection_id=test_collection["id"],
+            item_id="update-queue-item",
+            item=api.Item(**updated_item),
+            request=MockRequest(),
+        )
 
-    # 3. Assert response body indicates item was queued
-    assert isinstance(response, str)
-    assert "Successfully queued item" in response
-    assert "update-queue-item" in response
+    # 3. Assert response payload is the serialized STAC item
+    payload = exc_info.value.payload
+    assert payload["id"] == "update-queue-item"
+    assert payload["properties"]["foo"] == "bar"
 
     # 4. Verify the item actually landed in Redis queue
     queue_manager = await AsyncRedisQueueManager.create()

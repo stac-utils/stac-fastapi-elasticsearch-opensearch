@@ -18,6 +18,7 @@ from stac_fastapi.core.core import (
     CoreClient,
     TransactionsClient,
 )
+from stac_fastapi.core.exceptions import QueuedSuccess, queued_success_handler
 from stac_fastapi.core.extensions import QueryExtension
 from stac_fastapi.core.extensions.aggregation import (
     EsAggregationExtensionGetRequest,
@@ -307,6 +308,9 @@ async def lifespan(app: FastAPI):
 
 app = api.app
 app.router.lifespan_context = lifespan
+
+# Register custom exception handler for queued items (202 Accepted)
+app.add_exception_handler(QueuedSuccess, queued_success_handler)
 app.root_path = os.getenv("STAC_FASTAPI_ROOT_PATH", "")
 
 try:
