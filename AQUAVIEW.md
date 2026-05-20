@@ -89,7 +89,12 @@ When all fixes are merged upstream and we no longer need the fork:
 
 ## Current patches
 
-Synced on top of upstream `v6.16.0`. SHAs below are post-rebase.
+Synced on top of upstream `v6.16.0` + two cherry-picked post-release fixes
+(catalogs extension v0.1.3 / v0.2.0) needed because v6.16.0's
+`elasticsearch/app.py` calls `CatalogsExtension(enable_transactions=...)`
+but pins a catalogs-extension version that doesn't accept that kwarg —
+which crashes the container on startup. The post-v6.16.0 upstream commits
+`3d9c9ff` and `efd335e` (next minor release, not yet tagged) fix it.
 
 | Commit | Description | Upstream PR |
 |--------|-------------|-------------|
@@ -98,6 +103,8 @@ Synced on top of upstream `v6.16.0`. SHAs below are post-rebase.
 | `2c0dc96` | Add `centroid_geohex_grid_frequency` to DEFAULT_AGGREGATIONS | [#705](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/705) (closed — see above) |
 | `e9ed482` | Add `geometry_geohex_grid_precision` to abstract aggregate signature | [#705](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/705) (closed — see above) |
 | `20c5456` | Add catalogs extension dependency to deployment Dockerfile | N/A (fork-only) |
+| `128ab8f` | Bump catalogs-extension to v0.1.3 (cherry-pick from upstream `3d9c9ff`) | already merged upstream post-v6.16.0 — drop on next sync |
+| `0b07d51` | Bump catalogs-extension to v0.2.0 (cherry-pick from upstream `efd335e` / #727) | already merged upstream post-v6.16.0 — drop on next sync |
 
 ### Previously carried patches (now upstream)
 
