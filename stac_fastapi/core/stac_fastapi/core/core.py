@@ -1660,7 +1660,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         """
         request = kwargs.get("request")
 
-        if os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+        if get_bool_env("ENABLE_DATETIME_INDEX_FILTERING"):
             raise HTTPException(
                 status_code=400,
                 detail="The /collections/{collection_id}/bulk_items endpoint is invalid when ENABLE_DATETIME_INDEX_FILTERING is set to true. Try using the /collections/{collection_id}/items endpoint.",
