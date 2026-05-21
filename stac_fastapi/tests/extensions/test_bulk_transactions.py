@@ -126,8 +126,24 @@ async def test_bulk_item_insert_validation_error(ctx, core_client, bulk_txn_clie
         items[invalid_item["id"]] = invalid_item
 
         # The bulk insert should raise an HTTPException due to the invalid item
-        with pytest.raises(HTTPException):
+        with pytest.raises(HTTPException) as exc_info:
             bulk_txn_client.bulk_item_insert(Items(items=items), refresh=True)
+
+        # Verify structured error payload includes summary telemetry
+        detail = exc_info.value.detail
+        assert (
+            "Bulk insertion rejected. 1 items failed validation." in detail["message"]
+        )
+        assert "errors" in detail
+        assert "summary" in detail
+        summary = detail["summary"]
+        assert summary["input_count"] == 10
+        assert summary["processed_count"] == 10
+        assert summary["valid_count"] == 9
+        assert summary["validation_error_count"] == 1
+        assert summary["skipped_total"] == 1
+        assert summary["conflict_count"] == 0
+        assert summary["database_error_count"] == 0
     finally:
         os.environ.pop("ENABLE_STAC_VALIDATOR", None)
 

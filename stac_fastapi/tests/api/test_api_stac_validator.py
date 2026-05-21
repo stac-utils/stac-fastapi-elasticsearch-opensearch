@@ -140,6 +140,16 @@ async def test_stac_validator_feature_collection_with_invalid_item_raise_on_erro
     assert len(error_keys) == 1
     assert detail["errors"][error_keys[0]] == ["invalid-item-fc"]
 
+    # Verify the bulk summary telemetry structure
+    summary = detail["summary"]
+    assert summary["input_count"] == 3
+    assert summary["processed_count"] == 3
+    assert summary["valid_count"] == 2
+    assert summary["validation_error_count"] == 1
+    assert summary["skipped_total"] == 1
+    assert summary["conflict_count"] == 0
+    assert summary["database_error_count"] == 0
+
 
 @pytest.mark.asyncio
 async def test_stac_validator_feature_collection_with_invalid_item_skip_on_error(

@@ -69,6 +69,36 @@ partialItemValidator = TypeAdapter(PartialItem)
 partialCollectionValidator = TypeAdapter(PartialCollection)
 
 
+def build_bulk_summary(
+    raw_features: list,
+    processed_items: list,
+    valid_items: list,
+    validation_error_count: int,
+    conflict_errors: list | None = None,
+    other_errors: list | None = None,
+) -> dict:
+    """Build a standardized summary dictionary for bulk operations telemetry."""
+    conflict_count = len(conflict_errors) if conflict_errors else 0
+    database_error_count = len(other_errors) if other_errors else 0
+
+    # Calculate total skipped dynamically based on what layer failed
+    skipped_total = (
+        (len(raw_features) - len(processed_items))  # input duplicates
+        + validation_error_count
+        + conflict_count
+    )
+
+    return {
+        "input_count": len(raw_features),
+        "processed_count": len(processed_items),
+        "valid_count": len(valid_items),
+        "skipped_total": skipped_total,
+        "validation_error_count": validation_error_count,
+        "conflict_count": conflict_count,
+        "database_error_count": database_error_count,
+    }
+
+
 @attr.s
 class CoreClient(AsyncBaseCoreClient):
     """Client for core endpoints defined by the STAC specification.
@@ -1213,25 +1243,34 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 for item_ids in validation_errors.values()
             )
 
-            # Strict mode rejections
+            # Fix Spot 1: Strict mode validation failures
             if validation_errors and raise_on_error:
                 raise HTTPException(
                     status_code=400,
                     detail={
                         "message": f"Batch rejected. {validation_error_count} items failed validation.",
+                        "summary": build_bulk_summary(
+                            raw_features,
+                            processed_items,
+                            valid_items,
+                            validation_error_count,
+                        ),
                         "errors": validation_errors,
                     },
                 )
+
+            # Fix Spot 2: Zero valid items remain to process
             if not valid_items and raise_on_error:
-                total_skipped = (
-                    skipped_batch_duplicates
-                    + skipped_db_duplicates
-                    + validation_error_count
-                )
                 raise HTTPException(
                     status_code=400,
                     detail={
-                        "message": f"No valid items to insert. Skipped {total_skipped} items.",
+                        "message": "No valid items to insert.",
+                        "summary": build_bulk_summary(
+                            raw_features,
+                            processed_items,
+                            valid_items,
+                            validation_error_count,
+                        ),
                         "validation_errors": validation_errors,
                     },
                 )
@@ -1247,7 +1286,6 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 raise QueuedSuccess(payload={"message": result, "status": "queued"})
 
         # 5. DATABASE INSERTION LAYER
-        # attempted = len(valid_items)
         success, errors = await self.database.bulk_async(
             collection_id=collection_id,
             processed_items=valid_items,
@@ -1290,18 +1328,20 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                     conflict_details[doc_id] = f"Item '{doc_id}' already exists"
             return conflict_details
 
-        total_skipped = (
-            skipped_batch_duplicates
-            + skipped_db_duplicates
-            + validation_error_count
-            + len(conflict_errors)
-        )
-
+        # Fix Spot 3: Database writes failed completely
         if success == 0:
             raise HTTPException(
                 status_code=400,
                 detail={
-                    "message": f"No items were added. {total_skipped} skipped. {len(other_errors)} errors.",
+                    "message": "No items were added to the database.",
+                    "summary": build_bulk_summary(
+                        raw_features,
+                        processed_items,
+                        valid_items,
+                        validation_error_count,
+                        conflict_errors,
+                        other_errors,
+                    ),
                     "validation_errors": validation_errors,
                     "conflict_errors": format_conflict_errors(conflict_errors)
                     if conflict_errors
@@ -1715,6 +1755,12 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
                     status_code=400,
                     detail={
                         "message": f"Bulk insertion rejected. {validation_error_count} items failed validation.",
+                        "summary": build_bulk_summary(
+                            raw_features=raw_items,
+                            processed_items=unique_items,
+                            valid_items=valid_items,
+                            validation_error_count=validation_error_count,
+                        ),
                         "errors": validation_errors,
                     },
                 )
