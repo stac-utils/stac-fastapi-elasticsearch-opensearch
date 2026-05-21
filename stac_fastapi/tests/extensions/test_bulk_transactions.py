@@ -38,7 +38,7 @@ async def test_bulk_item_insert(ctx, core_client, txn_client, bulk_txn_client):
 
 @pytest.mark.asyncio
 async def test_bulk_item_insert_with_raise_on_error(
-    ctx, core_client, txn_client, bulk_txn_client
+    ctx, core_client, txn_client, bulk_txn_client, monkeypatch: pytest.MonkeyPatch
 ):
     """
     Test bulk_item_insert behavior with RAISE_ON_BULK_ERROR set to true and false.
@@ -61,14 +61,14 @@ async def test_bulk_item_insert_with_raise_on_error(
     conflicting_items = {initial_item["id"]: deepcopy(initial_item)}
 
     # Test with RAISE_ON_BULK_ERROR set to true
-    os.environ["RAISE_ON_BULK_ERROR"] = "true"
+    monkeypatch.setenv("RAISE_ON_BULK_ERROR", "true")
     bulk_txn_client.database.sync_settings = SearchSettings()
 
     with pytest.raises(ItemAlreadyExistsError):
         bulk_txn_client.bulk_item_insert(Items(items=conflicting_items), refresh=True)
 
     # Test with RAISE_ON_BULK_ERROR set to false
-    os.environ["RAISE_ON_BULK_ERROR"] = "false"
+    monkeypatch.setenv("RAISE_ON_BULK_ERROR", "false")
     bulk_txn_client.database.sync_settings = SearchSettings()  # Reinitialize settings
     result = bulk_txn_client.bulk_item_insert(
         Items(items=conflicting_items), refresh=True
@@ -102,50 +102,45 @@ async def test_feature_collection_insert(
 
 
 @pytest.mark.asyncio
-async def test_bulk_item_insert_validation_error(ctx, core_client, bulk_txn_client):
-    import os
-
+async def test_bulk_item_insert_validation_error(
+    ctx, core_client, bulk_txn_client, monkeypatch: pytest.MonkeyPatch
+):
     from fastapi import HTTPException
 
-    os.environ["ENABLE_STAC_VALIDATOR"] = "true"
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
 
-    try:
-        items = {}
-        # Add 9 valid items
-        for _ in range(9):
-            _item = deepcopy(ctx.item)
-            _item["id"] = str(uuid.uuid4())
-            items[_item["id"]] = _item
+    items = {}
+    # Add 9 valid items
+    for _ in range(9):
+        _item = deepcopy(ctx.item)
+        _item["id"] = str(uuid.uuid4())
+        items[_item["id"]] = _item
 
-        # Add 1 invalid item (e.g., missing "datetime")
-        invalid_item = deepcopy(ctx.item)
-        invalid_item["id"] = str(uuid.uuid4())
-        invalid_item["properties"].pop(
-            "datetime", None
-        )  # Remove datetime to make it invalid
-        items[invalid_item["id"]] = invalid_item
+    # Add 1 invalid item (e.g., missing "datetime")
+    invalid_item = deepcopy(ctx.item)
+    invalid_item["id"] = str(uuid.uuid4())
+    invalid_item["properties"].pop(
+        "datetime", None
+    )  # Remove datetime to make it invalid
+    items[invalid_item["id"]] = invalid_item
 
-        # The bulk insert should raise an HTTPException due to the invalid item
-        with pytest.raises(HTTPException) as exc_info:
-            bulk_txn_client.bulk_item_insert(Items(items=items), refresh=True)
+    # The bulk insert should raise an HTTPException due to the invalid item
+    with pytest.raises(HTTPException) as exc_info:
+        bulk_txn_client.bulk_item_insert(Items(items=items), refresh=True)
 
-        # Verify structured error payload includes summary telemetry
-        detail = exc_info.value.detail
-        assert (
-            "Bulk insertion rejected. 1 items failed validation." in detail["message"]
-        )
-        assert "errors" in detail
-        assert "summary" in detail
-        summary = detail["summary"]
-        assert summary["input_count"] == 10
-        assert summary["processed_count"] == 10
-        assert summary["valid_count"] == 9
-        assert summary["validation_error_count"] == 1
-        assert summary["skipped_total"] == 1
-        assert summary["conflict_count"] == 0
-        assert summary["database_error_count"] == 0
-    finally:
-        os.environ.pop("ENABLE_STAC_VALIDATOR", None)
+    # Verify structured error payload includes summary telemetry
+    detail = exc_info.value.detail
+    assert "Bulk insertion rejected. 1 items failed validation." in detail["message"]
+    assert "errors" in detail
+    assert "summary" in detail
+    summary = detail["summary"]
+    assert summary["input_count"] == 10
+    assert summary["processed_count"] == 10
+    assert summary["valid_count"] == 9
+    assert summary["validation_error_count"] == 1
+    assert summary["skipped_total"] == 1
+    assert summary["conflict_count"] == 0
+    assert summary["database_error_count"] == 0
 
 
 @pytest.mark.asyncio
@@ -178,7 +173,7 @@ async def test_feature_collection_insert_validation_error(
 
 @pytest.mark.asyncio
 async def test_feature_collection_insert_duplicate_detection(
-    ctx, core_client, txn_client
+    ctx, core_client, txn_client, monkeypatch: pytest.MonkeyPatch
 ):
     """
     Test that duplicate items are detected when inserting via FeatureCollection.
@@ -198,7 +193,7 @@ async def test_feature_collection_insert_duplicate_detection(
     feature_collection = {"type": "FeatureCollection", "features": [duplicate_item]}
 
     # Set RAISE_ON_BULK_ERROR to true to get ItemAlreadyExistsError
-    os.environ["RAISE_ON_BULK_ERROR"] = "true"
+    monkeypatch.setenv("RAISE_ON_BULK_ERROR", "true")
     txn_client.database.sync_settings = SearchSettings()
 
     # Should raise ItemAlreadyExistsError because item already exists
@@ -210,7 +205,7 @@ async def test_feature_collection_insert_duplicate_detection(
 
 @pytest.mark.asyncio
 async def test_feature_collection_insert_duplicate_with_different_datetime(
-    ctx, core_client, txn_client
+    ctx, core_client, txn_client, monkeypatch: pytest.MonkeyPatch
 ):
     """
     Test that duplicate detection works when item has different datetime.
@@ -227,7 +222,7 @@ async def test_feature_collection_insert_duplicate_with_different_datetime(
 
     feature_collection = {"type": "FeatureCollection", "features": [duplicate_item]}
 
-    os.environ["RAISE_ON_BULK_ERROR"] = "true"
+    monkeypatch.setenv("RAISE_ON_BULK_ERROR", "true")
     txn_client.database.sync_settings = SearchSettings()
 
     # Should still detect the duplicate even with different datetime
@@ -239,7 +234,7 @@ async def test_feature_collection_insert_duplicate_with_different_datetime(
 
 @pytest.mark.asyncio
 async def test_bulk_sync_duplicate_detection(
-    ctx, core_client, txn_client, bulk_txn_client
+    ctx, core_client, txn_client, bulk_txn_client, monkeypatch: pytest.MonkeyPatch
 ):
     """
     Test that bulk_sync_prep_create_item properly detects duplicates across indexes.
@@ -256,7 +251,7 @@ async def test_bulk_sync_duplicate_detection(
     conflicting_item = {existing_item_id: duplicate_item}
 
     # Test with RAISE_ON_BULK_ERROR set to true
-    os.environ["RAISE_ON_BULK_ERROR"] = "true"
+    monkeypatch.setenv("RAISE_ON_BULK_ERROR", "true")
     bulk_txn_client.database.sync_settings = SearchSettings()
 
     with pytest.raises(ItemAlreadyExistsError) as exc_info:
@@ -269,7 +264,7 @@ async def test_bulk_sync_duplicate_detection(
 
 @pytest.mark.asyncio
 async def test_bulk_insert_multiple_items_with_one_duplicate(
-    ctx, core_client, txn_client, bulk_txn_client
+    ctx, core_client, txn_client, bulk_txn_client, monkeypatch: pytest.MonkeyPatch
 ):
     """
     Test bulk insert behavior when one item out of many is a duplicate.
@@ -293,7 +288,7 @@ async def test_bulk_insert_multiple_items_with_one_duplicate(
     duplicate_item["properties"]["datetime"] = "2027-03-15T08:30:00Z"
     items[existing_item_id] = duplicate_item
 
-    os.environ["RAISE_ON_BULK_ERROR"] = "true"
+    monkeypatch.setenv("RAISE_ON_BULK_ERROR", "true")
     bulk_txn_client.database.sync_settings = SearchSettings()
 
     # Should fail on the duplicate
@@ -397,7 +392,7 @@ async def test_feature_collection_insert_with_in_batch_duplicates(
 
 @pytest.mark.asyncio
 async def test_bulk_index_error_raised_on_non_conflict_errors_strict_mode(
-    ctx, bulk_txn_client
+    ctx, bulk_txn_client, monkeypatch: pytest.MonkeyPatch
 ):
     items = {}
     for _ in range(3):
@@ -418,7 +413,7 @@ async def test_bulk_index_error_raised_on_non_conflict_errors_strict_mode(
         },
     ]
 
-    os.environ["RAISE_ON_BULK_ERROR"] = "true"
+    monkeypatch.setenv("RAISE_ON_BULK_ERROR", "true")
     bulk_txn_client.database.sync_settings = SearchSettings()
 
     with patch.object(
@@ -434,7 +429,7 @@ async def test_bulk_index_error_raised_on_non_conflict_errors_strict_mode(
 
 @pytest.mark.asyncio
 async def test_bulk_non_conflict_errors_not_raised_in_permissive_mode(
-    ctx, bulk_txn_client
+    ctx, bulk_txn_client, monkeypatch: pytest.MonkeyPatch
 ):
     items = {}
     for _ in range(3):
@@ -465,7 +460,7 @@ async def test_bulk_non_conflict_errors_not_raised_in_permissive_mode(
         },
     ]
 
-    os.environ["RAISE_ON_BULK_ERROR"] = "false"
+    monkeypatch.setenv("RAISE_ON_BULK_ERROR", "false")
     bulk_txn_client.database.sync_settings = SearchSettings()
 
     with patch.object(
@@ -479,7 +474,7 @@ async def test_bulk_non_conflict_errors_not_raised_in_permissive_mode(
 
 @pytest.mark.asyncio
 async def test_bulk_conflict_error_takes_precedence_over_other_errors(
-    ctx, bulk_txn_client
+    ctx, bulk_txn_client, monkeypatch: pytest.MonkeyPatch
 ):
     item_id = str(uuid.uuid4())
     items = {}
@@ -511,7 +506,7 @@ async def test_bulk_conflict_error_takes_precedence_over_other_errors(
         },
     ]
 
-    os.environ["RAISE_ON_BULK_ERROR"] = "true"
+    monkeypatch.setenv("RAISE_ON_BULK_ERROR", "true")
     bulk_txn_client.database.sync_settings = SearchSettings()
 
     with patch.object(
