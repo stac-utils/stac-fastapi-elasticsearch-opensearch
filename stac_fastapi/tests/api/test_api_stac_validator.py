@@ -58,8 +58,9 @@ async def test_stac_validator_catches_eo_bands_in_assets(txn_client, load_test_d
         await create_item(txn_client, invalid_item)
 
     # Verify the error message mentions the validation failure
-    assert "STAC validation failed" in str(exc_info.value)
     assert exc_info.value.status_code == 400
+    assert "STAC validation failed" in str(exc_info.value)
+    assert "invalid-eo-bands-in-assets" in str(exc_info.value)
 
 
 @pytest.mark.asyncio
@@ -84,7 +85,9 @@ async def test_stac_validator_catches_invalid_cloud_cover(txn_client, load_test_
         await create_item(txn_client, invalid_item)
 
     # Verify the error message mentions the validation failure
+    assert exc_info.value.status_code == 400
     assert "STAC validation failed" in str(exc_info.value)
+    assert "invalid-cloud-cover" in str(exc_info.value)
 
 
 @pytest.mark.asyncio
@@ -211,7 +214,9 @@ async def test_stac_validator_catches_invalid_snow_cover(txn_client, load_test_d
         await create_item(txn_client, invalid_item)
 
     # Verify the error message mentions the validation failure
+    assert exc_info.value.status_code == 400
     assert "STAC validation failed" in str(exc_info.value)
+    assert "invalid-snow-cover" in str(exc_info.value)
 
 
 @pytest.mark.asyncio
