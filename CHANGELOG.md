@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 
 - Added test for conformance endpoint in catalogs extension. [#727](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/727)
+- Helm chart: added `app.image.addSuffix` bool (default `true`) to allow disabling the automatic `-es`/`-os` suffix on the image repository. [#743](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/743)
+- Helm chart: added `app.extraVolumeMounts` and `app.extraVolumes` to support mounting additional volumes into the application container. [#743](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/743)
 
 ### Changed
 
