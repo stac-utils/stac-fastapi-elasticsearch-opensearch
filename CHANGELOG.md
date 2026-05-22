@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- Use `get_bool_env` instead of `os.getenv` for `ENABLE_DATETIME_INDEX_FILTERING` checks to ensure proper boolean evaluation of the environment variable. [#731](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/731)
+
 ### Removed
 
 - geojson-pydantic dependency. [#728](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/728)
