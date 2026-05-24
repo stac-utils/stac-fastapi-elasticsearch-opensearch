@@ -863,6 +863,96 @@ class CatalogsClient(AsyncBaseCatalogsClient):
         ]
         return JSONResponse(content=collection_dict_out)
 
+    async def update_catalog_collection(
+        self,
+        catalog_id: str,
+        collection_id: str,
+        collection: Collection,
+        request: Request | None = None,
+        **kwargs,
+    ) -> Collection | Response:
+        """Update a collection's metadata within a catalog context (Scoped Route).
+
+        This method updates collection metadata while ensuring the collection
+        remains linked to the specified catalog. This provides DAG safety by
+        operating within a specific catalog context.
+
+        Args:
+            catalog_id: The ID of the catalog.
+            collection_id: The ID of the collection to update.
+            collection: The updated collection data.
+            request: FastAPI request object.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            The updated collection.
+
+        Raises:
+            NotFoundError: If the catalog or collection is not found, or if the
+                collection is not linked to the catalog.
+        """
+        # Validate catalog exists
+        try:
+            catalog = await self.database.find_catalog(catalog_id)
+            if not catalog:
+                raise NotFoundError(f"Catalog {catalog_id} not found")
+        except NotFoundError:
+            raise
+        except Exception:
+            raise NotFoundError(f"Catalog {catalog_id} not found")
+
+        # Get collection and validate it belongs to this catalog
+        try:
+            collection_dict = await self.database.get_catalog_collection(
+                catalog_id=catalog_id,
+                collection_id=collection_id,
+                request=request,
+            )
+        except Exception:
+            raise NotFoundError(f"Collection {collection_id} not found")
+
+        # Verify collection is in this catalog's parent_ids
+        parent_ids = collection_dict.get("parent_ids", [])
+        if catalog_id not in parent_ids:
+            raise NotFoundError(
+                f"Collection {collection_id} not linked to catalog {catalog_id}"
+            )
+
+        # Update collection with new data, preserving parent_ids
+        updated_dict = self._to_dict(collection)
+        updated_dict["id"] = collection_id
+        updated_dict["parent_ids"] = parent_ids  # Preserve catalog linkage
+
+        # Filter out dynamic links
+        if "links" in updated_dict:
+            updated_dict["links"] = [
+                link
+                for link in updated_dict["links"]
+                if isinstance(link, dict)
+                and link.get("rel") not in ("parent", "child", "children")
+            ]
+
+        await self.database.update_collection(collection_id, updated_dict, refresh=True)
+
+        # Fetch updated collection
+        updated_collection = await self.database.get_catalog_collection(
+            catalog_id=catalog_id,
+            collection_id=collection_id,
+            request=request,
+        )
+
+        collection_obj = self.collection_serializer.db_to_stac_in_catalog(
+            updated_collection,
+            request,
+            catalog_id=catalog_id,
+            extensions=["CatalogsExtension"],
+        )
+        collection_dict_out = self._to_dict(collection_obj)
+        collection_dict_out["links"] = [
+            self._link_to_dict(link) for link in collection_dict_out.get("links", [])
+        ]
+        return JSONResponse(content=collection_dict_out)
+
     async def unlink_catalog_collection(
         self,
         catalog_id: str,
@@ -1288,7 +1378,8 @@ class CatalogsClient(AsyncBaseCatalogsClient):
         return {
             "conformsTo": [
                 "https://api.stacspec.org/v1.0.0/core",
-                "https://api.stacspec.org/v1.0.0-beta.4/multi-tenant-catalogs",
+                "https://api.stacspec.org/v1.0.0-rc.1/multi-tenant-catalogs",
+                "https://api.stacspec.org/v1.0.0-rc.1/multi-tenant-catalogs/transaction",
             ]
         }
 

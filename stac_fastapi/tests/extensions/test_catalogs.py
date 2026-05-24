@@ -901,6 +901,75 @@ async def test_create_catalog_collection_adds_parent_id(
 
 
 @pytest.mark.asyncio
+async def test_update_catalog_collection_preserves_parent_ids(
+    catalogs_app_client, load_test_data
+):
+    """Test that updating a collection via scoped PUT preserves all parent_ids."""
+    # Create two catalogs
+    catalog_ids = []
+    for i in range(2):
+        test_catalog = load_test_data("test_catalog.json")
+        catalog_id = f"test-catalog-{uuid.uuid4()}-{i}"
+        test_catalog["id"] = catalog_id
+
+        catalog_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+        assert catalog_resp.status_code == 201
+        catalog_ids.append(catalog_id)
+
+    # Create a collection in the first catalog
+    test_collection = load_test_data("test_collection.json")
+    collection_id = f"test-collection-{uuid.uuid4()}"
+    test_collection["id"] = collection_id
+
+    create_resp = await catalogs_app_client.post(
+        f"/catalogs/{catalog_ids[0]}/collections", json=test_collection
+    )
+    assert create_resp.status_code == 201
+
+    # Add the same collection to the second catalog (multi-parent)
+    add_resp = await catalogs_app_client.post(
+        f"/catalogs/{catalog_ids[1]}/collections", json={"id": collection_id}
+    )
+    assert add_resp.status_code == 201
+
+    # Verify collection has both parent_ids by getting it via first catalog endpoint
+    get_resp = await catalogs_app_client.get(
+        f"/catalogs/{catalog_ids[0]}/collections/{collection_id}"
+    )
+    assert get_resp.status_code == 200
+
+    # Update the collection via the first catalog's scoped endpoint
+    updated_collection = load_test_data("test_collection.json")
+    updated_collection["id"] = collection_id
+    updated_collection["title"] = "Updated Title"
+    updated_collection["description"] = "Updated Description"
+
+    update_resp = await catalogs_app_client.put(
+        f"/catalogs/{catalog_ids[0]}/collections/{collection_id}",
+        json=updated_collection,
+    )
+    assert update_resp.status_code == 200
+
+    updated_data = update_resp.json()
+    assert updated_data["title"] == "Updated Title"
+    assert updated_data["description"] == "Updated Description"
+
+    # Verify the collection is still accessible from both catalogs
+    # (parent_ids should have been preserved)
+    for catalog_id in catalog_ids:
+        get_resp = await catalogs_app_client.get(
+            f"/catalogs/{catalog_id}/collections/{collection_id}"
+        )
+        assert (
+            get_resp.status_code == 200
+        ), f"Collection should still be accessible from catalog {catalog_id}"
+
+        data = get_resp.json()
+        assert data["title"] == "Updated Title"
+        assert data["description"] == "Updated Description"
+
+
+@pytest.mark.asyncio
 async def test_add_existing_collection_to_catalog(
     catalogs_app_client, load_test_data, ctx
 ):
@@ -3829,9 +3898,9 @@ async def test_catalog_conformance_endpoint(catalogs_app_client, load_test_data)
 
     # Check for required conformance classes
     assert "https://api.stacspec.org/v1.0.0/core" in conforms_to
-    assert "https://api.stacspec.org/v1.0.0-beta.4/multi-tenant-catalogs" in conforms_to
-    assert "https://api.stacspec.org/v1.0.0-rc.2/children" in conforms_to
+    assert "https://api.stacspec.org/v1.0.0-rc.1/multi-tenant-catalogs" in conforms_to
     assert (
-        "https://api.stacspec.org/v1.0.0-beta.4/multi-tenant-catalogs/transaction"
+        "https://api.stacspec.org/v1.0.0-rc.1/multi-tenant-catalogs/transaction"
         in conforms_to
     )
+    assert "https://api.stacspec.org/v1.0.0-rc.2/children" in conforms_to
