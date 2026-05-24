@@ -3904,3 +3904,114 @@ async def test_catalog_conformance_endpoint(catalogs_app_client, load_test_data)
         in conforms_to
     )
     assert "https://api.stacspec.org/v1.0.0-rc.2/children" in conforms_to
+
+
+# ============================================================================
+# Database Error Handling & Observability Tests
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_catalog_create_logs_error_with_traceback(txn_client, caplog):
+    """Test that catalog creation failures log errors with full stack traces."""
+    import logging
+    from unittest.mock import patch
+
+    caplog.set_level(logging.ERROR)
+
+    # Mock the Elasticsearch client to raise an error
+    async def mock_index_error(*args, **kwargs):
+        raise Exception("Simulated index corruption error")
+
+    with patch.object(
+        txn_client.database.client, "index", side_effect=mock_index_error
+    ):
+        catalog = {
+            "id": "test-catalog",
+            "type": "Catalog",
+            "title": "Test Catalog",
+            "description": "Test Description",
+            "parent_ids": [],
+        }
+
+        try:
+            await txn_client.database.create_catalog(catalog, refresh=True)
+        except Exception:
+            pass  # Expected to fail
+
+    # Verify error was logged with stack trace
+    error_records = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert len(error_records) > 0, "Expected ERROR level log"
+    assert any(
+        "Error creating catalog" in r.message for r in error_records
+    ), "Expected 'Error creating catalog' in error log"
+    assert any(
+        r.exc_info is not None for r in error_records
+    ), "Expected stack trace (exc_info) in error log"
+
+
+@pytest.mark.asyncio
+async def test_catalog_delete_logs_error_with_traceback(txn_client, caplog):
+    """Test that catalog deletion failures log errors with full stack traces."""
+    import logging
+    from unittest.mock import patch
+
+    caplog.set_level(logging.ERROR)
+
+    # Mock the Elasticsearch client to raise an error
+    async def mock_delete_error(*args, **kwargs):
+        raise Exception("Simulated deletion error")
+
+    with patch.object(
+        txn_client.database.client, "delete", side_effect=mock_delete_error
+    ):
+        try:
+            await txn_client.database.delete_catalog("test-catalog", refresh=True)
+        except Exception:
+            pass  # Expected to fail
+
+    # Verify error was logged with stack trace
+    error_records = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert len(error_records) > 0
+    assert any("Error deleting catalog" in r.message for r in error_records)
+    assert any(r.exc_info is not None for r in error_records)
+
+
+@pytest.mark.asyncio
+async def test_collection_index_logs_error_with_traceback(txn_client, caplog):
+    """Test that collection indexing failures log errors with full stack traces."""
+    import logging
+    from unittest.mock import patch
+
+    caplog.set_level(logging.ERROR)
+
+    # Mock the Elasticsearch client to raise an error
+    async def mock_index_error(*args, **kwargs):
+        raise Exception("Simulated collection index error")
+
+    with patch.object(
+        txn_client.database.client, "index", side_effect=mock_index_error
+    ):
+        collection = {
+            "id": "test-collection",
+            "type": "Collection",
+            "title": "Test Collection",
+            "description": "Test Description",
+            "extent": {
+                "spatial": {"bbox": [[-180, -90, 180, 90]]},
+                "temporal": {"interval": [["2020-01-01T00:00:00Z", None]]},
+            },
+            "license": "MIT",
+            "links": [],
+        }
+
+        try:
+            await txn_client.database.create_collection(collection, refresh=True)
+        except Exception:
+            pass  # Expected to fail
+
+    # Verify error was logged with stack trace
+    error_records = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert len(error_records) > 0
+    assert any("Error indexing collection" in r.message for r in error_records)
+    assert any(r.exc_info is not None for r in error_records)
