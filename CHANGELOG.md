@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 
 - Added test for conformance endpoint in catalogs extension. [#727](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/727)
+- Added update scoped collection endpoint. [#744](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/744)
 
 ### Changed
 
@@ -24,6 +25,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Updated
 
 - Updated catalogs extension to v0.2.0. [#727](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/727)
+- Updated catalogs extension to v0.3.0. [#744](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/744)
 
 ## [v6.16.0] - 2026-04-16
 
