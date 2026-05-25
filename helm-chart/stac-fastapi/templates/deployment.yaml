@@ -78,6 +78,14 @@ spec:
             {{- include "stac-fastapi.environment" . | nindent 12 }}
           resources:
             {{- toYaml .Values.app.resources | nindent 12 }}
+          {{- with .Values.app.extraVolumeMounts }}
+          volumeMounts:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.app.extraVolumes }}
+      volumes:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       {{- with .Values.app.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
