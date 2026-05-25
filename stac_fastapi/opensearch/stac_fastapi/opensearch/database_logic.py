@@ -1557,12 +1557,18 @@ class DatabaseLogic(BaseDatabaseLogic):
             # Convert bbox to bbox_shape for geospatial queries (ES/OS specific)
             add_bbox_shape_to_collection(collection)
 
-        await self.client.index(
-            index=COLLECTIONS_INDEX,
-            id=collection_id,
-            body=collection,
-            refresh=refresh,
-        )
+        try:
+            await self.client.index(
+                index=COLLECTIONS_INDEX,
+                id=collection_id,
+                body=collection,
+                refresh=refresh,
+            )
+        except Exception as e:
+            logger.error(
+                f"Error indexing collection {collection_id}: {e}", exc_info=True
+            )
+            raise
         if self.async_index_inserter.should_create_collection_index():
             await self.async_index_inserter.create_simple_index(
                 self.client, collection_id
@@ -2060,12 +2066,18 @@ class DatabaseLogic(BaseDatabaseLogic):
             catalog (dict): The catalog document to create.
             refresh (bool): Whether to refresh the index after creation.
         """
-        await self.client.index(
-            index=COLLECTIONS_INDEX,
-            id=catalog.get("id"),
-            body=catalog,
-            refresh=refresh,
-        )
+        try:
+            await self.client.index(
+                index=COLLECTIONS_INDEX,
+                id=catalog.get("id"),
+                body=catalog,
+                refresh=refresh,
+            )
+        except Exception as e:
+            logger.error(
+                f"Error creating catalog {catalog.get('id')}: {e}", exc_info=True
+            )
+            raise
 
     @retry_on_connection_error
     async def find_catalog(self, catalog_id: str) -> dict:
@@ -2100,11 +2112,15 @@ class DatabaseLogic(BaseDatabaseLogic):
             catalog_id (str): The ID of the catalog to delete.
             refresh (bool): Whether to refresh the index after deletion.
         """
-        await self.client.delete(
-            index=COLLECTIONS_INDEX,
-            id=catalog_id,
-            refresh=refresh,
-        )
+        try:
+            await self.client.delete(
+                index=COLLECTIONS_INDEX,
+                id=catalog_id,
+                refresh=refresh,
+            )
+        except Exception as e:
+            logger.error(f"Error deleting catalog {catalog_id}: {e}", exc_info=True)
+            raise
 
     @retry_on_connection_error
     async def get_catalog_children(
@@ -2209,7 +2225,16 @@ class DatabaseLogic(BaseDatabaseLogic):
         if catalog_id not in catalog["parent_ids"]:
             catalog["parent_ids"].append(catalog_id)
 
-        await self.create_catalog(catalog, refresh=self.async_settings.database_refresh)
+        try:
+            await self.create_catalog(
+                catalog, refresh=self.async_settings.database_refresh
+            )
+        except Exception as e:
+            logger.error(
+                f"Error creating sub-catalog {catalog.get('id')} under catalog {catalog_id}: {e}",
+                exc_info=True,
+            )
+            raise
         return catalog
 
     @retry_on_connection_error
@@ -2229,9 +2254,16 @@ class DatabaseLogic(BaseDatabaseLogic):
         if catalog_id not in collection["parent_ids"]:
             collection["parent_ids"].append(catalog_id)
 
-        await self.create_collection(
-            collection, refresh=self.async_settings.database_refresh
-        )
+        try:
+            await self.create_collection(
+                collection, refresh=self.async_settings.database_refresh
+            )
+        except Exception as e:
+            logger.error(
+                f"Error creating collection {collection.get('id')} in catalog {catalog_id}: {e}",
+                exc_info=True,
+            )
+            raise
         return collection
 
     @retry_on_connection_error
@@ -2243,31 +2275,10 @@ class DatabaseLogic(BaseDatabaseLogic):
     ) -> Any:
         """Get a specific collection within a catalog.
 
-        Args:
-            catalog_id (str): The ID of the parent catalog.
-            collection_id (str): The ID of the collection.
-            request (Any): The request object.
-
-        Returns:
-            The collection object.
-
-        Raises:
-            NotFoundError: If the collection or catalog does not exist or are not related.
+        Validation is now handled securely by CatalogsClient.
+        Just return the collection.
         """
-        # Ensure parent catalog exists
-        await self.find_catalog(catalog_id)
-
-        # Get collection
-        collection = await self.find_collection(collection_id)
-
-        # Verify relationship: catalog_id must be in parent_ids
-        parent_ids = collection.get("parent_ids", [])
-        if catalog_id not in parent_ids:
-            raise NotFoundError(
-                f"Collection {collection_id} is not linked to catalog {catalog_id}"
-            )
-
-        return collection
+        return await self.find_collection(collection_id)
 
     @retry_on_connection_error
     async def get_catalog_collection_items(
@@ -2285,11 +2296,12 @@ class DatabaseLogic(BaseDatabaseLogic):
         query: str | None = None,
         fields: list[str] | None = None,
     ) -> Any:
-        """Get items for a collection within a catalog."""
-        # Check hierarchy
-        await self.get_catalog_collection(catalog_id, collection_id, request)
+        """Get items for a collection within a catalog.
 
-        # We need to construct a Search object for items.
+        Hierarchy validation is already performed by CatalogsClient.
+        Skip the redundant DB checks and go straight to the search.
+        """
+        # Build a Search object scoped to this collection
         search = self.make_search()
         search = self.apply_collections_filter(search, [collection_id])
 
@@ -2301,8 +2313,6 @@ class DatabaseLogic(BaseDatabaseLogic):
             search, datetime_search = self.apply_datetime_filter(search, datetime)
 
         sort_param = None
-        if sortby:
-            pass
 
         return await self.execute_search(
             search=search,
@@ -2321,10 +2331,10 @@ class DatabaseLogic(BaseDatabaseLogic):
         item_id: str,
         request: Any,
     ) -> Any:
-        """Get a specific item from a collection within a catalog."""
-        # Check hierarchy
-        await self.get_catalog_collection(catalog_id, collection_id, request)
+        """Get a specific item from a collection within a catalog.
 
+        Hierarchy validation is already performed by CatalogsClient.
+        """
         return await self.get_one_item(collection_id, item_id)
 
     @retry_on_connection_error
@@ -2335,12 +2345,16 @@ class DatabaseLogic(BaseDatabaseLogic):
         request: Any,
     ) -> Any:
         """Update a catalog."""
-        return await update_catalog_in_index_shared(
-            es_client=self.client,
-            catalog_id=catalog_id,
-            catalog=catalog,
-            refresh=self.async_settings.database_refresh,
-        )
+        try:
+            return await update_catalog_in_index_shared(
+                es_client=self.client,
+                catalog_id=catalog_id,
+                catalog=catalog,
+                refresh=self.async_settings.database_refresh,
+            )
+        except Exception as e:
+            logger.error(f"Error updating catalog {catalog_id}: {e}", exc_info=True)
+            raise
 
     @retry_on_connection_error
     async def get_catalog(
