@@ -23,6 +23,8 @@ app:
     pullPolicy: IfNotPresent
     # Overrides the image tag whose default is the chart appVersion
     tag: ""
+    # Automatically add -os for Opensearch and -es for Elasticsearch to the repository
+    addSuffix: true
 
   # Image pull secrets
   imagePullSecrets: []
@@ -171,6 +173,10 @@ app:
     # SSL configuration
     ES_USE_SSL: "false"
     ES_VERIFY_CERTS: "false"
+
+  # Additional volumes and volume mounts for the application container
+  extraVolumeMounts: []
+  extraVolumes: []
 
   # Additional environment variables from secrets
   envFromSecret: {}

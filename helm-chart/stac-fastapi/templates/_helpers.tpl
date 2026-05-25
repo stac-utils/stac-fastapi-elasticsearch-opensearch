@@ -213,11 +213,16 @@ Create the image repository with tag
 {{- define "stac-fastapi.image" -}}
 {{- $registry := .Values.global.imageRegistry | default .Values.app.image.repository }}
 {{- $tag := .Values.app.image.tag | default .Chart.AppVersion }}
-{{- if eq .Values.backend "elasticsearch" }}
-{{- printf "%s-es:%s" $registry $tag }}
-{{- else if eq .Values.backend "opensearch" }}
-{{- printf "%s-os:%s" $registry $tag }}
+{{- $backend := .Values.backend }}
+{{- $suffix := "" }}
+{{- if .Values.app.image.addSuffix }}
+  {{- if eq $backend "elasticsearch" }}
+    {{- $suffix = "-es" }}
+  {{- else if eq $backend "opensearch" }}
+    {{- $suffix = "-os" }}
+  {{- end }}
 {{- end }}
+{{- printf "%s%s:%s" $registry $suffix $tag }}
 {{- end }}
 
 {{/*
