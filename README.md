@@ -364,6 +364,7 @@ The catalogs extension implements a **safety-first design** that protects collec
 - **GET `/catalogs/{catalog_id}/collections`**: Retrieve collections within a specific catalog
 - **POST `/catalogs/{catalog_id}/collections`**: Create a new collection within a catalog OR link an existing collection by posting its ID
 - **GET `/catalogs/{catalog_id}/collections/{collection_id}`**: Retrieve a specific collection within a catalog
+- **PUT `/catalogs/{catalog_id}/collections/{collection_id}`**: Update a collection within a catalog context (updates the collection globally)
 - **DELETE `/catalogs/{catalog_id}/collections/{collection_id}`**: Unlink a collection from a catalog (collection survives at root if orphaned)
 
 **Items:**
@@ -443,6 +444,20 @@ curl -X POST "http://localhost:8081/catalogs/earth-observation/collections" \
 
 # Get specific collection within a catalog
 curl "http://localhost:8081/catalogs/earth-observation/collections/sentinel-2"
+
+# Update a collection within a catalog context
+# This updates the collection globally (not just within this catalog)
+# The update preserves the collection's parent_ids, maintaining its DAG structure
+# and poly-hierarchy relationships across all parent catalogs
+curl -X PUT "http://localhost:8081/catalogs/earth-observation/collections/sentinel-2" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "sentinel-2",
+    "type": "Collection",
+    "stac_version": "1.0.0",
+    "description": "Updated description for Sentinel-2 data",
+    "title": "Sentinel-2 (Updated)"
+  }'
 
 # Get items in a collection within a catalog
 curl "http://localhost:8081/catalogs/earth-observation/collections/sentinel-2/items"
