@@ -9,11 +9,26 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
-- Added test for conformance endpoint in catalogs extension. [#727](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/727)
-
 ### Changed
 
 ### Fixed
+
+### Removed
+
+### Updated
+
+## [v6.17.0] - 2026-05-25
+
+### Added
+
+- Added test for conformance endpoint in catalogs extension. [#727](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/727)
+- Added update scoped collection endpoint. [#744](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/744)
+- Helm chart: added `app.image.addSuffix` bool (default `true`) to allow disabling the automatic `-es`/`-os` suffix on the image repository. [#743](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/743)
+- Helm chart: added `app.extraVolumeMounts` and `app.extraVolumes` to support mounting additional volumes into the application container. [#743](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/743)
+
+### Fixed
+
+- Use `get_bool_env` instead of `os.getenv` for `ENABLE_DATETIME_INDEX_FILTERING` checks to ensure proper boolean evaluation of the environment variable. [#731](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/731)
 
 ### Removed
 
@@ -22,6 +37,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Updated
 
 - Updated catalogs extension to v0.2.0. [#727](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/727)
+- Updated catalogs extension to v0.3.0. [#744](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/744)
+- Updated error handling and messaging related to the Catalogs extension. [#744](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/744)
 
 ## [v6.16.0] - 2026-04-16
 
@@ -885,7 +902,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.16.0...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.17.0...main
+[v6.17.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.16.0...v6.17.0
 [v6.16.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.15.0...v6.16.0
 [v6.15.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.14.1...v6.15.0
 [v6.14.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.14.0...v6.14.1

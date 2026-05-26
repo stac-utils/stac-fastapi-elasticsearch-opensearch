@@ -13,6 +13,7 @@ from stac_pydantic import api
 
 from stac_fastapi.core.core import CoreClient
 from stac_fastapi.core.datetime_utils import datetime_to_str, now_to_rfc3339_str
+from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.types.core import LandingPageMixin
 
 from ..conftest import create_collection, create_item, refresh_indices
@@ -1002,8 +1003,7 @@ async def _search_and_get_ids(
 async def test_search_datetime_with_null_datetime(
     app_client, txn_client, load_test_data
 ):
-    """Test datetime filtering when properties.datetime is null or set, ensuring start_datetime and end_datetime are set when datetime is null."""
-    if os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+    if get_bool_env("ENABLE_DATETIME_INDEX_FILTERING"):
         pytest.skip()
 
     # Setup: Create test collection
