@@ -1234,34 +1234,107 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         # 3. VALIDATION LAYER
         validate_before_queue = get_bool_env("VALIDATE_BEFORE_QUEUE", default=True)
+        max_batch_size = int(os.getenv("MAX_BATCH_SIZE", 0))
+        max_batch_error_size = int(os.getenv("MAX_BATCH_ERROR_SIZE", 0))
 
         # Trigger validation if requested up front OR if the queue is disabled completely
         if validate_before_queue or not use_queue:
-            valid_items, validation_errors = await self._validate_feature_collection(
-                processed_items, skip_validation=False
-            )
-            validation_error_count = sum(
-                len(item_ids) if isinstance(item_ids, list) else 1
-                for item_ids in validation_errors.values()
-            )
 
-            # Fix Spot 1: Strict mode validation failures
-            if validation_errors and raise_on_error:
-                raise HTTPException(
-                    status_code=400,
-                    detail={
-                        "message": f"Batch rejected. {validation_error_count} items failed validation.",
-                        "summary": build_bulk_summary(
-                            raw_features,
-                            processed_items,
-                            valid_items,
-                            validation_error_count,
-                        ),
-                        "errors": validation_errors,
-                    },
+            if max_batch_size > 0:
+                # --- PATH A: CHUNKED FAIL-FAST THRESHOLD VALIDATION ---
+                valid_items: list[dict] = []
+                validation_errors: dict[str, list[str]] = {}
+                validation_error_count = 0
+
+                for i in range(0, len(processed_items), max_batch_size):
+                    chunk = processed_items[i : i + max_batch_size]
+
+                    chunk_valid, chunk_errors = await self._validate_feature_collection(
+                        chunk, skip_validation=False
+                    )
+
+                    if chunk_errors:
+                        # Merge chunk errors into the master validation_errors tracking dictionary
+                        for msg, ids in chunk_errors.items():
+                            if msg not in validation_errors:
+                                validation_errors[msg] = []
+                            validation_errors[msg].extend(ids)
+
+                        # Calculate errors found in this specific chunk
+                        chunk_error_count = sum(
+                            len(item_ids) if isinstance(item_ids, list) else 1
+                            for item_ids in chunk_errors.values()
+                        )
+                        validation_error_count += chunk_error_count
+
+                        # CRITICAL FAIL-FAST: Breach of max_batch_error_size is an absolute cutoff
+                        # This is unconditional - regardless of RAISE_ON_BULK_ERROR setting,
+                        # a payload that exceeds the error threshold is too toxic to continue validating
+                        if validation_error_count > max_batch_error_size:
+                            raise HTTPException(
+                                status_code=400,
+                                detail={
+                                    "message": f"Batch rejected. Validation error threshold exceeded ({validation_error_count} errors found). Halting validation loop.",
+                                    "summary": build_bulk_summary(
+                                        raw_features=raw_features,
+                                        processed_items=processed_items[
+                                            : i + len(chunk)
+                                        ],
+                                        valid_items=valid_items,
+                                        validation_error_count=validation_error_count,
+                                    ),
+                                    "errors": validation_errors,
+                                },
+                            )
+
+                    valid_items.extend(chunk_valid)
+
+                # Post-Loop Check: If ANY errors accumulated (but didn't breach the fail-fast threshold),
+                # we still reject the transaction because the payload contains invalid STAC data.
+                if validation_errors and raise_on_error:
+                    raise HTTPException(
+                        status_code=400,
+                        detail={
+                            "message": f"Batch rejected. {validation_error_count} items failed validation.",
+                            "summary": build_bulk_summary(
+                                raw_features,
+                                processed_items,
+                                valid_items,
+                                validation_error_count,
+                            ),
+                            "errors": validation_errors,
+                        },
+                    )
+
+            else:
+                # --- PATH B: STANDARD ATOMIC SINGLE-PASS VALIDATION ---
+                (
+                    valid_items,
+                    validation_errors,
+                ) = await self._validate_feature_collection(
+                    processed_items, skip_validation=False
+                )
+                validation_error_count = sum(
+                    len(item_ids) if isinstance(item_ids, list) else 1
+                    for item_ids in validation_errors.values()
                 )
 
-            # Fix Spot 2: Zero valid items remain to process
+                if validation_errors and raise_on_error:
+                    raise HTTPException(
+                        status_code=400,
+                        detail={
+                            "message": f"Batch rejected. {validation_error_count} items failed validation.",
+                            "summary": build_bulk_summary(
+                                raw_features,
+                                processed_items,
+                                valid_items,
+                                validation_error_count,
+                            ),
+                            "errors": validation_errors,
+                        },
+                    )
+
+            # Safety check: Zero valid items remain to process
             if not valid_items and raise_on_error:
                 raise HTTPException(
                     status_code=400,

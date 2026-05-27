@@ -285,3 +285,108 @@ async def test_stac_validator_returns_400_on_invalid_item(app_client, load_test_
         "Invalid item: STAC validation failed for 'invalid-item-400'"
         in response_data["detail"]
     )
+
+
+@pytest.mark.asyncio
+async def test_chunked_validation_with_max_batch_size(
+    txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
+):
+    """Test that chunked validation is enabled when MAX_BATCH_SIZE is set.
+
+    Verifies that the validation layer respects MAX_BATCH_SIZE and MAX_BATCH_ERROR_SIZE
+    configuration for CPU optimization on high-volume ingestion.
+    """
+    monkeypatch.setenv("MAX_BATCH_SIZE", "100")  # Enable chunked validation
+    monkeypatch.setenv("MAX_BATCH_ERROR_SIZE", "10")
+
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = f"test-chunked-{uuid.uuid4()}"
+    await create_collection(txn_client, collection=test_collection)
+
+    base_item = load_test_data("test_item.json")
+    base_item["collection"] = test_collection["id"]
+    if "datetime" not in base_item.get("properties", {}):
+        base_item["properties"]["datetime"] = "2020-01-01T00:00:00Z"
+
+    # Create a batch of valid items
+    items_to_post = []
+    for i in range(5):
+        valid_item = deepcopy(base_item)
+        valid_item["id"] = f"chunked-valid-{i}"
+        items_to_post.append(valid_item)
+
+    feature_collection = {
+        "type": "FeatureCollection",
+        "features": items_to_post,
+    }
+
+    # Post items using the test helper (which handles request context)
+    await create_item(txn_client, feature_collection)
+
+    # Verify chunked validation allowed valid items through by checking database persistence
+    db_item = await txn_client.database.get_one_item(
+        item_id="chunked-valid-0", collection_id=test_collection["id"]
+    )
+    assert (
+        db_item is not None
+    ), "Chunked validation should allow valid items to be inserted"
+
+
+@pytest.mark.asyncio
+async def test_chunked_validation_exceeds_max_error_size(
+    txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
+):
+    """Test that chunked validation fails fast when MAX_BATCH_ERROR_SIZE is breached.
+
+    Verifies that the validation loop stops immediately and throws a 400 error
+    when the error count exceeds the configured threshold, preventing wasted
+    CPU cycles on hopelessly broken payloads.
+    """
+    from fastapi import HTTPException
+
+    # Configure a tiny error gateway threshold
+    monkeypatch.setenv("MAX_BATCH_SIZE", "2")
+    monkeypatch.setenv("MAX_BATCH_ERROR_SIZE", "1")
+    monkeypatch.setenv("RAISE_ON_BULK_ERROR", "true")
+
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = f"test-chunked-fail-{uuid.uuid4()}"
+    await create_collection(txn_client, collection=test_collection)
+
+    base_item = load_test_data("test_item.json")
+    base_item["collection"] = test_collection["id"]
+
+    # Generate 3 invalid items (cloud cover = 150, which exceeds valid range)
+    # With a batch size of 2, the first chunk will contain 2 errors, immediately breaching the threshold of 1
+    items_to_post = []
+    for i in range(3):
+        invalid_item = deepcopy(base_item)
+        invalid_item["id"] = f"chunked-invalid-{i}"
+        invalid_item["properties"]["eo:cloud_cover"] = 150
+        items_to_post.append(invalid_item)
+
+    feature_collection = {
+        "type": "FeatureCollection",
+        "features": items_to_post,
+    }
+
+    # Verify that the processor triggers the threshold cutoff
+    with pytest.raises(HTTPException) as exc_info:
+        await create_item(txn_client, feature_collection)
+
+    assert exc_info.value.status_code == 400
+    detail = exc_info.value.detail
+
+    # Assert on the custom threshold message string
+    assert "Validation error threshold exceeded" in detail["message"]
+
+    # Verify the summary reports exactly how far the loop got before terminating
+    summary = detail["summary"]
+    assert summary["input_count"] == 3
+    assert (
+        summary["processed_count"] == 2
+    ), "Loop should cut off at chunk 1 (2 items processed)"
+    assert summary["valid_count"] == 0
+    assert (
+        summary["validation_error_count"] == 2
+    ), "Found 2 errors in chunk 1, which exceeds threshold of 1"

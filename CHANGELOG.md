@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Added
 
 - Added `VALIDATE_BEFORE_QUEUE` environment variable to control validation timing when using Redis queue. When set to `true` (default), validates items on the API thread before queuing for strict data quality. When set to `false`, defers validation to the background worker for maximum API throughput. Applies to single items, feature collections, and item updates. [#742](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/742)
+- Added `MAX_BATCH_SIZE` and `MAX_BATCH_ERROR_SIZE` environment variables to enable chunked validation with fail-fast thresholds. When `MAX_BATCH_SIZE` > 0, items are validated in chunks and validation stops immediately if errors exceed `MAX_BATCH_ERROR_SIZE`. This optimizes CPU usage for high-volume ingestion by preventing wasted validation cycles on hopelessly broken payloads. [#742](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/742)
 - Added `ENABLE_STAC_VALIDATOR` environment variable to enable strict STAC schema validation on ingestion via the Python `stac-validator`. [#742](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/742)
 - Added `[validator]` installation extra to `stac-fastapi-core`, `elasticsearch`, and `opensearch` packages. [#742](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/742)
 

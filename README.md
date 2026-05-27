@@ -786,6 +786,8 @@ You can customize additional settings in your `.env` file:
 | `STAC_GLOBAL_ITEM_MAX_LIMIT` | Configures the maximum number of STAC items that can be returned in a single search request. | N/A | Optional |
 | `STAC_DEFAULT_ITEM_LIMIT` | Configures the default number of STAC items returned when no limit parameter is specified in the request. | `10` | Optional |
 | `COUNT_TIMEOUT` | Configures the timeout for the count task with search queries. If the count query takes longer than timeout, the search results are returned without the total count. Set to 0 to disable the timeout.. | `0.5` | Optional |
+| `MAX_BATCH_SIZE` | When set to a value > 0, enables chunked validation with fail-fast thresholds. Items are validated in chunks of this size. Set to 0 to disable chunked validation (uses standard atomic validation). See [Chunked Validation with Fail-Fast](#chunked-validation-with-fail-fast) for details. | `0` | Optional |
+| `MAX_BATCH_ERROR_SIZE` | Maximum number of validation errors allowed before halting the validation loop and rejecting the entire batch. Only applies when `MAX_BATCH_SIZE` > 0. This is a CPU optimization gate to prevent wasting resources validating hopelessly broken payloads. | `0` | Optional |
 
 
 ### 6. Database Indexing & Behavior
@@ -911,6 +913,41 @@ export VALIDATE_BEFORE_QUEUE=false
 ```
 
 > **Note**: When `ENABLE_REDIS_QUEUE=false` (direct database mode), validation always happens on the API thread regardless of the `VALIDATE_BEFORE_QUEUE` setting.
+
+#### Chunked Validation with Fail-Fast
+
+For high-volume ingestion scenarios, you can enable **chunked validation with fail-fast thresholds** to optimize CPU usage and prevent wasting resources on hopelessly broken payloads.
+
+**How it works:**
+
+1. **Chunking**: Items are validated in chunks of `MAX_BATCH_SIZE` items
+2. **Error Tracking**: Validation errors are accumulated across chunks
+3. **Fail-Fast**: If total errors exceed `MAX_BATCH_ERROR_SIZE`, validation stops immediately and the entire batch is rejected
+4. **Atomic Rejection**: The entire batch is always rejected if any errors are found (no partial inserts)
+
+**Example: Enable chunked validation with fail-fast**
+```bash
+export ENABLE_STAC_VALIDATOR=true
+export MAX_BATCH_SIZE=100          # Validate in chunks of 100 items
+export MAX_BATCH_ERROR_SIZE=5      # Stop after 5 errors found
+```
+
+**Behavior:**
+- If a batch of 1000 items has 6 validation errors distributed across chunks, validation stops after finding the 6th error
+- The API returns a 400 error with details about where validation stopped and how many items were checked
+- This prevents the validator from wasting CPU cycles on the remaining 994 items
+
+**When to use:**
+- High-volume ingestion (thousands of items per request)
+- Unreliable data sources where large batches may contain many errors
+- When you want to fail fast rather than validate everything
+
+**When NOT to use:**
+- Small batches (< 100 items) - overhead of chunking not worth it
+- When you need a complete error report for all items - fail-fast stops early
+- Set `MAX_BATCH_SIZE=0` (default) to disable and use standard atomic validation
+
+> **Note**: Chunked validation only applies when `VALIDATE_BEFORE_QUEUE=true` (API thread validation). When using deferred validation (`VALIDATE_BEFORE_QUEUE=false`), the worker will validate the entire batch.
 
 ## Free-Text Search (`q` parameter)
 
