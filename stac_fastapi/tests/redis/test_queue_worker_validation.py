@@ -25,6 +25,7 @@ async def test_worker_validates_items_in_queue(
 
     monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
     monkeypatch.setenv("ENABLE_REDIS_QUEUE", "true")
+    monkeypatch.setenv("VALIDATE_BEFORE_QUEUE", "false")
 
     try:
         # Create a test collection
@@ -129,6 +130,7 @@ async def test_worker_only_inserts_valid_items(
 
     monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
     monkeypatch.setenv("ENABLE_REDIS_QUEUE", "true")
+    monkeypatch.setenv("VALIDATE_BEFORE_QUEUE", "false")
 
     try:
         test_collection = load_test_data("test_collection.json")
@@ -228,6 +230,7 @@ async def test_worker_handles_all_invalid_batch(
 
     monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
     monkeypatch.setenv("ENABLE_REDIS_QUEUE", "true")
+    monkeypatch.setenv("VALIDATE_BEFORE_QUEUE", "false")
 
     try:
         test_collection = load_test_data("test_collection.json")
@@ -302,6 +305,180 @@ async def test_worker_handles_all_invalid_batch(
                 "completely-invalid-1",
                 "completely-invalid-2",
             }.issubset(failed_ids_str)
+
+        finally:
+            await queue_manager.close()
+
+    finally:
+        try:
+            await txn_client.delete_collection(test_collection["id"])
+        except Exception:
+            pass
+
+
+@pytest.mark.asyncio
+async def test_safe_mode_validate_before_queue(
+    txn_client, core_client, load_test_data, monkeypatch: pytest.MonkeyPatch
+):
+    """Test safe mode: queue enabled, validation on API thread before queuing.
+
+    This test verifies the default safe configuration where:
+    - ENABLE_REDIS_QUEUE=true: Items are queued for async processing
+    - VALIDATE_BEFORE_QUEUE=true: API thread validates before queuing (default)
+
+    This ensures data quality upfront at the cost of slightly higher API latency.
+    Invalid items are rejected immediately and never reach the queue.
+    """
+    from ..conftest import create_collection
+
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
+    monkeypatch.setenv("ENABLE_REDIS_QUEUE", "true")
+    monkeypatch.setenv("VALIDATE_BEFORE_QUEUE", "true")
+
+    try:
+        test_collection = load_test_data("test_collection.json")
+        test_collection["id"] = f"test-safe-mode-{uuid.uuid4()}"
+        await create_collection(txn_client, test_collection)
+
+        base_item = load_test_data("test_item.json")
+        base_item["collection"] = test_collection["id"]
+        if "datetime" not in base_item.get("properties", {}):
+            base_item["properties"]["datetime"] = "2020-01-01T00:00:00Z"
+
+        # Create a valid item
+        valid_item = deepcopy(base_item)
+        valid_item["id"] = "safe-mode-valid-item"
+
+        # Create an invalid item (will be rejected on API thread)
+        invalid_item = deepcopy(base_item)
+        invalid_item["id"] = "safe-mode-invalid-item"
+        invalid_item["stac_extensions"] = [
+            "https://stac-extensions.github.io/eo/v2.0.0/schema.json"
+        ]
+
+        feature_collection = {
+            "type": "FeatureCollection",
+            "features": [valid_item, invalid_item],
+        }
+
+        # 1. Queue the items (validation happens on API thread)
+        from ..conftest import create_item
+
+        with pytest.raises(QueuedSuccess) as exc_info:
+            await create_item(txn_client, feature_collection)
+        assert exc_info.value.payload["status"] == "queued"
+
+        # 2. Verify only valid item made it to the queue (invalid rejected on API thread)
+        queue_manager = await AsyncRedisQueueManager.create()
+        try:
+            pending_items = await queue_manager.get_pending_items(test_collection["id"])
+            pending_ids = {item["id"] for item in pending_items}
+
+            # Only valid item should be queued
+            assert "safe-mode-valid-item" in pending_ids
+            assert "safe-mode-invalid-item" not in pending_ids
+            assert len(pending_ids) == 1, "Only valid item should reach the queue"
+
+            # 3. Run the worker (no validation needed, already done on API thread)
+            worker = ItemQueueWorker()
+            await worker._init_queue_manager()
+            try:
+                await worker._flush_collection(test_collection["id"])
+            finally:
+                await worker.queue_manager.close()
+
+            # 4. Verify valid item was inserted
+            db_items, _, _ = await core_client.database.execute_search(
+                search=core_client.database.make_search(),
+                limit=10,
+                token=None,
+                sort=None,
+                collection_ids=[test_collection["id"]],
+                datetime_search="",
+            )
+            db_item_ids = {item["id"] for item in list(db_items)}
+            assert "safe-mode-valid-item" in db_item_ids
+            assert "safe-mode-invalid-item" not in db_item_ids
+
+        finally:
+            await queue_manager.close()
+
+    finally:
+        try:
+            await txn_client.delete_collection(test_collection["id"])
+        except Exception:
+            pass
+
+
+@pytest.mark.asyncio
+async def test_performance_mode_deferred_validation(
+    txn_client, core_client, load_test_data, monkeypatch: pytest.MonkeyPatch
+):
+    """Test high-throughput mode: queue enabled, validation deferred to worker.
+
+    This test verifies the performance-optimized configuration where:
+    - ENABLE_REDIS_QUEUE=true: Items are queued immediately for async processing
+    - VALIDATE_BEFORE_QUEUE=false: API thread skips validation (worker validates later)
+
+    This maximizes API throughput at the cost of delayed error detection.
+    """
+    from ..conftest import create_collection
+
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
+    monkeypatch.setenv("ENABLE_REDIS_QUEUE", "true")
+    monkeypatch.setenv("VALIDATE_BEFORE_QUEUE", "false")
+
+    try:
+        test_collection = load_test_data("test_collection.json")
+        test_collection["id"] = f"test-perf-mode-{uuid.uuid4()}"
+        await create_collection(txn_client, test_collection)
+
+        base_item = load_test_data("test_item.json")
+        base_item["collection"] = test_collection["id"]
+        if "datetime" not in base_item.get("properties", {}):
+            base_item["properties"]["datetime"] = "2020-01-01T00:00:00Z"
+
+        # Create a valid item
+        valid_item = deepcopy(base_item)
+        valid_item["id"] = "perf-mode-valid-item"
+
+        feature_collection = {
+            "type": "FeatureCollection",
+            "features": [valid_item],
+        }
+
+        # 1. Queue the item (no validation on API thread)
+        from ..conftest import create_item
+
+        with pytest.raises(QueuedSuccess) as exc_info:
+            await create_item(txn_client, feature_collection)
+        assert exc_info.value.payload["status"] == "queued"
+
+        # 2. Verify item made it to the queue without validation
+        queue_manager = await AsyncRedisQueueManager.create()
+        try:
+            pending_items = await queue_manager.get_pending_items(test_collection["id"])
+            assert len(pending_items) == 1, "Item should be queued immediately"
+
+            # 3. Run the worker to validate and insert
+            worker = ItemQueueWorker()
+            await worker._init_queue_manager()
+            try:
+                await worker._flush_collection(test_collection["id"])
+            finally:
+                await worker.queue_manager.close()
+
+            # 4. Verify item was inserted (valid item passes worker validation)
+            db_items, _, _ = await core_client.database.execute_search(
+                search=core_client.database.make_search(),
+                limit=10,
+                token=None,
+                sort=None,
+                collection_ids=[test_collection["id"]],
+                datetime_search="",
+            )
+            db_item_ids = {item["id"] for item in list(db_items)}
+            assert "perf-mode-valid-item" in db_item_ids
 
         finally:
             await queue_manager.close()

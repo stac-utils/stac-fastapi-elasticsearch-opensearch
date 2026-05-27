@@ -218,7 +218,13 @@ class ItemQueueWorker:
                 )
 
                 # VALIDATION LAYER: Use batch validation for efficiency (if enabled)
-                if get_bool_env("ENABLE_STAC_VALIDATOR"):
+                # Check if the web server already handled validation before queueing
+                validate_before_queue = get_bool_env(
+                    "VALIDATE_BEFORE_QUEUE", default=True
+                )
+
+                # Only waste CPU cycles validating here if the web server skipped it
+                if get_bool_env("ENABLE_STAC_VALIDATOR") and not validate_before_queue:
                     (
                         valid_items,
                         validation_errors,
@@ -233,7 +239,9 @@ class ItemQueueWorker:
                                 f"Worker validation failed for '{item_id}' in collection '{collection_id}': {error_msg}"
                             )
                 else:
-                    # Skip STAC validation when disabled
+                    # Bypass validation because either:
+                    # 1. ENABLE_STAC_VALIDATOR is disabled, OR
+                    # 2. VALIDATE_BEFORE_QUEUE=true (data already pre-verified on API thread)
                     valid_items = items
                     invalid_item_ids = set()
 

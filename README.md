@@ -758,6 +758,7 @@ You can customize additional settings in your `.env` file:
 | `ENABLE_TRANSACTIONS_EXTENSIONS` | Enables or disables the Transactions and Bulk Transactions API extensions. This is useful for deployments where mutating the catalog via the API should be prevented. If set to `true`, the POST `/collections` route for search will be unavailable in the API. | `true` | Optional |
 | `ENABLE_CATALOGS_ROUTE` | Enable the **/catalogs** endpoint for hierarchical catalog browsing and navigation. **Note:** Requires the catalogs extension to be installed via `stac-fastapi-elasticsearch[catalogs]`, `stac-fastapi-opensearch[catalogs]`, or `stac-fastapi-core[catalogs]`. See [Catalogs Route](#catalogs-route) for installation instructions. | `false` | Optional |
 | `ENABLE_STAC_VALIDATOR` | Enable [stac-validator](https://github.com/stac-utils/stac-validator) to validate STAC items and collections on ingestion. This is especially useful for items or collections that use extensions. | `false` | Optional |
+| `VALIDATE_BEFORE_QUEUE` | When using Redis queue (`ENABLE_REDIS_QUEUE=true`), controls whether validation happens on the API thread before queuing (true) or deferred to the background worker (false). When queue is disabled, validation always happens on the API thread. Set to `true` for strict data quality, `false` for maximum API throughput. See [Validation Timing with Redis Queue](#validation-timing-with-redis-queue) for details. | `true` | Optional |
 | `STAC_INDEX_ASSETS` | Controls if Assets are indexed when added to Elasticsearch/Opensearch. This allows asset fields to be included in search queries. | `false` | Optional |
 
 ### 5. Limits & Performance
@@ -875,6 +876,27 @@ If validation fails, you'll receive a detailed error response:
 - **Pydantic validation** Very fast and always enabled
 - **STAC validator (Python)** (ENABLE_STAC_VALIDATOR): Uses multi-processing for feature-collections
 
+#### Validation Timing with Redis Queue
+
+When using the Redis queue (`ENABLE_REDIS_QUEUE=true`), you can control when validation occurs:
+
+- **`VALIDATE_BEFORE_QUEUE=true` (default)**: Validates items on the API thread before queuing. This ensures data quality upfront but may impact API response times for large batches.
+  - Use this for strict data quality requirements
+  - Recommended for most production deployments
+  
+- **`VALIDATE_BEFORE_QUEUE=false`**: Skips validation on the API thread and lets the background worker validate items. This maximizes API throughput but delays error detection.
+  - Use this for high-throughput scenarios where you can tolerate delayed validation
+  - The worker will still validate and move invalid items to the Dead Letter Queue (DLQ)
+
+**Example: Enable high-throughput mode with deferred validation**
+```bash
+export ENABLE_REDIS_QUEUE=true
+export ENABLE_STAC_VALIDATOR=true
+export VALIDATE_BEFORE_QUEUE=false
+```
+
+> **Note**: When `ENABLE_REDIS_QUEUE=false` (direct database mode), validation always happens on the API thread regardless of the `VALIDATE_BEFORE_QUEUE` setting.
+
 ## Free-Text Search (`q` parameter)
 
 The free-text search feature allows users to discover items and collections using keywords or phrases. By default, the search targets core fields: `id`, `collection`, `properties.title`, `properties.description`, and `properties.keywords`.
@@ -967,8 +989,9 @@ If your metadata uses custom fields (e.g., `properties.example_name`), follow th
 * **Be Selective**: Only add fields to `FREE_TEXT_FIELDS` that users genuinely need to search.
 * **Avoid Wildcards**: Do not use `properties.*` in `FREE_TEXT_FIELDS` for catalogs with millions of items. Searching every property simultaneously significantly increases query latency and creates "noisy" results.
 
-## Redis for Navigation environment variables:
-These Redis configuration variables to enable proper navigation functionality in STAC FastAPI.
+## Redis for Navigation Configuration
+
+These Redis configuration variables enable proper navigation functionality in STAC FastAPI.
 
 | Variable | Description| Default| Required|
 |----------|------------|--------|---------|

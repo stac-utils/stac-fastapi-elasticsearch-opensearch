@@ -1141,7 +1141,10 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             )
 
         # 2. VALIDATION LAYER
-        if get_bool_env("ENABLE_STAC_VALIDATOR") and not use_queue:
+        validate_before_queue = get_bool_env("VALIDATE_BEFORE_QUEUE", default=True)
+        if get_bool_env("ENABLE_STAC_VALIDATOR") and (
+            validate_before_queue or not use_queue
+        ):
             await self._validate_single_item(preprocessed_item)
 
         # 3. ROUTING LAYER (Queue vs Database)
@@ -1230,11 +1233,10 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 skipped_db_duplicates += 1
 
         # 3. VALIDATION LAYER
-        if use_queue:
-            valid_items = processed_items
-            validation_errors: dict[str, list[str]] = {}
-            validation_error_count = 0
-        else:
+        validate_before_queue = get_bool_env("VALIDATE_BEFORE_QUEUE", default=True)
+
+        # Trigger validation if requested up front OR if the queue is disabled completely
+        if validate_before_queue or not use_queue:
             valid_items, validation_errors = await self._validate_feature_collection(
                 processed_items, skip_validation=False
             )
@@ -1274,6 +1276,11 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                         "validation_errors": validation_errors,
                     },
                 )
+        else:
+            # Performance Mode: Skip validation on the web thread; worker handles it later
+            valid_items = processed_items
+            validation_errors = {}
+            validation_error_count = 0
 
         # 4. ROUTING LAYER (Queue vs Database)
         if use_queue:
@@ -1399,18 +1406,22 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         item_dict["properties"]["updated"] = now
 
         use_queue = get_bool_env("ENABLE_REDIS_QUEUE", default=False)
+        validate_before_queue = get_bool_env("VALIDATE_BEFORE_QUEUE", default=True)
 
         # Handle inline imports once to keep code DRY
         if use_queue:
             from stac_fastapi.core.utilities import queue_items_if_enabled
 
         # PATH A: REDIS QUEUE ENABLED
-        # Skip validation, push raw item to Redis immediately
         if use_queue:
             bulk_client = BulkTransactionsClient(
                 database=self.database, settings=self.settings
             )
             processed_item = bulk_client.preprocess_item(item_dict, base_url)
+
+            # Validate upfront on the web thread if explicitly configured
+            if get_bool_env("ENABLE_STAC_VALIDATOR") and validate_before_queue:
+                await self._validate_single_item(processed_item)
 
             result = await queue_items_if_enabled(
                 collection_id, processed_item, item_ids=item_id
@@ -1421,8 +1432,8 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 )
 
         # PATH B: DIRECT DATABASE INSERTION (No Queue)
-        # Validate before database insertion
-        if get_bool_env("ENABLE_STAC_VALIDATOR"):
+        # Only validate here if the web server hasn't already validated it above
+        if get_bool_env("ENABLE_STAC_VALIDATOR") and not use_queue:
             await self._validate_single_item(item_dict)
 
         await self.database.create_item(
