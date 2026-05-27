@@ -12,10 +12,23 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Added `VALIDATE_BEFORE_QUEUE` environment variable to control validation timing when using Redis queue. When set to `true` (default), validates items on the API thread before queuing for strict data quality. When set to `false`, defers validation to the background worker for maximum API throughput. Applies to single items, feature collections, and item updates. [#742](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/742)
 - Added `ENABLE_STAC_VALIDATOR` environment variable to enable strict STAC schema validation on ingestion via the Python `stac-validator`. [#742](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/742)
 - Added `[validator]` installation extra to `stac-fastapi-core`, `elasticsearch`, and `opensearch` packages. [#742](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/742)
-- Added CQL2 Abstract Syntax Tree (AST) structure for efficient query parsing and datetime-based indexes. [#659](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/659)
-- Added test for conformance endpoint in catalogs extension. [#727](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/727)
 
 ### Changed
+
+### Fixed
+
+### Removed
+
+### Updated
+
+## [v6.17.0] - 2026-05-25
+
+### Added
+
+- Added test for conformance endpoint in catalogs extension. [#727](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/727)
+- Added update scoped collection endpoint. [#744](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/744)
+- Helm chart: added `app.image.addSuffix` bool (default `true`) to allow disabling the automatic `-es`/`-os` suffix on the image repository. [#743](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/743)
+- Helm chart: added `app.extraVolumeMounts` and `app.extraVolumes` to support mounting additional volumes into the application container. [#743](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/743)
 
 ### Fixed
 
@@ -28,6 +41,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Updated
 
 - Updated catalogs extension to v0.2.0. [#727](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/727)
+- Updated catalogs extension to v0.3.0. [#744](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/744)
+- Updated error handling and messaging related to the Catalogs extension. [#744](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/744)
 
 ## [v6.16.0] - 2026-04-16
 
@@ -891,7 +906,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.16.0...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.17.0...main
+[v6.17.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.16.0...v6.17.0
 [v6.16.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.15.0...v6.16.0
 [v6.15.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.14.1...v6.15.0
 [v6.14.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.14.0...v6.14.1
