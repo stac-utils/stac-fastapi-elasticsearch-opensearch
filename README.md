@@ -775,6 +775,7 @@ You can customize additional settings in your `.env` file:
 | `ENABLE_STAC_VALIDATOR` | Enable [stac-validator](https://github.com/stac-utils/stac-validator) to validate STAC items and collections on ingestion. This is especially useful for items or collections that use extensions. | `false` | Optional |
 | `VALIDATE_BEFORE_QUEUE` | When using Redis queue (`ENABLE_REDIS_QUEUE=true`), controls whether validation happens on the API thread before queuing (true) or deferred to the background worker (false). When queue is disabled, validation always happens on the API thread. Set to `true` for strict data quality, `false` for maximum API throughput. See [Validation Timing with Redis Queue](#validation-timing-with-redis-queue) for details. | `true` | Optional |
 | `ENABLE_TOPOLOGY_VALIDATION` | Enable lightweight pure-Python validation to enforce WGS84 coordinate bounds (±180° lon, ±90° lat) and detect improper antimeridian crossing in Polygon and MultiPolygon geometries. Provides CPU-efficient spatial validation without external dependencies. See [Topology Validation](#topology-validation) for details. | `false` | Optional |
+| `MAX_TOPOLOGY_VERTICES` | Maximum number of vertices allowed in a single Polygon or MultiPolygon ring when topology validation is enabled. This prevents DoS attacks with pathologically complex geometries. Only applies when `ENABLE_TOPOLOGY_VALIDATION=true`. | `5000` | Optional |
 | `STAC_INDEX_ASSETS` | Controls if Assets are indexed when added to Elasticsearch/Opensearch. This allows asset fields to be included in search queries. | `false` | Optional |
 
 ### 5. Limits & Performance
@@ -958,12 +959,19 @@ For geospatial data ingestion, you can enable **lightweight topology validation*
 
 1. **WGS84 Bounds Enforcement**: Validates all coordinates fall within standard global bounds (±180° longitude, ±90° latitude)
 2. **Antimeridian Detection**: Detects improper antimeridian crossing in Polygon and MultiPolygon geometries (longitude jumps > 180°)
-3. **Recursive Validation**: Checks every coordinate pair in the geometry, not just the first
-4. **Zero Dependencies**: Pure Python implementation with no external service calls
+3. **Vertex Limit Enforcement**: Prevents DoS attacks by rejecting geometries with excessive vertices (default 5000 per ring)
+4. **Recursive Validation**: Checks every coordinate pair in the geometry, not just the first
+5. **Zero Dependencies**: Pure Python implementation with no external service calls
 
 **Example: Enable topology validation**
 ```bash
 export ENABLE_TOPOLOGY_VALIDATION=true
+```
+
+**Configuring the vertex limit:**
+```bash
+export ENABLE_TOPOLOGY_VALIDATION=true
+export MAX_TOPOLOGY_VERTICES=10000  # Allow up to 10,000 vertices per ring
 ```
 
 **Behavior:**

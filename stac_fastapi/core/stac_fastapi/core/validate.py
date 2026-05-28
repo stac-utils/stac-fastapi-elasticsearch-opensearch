@@ -224,14 +224,19 @@ def validate_item_topology_lightweight(item_dict: dict) -> None:
     """Lightweight validation to enforce global coordinate boundaries and antimeridian checks.
 
     Validates all geometry types for WGS84 bounds compliance, and checks for improper
-    antimeridian line skips in Polygon and MultiPolygon rings.
+    antimeridian line skips in Polygon and MultiPolygon rings. Polygon rings are also
+    checked against a configurable vertex limit (default 5000) to prevent DoS attacks
+    with pathologically complex geometries.
 
     Args:
         item_dict: The STAC item dictionary to validate.
 
     Raises:
-        ValueError: If geometry is invalid, out of bounds, or crosses antimeridian improperly.
+        ValueError: If geometry is invalid, out of bounds, crosses antimeridian improperly,
+                   or exceeds the vertex limit.
     """
+    from stac_fastapi.core.utilities import get_int_env
+
     geometry = item_dict.get("geometry")
     if not geometry:
         return
@@ -249,26 +254,21 @@ def validate_item_topology_lightweight(item_dict: dict) -> None:
         if geom_type not in ("Polygon", "MultiPolygon"):
             return
 
+        max_vertices = get_int_env("MAX_TOPOLOGY_VERTICES", default=5000)
+
         def check_antimeridian_rings(rings: list) -> None:
             for ring in rings:
                 if len(ring) < 4:
                     raise ValueError(
                         "Polygon ring must have at least 4 coordinates (closed loop)."
                     )
-                if len(ring) > 5000:
+                if len(ring) > max_vertices:
                     raise ValueError(
-                        f"Geometry has too many vertices ({len(ring)}). Maximum allowed is 5000."
+                        f"Geometry has too many vertices ({len(ring)}). Maximum allowed is {max_vertices}."
                     )
 
-                # First, validate ALL coordinates (including final) are in bounds
-                for coord in ring:
-                    lon, lat = coord[0], coord[1]
-                    if not (-180 <= lon <= 180) or not (-90 <= lat <= 90):
-                        raise ValueError(
-                            f"Coordinates out of global WGS84 bounds: [{lon}, {lat}]"
-                        )
-
-                # Then check antimeridian jumps between consecutive points
+                # Check antimeridian jumps between consecutive points
+                # (WGS84 bounds already validated by validate_geometry_bounds above)
                 for i in range(len(ring) - 1):
                     lon1 = ring[i][0]
                     lon2 = ring[i + 1][0]

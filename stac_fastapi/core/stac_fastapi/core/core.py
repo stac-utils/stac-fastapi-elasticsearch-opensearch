@@ -1163,9 +1163,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         if use_queue:
             from stac_fastapi.core.utilities import queue_items_if_enabled
 
-            result = await queue_items_if_enabled(
-                collection_id, preprocessed_item, item_ids=item_dict.get("id")
-            )
+            result = await queue_items_if_enabled(collection_id, preprocessed_item)
             if result:
                 raise QueuedSuccess(
                     payload=ItemSerializer.db_to_stac(preprocessed_item, base_url)
@@ -1502,9 +1500,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             if get_bool_env("ENABLE_STAC_VALIDATOR") and validate_before_queue:
                 await self._validate_single_item(processed_item)
 
-            result = await queue_items_if_enabled(
-                collection_id, processed_item, item_ids=item_id
-            )
+            result = await queue_items_if_enabled(collection_id, processed_item)
             if result:
                 raise QueuedSuccess(
                     payload=ItemSerializer.db_to_stac(processed_item, base_url)

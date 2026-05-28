@@ -1,9 +1,37 @@
+import math
 import uuid
 from copy import deepcopy
 
 import pytest
 
 from ..conftest import create_collection, create_item
+
+
+def create_circular_polygon_ring(
+    num_vertices: int,
+    center_lon: float = -120.0,
+    center_lat: float = 40.0,
+    radius: float = 5.0,
+) -> list:
+    """Create a circular polygon ring with specified number of vertices.
+
+    Args:
+        num_vertices: Number of vertices to create (excluding closing vertex).
+        center_lon: Longitude of circle center.
+        center_lat: Latitude of circle center.
+        radius: Radius of circle in degrees.
+
+    Returns:
+        List of [lon, lat] coordinates forming a closed ring.
+    """
+    vertices = []
+    for i in range(num_vertices):
+        angle = (i / num_vertices) * 2 * math.pi
+        lon = center_lon + radius * math.cos(angle)
+        lat = center_lat + radius * math.sin(angle)
+        vertices.append([lon, lat])
+    vertices.append(vertices[0])  # Close the ring
+    return vertices
 
 
 @pytest.fixture(autouse=True)
@@ -751,3 +779,85 @@ async def test_bulk_topology_validation_trips_circuit_breaker(
         summary["processed_count"] == 2
     ), "Loop should abort early after chunk 1 (2 items processed)"
     assert summary["validation_error_count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_topology_validation_respects_max_vertices_limit(
+    txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
+):
+    """Test that MAX_TOPOLOGY_VERTICES environment variable is respected.
+
+    Verifies that the configurable vertex limit prevents geometries with excessive
+    vertices from being ingested, protecting against DoS attacks with pathologically
+    complex geometries.
+    """
+    from fastapi import HTTPException
+
+    monkeypatch.setenv("ENABLE_TOPOLOGY_VALIDATION", "true")
+    monkeypatch.setenv("MAX_TOPOLOGY_VERTICES", "10")  # Very low limit for testing
+
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = f"test-topology-vertices-{uuid.uuid4()}"
+    await create_collection(txn_client, collection=test_collection)
+
+    base_item = load_test_data("test_item.json")
+    base_item["collection"] = test_collection["id"]
+
+    # Create item with geometry that exceeds the vertex limit
+    invalid_item = deepcopy(base_item)
+    invalid_item["id"] = "too-many-vertices"
+    # Create a ring with 16 vertices (15 + 1 closing, exceeds limit of 10)
+    vertices = create_circular_polygon_ring(15)
+    invalid_item["geometry"] = {
+        "type": "Polygon",
+        "coordinates": [vertices],
+    }
+
+    # Verify that the topology validation rejects this item
+    with pytest.raises(HTTPException) as exc_info:
+        await create_item(txn_client, invalid_item)
+
+    assert exc_info.value.status_code == 400
+    detail = exc_info.value.detail
+    assert "Invalid item geometry" in detail
+    assert "too many vertices" in detail.lower()
+    assert "Maximum allowed is 10" in detail
+
+
+@pytest.mark.asyncio
+async def test_topology_validation_allows_items_within_vertex_limit(
+    txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
+):
+    """Test that items within MAX_TOPOLOGY_VERTICES limit are accepted.
+
+    Verifies that the vertex limit is configurable and allows valid geometries
+    with many vertices when the limit is set appropriately.
+    """
+    monkeypatch.setenv("ENABLE_TOPOLOGY_VALIDATION", "true")
+    monkeypatch.setenv("MAX_TOPOLOGY_VERTICES", "20")  # Increased limit
+
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = f"test-topology-within-limit-{uuid.uuid4()}"
+    await create_collection(txn_client, collection=test_collection)
+
+    base_item = load_test_data("test_item.json")
+    base_item["collection"] = test_collection["id"]
+
+    # Create item with geometry that is within the vertex limit
+    valid_item = deepcopy(base_item)
+    valid_item["id"] = "within-vertex-limit"
+    # Create a ring with 16 vertices (15 + 1 closing, within limit of 20)
+    vertices = create_circular_polygon_ring(15)
+    valid_item["geometry"] = {
+        "type": "Polygon",
+        "coordinates": [vertices],
+    }
+
+    # Should succeed because item is within the limit
+    await create_item(txn_client, valid_item)
+
+    # Verify item was inserted
+    db_item = await txn_client.database.get_one_item(
+        item_id="within-vertex-limit", collection_id=test_collection["id"]
+    )
+    assert db_item is not None, "Item should be inserted when within vertex limit"

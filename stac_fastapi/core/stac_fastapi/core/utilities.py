@@ -17,6 +17,27 @@ MAX_LIMIT = 10000
 logger = logging.getLogger(__name__)
 
 
+def get_int_env(name: str, default: int = 0) -> int:
+    """
+    Retrieve an integer value from an environment variable.
+
+    Args:
+        name (str): The name of the environment variable.
+        default (int, optional): The default value to use if the variable is not set or invalid. Defaults to 0.
+
+    Returns:
+        int: The integer value parsed from the environment variable.
+    """
+    value = os.getenv(name, str(default))
+    try:
+        return int(value)
+    except ValueError:
+        logger.warning(
+            f"Environment variable '{name}' has invalid integer value '{value}'. Using default: {default}"
+        )
+        return default
+
+
 def get_bool_env(name: str, default: bool | str = False) -> bool:
     """
     Retrieve a boolean value from an environment variable.
@@ -281,7 +302,6 @@ def get_excluded_from_items(obj: dict, field_path: str) -> None:
 async def queue_items_if_enabled(
     collection_id: str,
     items: dict | list[dict],
-    item_ids: str | list[str] | None = None,
 ) -> str | None:
     """Queue items to Redis if ENABLE_REDIS_QUEUE is set.
 
@@ -291,7 +311,6 @@ async def queue_items_if_enabled(
     Args:
         collection_id: The collection ID to queue items for.
         items: Single item dict or list of item dicts to queue.
-        item_ids: Optional item ID(s) for logging. If not provided, extracted from items.
 
     Returns:
         Status message if items were queued, None if queuing is disabled.
