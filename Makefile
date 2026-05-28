@@ -14,6 +14,7 @@ run_es = docker compose \
 	-e PY_IGNORE_IMPORTMISMATCH=1 \
 	-e APP_HOST=${APP_HOST} \
 	-e APP_PORT=${ES_APP_PORT} \
+	-e ENABLE_FAST_VALIDATOR=false \
 	app-elasticsearch
 
 run_os = docker compose \
@@ -22,6 +23,7 @@ run_os = docker compose \
 	-e PY_IGNORE_IMPORTMISMATCH=1 \
 	-e APP_HOST=${APP_HOST} \
 	-e APP_PORT=${OS_APP_PORT} \
+	-e ENABLE_FAST_VALIDATOR=false \
 	app-opensearch
 
 .PHONY: image-es-os
@@ -67,37 +69,49 @@ docker-shell-os:
 
 .PHONY: test-elasticsearch
 test-elasticsearch: image-es-os
+	docker compose up -d elasticsearch stac-validator
 	-$(run_es) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd stac_fastapi/tests/ && pytest'
 	docker compose down
 
 .PHONY: test-elasticsearch-catalogs
 test-elasticsearch-catalogs: image-es-os
+	docker compose up -d elasticsearch stac-validator
 	-$(run_es) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd stac_fastapi/tests/ && pytest extensions/test_catalogs.py -v'
+	docker compose down
+
+.PHONY: test-elasticsearch-validator
+test-elasticsearch-validator: image-es-os
+	docker compose up -d elasticsearch stac-validator
+	-$(run_es) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd stac_fastapi/tests/ && pytest api/test_api_stac_validator.py -v'
 	docker compose down
 
 .PHONY: test-opensearch
 test-opensearch: image-es-os
+	docker compose up -d opensearch stac-validator
 	-$(run_os) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh opensearch:9202 && cd stac_fastapi/tests/ && pytest'
 	docker compose down
 
 .PHONY: test-opensearch-catalogs
 test-opensearch-catalogs: image-es-os
+	docker compose up -d opensearch stac-validator
 	-$(run_os) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh opensearch:9202 && cd stac_fastapi/tests/ && pytest extensions/test_catalogs.py -v'
 	docker compose down
 
 .PHONY: test-datetime-filtering-es
 test-datetime-filtering-es: image-es-os
+	docker compose up -d elasticsearch stac-validator
 	-$(run_es) /bin/bash -c 'export ENABLE_DATETIME_INDEX_FILTERING=true && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd stac_fastapi/tests/ && pytest -s --cov=stac_fastapi --cov-report=term-missing -m datetime_filtering'
 	docker compose down
 
 .PHONY: test-datetime-filtering-os
 test-datetime-filtering-os: image-es-os
+	docker compose up -d opensearch stac-validator
 	-$(run_os) /bin/bash -c 'export ENABLE_DATETIME_INDEX_FILTERING=true && ./scripts/wait-for-it-es.sh opensearch:9202 && cd stac_fastapi/tests/ && pytest -s --cov=stac_fastapi --cov-report=term-missing -m datetime_filtering'
 	docker compose down
 
 .PHONY: test
 test: image-es-os
-	docker compose up -d elasticsearch opensearch redis
+	docker compose up -d elasticsearch opensearch redis stac-validator
 	
 	-$(run_es) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh elasticsearch:9200 && ./scripts/wait-for-it-es.sh opensearch:9202 && cd stac_fastapi/tests/ && pytest'
 	

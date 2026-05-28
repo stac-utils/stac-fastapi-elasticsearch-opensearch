@@ -1006,7 +1006,6 @@ async def test_search_datetime_with_null_datetime(
     if get_bool_env("ENABLE_DATETIME_INDEX_FILTERING"):
         pytest.skip()
 
-    """Test datetime filtering when properties.datetime is null or set, ensuring start_datetime and end_datetime are set when datetime is null."""
     # Setup: Create test collection
     test_collection = load_test_data("test_collection.json")
     try:

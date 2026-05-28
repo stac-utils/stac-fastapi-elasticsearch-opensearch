@@ -41,6 +41,7 @@ from stac_fastapi.types.config import Settings
 os.environ.setdefault("ENABLE_COLLECTIONS_SEARCH_ROUTE", "true")
 os.environ.setdefault("ENABLE_CATALOGS_ROUTE", "false")
 os.environ.setdefault("DATABASE_REFRESH", "true")
+os.environ.setdefault("ENABLE_FAST_VALIDATOR", "false")
 
 if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
     from stac_fastapi.opensearch.app import app_config

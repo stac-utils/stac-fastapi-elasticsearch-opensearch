@@ -21,6 +21,11 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 from redis.exceptions import LockError
 
 from stac_fastapi.core.redis_utils import AsyncRedisQueueManager, ItemQueueSettings
+from stac_fastapi.core.utilities import get_bool_env
+from stac_fastapi.core.validate import (
+    async_validate_batch_with_fast_validator,
+    async_validate_item,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -168,6 +173,8 @@ class ItemQueueWorker:
         The lock TTL is periodically refreshed by a background task to prevent
         expiration during long-running batch processing.
         """
+        from pydantic import ValidationError
+
         state = self._get_state(collection_id)
 
         async with self._lock:
@@ -206,54 +213,111 @@ class ItemQueueWorker:
                     break
 
                 batch_num += 1
-                item_ids = [item["id"] for item in items]
 
                 logger.info(
-                    f"Collection '{collection_id}' batch #{batch_num}: flushing {len(items)} items"
+                    f"Collection '{collection_id}' batch #{batch_num}: pulled {len(items)} items from queue"
                 )
 
+                # VALIDATION LAYER: Intercept items before database insertion
+                valid_items = []
+                invalid_item_ids = set()
+
+                if get_bool_env("ENABLE_FAST_VALIDATOR"):
+                    # FAST PATH: One HTTP request for the whole batch
+                    logger.debug(f"Sending batch of {len(items)} to Fast Validator...")
+                    (
+                        valid_items,
+                        invalid_details,
+                    ) = await async_validate_batch_with_fast_validator(items)
+                    invalid_item_ids = set(invalid_details.keys())
+                else:
+                    # SLOW PATH: Fallback to Python 1-by-1 validation
+                    for item in items:
+                        try:
+                            await async_validate_item(item)
+                            valid_items.append(item)
+                        except (ValidationError, ValueError) as e:
+                            item_id = item.get("id", "unknown_id")
+                            logger.error(
+                                f"Worker validation failed for '{item_id}' in collection '{collection_id}': {e}"
+                            )
+                            invalid_item_ids.add(item_id)
+
+                # Handle invalid items (Dead Letter Queue)
+                if invalid_item_ids:
+                    try:
+                        await self.queue_manager.save_failed_items(
+                            collection_id, list(invalid_item_ids)
+                        )
+                        await self.queue_manager.mark_items_processed(
+                            collection_id, list(invalid_item_ids)
+                        )
+                    except Exception:
+                        logger.exception(
+                            f"Collection '{collection_id}': failed to save {len(invalid_item_ids)} invalid items to DLQ"
+                        )
+
+                # If entire batch was invalid, skip database call
+                if not valid_items:
+                    logger.warning(
+                        f"Collection '{collection_id}' batch #{batch_num}: All {len(items)} items failed STAC validation. Skipping DB insert."
+                    )
+                    state.last_flush_time = time.monotonic()
+                    if len(items) < batch_size:
+                        break
+                    continue
+
+                # DATABASE INSERTION: Only valid items reach the database
                 try:
                     success, errors = await self.db.bulk_async(
                         collection_id=collection_id,
-                        processed_items=items,
+                        processed_items=valid_items,
                         op_type="index",
                     )
                 except Exception:
                     logger.exception(
-                        f"Collection '{collection_id}' batch #{batch_num}: bulk_async failed ({len(items)} items)"
+                        f"Collection '{collection_id}' batch #{batch_num}: bulk_async failed ({len(valid_items)} valid items)"
                     )
                     break
 
-                failed_ids = self._extract_failed_item_ids(errors) if errors else set()
-                successful_ids = [iid for iid in item_ids if iid not in failed_ids]
+                # Handle database errors
+                failed_db_ids = (
+                    self._extract_failed_item_ids(errors) if errors else set()
+                )
+                successful_db_ids = [
+                    item["id"]
+                    for item in valid_items
+                    if item["id"] not in failed_db_ids
+                ]
 
                 if errors:
                     logger.error(
                         f"Collection '{collection_id}' batch #{batch_num}: "
-                        f"{len(failed_ids)} item(s) failed, saving to DLQ. "
+                        f"{len(failed_db_ids)} DB insert(s) failed, saving to DLQ. "
                         f"Bulk errors: {errors}"
                     )
 
-                if successful_ids:
+                if successful_db_ids:
                     await self.queue_manager.mark_items_processed(
-                        collection_id, successful_ids
+                        collection_id, successful_db_ids
                     )
 
-                if failed_ids:
+                if failed_db_ids:
                     try:
                         await self.queue_manager.save_failed_items(
-                            collection_id, list(failed_ids)
+                            collection_id, list(failed_db_ids)
                         )
                         await self.queue_manager.mark_items_processed(
-                            collection_id, list(failed_ids)
+                            collection_id, list(failed_db_ids)
                         )
                     except Exception:
                         logger.exception(
-                            f"Collection '{collection_id}': failed to save {len(failed_ids)} item(s) to DLQ; items remain in pending queue"
+                            f"Collection '{collection_id}': failed to save {len(failed_db_ids)} DB failures to DLQ"
                         )
 
                 logger.info(
-                    f"Collection '{collection_id}' batch #{batch_num}: {success} succeeded, {len(errors)} errors"
+                    f"Collection '{collection_id}' batch #{batch_num}: {success} succeeded DB insert, "
+                    f"{len(invalid_item_ids)} failed STAC validation, {len(failed_db_ids)} failed DB insert."
                 )
 
                 state.last_flush_time = time.monotonic()

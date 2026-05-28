@@ -1211,6 +1211,21 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         # Serialize the item into a database-compatible format
         prepped_item = self.item_serializer.stac_to_db(item, base_url)
+
+        # Ensure collection link is present (for queue validation) - add AFTER stac_to_db
+        if "links" not in prepped_item:
+            prepped_item["links"] = []
+        if not any(
+            link.get("rel") == "collection" for link in prepped_item.get("links", [])
+        ):
+            prepped_item["links"].append(
+                {
+                    "rel": "collection",
+                    "href": "./collection.json",
+                    "type": "application/json",
+                }
+            )
+
         logger.debug(f"Item {item['id']} prepared successfully.")
         return prepped_item
 

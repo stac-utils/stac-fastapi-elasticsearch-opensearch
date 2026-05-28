@@ -84,6 +84,7 @@ logger.info(
 )
 logger.info("ENABLE_CATALOGS_ROUTE is set to %s", ENABLE_CATALOGS_ROUTE)
 
+
 settings = ElasticsearchSettings()
 session = Session.create_from_settings(settings)
 
