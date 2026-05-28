@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Added `MAX_BATCH_SIZE` and `MAX_BATCH_ERROR_SIZE` environment variables to enable chunked validation with fail-fast thresholds. When `MAX_BATCH_SIZE` > 0, items are validated in chunks and validation stops immediately if errors exceed `MAX_BATCH_ERROR_SIZE`. This optimizes CPU usage for high-volume ingestion by preventing wasted validation cycles on hopelessly broken payloads. [#742](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/742)
 - Added `ENABLE_STAC_VALIDATOR` environment variable to enable strict STAC schema validation on ingestion via the Python `stac-validator`. [#742](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/742)
 - Added `[validator]` installation extra to `stac-fastapi-core`, `elasticsearch`, and `opensearch` packages. [#742](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/742)
+- Added `ENABLE_TOPOLOGY_VALIDATION` environment variable to enable lightweight pure-Python validation of geospatial data. When enabled, validates all coordinates fall within WGS84 bounds (±180° longitude, ±90° latitude) and detects improper antimeridian crossing in Polygon and MultiPolygon geometries. Provides zero-dependency spatial validation that integrates seamlessly with chunked validation and fail-fast thresholds. [#742](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/742)
 
 ### Changed
 

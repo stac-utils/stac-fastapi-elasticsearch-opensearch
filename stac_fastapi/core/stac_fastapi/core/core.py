@@ -35,10 +35,16 @@ from stac_fastapi.core.serializers import (
     ItemSerializer,
 )
 from stac_fastapi.core.session import Session
-from stac_fastapi.core.utilities import filter_fields, get_bool_env
+from stac_fastapi.core.utilities import (
+    build_bulk_summary,
+    count_validation_errors,
+    filter_fields,
+    get_bool_env,
+)
 from stac_fastapi.core.validate import (
     async_validate_batch_with_stac_validator,
     async_validate_stac,
+    validate_item_topology_lightweight,
 )
 from stac_fastapi.extensions.core.transaction import AsyncBaseTransactionsClient
 from stac_fastapi.extensions.core.transaction.request import (
@@ -67,36 +73,6 @@ logger = logging.getLogger(__name__)
 
 partialItemValidator = TypeAdapter(PartialItem)
 partialCollectionValidator = TypeAdapter(PartialCollection)
-
-
-def build_bulk_summary(
-    raw_features: list,
-    processed_items: list,
-    valid_items: list,
-    validation_error_count: int,
-    conflict_errors: list | None = None,
-    other_errors: list | None = None,
-) -> dict:
-    """Build a standardized summary dictionary for bulk operations telemetry."""
-    conflict_count = len(conflict_errors) if conflict_errors else 0
-    database_error_count = len(other_errors) if other_errors else 0
-
-    # Calculate total skipped dynamically based on what layer failed
-    skipped_total = (
-        (len(raw_features) - len(processed_items))  # input duplicates
-        + validation_error_count
-        + conflict_count
-    )
-
-    return {
-        "input_count": len(raw_features),
-        "processed_count": len(processed_items),
-        "valid_count": len(valid_items),
-        "skipped_total": skipped_total,
-        "validation_error_count": validation_error_count,
-        "conflict_count": conflict_count,
-        "database_error_count": database_error_count,
-    }
 
 
 @attr.s
@@ -1036,10 +1012,20 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         Raises:
             HTTPException: If validation fails.
         """
+        # 1. Core STAC Schema Validation
         try:
             await async_validate_stac(item_dict)
         except (ValidationError, ValueError) as e:
             raise HTTPException(status_code=400, detail=f"Invalid item: {e}")
+
+        # 2. Opt-in Pure-Python Topology Protection Gateway
+        if get_bool_env("ENABLE_TOPOLOGY_VALIDATION", default=False):
+            try:
+                validate_item_topology_lightweight(item_dict)
+            except ValueError as e:
+                raise HTTPException(
+                    status_code=400, detail=f"Invalid item geometry: {e}"
+                )
 
     async def _validate_feature_collection(
         self, features: list[dict], skip_validation: bool
@@ -1054,9 +1040,35 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             Tuple of (valid_features, validation_errors) where validation_errors
             maps error messages to lists of affected item IDs.
         """
+        valid_features, validation_errors = features, {}
+
+        # 1. Run standard STAC Schema Validator if enabled
         if get_bool_env("ENABLE_STAC_VALIDATOR") and not skip_validation:
-            return await async_validate_batch_with_stac_validator(features)
-        return features, {}
+            (
+                valid_features,
+                validation_errors,
+            ) = await async_validate_batch_with_stac_validator(features)
+
+        # 2. Run lightweight topology validation pass if toggled on
+        if (
+            get_bool_env("ENABLE_TOPOLOGY_VALIDATION", default=False)
+            and not skip_validation
+        ):
+            re_validated_features = []
+
+            for item in valid_features:
+                try:
+                    validate_item_topology_lightweight(item)
+                    re_validated_features.append(item)
+                except ValueError as e:
+                    err_msg = f"Topology Error: {str(e)}"
+                    if err_msg not in validation_errors:
+                        validation_errors[err_msg] = []
+                    validation_errors[err_msg].append(item.get("id", "unknown"))
+
+            return re_validated_features, validation_errors
+
+        return valid_features, validation_errors
 
     @overrides
     async def create_item(
@@ -1260,11 +1272,8 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                                 validation_errors[msg] = []
                             validation_errors[msg].extend(ids)
 
-                        # Calculate errors found in this specific chunk
-                        chunk_error_count = sum(
-                            len(item_ids) if isinstance(item_ids, list) else 1
-                            for item_ids in chunk_errors.values()
-                        )
+                        # Calculate errors found in this specific chunk using DRY helper
+                        chunk_error_count = count_validation_errors(chunk_errors)
                         validation_error_count += chunk_error_count
 
                         # CRITICAL FAIL-FAST: Breach of max_batch_error_size is an absolute cutoff
@@ -1314,10 +1323,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 ) = await self._validate_feature_collection(
                     processed_items, skip_validation=False
                 )
-                validation_error_count = sum(
-                    len(item_ids) if isinstance(item_ids, list) else 1
-                    for item_ids in validation_errors.values()
-                )
+                validation_error_count = count_validation_errors(validation_errors)
 
                 if validation_errors and raise_on_error:
                     raise HTTPException(
@@ -1827,10 +1833,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
             )
 
             # Count total validation errors (validation_errors maps error_msg -> [item_ids])
-            validation_error_count = sum(
-                len(item_ids) if isinstance(item_ids, list) else 1
-                for item_ids in validation_errors.values()
-            )
+            validation_error_count = count_validation_errors(validation_errors)
 
             # This endpoint historically has strict mode enabled by default.
             # We fail the entire batch immediately if any item is invalid.
