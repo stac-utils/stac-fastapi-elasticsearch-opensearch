@@ -286,3 +286,36 @@ def validate_item_topology_lightweight(item_dict: dict) -> None:
 
     except (KeyError, TypeError, IndexError) as e:
         raise ValueError(f"Malformed GeoJSON coordinate structure: {str(e)}")
+
+
+def batch_validate_topology(
+    features: list[dict],
+) -> tuple[list[dict], dict[str, list[str]]]:
+    """Synchronize batch topology validation suitable for thread pool execution.
+
+    Processes an array of features, returning the valid ones alongside a dictionary
+    of caught topology errors. Designed to be offloaded to a background thread via
+    asyncio.to_thread to prevent blocking the FastAPI event loop during CPU-bound
+    geometry validation.
+
+    Args:
+        features: List of feature dictionaries to validate.
+
+    Returns:
+        Tuple of (valid_features, topology_errors) where topology_errors maps
+        error messages to lists of affected item IDs.
+    """
+    re_validated_features = []
+    topology_errors: dict[str, list[str]] = {}
+
+    for item in features:
+        try:
+            validate_item_topology_lightweight(item)
+            re_validated_features.append(item)
+        except ValueError as e:
+            err_msg = f"Topology Error: {str(e)}"
+            if err_msg not in topology_errors:
+                topology_errors[err_msg] = []
+            topology_errors[err_msg].append(item.get("id", "unknown"))
+
+    return re_validated_features, topology_errors

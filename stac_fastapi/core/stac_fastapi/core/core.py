@@ -1,5 +1,6 @@
 """Core client."""
 
+import asyncio
 import logging
 import os
 from datetime import datetime as datetime_type
@@ -44,6 +45,7 @@ from stac_fastapi.core.utilities import (
 from stac_fastapi.core.validate import (
     async_validate_batch_with_stac_validator,
     async_validate_stac,
+    batch_validate_topology,
     validate_item_topology_lightweight,
 )
 from stac_fastapi.extensions.core.transaction import AsyncBaseTransactionsClient
@@ -1006,19 +1008,23 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     async def _validate_single_item(self, item_dict: dict) -> None:
         """Validate a single STAC item.
 
+        Independently gates both STAC schema validation and topology validation
+        so that either can be enabled/disabled without affecting the other.
+
         Args:
             item_dict: The item dictionary to validate.
 
         Raises:
             HTTPException: If validation fails.
         """
-        # 1. Core STAC Schema Validation
-        try:
-            await async_validate_stac(item_dict)
-        except (ValidationError, ValueError) as e:
-            raise HTTPException(status_code=400, detail=f"Invalid item: {e}")
+        # 1. Core STAC Schema Validation (Gated)
+        if get_bool_env("ENABLE_STAC_VALIDATOR"):
+            try:
+                await async_validate_stac(item_dict)
+            except (ValidationError, ValueError) as e:
+                raise HTTPException(status_code=400, detail=f"Invalid item: {e}")
 
-        # 2. Opt-in Pure-Python Topology Protection Gateway
+        # 2. Opt-in Pure-Python Topology Protection Gateway (Gated)
         if get_bool_env("ENABLE_TOPOLOGY_VALIDATION", default=False):
             try:
                 validate_item_topology_lightweight(item_dict)
@@ -1049,24 +1055,21 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 validation_errors,
             ) = await async_validate_batch_with_stac_validator(features)
 
-        # 2. Run lightweight topology validation pass if toggled on
+        # 2. Run lightweight topology validation pass independently
         if (
             get_bool_env("ENABLE_TOPOLOGY_VALIDATION", default=False)
             and not skip_validation
         ):
-            re_validated_features = []
+            # OFFLOAD CPU-BOUND LOOP: Send the math to a worker thread so we don't stall FastAPI
+            valid_features, topology_errors = await asyncio.to_thread(
+                batch_validate_topology, valid_features
+            )
 
-            for item in valid_features:
-                try:
-                    validate_item_topology_lightweight(item)
-                    re_validated_features.append(item)
-                except ValueError as e:
-                    err_msg = f"Topology Error: {str(e)}"
-                    if err_msg not in validation_errors:
-                        validation_errors[err_msg] = []
-                    validation_errors[err_msg].append(item.get("id", "unknown"))
-
-            return re_validated_features, validation_errors
+            # Safely merge the newly caught topology errors into the main tracking dictionary
+            for msg, ids in topology_errors.items():
+                if msg not in validation_errors:
+                    validation_errors[msg] = []
+                validation_errors[msg].extend(ids)
 
         return valid_features, validation_errors
 
@@ -1154,9 +1157,10 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         # 2. VALIDATION LAYER
         validate_before_queue = get_bool_env("VALIDATE_BEFORE_QUEUE", default=True)
-        if get_bool_env("ENABLE_STAC_VALIDATOR") and (
-            validate_before_queue or not use_queue
-        ):
+        if (
+            get_bool_env("ENABLE_STAC_VALIDATOR")
+            or get_bool_env("ENABLE_TOPOLOGY_VALIDATION", default=False)
+        ) and (validate_before_queue or not use_queue):
             await self._validate_single_item(preprocessed_item)
 
         # 3. ROUTING LAYER (Queue vs Database)
@@ -1497,7 +1501,10 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             processed_item = bulk_client.preprocess_item(item_dict, base_url)
 
             # Validate upfront on the web thread if explicitly configured
-            if get_bool_env("ENABLE_STAC_VALIDATOR") and validate_before_queue:
+            if (
+                get_bool_env("ENABLE_STAC_VALIDATOR")
+                or get_bool_env("ENABLE_TOPOLOGY_VALIDATION", default=False)
+            ) and validate_before_queue:
                 await self._validate_single_item(processed_item)
 
             result = await queue_items_if_enabled(collection_id, processed_item)
@@ -1508,7 +1515,10 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         # PATH B: DIRECT DATABASE INSERTION (No Queue)
         # Only validate here if the web server hasn't already validated it above
-        if get_bool_env("ENABLE_STAC_VALIDATOR") and not use_queue:
+        if (
+            get_bool_env("ENABLE_STAC_VALIDATOR")
+            or get_bool_env("ENABLE_TOPOLOGY_VALIDATION", default=False)
+        ) and not use_queue:
             await self._validate_single_item(item_dict)
 
         await self.database.create_item(
