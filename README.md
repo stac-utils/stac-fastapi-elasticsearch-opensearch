@@ -1005,7 +1005,7 @@ export MAX_BATCH_SIZE=100
 export MAX_BATCH_ERROR_SIZE=5
 ```
 
-In this configuration, if 6 items have topology errors across the batch, validation stops after the 6th error is found, preventing wasted CPU cycles.
+In this configuration, if 6 items have topology errors across the batch, validation stops after the chunk that causes the cumulative error count to exceed `MAX_BATCH_ERROR_SIZE`, preventing additional chunks from being processed. With `MAX_BATCH_SIZE=100`, this does not necessarily stop exactly when the 6th error is encountered; use smaller chunk sizes if you need earlier cutoff.
 
 ## Free-Text Search (`q` parameter)
 
