@@ -774,6 +774,8 @@ You can customize additional settings in your `.env` file:
 | `ENABLE_CATALOGS_ROUTE` | Enable the **/catalogs** endpoint for hierarchical catalog browsing and navigation. **Note:** Requires the catalogs extension to be installed via `stac-fastapi-elasticsearch[catalogs]`, `stac-fastapi-opensearch[catalogs]`, or `stac-fastapi-core[catalogs]`. See [Catalogs Route](#catalogs-route) for installation instructions. | `false` | Optional |
 | `ENABLE_STAC_VALIDATOR` | Enable [stac-validator](https://github.com/stac-utils/stac-validator) to validate STAC items and collections on ingestion. This is especially useful for items or collections that use extensions. | `false` | Optional |
 | `VALIDATE_BEFORE_QUEUE` | When using Redis queue (`ENABLE_REDIS_QUEUE=true`), controls whether validation happens on the API thread before queuing (true) or deferred to the background worker (false). When queue is disabled, validation always happens on the API thread. Set to `true` for strict data quality, `false` for maximum API throughput. See [Validation Timing with Redis Queue](#validation-timing-with-redis-queue) for details. | `true` | Optional |
+| `ENABLE_TOPOLOGY_VALIDATION` | Enable lightweight pure-Python validation to enforce WGS84 coordinate bounds (±180° lon, ±90° lat) and detect improper antimeridian crossing in Polygon and MultiPolygon geometries. Provides CPU-efficient spatial validation without external dependencies. See [Topology Validation](#topology-validation) for details. | `false` | Optional |
+| `MAX_TOPOLOGY_VERTICES` | Maximum number of vertices allowed in a single Polygon or MultiPolygon ring when topology validation is enabled. This prevents DoS attacks with pathologically complex geometries. Only applies when `ENABLE_TOPOLOGY_VALIDATION=true`. | `5000` | Optional |
 | `STAC_INDEX_ASSETS` | Controls if Assets are indexed when added to Elasticsearch/Opensearch. This allows asset fields to be included in search queries. | `false` | Optional |
 
 ### 5. Limits & Performance
@@ -948,6 +950,62 @@ export MAX_BATCH_ERROR_SIZE=5      # Stop after 5 errors found
 - Set `MAX_BATCH_SIZE=0` (default) to disable and use standard atomic validation
 
 > **Note**: Chunked validation only applies when `VALIDATE_BEFORE_QUEUE=true` (API thread validation). When using deferred validation (`VALIDATE_BEFORE_QUEUE=false`), the worker will validate the entire batch.
+
+### 3. Topology Validation (Antimeridian & WGS84 Bounds Protection)
+
+For geospatial data ingestion, you can enable **lightweight topology validation** to enforce WGS84 coordinate bounds and detect improper antimeridian crossing without external dependencies.
+
+**How it works:**
+
+1. **WGS84 Bounds Enforcement**: Validates all coordinates fall within standard global bounds (±180° longitude, ±90° latitude)
+2. **Antimeridian Detection**: Detects improper antimeridian crossing in Polygon and MultiPolygon geometries (longitude jumps > 180°)
+3. **Vertex Limit Enforcement**: Prevents DoS attacks by rejecting geometries with excessive vertices (default 5000 per ring)
+4. **Recursive Validation**: Checks every coordinate pair in the geometry, not just the first
+5. **Zero Dependencies**: Pure Python implementation with no external service calls
+
+**Example: Enable topology validation**
+```bash
+export ENABLE_TOPOLOGY_VALIDATION=true
+```
+
+**Configuring the vertex limit:**
+```bash
+export ENABLE_TOPOLOGY_VALIDATION=true
+export MAX_TOPOLOGY_VERTICES=10000  # Allow up to 10,000 vertices per ring
+```
+
+**Behavior:**
+
+- Items with coordinates outside WGS84 bounds are rejected with HTTP 400
+- Items with geometries crossing the antimeridian without proper truncation are rejected
+- Validation runs after STAC schema validation, so it catches spatial errors that Pydantic doesn't enforce
+- Works with both single-item and bulk FeatureCollection ingestion
+
+**Example error response:**
+```json
+{
+  "detail": "Invalid item geometry: Coordinates out of global WGS84 bounds: [200.5, 45.0]"
+}
+```
+
+**When to use:**
+
+- Ingesting data from unreliable sources with potential coordinate errors
+- Enforcing strict spatial data quality standards
+- Detecting antimeridian-crossing geometries that should be split or wrapped
+- When you want lightweight validation without external service dependencies
+
+**Integration with Chunked Validation:**
+
+Topology validation integrates seamlessly with chunked validation and fail-fast thresholds. If topology errors exceed `MAX_BATCH_ERROR_SIZE`, the circuit breaker will halt validation early:
+
+```bash
+export ENABLE_TOPOLOGY_VALIDATION=true
+export MAX_BATCH_SIZE=100
+export MAX_BATCH_ERROR_SIZE=5
+```
+
+In this configuration, if 6 items have topology errors across the batch, validation stops after the chunk that causes the cumulative error count to exceed `MAX_BATCH_ERROR_SIZE`, preventing additional chunks from being processed. With `MAX_BATCH_SIZE=100`, this does not necessarily stop exactly when the 6th error is encountered; use smaller chunk sizes if you need earlier cutoff.
 
 ## Free-Text Search (`q` parameter)
 

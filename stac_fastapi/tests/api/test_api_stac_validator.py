@@ -1,9 +1,37 @@
+import math
 import uuid
 from copy import deepcopy
 
 import pytest
 
 from ..conftest import create_collection, create_item
+
+
+def create_circular_polygon_ring(
+    num_vertices: int,
+    center_lon: float = -120.0,
+    center_lat: float = 40.0,
+    radius: float = 5.0,
+) -> list:
+    """Create a circular polygon ring with specified number of vertices.
+
+    Args:
+        num_vertices: Number of vertices to create (excluding closing vertex).
+        center_lon: Longitude of circle center.
+        center_lat: Latitude of circle center.
+        radius: Radius of circle in degrees.
+
+    Returns:
+        List of [lon, lat] coordinates forming a closed ring.
+    """
+    vertices = []
+    for i in range(num_vertices):
+        angle = (i / num_vertices) * 2 * math.pi
+        lon = center_lon + radius * math.cos(angle)
+        lat = center_lat + radius * math.sin(angle)
+        vertices.append([lon, lat])
+    vertices.append(vertices[0])  # Close the ring
+    return vertices
 
 
 @pytest.fixture(autouse=True)
@@ -390,3 +418,446 @@ async def test_chunked_validation_exceeds_max_error_size(
     assert (
         summary["validation_error_count"] == 2
     ), "Found 2 errors in chunk 1, which exceeds threshold of 1"
+
+
+@pytest.mark.asyncio
+async def test_topology_validation_detects_antimeridian_crossing(
+    txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
+):
+    """Test that topology validation detects improper antimeridian crossing.
+
+    Verifies that geometries with longitude jumps > 180 degrees are rejected
+    when ENABLE_TOPOLOGY_VALIDATION is enabled.
+    """
+    from fastapi import HTTPException
+
+    monkeypatch.setenv("ENABLE_TOPOLOGY_VALIDATION", "true")
+
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = f"test-topology-antimeridian-{uuid.uuid4()}"
+    await create_collection(txn_client, collection=test_collection)
+
+    base_item = load_test_data("test_item.json")
+    base_item["collection"] = test_collection["id"]
+
+    # Create item with geometry that crosses antimeridian improperly
+    # Longitude jumps from 170 to -170 (360 degree wrap, invalid)
+    invalid_item = deepcopy(base_item)
+    invalid_item["id"] = "antimeridian-crossing-item"
+    invalid_item["geometry"] = {
+        "type": "Polygon",
+        "coordinates": [
+            [
+                [170.0, -10.0],
+                [170.0, 10.0],
+                [-170.0, 10.0],  # Jump of 340 degrees (> 180)
+                [-170.0, -10.0],
+                [170.0, -10.0],
+            ]
+        ],
+    }
+
+    # Verify that the topology validation rejects this item
+    with pytest.raises(HTTPException) as exc_info:
+        await create_item(txn_client, invalid_item)
+
+    assert exc_info.value.status_code == 400
+    detail = exc_info.value.detail
+    assert "Invalid item geometry" in detail
+    assert "antimeridian" in detail.lower()
+
+
+@pytest.mark.asyncio
+async def test_topology_validation_allows_valid_polygons(
+    txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
+):
+    """Test that topology validation allows valid polygons.
+
+    Verifies that properly formatted geometries pass topology validation
+    when ENABLE_TOPOLOGY_VALIDATION is enabled.
+    """
+    monkeypatch.setenv("ENABLE_TOPOLOGY_VALIDATION", "true")
+
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = f"test-topology-valid-{uuid.uuid4()}"
+    await create_collection(txn_client, collection=test_collection)
+
+    base_item = load_test_data("test_item.json")
+    base_item["collection"] = test_collection["id"]
+
+    # Create item with valid polygon geometry
+    valid_item = deepcopy(base_item)
+    valid_item["id"] = "valid-polygon-item"
+    valid_item["geometry"] = {
+        "type": "Polygon",
+        "coordinates": [
+            [
+                [-120.0, 40.0],
+                [-120.0, 50.0],
+                [-110.0, 50.0],
+                [-110.0, 40.0],
+                [-120.0, 40.0],
+            ]
+        ],
+    }
+
+    # This should succeed - valid geometry
+    await create_item(txn_client, valid_item)
+
+    # Verify item was inserted by checking database persistence
+    db_item = await txn_client.database.get_one_item(
+        item_id="valid-polygon-item", collection_id=test_collection["id"]
+    )
+    assert db_item is not None, "Valid polygon should be inserted into database"
+
+
+@pytest.mark.asyncio
+async def test_topology_validation_detects_out_of_bounds_coordinates(
+    txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
+):
+    """Test that topology validation detects out-of-bounds coordinates.
+
+    Verifies that coordinates outside WGS84 bounds (±180° lon, ±90° lat)
+    are rejected when ENABLE_TOPOLOGY_VALIDATION is enabled.
+    """
+    from fastapi import HTTPException
+
+    monkeypatch.setenv("ENABLE_TOPOLOGY_VALIDATION", "true")
+
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = f"test-topology-bounds-{uuid.uuid4()}"
+    await create_collection(txn_client, collection=test_collection)
+
+    base_item = load_test_data("test_item.json")
+    base_item["collection"] = test_collection["id"]
+
+    # Create item with out-of-bounds latitude
+    invalid_item = deepcopy(base_item)
+    invalid_item["id"] = "out-of-bounds-item"
+    invalid_item["geometry"] = {
+        "type": "Polygon",
+        "coordinates": [
+            [
+                [-120.0, 40.0],
+                [-120.0, 95.0],  # Latitude > 90 (invalid)
+                [-110.0, 50.0],
+                [-110.0, 40.0],
+                [-120.0, 40.0],
+            ]
+        ],
+    }
+
+    # Verify that the topology validation rejects this item
+    with pytest.raises(HTTPException) as exc_info:
+        await create_item(txn_client, invalid_item)
+
+    assert exc_info.value.status_code == 400
+    detail = exc_info.value.detail
+    assert "Invalid item geometry" in detail
+    assert "WGS84 bounds" in detail
+
+
+@pytest.mark.asyncio
+async def test_topology_validation_detects_all_coordinates(
+    txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
+):
+    """Test that topology validation checks all coordinates in a ring.
+
+    Verifies that intermediate coordinates in a polygon ring are validated for WGS84 bounds,
+    not just the first coordinate. This ensures the recursive bounds checking validates
+    every coordinate pair in the geometry.
+    """
+    from fastapi import HTTPException
+
+    monkeypatch.setenv("ENABLE_TOPOLOGY_VALIDATION", "true")
+
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = f"test-topology-final-coord-{uuid.uuid4()}"
+    await create_collection(txn_client, collection=test_collection)
+
+    base_item = load_test_data("test_item.json")
+    base_item["collection"] = test_collection["id"]
+
+    # Create item where an intermediate coordinate is out of bounds
+    # This tests that all coordinates (not just the first) are validated
+    invalid_item = deepcopy(base_item)
+    invalid_item["id"] = "intermediate-coord-out-of-bounds"
+    invalid_item["geometry"] = {
+        "type": "Polygon",
+        "coordinates": [
+            [
+                [-120.0, 40.0],
+                [-120.0, 95.0],  # Intermediate coordinate has latitude > 90 (invalid)
+                [-110.0, 50.0],
+                [-110.0, 40.0],
+                [-120.0, 40.0],  # Closing coordinate matches opening
+            ]
+        ],
+    }
+
+    # Verify that the topology validation rejects this item
+    with pytest.raises(HTTPException) as exc_info:
+        await create_item(txn_client, invalid_item)
+
+    assert exc_info.value.status_code == 400
+    detail = exc_info.value.detail
+    assert "Invalid item geometry" in detail
+    assert "WGS84 bounds" in detail
+
+
+@pytest.mark.asyncio
+async def test_topology_validation_disabled_by_default(
+    txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
+):
+    """Test that topology validation is disabled by default.
+
+    Verifies that items with invalid geometries are accepted when
+    ENABLE_TOPOLOGY_VALIDATION is not set (defaults to false).
+    """
+    # Ensure topology validation is disabled (default)
+    monkeypatch.delenv("ENABLE_TOPOLOGY_VALIDATION", raising=False)
+
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = f"test-topology-disabled-{uuid.uuid4()}"
+    await create_collection(txn_client, collection=test_collection)
+
+    base_item = load_test_data("test_item.json")
+    base_item["collection"] = test_collection["id"]
+
+    # Create item with invalid geometry (antimeridian crossing)
+    item_with_invalid_geometry = deepcopy(base_item)
+    item_with_invalid_geometry["id"] = "antimeridian-item-disabled"
+    item_with_invalid_geometry["geometry"] = {
+        "type": "Polygon",
+        "coordinates": [
+            [
+                [170.0, -10.0],
+                [170.0, 10.0],
+                [-170.0, 10.0],  # Jump of 340 degrees
+                [-170.0, -10.0],
+                [170.0, -10.0],
+            ]
+        ],
+    }
+
+    # Should succeed because topology validation is disabled
+    await create_item(txn_client, item_with_invalid_geometry)
+
+    # Verify item was inserted despite invalid geometry (validation disabled)
+    db_item = await txn_client.database.get_one_item(
+        item_id="antimeridian-item-disabled", collection_id=test_collection["id"]
+    )
+    assert (
+        db_item is not None
+    ), "Item should be inserted when topology validation is disabled"
+
+
+@pytest.mark.asyncio
+async def test_bulk_topology_validation_filters_invalid_items_lenient(
+    txn_client, core_client, load_test_data, monkeypatch: pytest.MonkeyPatch
+):
+    """Test bulk validation filters out antimeridian errors when strict mode is false.
+
+    Verifies that when RAISE_ON_BULK_ERROR=false, items with topology errors are
+    filtered out while valid items in the same batch are safely ingested.
+    """
+    from ..conftest import MockRequest
+
+    monkeypatch.setenv("ENABLE_TOPOLOGY_VALIDATION", "true")
+    monkeypatch.setenv("RAISE_ON_BULK_ERROR", "false")
+    monkeypatch.setenv("MAX_BATCH_SIZE", "10")
+    monkeypatch.setenv("MAX_BATCH_ERROR_SIZE", "5")
+
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = f"test-topology-bulk-lenient-{uuid.uuid4()}"
+    await create_collection(txn_client, collection=test_collection)
+
+    base_item = load_test_data("test_item.json")
+    base_item["collection"] = test_collection["id"]
+
+    # Construct a batch: 2 valid items, 1 antimeridian wrap item
+    features = []
+    for i in range(2):
+        item = deepcopy(base_item)
+        item["id"] = f"bulk-lenient-valid-{i}"
+        features.append(item)
+
+    invalid_item = deepcopy(base_item)
+    invalid_item["id"] = "bulk-lenient-invalid-topo"
+    invalid_item["geometry"] = {
+        "type": "Polygon",
+        "coordinates": [
+            [
+                [170.0, -10.0],
+                [170.0, 10.0],
+                [-170.0, 10.0],
+                [-170.0, -10.0],
+                [170.0, -10.0],
+            ]
+        ],
+    }
+    features.append(invalid_item)
+
+    feature_collection = {"type": "FeatureCollection", "features": features}
+
+    # Execute lenient batch post
+    await create_item(txn_client, feature_collection)
+
+    # Verify only the 2 valid items made it to the database
+    fc = await core_client.item_collection(test_collection["id"], request=MockRequest())
+    assert len(fc["features"]) == 2
+    item_ids = {f["id"] for f in fc["features"]}
+    assert item_ids == {"bulk-lenient-valid-0", "bulk-lenient-valid-1"}
+
+
+@pytest.mark.asyncio
+async def test_bulk_topology_validation_trips_circuit_breaker(
+    txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
+):
+    """Test that bulk topology errors trip the batch circuit breaker fast-fail cutoff.
+
+    Verifies that topology errors accurately feed the circuit breaker tally and cause
+    a fast-fail shutdown of the chunk loop when MAX_BATCH_ERROR_SIZE is exceeded.
+    """
+    from fastapi import HTTPException
+
+    monkeypatch.setenv("ENABLE_TOPOLOGY_VALIDATION", "true")
+    monkeypatch.setenv("MAX_BATCH_SIZE", "2")
+    monkeypatch.setenv("MAX_BATCH_ERROR_SIZE", "1")  # Trip if more than 1 error
+    monkeypatch.setenv("RAISE_ON_BULK_ERROR", "true")
+
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = f"test-topology-breaker-{uuid.uuid4()}"
+    await create_collection(txn_client, collection=test_collection)
+
+    base_item = load_test_data("test_item.json")
+    base_item["collection"] = test_collection["id"]
+
+    # Generate 3 items with bad topology
+    # Slicing at chunk size 2 means chunk #1 will immediately yield 2 errors,
+    # breaching the ceiling of 1
+    features = []
+    for i in range(3):
+        invalid_item = deepcopy(base_item)
+        invalid_item["id"] = f"breaker-invalid-topo-{i}"
+        invalid_item["geometry"] = {
+            "type": "Polygon",
+            "coordinates": [
+                [
+                    [170.0, -10.0],
+                    [170.0, 10.0],
+                    [-170.0, 10.0],
+                    [-170.0, -10.0],
+                    [170.0, -10.0],
+                ]
+            ],
+        }
+        features.append(invalid_item)
+
+    feature_collection = {"type": "FeatureCollection", "features": features}
+
+    with pytest.raises(HTTPException) as exc_info:
+        await create_item(txn_client, feature_collection)
+
+    assert exc_info.value.status_code == 400
+    detail = exc_info.value.detail
+
+    # Air-tight structural type assertions (Issue #4)
+    assert isinstance(
+        detail, dict
+    ), f"Expected dictionary payload structure, got {type(detail)}"
+    assert (
+        "message" in detail
+    ), "Error block missing authoritative 'message' string element"
+    assert "summary" in detail, "Error block missing 'summary' telemetry object"
+
+    assert "Validation error threshold exceeded" in detail["message"]
+
+    summary = detail["summary"]
+    assert summary["input_count"] == 3
+    assert (
+        summary["processed_count"] == 2
+    ), "Loop should abort early after chunk 1 (2 items processed)"
+    assert summary["validation_error_count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_topology_validation_respects_max_vertices_limit(
+    txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
+):
+    """Test that MAX_TOPOLOGY_VERTICES environment variable is respected.
+
+    Verifies that the configurable vertex limit prevents geometries with excessive
+    vertices from being ingested, protecting against DoS attacks with pathologically
+    complex geometries.
+    """
+    from fastapi import HTTPException
+
+    monkeypatch.setenv("ENABLE_TOPOLOGY_VALIDATION", "true")
+    monkeypatch.setenv("MAX_TOPOLOGY_VERTICES", "10")  # Very low limit for testing
+
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = f"test-topology-vertices-{uuid.uuid4()}"
+    await create_collection(txn_client, collection=test_collection)
+
+    base_item = load_test_data("test_item.json")
+    base_item["collection"] = test_collection["id"]
+
+    # Create item with geometry that exceeds the vertex limit
+    invalid_item = deepcopy(base_item)
+    invalid_item["id"] = "too-many-vertices"
+    # Create a ring with 16 vertices (15 + 1 closing, exceeds limit of 10)
+    vertices = create_circular_polygon_ring(15)
+    invalid_item["geometry"] = {
+        "type": "Polygon",
+        "coordinates": [vertices],
+    }
+
+    # Verify that the topology validation rejects this item
+    with pytest.raises(HTTPException) as exc_info:
+        await create_item(txn_client, invalid_item)
+
+    assert exc_info.value.status_code == 400
+    detail = exc_info.value.detail
+    assert "Invalid item geometry" in detail
+    assert "too many vertices" in detail.lower()
+    assert "Maximum allowed is 10" in detail
+
+
+@pytest.mark.asyncio
+async def test_topology_validation_allows_items_within_vertex_limit(
+    txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
+):
+    """Test that items within MAX_TOPOLOGY_VERTICES limit are accepted.
+
+    Verifies that the vertex limit is configurable and allows valid geometries
+    with many vertices when the limit is set appropriately.
+    """
+    monkeypatch.setenv("ENABLE_TOPOLOGY_VALIDATION", "true")
+    monkeypatch.setenv("MAX_TOPOLOGY_VERTICES", "20")  # Increased limit
+
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = f"test-topology-within-limit-{uuid.uuid4()}"
+    await create_collection(txn_client, collection=test_collection)
+
+    base_item = load_test_data("test_item.json")
+    base_item["collection"] = test_collection["id"]
+
+    # Create item with geometry that is within the vertex limit
+    valid_item = deepcopy(base_item)
+    valid_item["id"] = "within-vertex-limit"
+    # Create a ring with 16 vertices (15 + 1 closing, within limit of 20)
+    vertices = create_circular_polygon_ring(15)
+    valid_item["geometry"] = {
+        "type": "Polygon",
+        "coordinates": [vertices],
+    }
+
+    # Should succeed because item is within the limit
+    await create_item(txn_client, valid_item)
+
+    # Verify item was inserted
+    db_item = await txn_client.database.get_one_item(
+        item_id="within-vertex-limit", collection_id=test_collection["id"]
+    )
+    assert db_item is not None, "Item should be inserted when within vertex limit"

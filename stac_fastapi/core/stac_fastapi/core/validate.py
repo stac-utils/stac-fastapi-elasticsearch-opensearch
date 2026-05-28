@@ -192,3 +192,130 @@ async def async_validate_batch_with_stac_validator(
         maps error messages to lists of affected item IDs.
     """
     return await asyncio.to_thread(validate_batch_with_stac_validator, items)
+
+
+def validate_geometry_bounds(coords: list) -> None:
+    """Recursively validate that all coordinate pairs fall within WGS84 limits.
+
+    Traverses nested coordinate lists to enforce global bounds (±180° lon, ±90° lat)
+    across all geometry types (Point, LineString, Polygon, MultiPolygon, etc.).
+
+    Args:
+        coords: Coordinate list (may be nested).
+
+    Raises:
+        ValueError: If any coordinate pair falls outside WGS84 bounds.
+    """
+    if not coords:
+        return
+
+    # Check if we reached an atomic coordinate pair [lon, lat]
+    if isinstance(coords[0], (int, float)):
+        lon, lat = coords[0], coords[1]
+        if not (-180 <= lon <= 180) or not (-90 <= lat <= 90):
+            raise ValueError(f"Coordinates out of global WGS84 bounds: [{lon}, {lat}]")
+    else:
+        # Step deeper into nested coordinate lists
+        for sub_coord in coords:
+            validate_geometry_bounds(sub_coord)
+
+
+def validate_item_topology_lightweight(item_dict: dict) -> None:
+    """Lightweight validation to enforce global coordinate boundaries and antimeridian checks.
+
+    Validates all geometry types for WGS84 bounds compliance, and checks for improper
+    antimeridian line skips in Polygon and MultiPolygon rings. Polygon rings are also
+    checked against a configurable vertex limit (default 5000) to prevent DoS attacks
+    with pathologically complex geometries.
+
+    Args:
+        item_dict: The STAC item dictionary to validate.
+
+    Raises:
+        ValueError: If geometry is invalid, out of bounds, crosses antimeridian improperly,
+                   or exceeds the vertex limit.
+    """
+    from stac_fastapi.core.utilities import get_int_env
+
+    geometry = item_dict.get("geometry")
+    if not geometry:
+        return
+
+    geom_type = geometry.get("type")
+    coords = geometry.get("coordinates")
+    if coords is None:
+        return
+
+    try:
+        # 1. Global Bounds Enforcer: Validates ALL vertices recursively
+        validate_geometry_bounds(coords)
+
+        # 2. Antimeridian Isolation: Only check jumps on linear polygon rings
+        if geom_type not in ("Polygon", "MultiPolygon"):
+            return
+
+        max_vertices = get_int_env("MAX_TOPOLOGY_VERTICES", default=5000)
+
+        def check_antimeridian_rings(rings: list) -> None:
+            for ring in rings:
+                if len(ring) < 4:
+                    raise ValueError(
+                        "Polygon ring must have at least 4 coordinates (closed loop)."
+                    )
+                if len(ring) > max_vertices:
+                    raise ValueError(
+                        f"Geometry has too many vertices ({len(ring)}). Maximum allowed is {max_vertices}."
+                    )
+
+                # Check antimeridian jumps between consecutive points
+                # (WGS84 bounds already validated by validate_geometry_bounds above)
+                for i in range(len(ring) - 1):
+                    lon1 = ring[i][0]
+                    lon2 = ring[i + 1][0]
+                    if abs(lon1 - lon2) > 180:
+                        raise ValueError(
+                            f"Geometry crosses the antimeridian without proper truncation/splitting "
+                            f"between longitude {lon1} and {lon2}."
+                        )
+
+        if geom_type == "Polygon":
+            check_antimeridian_rings(coords)
+        elif geom_type == "MultiPolygon":
+            for polygon in coords:
+                check_antimeridian_rings(polygon)
+
+    except (KeyError, TypeError, IndexError) as e:
+        raise ValueError(f"Malformed GeoJSON coordinate structure: {str(e)}")
+
+
+def batch_validate_topology(
+    features: list[dict],
+) -> tuple[list[dict], dict[str, list[str]]]:
+    """Synchronize batch topology validation suitable for thread pool execution.
+
+    Processes an array of features, returning the valid ones alongside a dictionary
+    of caught topology errors. Designed to be offloaded to a background thread via
+    asyncio.to_thread to prevent blocking the FastAPI event loop during CPU-bound
+    geometry validation.
+
+    Args:
+        features: List of feature dictionaries to validate.
+
+    Returns:
+        Tuple of (valid_features, topology_errors) where topology_errors maps
+        error messages to lists of affected item IDs.
+    """
+    re_validated_features = []
+    topology_errors: dict[str, list[str]] = {}
+
+    for item in features:
+        try:
+            validate_item_topology_lightweight(item)
+            re_validated_features.append(item)
+        except ValueError as e:
+            err_msg = f"Topology Error: {str(e)}"
+            if err_msg not in topology_errors:
+                topology_errors[err_msg] = []
+            topology_errors[err_msg].append(item.get("id", "unknown"))
+
+    return re_validated_features, topology_errors
