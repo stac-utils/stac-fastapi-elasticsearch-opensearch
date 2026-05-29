@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Added `VALIDATE_BEFORE_QUEUE` environment variable to control validation timing when using Redis queue. When set to `true` (default), validates items on the API thread before queuing for strict data quality. When set to `false`, defers validation to the background worker for maximum API throughput. Applies to single items, feature collections, and item updates. [#742](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/742)
+- Added `MAX_BATCH_SIZE` and `MAX_BATCH_ERROR_SIZE` environment variables to enable chunked validation with fail-fast thresholds. When `MAX_BATCH_SIZE` > 0, items are validated in chunks and validation stops immediately if errors exceed `MAX_BATCH_ERROR_SIZE`. This optimizes CPU usage for high-volume ingestion by preventing wasted validation cycles on hopelessly broken payloads. [#742](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/742)
+- Added `ENABLE_STAC_VALIDATOR` environment variable to enable strict STAC schema validation on ingestion via the Python `stac-validator`. [#742](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/742)
+- Added `[validator]` installation extra to `stac-fastapi-core`, `elasticsearch`, and `opensearch` packages. [#742](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/742)
+- Added `ENABLE_TOPOLOGY_VALIDATION` environment variable to enable lightweight pure-Python validation of geospatial data. When enabled, validates all coordinates fall within WGS84 bounds (±180° longitude, ±90° latitude) and detects improper antimeridian crossing in Polygon and MultiPolygon geometries. Provides zero-dependency spatial validation that integrates seamlessly with chunked validation and fail-fast thresholds. [#742](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/742)
+- Added `MAX_TOPOLOGY_VERTICES` environment variable to set the maximum number of vertices allowed in polygon rings during topology validation. Defaults to 5000 vertices per ring. Prevents denial-of-service attacks from geometries with excessive vertices that could lock up the API thread. Only applies when `ENABLE_TOPOLOGY_VALIDATION` is enabled. [#742](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/742)
+
 ### Changed
 
 ### Fixed
