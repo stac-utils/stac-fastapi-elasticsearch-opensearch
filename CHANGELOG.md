@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- Use collections index mapping when translating CQL2 filters in `get_all_collections()` to fix wrong field paths for collection fields. [#754](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/754)
+
 ### Removed
 
 ### Updated
