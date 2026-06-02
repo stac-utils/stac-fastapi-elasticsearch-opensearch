@@ -1135,6 +1135,72 @@ async def test_search_datetime_with_null_datetime(
 
 
 @pytest.mark.asyncio
+async def test_search_datetime_with_null_datetime_pagination(
+    app_client, txn_client, load_test_data
+):
+    if get_bool_env("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip()
+
+    """Test pagination when properties.datetime is null."""
+    # Setup: Create test collection
+    test_collection = load_test_data("test_collection.json")
+    try:
+        await create_collection(txn_client, collection=test_collection)
+    except Exception as e:
+        logger.error(f"Failed to create collection: {e}")
+        pytest.fail(f"Collection creation failed: {e}")
+
+    base_item = load_test_data("test_item.json")
+    collection_id = base_item["collection"]
+
+    null_dt_item = deepcopy(base_item)
+    null_dt_item["id"] = "null-datetime-item-1"
+    null_dt_item["properties"]["datetime"] = None
+    null_dt_item["properties"]["start_datetime"] = "2020-01-01T00:00:00Z"
+    null_dt_item["properties"]["end_datetime"] = "2020-01-02T00:00:00Z"
+
+    null_dt_item2 = deepcopy(base_item)
+    null_dt_item2["id"] = "null-datetime-item-2"
+    null_dt_item2["properties"]["datetime"] = None
+    null_dt_item2["properties"]["start_datetime"] = "2020-01-02T00:00:00Z"
+    null_dt_item2["properties"]["end_datetime"] = "2020-01-03T00:00:00Z"
+
+    # Create valid items
+    items = [null_dt_item, null_dt_item2]
+    for item in items:
+        try:
+            await create_item(txn_client, item)
+        except Exception as e:
+            logger.error(f"Failed to create item {item['id']}: {e}")
+            pytest.fail(f"Item creation failed: {e}")
+
+    # Refresh indices once
+    try:
+        await refresh_indices(txn_client)
+    except Exception as e:
+        logger.error(f"Failed to refresh indices: {e}")
+        pytest.fail(f"Index refresh failed: {e}")
+
+    # Test 1: Exact datetime matching valid-datetime-item and null-datetime-item
+    feature_ids = await _search_and_get_ids(
+        app_client,
+        params={
+            "limit": 1, "collections": [collection_id],
+        },
+    )
+    assert feature_ids == {
+        "null-datetime-item-1",
+        "null-datetime-item-2",
+    }, "Exact datetime search failed"
+
+    # Cleanup
+    try:
+        await txn_client.delete_collection(test_collection["id"])
+    except Exception as e:
+        logger.warning(f"Failed to delete collection: {e}")
+
+
+@pytest.mark.asyncio
 async def test_hidden_item_true(app_client, txn_client, load_test_data):
     """Test item with hidden=true is filtered out."""
 
