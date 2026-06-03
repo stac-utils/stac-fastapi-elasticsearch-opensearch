@@ -1489,23 +1489,27 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         use_queue = get_bool_env("ENABLE_REDIS_QUEUE", default=False)
         validate_before_queue = get_bool_env("VALIDATE_BEFORE_QUEUE", default=True)
 
-        # Handle inline imports once to keep code DRY
+        # 1. UNIFIED PREPROCESSING LAYER
+        # Runs unconditionally so DB and Queue both get the exact same standardized payload
+        bulk_client = BulkTransactionsClient(
+            database=self.database, settings=self.settings
+        )
+        processed_item = bulk_client.preprocess_item(item_dict, base_url)
+
+        if processed_item is None:
+            raise HTTPException(status_code=400, detail="Item preprocessing failed.")
+
+        # 2. UNIFIED VALIDATION LAYER
+        # Validates if STAC/Topology checks are on AND (we are bypassing the queue OR strict mode is on)
+        if (
+            get_bool_env("ENABLE_STAC_VALIDATOR")
+            or get_bool_env("ENABLE_TOPOLOGY_VALIDATION", default=False)
+        ) and (validate_before_queue or not use_queue):
+            await self._validate_single_item(processed_item)
+
+        # 3. ROUTING LAYER (Queue)
         if use_queue:
             from stac_fastapi.core.utilities import queue_items_if_enabled
-
-        # PATH A: REDIS QUEUE ENABLED
-        if use_queue:
-            bulk_client = BulkTransactionsClient(
-                database=self.database, settings=self.settings
-            )
-            processed_item = bulk_client.preprocess_item(item_dict, base_url)
-
-            # Validate upfront on the web thread if explicitly configured
-            if (
-                get_bool_env("ENABLE_STAC_VALIDATOR")
-                or get_bool_env("ENABLE_TOPOLOGY_VALIDATION", default=False)
-            ) and validate_before_queue:
-                await self._validate_single_item(processed_item)
 
             result = await queue_items_if_enabled(collection_id, processed_item)
             if result:
@@ -1513,18 +1517,11 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                     payload=ItemSerializer.db_to_stac(processed_item, base_url)
                 )
 
-        # PATH B: DIRECT DATABASE INSERTION (No Queue)
-        # Only validate here if the web server hasn't already validated it above
-        if (
-            get_bool_env("ENABLE_STAC_VALIDATOR")
-            or get_bool_env("ENABLE_TOPOLOGY_VALIDATION", default=False)
-        ) and not use_queue:
-            await self._validate_single_item(item_dict)
-
+        # 4. DATABASE INSERTION LAYER (No Queue)
         await self.database.create_item(
-            item_dict, base_url=base_url, upsert=True, **kwargs
+            processed_item, base_url=base_url, upsert=True, **kwargs
         )
-        return ItemSerializer.db_to_stac(item_dict, base_url)
+        return ItemSerializer.db_to_stac(processed_item, base_url)
 
     @overrides
     async def patch_item(
