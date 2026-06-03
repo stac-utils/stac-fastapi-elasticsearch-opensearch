@@ -1101,6 +1101,9 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         item_dict = item.model_dump(mode="json")
         use_queue = get_bool_env("ENABLE_REDIS_QUEUE", default=False)
 
+        # 1. FAIL-FAST: Verify collection exists before doing any processing
+        await self.database.find_collection(collection_id=collection_id)
+
         # Route the request to the dedicated handler
         item_type = item_dict.get("type")
         if item_type == "FeatureCollection":
@@ -1108,6 +1111,15 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 collection_id, item_dict, base_url, use_queue, **kwargs
             )
         elif item_type == "Feature":
+            # 2. SAFETY CHECK: Ensure item collection matches URL path
+            if item_dict.get("collection") and item_dict["collection"] != collection_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Collection ID from path does not match Collection ID from Item.",
+                )
+            # Guarantee the collection field is set correctly
+            item_dict["collection"] = collection_id
+
             return await self._create_single_item(
                 collection_id, item_dict, base_url, use_queue, **kwargs
             )
@@ -1208,8 +1220,6 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             HTTPException: If no valid items remain to be inserted, or if the batch is
             rejected under strict mode (RAISE_ON_BULK_ERROR=True).
         """
-        await self.database.find_collection(collection_id=collection_id)
-
         raw_features = item_dict.get("features", [])
         logger.info(
             f"Processing FeatureCollection with {len(raw_features)} features for collection {collection_id}"
