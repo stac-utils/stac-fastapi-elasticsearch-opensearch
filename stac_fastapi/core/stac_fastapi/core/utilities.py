@@ -403,3 +403,29 @@ def build_bulk_summary(
         "conflict_count": conflict_count,
         "database_error_count": database_error_count,
     }
+
+
+def format_conflict_errors(conflicts: list[dict]) -> dict[str, str]:
+    """Format database conflict errors into a clean dictionary.
+
+    Parses conflict error objects and extracts human-readable messages.
+    This function is defined at module-load time to avoid memory reallocation
+    on every API request.
+
+    Args:
+        conflicts: List of conflict error dictionaries from the database.
+
+    Returns:
+        Dictionary mapping item IDs to human-readable conflict messages.
+    """
+    conflict_details = {}
+    for c in conflicts:
+        doc_id = next(iter(c.values())).get("_id", "")
+        if "|" in doc_id:
+            item_id, coll_id = doc_id.split("|", 1)
+            conflict_details[
+                item_id
+            ] = f"Item '{item_id}' already exists in collection '{coll_id}'"
+        else:
+            conflict_details[doc_id] = f"Item '{doc_id}' already exists"
+    return conflict_details

@@ -40,6 +40,7 @@ from stac_fastapi.core.utilities import (
     build_bulk_summary,
     count_validation_errors,
     filter_fields,
+    format_conflict_errors,
     get_bool_env,
 )
 from stac_fastapi.core.validate import (
@@ -1413,18 +1414,11 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         if other_errors and raise_on_error:
             raise BulkIndexError(errors=other_errors, collection_id=collection_id)
 
-        def format_conflict_errors(conflicts):
-            conflict_details = {}
-            for c in conflicts:
-                doc_id = next(iter(c.values())).get("_id", "")
-                if "|" in doc_id:
-                    item_id, coll_id = doc_id.split("|", 1)
-                    conflict_details[
-                        item_id
-                    ] = f"Item '{item_id}' already exists in collection '{coll_id}'"
-                else:
-                    conflict_details[doc_id] = f"Item '{doc_id}' already exists"
-            return conflict_details
+        # 6. RESPONSE FORMATTING
+        # Parse conflicts exactly ONCE and cache the result to avoid redundant generation
+        formatted_conflicts = (
+            format_conflict_errors(conflict_errors) if conflict_errors else {}
+        )
 
         # Fix Spot 3: Database writes failed completely
         if success == 0:
@@ -1441,9 +1435,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                         other_errors,
                     ),
                     "validation_errors": validation_errors,
-                    "conflict_errors": format_conflict_errors(conflict_errors)
-                    if conflict_errors
-                    else {},
+                    "conflict_errors": formatted_conflicts,
                 },
             )
 
@@ -1465,7 +1457,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         if validation_errors:
             response["validation_errors"] = validation_errors
         if conflict_errors:
-            response["conflict_errors"] = format_conflict_errors(conflict_errors)
+            response["conflict_errors"] = formatted_conflicts
         if other_errors:
             response["database_errors"] = other_errors
 

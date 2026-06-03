@@ -861,3 +861,72 @@ async def test_topology_validation_allows_items_within_vertex_limit(
         item_id="within-vertex-limit", collection_id=test_collection["id"]
     )
     assert db_item is not None, "Item should be inserted when within vertex limit"
+
+
+@pytest.mark.asyncio
+async def test_feature_collection_conflict_errors_formatted(
+    app_client, txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
+):
+    """Test that conflict errors are properly formatted in bulk responses.
+
+    Verifies that when items already exist in the database, the conflict_errors
+    response contains human-readable messages mapping item IDs to conflict descriptions.
+    """
+    monkeypatch.setenv("RAISE_ON_BULK_ERROR", "false")
+
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = f"test-collection-conflicts-{uuid.uuid4()}"
+    await create_collection(txn_client, collection=test_collection)
+
+    base_item = load_test_data("test_item.json")
+    base_item["collection"] = test_collection["id"]
+
+    # Create and insert the first item
+    item1 = deepcopy(base_item)
+    item1["id"] = "conflict-test-item-1"
+    await create_item(txn_client, item1)
+
+    # Create a FeatureCollection with:
+    # - 1 new item (should succeed)
+    # - 1 duplicate item (should conflict)
+    features = []
+
+    # New item
+    new_item = deepcopy(base_item)
+    new_item["id"] = "conflict-test-item-2"
+    features.append(new_item)
+
+    # Duplicate item (already exists)
+    duplicate_item = deepcopy(base_item)
+    duplicate_item["id"] = "conflict-test-item-1"
+    features.append(duplicate_item)
+
+    feature_collection = {
+        "type": "FeatureCollection",
+        "features": features,
+    }
+
+    # POST the FeatureCollection via HTTP - should succeed with 1 new item and 1 conflict
+    resp = await app_client.post(
+        f"/collections/{test_collection['id']}/items",
+        json=feature_collection,
+    )
+
+    # Should return 201 when at least one item succeeds (RAISE_ON_BULK_ERROR=false)
+    assert resp.status_code == 201
+    response = resp.json()
+
+    # Verify response structure
+    assert isinstance(response, dict)
+    assert "conflict_errors" in response
+    assert isinstance(response["conflict_errors"], dict)
+
+    # Verify conflict error format
+    conflict_errors = response["conflict_errors"]
+    assert "conflict-test-item-1" in conflict_errors
+    conflict_msg = conflict_errors["conflict-test-item-1"]
+
+    # Verify the message is human-readable and contains expected parts
+    assert "already exists" in conflict_msg
+    assert "conflict-test-item-1" in conflict_msg
+    assert test_collection["id"] in conflict_msg
