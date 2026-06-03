@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- Fixed pagination timeout when searching items with null datetime values (time-range items). Added proper fallback handling for `datetime`, `start_datetime`, and `end_datetime` fields in sort clauses to ensure stable pagination tokens.
+
 ### Removed
 
 ### Updated
