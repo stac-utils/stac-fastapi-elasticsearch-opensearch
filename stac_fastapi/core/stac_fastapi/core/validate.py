@@ -12,6 +12,9 @@ try:
     import fastjsonschema
     import stac_validator.fast_validator as fv_module
     from stac_validator.fast_validator import get_validator
+
+    # Permanently mute the validator's CLI output for the SFEOS server
+    fv_module.QUIET_MODE = True
 except ImportError:
     fastjsonschema = None
     fv_module = None
@@ -48,9 +51,6 @@ def validate_batch_with_stac_validator(
             "STAC validator is not installed. "
             "Install it with: pip install stac-fastapi-elasticsearch[validator]"
         )
-
-    # Permanently mute the validator's CLI output for the SFEOS server
-    fv_module.QUIET_MODE = True
 
     valid_items: list[dict] = []
     invalid_items: dict[str, list[str]] = {}
