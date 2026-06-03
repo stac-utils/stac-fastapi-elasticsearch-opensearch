@@ -42,6 +42,7 @@ from stac_fastapi.core.utilities import (
     filter_fields,
     format_conflict_errors,
     get_bool_env,
+    get_int_env,
 )
 from stac_fastapi.core.validate import (
     async_validate_batch_with_stac_validator,
@@ -325,12 +326,12 @@ class CoreClient(AsyncBaseCoreClient):
         redis_enable = get_bool_env("REDIS_ENABLE", default=False)
 
         global_max_limit = (
-            int(os.getenv("STAC_GLOBAL_COLLECTION_MAX_LIMIT"))
-            if os.getenv("STAC_GLOBAL_COLLECTION_MAX_LIMIT")
+            get_int_env("STAC_GLOBAL_COLLECTION_MAX_LIMIT")
+            if "STAC_GLOBAL_COLLECTION_MAX_LIMIT" in os.environ
             else None
         )
         query_limit = request.query_params.get("limit")
-        default_limit = int(os.getenv("STAC_DEFAULT_COLLECTION_LIMIT", 300))
+        default_limit = get_int_env("STAC_DEFAULT_COLLECTION_LIMIT", default=300)
 
         body_limit = None
         try:
@@ -809,12 +810,12 @@ class CoreClient(AsyncBaseCoreClient):
             HTTPException: If there is an error with the cql2_json filter.
         """
         global_max_limit = (
-            int(os.getenv("STAC_GLOBAL_ITEM_MAX_LIMIT"))
-            if os.getenv("STAC_GLOBAL_ITEM_MAX_LIMIT")
+            get_int_env("STAC_GLOBAL_ITEM_MAX_LIMIT")
+            if "STAC_GLOBAL_ITEM_MAX_LIMIT" in os.environ
             else None
         )
         query_limit = request.query_params.get("limit")
-        default_limit = int(os.getenv("STAC_DEFAULT_ITEM_LIMIT", 10))
+        default_limit = get_int_env("STAC_DEFAULT_ITEM_LIMIT", default=10)
 
         body_limit = None
         try:
@@ -1259,8 +1260,8 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         # 3. VALIDATION LAYER
         validate_before_queue = get_bool_env("VALIDATE_BEFORE_QUEUE", default=True)
-        max_batch_size = int(os.getenv("MAX_BATCH_SIZE", 0))
-        max_batch_error_size = int(os.getenv("MAX_BATCH_ERROR_SIZE", 0))
+        max_batch_size = get_int_env("MAX_BATCH_SIZE", default=0)
+        max_batch_error_size = get_int_env("MAX_BATCH_ERROR_SIZE", default=0)
 
         # Trigger validation if requested up front OR if the queue is disabled completely
         if validate_before_queue or not use_queue:
