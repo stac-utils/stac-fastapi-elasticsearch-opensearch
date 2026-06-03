@@ -15,6 +15,7 @@ try:
 except ImportError:
     from elasticsearch import exceptions
 
+from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.sfeos_helpers.database import (
     retry_on_connection_error,
     retry_on_datetime_not_found,
@@ -534,7 +535,7 @@ async def test_search_point_does_not_intersect(app_client, ctx):
 
 @pytest.mark.asyncio
 async def test_datetime_response_format(app_client, txn_client, ctx):
-    if os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+    if get_bool_env("ENABLE_DATETIME_INDEX_FILTERING"):
         pytest.skip()
 
     first_item = dict(ctx.item)
@@ -574,7 +575,7 @@ async def test_datetime_response_format(app_client, txn_client, ctx):
 
 @pytest.mark.asyncio
 async def test_datetime_non_interval(app_client, txn_client, ctx):
-    if os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+    if get_bool_env("ENABLE_DATETIME_INDEX_FILTERING"):
         pytest.skip()
 
     first_item = dict(ctx.item)
@@ -613,7 +614,7 @@ async def test_datetime_non_interval(app_client, txn_client, ctx):
 
 @pytest.mark.asyncio
 async def test_datetime_interval(app_client, txn_client, ctx):
-    if os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+    if get_bool_env("ENABLE_DATETIME_INDEX_FILTERING"):
         pytest.skip()
 
     first_item = dict(ctx.item)
@@ -652,7 +653,7 @@ async def test_datetime_interval(app_client, txn_client, ctx):
 
 @pytest.mark.asyncio
 async def test_datetime_bad_non_interval(app_client, txn_client, ctx):
-    if os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+    if get_bool_env("ENABLE_DATETIME_INDEX_FILTERING"):
         pytest.skip()
 
     first_item = dict(ctx.item)
@@ -691,7 +692,7 @@ async def test_datetime_bad_non_interval(app_client, txn_client, ctx):
 
 @pytest.mark.asyncio
 async def test_datetime_bad_interval(app_client, txn_client, ctx):
-    if os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+    if get_bool_env("ENABLE_DATETIME_INDEX_FILTERING"):
         pytest.skip()
 
     first_item = dict(ctx.item)

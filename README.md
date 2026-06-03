@@ -312,12 +312,14 @@ All link relations are generated dynamically at runtime based on the `parent_ids
 #### Contextual vs Global Navigation
 
 **Global Endpoints** (`/collections/{id}`):
+
 - Parent → root `/`
 - Related → all catalog parents
 - Canonical → self
 - Duplicate → all scoped URIs
 
 **Scoped Endpoints** (`/catalogs/{id}/collections/{id}`):
+
 - Parent → contextual catalog
 - Related → other catalog parents
 - Canonical → global endpoint
@@ -344,6 +346,7 @@ The catalogs extension implements a **safety-first design** that protects collec
 ### Endpoints
 
 **Catalog Management:**
+
 - **GET `/catalogs`**: Retrieve the root catalog and its child catalogs
 - **POST `/catalogs`**: Create a new catalog (requires appropriate permissions)
 - **GET `/catalogs/{catalog_id}`**: Retrieve a specific catalog and its children
@@ -351,17 +354,21 @@ The catalogs extension implements a **safety-first design** that protects collec
 - **DELETE `/catalogs/{catalog_id}`**: Delete a catalog (collections and sub-catalogs are unlinked and adopted by root if orphaned)
 
 **Sub-Catalog Hierarchy:**
+
 - **GET `/catalogs/{catalog_id}/catalogs`**: Retrieve sub-catalogs within a specific catalog
 - **POST `/catalogs/{catalog_id}/catalogs`**: Create a new sub-catalog within a specific catalog
 
 **Children & Collections:**
+
 - **GET `/catalogs/{catalog_id}/children`**: Retrieve all children (Catalogs and Collections) of this catalog with optional type filtering
 - **GET `/catalogs/{catalog_id}/collections`**: Retrieve collections within a specific catalog
 - **POST `/catalogs/{catalog_id}/collections`**: Create a new collection within a catalog OR link an existing collection by posting its ID
 - **GET `/catalogs/{catalog_id}/collections/{collection_id}`**: Retrieve a specific collection within a catalog
+- **PUT `/catalogs/{catalog_id}/collections/{collection_id}`**: Update a collection within a catalog context (updates the collection globally)
 - **DELETE `/catalogs/{catalog_id}/collections/{collection_id}`**: Unlink a collection from a catalog (collection survives at root if orphaned)
 
 **Items:**
+
 - **GET `/catalogs/{catalog_id}/collections/{collection_id}/items`**: Retrieve items within a collection in a catalog context
 - **GET `/catalogs/{catalog_id}/collections/{collection_id}/items/{item_id}`**: Retrieve a specific item within a catalog context
 
@@ -438,6 +445,20 @@ curl -X POST "http://localhost:8081/catalogs/earth-observation/collections" \
 # Get specific collection within a catalog
 curl "http://localhost:8081/catalogs/earth-observation/collections/sentinel-2"
 
+# Update a collection within a catalog context
+# This updates the collection globally (not just within this catalog)
+# The update preserves the collection's parent_ids, maintaining its DAG structure
+# and poly-hierarchy relationships across all parent catalogs
+curl -X PUT "http://localhost:8081/catalogs/earth-observation/collections/sentinel-2" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "id": "sentinel-2",
+    "type": "Collection",
+    "stac_version": "1.0.0",
+    "description": "Updated description for Sentinel-2 data",
+    "title": "Sentinel-2 (Updated)"
+  }'
+
 # Get items in a collection within a catalog
 curl "http://localhost:8081/catalogs/earth-observation/collections/sentinel-2/items"
 
@@ -467,11 +488,13 @@ The catalogs extension implements a **safety-first deletion policy**:
 - **`DELETE /collections/{id}`**: Permanently deletes a collection and all its items. This is the only way to destroy collection data and must be done explicitly outside the catalogs route.
 
 **What Gets Removed**:
+
 - Catalog documents (when deleting a catalog)
 - Relationship links between catalogs and collections/sub-catalogs (when unlinking)
 - Collection documents and items (only via `/collections` endpoint)
 
 **What Is Always Preserved**:
+
 - Collection data (never deleted through catalogs routes)
 - Catalog data (never deleted through catalogs routes)
 - Item data (never deleted through catalogs routes)
@@ -481,6 +504,7 @@ The catalogs extension implements a **safety-first deletion policy**:
 ### Response Structure
 
 Catalog responses include:
+
 - **Catalog metadata**: ID, title, description, and other catalog properties
 - **Sub-catalogs**: Links to nested sub-catalogs for multi-level hierarchical navigation
 - **Collections**: Links to collections contained within the catalog
@@ -541,9 +565,11 @@ curl "http://localhost:8081/catalogs/forestry/catalogs"
 ```
 
 **Result:** The sentinel-2 catalog now has multiple parents (including forestry). It is always accessed via its canonical endpoint:
+
 - `/catalogs/sentinel-2`
 
 You can discover it as a child of forestry via:
+
 - `/catalogs/forestry/catalogs` (lists sentinel-2 with a link to `/catalogs/sentinel-2`)
 
 Because you are linking the node (the Catalog), the entire sub-tree attached to that node is automatically shared. If sentinel-2 contains millions of items and sub-catalogs, they are all instantly visible under the new forestry parent without needing to re-link individual items.
@@ -557,9 +583,10 @@ This project is organized into several packages, each with a specific purpose:
 - **stac_fastapi_core**: Core functionality that's database-agnostic, including API models, extensions, and shared utilities. This package provides the foundation for building STAC API implementations with any database backend. See [stac-fastapi-mongo](https://github.com/Healy-Hyperspatial/stac-fastapi-mongo) for a working example.
 
 - **sfeos_helpers**: Shared helper functions and utilities used by both the Elasticsearch and OpenSearch backends. This package includes:
-  - `database`: Specialized modules for index, document, and database utility operations
-  - `aggregation`: Elasticsearch/OpenSearch-specific aggregation functionality
-  - Shared logic and utilities that improve code reuse between backends
+
+    - `database`: Specialized modules for index, document, and database utility operations
+    - `aggregation`: Elasticsearch/OpenSearch-specific aggregation functionality
+    - Shared logic and utilities that improve code reuse between backends
 
 - **stac_fastapi_elasticsearch**: Complete implementation of the STAC API using Elasticsearch as the backend database. This package depends on both `stac_fastapi_core` and `sfeos_helpers`.
 
@@ -571,9 +598,9 @@ The `/examples` directory contains several useful examples and reference impleme
 
 - **pip_docker**: Examples of running stac-fastapi-elasticsearch from PyPI in Docker without needing any code from the repository
 - **auth**: Authentication examples including:
-  - Basic authentication
-  - OAuth2 with Keycloak
-  - Route dependencies configuration
+    - Basic authentication
+    - OAuth2 with Keycloak
+    - Route dependencies configuration
 - **rate_limit**: Example of implementing rate limiting for API requests
 - **postman_collections**: Postman collection files you can import for testing API endpoints
 
@@ -644,8 +671,9 @@ There are two main ways to run the API locally:
 #### Using Pre-built Docker Images
 
 - We provide ready-to-use Docker images through GitHub Container Registry:
-  - [ElasticSearch backend](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pkgs/container/stac-fastapi-es)
-  - [OpenSearch backend](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pkgs/container/stac-fastapi-os)
+
+    - [ElasticSearch backend](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pkgs/container/stac-fastapi-es)
+    - [OpenSearch backend](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pkgs/container/stac-fastapi-os)
 
 - **Pull and run the images**:
   ```shell
@@ -661,6 +689,7 @@ There are two main ways to run the API locally:
 - **Prerequisites**: Ensure [Docker Compose](https://docs.docker.com/compose/install/) or [Podman Compose](https://podman-desktop.io/docs/compose) is installed on your machine.
 
 **1. Quick Deployment (Recommended)**
+
 To quickly run the application using optimized, pre-built images from the GitHub Container Registry (GHCR), use the dedicated deployment compose files:
 
 ```shell
@@ -672,6 +701,7 @@ docker compose -f compose.os.deploy.yml up
 ```
 
 **2. Local Development**
+
 If you are contributing to the project and want to build the images from your local source code with live-reloading enabled, use the default `compose.yml` file:
 
 ```shell
@@ -970,8 +1000,8 @@ EXCLUDED_FROM_QUERYABLES="properties.auth:schemes,properties.storage:schemes,pro
 - Comma-separated list of fully qualified field names
 - Use the full path including the `properties.` prefix for item properties
 - Example field names:
-  - `properties.auth:schemes`
-  - `properties.storage:schemes`
+    - `properties.auth:schemes`
+    - `properties.storage:schemes`
 
 **Behavior:**
 
@@ -1016,14 +1046,17 @@ The datetime-based indexing strategy is particularly useful for large temporal d
 ### When to Use
 
 **Recommended for:**
+
 - Systems with large collections containing millions of items
 - Systems requiring high-performance temporal searching
 
 **Pros:**
+
 - Multiple times faster queries with datetime filter
 - Reduced database load - only relevant indexes are searched
 
 **Cons:**
+
 - Slightly longer item indexing time (automatic index management)
 - Greater management complexity
 
@@ -1074,11 +1107,13 @@ python scripts/item_queue_worker.py
 The system uses a precise naming convention:
 
 **Physical indexes:**
+
 ```
 {ITEMS_INDEX_PREFIX}{collection-id}_{uuid4}
 ```
 
 **Aliases:**
+
 ```
 {ITEMS_INDEX_PREFIX}{collection-id}                                  # Main collection alias
 {ITEMS_INDEX_PREFIX}{collection-id}_{start-datetime}                 # Temporal alias
@@ -1088,9 +1123,11 @@ The system uses a precise naming convention:
 **Example:**
 
 *Physical indexes:*
+
 - `items_sentinel-2-l2a_a1b2c3d4-e5f6-7890-abcd-ef1234567890`
 
 *Aliases:*
+
 - `items_sentinel-2-l2a` - main collection alias
 - `items_sentinel-2-l2a_2024-01-01` - active alias from January 1, 2024
 - `items_sentinel-2-l2a_2024-01-01_2024-03-15` - closed index alias (reached size limit)
@@ -1150,27 +1187,31 @@ The system uses a precise naming convention:
 ## Configure the API
 
 - **API Title and Description**: By default set to `stac-fastapi-<backend>`. Customize these by setting:
-  - `STAC_FASTAPI_TITLE`: Changes the API title in the documentation
-  - `STAC_FASTAPI_DESCRIPTION`: Changes the API description in the documentation
+
+    - `STAC_FASTAPI_TITLE`: Changes the API title in the documentation
+    - `STAC_FASTAPI_DESCRIPTION`: Changes the API description in the documentation
 
 - **Database Indices**: By default, the API reads from and writes to:
-  - `collections` index for collections
-  - `items_<collection name>` indices for items
-  - Customize with `STAC_COLLECTIONS_INDEX` and `STAC_ITEMS_INDEX_PREFIX` environment variables
+
+    - `collections` index for collections
+    - `items_<collection name>` indices for items
+    - Customize with `STAC_COLLECTIONS_INDEX` and `STAC_ITEMS_INDEX_PREFIX` environment variables
 
 - **Root Path Configuration**: The application root path is the base URL by default.
-  - For AWS Lambda with Gateway API: Set `STAC_FASTAPI_ROOT_PATH` to match the Gateway API stage name (e.g., `/v1`)
+
+    - For AWS Lambda with Gateway API: Set `STAC_FASTAPI_ROOT_PATH` to match the Gateway API stage name (e.g., `/v1`)
 
 - **Feature Configuration**: Control which features are enabled:
-  - `ENABLE_COLLECTIONS_SEARCH`: Set to `true` (default) to enable collection search extensions (sort, fields). Set to `false` to disable.
-  - `ENABLE_TRANSACTIONS_EXTENSIONS`: Set to `true` (default) to enable transaction extensions. Set to `false` to disable.
+
+    - `ENABLE_COLLECTIONS_SEARCH`: Set to `true` (default) to enable collection search extensions (sort, fields). Set to `false` to disable.
+    - `ENABLE_TRANSACTIONS_EXTENSIONS`: Set to `true` (default) to enable transaction extensions. Set to `false` to disable.
 
 ## Collection Pagination
 
 - **Overview**: The collections route supports pagination through optional query parameters.
 - **Parameters**:
-  - `limit`: Controls the number of collections returned per page
-  - `token`: Used to retrieve subsequent pages of results
+    - `limit`: Controls the number of collections returned per page
+    - `token`: Used to retrieve subsequent pages of results
 - **Response Structure**: The `links` field in the response contains a `next` link with the token for the next page of results.
 - **Example Usage**:
   ```shell
@@ -1207,14 +1248,17 @@ sfeos-tools --version
 ### Common Commands
 
 **Database Operations:**
+
 - `add-bbox-shape`: Add spatial search support to existing collections
 - `reindex`: Reindex all STAC indices with zero downtime
 
 **Data Management:**
+
 - `load-data`: Load STAC collections and items from local JSON files into the API
 - `ingest-catalog`: Ingest SKOS/RDF-XML files to create STAC catalogs
 
 **Viewer:**
+
 - `viewer`: Launch interactive Streamlit-based web viewer for exploring STAC data
 
 ### Data Loading with `load-data`
@@ -1222,6 +1266,7 @@ sfeos-tools --version
 The `load-data` command provides flexible options for populating your STAC API with collections and items:
 
 **Basic Usage:**
+
 ```bash
 # Load from default directory (sample_data/)
 sfeos-tools load-data --stac-url http://localhost:8080
@@ -1239,10 +1284,12 @@ sfeos-tools load-data --stac-url http://localhost:8080 --use-bulk
 **Data Directory Structure:**
 
 Your data directory should contain:
+
 - `collection.json`: STAC collection definition
 - One or more `.json` files: Feature collections with STAC items
 
 **Common Workflows:**
+
 - **Populating a new STAC API deployment** with test or production data
 - **Migrating data** between STAC API instances
 - **Bulk loading** large numbers of STAC items with optimized performance
@@ -1251,6 +1298,7 @@ Your data directory should contain:
 ### Standardized Options
 
 **Database Commands** (`add-bbox-shape`, `reindex`):
+
 - `--backend`: Database backend (elasticsearch or opensearch) - required
 - `--host`: Database host (default: localhost or ES_HOST env var)
 - `--port`: Database port (default: 9200 for ES, 9202 for OS, or ES_PORT env var)
@@ -1259,6 +1307,7 @@ Your data directory should contain:
 - `--password`: Database password (default: ES_PASS env var)
 
 **STAC API Commands** (`load-data`, `ingest-catalog`, `viewer`):
+
 - `--stac-url`: STAC API base URL (default: http://localhost:8080)
 - `--user`: Username for basic authentication (optional)
 - `--password`: Password for basic authentication (optional)
@@ -1271,6 +1320,7 @@ For complete documentation, examples, and advanced usage, visit the [SFEOS Tools
 The Redis cache stores navigation state for paginated results, allowing the system to maintain previous page links using tokens. The configuration supports both Redis Sentinel and standalone Redis setups.
 
 Steps to configure:
+
 1. Ensure that a Redis instance is available, either a standalone server or a Sentinel-managed cluster.
 2. Establish a connection between STAC FastAPI and Redis instance by setting the appropriate [**environment variables**](#redis-for-navigation-environment-variables). These define the Redis host, port, authentication, and optional Sentinel settings.
 3. Control whether Redis caching is activated using the `REDIS_ENABLE` environment variable to `True` or `False`.
@@ -1283,9 +1333,9 @@ pip install stac-fastapi-elasticsearch[redis]
 
 - **Overview**: Mappings apply to search index, not source data. They define how documents and their fields are stored and indexed.
 - **Implementation**: 
-  - Mappings are stored in index templates that are created on application startup
-  - These templates are automatically applied when creating new Collection and Item indices
-  - The `sfeos_helpers` package contains shared mapping definitions used by both Elasticsearch and OpenSearch backends
+    - Mappings are stored in index templates that are created on application startup
+    - These templates are automatically applied when creating new Collection and Item indices
+    - The `sfeos_helpers` package contains shared mapping definitions used by both Elasticsearch and OpenSearch backends
 - **Customization**: Custom mappings can be defined by extending the base mapping templates.
 
 ## Custom Index Mappings
@@ -1566,8 +1616,8 @@ This prevents Elasticsearch from creating mappings for unused metadata fields, r
                }
   }'
   ```
-  - This creates a snapshot repository that stores files in the elasticsearch/snapshots directory in this git repo clone
-  - The elasticsearch.yml and compose files create a mapping from that directory to /usr/share/elasticsearch/snapshots within the Elasticsearch container and grant permissions for using it
+    - This creates a snapshot repository that stores files in the elasticsearch/snapshots directory in this git repo clone
+    - The elasticsearch.yml and compose files create a mapping from that directory to /usr/share/elasticsearch/snapshots within the Elasticsearch container and grant permissions for using it
 
 - **Creating a Snapshot**:
   ```shell
@@ -1583,9 +1633,9 @@ This prevents Elasticsearch from creating mappings for unused metadata fields, r
     "indices": "items_my-collection"
   }'
   ```
-  - This creates a snapshot named my_snapshot_2 and waits for the action to be completed before returning
-  - This can also be done asynchronously by omitting the wait_for_completion parameter, and queried for status later
-  - The indices parameter determines which indices are snapshotted, and can include wildcards
+    - This creates a snapshot named my_snapshot_2 and waits for the action to be completed before returning
+    - This can also be done asynchronously by omitting the wait_for_completion parameter, and queried for status later
+    - The indices parameter determines which indices are snapshotted, and can include wildcards
 
 - **Viewing Snapshots**:
   ```shell
@@ -1610,8 +1660,8 @@ This prevents Elasticsearch from creating mappings for unused metadata fields, r
     "rename_pattern": "items_(.+)"
   }'
   ```
-  - This specific command will restore any indices that match items_* and rename them so that the new index name will be suffixed with -copy
-  - The rename_pattern and rename_replacement parameters allow you to restore indices under new names
+    - This specific command will restore any indices that match items_* and rename them so that the new index name will be suffixed with -copy
+    - The rename_pattern and rename_replacement parameters allow you to restore indices under new names
 
 - **Updating Collection References**:
   ```shell
@@ -1630,8 +1680,8 @@ This prevents Elasticsearch from creating mappings for unused metadata fields, r
     }
   }'
   ```
-  - After restoring, the item documents have been restored in the new index (e.g., my-collection-copy), but the value of the collection field in those documents is still the original value of my-collection
-  - This command updates these values to match the new collection name using Elasticsearch's Update By Query feature
+    - After restoring, the item documents have been restored in the new index (e.g., my-collection-copy), but the value of the collection field in those documents is still the original value of my-collection
+    - This command updates these values to match the new collection name using Elasticsearch's Update By Query feature
 
 - **Creating a New Collection**:
   ```shell
@@ -1641,18 +1691,19 @@ This prevents Elasticsearch from creating mappings for unused metadata fields, r
     "id": "my-collection-copy"
   }'
   ```
-  - The final step is to create a new collection through the API with the new name for each of the restored indices
-  - This gives you a copy of the collection that has a resource URI (/collections/my-collection-copy) and can be correctly queried by collection name
+    - The final step is to create a new collection through the API with the new name for each of the restored indices
+    - This gives you a copy of the collection that has a resource URI (/collections/my-collection-copy) and can be correctly queried by collection name
 
 ### Reindexing
 
 - **Overview**: Reindexing allows you to copy documents from one index to another, optionally transforming them in the process.
 
 - **Use Cases**:
-  - Apply changes to documents
-  - Correct dynamically generated mappings
-  - Transform data (e.g., lowercase identifiers)
-  - The index templates will make sure that manually created indices will also have the correct mappings and settings
+
+    - Apply changes to documents
+    - Correct dynamically generated mappings
+    - Transform data (e.g., lowercase identifiers)
+    - The index templates will make sure that manually created indices will also have the correct mappings and settings
 
 - **Example: Reindexing with Transformation**:
   ```shell
@@ -1671,8 +1722,8 @@ This prevents Elasticsearch from creating mappings for unused metadata fields, r
       }
     }'
   ```
-  - In this example, we make a copy of an existing Item index but change the Item identifier to be lowercase
-  - The script parameter allows you to transform documents during the reindexing process
+    - In this example, we make a copy of an existing Item index but change the Item identifier to be lowercase
+    - The script parameter allows you to transform documents during the reindexing process
 
 - **Updating Aliases**:
   ```shell
@@ -1695,30 +1746,30 @@ This prevents Elasticsearch from creating mappings for unused metadata fields, r
       ]
     }'
   ```
-  - If you are happy with the data in the newly created index, you can move the alias items_my-collection to the new index
-  - This makes the modified Items with lowercase identifiers visible to users accessing my-collection in the STAC API
-  - Using aliases allows you to switch between different index versions without changing the API endpoint
+    - If you are happy with the data in the newly created index, you can move the alias items_my-collection to the new index
+    - This makes the modified Items with lowercase identifiers visible to users accessing my-collection in the STAC API
+    - Using aliases allows you to switch between different index versions without changing the API endpoint
 
 ## Auth
 
 - **Overview**: Authentication is an optional feature that can be enabled through Route Dependencies.
 - **Implementation Options**:
-  - Basic authentication
-  - OAuth2 with Keycloak
-  - Custom route dependencies
+    - Basic authentication
+    - OAuth2 with Keycloak
+    - Custom route dependencies
 - **Configuration**: Authentication can be configured using the `STAC_FASTAPI_ROUTE_DEPENDENCIES` environment variable.
 - **Examples and Documentation**: Detailed examples and implementation guides can be found in the [examples/auth](examples/auth) directory.
 
 ## Aggregation
 
 - **Supported Aggregations**:
-  - Spatial aggregations of points and geometries
-  - Frequency distribution aggregation of any property including dates
-  - Temporal distribution of datetime values
+    - Spatial aggregations of points and geometries
+    - Frequency distribution aggregation of any property including dates
+    - Temporal distribution of datetime values
 
 - **Endpoint Locations**:
-  - Root Catalog level: `/aggregations`
-  - Collection level: `/<collection_id>/aggregations`
+    - Root Catalog level: `/aggregations`
+    - Collection level: `/<collection_id>/aggregations`
 
 - **Implementation Details**: The `sfeos_helpers.aggregation` package provides specialized functionality for both Elasticsearch and OpenSearch backends.
 
@@ -1735,10 +1786,10 @@ This prevents Elasticsearch from creating mappings for unused metadata fields, r
   ```
 
 - **Functionality**: 
-  - Limits each client to a specified number of requests per time period (e.g., 500 requests per minute)
-  - Helps prevent API abuse and maintains system stability
-  - Ensures fair resource allocation among all clients
-  
+    - Limits each client to a specified number of requests per time period (e.g., 500 requests per minute)
+    - Helps prevent API abuse and maintains system stability
+    - Ensures fair resource allocation among all clients
+    
 - **Examples**: Implementation examples are available in the [examples/rate_limit](examples/rate_limit) directory.
 
 
@@ -1753,9 +1804,9 @@ This prevents Elasticsearch from creating mappings for unused metadata fields, r
 - **Usage**: Once installed, `/metrics` is live on startup. If the package is missing, the app starts normally and logs a warning.
 
 - **Metrics exposed** (Prometheus text format):
-  - `http_requests_total` — request count by method, path, and status code
-  - `http_request_duration_seconds` — request latency histogram
-  - `http_requests_inprogress` — in-flight request gauge
+    - `http_requests_total` — request count by method, path, and status code
+    - `http_request_duration_seconds` — request latency histogram
+    - `http_requests_inprogress` — in-flight request gauge
 
 
 ## Hidden Items Filtering

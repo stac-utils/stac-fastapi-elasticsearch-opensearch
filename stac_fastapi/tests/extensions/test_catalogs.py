@@ -901,6 +901,75 @@ async def test_create_catalog_collection_adds_parent_id(
 
 
 @pytest.mark.asyncio
+async def test_update_catalog_collection_preserves_parent_ids(
+    catalogs_app_client, load_test_data
+):
+    """Test that updating a collection via scoped PUT preserves all parent_ids."""
+    # Create two catalogs
+    catalog_ids = []
+    for i in range(2):
+        test_catalog = load_test_data("test_catalog.json")
+        catalog_id = f"test-catalog-{uuid.uuid4()}-{i}"
+        test_catalog["id"] = catalog_id
+
+        catalog_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+        assert catalog_resp.status_code == 201
+        catalog_ids.append(catalog_id)
+
+    # Create a collection in the first catalog
+    test_collection = load_test_data("test_collection.json")
+    collection_id = f"test-collection-{uuid.uuid4()}"
+    test_collection["id"] = collection_id
+
+    create_resp = await catalogs_app_client.post(
+        f"/catalogs/{catalog_ids[0]}/collections", json=test_collection
+    )
+    assert create_resp.status_code == 201
+
+    # Add the same collection to the second catalog (multi-parent)
+    add_resp = await catalogs_app_client.post(
+        f"/catalogs/{catalog_ids[1]}/collections", json={"id": collection_id}
+    )
+    assert add_resp.status_code == 201
+
+    # Verify collection has both parent_ids by getting it via first catalog endpoint
+    get_resp = await catalogs_app_client.get(
+        f"/catalogs/{catalog_ids[0]}/collections/{collection_id}"
+    )
+    assert get_resp.status_code == 200
+
+    # Update the collection via the first catalog's scoped endpoint
+    updated_collection = load_test_data("test_collection.json")
+    updated_collection["id"] = collection_id
+    updated_collection["title"] = "Updated Title"
+    updated_collection["description"] = "Updated Description"
+
+    update_resp = await catalogs_app_client.put(
+        f"/catalogs/{catalog_ids[0]}/collections/{collection_id}",
+        json=updated_collection,
+    )
+    assert update_resp.status_code == 200
+
+    updated_data = update_resp.json()
+    assert updated_data["title"] == "Updated Title"
+    assert updated_data["description"] == "Updated Description"
+
+    # Verify the collection is still accessible from both catalogs
+    # (parent_ids should have been preserved)
+    for catalog_id in catalog_ids:
+        get_resp = await catalogs_app_client.get(
+            f"/catalogs/{catalog_id}/collections/{collection_id}"
+        )
+        assert (
+            get_resp.status_code == 200
+        ), f"Collection should still be accessible from catalog {catalog_id}"
+
+        data = get_resp.json()
+        assert data["title"] == "Updated Title"
+        assert data["description"] == "Updated Description"
+
+
+@pytest.mark.asyncio
 async def test_add_existing_collection_to_catalog(
     catalogs_app_client, load_test_data, ctx
 ):
@@ -3829,9 +3898,120 @@ async def test_catalog_conformance_endpoint(catalogs_app_client, load_test_data)
 
     # Check for required conformance classes
     assert "https://api.stacspec.org/v1.0.0/core" in conforms_to
-    assert "https://api.stacspec.org/v1.0.0-beta.4/multi-tenant-catalogs" in conforms_to
-    assert "https://api.stacspec.org/v1.0.0-rc.2/children" in conforms_to
+    assert "https://api.stacspec.org/v1.0.0-rc.1/multi-tenant-catalogs" in conforms_to
     assert (
-        "https://api.stacspec.org/v1.0.0-beta.4/multi-tenant-catalogs/transaction"
+        "https://api.stacspec.org/v1.0.0-rc.1/multi-tenant-catalogs/transaction"
         in conforms_to
     )
+    assert "https://api.stacspec.org/v1.0.0-rc.2/children" in conforms_to
+
+
+# ============================================================================
+# Database Error Handling & Observability Tests
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_catalog_create_logs_error_with_traceback(txn_client, caplog):
+    """Test that catalog creation failures log errors with full stack traces."""
+    import logging
+    from unittest.mock import patch
+
+    caplog.set_level(logging.ERROR)
+
+    # Mock the Elasticsearch client to raise an error
+    async def mock_index_error(*args, **kwargs):
+        raise Exception("Simulated index corruption error")
+
+    with patch.object(
+        txn_client.database.client, "index", side_effect=mock_index_error
+    ):
+        catalog = {
+            "id": "test-catalog",
+            "type": "Catalog",
+            "title": "Test Catalog",
+            "description": "Test Description",
+            "parent_ids": [],
+        }
+
+        try:
+            await txn_client.database.create_catalog(catalog, refresh=True)
+        except Exception:
+            pass  # Expected to fail
+
+    # Verify error was logged with stack trace
+    error_records = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert len(error_records) > 0, "Expected ERROR level log"
+    assert any(
+        "Error creating catalog" in r.message for r in error_records
+    ), "Expected 'Error creating catalog' in error log"
+    assert any(
+        r.exc_info is not None for r in error_records
+    ), "Expected stack trace (exc_info) in error log"
+
+
+@pytest.mark.asyncio
+async def test_catalog_delete_logs_error_with_traceback(txn_client, caplog):
+    """Test that catalog deletion failures log errors with full stack traces."""
+    import logging
+    from unittest.mock import patch
+
+    caplog.set_level(logging.ERROR)
+
+    # Mock the Elasticsearch client to raise an error
+    async def mock_delete_error(*args, **kwargs):
+        raise Exception("Simulated deletion error")
+
+    with patch.object(
+        txn_client.database.client, "delete", side_effect=mock_delete_error
+    ):
+        try:
+            await txn_client.database.delete_catalog("test-catalog", refresh=True)
+        except Exception:
+            pass  # Expected to fail
+
+    # Verify error was logged with stack trace
+    error_records = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert len(error_records) > 0
+    assert any("Error deleting catalog" in r.message for r in error_records)
+    assert any(r.exc_info is not None for r in error_records)
+
+
+@pytest.mark.asyncio
+async def test_collection_index_logs_error_with_traceback(txn_client, caplog):
+    """Test that collection indexing failures log errors with full stack traces."""
+    import logging
+    from unittest.mock import patch
+
+    caplog.set_level(logging.ERROR)
+
+    # Mock the Elasticsearch client to raise an error
+    async def mock_index_error(*args, **kwargs):
+        raise Exception("Simulated collection index error")
+
+    with patch.object(
+        txn_client.database.client, "index", side_effect=mock_index_error
+    ):
+        collection = {
+            "id": "test-collection",
+            "type": "Collection",
+            "title": "Test Collection",
+            "description": "Test Description",
+            "extent": {
+                "spatial": {"bbox": [[-180, -90, 180, 90]]},
+                "temporal": {"interval": [["2020-01-01T00:00:00Z", None]]},
+            },
+            "license": "MIT",
+            "links": [],
+        }
+
+        try:
+            await txn_client.database.create_collection(collection, refresh=True)
+        except Exception:
+            pass  # Expected to fail
+
+    # Verify error was logged with stack trace
+    error_records = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert len(error_records) > 0
+    assert any("Error indexing collection" in r.message for r in error_records)
+    assert any(r.exc_info is not None for r in error_records)
