@@ -8,6 +8,15 @@ Provides validation for STAC items and collections using multiple validation bac
 import asyncio
 import logging
 
+try:
+    import fastjsonschema
+    import stac_validator.fast_validator as fv_module
+    from stac_validator.fast_validator import get_validator
+except ImportError:
+    fastjsonschema = None
+    fv_module = None
+    get_validator = None
+
 from stac_pydantic import Collection, Item
 
 from stac_fastapi.core.utilities import get_bool_env
@@ -34,19 +43,14 @@ def validate_batch_with_stac_validator(
     if not get_bool_env("ENABLE_STAC_VALIDATOR") or not items:
         return items, {}
 
-    try:
-        import fastjsonschema
-        import stac_validator.fast_validator as fv_module
-        from stac_validator.fast_validator import get_validator
-
-        # Permanently mute the validator's CLI output for the SFEOS server
-        fv_module.QUIET_MODE = True
-    except ImportError as e:
-        logger.error("stac_validator fast_validator not available")
+    if fastjsonschema is None or get_validator is None:
         raise ImportError(
             "STAC validator is not installed. "
             "Install it with: pip install stac-fastapi-elasticsearch[validator]"
-        ) from e
+        )
+
+    # Permanently mute the validator's CLI output for the SFEOS server
+    fv_module.QUIET_MODE = True
 
     valid_items: list[dict] = []
     invalid_items: dict[str, list[str]] = {}
@@ -77,14 +81,12 @@ def validate_batch_with_stac_validator(
             if err_msg not in invalid_items:
                 invalid_items[err_msg] = []
             invalid_items[err_msg].append(item_id)
-            logger.error(f"STAC validation failed for '{item_id}': {err_msg}")
 
         except Exception as e:
             err_msg = str(e)
             if err_msg not in invalid_items:
                 invalid_items[err_msg] = []
             invalid_items[err_msg].append(item_id)
-            logger.error(f"STAC validation failed for '{item_id}': {err_msg}")
 
     return valid_items, invalid_items
 
