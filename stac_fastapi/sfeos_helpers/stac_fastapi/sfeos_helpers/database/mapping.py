@@ -7,6 +7,8 @@ import os
 from collections import defaultdict, deque
 from typing import Any
 
+from stac_fastapi.core.utilities import get_bool_env
+
 
 def _get_excluded_from_queryables() -> set[str]:
     """Get fields to exclude from queryables endpoint and filtering.
@@ -112,5 +114,14 @@ async def get_queryables_mapping_shared(
             field_name = field_fqn.removeprefix("properties.").removeprefix("assets.")
 
             queryables_mapping[field_name].append(field_fqn)
+
+            if get_bool_env("STAC_ALTERNATE_ASSETS"):
+                if field_name.startswith("alternate:"):
+                    queryables_mapping[f"primary.{field_name}"].append(field_fqn)
+
+                if field_name.startswith("alternate.alternate:"):
+                    queryables_mapping[field_name.removeprefix("alternate.")].append(
+                        field_fqn
+                    )
 
     return queryables_mapping

@@ -13,6 +13,7 @@ from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.extensions.filter import ALL_QUERYABLES, DEFAULT_QUERYABLES
 from stac_fastapi.core.queryables import merge_queryables
+from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.extensions.core.filter.client import AsyncBaseFiltersClient
 from stac_fastapi.sfeos_helpers.mappings import ES_MAPPING_TYPE_TO_JSON
 
@@ -58,12 +59,14 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
 
             if field.startswith("properties."):
                 result.add(field.removeprefix("properties."))
-            else:
+
+            elif not field.startswith("assets."):
                 result.add(f"properties.{field}")
 
             if field.startswith("assets."):
                 result.add(field.removeprefix("assets."))
-            else:
+
+            elif not field.startswith("properties."):
                 result.add(f"assets.{field}")
 
         return result
@@ -204,6 +207,11 @@ class EsAsyncBaseFiltersClient(AsyncBaseFiltersClient):
 
             if field_result.pop("$enum", False):
                 enum_fields[field_fqn] = field_result
+
+            if field_name.startswith("alternate:") and get_bool_env(
+                "STAC_ALTERNATE_ASSETS"
+            ):
+                stack.append((f"primary.{field_name}", field_def))
 
         if enum_fields:
             unique_values = await self.database.get_items_unique_values(
