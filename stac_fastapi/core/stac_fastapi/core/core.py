@@ -48,6 +48,7 @@ from stac_fastapi.core.validate import (
     async_validate_batch_with_stac_validator,
     async_validate_stac,
     batch_validate_topology,
+    validate_datetime_range,
     validate_item_topology_lightweight,
 )
 from stac_fastapi.extensions.core.transaction import AsyncBaseTransactionsClient
@@ -1010,8 +1011,9 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     async def _validate_single_item(self, item_dict: dict) -> None:
         """Validate a single STAC item.
 
-        Independently gates both STAC schema validation and topology validation
-        so that either can be enabled/disabled without affecting the other.
+        Independently gates STAC schema validation, datetime range validation,
+        and topology validation so that each can be enabled/disabled without
+        affecting the others.
 
         Args:
             item_dict: The item dictionary to validate.
@@ -1026,7 +1028,16 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             except (ValidationError, ValueError) as e:
                 raise HTTPException(status_code=400, detail=f"Invalid item: {e}")
 
-        # 2. Opt-in Pure-Python Topology Protection Gateway (Gated)
+        # 2. Datetime Range Validation (Gated by ENABLE_STAC_VALIDATOR - part of STAC spec)
+        if get_bool_env("ENABLE_STAC_VALIDATOR"):
+            try:
+                validate_datetime_range(item_dict)
+            except ValueError as e:
+                raise HTTPException(
+                    status_code=400, detail=f"Invalid item datetime: {e}"
+                )
+
+        # 3. Opt-in Pure-Python Topology Protection Gateway (Gated)
         if get_bool_env("ENABLE_TOPOLOGY_VALIDATION", default=False):
             try:
                 validate_item_topology_lightweight(item_dict)
@@ -1238,18 +1249,33 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         raise_on_error = get_bool_env("RAISE_ON_BULK_ERROR", default=False)
 
-        # 2. PREPROCESSING LAYER
+        # 2. PREPROCESSING LAYER (includes datetime validation)
         bulk_client = BulkTransactionsClient(
             database=self.database, settings=self.settings
         )
         processed_items = []
         skipped_db_duplicates = 0
+        preprocessing_errors: dict[str, list[str]] = {}
 
         for feature in unique_features:
             try:
                 prepped = bulk_client.preprocess_item(feature, base_url)
                 if prepped is not None:
-                    processed_items.append(prepped)
+                    # Validate datetime range during preprocessing (single pass, no extra loops)
+                    # Enabled when ENABLE_STAC_VALIDATOR is set (datetime validation is part of STAC spec)
+                    if get_bool_env("ENABLE_STAC_VALIDATOR"):
+                        try:
+                            validate_datetime_range(prepped)
+                            processed_items.append(prepped)
+                        except ValueError as e:
+                            err_msg = f"Datetime Range Error: {str(e)}"
+                            if err_msg not in preprocessing_errors:
+                                preprocessing_errors[err_msg] = []
+                            preprocessing_errors[err_msg].append(
+                                feature.get("id", "unknown")
+                            )
+                    else:
+                        processed_items.append(prepped)
                 else:
                     skipped_db_duplicates += 1
             except Exception as e:
@@ -1269,8 +1295,8 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             if max_batch_size > 0:
                 # --- PATH A: CHUNKED FAIL-FAST THRESHOLD VALIDATION ---
                 valid_items: list[dict] = []
-                validation_errors: dict[str, list[str]] = {}
-                validation_error_count = 0
+                validation_errors: dict[str, list[str]] = preprocessing_errors.copy()
+                validation_error_count = count_validation_errors(preprocessing_errors)
 
                 for i in range(0, len(processed_items), max_batch_size):
                     chunk = processed_items[i : i + max_batch_size]
@@ -1337,6 +1363,11 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 ) = await self._validate_feature_collection(
                     processed_items, skip_validation=False
                 )
+                # Merge preprocessing errors into validation errors
+                for msg, ids in preprocessing_errors.items():
+                    if msg not in validation_errors:
+                        validation_errors[msg] = []
+                    validation_errors[msg].extend(ids)
                 validation_error_count = count_validation_errors(validation_errors)
 
                 if validation_errors and raise_on_error:

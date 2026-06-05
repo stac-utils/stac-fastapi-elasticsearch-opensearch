@@ -930,3 +930,214 @@ async def test_feature_collection_conflict_errors_formatted(
     assert "already exists" in conflict_msg
     assert "conflict-test-item-1" in conflict_msg
     assert test_collection["id"] in conflict_msg
+
+
+@pytest.mark.asyncio
+async def test_datetime_validation_disabled_by_default(
+    txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
+):
+    """Test that datetime validation is disabled by default.
+
+    Verifies that items with invalid datetime ranges are accepted when
+    ENABLE_STAC_VALIDATOR is not set (defaults to false).
+    """
+    # Ensure STAC validation is disabled (default)
+    monkeypatch.delenv("ENABLE_STAC_VALIDATOR", raising=False)
+
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = f"test-collection-datetime-disabled-{uuid.uuid4()}"
+    await create_collection(txn_client, collection=test_collection)
+
+    base_item = load_test_data("test_item.json")
+    base_item["collection"] = test_collection["id"]
+
+    # Create item with invalid datetime range (start > end)
+    invalid_item = deepcopy(base_item)
+    invalid_item["id"] = "invalid-datetime-range-disabled"
+    invalid_item["properties"]["datetime"] = None
+    invalid_item["properties"]["start_datetime"] = "2020-12-31T00:00:00Z"
+    invalid_item["properties"]["end_datetime"] = "2020-01-01T00:00:00Z"  # start > end
+
+    # Should succeed because datetime validation is disabled
+    await create_item(txn_client, invalid_item)
+
+    # Verify item was inserted despite invalid datetime range
+    db_item = await txn_client.database.get_one_item(
+        item_id="invalid-datetime-range-disabled", collection_id=test_collection["id"]
+    )
+    assert (
+        db_item is not None
+    ), "Item should be inserted when datetime validation is disabled"
+
+
+@pytest.mark.asyncio
+async def test_datetime_validation_start_greater_than_end(
+    txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
+):
+    """Test that datetime validation rejects start_datetime > end_datetime."""
+    from fastapi import HTTPException
+
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
+
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = f"test-collection-datetime-range-{uuid.uuid4()}"
+    await create_collection(txn_client, collection=test_collection)
+
+    base_item = load_test_data("test_item.json")
+    base_item["collection"] = test_collection["id"]
+
+    # Create item with start_datetime > end_datetime
+    invalid_item = deepcopy(base_item)
+    invalid_item["id"] = "invalid-start-greater-than-end"
+    invalid_item["properties"]["datetime"] = None
+    invalid_item["properties"]["start_datetime"] = "2020-12-31T00:00:00Z"
+    invalid_item["properties"]["end_datetime"] = "2020-01-01T00:00:00Z"
+
+    # Should raise HTTPException due to datetime validation
+    with pytest.raises(HTTPException) as exc_info:
+        await create_item(txn_client, invalid_item)
+
+    assert exc_info.value.status_code == 400
+    assert "datetime" in exc_info.value.detail.lower()
+    assert "must be <=" in exc_info.value.detail.lower()
+
+
+@pytest.mark.asyncio
+async def test_datetime_validation_missing_end_datetime(
+    txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
+):
+    """Test that datetime validation requires both start and end datetime."""
+    from pydantic import ValidationError
+
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
+
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = f"test-collection-datetime-missing-{uuid.uuid4()}"
+    await create_collection(txn_client, collection=test_collection)
+
+    base_item = load_test_data("test_item.json")
+    base_item["collection"] = test_collection["id"]
+
+    # Create item with start_datetime but no end_datetime
+    invalid_item = deepcopy(base_item)
+    invalid_item["id"] = "missing-end-datetime"
+    invalid_item["properties"]["datetime"] = None
+    invalid_item["properties"]["start_datetime"] = "2020-01-01T00:00:00Z"
+    invalid_item["properties"]["end_datetime"] = None
+
+    # Should raise ValidationError (Pydantic validates before custom validation)
+    with pytest.raises(ValidationError) as exc_info:
+        await create_item(txn_client, invalid_item)
+
+    # Verify error mentions datetime requirement
+    assert "datetime" in str(exc_info.value).lower()
+
+
+@pytest.mark.asyncio
+async def test_datetime_validation_valid_range(
+    txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
+):
+    """Test that datetime validation allows valid datetime ranges."""
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
+
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = f"test-collection-datetime-valid-{uuid.uuid4()}"
+    await create_collection(txn_client, collection=test_collection)
+
+    base_item = load_test_data("test_item.json")
+    base_item["collection"] = test_collection["id"]
+
+    # Create item with valid datetime range
+    valid_item = deepcopy(base_item)
+    valid_item["id"] = "valid-datetime-range"
+    valid_item["properties"]["datetime"] = None
+    valid_item["properties"]["start_datetime"] = "2020-01-01T00:00:00Z"
+    valid_item["properties"]["end_datetime"] = "2020-12-31T23:59:59Z"
+
+    # Should succeed - valid datetime range
+    await create_item(txn_client, valid_item)
+
+    # Verify item was inserted
+    db_item = await txn_client.database.get_one_item(
+        item_id="valid-datetime-range", collection_id=test_collection["id"]
+    )
+    assert db_item is not None, "Valid datetime range should be inserted"
+
+
+@pytest.mark.asyncio
+async def test_datetime_validation_datetime_outside_range(
+    txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
+):
+    """Test that datetime validation rejects datetime outside start/end range."""
+    from fastapi import HTTPException
+
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
+
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = f"test-collection-datetime-outside-{uuid.uuid4()}"
+    await create_collection(txn_client, collection=test_collection)
+
+    base_item = load_test_data("test_item.json")
+    base_item["collection"] = test_collection["id"]
+
+    # Create item with datetime outside start/end range
+    invalid_item = deepcopy(base_item)
+    invalid_item["id"] = "datetime-outside-range"
+    invalid_item["properties"]["datetime"] = "2021-06-15T00:00:00Z"  # Outside range
+    invalid_item["properties"]["start_datetime"] = "2020-01-01T00:00:00Z"
+    invalid_item["properties"]["end_datetime"] = "2020-12-31T23:59:59Z"
+
+    # Should raise HTTPException due to datetime validation
+    with pytest.raises(HTTPException) as exc_info:
+        await create_item(txn_client, invalid_item)
+
+    assert exc_info.value.status_code == 400
+    assert "datetime" in exc_info.value.detail.lower()
+    assert "must be <=" in exc_info.value.detail.lower()
+
+
+@pytest.mark.asyncio
+async def test_datetime_validation_feature_collection_with_invalid_datetime(
+    txn_client, core_client, load_test_data, monkeypatch: pytest.MonkeyPatch
+):
+    """Test that datetime validation filters invalid items in FeatureCollection."""
+    from ..conftest import MockRequest
+
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
+    monkeypatch.setenv("RAISE_ON_BULK_ERROR", "false")
+
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = f"test-collection-datetime-fc-{uuid.uuid4()}"
+    await create_collection(txn_client, collection=test_collection)
+
+    base_item = load_test_data("test_item.json")
+    base_item["collection"] = test_collection["id"]
+
+    # Create FeatureCollection with 1 valid and 1 invalid datetime item
+    features = []
+
+    # Valid item
+    valid_item = deepcopy(base_item)
+    valid_item["id"] = "valid-datetime-fc"
+    valid_item["properties"]["datetime"] = None
+    valid_item["properties"]["start_datetime"] = "2020-01-01T00:00:00Z"
+    valid_item["properties"]["end_datetime"] = "2020-12-31T23:59:59Z"
+    features.append(valid_item)
+
+    # Invalid item (start > end)
+    invalid_item = deepcopy(base_item)
+    invalid_item["id"] = "invalid-datetime-fc"
+    invalid_item["properties"]["datetime"] = None
+    invalid_item["properties"]["start_datetime"] = "2020-12-31T00:00:00Z"
+    invalid_item["properties"]["end_datetime"] = "2020-01-01T00:00:00Z"
+    features.append(invalid_item)
+
+    feature_collection = {"type": "FeatureCollection", "features": features}
+
+    # Post FeatureCollection - should skip invalid item
+    await create_item(txn_client, feature_collection)
+
+    # Verify only valid item was inserted
+    fc = await core_client.item_collection(test_collection["id"], request=MockRequest())
+    assert len(fc["features"]) == 1
+    assert fc["features"][0]["id"] == "valid-datetime-fc"

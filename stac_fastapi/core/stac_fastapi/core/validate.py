@@ -8,6 +8,8 @@ Provides validation for STAC items and collections using multiple validation bac
 import asyncio
 import logging
 
+from dateutil import parser
+
 try:
     import fastjsonschema
     import stac_validator.fast_validator as fv_module
@@ -321,3 +323,72 @@ def batch_validate_topology(
             topology_errors[err_msg].append(item.get("id", "unknown"))
 
     return re_validated_features, topology_errors
+
+
+def validate_datetime_range(item: dict) -> None:
+    """Validate datetime range fields in a STAC item.
+
+    Validates STAC spec requirements:
+    - If datetime is null, both start_datetime and end_datetime must be set
+    - If start_datetime is set, end_datetime must also be set (and vice versa)
+    - start_datetime must be <= end_datetime
+    - If datetime is set, it must fall within start/end range
+
+    Args:
+        item (dict): STAC item to validate.
+
+    Raises:
+        ValueError: If datetime range validation fails.
+    """
+    properties = item.get("properties", {})
+
+    start_str = properties.get("start_datetime")
+    dt_str = properties.get("datetime")
+    end_str = properties.get("end_datetime")
+
+    # Parse datetime strings
+    try:
+        start = parser.isoparse(start_str) if start_str else None
+    except (ValueError, TypeError):
+        raise ValueError(f"Invalid ISO 8601 format for 'start_datetime': {start_str}")
+
+    try:
+        dt = parser.isoparse(dt_str) if dt_str else None
+    except (ValueError, TypeError):
+        raise ValueError(f"Invalid ISO 8601 format for 'datetime': {dt_str}")
+
+    try:
+        end = parser.isoparse(end_str) if end_str else None
+    except (ValueError, TypeError):
+        raise ValueError(f"Invalid ISO 8601 format for 'end_datetime': {end_str}")
+
+    # STAC Spec: If datetime is null, both start_datetime and end_datetime must be set
+    if dt is None:
+        if start is None or end is None:
+            raise ValueError(
+                "If 'datetime' is null, both 'start_datetime' and 'end_datetime' must be set"
+            )
+
+    # STAC Spec: If start_datetime is set, end_datetime must also be set (and vice versa)
+    if (start is not None and end is None) or (start is None and end is not None):
+        raise ValueError(
+            "Both 'start_datetime' and 'end_datetime' must be set together, or both must be null"
+        )
+
+    # Validate start <= end when both are set
+    if start is not None and end is not None:
+        if not (start <= end):
+            raise ValueError(
+                f"'start_datetime' ({start_str}) must be <= 'end_datetime' ({end_str})"
+            )
+
+    # Validate start <= datetime <= end when datetime is set
+    if dt is not None:
+        if start is not None and not (start <= dt):
+            raise ValueError(
+                f"'datetime' ({dt_str}) must be >= 'start_datetime' ({start_str})"
+            )
+        if end is not None and not (dt <= end):
+            raise ValueError(
+                f"'datetime' ({dt_str}) must be <= 'end_datetime' ({end_str})"
+            )
