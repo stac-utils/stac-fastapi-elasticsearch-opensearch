@@ -124,6 +124,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
   - [Interacting with the API](#interacting-with-the-api)
   - [Configure the API](#configure-the-api)
   - [Collection Pagination](#collection-pagination)
+  - [Sorting and Time-Range Items (`datetime: null`)](#sorting-and-time-range-items-datetime-null)
   - [SFEOS Tools CLI](#sfeos-tools-cli)
   - [Redis for navigation](#redis-for-navigation)
   - [Elasticsearch Mappings](#elasticsearch-mappings)
@@ -1401,6 +1402,19 @@ The system uses a precise naming convention:
   ```shell
   curl -X "GET" "http://localhost:8080/collections?limit=1&token=example_token"
   ```
+
+## Sorting and Time-Range Items (`datetime: null`)
+
+Due to a combination of the STAC specification's rules for time-range items and underlying OpenSearch/Elasticsearch pagination constraints, this API implements specific fallback behaviors for sorting.
+
+In STAC, items representing a time range (e.g., a multi-day composite) set their `datetime` field to `null` and provide a `start_datetime` and `end_datetime`. To prevent `search_after` pagination from crashing on these null values, the API assigns missing dates to the extreme past or future depending on your sort direction.
+
+**What this means for your search results:**
+
+* **Default Sort (Newest First):** The API evaluates `datetime` first. All single-snapshot items (which have a `datetime`) will appear chronologically at the top of your search results. All time-range items (which have `datetime: null`) will be grouped together and appear chronologically at the absolute bottom of the search results.
+* **Sorting by `start_datetime`:** If you want to prioritize time-range items, you can explicitly query `?sortby=-start_datetime`. This reverses the behavior: time-range items will sort chronologically at the top of your results, and single-snapshot items (which are missing a start date) will be pushed to the bottom.
+
+**Best Practice:** If your workflow relies on interleaving both single-snapshot and time-range items perfectly by date, we recommend filtering by specific datetime intervals in your query rather than relying strictly on the global sort order.
 
 ## SFEOS Tools CLI
 
