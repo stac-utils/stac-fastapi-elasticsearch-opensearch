@@ -1144,6 +1144,130 @@ async def test_search_datetime_with_null_datetime(
 
 
 @pytest.mark.asyncio
+async def test_search_datetime_with_null_datetime_pagination(
+    app_client, txn_client, load_test_data
+):
+    if get_bool_env("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip()
+
+    """Test pagination when properties.datetime is null.
+
+    This test verifies that:
+    1. Single-snapshot items (with datetime) appear first in descending sort
+    2. Time-range items (with datetime: null) are pushed to the end via fallback
+    3. Pagination correctly separates them across pages
+    """
+    # Setup: Create test collection
+    test_collection = load_test_data("test_collection.json")
+    try:
+        await create_collection(txn_client, collection=test_collection)
+    except Exception as e:
+        logger.error(f"Failed to create collection: {e}")
+        pytest.fail(f"Collection creation failed: {e}")
+
+    base_item = load_test_data("test_item.json")
+    collection_id = base_item["collection"]
+
+    # Create a recent single-snapshot item (should appear first in desc sort)
+    snapshot_item = deepcopy(base_item)
+    snapshot_item["id"] = "test-snapshot-item-2026"
+    snapshot_item["properties"]["datetime"] = "2026-01-15T12:00:00Z"
+
+    # Create time-range items with null datetime (should be pushed to end)
+    null_dt_item1 = deepcopy(base_item)
+    null_dt_item1["id"] = "test-time-range-item-2020-01"
+    null_dt_item1["properties"]["datetime"] = None
+    null_dt_item1["properties"]["start_datetime"] = "2020-01-01T00:00:00Z"
+    null_dt_item1["properties"]["end_datetime"] = "2020-01-02T00:00:00Z"
+
+    null_dt_item2 = deepcopy(base_item)
+    null_dt_item2["id"] = "test-time-range-item-2020-02"
+    null_dt_item2["properties"]["datetime"] = None
+    null_dt_item2["properties"]["start_datetime"] = "2020-01-02T00:00:00Z"
+    null_dt_item2["properties"]["end_datetime"] = "2020-01-03T00:00:00Z"
+
+    # Create all items
+    items = [snapshot_item, null_dt_item1, null_dt_item2]
+    for item in items:
+        try:
+            await create_item(txn_client, item)
+        except Exception as e:
+            logger.error(f"Failed to create item {item['id']}: {e}")
+            pytest.fail(f"Item creation failed: {e}")
+
+    # Refresh indices once
+    try:
+        await refresh_indices(txn_client)
+    except Exception as e:
+        logger.error(f"Failed to refresh indices: {e}")
+        pytest.fail(f"Index refresh failed: {e}")
+
+    # PAGE 1: Fetch with limit=1, should get the snapshot item (newest first)
+    response = await app_client.get(
+        "/search",
+        params={
+            "limit": 1,
+            "collections": collection_id,
+        },
+    )
+    assert response.status_code == 200
+    page1_data = response.json()
+    assert len(page1_data["features"]) == 1
+
+    # ASSERTION: The 2026 single-snapshot item MUST be first
+    assert (
+        page1_data["features"][0]["id"] == "test-snapshot-item-2026"
+    ), "Snapshot item with datetime should appear first in descending sort"
+
+    # Get pagination token for next page
+    next_token = None
+    for link in page1_data.get("links", []):
+        if link.get("rel") == "next":
+            # For GET requests, token is in the href URL
+            if link.get("method") == "GET" or "href" in link:
+                from urllib.parse import parse_qs, urlparse
+
+                parsed_url = urlparse(link.get("href", ""))
+                query_params = parse_qs(parsed_url.query)
+                next_token = query_params.get("token", [None])[0]
+            # For POST requests, token is in the body
+            else:
+                next_token = link.get("body", {}).get("token")
+            break
+
+    assert next_token is not None, "Expected next token for pagination"
+
+    # PAGE 2: Fetch next page with token
+    page2_response = await app_client.get(
+        "/search",
+        params={
+            "limit": 1,
+            "collections": collection_id,
+            "token": next_token,
+        },
+    )
+    assert page2_response.status_code == 200
+    page2_data = page2_response.json()
+    assert len(page2_data["features"]) == 1
+
+    # ASSERTION: A time-range item was successfully pushed to page 2
+    page2_item_id = page2_data["features"][0]["id"]
+    assert page2_item_id in [
+        "test-time-range-item-2020-01",
+        "test-time-range-item-2020-02",
+    ], (
+        "Time-range item with datetime: null should appear on page 2 "
+        "due to fallback to epoch 0 (ancient past)"
+    )
+
+    # Cleanup
+    try:
+        await txn_client.delete_collection(test_collection["id"])
+    except Exception as e:
+        logger.warning(f"Failed to delete collection: {e}")
+
+
+@pytest.mark.asyncio
 async def test_hidden_item_true(app_client, txn_client, load_test_data):
     """Test item with hidden=true is filtered out."""
 

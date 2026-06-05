@@ -330,9 +330,33 @@ def populate_sort_shared(sortby: list) -> dict[str, dict[str, str]] | None:
         Elasticsearch/OpenSearch for sorting query results. The returned dictionary can be
         directly used in search requests.
         Always includes 'id' as secondary sort to ensure unique pagination tokens.
+        Injects concrete missing fallbacks for temporal fields to prevent search_after
+        pagination crashes on null values.
     """
+    temporal_fields = {"datetime", "start_datetime", "end_datetime"}
+
     if sortby:
-        sort_config = {s.field: {"order": s.direction} for s in sortby}
+        sort_config = {}
+        for s in sortby:
+            field_name = s.field
+            direction = s.direction
+            sort_obj = {"order": direction}
+
+            # Inject concrete fallbacks for temporal fields using epoch milliseconds
+            # to avoid Java NumberFormatException when OpenSearch tries to parse ISO strings
+            if field_name in temporal_fields:
+                if direction == "desc":
+                    # Push missing dates to 1970-01-01 (epoch 0)
+                    sort_obj["missing"] = 0
+                else:
+                    # Push missing dates to 2100-01-01 (epoch 4102444800000)
+                    sort_obj["missing"] = 4102444800000
+            else:
+                # For non-date metadata fields, use _last
+                sort_obj["missing"] = "_last"
+
+            sort_config[field_name] = sort_obj
+
         sort_config.setdefault("id", {"order": "asc"})
         return sort_config
     else:
