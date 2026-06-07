@@ -13,12 +13,16 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
-- Use collections index mapping when translating CQL2 filters in `get_all_collections()` to fix wrong field paths for collection fields. [#754](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/754)
-- Fixed pagination timeout when searching items with null datetime values (time-range items). Added proper fallback handling for `datetime`, `start_datetime`, and `end_datetime` fields in sort clauses to ensure stable pagination tokens. [#756](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/756)
-
 ### Removed
 
 ### Updated
+
+## [v6.17.1] - 2026-06-06
+
+### Fixed
+
+- Use collections index mapping when translating CQL2 filters in `get_all_collections()` to fix wrong field paths for collection fields. [#754](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/754)
+- Fixed pagination timeout when searching items with null datetime values (time-range items). Added proper fallback handling for `datetime`, `start_datetime`, and `end_datetime` fields in sort clauses to ensure stable pagination tokens. [#756](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/756)
 
 ## [v6.17.0] - 2026-05-25
 
@@ -905,7 +909,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.17.0...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.17.1...main
+[v6.17.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.17.0...v6.17.1
 [v6.17.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.16.0...v6.17.0
 [v6.16.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.15.0...v6.16.0
 [v6.15.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.14.1...v6.15.0
