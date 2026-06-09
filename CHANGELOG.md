@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Updated
 
+- Updated prometheus-fastapi-instrumentator to v8.0. [#770](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/770)
+
 ## [v6.17.1] - 2026-06-06
 
 ### Fixed
