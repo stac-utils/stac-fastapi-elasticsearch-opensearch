@@ -4028,6 +4028,11 @@ async def test_hide_alternate_parents_suppresses_related_links_on_global_collect
         len(related_links) == 0
     ), f"Expected no related links with hide_alternate_parents=True, got: {related_links}"
 
+    duplicate_links = [link for link in links if link.get("rel") == "duplicate"]
+    assert (
+        len(duplicate_links) == 0
+    ), f"Expected no duplicate links with hide_alternate_parents=True, got: {duplicate_links}"
+
     # Parent link should still point to root
     parent_links = [link for link in links if link.get("rel") == "parent"]
     assert len(parent_links) == 1, "Should still have exactly 1 parent link"
@@ -4080,6 +4085,11 @@ async def test_hide_alternate_parents_suppresses_related_links_on_scoped_collect
     assert (
         len(related_links) == 0
     ), f"Expected no related links with hide_alternate_parents=True, got: {related_links}"
+
+    duplicate_links = [link for link in links if link.get("rel") == "duplicate"]
+    assert (
+        len(duplicate_links) == 0
+    ), f"Expected no duplicate links with hide_alternate_parents=True, got: {duplicate_links}"
 
     # Parent link should still point to the contextual catalog
     parent_links = [link for link in links if link.get("rel") == "parent"]
@@ -4184,6 +4194,11 @@ async def test_hide_alternate_parents_false_shows_related_links(
     assert (
         len(related_links) >= 1
     ), "Expected related links when hide_alternate_parents=False, got none"
+
+    duplicate_links = [link for link in links if link.get("rel") == "duplicate"]
+    assert (
+        len(duplicate_links) >= 1
+    ), "Expected duplicate links when hide_alternate_parents=False, got none"
 
 
 @pytest.mark.asyncio

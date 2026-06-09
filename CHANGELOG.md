@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
-- Added `HIDE_ALTERNATE_PARENTS` environment variable (default `False`) to suppress `rel="related"` links for alternate parents in poly-hierarchy. Useful for multi-tenant deployments to prevent information leakage about other tenants. When enabled, only the contextual `rel="parent"` link is advertised. [#768](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/768)
+- Added `HIDE_ALTERNATE_PARENTS` environment variable (default `False`) to suppress `rel="related"` and `rel="duplicate"` links for alternate parents in poly-hierarchy. Useful for multi-tenant deployments to prevent information leakage about other tenants. When enabled, only the contextual `rel="parent"` link is advertised. [#768](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/768)
 
 ### Changed
 

@@ -57,9 +57,9 @@ class Serializer(abc.ABC):
             parent_ids: List of parent catalog IDs.
             context_parent_id: The current catalog context (if accessing via scoped endpoint).
                               None means accessing via global endpoint (e.g., /collections/{id}).
-            hide_alternate_parents: If True, do not advertise rel="related" links to
-                alternative parents. Useful for multi-tenant deployments to prevent
-                information leakage about other tenants.
+            hide_alternate_parents: If True, do not advertise rel="related" or
+                rel="duplicate" links to alternative parents. Useful for multi-tenant
+                deployments to prevent information leakage about other tenants.
 
         Returns:
             List of link dictionaries following STAC link relation conventions.
@@ -131,7 +131,7 @@ class Serializer(abc.ABC):
             )
 
         # 4. Generate Duplicate Links (Collections only - catalogs don't have scoped read endpoints)
-        if resource_type == "Collection":
+        if resource_type == "Collection" and not hide_alternate_parents:
             for pid in unique_pids:
                 if pid == context_parent_id:
                     continue  # Skip current context
