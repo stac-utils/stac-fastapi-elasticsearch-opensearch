@@ -43,6 +43,7 @@ class Serializer(abc.ABC):
         resource_type: str,  # "Collection" or "Catalog"
         parent_ids: list[str],
         context_parent_id: str | None = None,
+        hide_alternate_parents: bool = False,
     ) -> list[dict]:
         """Generate HATEOAS links for poly-hierarchical STAC resources.
 
@@ -56,6 +57,9 @@ class Serializer(abc.ABC):
             parent_ids: List of parent catalog IDs.
             context_parent_id: The current catalog context (if accessing via scoped endpoint).
                               None means accessing via global endpoint (e.g., /collections/{id}).
+            hide_alternate_parents: If True, do not advertise rel="related" links to
+                alternative parents. Useful for multi-tenant deployments to prevent
+                information leakage about other tenants.
 
         Returns:
             List of link dictionaries following STAC link relation conventions.
@@ -79,18 +83,19 @@ class Serializer(abc.ABC):
                     "title": "Root Catalog",
                 }
             )
-            # All catalog parents become rel="related" links
-            for pid in unique_pids:
-                is_root = pid in ("stac-fastapi", "root")
-                if not is_root:
-                    links.append(
-                        {
-                            "rel": "related",
-                            "href": f"{base_url}catalogs/{pid}",
-                            "type": "application/json",
-                            "title": pid,
-                        }
-                    )
+            # All catalog parents become rel="related" links (unless hidden)
+            if not hide_alternate_parents:
+                for pid in unique_pids:
+                    is_root = pid in ("stac-fastapi", "root")
+                    if not is_root:
+                        links.append(
+                            {
+                                "rel": "related",
+                                "href": f"{base_url}catalogs/{pid}",
+                                "type": "application/json",
+                                "title": pid,
+                            }
+                        )
         elif not unique_pids and resource_type == "Catalog":
             # Root catalog with no parents
             links.append(
@@ -102,18 +107,21 @@ class Serializer(abc.ABC):
                 }
             )
         else:
-            # Scoped endpoint or catalog: first parent → parent, rest → related
+            # Scoped endpoint or catalog: first parent → parent, rest → related (unless hidden)
             for idx, pid in enumerate(unique_pids):
                 is_root = pid in ("stac-fastapi", "root")
                 href = base_url if is_root else f"{base_url}catalogs/{pid}"
-                links.append(
-                    {
-                        "rel": "parent" if idx == 0 else "related",
-                        "href": href,
-                        "type": "application/json",
-                        "title": "Root Catalog" if is_root else pid,
-                    }
-                )
+                rel = "parent" if idx == 0 else "related"
+                # Parent is always shown; related links for alternate parents are optional
+                if rel == "parent" or not hide_alternate_parents:
+                    links.append(
+                        {
+                            "rel": rel,
+                            "href": href,
+                            "type": "application/json",
+                            "title": "Root Catalog" if is_root else pid,
+                        }
+                    )
 
         # 3. Generate Canonical Link (Collections only - always points to global endpoint)
         if resource_type == "Collection":
@@ -354,10 +362,20 @@ class CollectionSerializer(Serializer):
                 link for link in collection_links if link.get("rel") != "parent"
             ]
 
+            # Get hide_alternate_parents flag from app state
+            hide_alternate_parents = getattr(
+                request.app.state, "catalogs_hide_alternate_parents", False
+            )
+
             # Generate poly-hierarchy links using helper method
             context_parent_id = request.path_params.get("catalog_id")
             dynamic_links = cls.generate_poly_hierarchy_links(
-                base_url, collection_id, "Collection", parent_ids, context_parent_id
+                base_url,
+                collection_id,
+                "Collection",
+                parent_ids,
+                context_parent_id,
+                hide_alternate_parents,
             )
             collection_links.extend(dynamic_links)
 
@@ -418,9 +436,19 @@ class CollectionSerializer(Serializer):
                 link for link in collection_links if link.get("rel") != "parent"
             ]
 
+            # Get hide_alternate_parents flag from app state
+            hide_alternate_parents = getattr(
+                request.app.state, "catalogs_hide_alternate_parents", False
+            )
+
             # Generate poly-hierarchy links using helper method (catalog_id is the context)
             dynamic_links = cls.generate_poly_hierarchy_links(
-                base_url, collection_id, "Collection", parent_ids, catalog_id
+                base_url,
+                collection_id,
+                "Collection",
+                parent_ids,
+                catalog_id,
+                hide_alternate_parents,
             )
             collection_links.extend(dynamic_links)
 
@@ -482,10 +510,20 @@ class CatalogSerializer(Serializer):
 
         catalog_links = resolve_links(catalog.get("links", []), base_url)
 
+        # Get hide_alternate_parents flag from app state
+        hide_alternate_parents = getattr(
+            request.app.state, "catalogs_hide_alternate_parents", False
+        )
+
         # Generate poly-hierarchy links using helper method (catalog_id is the context)
         context_parent_id = request.path_params.get("parent_catalog_id")
         dynamic_links = cls.generate_poly_hierarchy_links(
-            base_url, catalog.get("id"), "Catalog", parent_ids, context_parent_id
+            base_url,
+            catalog.get("id"),
+            "Catalog",
+            parent_ids,
+            context_parent_id,
+            hide_alternate_parents,
         )
         catalog_links.extend(dynamic_links)
 

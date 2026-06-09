@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Added `HIDE_ALTERNATE_PARENTS` environment variable (default `False`) to suppress `rel="related"` links for alternate parents in poly-hierarchy. Useful for multi-tenant deployments to prevent information leakage about other tenants. When enabled, only the contextual `rel="parent"` link is advertised.
+
 ### Changed
 
 ### Fixed
@@ -16,6 +18,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Removed
 
 ### Updated
+
+- Updated `stac-fastapi-catalogs-extension` to `v0.4.0`.
 
 ## [v6.17.1] - 2026-06-06
 
