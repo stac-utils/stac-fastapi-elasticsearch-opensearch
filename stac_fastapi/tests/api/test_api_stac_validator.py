@@ -1141,3 +1141,100 @@ async def test_datetime_validation_feature_collection_with_invalid_datetime(
     fc = await core_client.item_collection(test_collection["id"], request=MockRequest())
     assert len(fc["features"]) == 1
     assert fc["features"][0]["id"] == "valid-datetime-fc"
+
+
+@pytest.mark.asyncio
+async def test_datetime_validation_start_equals_end(
+    txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
+):
+    """Test that datetime validation allows start_datetime == end_datetime."""
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
+
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = f"test-collection-datetime-equal-{uuid.uuid4()}"
+    await create_collection(txn_client, collection=test_collection)
+
+    base_item = load_test_data("test_item.json")
+    base_item["collection"] = test_collection["id"]
+
+    # Create item with start_datetime == end_datetime (instant in time)
+    valid_item = deepcopy(base_item)
+    valid_item["id"] = "start-equals-end"
+    valid_item["properties"]["datetime"] = None
+    valid_item["properties"]["start_datetime"] = "2020-06-15T12:00:00Z"
+    valid_item["properties"]["end_datetime"] = "2020-06-15T12:00:00Z"
+
+    # Should succeed - equality is valid
+    await create_item(txn_client, valid_item)
+
+    # Verify item was inserted
+    db_item = await txn_client.database.get_one_item(
+        item_id="start-equals-end", collection_id=test_collection["id"]
+    )
+    assert (
+        db_item is not None
+    ), "Item with start_datetime == end_datetime should be inserted"
+
+
+@pytest.mark.asyncio
+async def test_datetime_validation_datetime_equals_start(
+    txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
+):
+    """Test that datetime validation allows datetime == start_datetime."""
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
+
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = f"test-collection-datetime-eq-start-{uuid.uuid4()}"
+    await create_collection(txn_client, collection=test_collection)
+
+    base_item = load_test_data("test_item.json")
+    base_item["collection"] = test_collection["id"]
+
+    # Create item with datetime == start_datetime
+    valid_item = deepcopy(base_item)
+    valid_item["id"] = "datetime-equals-start"
+    valid_item["properties"]["datetime"] = "2020-01-01T00:00:00Z"
+    valid_item["properties"]["start_datetime"] = "2020-01-01T00:00:00Z"
+    valid_item["properties"]["end_datetime"] = "2020-12-31T23:59:59Z"
+
+    # Should succeed - equality is valid
+    await create_item(txn_client, valid_item)
+
+    # Verify item was inserted
+    db_item = await txn_client.database.get_one_item(
+        item_id="datetime-equals-start", collection_id=test_collection["id"]
+    )
+    assert (
+        db_item is not None
+    ), "Item with datetime == start_datetime should be inserted"
+
+
+@pytest.mark.asyncio
+async def test_datetime_validation_datetime_equals_end(
+    txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
+):
+    """Test that datetime validation allows datetime == end_datetime."""
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
+
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = f"test-collection-datetime-eq-end-{uuid.uuid4()}"
+    await create_collection(txn_client, collection=test_collection)
+
+    base_item = load_test_data("test_item.json")
+    base_item["collection"] = test_collection["id"]
+
+    # Create item with datetime == end_datetime
+    valid_item = deepcopy(base_item)
+    valid_item["id"] = "datetime-equals-end"
+    valid_item["properties"]["datetime"] = "2020-12-31T23:59:59Z"
+    valid_item["properties"]["start_datetime"] = "2020-01-01T00:00:00Z"
+    valid_item["properties"]["end_datetime"] = "2020-12-31T23:59:59Z"
+
+    # Should succeed - equality is valid
+    await create_item(txn_client, valid_item)
+
+    # Verify item was inserted
+    db_item = await txn_client.database.get_one_item(
+        item_id="datetime-equals-end", collection_id=test_collection["id"]
+    )
+    assert db_item is not None, "Item with datetime == end_datetime should be inserted"
