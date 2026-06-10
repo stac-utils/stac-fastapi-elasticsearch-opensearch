@@ -274,7 +274,7 @@ items_get_request_model = create_request_model(
 app_config = {
     "title": os.getenv("STAC_FASTAPI_TITLE", "stac-fastapi-opensearch"),
     "description": os.getenv("STAC_FASTAPI_DESCRIPTION", "stac-fastapi-opensearch"),
-    "api_version": os.getenv("STAC_FASTAPI_VERSION", "6.17.0"),
+    "api_version": os.getenv("STAC_FASTAPI_VERSION", "6.17.2"),
     "settings": settings,
     "extensions": extensions,
     "client": CoreClient(
