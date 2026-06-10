@@ -1455,7 +1455,6 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         if other_errors and raise_on_error:
             raise BulkIndexError(errors=other_errors, collection_id=collection_id)
 
-        # 6. RESPONSE FORMATTING
         # Parse conflicts exactly ONCE and cache the result to avoid redundant generation
         formatted_conflicts = (
             format_conflict_errors(conflict_errors) if conflict_errors else {}

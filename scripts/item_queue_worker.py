@@ -22,7 +22,10 @@ from redis.exceptions import LockError
 
 from stac_fastapi.core.redis_utils import AsyncRedisQueueManager, ItemQueueSettings
 from stac_fastapi.core.utilities import get_bool_env
-from stac_fastapi.core.validate import async_validate_batch_with_stac_validator
+from stac_fastapi.core.validate import (
+    async_validate_batch_with_stac_validator,
+    batch_validate_topology,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -223,15 +226,31 @@ class ItemQueueWorker:
                     "VALIDATE_BEFORE_QUEUE", default=True
                 )
 
+                valid_items = items
+                invalid_item_ids = set()
+                validation_errors: dict[str, list[str]] = {}
+
                 # Only waste CPU cycles validating here if the web server skipped it
-                if get_bool_env("ENABLE_STAC_VALIDATOR") and not validate_before_queue:
-                    (
-                        valid_items,
-                        validation_errors,
-                    ) = await async_validate_batch_with_stac_validator(items)
+                if not validate_before_queue:
+                    # STAC Schema Validation (if enabled)
+                    if get_bool_env("ENABLE_STAC_VALIDATOR"):
+                        (
+                            valid_items,
+                            validation_errors,
+                        ) = await async_validate_batch_with_stac_validator(valid_items)
+
+                    # Topology Validation (if enabled) - runs on items that passed STAC validation
+                    if get_bool_env("ENABLE_TOPOLOGY_VALIDATION", default=False):
+                        valid_items, topology_errors = await asyncio.to_thread(
+                            batch_validate_topology, valid_items
+                        )
+                        # Merge topology errors into validation_errors
+                        for msg, ids in topology_errors.items():
+                            if msg not in validation_errors:
+                                validation_errors[msg] = []
+                            validation_errors[msg].extend(ids)
 
                     # Extract invalid item IDs from grouped validation errors
-                    invalid_item_ids = set()
                     for error_msg, item_ids in validation_errors.items():
                         for item_id in item_ids:
                             invalid_item_ids.add(item_id)
@@ -239,11 +258,9 @@ class ItemQueueWorker:
                                 f"Worker validation failed for '{item_id}' in collection '{collection_id}': {error_msg}"
                             )
                 else:
-                    # Bypass validation because either:
-                    # 1. ENABLE_STAC_VALIDATOR is disabled, OR
-                    # 2. VALIDATE_BEFORE_QUEUE=true (data already pre-verified on API thread)
-                    valid_items = items
-                    invalid_item_ids = set()
+                    # Bypass validation because VALIDATE_BEFORE_QUEUE=true
+                    # (data already pre-verified on API thread)
+                    pass
 
                 # Handle invalid items (Dead Letter Queue)
                 if invalid_item_ids:

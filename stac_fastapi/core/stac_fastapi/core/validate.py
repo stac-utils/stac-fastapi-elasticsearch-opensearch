@@ -215,6 +215,8 @@ def validate_geometry_bounds(coords: list) -> None:
 
     # Check if we reached an atomic coordinate pair [lon, lat]
     if isinstance(coords[0], (int, float)):
+        if len(coords) < 2:
+            raise ValueError("Coordinate pair must have at least 2 elements [lon, lat]")
         lon, lat = coords[0], coords[1]
         if not (-180 <= lon <= 180) or not (-90 <= lat <= 90):
             raise ValueError(f"Coordinates out of global WGS84 bounds: [{lon}, {lat}]")
@@ -363,14 +365,13 @@ def validate_datetime_range(item: dict) -> None:
         raise ValueError(f"Invalid ISO 8601 format for 'end_datetime': {end_str}")
 
     # STAC Spec: If datetime is null, both start_datetime and end_datetime must be set
-    if dt is None:
-        if start is None or end is None:
-            raise ValueError(
-                "If 'datetime' is null, both 'start_datetime' and 'end_datetime' must be set"
-            )
+    if dt is None and (start is None or end is None):
+        raise ValueError(
+            "If 'datetime' is null, both 'start_datetime' and 'end_datetime' must be set"
+        )
 
-    # STAC Spec: If start_datetime is set, end_datetime must also be set (and vice versa)
-    if (start is not None and end is None) or (start is None and end is not None):
+    # STAC Spec: If either start_datetime or end_datetime is set, both must be set
+    if (start is not None or end is not None) and (start is None or end is None):
         raise ValueError(
             "Both 'start_datetime' and 'end_datetime' must be set together, or both must be null"
         )
