@@ -30,12 +30,12 @@ keywords = [
 dynamic = ["version"]
 dependencies = [
     "tenacity~=9.1.2",
-    "stac-fastapi.core==6.17.1",
+    "stac-fastapi.core==6.17.2",
 ]
 
 [project.optional-dependencies]
 metrics = [
-    "prometheus-fastapi-instrumentator~=7.1.0",
+    "prometheus-fastapi-instrumentator~=8.0",
 ]
 
 [project.urls]
