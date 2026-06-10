@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Updated
 
+## [v6.17.2] - 2026-06-10
+
+### Updated
+
 - Updated prometheus-fastapi-instrumentator to v8.0. [#770](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/770)
 
 ## [v6.17.1] - 2026-06-06
@@ -911,7 +915,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.17.1...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.17.2...main
+[v6.17.2]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.17.1...v6.17.2
 [v6.17.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.17.0...v6.17.1
 [v6.17.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.16.0...v6.17.0
 [v6.16.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.15.0...v6.16.0
