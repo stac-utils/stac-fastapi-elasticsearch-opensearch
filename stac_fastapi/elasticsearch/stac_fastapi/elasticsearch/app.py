@@ -18,6 +18,7 @@ from stac_fastapi.core.core import (
     CoreClient,
     TransactionsClient,
 )
+from stac_fastapi.core.exceptions import QueuedSuccess, queued_success_handler
 from stac_fastapi.core.extensions import QueryExtension
 from stac_fastapi.core.extensions.aggregation import (
     EsAggregationExtensionGetRequest,
@@ -77,12 +78,15 @@ ENABLE_COLLECTIONS_SEARCH_ROUTE = get_bool_env(
     "ENABLE_COLLECTIONS_SEARCH_ROUTE", default=False
 )
 ENABLE_CATALOGS_ROUTE = get_bool_env("ENABLE_CATALOGS_ROUTE", default=False)
+ENABLE_STAC_VALIDATOR = get_bool_env("ENABLE_STAC_VALIDATOR", default=False)
 logger.info("TRANSACTIONS_EXTENSIONS is set to %s", TRANSACTIONS_EXTENSIONS)
 logger.info("ENABLE_COLLECTIONS_SEARCH is set to %s", ENABLE_COLLECTIONS_SEARCH)
 logger.info(
     "ENABLE_COLLECTIONS_SEARCH_ROUTE is set to %s", ENABLE_COLLECTIONS_SEARCH_ROUTE
 )
 logger.info("ENABLE_CATALOGS_ROUTE is set to %s", ENABLE_CATALOGS_ROUTE)
+logger.info("ENABLE_STAC_VALIDATOR is set to %s", ENABLE_STAC_VALIDATOR)
+
 
 settings = ElasticsearchSettings()
 session = Session.create_from_settings(settings)
@@ -304,6 +308,9 @@ async def lifespan(app: FastAPI):
 
 app = api.app
 app.router.lifespan_context = lifespan
+
+# Register custom exception handler for queued items (202 Accepted)
+app.add_exception_handler(QueuedSuccess, queued_success_handler)
 app.root_path = os.getenv("STAC_FASTAPI_ROOT_PATH", "")
 
 try:

@@ -155,7 +155,27 @@ class ItemSerializer(Serializer):
         Returns:
             A dictionary representation of the item ready for database insertion.
         """
+        # Add required STAC v1.0.0 collection link if item has collection field
         item_links = resolve_links(stac_data.get("links", []), base_url)
+
+        # Ensure collection link exists (required by STAC v1.0.0 spec)
+        if stac_data.get("collection"):
+            collection_id = stac_data["collection"]
+
+            # Check if collection link already exists
+            has_collection_link = any(
+                link.get("rel") == "collection" for link in item_links
+            )
+
+            if not has_collection_link:
+                # Add collection link
+                collection_link = {
+                    "rel": "collection",
+                    "href": f"{base_url}collections/{collection_id}",
+                    "type": "application/json",
+                }
+                item_links.append(collection_link)
+
         stac_data["links"] = item_links
 
         if get_bool_env("STAC_INDEX_ASSETS"):
