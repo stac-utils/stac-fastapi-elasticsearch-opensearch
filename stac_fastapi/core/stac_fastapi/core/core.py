@@ -1051,6 +1051,11 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     ) -> tuple[list[dict], dict[str, list[str]]]:
         """Validate a collection of STAC features.
 
+        Validation order:
+        1. STAC Schema Validation (if enabled)
+        2. Datetime Range Validation (only on items that pass schema validation)
+        3. Topology Validation (if enabled)
+
         Args:
             features: List of feature dictionaries to validate.
             skip_validation: Whether to skip validation (e.g., when using queue).
@@ -1068,7 +1073,31 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 validation_errors,
             ) = await async_validate_batch_with_stac_validator(features)
 
-        # 2. Run lightweight topology validation pass independently
+        # 2. Run datetime range validation (only on items that passed schema validation)
+        # This avoids wasting CPU on items that will be rejected anyway
+        if get_bool_env("ENABLE_STAC_VALIDATOR") and not skip_validation:
+            datetime_errors: dict[str, list[str]] = {}
+            filtered_features = []
+
+            for item in valid_features:
+                try:
+                    validate_datetime_range(item)
+                    filtered_features.append(item)
+                except ValueError as e:
+                    err_msg = f"Datetime Range Error: {str(e)}"
+                    if err_msg not in datetime_errors:
+                        datetime_errors[err_msg] = []
+                    datetime_errors[err_msg].append(item.get("id", "unknown"))
+
+            valid_features = filtered_features
+
+            # Merge datetime errors into validation_errors
+            for msg, ids in datetime_errors.items():
+                if msg not in validation_errors:
+                    validation_errors[msg] = []
+                validation_errors[msg].extend(ids)
+
+        # 3. Run lightweight topology validation pass independently
         if (
             get_bool_env("ENABLE_TOPOLOGY_VALIDATION", default=False)
             and not skip_validation
@@ -1249,33 +1278,18 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         raise_on_error = get_bool_env("RAISE_ON_BULK_ERROR", default=False)
 
-        # 2. PREPROCESSING LAYER (includes datetime validation)
+        # 2. PREPROCESSING LAYER
         bulk_client = BulkTransactionsClient(
             database=self.database, settings=self.settings
         )
         processed_items = []
         skipped_db_duplicates = 0
-        preprocessing_errors: dict[str, list[str]] = {}
 
         for feature in unique_features:
             try:
                 prepped = bulk_client.preprocess_item(feature, base_url)
                 if prepped is not None:
-                    # Validate datetime range during preprocessing (single pass, no extra loops)
-                    # Enabled when ENABLE_STAC_VALIDATOR is set (datetime validation is part of STAC spec)
-                    if get_bool_env("ENABLE_STAC_VALIDATOR"):
-                        try:
-                            validate_datetime_range(prepped)
-                            processed_items.append(prepped)
-                        except ValueError as e:
-                            err_msg = f"Datetime Range Error: {str(e)}"
-                            if err_msg not in preprocessing_errors:
-                                preprocessing_errors[err_msg] = []
-                            preprocessing_errors[err_msg].append(
-                                feature.get("id", "unknown")
-                            )
-                    else:
-                        processed_items.append(prepped)
+                    processed_items.append(prepped)
                 else:
                     skipped_db_duplicates += 1
             except Exception as e:
@@ -1295,8 +1309,8 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             if max_batch_size > 0:
                 # --- PATH A: CHUNKED FAIL-FAST THRESHOLD VALIDATION ---
                 valid_items: list[dict] = []
-                validation_errors: dict[str, list[str]] = preprocessing_errors.copy()
-                validation_error_count = count_validation_errors(preprocessing_errors)
+                validation_errors: dict[str, list[str]] = {}
+                validation_error_count = 0
 
                 for i in range(0, len(processed_items), max_batch_size):
                     chunk = processed_items[i : i + max_batch_size]
@@ -1363,11 +1377,6 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 ) = await self._validate_feature_collection(
                     processed_items, skip_validation=False
                 )
-                # Merge preprocessing errors into validation errors
-                for msg, ids in preprocessing_errors.items():
-                    if msg not in validation_errors:
-                        validation_errors[msg] = []
-                    validation_errors[msg].extend(ids)
                 validation_error_count = count_validation_errors(validation_errors)
 
                 if validation_errors and raise_on_error:
