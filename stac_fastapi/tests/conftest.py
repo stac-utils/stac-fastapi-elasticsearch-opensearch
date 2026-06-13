@@ -1,4 +1,3 @@
-import asyncio
 import copy
 import json
 import os
@@ -111,14 +110,6 @@ class TestSettings(AsyncSettings):
 
 settings = TestSettings()
 Settings.set(settings)
-
-
-@pytest.fixture(scope="session")
-def event_loop():
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    yield loop
-    loop.close()
 
 
 def _load_file(filename: str) -> dict:
