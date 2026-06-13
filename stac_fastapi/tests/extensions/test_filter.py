@@ -12,10 +12,11 @@ from httpx import AsyncClient
 
 from ..conftest import create_collection, create_item, refresh_indices
 
+pytestmark = pytest.mark.asyncio(loop_scope="session")
+
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
-@pytest.mark.asyncio
 async def test_filter_extension_landing_page_link(app_client, ctx):
     resp = await app_client.get("/")
     assert resp.status_code == 200
@@ -26,7 +27,6 @@ async def test_filter_extension_landing_page_link(app_client, ctx):
     assert "queryables" in keys
 
 
-@pytest.mark.asyncio
 async def test_filter_extension_collection_link(app_client, load_test_data):
     """Test creation and deletion of a collection"""
     test_collection = load_test_data("test_collection.json")
@@ -44,7 +44,6 @@ async def test_filter_extension_collection_link(app_client, load_test_data):
     assert resp.status_code == 204
 
 
-@pytest.mark.asyncio
 async def test_collections_search_collection_mapping(
     app_client, txn_client, load_test_data
 ):
@@ -111,7 +110,6 @@ async def test_collections_search_collection_mapping(
     await app_client.delete(f"/collections/{other_collection_id}")
 
 
-@pytest.mark.asyncio
 async def test_search_filters_post(app_client, ctx):
     filters = []
     pwd = f"{THIS_DIR}/cql2"
@@ -128,7 +126,6 @@ async def test_search_filters_post(app_client, ctx):
         assert resp.status_code == 200
 
 
-@pytest.mark.asyncio
 async def test_search_filter_extension_eq_get(app_client, ctx):
     resp = await app_client.get(
         '/search?filter-lang=cql2-json&filter={"op":"=","args":[{"property":"id"},"test-item"]}'
@@ -138,7 +135,6 @@ async def test_search_filter_extension_eq_get(app_client, ctx):
     assert len(resp_json["features"]) == 1
 
 
-@pytest.mark.asyncio
 async def test_search_filter_extension_eq_post(app_client, ctx):
     params = {
         "filter": {"op": "=", "args": [{"property": "id"}, ctx.item["id"]]},
@@ -150,7 +146,6 @@ async def test_search_filter_extension_eq_post(app_client, ctx):
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_search_request_cql2_equal_operator(
     app_client, mock_datetime_env, load_test_data, caplog
 ):
@@ -215,7 +210,6 @@ async def test_search_request_cql2_equal_operator(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_search_request_cql2_greater_than_operator(
     app_client, mock_datetime_env, load_test_data, caplog
 ):
@@ -295,7 +289,6 @@ async def test_search_request_cql2_greater_than_operator(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_search_request_cql2_less_than_operator(
     app_client, mock_datetime_env, load_test_data, caplog
 ):
@@ -375,7 +368,6 @@ async def test_search_request_cql2_less_than_operator(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_search_request_cql2_between_operator(
     app_client, mock_datetime_env, load_test_data, caplog
 ):
@@ -464,7 +456,6 @@ async def test_search_request_cql2_between_operator(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_search_request_cql2_in_operator(
     app_client, mock_datetime_env, load_test_data, caplog
 ):
@@ -546,7 +537,6 @@ async def test_search_request_cql2_in_operator(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_search_request_cql2_not_equal_operator(
     app_client, mock_datetime_env, load_test_data, caplog
 ):
@@ -627,7 +617,6 @@ async def test_search_request_cql2_not_equal_operator(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_search_request_cql2_and_operator(
     app_client, mock_datetime_env, load_test_data, caplog
 ):
@@ -709,7 +698,6 @@ async def test_search_request_cql2_and_operator(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_search_request_cql2_or_operator(
     app_client, mock_datetime_env, load_test_data, caplog
 ):
@@ -815,7 +803,6 @@ async def test_search_request_cql2_or_operator(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_search_request_cql2_not_operator(
     app_client, mock_datetime_env, load_test_data, caplog
 ):
@@ -912,7 +899,6 @@ async def test_search_request_cql2_not_operator(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_search_request_cql2_like_operator(
     app_client, mock_datetime_env, load_test_data, caplog
 ):
@@ -1009,7 +995,6 @@ async def test_search_request_cql2_like_operator(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_search_request_cql2_is_null(
     app_client, mock_datetime_env, load_test_data, caplog
 ):
@@ -1100,7 +1085,6 @@ async def test_search_request_cql2_is_null(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_search_request_cql2_is_not_null(
     app_client, mock_datetime_env, load_test_data, caplog
 ):
@@ -1199,7 +1183,6 @@ async def test_search_request_cql2_is_not_null(
     await app_client.delete(f"/collections/{collection_id}")
 
 
-@pytest.mark.asyncio
 async def test_search_filter_extension_gte_get(app_client, ctx):
     # there's one item that can match, so one of these queries should match it and the other shouldn't
     resp = await app_client.get(
@@ -1217,7 +1200,6 @@ async def test_search_filter_extension_gte_get(app_client, ctx):
     assert len(resp.json()["features"]) == 0
 
 
-@pytest.mark.asyncio
 async def test_search_filter_extension_gte_post(app_client, ctx):
     # there's one item that can match, so one of these queries should match it and the other shouldn't
     params = {
@@ -1249,7 +1231,6 @@ async def test_search_filter_extension_gte_post(app_client, ctx):
     assert len(resp.json()["features"]) == 0
 
 
-@pytest.mark.asyncio
 async def test_search_filter_ext_and_get(app_client, ctx):
     resp = await app_client.get(
         '/search?filter-lang=cql2-json&filter={"op":"and","args":[{"op":"<=","args":[{"property":"properties.proj:epsg"},32756]},{"op":"=","args":[{"property":"id"},"test-item"]}]}'
@@ -1259,7 +1240,6 @@ async def test_search_filter_ext_and_get(app_client, ctx):
     assert len(resp.json()["features"]) == 1
 
 
-@pytest.mark.asyncio
 async def test_search_filter_ext_and_get_id(app_client, ctx):
     collection = ctx.item["collection"]
     id = ctx.item["id"]
@@ -1270,7 +1250,6 @@ async def test_search_filter_ext_and_get_id(app_client, ctx):
     assert len(resp.json()["features"]) == 1
 
 
-@pytest.mark.asyncio
 async def test_search_filter_ext_and_get_cql2text_id(app_client, ctx):
     collection = ctx.item["collection"]
     id = ctx.item["id"]
@@ -1281,7 +1260,6 @@ async def test_search_filter_ext_and_get_cql2text_id(app_client, ctx):
     assert len(resp.json()["features"]) == 1
 
 
-@pytest.mark.asyncio
 async def test_search_filter_ext_and_get_cql2text_cloud_cover(app_client, ctx):
     collection = ctx.item["collection"]
     cloud_cover = ctx.item["properties"]["eo:cloud_cover"]
@@ -1292,7 +1270,6 @@ async def test_search_filter_ext_and_get_cql2text_cloud_cover(app_client, ctx):
     assert len(resp.json()["features"]) == 1
 
 
-@pytest.mark.asyncio
 async def test_search_filter_ext_and_get_cql2text_cloud_cover_no_results(
     app_client, ctx
 ):
@@ -1305,7 +1282,6 @@ async def test_search_filter_ext_and_get_cql2text_cloud_cover_no_results(
     assert len(resp.json()["features"]) == 0
 
 
-@pytest.mark.asyncio
 async def test_search_filter_ext_and_post(app_client, ctx):
     params = {
         "filter": {
@@ -1328,7 +1304,6 @@ async def test_search_filter_ext_and_post(app_client, ctx):
     assert len(resp.json()["features"]) == 1
 
 
-@pytest.mark.asyncio
 async def test_search_filter_extension_floats_get(app_client, ctx):
     resp = await app_client.get(
         """/search?filter-lang=cql2-json&filter={"op":"and","args":[{"op":"=","args":[{"property":"id"},"test-item"]},{"op":">","args":[{"property":"properties.view:sun_elevation"},"-37.30891534"]},{"op":"<","args":[{"property":"properties.view:sun_elevation"},"-37.30691534"]}]}"""
@@ -1352,7 +1327,6 @@ async def test_search_filter_extension_floats_get(app_client, ctx):
     assert len(resp.json()["features"]) == 0
 
 
-@pytest.mark.asyncio
 async def test_search_filter_extension_floats_post(app_client, ctx):
     sun_elevation = ctx.item["properties"]["view:sun_elevation"]
 
@@ -1384,7 +1358,6 @@ async def test_search_filter_extension_floats_post(app_client, ctx):
     assert len(resp.json()["features"]) == 1
 
 
-@pytest.mark.asyncio
 async def test_search_filter_extension_wildcard_cql2(app_client, ctx):
     single_char = ctx.item["id"][:-1] + "_"
     multi_char = ctx.item["id"][:-3] + "%"
@@ -1418,7 +1391,6 @@ async def test_search_filter_extension_wildcard_cql2(app_client, ctx):
     assert len(resp.json()["features"]) == 1
 
 
-@pytest.mark.asyncio
 async def test_search_filter_extension_wildcard_es(app_client, ctx):
     single_char = ctx.item["id"][:-1] + "?"
     multi_char = ctx.item["id"][:-3] + "*"
@@ -1452,7 +1424,6 @@ async def test_search_filter_extension_wildcard_es(app_client, ctx):
     assert len(resp.json()["features"]) == 1
 
 
-@pytest.mark.asyncio
 async def test_search_filter_extension_escape_chars(app_client, ctx):
     esc_chars = (
         ctx.item["properties"]["landsat:product_id"].replace("_", "\\_")[:-1] + "_"
@@ -1480,7 +1451,6 @@ async def test_search_filter_extension_escape_chars(app_client, ctx):
     assert len(resp.json()["features"]) == 1
 
 
-@pytest.mark.asyncio
 async def test_search_filter_extension_in(app_client, ctx):
     product_id = ctx.item["properties"]["landsat:product_id"]
 
@@ -1506,7 +1476,6 @@ async def test_search_filter_extension_in(app_client, ctx):
     assert len(resp.json()["features"]) == 1
 
 
-@pytest.mark.asyncio
 async def test_search_filter_extension_in_no_list(app_client, ctx):
     product_id = ctx.item["properties"]["landsat:product_id"]
 
@@ -1534,7 +1503,6 @@ async def test_search_filter_extension_in_no_list(app_client, ctx):
     }
 
 
-@pytest.mark.asyncio
 async def test_search_filter_extension_between(app_client, ctx):
     sun_elevation = ctx.item["properties"]["view:sun_elevation"]
 
@@ -1560,7 +1528,6 @@ async def test_search_filter_extension_between(app_client, ctx):
     assert len(resp.json()["features"]) == 1
 
 
-@pytest.mark.asyncio
 async def test_search_filter_extension_between_get(app_client, ctx):
     """Test BETWEEN operator with GET request using CQL2-text format."""
     sun_elevation = ctx.item["properties"]["view:sun_elevation"]
@@ -1578,7 +1545,6 @@ async def test_search_filter_extension_between_get(app_client, ctx):
     assert len(resp.json()["features"]) == 1
 
 
-@pytest.mark.asyncio
 async def test_search_filter_extension_isnull_post(app_client, ctx):
     # Test for a property that is not null
     params = {
@@ -1607,7 +1573,6 @@ async def test_search_filter_extension_isnull_post(app_client, ctx):
     assert len(resp.json()["features"]) == 1
 
 
-@pytest.mark.asyncio
 async def test_search_filter_extension_isnull_get(app_client, ctx):
     # Test for a property that is not null
 
@@ -1623,7 +1588,6 @@ async def test_search_filter_extension_isnull_get(app_client, ctx):
     assert len(resp.json()["features"]) == 1
 
 
-@pytest.mark.asyncio
 async def test_search_filter_extension_s_intersects_property(app_client, ctx):
     intersecting_geom = {
         "coordinates": [150.04, -33.14],
@@ -1644,7 +1608,6 @@ async def test_search_filter_extension_s_intersects_property(app_client, ctx):
     assert len(resp_json["features"]) == 1
 
 
-@pytest.mark.asyncio
 async def test_search_filter_extension_s_contains_property(app_client, ctx):
     contains_geom = {
         "coordinates": [150.04, -33.14],
@@ -1665,7 +1628,6 @@ async def test_search_filter_extension_s_contains_property(app_client, ctx):
     assert len(resp_json["features"]) == 1
 
 
-@pytest.mark.asyncio
 async def test_search_filter_extension_s_within_property(app_client, ctx):
     within_geom = {
         "coordinates": [
@@ -1694,7 +1656,6 @@ async def test_search_filter_extension_s_within_property(app_client, ctx):
     assert len(resp_json["features"]) == 1
 
 
-@pytest.mark.asyncio
 async def test_search_filter_extension_s_disjoint_property(app_client, ctx):
     intersecting_geom = {
         "coordinates": [0, 0],
@@ -1715,7 +1676,6 @@ async def test_search_filter_extension_s_disjoint_property(app_client, ctx):
     assert len(resp_json["features"]) == 1
 
 
-@pytest.mark.asyncio
 async def test_search_filter_extension_cql2text_s_intersects_property(app_client, ctx):
     filter = 'S_INTERSECTS("geometry",POINT(150.04 -33.14))'
     params = {
@@ -1728,7 +1688,6 @@ async def test_search_filter_extension_cql2text_s_intersects_property(app_client
     assert len(resp_json["features"]) == 1
 
 
-@pytest.mark.asyncio
 async def test_search_filter_extension_cql2text_s_contains_property(app_client, ctx):
     filter = 'S_CONTAINS("geometry",POINT(150.04 -33.14))'
     params = {
@@ -1741,7 +1700,6 @@ async def test_search_filter_extension_cql2text_s_contains_property(app_client, 
     assert len(resp_json["features"]) == 1
 
 
-@pytest.mark.asyncio
 async def test_search_filter_extension_cql2text_s_within_property(app_client, ctx):
     filter = 'S_WITHIN("geometry",POLYGON((148.5776607193635 -35.257132625788756, 153.15052873427666 -35.257132625788756, 153.15052873427666 -31.080816742218623, 148.5776607193635 -31.080816742218623, 148.5776607193635 -35.257132625788756)))'
     params = {
@@ -1754,7 +1712,6 @@ async def test_search_filter_extension_cql2text_s_within_property(app_client, ct
     assert len(resp_json["features"]) == 1
 
 
-@pytest.mark.asyncio
 async def test_search_filter_extension_cql2text_s_disjoint_property(app_client, ctx):
     filter = 'S_DISJOINT("geometry",POINT(0 0))'
     params = {
@@ -1767,7 +1724,6 @@ async def test_search_filter_extension_cql2text_s_disjoint_property(app_client, 
     assert len(resp_json["features"]) == 1
 
 
-@pytest.mark.asyncio
 async def test_queryables_enum_platform(
     app_client: AsyncClient,
     load_test_data: Callable[[str], Dict],
@@ -1814,7 +1770,6 @@ async def test_queryables_enum_platform(
     r.raise_for_status()
 
 
-@pytest.mark.asyncio
 async def test_queryables_excluded_fields(
     app_client: AsyncClient,
     load_test_data: Callable[[str], Dict],

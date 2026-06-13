@@ -9,8 +9,9 @@ from stac_fastapi.core.validate import (
     async_validate_stac,
 )
 
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
-@pytest.mark.asyncio
+
 async def test_async_validate_stac_valid_item(load_test_data, monkeypatch):
     """Test async_validate_stac directly with a fully compliant STAC Item dict."""
     monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
@@ -22,7 +23,6 @@ async def test_async_validate_stac_valid_item(load_test_data, monkeypatch):
     assert hasattr(result, "id")
 
 
-@pytest.mark.asyncio
 async def test_async_validate_stac_invalid_item(load_test_data, monkeypatch):
     """Test async_validate_stac directly raises a ValueError for schema violations."""
     monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
@@ -39,7 +39,6 @@ async def test_async_validate_stac_invalid_item(load_test_data, monkeypatch):
     assert "STAC validation failed for 'bad-unit-item'" in str(exc_info.value)
 
 
-@pytest.mark.asyncio
 async def test_async_validate_batch_disabled(load_test_data, monkeypatch):
     """Test that batch validation returns input items unmodified when disabled globally."""
     monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "false")
@@ -52,7 +51,6 @@ async def test_async_validate_batch_disabled(load_test_data, monkeypatch):
     assert invalid_items == {}
 
 
-@pytest.mark.asyncio
 async def test_async_validate_batch_with_stac_validator_mixed_results(
     load_test_data, monkeypatch
 ):

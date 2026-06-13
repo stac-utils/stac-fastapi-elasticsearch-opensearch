@@ -25,6 +25,8 @@ if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
 else:
     from stac_fastapi.elasticsearch.database_logic import DatabaseLogic
 
+pytestmark = pytest.mark.asyncio(loop_scope="session")
+
 
 def rfc3339_str_to_datetime(s: str) -> datetime:
     return ciso8601.parse_rfc3339(s)
@@ -33,7 +35,6 @@ def rfc3339_str_to_datetime(s: str) -> datetime:
 database_logic = DatabaseLogic()
 
 
-@pytest.mark.asyncio
 async def test_create_and_delete_item(app_client, ctx, txn_client):
     """Test creation and deletion of a single item (transactions extension)"""
 
@@ -57,7 +58,6 @@ async def test_create_and_delete_item(app_client, ctx, txn_client):
     assert resp.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_create_item_conflict(app_client, ctx, load_test_data):
     """Test creation of an item which already exists (transactions extension)"""
     test_item = load_test_data("test_item.json")
@@ -73,7 +73,6 @@ async def test_create_item_conflict(app_client, ctx, load_test_data):
     assert resp.status_code == 409
 
 
-@pytest.mark.asyncio
 async def test_delete_missing_item(app_client, load_test_data):
     """Test deletion of an item which does not exist (transactions extension)"""
     test_item = load_test_data("test_item.json")
@@ -83,7 +82,6 @@ async def test_delete_missing_item(app_client, load_test_data):
     assert resp.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_create_item_missing_collection(app_client, ctx, load_test_data):
     """Test creation of an item without a parent collection (transactions extension)"""
     item = load_test_data("test_item.json")
@@ -92,7 +90,6 @@ async def test_create_item_missing_collection(app_client, ctx, load_test_data):
     assert resp.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_create_uppercase_collection_with_item(
     app_client, ctx, txn_client, load_test_data
 ):
@@ -109,7 +106,6 @@ async def test_create_uppercase_collection_with_item(
     assert resp.status_code == 201
 
 
-@pytest.mark.asyncio
 async def test_update_item_already_exists(app_client, ctx, load_test_data):
     """Test updating an item which already exists (transactions extension)"""
     item = load_test_data("test_item.json")
@@ -132,7 +128,6 @@ async def test_update_item_already_exists(app_client, ctx, load_test_data):
     await app_client.delete(f"/collections/{item['collection']}/items/{item['id']}")
 
 
-@pytest.mark.asyncio
 async def test_update_new_item(app_client, load_test_data):
     """Test updating an item which does not exist (transactions extension)"""
     test_item = load_test_data("test_item.json")
@@ -145,7 +140,6 @@ async def test_update_new_item(app_client, load_test_data):
     assert resp.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_update_item_missing_collection(app_client, ctx, load_test_data):
     """Test updating an item without a parent collection (transactions extension)"""
     # Try to update collection of the item
@@ -158,7 +152,6 @@ async def test_update_item_missing_collection(app_client, ctx, load_test_data):
     assert resp.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_update_item_geometry(app_client, ctx, load_test_data):
     item = load_test_data("test_item.json")
     item["id"] = "update_test_item_1"
@@ -190,7 +183,6 @@ async def test_update_item_geometry(app_client, ctx, load_test_data):
     assert resp.json()["geometry"]["coordinates"] == new_coordinates
 
 
-@pytest.mark.asyncio
 async def test_get_item(app_client, ctx):
     """Test read an item by id (core)"""
     get_item = await app_client.get(
@@ -199,7 +191,6 @@ async def test_get_item(app_client, ctx):
     assert get_item.status_code == 200
 
 
-@pytest.mark.asyncio
 async def test_returns_valid_item(app_client, ctx):
     """Test validates fetched item with jsonschema"""
     test_item = ctx.item
@@ -212,7 +203,6 @@ async def test_returns_valid_item(app_client, ctx):
     assert api.Item(**item_dict).model_dump(mode="json")
 
 
-@pytest.mark.asyncio
 async def test_get_item_collection(app_client, ctx, txn_client):
     """Test read an item collection (core)"""
     item_count = randint(1, 4)
@@ -229,7 +219,6 @@ async def test_get_item_collection(app_client, ctx, txn_client):
         assert matched == item_count + 1
 
 
-@pytest.mark.asyncio
 async def test_item_collection_filter_bbox(app_client, ctx):
     item = ctx.item
     collection = item["collection"]
@@ -251,7 +240,6 @@ async def test_item_collection_filter_bbox(app_client, ctx):
     assert len(resp_json["features"]) == 0
 
 
-@pytest.mark.asyncio
 async def test_item_collection_filter_datetime(app_client, ctx):
     item = ctx.item
     collection = item["collection"]
@@ -273,7 +261,6 @@ async def test_item_collection_filter_datetime(app_client, ctx):
     assert len(resp_json["features"]) == 0
 
 
-@pytest.mark.asyncio
 @pytest.mark.skip(reason="Pagination extension not implemented")
 async def test_pagination(app_client, load_test_data):
     """Test item collection pagination (paging extension)"""
@@ -303,7 +290,6 @@ async def test_pagination(app_client, load_test_data):
 
 
 @pytest.mark.skip(reason="created and updated fields not be added with stac fastapi 3?")
-@pytest.mark.asyncio
 async def test_item_timestamps(app_client, ctx, load_test_data):
     """Test created and updated timestamps (common metadata)"""
     # start_time = now_to_rfc3339_str()
@@ -333,7 +319,6 @@ async def test_item_timestamps(app_client, ctx, load_test_data):
     )
 
 
-@pytest.mark.asyncio
 async def test_item_search_by_id_post(app_client, ctx, txn_client):
     """Test POST search by item id (core)"""
     ids = ["test1", "test2", "test3"]
@@ -349,7 +334,6 @@ async def test_item_search_by_id_post(app_client, ctx, txn_client):
     assert set([feat["id"] for feat in resp_json["features"]]) == set(ids)
 
 
-@pytest.mark.asyncio
 async def test_item_search_spatial_query_post(app_client, ctx):
     """Test POST search with spatial query (core)"""
     test_item = ctx.item
@@ -364,7 +348,6 @@ async def test_item_search_spatial_query_post(app_client, ctx):
     assert resp_json["features"][0]["id"] == test_item["id"]
 
 
-@pytest.mark.asyncio
 async def test_item_search_temporal_query_post(app_client, ctx, load_test_data):
     """Test POST search with single-tailed spatio-temporal query (core)"""
 
@@ -383,7 +366,6 @@ async def test_item_search_temporal_query_post(app_client, ctx, load_test_data):
     assert resp_json["features"][0]["id"] == test_item["id"]
 
 
-@pytest.mark.asyncio
 async def test_item_search_temporal_window_post(app_client, ctx, load_test_data):
     """Test POST search with two-tailed spatio-temporal query (core)"""
     test_item = load_test_data("test_item.json")
@@ -402,7 +384,6 @@ async def test_item_search_temporal_window_post(app_client, ctx, load_test_data)
     assert resp_json["features"][0]["id"] == test_item["id"]
 
 
-@pytest.mark.asyncio
 async def test_item_search_temporal_intersecting_window_post(app_client, ctx):
     """Test POST search with two-tailed spatio-temporal query (core)"""
     test_item = ctx.item
@@ -421,7 +402,6 @@ async def test_item_search_temporal_intersecting_window_post(app_client, ctx):
     assert resp_json["features"][0]["id"] == test_item["id"]
 
 
-@pytest.mark.asyncio
 async def test_item_search_temporal_open_window(app_client, ctx):
     """Test POST search with open spatio-temporal query (core)"""
     test_item = ctx.item
@@ -435,7 +415,6 @@ async def test_item_search_temporal_open_window(app_client, ctx):
     assert resp_json["features"][0]["id"] == test_item["id"]
 
 
-@pytest.mark.asyncio
 async def test_item_search_by_id_get(app_client, ctx, txn_client):
     """Test GET search by item id (core)"""
     ids = ["test1", "test2", "test3"]
@@ -451,7 +430,6 @@ async def test_item_search_by_id_get(app_client, ctx, txn_client):
     assert set([feat["id"] for feat in resp_json["features"]]) == set(ids)
 
 
-@pytest.mark.asyncio
 async def test_item_search_bbox_get(app_client, ctx):
     """Test GET search with spatial query (core)"""
     params = {
@@ -464,7 +442,6 @@ async def test_item_search_bbox_get(app_client, ctx):
     assert resp_json["features"][0]["id"] == ctx.item["id"]
 
 
-@pytest.mark.asyncio
 async def test_item_search_get_without_collections(app_client, ctx):
     """Test GET search without specifying collections"""
 
@@ -475,7 +452,6 @@ async def test_item_search_get_without_collections(app_client, ctx):
     assert resp.status_code == 200
 
 
-@pytest.mark.asyncio
 async def test_item_search_get_with_non_existent_collections(app_client, ctx):
     """Test GET search with non-existent collections"""
 
@@ -484,7 +460,6 @@ async def test_item_search_get_with_non_existent_collections(app_client, ctx):
     assert resp.status_code == 200
 
 
-@pytest.mark.asyncio
 async def test_item_search_temporal_window_get(app_client, ctx, load_test_data):
     """Test GET search with spatio-temporal query (core)"""
     test_item = load_test_data("test_item.json")
@@ -502,7 +477,6 @@ async def test_item_search_temporal_window_get(app_client, ctx, load_test_data):
     assert resp_json["features"][0]["id"] == test_item["id"]
 
 
-@pytest.mark.asyncio
 async def test_item_search_temporal_window_timezone_get(
     app_client, ctx, load_test_data
 ):
@@ -523,7 +497,6 @@ async def test_item_search_temporal_window_timezone_get(
     assert resp_json["features"][0]["id"] == test_item["id"]
 
 
-@pytest.mark.asyncio
 async def test_item_search_post_without_collection(app_client, ctx):
     """Test POST search without specifying a collection"""
     test_item = ctx.item
@@ -534,7 +507,6 @@ async def test_item_search_post_without_collection(app_client, ctx):
     assert resp.status_code == 200
 
 
-@pytest.mark.asyncio
 async def test_item_search_properties_es(app_client, ctx):
     """Test POST search with JSONB query (query extension)"""
 
@@ -547,7 +519,6 @@ async def test_item_search_properties_es(app_client, ctx):
     assert len(resp_json["features"]) == 0
 
 
-@pytest.mark.asyncio
 async def test_item_search_properties_field(app_client):
     """Test POST search indexed field with query (query extension)"""
 
@@ -559,7 +530,6 @@ async def test_item_search_properties_field(app_client):
     assert len(resp_json["features"]) == 0
 
 
-@pytest.mark.asyncio
 async def test_item_search_get_query_extension(app_client, ctx):
     """Test GET search with JSONB query (query extension)"""
 
@@ -586,14 +556,12 @@ async def test_item_search_get_query_extension(app_client, ctx):
     )
 
 
-@pytest.mark.asyncio
 async def test_get_missing_item_collection(app_client):
     """Test reading a collection which does not exist"""
     resp = await app_client.get("/collections/invalid-collection/items")
     assert resp.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_pagination_base_links(app_client, ctx):
     """Test that a search query always contains basic links"""
     page = await app_client.get(f"/collections/{ctx.item['collection']}/items")
@@ -602,7 +570,6 @@ async def test_pagination_base_links(app_client, ctx):
     assert {"self", "root"}.issubset({link["rel"] for link in page_data["links"]})
 
 
-@pytest.mark.asyncio
 async def test_pagination_links_behavior(app_client, ctx, txn_client):
     """Test the links in pagination specifically look for last page behavior."""
 
@@ -644,7 +611,6 @@ async def test_pagination_links_behavior(app_client, ctx, txn_client):
     }, "Unexpected 'next' link on the last page"
 
 
-@pytest.mark.asyncio
 async def test_pagination_item_collection(app_client, ctx, txn_client):
     """Test item collection pagination links (paging extension)"""
     ids = [ctx.item["id"]]
@@ -680,7 +646,6 @@ async def test_pagination_item_collection(app_client, ctx, txn_client):
     assert not set(item_ids) - set(ids)
 
 
-@pytest.mark.asyncio
 async def test_pagination_post(app_client, ctx, txn_client):
     """Test POST pagination (paging extension)"""
     ids = [ctx.item["id"]]
@@ -714,7 +679,6 @@ async def test_pagination_post(app_client, ctx, txn_client):
     assert not set(item_ids) - set(ids)
 
 
-@pytest.mark.asyncio
 async def test_pagination_token_idempotent(app_client, ctx, txn_client):
     """Test that pagination tokens are idempotent (paging extension)"""
     ids = [ctx.item["id"]]
@@ -745,7 +709,6 @@ async def test_pagination_token_idempotent(app_client, ctx, txn_client):
     ]
 
 
-@pytest.mark.asyncio
 async def test_field_extension_get_includes(app_client, ctx):
     """Test GET search with included fields (fields extension)"""
     test_item = ctx.item
@@ -758,7 +721,6 @@ async def test_field_extension_get_includes(app_client, ctx):
     assert not set(feat_properties) - {"proj:epsg", "gsd", "datetime"}
 
 
-@pytest.mark.asyncio
 async def test_field_extension_get_excludes(app_client, ctx):
     """Test GET search with included fields (fields extension)"""
     test_item = ctx.item
@@ -772,7 +734,6 @@ async def test_field_extension_get_excludes(app_client, ctx):
     assert "gsd" not in resp_json["features"][0]["properties"].keys()
 
 
-@pytest.mark.asyncio
 async def test_field_extension_post(app_client, ctx):
     """Test POST search with included and excluded fields (fields extension)"""
     test_item = ctx.item
@@ -798,7 +759,6 @@ async def test_field_extension_post(app_client, ctx):
     }
 
 
-@pytest.mark.asyncio
 async def test_field_extension_exclude_and_include(app_client, ctx):
     """Test POST search including/excluding same field (fields extension)"""
     test_item = ctx.item
@@ -815,7 +775,6 @@ async def test_field_extension_exclude_and_include(app_client, ctx):
     assert "properties" not in resp_json["features"][0]
 
 
-@pytest.mark.asyncio
 async def test_field_extension_exclude_default_includes(app_client, ctx):
     """Test POST search excluding a forbidden field (fields extension)"""
     test_item = ctx.item
@@ -826,7 +785,6 @@ async def test_field_extension_exclude_default_includes(app_client, ctx):
     assert "gsd" not in resp_json["features"][0]
 
 
-@pytest.mark.asyncio
 async def test_field_extension_get_includes_collection_items(app_client, ctx):
     """Test GET collections/{collection_id}/items with included fields (fields extension)"""
     test_item = ctx.item
@@ -840,7 +798,6 @@ async def test_field_extension_get_includes_collection_items(app_client, ctx):
     assert not set(feat_properties) - {"proj:epsg", "gsd", "datetime"}
 
 
-@pytest.mark.asyncio
 async def test_field_extension_get_excludes_collection_items(app_client, ctx):
     """Test GET collections/{collection_id}/items with included fields (fields extension)"""
     test_item = ctx.item
@@ -855,7 +812,6 @@ async def test_field_extension_get_excludes_collection_items(app_client, ctx):
     assert "gsd" not in resp_json["features"][0]["properties"].keys()
 
 
-@pytest.mark.asyncio
 async def test_search_intersects_and_bbox(app_client):
     """Test POST search intersects and bbox are mutually exclusive (core)"""
     bbox = [-118, 34, -117, 35]
@@ -877,7 +833,6 @@ async def test_search_intersects_and_bbox(app_client):
     assert resp.status_code == 400
 
 
-@pytest.mark.asyncio
 async def test_get_missing_item(app_client, load_test_data):
     """Test read item which does not exist (transactions extension)"""
     test_coll = load_test_data("test_collection.json")
@@ -885,7 +840,6 @@ async def test_get_missing_item(app_client, load_test_data):
     assert resp.status_code == 404
 
 
-@pytest.mark.asyncio
 @pytest.mark.skip(reason="invalid queries not implemented")
 async def test_search_invalid_query_field(app_client):
     body = {"query": {"gsd": {"lt": 100}, "invalid-field": {"eq": 50}}}
@@ -893,7 +847,6 @@ async def test_search_invalid_query_field(app_client):
     assert resp.status_code == 400
 
 
-@pytest.mark.asyncio
 async def test_search_bbox_errors(app_client):
     body = {"query": {"bbox": [0]}}
     resp = await app_client.post("/search", json=body)
@@ -908,7 +861,6 @@ async def test_search_bbox_errors(app_client):
     assert resp.status_code == 400
 
 
-@pytest.mark.asyncio
 async def test_conformance_classes_configurable():
     """Test conformance class configurability"""
     landing = LandingPageMixin()
@@ -928,7 +880,6 @@ async def test_conformance_classes_configurable():
     assert client.conformance_classes()[0] == "this is a test"
 
 
-@pytest.mark.asyncio
 async def test_search_datetime_validation_errors(app_client):
     bad_datetimes = [
         "37-01-01T12:00:27.87Z",
@@ -949,7 +900,6 @@ async def test_search_datetime_validation_errors(app_client):
         assert resp.status_code == 400
 
 
-@pytest.mark.asyncio
 async def test_item_custom_links(app_client, ctx, txn_client):
     item = ctx.item
     item_id = "test-item-custom-links"
@@ -999,7 +949,6 @@ async def _search_and_get_ids(
     return {f["id"] for f in data.get("features", [])}
 
 
-@pytest.mark.asyncio
 async def test_search_datetime_with_null_datetime(
     app_client, txn_client, load_test_data
 ):
@@ -1143,7 +1092,6 @@ async def test_search_datetime_with_null_datetime(
             os.environ["ENABLE_STAC_VALIDATOR"] = original_validator_setting
 
 
-@pytest.mark.asyncio
 async def test_search_datetime_with_null_datetime_pagination(
     app_client, txn_client, load_test_data
 ):
@@ -1267,7 +1215,6 @@ async def test_search_datetime_with_null_datetime_pagination(
         logger.warning(f"Failed to delete collection: {e}")
 
 
-@pytest.mark.asyncio
 async def test_hidden_item_true(app_client, txn_client, load_test_data):
     """Test item with hidden=true is filtered out."""
 
@@ -1294,7 +1241,6 @@ async def test_hidden_item_true(app_client, txn_client, load_test_data):
     assert resp.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_hidden_item_false(app_client, txn_client, load_test_data, monkeypatch):
     """Test that item with hidden=false is not filtered out."""
 
@@ -1323,7 +1269,6 @@ async def test_hidden_item_false(app_client, txn_client, load_test_data, monkeyp
     assert resp.status_code == 200
 
 
-@pytest.mark.asyncio
 async def test_hidden_items_counter(app_client, txn_client, load_test_data):
     """Test numberReturned/numberMatched for hidden items."""
 

@@ -18,8 +18,9 @@ else:
         ElasticsearchSettings as SearchSettings,
     )
 
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
-@pytest.mark.asyncio
+
 async def test_bulk_item_insert(ctx, core_client, txn_client, bulk_txn_client):
     items = {}
     for _ in range(10):
@@ -36,7 +37,6 @@ async def test_bulk_item_insert(ctx, core_client, txn_client, bulk_txn_client):
     assert len(fc["features"]) >= 10
 
 
-@pytest.mark.asyncio
 async def test_bulk_item_insert_with_raise_on_error(
     ctx, core_client, txn_client, bulk_txn_client, monkeypatch: pytest.MonkeyPatch
 ):
@@ -81,7 +81,6 @@ async def test_bulk_item_insert_with_raise_on_error(
     await txn_client.delete_item(initial_item["id"], ctx.item["collection"])
 
 
-@pytest.mark.asyncio
 async def test_feature_collection_insert(
     core_client,
     txn_client,
@@ -101,7 +100,6 @@ async def test_feature_collection_insert(
     assert len(fc["features"]) >= 10
 
 
-@pytest.mark.asyncio
 async def test_bulk_item_insert_validation_error(
     ctx, core_client, bulk_txn_client, monkeypatch: pytest.MonkeyPatch
 ):
@@ -143,7 +141,6 @@ async def test_bulk_item_insert_validation_error(
     assert summary["database_error_count"] == 0
 
 
-@pytest.mark.asyncio
 async def test_feature_collection_insert_validation_error(
     core_client,
     txn_client,
@@ -171,7 +168,6 @@ async def test_feature_collection_insert_validation_error(
         await create_item(txn_client, feature_collection)
 
 
-@pytest.mark.asyncio
 async def test_feature_collection_insert_duplicate_detection(
     ctx, core_client, txn_client, monkeypatch: pytest.MonkeyPatch
 ):
@@ -203,7 +199,6 @@ async def test_feature_collection_insert_duplicate_detection(
     assert existing_item_id in str(exc_info.value)
 
 
-@pytest.mark.asyncio
 async def test_feature_collection_insert_duplicate_with_different_datetime(
     ctx, core_client, txn_client, monkeypatch: pytest.MonkeyPatch
 ):
@@ -232,7 +227,6 @@ async def test_feature_collection_insert_duplicate_with_different_datetime(
     assert existing_item_id in str(exc_info.value)
 
 
-@pytest.mark.asyncio
 async def test_bulk_sync_duplicate_detection(
     ctx, core_client, txn_client, bulk_txn_client, monkeypatch: pytest.MonkeyPatch
 ):
@@ -262,7 +256,6 @@ async def test_bulk_sync_duplicate_detection(
     assert exc_info.value.collection_id == ctx.item["collection"]
 
 
-@pytest.mark.asyncio
 async def test_bulk_insert_multiple_items_with_one_duplicate(
     ctx, core_client, txn_client, bulk_txn_client, monkeypatch: pytest.MonkeyPatch
 ):
@@ -298,7 +291,6 @@ async def test_bulk_insert_multiple_items_with_one_duplicate(
     assert existing_item_id in str(exc_info.value)
 
 
-@pytest.mark.asyncio
 async def test_bulk_insert_with_in_batch_duplicates(ctx, core_client, bulk_txn_client):
     """
     Test bulk insert behavior when the same item ID appears multiple times in the batch.
@@ -339,7 +331,6 @@ async def test_bulk_insert_with_in_batch_duplicates(ctx, core_client, bulk_txn_c
     await txn.delete_item(unique_id, ctx.item["collection"])
 
 
-@pytest.mark.asyncio
 async def test_feature_collection_insert_with_in_batch_duplicates(
     ctx, core_client, txn_client
 ):
@@ -390,7 +381,6 @@ async def test_feature_collection_insert_with_in_batch_duplicates(
     await txn_client.delete_item(unique_id, ctx.item["collection"])
 
 
-@pytest.mark.asyncio
 async def test_bulk_index_error_raised_on_non_conflict_errors_strict_mode(
     ctx, bulk_txn_client, monkeypatch: pytest.MonkeyPatch
 ):
@@ -427,7 +417,6 @@ async def test_bulk_index_error_raised_on_non_conflict_errors_strict_mode(
         assert exc_info.value.errors[0]["create"]["status"] == 400
 
 
-@pytest.mark.asyncio
 async def test_bulk_non_conflict_errors_not_raised_in_permissive_mode(
     ctx, bulk_txn_client, monkeypatch: pytest.MonkeyPatch
 ):
@@ -472,7 +461,6 @@ async def test_bulk_non_conflict_errors_not_raised_in_permissive_mode(
     assert "2 errors occurred" in result
 
 
-@pytest.mark.asyncio
 async def test_bulk_conflict_error_takes_precedence_over_other_errors(
     ctx, bulk_txn_client, monkeypatch: pytest.MonkeyPatch
 ):

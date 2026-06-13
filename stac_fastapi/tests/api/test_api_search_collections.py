@@ -5,8 +5,9 @@ import pytest
 
 from ..conftest import create_collection, refresh_indices
 
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
-@pytest.mark.asyncio
+
 async def test_collections_sort_id_asc(app_client, txn_client, ctx):
     """Verify GET /collections, GET /collections-search, and POST /collections-search honor ascending sort on id."""
     # Create multiple collections with different ids
@@ -64,7 +65,6 @@ async def test_collections_sort_id_asc(app_client, txn_client, ctx):
             assert test_collections[i]["id"] == expected_id
 
 
-@pytest.mark.asyncio
 async def test_collections_sort_id_desc(app_client, txn_client, ctx):
     """Verify GET /collections, GET /collections-search, and POST /collections-search honor descending sort on id."""
     # Create multiple collections with different ids
@@ -122,7 +122,6 @@ async def test_collections_sort_id_desc(app_client, txn_client, ctx):
             assert test_collections[i]["id"] == expected_id
 
 
-@pytest.mark.asyncio
 async def test_collections_fields_all_endpoints(app_client, txn_client, ctx):
     """Verify GET /collections, GET /collections-search, and POST /collections-search honor the fields parameter."""
     # Create multiple collections with different ids
@@ -222,7 +221,6 @@ async def test_collections_fields_all_endpoints(app_client, txn_client, ctx):
             assert "links" in collection  # links are always included
 
 
-@pytest.mark.asyncio
 async def test_collections_free_text_all_endpoints(
     app_client, txn_client, ctx, monkeypatch
 ):
@@ -281,7 +279,6 @@ async def test_collections_free_text_all_endpoints(
         ), f"Expected {target_collection['id']}, found {found[0]['id']} for {endpoint['method']} {endpoint['path']}"
 
 
-@pytest.mark.asyncio
 async def test_collections_filter_search(app_client, txn_client, ctx):
     """Verify GET /collections, GET /collections-search, and POST /collections-search honor the filter parameter for structured search."""
     # Create multiple collections with different content
@@ -413,7 +410,6 @@ async def test_collections_filter_search(app_client, txn_client, ctx):
         ), f"Expected at least 1 collection with ID {test_collection_id} using LIKE filter for {endpoint['method']} {endpoint['path']}"
 
 
-@pytest.mark.asyncio
 async def test_collections_filter_search_in_ids_post_only(app_client, txn_client, ctx):
     """Verify POST /collections-search honors CQL2-json `in` filter on id for multiple collections."""
     base_collection = ctx.collection
@@ -460,7 +456,6 @@ async def test_collections_filter_search_in_ids_post_only(app_client, txn_client
     assert returned_ids == set(target_ids)
 
 
-@pytest.mark.asyncio
 async def test_collections_query_extension(app_client, txn_client, ctx):
     """Verify GET /collections, GET /collections-search, and POST /collections-search honor the query extension."""
     # Create multiple collections with different content
@@ -591,7 +586,6 @@ async def test_collections_query_extension(app_client, txn_client, ctx):
         assert f"{test_prefix}-modis" in found_ids
 
 
-@pytest.mark.asyncio
 async def test_collections_datetime_filter(app_client, load_test_data, txn_client):
     """Test filtering collections by datetime across all endpoints."""
     # Create a test collection with a specific temporal extent
@@ -686,7 +680,6 @@ async def test_collections_datetime_filter(app_client, load_test_data, txn_clien
     """
 
 
-@pytest.mark.asyncio
 async def test_collections_number_matched_returned(app_client, txn_client, ctx):
     """Verify GET /collections, GET /collections-search, and POST /collections-search return correct numberMatched and numberReturned values."""
     # Create multiple collections with different ids
@@ -792,7 +785,6 @@ async def test_collections_number_matched_returned(app_client, txn_client, ctx):
         assert resp_json["numberMatched"] >= 1
 
 
-@pytest.mark.asyncio
 async def test_collections_post(app_client, txn_client, ctx):
     """Verify POST /collections-search endpoint works."""
 
@@ -872,7 +864,6 @@ async def test_collections_post(app_client, txn_client, ctx):
         assert "stac_version" not in collection
 
 
-@pytest.mark.asyncio
 async def test_collections_search_cql2_text(app_client, txn_client, ctx):
     """Test collections search with CQL2-text filter."""
     # Create a unique prefix for test collections
@@ -920,7 +911,6 @@ async def test_collections_search_cql2_text(app_client, txn_client, ctx):
     assert filtered_collections[0]["id"] == collection_id
 
 
-@pytest.mark.asyncio
 async def test_collections_pagination_all_endpoints(app_client, txn_client, ctx):
     """Test pagination works correctly across all collection endpoints."""
     # Create test data
@@ -1068,7 +1058,6 @@ async def test_collections_pagination_all_endpoints(app_client, txn_client, ctx)
             assert test_found[i]["id"] == expected_id
 
 
-@pytest.mark.asyncio
 async def test_collections_bbox_all_endpoints(app_client, txn_client, ctx):
     """Verify GET /collections, GET /collections-search, and POST /collections-search honor the bbox parameter."""
     # Create multiple collections with different spatial extents

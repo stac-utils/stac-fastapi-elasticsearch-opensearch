@@ -6,8 +6,9 @@ from slowapi.errors import RateLimitExceeded
 
 logger = logging.getLogger(__name__)
 
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
-@pytest.mark.asyncio
+
 async def test_rate_limit(app_client_rate_limit: AsyncClient, ctx):
     expected_status_codes = [200, 200, 429, 429, 429]
 
@@ -24,7 +25,6 @@ async def test_rate_limit(app_client_rate_limit: AsyncClient, ctx):
         ), f"Expected status code {expected_status_code}, but got {status_code}"
 
 
-@pytest.mark.asyncio
 async def test_rate_limit_no_limit(app_client: AsyncClient, ctx):
     expected_status_codes = [200, 200, 200, 200, 200]
 

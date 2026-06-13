@@ -15,8 +15,9 @@ from stac_fastapi.core.redis_utils import AsyncRedisQueueManager
 
 from ..conftest import MockRequest
 
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
-@pytest.mark.asyncio
+
 async def test_worker_validates_items_in_queue(
     txn_client, core_client, load_test_data, monkeypatch: pytest.MonkeyPatch
 ):
@@ -121,7 +122,6 @@ async def test_worker_validates_items_in_queue(
             pass
 
 
-@pytest.mark.asyncio
 async def test_worker_only_inserts_valid_items(
     txn_client, core_client, load_test_data, monkeypatch: pytest.MonkeyPatch
 ):
@@ -221,7 +221,6 @@ async def test_worker_only_inserts_valid_items(
             pass
 
 
-@pytest.mark.asyncio
 async def test_worker_handles_all_invalid_batch(
     txn_client, core_client, load_test_data, monkeypatch: pytest.MonkeyPatch
 ):
@@ -316,7 +315,6 @@ async def test_worker_handles_all_invalid_batch(
             pass
 
 
-@pytest.mark.asyncio
 async def test_safe_mode_validate_before_queue(
     txn_client, core_client, load_test_data, monkeypatch: pytest.MonkeyPatch
 ):
@@ -410,7 +408,6 @@ async def test_safe_mode_validate_before_queue(
             pass
 
 
-@pytest.mark.asyncio
 async def test_performance_mode_deferred_validation(
     txn_client, core_client, load_test_data, monkeypatch: pytest.MonkeyPatch
 ):
@@ -490,7 +487,6 @@ async def test_performance_mode_deferred_validation(
             pass
 
 
-@pytest.mark.asyncio
 async def test_update_item_with_queue_returns_queued_response(
     txn_client, core_client, load_test_data, monkeypatch: pytest.MonkeyPatch
 ):

@@ -46,6 +46,8 @@ from ..conftest import (
     database,
 )
 
+pytestmark = pytest.mark.asyncio(loop_scope="session")
+
 
 @pytest_asyncio.fixture(scope="module", autouse=True)
 async def setup_database_indexes():
@@ -53,7 +55,6 @@ async def setup_database_indexes():
     await create_index_templates()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("cql2_filter", "collection_ids", "expected_metadata"),
     [
@@ -858,7 +859,6 @@ async def test_apply_cql2_filter_checks_search_and_metadata(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("metadata", "expected_index_param", "expected_collection_ids"),
     [
@@ -938,7 +938,6 @@ async def test_resolve_cql2_indexes_with_collections_datetime(
     assert set(collection_ids) == expected_collection_ids
 
 
-@pytest.mark.asyncio
 async def test_index_mapping_collections(ctx):
     response = await database.client.indices.get_mapping(index=COLLECTIONS_INDEX)
     if not isinstance(response, dict):
@@ -950,7 +949,6 @@ async def test_index_mapping_collections(ctx):
     )
 
 
-@pytest.mark.asyncio
 async def test_index_mapping_items(txn_client, load_test_data):
     if get_bool_env("ENABLE_DATETIME_INDEX_FILTERING"):
         pytest.skip()
@@ -972,7 +970,6 @@ async def test_index_mapping_items(txn_client, load_test_data):
     await txn_client.delete_collection(collection["id"])
 
 
-@pytest.mark.asyncio
 async def test_item_add_rejects_coerce_false(txn_client, load_test_data, monkeypatch):
     """Test that item with type mismatch is rejected when coerce is disabled."""
 
@@ -1022,7 +1019,6 @@ async def test_item_add_rejects_coerce_false(txn_client, load_test_data, monkeyp
         importlib.reload(index_operations_module)
 
 
-@pytest.mark.asyncio
 async def test_item_add_accepted_coerce_true(txn_client, load_test_data, monkeypatch):
     """Test that item with type mismatch is accepted coerce is enabled."""
 
@@ -1647,7 +1643,6 @@ def test_has_datetime_values_empty_string():
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_select_indexes_with_collections_and_datetime(monkeypatch):
     sel = _make_selector(monkeypatch)
     result = await sel.select_indexes(
@@ -1661,7 +1656,6 @@ async def test_select_indexes_with_collections_and_datetime(monkeypatch):
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_select_indexes_no_collections_with_datetime(monkeypatch):
     sel = _make_selector(monkeypatch)
     result = await sel.select_indexes(
@@ -1677,7 +1671,6 @@ async def test_select_indexes_no_collections_with_datetime(monkeypatch):
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_select_indexes_empty_collections_with_datetime(monkeypatch):
     sel = _make_selector(monkeypatch)
     result = await sel.select_indexes(
@@ -1692,7 +1685,6 @@ async def test_select_indexes_empty_collections_with_datetime(monkeypatch):
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_select_indexes_no_collections_no_datetime(monkeypatch):
     sel = _make_selector(monkeypatch)
     result = await sel.select_indexes(
@@ -1705,7 +1697,6 @@ async def test_select_indexes_no_collections_no_datetime(monkeypatch):
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_select_indexes_no_matches_returns_empty(monkeypatch):
     sel = _make_selector(monkeypatch)
     result = await sel.select_indexes(
@@ -1717,7 +1708,6 @@ async def test_select_indexes_no_matches_returns_empty(monkeypatch):
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_select_indexes_collections_no_datetime_returns_all_for_collection(
     monkeypatch,
 ):
@@ -1734,7 +1724,6 @@ async def test_select_indexes_collections_no_datetime_returns_all_for_collection
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_select_indexes_no_collections_only_gte(monkeypatch):
     """No collections + only gte → returns all indexes starting from that date."""
     sel = _make_selector(monkeypatch)
@@ -1750,7 +1739,6 @@ async def test_select_indexes_no_collections_only_gte(monkeypatch):
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_select_indexes_no_collections_only_lte(monkeypatch):
     """No collections + only lte → returns all indexes up to that date."""
     sel = _make_selector(monkeypatch)
@@ -1766,7 +1754,6 @@ async def test_select_indexes_no_collections_only_lte(monkeypatch):
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_select_indexes_no_collections_wide_range_returns_all(monkeypatch):
     """No collections + wide datetime range → returns all indexes."""
     sel = _make_selector(monkeypatch)
@@ -1782,7 +1769,6 @@ async def test_select_indexes_no_collections_wide_range_returns_all(monkeypatch)
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_select_indexes_no_collections_narrow_range_single_match(monkeypatch):
     """No collections + narrow range → only one index matches."""
     sel = _make_selector(monkeypatch)
@@ -1798,7 +1784,6 @@ async def test_select_indexes_no_collections_narrow_range_single_match(monkeypat
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_select_indexes_no_collections_no_matches(monkeypatch):
     """No collections + datetime outside all ranges → empty string."""
     sel = _make_selector(monkeypatch)
@@ -1811,7 +1796,6 @@ async def test_select_indexes_no_collections_no_matches(monkeypatch):
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_select_indexes_multiple_collections_datetime(monkeypatch):
     """Multiple collections + datetime → filters each collection independently."""
     sel = _make_selector(monkeypatch)
@@ -1827,7 +1811,6 @@ async def test_select_indexes_multiple_collections_datetime(monkeypatch):
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_select_indexes_boundary_date_match(monkeypatch):
     """Datetime range touching index boundary should match."""
     sel = _make_selector(monkeypatch)

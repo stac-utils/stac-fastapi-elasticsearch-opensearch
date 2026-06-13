@@ -4,6 +4,8 @@ from unittest import mock
 
 import pytest
 
+pytestmark = pytest.mark.asyncio(loop_scope="session")
+
 if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
     from stac_fastapi.opensearch.app import app_config
 else:
@@ -36,7 +38,6 @@ def enable_validation():
     client.queryables_cache.reload_settings()
 
 
-@pytest.mark.asyncio
 async def test_search_post_query_valid_param(app_client, ctx):
     """Test POST /search with a valid query parameter"""
     query = {"query": {"eo:cloud_cover": {"lt": 10}}}
@@ -44,7 +45,6 @@ async def test_search_post_query_valid_param(app_client, ctx):
     assert resp.status_code == 200
 
 
-@pytest.mark.asyncio
 async def test_search_post_query_invalid_param(app_client, ctx):
     """Test POST /search with an invalid query parameter"""
     query = {"query": {"invalid_param": {"eq": "test"}}}
@@ -54,7 +54,6 @@ async def test_search_post_query_invalid_param(app_client, ctx):
     assert "Invalid query fields: invalid_param" in resp_json["detail"]
 
 
-@pytest.mark.asyncio
 async def test_item_collection_get_filter_valid_param(app_client, ctx):
     """Test GET /collections/{collection_id}/items with a valid filter parameter"""
     collection_id = ctx.item["collection"]
@@ -70,7 +69,6 @@ async def test_item_collection_get_filter_valid_param(app_client, ctx):
     assert resp.status_code == 200
 
 
-@pytest.mark.asyncio
 async def test_item_collection_get_filter_invalid_param(app_client, ctx):
     """Test GET /collections/{collection_id}/items with an invalid filter parameter"""
     collection_id = ctx.item["collection"]
@@ -88,7 +86,6 @@ async def test_item_collection_get_filter_invalid_param(app_client, ctx):
     assert "Invalid query fields: invalid_param" in resp_json["detail"]
 
 
-@pytest.mark.asyncio
 async def test_validate_queryables_excluded(app_client, ctx):
     """Test that excluded queryables are rejected when validation is enabled."""
 
@@ -118,7 +115,6 @@ async def test_validate_queryables_excluded(app_client, ctx):
     client.queryables_cache.reload_settings()
 
 
-@pytest.mark.asyncio
 async def test_search_get_cql2_text_invalid_param(app_client, ctx):
     """Test GET /search with an invalid cql2-text filter parameter."""
     params = {
@@ -131,7 +127,6 @@ async def test_search_get_cql2_text_invalid_param(app_client, ctx):
     assert "Invalid query fields: invalid_param" in resp_json["detail"]
 
 
-@pytest.mark.asyncio
 async def test_search_get_cql2_text_valid_param(app_client, ctx):
     """Test GET /search with a valid cql2-text filter parameter."""
     params = {
@@ -142,7 +137,6 @@ async def test_search_get_cql2_text_valid_param(app_client, ctx):
     assert resp.status_code == 200
 
 
-@pytest.mark.asyncio
 async def test_item_collection_get_cql2_text_invalid_param(app_client, ctx):
     """Test GET /collections/{collection_id}/items with invalid cql2-text filter."""
     collection_id = ctx.item["collection"]
@@ -156,7 +150,6 @@ async def test_item_collection_get_cql2_text_invalid_param(app_client, ctx):
     assert "Invalid query fields: invalid_param" in resp_json["detail"]
 
 
-@pytest.mark.asyncio
 async def test_search_get_cql2_text_with_properties_prefix(app_client, ctx):
     """Test GET /search with a valid cql2-text filter using properties. prefix.
 

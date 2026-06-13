@@ -2,8 +2,9 @@ import uuid
 
 import pytest
 
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
-@pytest.mark.asyncio
+
 async def test_get_root_catalog(catalogs_app_client, load_test_data):
     """Test getting the catalogs list."""
     resp = await catalogs_app_client.get("/catalogs")
@@ -29,7 +30,6 @@ async def test_get_root_catalog(catalogs_app_client, load_test_data):
         ), f"URL has double slashes: {href}"
 
 
-@pytest.mark.asyncio
 async def test_get_catalogs_list_with_proper_links(catalogs_app_client, load_test_data):
     """Test that /catalogs endpoint returns catalogs with properly formatted links."""
     # Create a test catalog
@@ -63,7 +63,6 @@ async def test_get_catalogs_list_with_proper_links(catalogs_app_client, load_tes
         assert len(parent_links) > 0, f"Catalog {catalog.get('id')} has no parent link"
 
 
-@pytest.mark.asyncio
 async def test_create_catalog(catalogs_app_client, load_test_data):
     """Test creating a new catalog."""
     test_catalog = load_test_data("test_catalog.json")
@@ -78,7 +77,6 @@ async def test_create_catalog(catalogs_app_client, load_test_data):
     assert created_catalog["title"] == test_catalog["title"]
 
 
-@pytest.mark.asyncio
 async def test_update_catalog(catalogs_app_client, load_test_data):
     """Test updating an existing catalog."""
     # First create a catalog
@@ -113,7 +111,6 @@ async def test_update_catalog(catalogs_app_client, load_test_data):
     assert fetched_catalog["description"] == "Updated description for the catalog"
 
 
-@pytest.mark.asyncio
 async def test_update_nonexistent_catalog(catalogs_app_client, load_test_data):
     """Test updating a catalog that doesn't exist."""
     test_catalog = load_test_data("test_catalog.json")
@@ -125,7 +122,6 @@ async def test_update_nonexistent_catalog(catalogs_app_client, load_test_data):
     assert resp.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_get_catalog(catalogs_app_client, load_test_data):
     """Test getting a specific catalog."""
     # First create a catalog
@@ -145,14 +141,12 @@ async def test_get_catalog(catalogs_app_client, load_test_data):
     assert catalog["description"] == test_catalog["description"]
 
 
-@pytest.mark.asyncio
 async def test_get_nonexistent_catalog(catalogs_app_client):
     """Test getting a catalog that doesn't exist."""
     resp = await catalogs_app_client.get("/catalogs/nonexistent-catalog")
     assert resp.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_get_catalog_collections(catalogs_app_client, load_test_data, ctx):
     """Test getting collections linked from a catalog."""
     # First create a catalog
@@ -181,7 +175,6 @@ async def test_get_catalog_collections(catalogs_app_client, load_test_data, ctx)
     assert ctx.collection["id"] in collection_ids
 
 
-@pytest.mark.asyncio
 async def test_get_catalog_collections_context_fields(
     catalogs_app_client, load_test_data, ctx
 ):
@@ -234,7 +227,6 @@ async def test_get_catalog_collections_context_fields(
     assert collection2["id"] in collection_ids
 
 
-@pytest.mark.asyncio
 async def test_get_catalog_collections_pagination(
     catalogs_app_client, load_test_data, ctx
 ):
@@ -302,14 +294,12 @@ async def test_get_catalog_collections_pagination(
     ), "Pages should not have overlapping collections"
 
 
-@pytest.mark.asyncio
 async def test_get_catalog_collections_nonexistent_catalog(catalogs_app_client):
     """Test getting collections from a catalog that doesn't exist."""
     resp = await catalogs_app_client.get("/catalogs/nonexistent-catalog/collections")
     assert resp.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_root_catalog_with_multiple_catalogs(catalogs_app_client, load_test_data):
     """Test that catalogs response includes multiple catalog objects."""
     # Create multiple catalogs
@@ -336,7 +326,6 @@ async def test_root_catalog_with_multiple_catalogs(catalogs_app_client, load_tes
         assert catalog_id in returned_ids
 
 
-@pytest.mark.asyncio
 async def test_get_catalog_collection(catalogs_app_client, load_test_data, ctx):
     """Test getting a specific collection from a catalog."""
     # First create a catalog
@@ -364,7 +353,6 @@ async def test_get_catalog_collection(catalogs_app_client, load_test_data, ctx):
     assert "links" in collection
 
 
-@pytest.mark.asyncio
 async def test_get_catalog_collection_nonexistent_catalog(catalogs_app_client, ctx):
     """Test getting a collection from a catalog that doesn't exist."""
     resp = await catalogs_app_client.get(
@@ -373,7 +361,6 @@ async def test_get_catalog_collection_nonexistent_catalog(catalogs_app_client, c
     assert resp.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_get_catalog_collection_nonexistent_collection(
     catalogs_app_client, load_test_data
 ):
@@ -392,7 +379,6 @@ async def test_get_catalog_collection_nonexistent_collection(
     assert resp.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_get_catalog_collection_items(catalogs_app_client, load_test_data, ctx):
     """Test getting items from a collection in a catalog."""
     # First create a catalog
@@ -422,7 +408,6 @@ async def test_get_catalog_collection_items(catalogs_app_client, load_test_data,
     assert len(items_response["features"]) > 0
 
 
-@pytest.mark.asyncio
 async def test_get_catalog_collection_items_nonexistent_catalog(
     catalogs_app_client, ctx
 ):
@@ -433,7 +418,6 @@ async def test_get_catalog_collection_items_nonexistent_catalog(
     assert resp.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_get_catalog_collection_items_nonexistent_collection(
     catalogs_app_client, load_test_data
 ):
@@ -452,7 +436,6 @@ async def test_get_catalog_collection_items_nonexistent_collection(
     assert resp.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_get_catalog_collection_item(catalogs_app_client, load_test_data, ctx):
     """Test getting a specific item from a collection in a catalog."""
     # First create a catalog
@@ -481,7 +464,6 @@ async def test_get_catalog_collection_item(catalogs_app_client, load_test_data, 
     assert "geometry" in item
 
 
-@pytest.mark.asyncio
 async def test_get_catalog_collection_item_nonexistent_catalog(
     catalogs_app_client, ctx
 ):
@@ -492,7 +474,6 @@ async def test_get_catalog_collection_item_nonexistent_catalog(
     assert resp.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_get_catalog_collection_item_nonexistent_collection(
     catalogs_app_client, load_test_data, ctx
 ):
@@ -511,7 +492,6 @@ async def test_get_catalog_collection_item_nonexistent_collection(
     assert resp.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_get_catalog_collection_item_nonexistent_item(
     catalogs_app_client, load_test_data, ctx
 ):
@@ -530,7 +510,6 @@ async def test_get_catalog_collection_item_nonexistent_item(
     assert resp.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_catalogs_pagination_limit(catalogs_app_client, load_test_data):
     """Test that pagination limit parameter works for catalogs endpoint."""
     # Create multiple catalogs
@@ -556,7 +535,6 @@ async def test_catalogs_pagination_limit(catalogs_app_client, load_test_data):
     assert catalogs_response["numberReturned"] == 2
 
 
-@pytest.mark.asyncio
 async def test_catalogs_pagination_default_limit(catalogs_app_client, load_test_data):
     """Test that pagination uses default limit when no limit parameter is provided."""
     # Create multiple catalogs
@@ -582,7 +560,6 @@ async def test_catalogs_pagination_default_limit(catalogs_app_client, load_test_
     assert catalogs_response["numberReturned"] == 10
 
 
-@pytest.mark.asyncio
 async def test_catalogs_pagination_limit_validation(catalogs_app_client):
     """Test that pagination limit parameter validation works."""
     # Test with limit=0 (should be invalid)
@@ -590,7 +567,6 @@ async def test_catalogs_pagination_limit_validation(catalogs_app_client):
     assert resp.status_code == 400  # Validation error returns 400 for Query parameters
 
 
-@pytest.mark.asyncio
 async def test_catalogs_pagination_token_parameter(catalogs_app_client, load_test_data):
     """Test that pagination token parameter is accepted (even if token is invalid)."""
     # Create a catalog first
@@ -609,7 +585,6 @@ async def test_catalogs_pagination_token_parameter(catalogs_app_client, load_tes
     assert "links" in catalogs_response
 
 
-@pytest.mark.asyncio
 async def test_create_catalog_collection(catalogs_app_client, load_test_data, ctx):
     """Test creating a collection within a catalog."""
     # First create a catalog
@@ -690,7 +665,6 @@ async def test_create_catalog_collection(catalogs_app_client, load_test_data, ct
     assert test_collection["id"] in collection_ids
 
 
-@pytest.mark.asyncio
 async def test_create_catalog_collection_nonexistent_catalog(
     catalogs_app_client, load_test_data
 ):
@@ -704,7 +678,6 @@ async def test_create_catalog_collection_nonexistent_catalog(
     assert resp.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_link_existing_collection_by_id(catalogs_app_client, load_test_data, ctx):
     """Test linking an existing collection to a catalog using only its ID."""
     # First create a catalog
@@ -736,7 +709,6 @@ async def test_link_existing_collection_by_id(catalogs_app_client, load_test_dat
     assert get_resp.json()["id"] == existing_collection_id
 
 
-@pytest.mark.asyncio
 async def test_link_nonexistent_collection_by_id(catalogs_app_client, load_test_data):
     """Test linking a nonexistent collection using only an ID (should fail with 404)."""
     # First create a catalog
@@ -760,7 +732,6 @@ async def test_link_nonexistent_collection_by_id(catalogs_app_client, load_test_
     assert resp.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_delete_catalog(catalogs_app_client, load_test_data):
     """Test deleting an empty catalog."""
     # Create a catalog
@@ -787,7 +758,6 @@ async def test_delete_catalog(catalogs_app_client, load_test_data):
     assert get_resp.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_delete_catalog_no_cascade(catalogs_app_client, load_test_data):
     """Test deleting a catalog (collections remain and are adopted by root)."""
     # Create a catalog
@@ -837,7 +807,6 @@ async def test_delete_catalog_no_cascade(catalogs_app_client, load_test_data):
     ), "Collection should not have catalog link after catalog deletion"
 
 
-@pytest.mark.asyncio
 async def test_delete_catalog_removes_parent_ids_from_collections(
     catalogs_app_client, load_test_data
 ):
@@ -895,7 +864,6 @@ async def test_delete_catalog_removes_parent_ids_from_collections(
         assert get_from_catalog_resp.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_create_catalog_collection_adds_parent_id(
     catalogs_app_client, load_test_data
 ):
@@ -941,7 +909,6 @@ async def test_create_catalog_collection_adds_parent_id(
     ), "Collection should have parent link when accessed via catalog endpoint"
 
 
-@pytest.mark.asyncio
 async def test_update_catalog_collection_preserves_parent_ids(
     catalogs_app_client, load_test_data
 ):
@@ -1010,7 +977,6 @@ async def test_update_catalog_collection_preserves_parent_ids(
         assert data["description"] == "Updated Description"
 
 
-@pytest.mark.asyncio
 async def test_add_existing_collection_to_catalog(
     catalogs_app_client, load_test_data, ctx
 ):
@@ -1036,7 +1002,6 @@ async def test_add_existing_collection_to_catalog(
     assert get_resp.status_code == 200
 
 
-@pytest.mark.asyncio
 async def test_collection_with_multiple_parent_catalogs(
     catalogs_app_client, load_test_data
 ):
@@ -1076,7 +1041,6 @@ async def test_collection_with_multiple_parent_catalogs(
         assert get_resp.status_code == 200
 
 
-@pytest.mark.asyncio
 async def test_get_catalog_collections_uses_parent_ids(
     catalogs_app_client, load_test_data
 ):
@@ -1114,7 +1078,6 @@ async def test_get_catalog_collections_uses_parent_ids(
         assert collection_id in returned_ids
 
 
-@pytest.mark.asyncio
 async def test_delete_collection_from_catalog_single_parent(
     catalogs_app_client, load_test_data
 ):
@@ -1158,7 +1121,6 @@ async def test_delete_collection_from_catalog_single_parent(
     assert get_from_catalog_resp.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_delete_collection_from_catalog_multiple_parents(
     catalogs_app_client, load_test_data
 ):
@@ -1213,7 +1175,6 @@ async def test_delete_collection_from_catalog_multiple_parents(
     assert get_from_deleted_catalog_resp.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_get_collection_not_in_catalog_returns_404(
     catalogs_app_client, load_test_data, ctx
 ):
@@ -1233,7 +1194,6 @@ async def test_get_collection_not_in_catalog_returns_404(
     assert get_resp.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_delete_collection_not_in_catalog_returns_404(
     catalogs_app_client, load_test_data, ctx
 ):
@@ -1253,7 +1213,6 @@ async def test_delete_collection_not_in_catalog_returns_404(
     assert delete_resp.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_catalog_links_contain_all_collections(
     catalogs_app_client, load_test_data
 ):
@@ -1320,7 +1279,6 @@ async def test_catalog_links_contain_all_collections(
         ), f"Collection {collection_id} missing from catalog collections endpoint"
 
 
-@pytest.mark.asyncio
 async def test_delete_catalog_orphans_collections(catalogs_app_client, load_test_data):
     """Test that deleting a catalog makes orphaned collections adopt root as parent."""
     # Create a catalog
@@ -1375,7 +1333,6 @@ async def test_delete_catalog_orphans_collections(catalogs_app_client, load_test
     ), "Orphaned collection should not have link to deleted catalog"
 
 
-@pytest.mark.asyncio
 async def test_delete_catalog_preserves_multi_parent_collections(
     catalogs_app_client, load_test_data
 ):
@@ -1428,7 +1385,6 @@ async def test_delete_catalog_preserves_multi_parent_collections(
     assert get_from_deleted_resp.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_parent_ids_not_exposed_to_client(catalogs_app_client, load_test_data):
     """Test that parent_ids field is not exposed in API responses."""
     # Create a catalog
@@ -1475,7 +1431,6 @@ async def test_parent_ids_not_exposed_to_client(catalogs_app_client, load_test_d
         ), "parent_ids should not be exposed in API response"
 
 
-@pytest.mark.asyncio
 async def test_get_catalog_children(catalogs_app_client, load_test_data):
     """Test getting children (collections) from a catalog."""
     # Create a catalog
@@ -1531,7 +1486,6 @@ async def test_get_catalog_children(catalogs_app_client, load_test_data):
     assert "parent" in link_rels
 
 
-@pytest.mark.asyncio
 async def test_get_catalog_children_type_filter_catalog(
     catalogs_app_client, load_test_data
 ):
@@ -1566,7 +1520,6 @@ async def test_get_catalog_children_type_filter_catalog(
     assert children_data["numberMatched"] == 0
 
 
-@pytest.mark.asyncio
 async def test_get_catalog_children_type_filter_collection(
     catalogs_app_client, load_test_data
 ):
@@ -1601,14 +1554,12 @@ async def test_get_catalog_children_type_filter_collection(
     assert children_data["children"][0]["id"] == collection_id
 
 
-@pytest.mark.asyncio
 async def test_get_catalog_children_nonexistent_catalog(catalogs_app_client):
     """Test getting children from a catalog that doesn't exist."""
     resp = await catalogs_app_client.get("/catalogs/nonexistent-catalog/children")
     assert resp.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_get_catalog_children_pagination(catalogs_app_client, load_test_data):
     """Test pagination of children endpoint."""
     # Create a catalog
@@ -1681,7 +1632,6 @@ async def test_get_catalog_children_pagination(catalogs_app_client, load_test_da
 # ============================================================================
 
 
-@pytest.mark.asyncio
 async def test_create_sub_catalog(catalogs_app_client, load_test_data):
     """Test creating a sub-catalog within a parent catalog."""
     # Create parent catalog
@@ -1709,7 +1659,6 @@ async def test_create_sub_catalog(catalogs_app_client, load_test_data):
     assert "parent_ids" not in created_sub, "parent_ids should not be exposed"
 
 
-@pytest.mark.asyncio
 async def test_get_sub_catalogs(catalogs_app_client, load_test_data):
     """Test retrieving sub-catalogs from a parent catalog."""
     # Create parent catalog
@@ -1754,7 +1703,6 @@ async def test_get_sub_catalogs(catalogs_app_client, load_test_data):
     assert "root" in link_rels
 
 
-@pytest.mark.asyncio
 async def test_get_sub_catalogs_empty(catalogs_app_client, load_test_data):
     """Test retrieving sub-catalogs from a parent with no children."""
     # Create parent catalog
@@ -1774,7 +1722,6 @@ async def test_get_sub_catalogs_empty(catalogs_app_client, load_test_data):
     assert catalogs_data.get("numberReturned", 0) == 0
 
 
-@pytest.mark.asyncio
 async def test_nested_catalog_hierarchy(catalogs_app_client, load_test_data):
     """Test creating a nested hierarchy of catalogs (3 levels)."""
     # Create root catalog
@@ -1820,7 +1767,6 @@ async def test_nested_catalog_hierarchy(catalogs_app_client, load_test_data):
     assert level1_data["catalogs"][0]["id"] == level2_id
 
 
-@pytest.mark.asyncio
 async def test_catalog_children_mixed_catalogs_and_collections(
     catalogs_app_client, load_test_data
 ):
@@ -1886,7 +1832,6 @@ async def test_catalog_children_mixed_catalogs_and_collections(
         assert coll_id in returned_coll_ids
 
 
-@pytest.mark.asyncio
 async def test_catalog_children_type_filter_catalog(
     catalogs_app_client, load_test_data
 ):
@@ -1935,7 +1880,6 @@ async def test_catalog_children_type_filter_catalog(
         assert child["type"] == "Catalog"
 
 
-@pytest.mark.asyncio
 async def test_delete_catalog_with_sub_catalogs_no_cascade(
     catalogs_app_client, load_test_data
 ):
@@ -1975,7 +1919,6 @@ async def test_delete_catalog_with_sub_catalogs_no_cascade(
     assert get_parent_resp.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_catalog_parent_ids_not_exposed(catalogs_app_client, load_test_data):
     """Test that parent_ids field is not exposed in catalog API responses."""
     # Create parent catalog
@@ -2016,7 +1959,6 @@ async def test_catalog_parent_ids_not_exposed(catalogs_app_client, load_test_dat
         ), "parent_ids should not be exposed in list response"
 
 
-@pytest.mark.asyncio
 async def test_delete_sub_catalog_becomes_root_level(
     catalogs_app_client, load_test_data
 ):
@@ -2064,7 +2006,6 @@ async def test_delete_sub_catalog_becomes_root_level(
     assert parent_get_resp.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_catalog_poly_hierarchy(catalogs_app_client, load_test_data):
     """Test poly-hierarchy: a catalog can belong to multiple parent catalogs."""
     # Create two parent catalogs
@@ -2109,7 +2050,6 @@ async def test_catalog_poly_hierarchy(catalogs_app_client, load_test_data):
     assert get_sub_resp.status_code == 200
 
 
-@pytest.mark.asyncio
 async def test_get_sub_catalogs_pagination(catalogs_app_client, load_test_data):
     """Test pagination of sub-catalogs endpoint."""
     # Create parent catalog
@@ -2170,7 +2110,6 @@ async def test_get_sub_catalogs_pagination(catalogs_app_client, load_test_data):
     assert len(page1_ids) + len(page2_ids) == 15  # All accounted for
 
 
-@pytest.mark.asyncio
 async def test_get_sub_catalogs_pagination_with_limit(
     catalogs_app_client, load_test_data
 ):
@@ -2238,7 +2177,6 @@ async def test_get_sub_catalogs_pagination_with_limit(
     assert "next" not in [link["rel"] for link in page3_data["links"]]
 
 
-@pytest.mark.asyncio
 async def test_get_catalog_collections_breadcrumb_parent_link(
     catalogs_app_client, load_test_data
 ):
@@ -2283,7 +2221,6 @@ async def test_get_catalog_collections_breadcrumb_parent_link(
     ), "Parent link should end with /catalogs/{catalog_id}"
 
 
-@pytest.mark.asyncio
 async def test_get_catalog_dynamic_parent_links_single_parent(
     catalogs_app_client, load_test_data
 ):
@@ -2328,7 +2265,6 @@ async def test_get_catalog_dynamic_parent_links_single_parent(
     ), f"Parent links should include parent catalog, got: {parent_hrefs}"
 
 
-@pytest.mark.asyncio
 async def test_get_catalog_dynamic_parent_links_poly_hierarchy(
     catalogs_app_client, load_test_data
 ):
@@ -2398,7 +2334,6 @@ async def test_get_catalog_dynamic_parent_links_poly_hierarchy(
     # scoped read endpoints (no GET /catalogs/{parent}/catalogs/{child})
 
 
-@pytest.mark.asyncio
 async def test_get_catalog_dynamic_child_links(catalogs_app_client, load_test_data):
     """Test that get_catalog returns child links for all children (catalogs and collections).
 
@@ -2458,7 +2393,6 @@ async def test_get_catalog_dynamic_child_links(catalogs_app_client, load_test_da
     ), "Child links should include child collection"
 
 
-@pytest.mark.asyncio
 async def test_get_catalog_includes_children_endpoint_link(
     catalogs_app_client, load_test_data
 ):
@@ -2492,7 +2426,6 @@ async def test_get_catalog_includes_children_endpoint_link(
     ), "Children link should point to /children endpoint"
 
 
-@pytest.mark.asyncio
 async def test_get_catalog_root_parent_link_for_top_level_catalog(
     catalogs_app_client, load_test_data
 ):
@@ -2529,7 +2462,6 @@ async def test_get_catalog_root_parent_link_for_top_level_catalog(
     ), f"Top-level catalog should have parent link to root, got: {parent_hrefs}"
 
 
-@pytest.mark.asyncio
 async def test_get_catalog_child_links_pagination_over_100(
     catalogs_app_client, load_test_data
 ):
@@ -2580,7 +2512,6 @@ async def test_get_catalog_child_links_pagination_over_100(
         ), f"Child links should include collection {collection_id}"
 
 
-@pytest.mark.asyncio
 async def test_get_catalog_deduplicates_parent_links(
     catalogs_app_client, load_test_data
 ):
@@ -2637,7 +2568,6 @@ async def test_get_catalog_deduplicates_parent_links(
     # NOTE: Catalogs do NOT have rel="duplicate" links (no scoped read endpoints)
 
 
-@pytest.mark.asyncio
 async def test_get_catalog_child_links_with_missing_title(
     catalogs_app_client, load_test_data
 ):
@@ -2687,7 +2617,6 @@ async def test_get_catalog_child_links_with_missing_title(
     ), f"Child link title should fallback to collection_id, got: {child_link['title']}"
 
 
-@pytest.mark.asyncio
 async def test_get_catalog_mixed_child_types_pagination(
     catalogs_app_client, load_test_data
 ):
@@ -2765,7 +2694,6 @@ async def test_get_catalog_mixed_child_types_pagination(
     ), f"Should have at least 10 collection children in links, got {collection_child_count}"
 
 
-@pytest.mark.asyncio
 async def test_collection_serializer_dynamic_parent_links(
     catalogs_app_client, load_test_data
 ):
@@ -2816,7 +2744,6 @@ async def test_collection_serializer_dynamic_parent_links(
     ), f"Related links should include catalog parent {parent_id}"
 
 
-@pytest.mark.asyncio
 async def test_collection_serializer_deduplicates_parent_links(
     catalogs_app_client, load_test_data
 ):
@@ -2860,7 +2787,6 @@ async def test_collection_serializer_deduplicates_parent_links(
     ), f"Parent links should be unique, got duplicates: {parent_hrefs}"
 
 
-@pytest.mark.asyncio
 async def test_collection_serializer_poly_hierarchy_parent_links(
     catalogs_app_client, load_test_data
 ):
@@ -2963,7 +2889,6 @@ async def test_collection_serializer_poly_hierarchy_parent_links(
     ), f"Duplicate links should include scoped URI for parent {parent_id_2}"
 
 
-@pytest.mark.asyncio
 async def test_catalogs_list_includes_parent_links(catalogs_app_client, load_test_data):
     """Test that GET /catalogs list includes parent links for catalogs with parents."""
     # Create parent catalog
@@ -3015,7 +2940,6 @@ async def test_catalogs_list_includes_parent_links(catalogs_app_client, load_tes
     ), "All parent links should have titles"
 
 
-@pytest.mark.asyncio
 async def test_posted_catalog_dynamic_links_not_persisted(
     catalogs_app_client, load_test_data
 ):
@@ -3092,7 +3016,6 @@ async def test_posted_catalog_dynamic_links_not_persisted(
     ), "Fake children link from request should not be persisted"
 
 
-@pytest.mark.asyncio
 async def test_posted_catalog_user_links_are_persisted(
     catalogs_app_client, load_test_data
 ):
@@ -3134,7 +3057,6 @@ async def test_posted_catalog_user_links_are_persisted(
     ), "About link should have correct href"
 
 
-@pytest.mark.asyncio
 async def test_subcatalog_list_endpoint_includes_links(
     catalogs_app_client, load_test_data
 ):
@@ -3189,7 +3111,6 @@ async def test_subcatalog_list_endpoint_includes_links(
         ), f"All parent links for {sub_id} should have titles"
 
 
-@pytest.mark.asyncio
 async def test_subcatalog_list_endpoint_includes_child_links(
     catalogs_app_client, load_test_data
 ):
@@ -3248,7 +3169,6 @@ async def test_subcatalog_list_endpoint_includes_child_links(
         ), "All child links should have titles"
 
 
-@pytest.mark.asyncio
 async def test_both_endpoints_return_consistent_links(
     catalogs_app_client, load_test_data
 ):
@@ -3317,7 +3237,6 @@ async def test_both_endpoints_return_consistent_links(
     ), "Parent link from /catalogs/{id}/catalogs should reference parent"
 
 
-@pytest.mark.asyncio
 async def test_children_endpoint_catalogs_include_links(
     catalogs_app_client, load_test_data
 ):
@@ -3390,7 +3309,6 @@ async def test_children_endpoint_catalogs_include_links(
         ), "All child links should have titles"
 
 
-@pytest.mark.asyncio
 async def test_children_endpoint_mixed_content_with_links(
     catalogs_app_client, load_test_data
 ):
@@ -3465,7 +3383,6 @@ async def test_children_endpoint_mixed_content_with_links(
         ), f"Collection {coll_id} should be in /children"
 
 
-@pytest.mark.asyncio
 async def test_scoped_collection_links_poly_hierarchy(
     catalogs_app_client, load_test_data
 ):
@@ -3575,7 +3492,6 @@ async def test_scoped_collection_links_poly_hierarchy(
     ), f"Duplicate links should include alternative scoped URI /catalogs/{parent_id_2}/collections/{collection_id}"
 
 
-@pytest.mark.asyncio
 async def test_duplicate_links_exclude_current_catalog_context(
     catalogs_app_client, load_test_data
 ):
@@ -3645,7 +3561,6 @@ async def test_duplicate_links_exclude_current_catalog_context(
     )
 
 
-@pytest.mark.asyncio
 async def test_catalog_collections_endpoint_excludes_catalogs(
     catalogs_app_client, load_test_data
 ):
@@ -3708,7 +3623,6 @@ async def test_catalog_collections_endpoint_excludes_catalogs(
     ), f"Catalog {child_catalog_id} should NOT be in collections endpoint results"
 
 
-@pytest.mark.asyncio
 async def test_catalogs_list_includes_child_links(catalogs_app_client, load_test_data):
     """Test that /catalogs endpoint includes child links for each catalog.
 
@@ -3815,7 +3729,6 @@ async def test_catalogs_list_includes_child_links(catalogs_app_client, load_test
     ), f"Parent catalog 2 should have no child links, got {len(child_links_2)}"
 
 
-@pytest.mark.asyncio
 async def test_sub_catalogs_list_includes_child_links(
     catalogs_app_client, load_test_data
 ):
@@ -3899,7 +3812,6 @@ async def test_sub_catalogs_list_includes_child_links(
     ), f"Sub catalog 2 should have no child links, got {len(child_links_2)}"
 
 
-@pytest.mark.asyncio
 async def test_catalogs_list_endpoint(catalogs_app_client, load_test_data):
     """Test that catalogs list endpoint returns proper structure."""
     # Get the root catalog
@@ -3914,7 +3826,6 @@ async def test_catalogs_list_endpoint(catalogs_app_client, load_test_data):
     assert "numberReturned" in catalogs_response
 
 
-@pytest.mark.asyncio
 async def test_catalog_conformance_endpoint(catalogs_app_client, load_test_data):
     """Test the /catalogs/{catalog_id}/conformance endpoint."""
     # First create a catalog
@@ -3952,7 +3863,6 @@ async def test_catalog_conformance_endpoint(catalogs_app_client, load_test_data)
 # ============================================================================
 
 
-@pytest.mark.asyncio
 async def test_catalog_create_logs_error_with_traceback(txn_client, caplog):
     """Test that catalog creation failures log errors with full stack traces."""
     import logging
@@ -3991,7 +3901,6 @@ async def test_catalog_create_logs_error_with_traceback(txn_client, caplog):
     ), "Expected stack trace (exc_info) in error log"
 
 
-@pytest.mark.asyncio
 async def test_catalog_delete_logs_error_with_traceback(txn_client, caplog):
     """Test that catalog deletion failures log errors with full stack traces."""
     import logging
@@ -4023,7 +3932,6 @@ async def test_catalog_delete_logs_error_with_traceback(txn_client, caplog):
 # ============================================================================
 
 
-@pytest.mark.asyncio
 async def test_hide_alternate_parents_suppresses_related_links_on_global_collection(
     catalogs_app, catalogs_app_client, load_test_data, monkeypatch
 ):
@@ -4081,7 +3989,6 @@ async def test_hide_alternate_parents_suppresses_related_links_on_global_collect
     assert len(parent_links) == 1, "Should still have exactly 1 parent link"
 
 
-@pytest.mark.asyncio
 async def test_hide_alternate_parents_suppresses_related_links_on_scoped_collection(
     catalogs_app, catalogs_app_client, load_test_data, monkeypatch
 ):
@@ -4144,7 +4051,6 @@ async def test_hide_alternate_parents_suppresses_related_links_on_scoped_collect
     ), "Parent link should point to contextual catalog, not alternate"
 
 
-@pytest.mark.asyncio
 async def test_hide_alternate_parents_suppresses_related_links_on_catalog(
     catalogs_app, catalogs_app_client, load_test_data, monkeypatch
 ):
@@ -4198,7 +4104,6 @@ async def test_hide_alternate_parents_suppresses_related_links_on_catalog(
     assert len(parent_links) == 1, "Should still have exactly 1 parent link"
 
 
-@pytest.mark.asyncio
 async def test_hide_alternate_parents_false_shows_related_links_on_catalog(
     catalogs_app, catalogs_app_client, load_test_data, monkeypatch
 ):
@@ -4253,7 +4158,6 @@ async def test_hide_alternate_parents_false_shows_related_links_on_catalog(
     assert len(parent_links) == 1, "Should still have exactly 1 parent link"
 
 
-@pytest.mark.asyncio
 async def test_hide_alternate_parents_false_shows_related_links(
     catalogs_app, catalogs_app_client, load_test_data, monkeypatch
 ):
@@ -4307,7 +4211,6 @@ async def test_hide_alternate_parents_false_shows_related_links(
     ), "Expected duplicate links when hide_alternate_parents=False, got none"
 
 
-@pytest.mark.asyncio
 async def test_collection_index_logs_error_with_traceback(txn_client, caplog):
     """Test that collection indexing failures log errors with full stack traces."""
     import logging

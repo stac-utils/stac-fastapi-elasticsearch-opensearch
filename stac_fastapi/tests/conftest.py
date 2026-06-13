@@ -455,13 +455,13 @@ def build_test_app_with_catalogs():
     return api.app
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def catalogs_app():
     """Fixture to get the FastAPI app with catalogs extension enabled."""
     return build_test_app_with_catalogs()
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def catalogs_app_client(catalogs_app):
     """Fixture to get an async client for the app with catalogs extension enabled."""
     await create_index_templates()

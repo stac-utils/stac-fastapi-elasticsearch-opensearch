@@ -1,7 +1,8 @@
 import pytest
 
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
-@pytest.mark.asyncio
+
 async def test_not_authenticated(route_dependencies_client):
     """Test protected endpoint [GET /collections] without permissions"""
 
@@ -10,7 +11,6 @@ async def test_not_authenticated(route_dependencies_client):
     assert response.status_code == 401
 
 
-@pytest.mark.asyncio
 async def test_authenticated(route_dependencies_client):
     """Test protected endpoint [GET /collections] with permissions"""
 

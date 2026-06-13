@@ -3,10 +3,11 @@ from urllib.parse import urlparse
 
 import pytest
 
+pytestmark = pytest.mark.asyncio(loop_scope="session")
+
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
-@pytest.mark.asyncio
 async def test_aggregation_extension_landing_page_link(app_client, ctx):
     """Test if the `aggregations` and `aggregate` links are included in the landing page"""
     resp = await app_client.get("/")
@@ -19,7 +20,6 @@ async def test_aggregation_extension_landing_page_link(app_client, ctx):
     assert "aggregate" in keys
 
 
-@pytest.mark.asyncio
 async def test_aggregation_extension_collection_link(app_client, ctx, load_test_data):
     """Test if the `aggregations` and `aggregate` links are included in the collection links"""
     test_collection = load_test_data("test_collection.json")
@@ -38,7 +38,6 @@ async def test_aggregation_extension_collection_link(app_client, ctx, load_test_
     assert resp.status_code == 204
 
 
-@pytest.mark.asyncio
 async def test_get_catalog_aggregations(app_client):
     # there's one item that can match, so one of these queries should match it and the other shouldn't
     resp = await app_client.get("/aggregations")
@@ -47,7 +46,6 @@ async def test_get_catalog_aggregations(app_client):
     assert len(resp.json()["aggregations"]) == 7
 
 
-@pytest.mark.asyncio
 async def test_post_catalog_aggregations(app_client):
     # there's one item that can match, so one of these queries should match it and the other shouldn't
     resp = await app_client.post("/aggregations")
@@ -56,7 +54,6 @@ async def test_post_catalog_aggregations(app_client):
     assert len(resp.json()["aggregations"]) == 7
 
 
-@pytest.mark.asyncio
 async def test_get_collection_aggregations(app_client, ctx, load_test_data):
     # there's one item that can match, so one of these queries should match it and the other shouldn't
 
@@ -79,7 +76,6 @@ async def test_get_collection_aggregations(app_client, ctx, load_test_data):
     assert resp.status_code == 204
 
 
-@pytest.mark.asyncio
 async def test_post_collection_aggregations(app_client, ctx, load_test_data):
     # there's one item that can match, so one of these queries should match it and the other shouldn't
 
@@ -102,7 +98,6 @@ async def test_post_collection_aggregations(app_client, ctx, load_test_data):
     assert resp.status_code == 204
 
 
-@pytest.mark.asyncio
 async def test_aggregate_search_point_does_not_intersect(app_client, ctx):
     point = [15.04, -3.14]
     intersects = {"type": "Point", "coordinates": point}
@@ -118,7 +113,6 @@ async def test_aggregate_search_point_does_not_intersect(app_client, ctx):
     assert resp.json()["aggregations"][0]["value"] == 0
 
 
-@pytest.mark.asyncio
 async def test_get_collection_aggregate_no_collection(app_client, ctx, load_test_data):
 
     resp = await app_client.get(
@@ -127,7 +121,6 @@ async def test_get_collection_aggregate_no_collection(app_client, ctx, load_test
     assert resp.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_get_collection_aggregate(app_client, ctx, load_test_data):
     test_collection = load_test_data("test_collection.json")
 
@@ -138,7 +131,6 @@ async def test_get_collection_aggregate(app_client, ctx, load_test_data):
     assert resp.json()["aggregations"][0]["value"] == 1
 
 
-@pytest.mark.asyncio
 async def test_post_collection_aggregate(app_client, ctx, load_test_data):
     test_collection = load_test_data("test_collection.json")
 
@@ -153,7 +145,6 @@ async def test_post_collection_aggregate(app_client, ctx, load_test_data):
     assert resp.json()["aggregations"][0]["value"] == 1
 
 
-@pytest.mark.asyncio
 async def test_aggregate_datetime_out_of_range(app_client, ctx):
     params = {
         "datetime": "2023-07-14T02:05:01.324Z/2024-02-28T23:13:08.000Z",
@@ -164,7 +155,6 @@ async def test_aggregate_datetime_out_of_range(app_client, ctx):
     assert resp.json()["aggregations"][0]["value"] == 0
 
 
-@pytest.mark.asyncio
 async def test_aggregate_datetime_in_range(app_client, ctx):
     params = {
         "datetime": "2020-02-11T12:30:22Z/2020-02-13T12:30:22Z",
@@ -175,7 +165,6 @@ async def test_aggregate_datetime_in_range(app_client, ctx):
     assert resp.json()["aggregations"][0]["value"] == 1
 
 
-@pytest.mark.asyncio
 async def test_aggregate_filter_extension_eq_post(app_client, ctx):
     params = {
         "filter": {"op": "=", "args": [{"property": "id"}, ctx.item["id"]]},
@@ -187,7 +176,6 @@ async def test_aggregate_filter_extension_eq_post(app_client, ctx):
     assert resp.json()["aggregations"][0]["value"] == 1
 
 
-@pytest.mark.asyncio
 async def test_aggregate_filter_extension_neq_post(app_client, ctx):
     params = {
         "filter": {"op": "<>", "args": [{"property": "id"}, ctx.item["id"]]},
@@ -200,7 +188,6 @@ async def test_aggregate_filter_extension_neq_post(app_client, ctx):
     assert resp.json()["aggregations"][0]["value"] == 0
 
 
-@pytest.mark.asyncio
 async def test_aggregate_extension_gte_get(app_client, ctx):
     # there's one item that can match, so one of these queries should match it and the other shouldn't
     resp = await app_client.get(
@@ -218,7 +205,6 @@ async def test_aggregate_extension_gte_get(app_client, ctx):
     assert resp.json()["aggregations"][0]["value"] == 0
 
 
-@pytest.mark.asyncio
 async def test_aggregate_filter_extension_gte_post(app_client, ctx):
     # there's one item that can match, so one of these queries should match it and the other shouldn't
     params = {
@@ -254,7 +240,6 @@ async def test_aggregate_filter_extension_gte_post(app_client, ctx):
     assert resp.json()["aggregations"][0]["value"] == 0
 
 
-@pytest.mark.asyncio
 async def test_aggregate_filter_ext_and_get_id(app_client, ctx):
     collection = ctx.item["collection"]
     id = ctx.item["id"]
@@ -265,7 +250,6 @@ async def test_aggregate_filter_ext_and_get_id(app_client, ctx):
     assert resp.json()["aggregations"][0]["value"] == 1
 
 
-@pytest.mark.asyncio
 async def test_search_aggregate_extension_wildcard_cql2(app_client, ctx):
     single_char = ctx.item["id"][:-1] + "_"
     multi_char = ctx.item["id"][:-3] + "%"
@@ -301,7 +285,6 @@ async def test_search_aggregate_extension_wildcard_cql2(app_client, ctx):
     assert resp.json()["aggregations"][0]["value"] == 1
 
 
-@pytest.mark.asyncio
 async def test_aggregate_filter_extension_wildcard_es(app_client, ctx):
     single_char = ctx.item["id"][:-1] + "?"
     multi_char = ctx.item["id"][:-3] + "*"
@@ -337,7 +320,6 @@ async def test_aggregate_filter_extension_wildcard_es(app_client, ctx):
     assert resp.json()["aggregations"][0]["value"] == 1
 
 
-@pytest.mark.asyncio
 async def test_aggregate_filter_extension_in(app_client, ctx):
     product_id = ctx.item["properties"]["landsat:product_id"]
 
@@ -365,7 +347,6 @@ async def test_aggregate_filter_extension_in(app_client, ctx):
     assert resp.json()["aggregations"][0]["value"] == 1
 
 
-@pytest.mark.asyncio
 async def test_aggregate_filter_extension_in_no_list(app_client, ctx):
     product_id = ctx.item["properties"]["landsat:product_id"]
 
@@ -395,7 +376,6 @@ async def test_aggregate_filter_extension_in_no_list(app_client, ctx):
     }
 
 
-@pytest.mark.asyncio
 async def test_aggregate_datetime_non_interval(app_client, ctx):
     dt_formats = [
         "2020-02-12T12:30:22+00:00",
@@ -412,7 +392,6 @@ async def test_aggregate_datetime_non_interval(app_client, ctx):
         assert resp.json()["aggregations"][0]["value"] == 1
 
 
-@pytest.mark.asyncio
 async def test_post_aggregate_total_count(app_client, ctx):
 
     params = {
@@ -425,7 +404,6 @@ async def test_post_aggregate_total_count(app_client, ctx):
     assert resp.json()["aggregations"][0]["value"] == 1
 
 
-@pytest.mark.asyncio
 async def test_get_aggregate_total_count(app_client, ctx):
 
     resp = await app_client.get("/aggregate?aggregations=total_count")
@@ -434,7 +412,6 @@ async def test_get_aggregate_total_count(app_client, ctx):
     assert resp.json()["aggregations"][0]["value"] == 1
 
 
-@pytest.mark.asyncio
 async def test_get_aggregate_datetime_max(app_client, ctx):
 
     resp = await app_client.get("/aggregate?aggregations=datetime_max")
@@ -446,7 +423,6 @@ async def test_get_aggregate_datetime_max(app_client, ctx):
     )
 
 
-@pytest.mark.asyncio
 async def test_post_aggregate_datetime_max(app_client, ctx):
 
     params = {
@@ -462,7 +438,6 @@ async def test_post_aggregate_datetime_max(app_client, ctx):
     )
 
 
-@pytest.mark.asyncio
 async def test_get_aggregate_datetime_min(app_client, ctx):
 
     resp = await app_client.get("/aggregate?aggregations=datetime_min")
@@ -474,7 +449,6 @@ async def test_get_aggregate_datetime_min(app_client, ctx):
     )
 
 
-@pytest.mark.asyncio
 async def test_post_aggregate_datetime_min(app_client, ctx):
 
     params = {
@@ -490,7 +464,6 @@ async def test_post_aggregate_datetime_min(app_client, ctx):
     )
 
 
-@pytest.mark.asyncio
 async def test_get_aggregate_datetime_frequency(app_client, ctx):
 
     resp = await app_client.get("/aggregate?aggregations=datetime_frequency")
@@ -503,7 +476,6 @@ async def test_get_aggregate_datetime_frequency(app_client, ctx):
     )
 
 
-@pytest.mark.asyncio
 async def test_post_aggregate_datetime_frequency(app_client, ctx):
 
     params = {
@@ -520,7 +492,6 @@ async def test_post_aggregate_datetime_frequency(app_client, ctx):
     )
 
 
-@pytest.mark.asyncio
 async def test_get_aggregate_collection_frequency(app_client, ctx):
 
     resp = await app_client.get("/aggregate?aggregations=collection_frequency")
@@ -530,7 +501,6 @@ async def test_get_aggregate_collection_frequency(app_client, ctx):
     assert resp.json()["aggregations"][0]["buckets"][0]["key"] == "test-collection"
 
 
-@pytest.mark.asyncio
 async def test_post_aggregate_collection_frequency(app_client, ctx):
 
     params = {
@@ -544,7 +514,6 @@ async def test_post_aggregate_collection_frequency(app_client, ctx):
     assert resp.json()["aggregations"][0]["buckets"][0]["key"] == "test-collection"
 
 
-@pytest.mark.asyncio
 async def test_get_aggregate_attribute_frequency(app_client, ctx):
 
     resp = await app_client.get(
@@ -556,7 +525,6 @@ async def test_get_aggregate_attribute_frequency(app_client, ctx):
     assert resp.json()["aggregations"][0]["buckets"][0]["key"] == "landsat-8"
 
 
-@pytest.mark.asyncio
 async def test_post_aggregate_attribute_frequency(app_client, ctx):
 
     params = {
@@ -571,7 +539,6 @@ async def test_post_aggregate_attribute_frequency(app_client, ctx):
     assert resp.json()["aggregations"][0]["buckets"][0]["key"] == "landsat-8"
 
 
-@pytest.mark.asyncio
 async def test_post_aggregate_unsupported_aggregation(app_client, ctx):
 
     params = {
@@ -583,7 +550,6 @@ async def test_post_aggregate_unsupported_aggregation(app_client, ctx):
     assert resp.status_code == 400
 
 
-@pytest.mark.asyncio
 async def test_post_aggregate_unsupported_collection_aggregation(app_client, ctx):
 
     params = {
@@ -596,7 +562,6 @@ async def test_post_aggregate_unsupported_collection_aggregation(app_client, ctx
     assert resp.status_code == 400
 
 
-@pytest.mark.asyncio
 async def test_get_aggregate_precision_outside_range(app_client, ctx):
 
     resp = await app_client.get(
@@ -606,7 +571,6 @@ async def test_get_aggregate_precision_outside_range(app_client, ctx):
     assert resp.status_code == 400
 
 
-@pytest.mark.asyncio
 async def test_post_aggregate_precision_outside_range(app_client, ctx):
 
     params = {
@@ -620,7 +584,6 @@ async def test_post_aggregate_precision_outside_range(app_client, ctx):
     assert resp.status_code == 400
 
 
-@pytest.mark.asyncio
 async def test_get_aggregate_centroid_geohash_frequency(app_client, ctx):
 
     resp = await app_client.get(
@@ -632,7 +595,6 @@ async def test_get_aggregate_centroid_geohash_frequency(app_client, ctx):
     assert resp.json()["aggregations"][0]["buckets"][0]["key"] == "r6572"
 
 
-@pytest.mark.asyncio
 async def test_post_aggregate_centroid_geohash_frequency(app_client, ctx):
 
     params = {
@@ -648,7 +610,6 @@ async def test_post_aggregate_centroid_geohash_frequency(app_client, ctx):
     assert resp.json()["aggregations"][0]["buckets"][0]["key"] == "r6572"
 
 
-@pytest.mark.asyncio
 async def test_get_aggregate_centroid_geohex_frequency(app_client, ctx):
 
     # geohex is only available on a commercial license of ES
@@ -664,7 +625,6 @@ async def test_get_aggregate_centroid_geohex_frequency(app_client, ctx):
     assert resp.json()["aggregations"][0]["buckets"][0]["key"] == "85be0a8ffffffff"
 
 
-@pytest.mark.asyncio
 async def test_post_aggregate_centroid_geohex_frequency(app_client, ctx):
 
     # geohex is only available on a commercial license of ES
@@ -684,7 +644,6 @@ async def test_post_aggregate_centroid_geohex_frequency(app_client, ctx):
     assert resp.json()["aggregations"][0]["buckets"][0]["key"] == "85be0a8ffffffff"
 
 
-@pytest.mark.asyncio
 async def test_get_aggregate_centroid_geotile_frequency(app_client, ctx):
 
     resp = await app_client.get(
@@ -696,7 +655,6 @@ async def test_get_aggregate_centroid_geotile_frequency(app_client, ctx):
     assert resp.json()["aggregations"][0]["buckets"][0]["key"] == "5/29/19"
 
 
-@pytest.mark.asyncio
 async def test_post_aggregate_centroid_geotile_frequency(app_client, ctx):
 
     params = {
@@ -712,7 +670,6 @@ async def test_post_aggregate_centroid_geotile_frequency(app_client, ctx):
     assert resp.json()["aggregations"][0]["buckets"][0]["key"] == "5/29/19"
 
 
-@pytest.mark.asyncio
 async def test_get_aggregate_geometry_geotile_frequency(app_client, ctx):
 
     # geometry geo-aggregation is only available on a commercial license of ES
@@ -728,7 +685,6 @@ async def test_get_aggregate_geometry_geotile_frequency(app_client, ctx):
     assert resp.json()["aggregations"][0]["buckets"][0]["key"] == "5/29/19"
 
 
-@pytest.mark.asyncio
 async def test_post_aggregate_geometry_geotile_frequency(app_client, ctx):
 
     # geometry geo-aggregation is only available on a commercial license of ES
@@ -748,7 +704,6 @@ async def test_post_aggregate_geometry_geotile_frequency(app_client, ctx):
     assert resp.json()["aggregations"][0]["buckets"][0]["key"] == "5/29/19"
 
 
-@pytest.mark.asyncio
 async def test_get_aggregate_geometry_geohash_frequency(app_client, ctx):
 
     # geo-aggregation is only available on a commercial license of ES
@@ -764,7 +719,6 @@ async def test_get_aggregate_geometry_geohash_frequency(app_client, ctx):
     assert resp.json()["aggregations"][0]["buckets"][0]["key"] == "r6hhb"
 
 
-@pytest.mark.asyncio
 async def test_post_aggregate_geometry_geohash_frequency(app_client, ctx):
 
     # geo-aggregation is only available on a commercial license of ES

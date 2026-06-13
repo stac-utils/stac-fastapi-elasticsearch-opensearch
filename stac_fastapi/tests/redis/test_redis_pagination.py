@@ -4,8 +4,9 @@ import pytest
 
 from ..conftest import create_collection, create_item
 
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
-@pytest.mark.asyncio
+
 async def test_search_pagination_uses_redis_cache(
     app_client, txn_client, load_test_data
 ):
@@ -37,7 +38,6 @@ async def test_search_pagination_uses_redis_cache(
     assert prev_link is not None
 
 
-@pytest.mark.asyncio
 async def test_collections_pagination_uses_redis_cache(
     app_client, txn_client, load_test_data
 ):

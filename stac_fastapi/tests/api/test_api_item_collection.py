@@ -8,8 +8,9 @@ import pytest
 
 from ..conftest import create_collection, create_item
 
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
-@pytest.mark.asyncio
+
 async def test_global_item_max_limit_set(app_client, txn_client, load_test_data):
     """Test with global max limit set for items, expect cap the ?limit parameter"""
     os.environ["STAC_GLOBAL_ITEM_MAX_LIMIT"] = "5"
@@ -40,7 +41,6 @@ async def test_global_item_max_limit_set(app_client, txn_client, load_test_data)
     del os.environ["STAC_GLOBAL_ITEM_MAX_LIMIT"]
 
 
-@pytest.mark.asyncio
 async def test_default_item_limit_without_limit_parameter_set(
     app_client, txn_client, load_test_data
 ):
@@ -80,7 +80,6 @@ async def test_default_item_limit_without_limit_parameter_set(
     del os.environ["STAC_DEFAULT_ITEM_LIMIT"]
 
 
-@pytest.mark.asyncio
 async def test_item_collection_sort_desc(app_client, txn_client, ctx):
     """Verify GET /collections/{collectionId}/items honors descending sort on properties.datetime."""
     first_item = ctx.item
@@ -108,7 +107,6 @@ async def test_item_collection_sort_desc(app_client, txn_client, ctx):
     assert resp_json["features"][1]["id"] == second_item["id"]
 
 
-@pytest.mark.asyncio
 async def test_item_collection_sort_asc(app_client, txn_client, ctx):
     """Verify GET /collections/{collectionId}/items honors ascending sort on properties.datetime."""
     first_item = ctx.item
@@ -146,7 +144,6 @@ async def test_item_collection_sort_asc(app_client, txn_client, ctx):
     assert resp_json["features"][1]["id"] == first_item["id"]
 
 
-@pytest.mark.asyncio
 async def test_item_collection_query(app_client, txn_client, ctx):
     """Simple query parameter test on the Item Collection route.
 
@@ -174,7 +171,6 @@ async def test_item_collection_query(app_client, txn_client, ctx):
     assert test_item["id"] in ids
 
 
-@pytest.mark.asyncio
 async def test_item_collection_filter_by_id(app_client, ctx):
     """Test filtering items by ID using the filter parameter."""
     # Get the test item and collection from the context
@@ -203,7 +199,6 @@ async def test_item_collection_filter_by_id(app_client, ctx):
     assert resp_json["features"][0]["collection"] == collection_id
 
 
-@pytest.mark.asyncio
 async def test_item_collection_filter_by_nonexistent_id(app_client, ctx, txn_client):
     """Test filtering with a non-existent ID returns no results."""
     # Get the test collection and item from context
@@ -237,7 +232,6 @@ async def test_item_collection_filter_by_nonexistent_id(app_client, ctx, txn_cli
     ), f"Expected no items with ID {non_existent_id}, but found {len(resp_json['features'])} matches"
 
 
-@pytest.mark.asyncio
 async def test_item_collection_fields_extension(app_client, ctx, txn_client):
     resp = await app_client.get(
         "/collections/test-collection/items",
@@ -248,7 +242,6 @@ async def test_item_collection_fields_extension(app_client, ctx, txn_client):
     assert list(resp_json["features"][0]["properties"]) == ["datetime"]
 
 
-@pytest.mark.asyncio
 async def test_item_collection_fields_extension_no_properties_get(
     app_client, ctx, txn_client
 ):
@@ -260,7 +253,6 @@ async def test_item_collection_fields_extension_no_properties_get(
     assert "properties" not in resp_json["features"][0]
 
 
-@pytest.mark.asyncio
 async def test_item_collection_fields_extension_no_null_fields(
     app_client, ctx, txn_client
 ):
@@ -279,7 +271,6 @@ async def test_item_collection_fields_extension_no_null_fields(
             )
 
 
-@pytest.mark.asyncio
 async def test_item_collection_fields_extension_return_all_properties(
     app_client, ctx, txn_client, load_test_data
 ):
@@ -305,7 +296,6 @@ async def test_item_collection_fields_extension_return_all_properties(
             assert feature["properties"][expected_prop] == expected_value
 
 
-@pytest.mark.asyncio
 async def test_create_item_nonexistent_collection_fails_fast(
     app_client, txn_client, load_test_data
 ):
@@ -325,7 +315,6 @@ async def test_create_item_nonexistent_collection_fails_fast(
     assert resp.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_create_feature_collection_nonexistent_collection_fails_fast(
     app_client, txn_client, load_test_data
 ):
@@ -349,7 +338,6 @@ async def test_create_feature_collection_nonexistent_collection_fails_fast(
     assert resp.status_code == 404
 
 
-@pytest.mark.asyncio
 async def test_create_item_collection_mismatch_rejected(
     app_client, txn_client, load_test_data
 ):
@@ -380,7 +368,6 @@ async def test_create_item_collection_mismatch_rejected(
     )
 
 
-@pytest.mark.asyncio
 async def test_create_item_collection_auto_filled_when_missing(
     app_client, txn_client, load_test_data
 ):

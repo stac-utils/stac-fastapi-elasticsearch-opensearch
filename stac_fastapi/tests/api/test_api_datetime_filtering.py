@@ -5,9 +5,10 @@ from unittest.mock import patch
 
 import pytest
 
+pytestmark = pytest.mark.asyncio(loop_scope="session")
+
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_create_item_in_past_date_change_alias_name_for_datetime_index(
     mock_datetime_env, app_client, ctx, load_test_data, txn_client
 ):
@@ -37,7 +38,6 @@ async def test_create_item_in_past_date_change_alias_name_for_datetime_index(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_create_item_uses_existing_datetime_index_for_datetime_index(
     mock_datetime_env, app_client, ctx, load_test_data, txn_client, monkeypatch
 ):
@@ -67,7 +67,6 @@ async def test_create_item_uses_existing_datetime_index_for_datetime_index(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_create_item_with_different_date_same_index_for_datetime_index(
     mock_datetime_env,
     app_client,
@@ -102,7 +101,6 @@ async def test_create_item_with_different_date_same_index_for_datetime_index(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_create_new_index_when_size_limit_exceeded_for_datetime_index(
     mock_datetime_env, app_client, load_test_data, txn_client, ctx
 ):
@@ -145,7 +143,6 @@ async def test_create_new_index_when_size_limit_exceeded_for_datetime_index(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_create_item_fails_without_datetime_for_datetime_index(
     mock_datetime_env, app_client, load_test_data, txn_client, ctx
 ):
@@ -162,7 +159,6 @@ async def test_create_item_fails_without_datetime_for_datetime_index(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_bulk_create_items_with_same_date_range_for_datetime_index(
     mock_datetime_env, app_client, load_test_data, txn_client, ctx
 ):
@@ -198,7 +194,6 @@ async def test_bulk_create_items_with_same_date_range_for_datetime_index(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_bulk_create_items_with_different_date_ranges_for_datetime_index(
     mock_datetime_env, app_client, load_test_data, txn_client, ctx
 ):
@@ -241,7 +236,6 @@ async def test_bulk_create_items_with_different_date_ranges_for_datetime_index(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_bulk_create_items_with_size_limit_exceeded_for_datetime_index(
     mock_datetime_env, app_client, load_test_data, txn_client, ctx
 ):
@@ -301,7 +295,6 @@ async def test_bulk_create_items_with_size_limit_exceeded_for_datetime_index(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_bulk_create_items_with_early_date_in_second_batch_for_datetime_index(
     mock_datetime_env, app_client, load_test_data, txn_client, ctx
 ):
@@ -361,7 +354,6 @@ async def test_bulk_create_items_with_early_date_in_second_batch_for_datetime_in
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_bulk_create_items_and_retrieve_by_id_for_datetime_index(
     mock_datetime_env, app_client, load_test_data, txn_client, ctx
 ):
@@ -416,7 +408,6 @@ async def test_bulk_create_items_and_retrieve_by_id_for_datetime_index(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_patch_collection_for_datetime_index(
     mock_datetime_env, app_client, load_test_data, txn_client, ctx
 ):
@@ -473,7 +464,6 @@ async def test_patch_collection_for_datetime_index(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_put_collection_for_datetime_index(
     mock_datetime_env, app_client, load_test_data, txn_client, ctx
 ):
@@ -533,7 +523,6 @@ async def test_put_collection_for_datetime_index(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_patch_item_for_datetime_index(
     mock_datetime_env, app_client, load_test_data, txn_client, ctx
 ):
@@ -592,7 +581,6 @@ async def test_patch_item_for_datetime_index(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_patch_item_datetime_field_blocked_use_datetime_false(
     mock_datetime_env, app_client, load_test_data, ctx
 ):
@@ -620,7 +608,6 @@ async def test_patch_item_datetime_field_blocked_use_datetime_false(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_patch_item_datetime_field_blocked_use_datetime_true(
     app_client, load_test_data, ctx, txn_client, monkeypatch
 ):
@@ -644,7 +631,6 @@ async def test_patch_item_datetime_field_blocked_use_datetime_true(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_patch_item_non_datetime_field_allowed(
     mock_datetime_env, app_client, load_test_data, ctx
 ):
@@ -663,7 +649,6 @@ async def test_patch_item_non_datetime_field_allowed(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_patch_item_change_collection_creates_datetime_aliases(
     mock_datetime_env, app_client, load_test_data, txn_client, ctx
 ):
@@ -704,7 +689,6 @@ async def test_patch_item_change_collection_creates_datetime_aliases(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_put_item_for_datetime_index(
     mock_datetime_env, app_client, load_test_data, txn_client, ctx
 ):
@@ -764,7 +748,6 @@ async def test_put_item_for_datetime_index(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_create_new_item_in_new_collection_for_datetime_index(
     mock_datetime_env, app_client, ctx, load_test_data, txn_client
 ):
@@ -797,7 +780,6 @@ async def test_create_new_item_in_new_collection_for_datetime_index(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_create_item_with_invalid_datetime_ordering_should_fail(
     mock_datetime_env, app_client, ctx, load_test_data, txn_client
 ):
@@ -819,7 +801,6 @@ async def test_create_item_with_invalid_datetime_ordering_should_fail(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_update_item_with_changed_end_datetime(
     mock_datetime_env, app_client, ctx, load_test_data, txn_client
 ):
@@ -848,7 +829,6 @@ async def test_update_item_with_changed_end_datetime(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_update_item_with_changed_datetime(
     mock_datetime_env, app_client, ctx, load_test_data, txn_client
 ):
@@ -887,7 +867,6 @@ async def test_update_item_with_changed_datetime(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_search_item_by_datetime_range_with_stac_query(
     mock_datetime_env, app_client, ctx, load_test_data, txn_client
 ):
@@ -915,7 +894,6 @@ async def test_search_item_by_datetime_range_with_stac_query(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_search_item_by_start_datetime_with_stac_query(
     mock_datetime_env, app_client, ctx, load_test_data, txn_client
 ):
@@ -942,7 +920,6 @@ async def test_search_item_by_start_datetime_with_stac_query(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_search_item_not_found_outside_datetime_range(
     mock_datetime_env, app_client, ctx, load_test_data, txn_client
 ):
@@ -969,7 +946,6 @@ async def test_search_item_not_found_outside_datetime_range(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_search_item_after_datetime_update_with_stac_query(
     mock_datetime_env, app_client, ctx, load_test_data, txn_client
 ):
@@ -1003,7 +979,6 @@ async def test_search_item_after_datetime_update_with_stac_query(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_search_item_by_multiple_collections_with_stac_query(
     mock_datetime_env, app_client, ctx, load_test_data, txn_client
 ):
@@ -1042,7 +1017,6 @@ async def test_search_item_by_multiple_collections_with_stac_query(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_create_item_with_the_same_date_change_alias_name_for_datetime_index(
     mock_datetime_env, app_client, ctx, load_test_data, txn_client
 ):
@@ -1071,7 +1045,6 @@ async def test_create_item_with_the_same_date_change_alias_name_for_datetime_ind
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_create_item_with_datetime_field_creates_single_alias(
     app_client,
     ctx,
@@ -1107,7 +1080,6 @@ async def test_create_item_with_datetime_field_creates_single_alias(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_datetime_index_alias_created_for_past_date(
     app_client, ctx, load_test_data, txn_client
 ):
@@ -1136,7 +1108,6 @@ async def test_datetime_index_alias_created_for_past_date(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_datetime_index_reuses_existing_index_for_default_date(
     app_client, ctx, load_test_data, txn_client
 ):
@@ -1165,7 +1136,6 @@ async def test_datetime_index_reuses_existing_index_for_default_date(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_datetime_index_groups_same_year_dates_in_single_index(
     app_client, load_test_data, txn_client, ctx
 ):
@@ -1195,7 +1165,6 @@ async def test_datetime_index_groups_same_year_dates_in_single_index(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_datetime_index_rejects_item_without_datetime_field(
     app_client, load_test_data, txn_client, ctx
 ):
@@ -1212,7 +1181,6 @@ async def test_datetime_index_rejects_item_without_datetime_field(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_datetime_index_bulk_insert_with_same_date_range(
     app_client, load_test_data, txn_client, ctx
 ):
@@ -1246,7 +1214,6 @@ async def test_datetime_index_bulk_insert_with_same_date_range(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_datetime_index_bulk_insert_with_different_date_ranges(
     app_client, load_test_data, txn_client, ctx
 ):
@@ -1285,7 +1252,6 @@ async def test_datetime_index_bulk_insert_with_different_date_ranges(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_datetime_index_bulk_insert_allows_item_retrieval(
     app_client, load_test_data, txn_client, ctx
 ):
@@ -1340,7 +1306,6 @@ async def test_datetime_index_bulk_insert_allows_item_retrieval(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_datetime_index_collection_patch_operation(
     app_client, load_test_data, txn_client, ctx
 ):
@@ -1397,7 +1362,6 @@ async def test_datetime_index_collection_patch_operation(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_datetime_index_collection_put_operation(
     app_client, load_test_data, txn_client, ctx
 ):
@@ -1457,7 +1421,6 @@ async def test_datetime_index_collection_put_operation(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_datetime_index_item_patch_operation(
     app_client, load_test_data, txn_client, ctx
 ):
@@ -1516,7 +1479,6 @@ async def test_datetime_index_item_patch_operation(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_datetime_index_item_put_operation(
     app_client, load_test_data, txn_client, ctx
 ):
@@ -1576,7 +1538,6 @@ async def test_datetime_index_item_put_operation(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_patch_item_datetime_same_value_allowed_use_datetime_false(
     mock_datetime_env, app_client, load_test_data, ctx
 ):
@@ -1607,7 +1568,6 @@ async def test_patch_item_datetime_same_value_allowed_use_datetime_false(
 
 
 @pytest.mark.datetime_filtering
-@pytest.mark.asyncio
 async def test_patch_item_datetime_different_value_allowed_use_datetime_false(
     mock_datetime_env, app_client, load_test_data, ctx
 ):

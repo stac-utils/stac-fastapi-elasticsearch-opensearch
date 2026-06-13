@@ -4,8 +4,9 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 import stac_fastapi.core.redis_utils as redis_utils
 from stac_fastapi.core.redis_utils import connect_redis, get_prev_link, save_prev_link
 
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
-@pytest.mark.asyncio
+
 async def test_redis_connection():
     """Test Redis connection."""
     redis = await connect_redis()
@@ -25,7 +26,6 @@ async def test_redis_connection():
     assert deleted_value is None
 
 
-@pytest.mark.asyncio
 async def test_redis_utils_functions():
     redis = await connect_redis()
     if redis is None:
@@ -50,7 +50,6 @@ async def test_redis_utils_functions():
     assert non_existent is None
 
 
-@pytest.mark.asyncio
 async def test_redis_retry_retries_until_success(monkeypatch):
     monkeypatch.setattr(
         redis_utils.settings, "REDIS_QUERY_RETRIES_NUM", 3, raising=False
@@ -101,7 +100,6 @@ async def test_redis_retry_retries_until_success(monkeypatch):
     assert captured_kwargs["backoff"] == redis_utils.settings.REDIS_QUERY_BACKOFF
 
 
-@pytest.mark.asyncio
 async def test_redis_retry_raises_after_exhaustion(monkeypatch):
     monkeypatch.setattr(
         redis_utils.settings, "REDIS_QUERY_RETRIES_NUM", 3, raising=False

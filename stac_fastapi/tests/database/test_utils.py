@@ -14,8 +14,9 @@ from stac_fastapi.sfeos_helpers.database import (
 
 from ..conftest import create_item, database
 
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
-@pytest.mark.asyncio
+
 async def test_check_item_exists_in_alias_returns_true_when_exists(ctx, txn_client):
     """Test that check_item_exists_in_alias returns True when item exists."""
     collection_id = ctx.collection["id"]
@@ -30,7 +31,6 @@ async def test_check_item_exists_in_alias_returns_true_when_exists(ctx, txn_clie
     assert result is True
 
 
-@pytest.mark.asyncio
 async def test_check_item_exists_in_alias_returns_false_when_not_exists(ctx):
     """Test that check_item_exists_in_alias returns False when item doesn't exist."""
     collection_id = ctx.collection["id"]
@@ -45,7 +45,6 @@ async def test_check_item_exists_in_alias_returns_false_when_not_exists(ctx):
     assert result is False
 
 
-@pytest.mark.asyncio
 async def test_check_item_exists_in_alias_sync_returns_true_when_exists(ctx):
     """Test that check_item_exists_in_alias_sync returns True when item exists."""
     collection_id = ctx.collection["id"]
@@ -60,7 +59,6 @@ async def test_check_item_exists_in_alias_sync_returns_true_when_exists(ctx):
     assert result is True
 
 
-@pytest.mark.asyncio
 async def test_check_item_exists_in_alias_sync_returns_false_when_not_exists(ctx):
     """Test that check_item_exists_in_alias_sync returns False when item doesn't exist."""
     collection_id = ctx.collection["id"]
@@ -75,7 +73,6 @@ async def test_check_item_exists_in_alias_sync_returns_false_when_not_exists(ctx
     assert result is False
 
 
-@pytest.mark.asyncio
 async def test_check_item_exists_in_alias_with_multiple_items(ctx, txn_client):
     """Test check_item_exists_in_alias works correctly with multiple items in collection."""
     collection_id = ctx.collection["id"]
@@ -110,7 +107,6 @@ async def test_check_item_exists_in_alias_with_multiple_items(ctx, txn_client):
     )
 
 
-@pytest.mark.asyncio
 async def test_check_item_exists_with_different_datetime(ctx, txn_client):
     """
     Test that check_item_exists_in_alias finds items regardless of datetime value.

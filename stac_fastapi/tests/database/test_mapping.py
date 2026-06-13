@@ -4,8 +4,9 @@ import pytest
 
 from stac_fastapi.sfeos_helpers.database.mapping import get_queryables_mapping_shared
 
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
-@pytest.mark.asyncio
+
 async def test_get_queryables_mapping_shared_simple():
     """Test basic mapping extraction."""
     mappings = {
@@ -50,7 +51,6 @@ async def test_get_queryables_mapping_shared_simple():
     assert "assets.eo:snow_cover" in result["eo:snow_cover"]
 
 
-@pytest.mark.asyncio
 async def test_get_queryables_mapping_shared_nested_properties():
     """Test that nested properties are properly traversed.
 
@@ -95,7 +95,6 @@ async def test_get_queryables_mapping_shared_nested_properties():
     assert result["eo:cloud_cover"] == ["properties.eo:cloud_cover"]
 
 
-@pytest.mark.asyncio
 async def test_get_queryables_mapping_shared_deeply_nested():
     """Test deeply nested properties."""
     mappings = {
@@ -124,7 +123,6 @@ async def test_get_queryables_mapping_shared_deeply_nested():
     assert result["level1.level2.level3"] == ["properties.level1.level2.level3"]
 
 
-@pytest.mark.asyncio
 async def test_get_queryables_mapping_shared_disabled_fields():
     """Test that disabled fields are excluded."""
     mappings = {
@@ -159,7 +157,6 @@ async def test_get_queryables_mapping_shared_disabled_fields():
     assert "parent.disabled_nested" not in result
 
 
-@pytest.mark.asyncio
 async def test_get_queryables_mapping_shared_container_fields():
     """Test that container fields (without type) are not included but their children are."""
     mappings = {
@@ -191,7 +188,6 @@ async def test_get_queryables_mapping_shared_container_fields():
     assert "container.child2" in result
 
 
-@pytest.mark.asyncio
 async def test_get_queryables_mapping_shared_multiple_indices():
     """Test mapping from multiple indices are merged."""
     mappings = {
@@ -227,7 +223,6 @@ async def test_get_queryables_mapping_shared_multiple_indices():
     assert "field2" in result
 
 
-@pytest.mark.asyncio
 async def test_get_queryables_mapping_shared_excluded_fields(monkeypatch):
     """Test that fields in EXCLUDED_FROM_QUERYABLES are excluded."""
     # Set the environment variable to exclude fields
@@ -293,7 +288,6 @@ async def test_get_queryables_mapping_shared_excluded_fields(monkeypatch):
     assert "storage:schemes.s3.platform" not in result
 
 
-@pytest.mark.asyncio
 async def test_get_queryables_mapping_shared_excluded_fields_top_level(monkeypatch):
     """Test that exclusions work for fields at top level (no properties. prefix in path).
 
@@ -342,7 +336,6 @@ async def test_get_queryables_mapping_shared_excluded_fields_top_level(monkeypat
     assert "auth:schemes.s3.requester_pays" not in result
 
 
-@pytest.mark.asyncio
 async def test_get_queryables_mapping_shared_excluded_fields_no_prefix_config(
     monkeypatch,
 ):

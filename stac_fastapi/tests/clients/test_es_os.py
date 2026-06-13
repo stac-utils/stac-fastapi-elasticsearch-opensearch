@@ -15,8 +15,9 @@ from stac_fastapi.types.errors import ConflictError, NotFoundError
 
 from ..conftest import MockRequest
 
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
-@pytest.mark.asyncio
+
 async def test_create_collection(app_client, ctx, core_client, txn_client):
     in_coll = deepcopy(ctx.collection)
     in_coll["id"] = str(uuid.uuid4())
@@ -26,7 +27,6 @@ async def test_create_collection(app_client, ctx, core_client, txn_client):
     await txn_client.delete_collection(in_coll["id"])
 
 
-@pytest.mark.asyncio
 async def test_create_collection_already_exists(app_client, ctx, txn_client):
     data = deepcopy(ctx.collection)
 
@@ -39,7 +39,6 @@ async def test_create_collection_already_exists(app_client, ctx, txn_client):
     await txn_client.delete_collection(data["id"])
 
 
-@pytest.mark.asyncio
 async def test_update_collection(
     core_client,
     txn_client,
@@ -78,7 +77,6 @@ async def test_update_collection(
 
 
 @pytest.mark.skip(reason="Can not update collection id anymore?")
-@pytest.mark.asyncio
 async def test_update_collection_id(
     core_client,
     txn_client,
@@ -139,7 +137,6 @@ async def test_update_collection_id(
     await txn_client.delete_collection(collection_data["id"])
 
 
-@pytest.mark.asyncio
 async def test_delete_collection(
     core_client,
     txn_client,
@@ -154,7 +151,6 @@ async def test_delete_collection(
         await core_client.get_collection(data["id"], request=MockRequest)
 
 
-@pytest.mark.asyncio
 async def test_get_collection(
     core_client,
     txn_client,
@@ -168,7 +164,6 @@ async def test_get_collection(
     await txn_client.delete_collection(data["id"])
 
 
-@pytest.mark.asyncio
 async def test_get_item(app_client, ctx, core_client):
     got_item = await core_client.get_item(
         item_id=ctx.item["id"],
@@ -179,7 +174,6 @@ async def test_get_item(app_client, ctx, core_client):
     assert got_item["collection"] == ctx.item["collection"]
 
 
-@pytest.mark.asyncio
 async def test_get_collection_items(app_client, ctx, core_client, txn_client):
     coll = ctx.collection
     num_of_items_to_create = 5
@@ -200,7 +194,6 @@ async def test_get_collection_items(app_client, ctx, core_client, txn_client):
         assert item["collection"] == coll["id"]
 
 
-@pytest.mark.asyncio
 async def test_create_item(ctx, core_client, txn_client):
     resp = await core_client.get_item(
         ctx.item["id"], ctx.item["collection"], request=MockRequest
@@ -212,7 +205,6 @@ async def test_create_item(ctx, core_client, txn_client):
     )
 
 
-@pytest.mark.asyncio
 async def test_create_item_already_exists(ctx, txn_client):
     with pytest.raises(ConflictError):
         await txn_client.create_item(
@@ -223,7 +215,6 @@ async def test_create_item_already_exists(ctx, txn_client):
         )
 
 
-@pytest.mark.asyncio
 async def test_update_item(ctx, core_client, txn_client):
     item = ctx.item
     item["properties"]["foo"] = "bar"
@@ -242,7 +233,6 @@ async def test_update_item(ctx, core_client, txn_client):
     assert updated_item["properties"]["foo"] == "bar"
 
 
-@pytest.mark.asyncio
 async def test_merge_patch_item_add(ctx, core_client, txn_client):
     item = ctx.item
     collection_id = item["collection"]
@@ -261,7 +251,6 @@ async def test_merge_patch_item_add(ctx, core_client, txn_client):
     assert updated_item["properties"]["ext:hello"] == "world"
 
 
-@pytest.mark.asyncio
 async def test_merge_patch_item_remove(ctx, core_client, txn_client):
     item = ctx.item
     collection_id = item["collection"]
@@ -280,7 +269,6 @@ async def test_merge_patch_item_remove(ctx, core_client, txn_client):
     assert "proj:epsg" not in updated_item["properties"]
 
 
-@pytest.mark.asyncio
 async def test_merge_patch_create_nest(ctx, core_client, txn_client):
     item = ctx.item
     collection_id = item["collection"]
@@ -300,7 +288,6 @@ async def test_merge_patch_create_nest(ctx, core_client, txn_client):
     assert updated_item["properties"]["new"]["nest"] == "foo"
 
 
-@pytest.mark.asyncio
 async def test_json_patch_item_add(ctx, core_client, txn_client):
     item = ctx.item
     collection_id = item["collection"]
@@ -353,7 +340,6 @@ async def test_json_patch_item_add(ctx, core_client, txn_client):
     }
 
 
-@pytest.mark.asyncio
 async def test_json_patch_item_replace(ctx, core_client, txn_client):
     item = ctx.item
     collection_id = item["collection"]
@@ -405,7 +391,6 @@ async def test_json_patch_item_replace(ctx, core_client, txn_client):
     }
 
 
-@pytest.mark.asyncio
 async def test_json_patch_item_test(ctx, core_client, txn_client):
     item = ctx.item
     collection_id = item["collection"]
@@ -444,7 +429,6 @@ async def test_json_patch_item_test(ctx, core_client, txn_client):
     )
 
 
-@pytest.mark.asyncio
 async def test_json_patch_item_move(ctx, core_client, txn_client):
     item = ctx.item
     collection_id = item["collection"]
@@ -493,7 +477,6 @@ async def test_json_patch_item_move(ctx, core_client, txn_client):
     )
 
 
-@pytest.mark.asyncio
 async def test_json_patch_item_copy(ctx, core_client, txn_client):
     item = ctx.item
     collection_id = item["collection"]
@@ -536,7 +519,6 @@ async def test_json_patch_item_copy(ctx, core_client, txn_client):
     )
 
 
-@pytest.mark.asyncio
 async def test_json_patch_item_remove(ctx, core_client, txn_client):
     item = ctx.item
     collection_id = item["collection"]
@@ -571,7 +553,6 @@ async def test_json_patch_item_remove(ctx, core_client, txn_client):
     )
 
 
-@pytest.mark.asyncio
 async def test_json_patch_add_with_bad_nest(ctx, core_client, txn_client):
     item = ctx.item
     collection_id = item["collection"]
@@ -594,7 +575,6 @@ async def test_json_patch_add_with_bad_nest(ctx, core_client, txn_client):
         )
 
 
-@pytest.mark.asyncio
 async def test_json_patch_item_test_wrong_value(ctx, core_client, txn_client):
     item = ctx.item
     collection_id = item["collection"]
@@ -617,7 +597,6 @@ async def test_json_patch_item_test_wrong_value(ctx, core_client, txn_client):
         )
 
 
-@pytest.mark.asyncio
 async def test_json_patch_item_replace_property_does_not_exists(
     ctx, core_client, txn_client
 ):
@@ -642,7 +621,6 @@ async def test_json_patch_item_replace_property_does_not_exists(
         )
 
 
-@pytest.mark.asyncio
 async def test_json_patch_item_remove_property_does_not_exists(
     ctx, core_client, txn_client
 ):
@@ -665,7 +643,6 @@ async def test_json_patch_item_remove_property_does_not_exists(
         )
 
 
-@pytest.mark.asyncio
 async def test_json_patch_item_move_property_does_not_exists(
     ctx, core_client, txn_client
 ):
@@ -690,7 +667,6 @@ async def test_json_patch_item_move_property_does_not_exists(
         )
 
 
-@pytest.mark.asyncio
 async def test_json_patch_item_copy_property_does_not_exists(
     ctx, core_client, txn_client
 ):
@@ -715,7 +691,6 @@ async def test_json_patch_item_copy_property_does_not_exists(
         )
 
 
-@pytest.mark.asyncio
 async def test_update_geometry(ctx, core_client, txn_client):
     new_coordinates = [
         [
@@ -743,7 +718,6 @@ async def test_update_geometry(ctx, core_client, txn_client):
     assert updated_item["geometry"]["coordinates"] == new_coordinates
 
 
-@pytest.mark.asyncio
 async def test_delete_item(ctx, core_client, txn_client):
     await txn_client.delete_item(ctx.item["id"], ctx.item["collection"])
 
@@ -753,7 +727,6 @@ async def test_delete_item(ctx, core_client, txn_client):
         )
 
 
-@pytest.mark.asyncio
 async def test_landing_page_no_collection_title(ctx, core_client, txn_client, app):
     ctx.collection["id"] = "new_id"
     del ctx.collection["title"]
@@ -767,7 +740,6 @@ async def test_landing_page_no_collection_title(ctx, core_client, txn_client, ap
             assert link["title"]
 
 
-@pytest.mark.asyncio
 async def test_merge_patch_collection_add(ctx, core_client, txn_client):
     collection = ctx.collection
     collection_id = collection["id"]
@@ -785,7 +757,6 @@ async def test_merge_patch_collection_add(ctx, core_client, txn_client):
     assert updated_collection["summaries"]["hello"] == "world"
 
 
-@pytest.mark.asyncio
 async def test_merge_patch_collection_remove(ctx, core_client, txn_client):
     collection = ctx.collection
     collection_id = collection["id"]
@@ -801,7 +772,6 @@ async def test_merge_patch_collection_remove(ctx, core_client, txn_client):
     assert "gsd" not in updated_collection["summaries"]
 
 
-@pytest.mark.asyncio
 async def test_json_patch_collection_add(ctx, core_client, txn_client):
     collection = ctx.collection
     collection_id = collection["id"]
@@ -828,7 +798,6 @@ async def test_json_patch_collection_add(ctx, core_client, txn_client):
     assert updated_collection["summaries"]["gsd"] == [30, 100]
 
 
-@pytest.mark.asyncio
 async def test_json_patch_collection_replace(ctx, core_client, txn_client):
     collection = ctx.collection
     collection_id = collection["id"]
@@ -851,7 +820,6 @@ async def test_json_patch_collection_replace(ctx, core_client, txn_client):
     assert updated_collection["summaries"]["gsd"] == [100]
 
 
-@pytest.mark.asyncio
 async def test_json_patch_collection_test(ctx, core_client, txn_client):
     collection = ctx.collection
     collection_id = collection["id"]
@@ -874,7 +842,6 @@ async def test_json_patch_collection_test(ctx, core_client, txn_client):
     assert updated_collection["summaries"]["gsd"] == [30]
 
 
-@pytest.mark.asyncio
 async def test_json_patch_collection_move(ctx, core_client, txn_client):
     collection = ctx.collection
     collection_id = collection["id"]
@@ -898,7 +865,6 @@ async def test_json_patch_collection_move(ctx, core_client, txn_client):
     assert "gsd" not in updated_collection["summaries"]
 
 
-@pytest.mark.asyncio
 async def test_json_patch_collection_copy(ctx, core_client, txn_client):
     collection = ctx.collection
     collection_id = collection["id"]
@@ -923,7 +889,6 @@ async def test_json_patch_collection_copy(ctx, core_client, txn_client):
     )
 
 
-@pytest.mark.asyncio
 async def test_json_patch_collection_remove(ctx, core_client, txn_client):
     collection = ctx.collection
     collection_id = collection["id"]
@@ -944,7 +909,6 @@ async def test_json_patch_collection_remove(ctx, core_client, txn_client):
     assert "gsd" not in updated_collection["summaries"]
 
 
-@pytest.mark.asyncio
 async def test_json_patch_collection_test_wrong_value(ctx, core_client, txn_client):
     collection = ctx.collection
     collection_id = collection["id"]
@@ -965,7 +929,6 @@ async def test_json_patch_collection_test_wrong_value(ctx, core_client, txn_clie
         )
 
 
-@pytest.mark.asyncio
 async def test_json_patch_collection_replace_property_does_not_exists(
     ctx, core_client, txn_client
 ):
@@ -988,7 +951,6 @@ async def test_json_patch_collection_replace_property_does_not_exists(
         )
 
 
-@pytest.mark.asyncio
 async def test_json_patch_collection_remove_property_does_not_exists(
     ctx, core_client, txn_client
 ):
@@ -1009,7 +971,6 @@ async def test_json_patch_collection_remove_property_does_not_exists(
         )
 
 
-@pytest.mark.asyncio
 async def test_json_patch_collection_move_property_does_not_exists(
     ctx, core_client, txn_client
 ):
@@ -1032,7 +993,6 @@ async def test_json_patch_collection_move_property_does_not_exists(
         )
 
 
-@pytest.mark.asyncio
 async def test_json_patch_collection_copy_property_does_not_exists(
     ctx, core_client, txn_client
 ):

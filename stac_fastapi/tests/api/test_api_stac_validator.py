@@ -6,6 +6,8 @@ import pytest
 
 from ..conftest import create_collection, create_item
 
+pytestmark = pytest.mark.asyncio(loop_scope="session")
+
 
 def create_circular_polygon_ring(
     num_vertices: int,
@@ -41,7 +43,6 @@ def configure_validation_env(monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setenv("ENABLE_REDIS_QUEUE", "false")
 
 
-@pytest.mark.asyncio
 async def test_stac_validator_allows_valid_datetime_range(txn_client, load_test_data):
     """Test that STAC validator allows valid datetime range with null datetime."""
     test_collection = load_test_data("test_collection.json")
@@ -62,7 +63,6 @@ async def test_stac_validator_allows_valid_datetime_range(txn_client, load_test_
     await create_item(txn_client, valid_item)
 
 
-@pytest.mark.asyncio
 async def test_stac_validator_catches_eo_bands_in_assets(txn_client, load_test_data):
     """Test that STAC validator catches eo:bands in assets when using EO v2.0.0."""
     from fastapi import HTTPException
@@ -91,7 +91,6 @@ async def test_stac_validator_catches_eo_bands_in_assets(txn_client, load_test_d
     assert "invalid-eo-bands-in-assets" in exc_info.value.detail
 
 
-@pytest.mark.asyncio
 async def test_stac_validator_catches_invalid_cloud_cover(txn_client, load_test_data):
     """Test that STAC validator catches invalid eo:cloud_cover values."""
     from fastapi import HTTPException
@@ -118,7 +117,6 @@ async def test_stac_validator_catches_invalid_cloud_cover(txn_client, load_test_
     assert "invalid-cloud-cover" in exc_info.value.detail
 
 
-@pytest.mark.asyncio
 async def test_stac_validator_feature_collection_with_invalid_item_raise_on_error(
     txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
 ):
@@ -179,7 +177,6 @@ async def test_stac_validator_feature_collection_with_invalid_item_raise_on_erro
     assert summary["database_error_count"] == 0
 
 
-@pytest.mark.asyncio
 async def test_stac_validator_feature_collection_with_invalid_item_skip_on_error(
     txn_client, core_client, load_test_data, monkeypatch: pytest.MonkeyPatch
 ):
@@ -230,7 +227,6 @@ async def test_stac_validator_feature_collection_with_invalid_item_skip_on_error
     assert item_ids == {"valid-item-0", "valid-item-1"}
 
 
-@pytest.mark.asyncio
 async def test_stac_validator_catches_invalid_snow_cover(txn_client, load_test_data):
     """Test that STAC validator catches invalid eo:snow_cover values."""
     from fastapi import HTTPException
@@ -257,7 +253,6 @@ async def test_stac_validator_catches_invalid_snow_cover(txn_client, load_test_d
     assert "invalid-snow-cover" in exc_info.value.detail
 
 
-@pytest.mark.asyncio
 async def test_stac_validator_allows_valid_item(txn_client, load_test_data):
     """Test that STAC validator allows valid STAC items."""
     test_collection = load_test_data("test_collection.json")
@@ -274,7 +269,6 @@ async def test_stac_validator_allows_valid_item(txn_client, load_test_data):
     # If no exception is raised, the test passes
 
 
-@pytest.mark.asyncio
 async def test_stac_validator_returns_400_on_invalid_item(app_client, load_test_data):
     """Test that invalid STAC items return 400 Bad Request response."""
     # Create a test collection first
@@ -315,7 +309,6 @@ async def test_stac_validator_returns_400_on_invalid_item(app_client, load_test_
     )
 
 
-@pytest.mark.asyncio
 async def test_chunked_validation_with_max_batch_size(
     txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
 ):
@@ -360,7 +353,6 @@ async def test_chunked_validation_with_max_batch_size(
     ), "Chunked validation should allow valid items to be inserted"
 
 
-@pytest.mark.asyncio
 async def test_chunked_validation_exceeds_max_error_size(
     txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
 ):
@@ -420,7 +412,6 @@ async def test_chunked_validation_exceeds_max_error_size(
     ), "Found 2 errors in chunk 1, which exceeds threshold of 1"
 
 
-@pytest.mark.asyncio
 async def test_topology_validation_detects_antimeridian_crossing(
     txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
 ):
@@ -467,7 +458,6 @@ async def test_topology_validation_detects_antimeridian_crossing(
     assert "antimeridian" in detail.lower()
 
 
-@pytest.mark.asyncio
 async def test_topology_validation_allows_valid_polygons(
     txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
 ):
@@ -511,7 +501,6 @@ async def test_topology_validation_allows_valid_polygons(
     assert db_item is not None, "Valid polygon should be inserted into database"
 
 
-@pytest.mark.asyncio
 async def test_topology_validation_detects_out_of_bounds_coordinates(
     txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
 ):
@@ -557,7 +546,6 @@ async def test_topology_validation_detects_out_of_bounds_coordinates(
     assert "WGS84 bounds" in detail
 
 
-@pytest.mark.asyncio
 async def test_topology_validation_detects_all_coordinates(
     txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
 ):
@@ -605,7 +593,6 @@ async def test_topology_validation_detects_all_coordinates(
     assert "WGS84 bounds" in detail
 
 
-@pytest.mark.asyncio
 async def test_topology_validation_disabled_by_default(
     txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
 ):
@@ -652,7 +639,6 @@ async def test_topology_validation_disabled_by_default(
     ), "Item should be inserted when topology validation is disabled"
 
 
-@pytest.mark.asyncio
 async def test_bulk_topology_validation_filters_invalid_items_lenient(
     txn_client, core_client, load_test_data, monkeypatch: pytest.MonkeyPatch
 ):
@@ -710,7 +696,6 @@ async def test_bulk_topology_validation_filters_invalid_items_lenient(
     assert item_ids == {"bulk-lenient-valid-0", "bulk-lenient-valid-1"}
 
 
-@pytest.mark.asyncio
 async def test_bulk_topology_validation_trips_circuit_breaker(
     txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
 ):
@@ -781,7 +766,6 @@ async def test_bulk_topology_validation_trips_circuit_breaker(
     assert summary["validation_error_count"] == 2
 
 
-@pytest.mark.asyncio
 async def test_topology_validation_respects_max_vertices_limit(
     txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
 ):
@@ -824,7 +808,6 @@ async def test_topology_validation_respects_max_vertices_limit(
     assert "Maximum allowed is 10" in detail
 
 
-@pytest.mark.asyncio
 async def test_topology_validation_allows_items_within_vertex_limit(
     txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
 ):
@@ -863,7 +846,6 @@ async def test_topology_validation_allows_items_within_vertex_limit(
     assert db_item is not None, "Item should be inserted when within vertex limit"
 
 
-@pytest.mark.asyncio
 async def test_feature_collection_conflict_errors_formatted(
     app_client, txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
 ):
@@ -932,7 +914,6 @@ async def test_feature_collection_conflict_errors_formatted(
     assert test_collection["id"] in conflict_msg
 
 
-@pytest.mark.asyncio
 async def test_datetime_validation_disabled_by_default(
     txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
 ):
@@ -970,7 +951,6 @@ async def test_datetime_validation_disabled_by_default(
     ), "Item should be inserted when datetime validation is disabled"
 
 
-@pytest.mark.asyncio
 async def test_datetime_validation_start_greater_than_end(
     txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
 ):
@@ -1002,7 +982,6 @@ async def test_datetime_validation_start_greater_than_end(
     assert "must be <=" in exc_info.value.detail.lower()
 
 
-@pytest.mark.asyncio
 async def test_datetime_validation_missing_end_datetime(
     txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
 ):
@@ -1033,7 +1012,6 @@ async def test_datetime_validation_missing_end_datetime(
     assert "datetime" in str(exc_info.value).lower()
 
 
-@pytest.mark.asyncio
 async def test_datetime_validation_valid_range(
     txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
 ):
@@ -1064,7 +1042,6 @@ async def test_datetime_validation_valid_range(
     assert db_item is not None, "Valid datetime range should be inserted"
 
 
-@pytest.mark.asyncio
 async def test_datetime_validation_datetime_outside_range(
     txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
 ):
@@ -1096,7 +1073,6 @@ async def test_datetime_validation_datetime_outside_range(
     assert "must be <=" in exc_info.value.detail.lower()
 
 
-@pytest.mark.asyncio
 async def test_datetime_validation_feature_collection_with_invalid_datetime(
     txn_client, core_client, load_test_data, monkeypatch: pytest.MonkeyPatch
 ):
@@ -1143,7 +1119,6 @@ async def test_datetime_validation_feature_collection_with_invalid_datetime(
     assert fc["features"][0]["id"] == "valid-datetime-fc"
 
 
-@pytest.mark.asyncio
 async def test_datetime_validation_start_equals_end(
     txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
 ):
@@ -1176,7 +1151,6 @@ async def test_datetime_validation_start_equals_end(
     ), "Item with start_datetime == end_datetime should be inserted"
 
 
-@pytest.mark.asyncio
 async def test_datetime_validation_datetime_equals_start(
     txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
 ):
@@ -1209,7 +1183,6 @@ async def test_datetime_validation_datetime_equals_start(
     ), "Item with datetime == start_datetime should be inserted"
 
 
-@pytest.mark.asyncio
 async def test_datetime_validation_datetime_equals_end(
     txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
 ):

@@ -10,6 +10,8 @@ from stac_fastapi.core.queryables import (
     get_properties_from_cql2_filter,
 )
 
+pytestmark = pytest.mark.asyncio(loop_scope="session")
+
 
 class TestQueryablesCache:
     @pytest.fixture

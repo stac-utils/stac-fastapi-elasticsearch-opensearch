@@ -9,6 +9,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import pytest_asyncio
 
+pytestmark = pytest.mark.asyncio(loop_scope="session")
+
 _repo_root = Path(__file__).resolve()
 while _repo_root != _repo_root.parent and not (_repo_root / "scripts").is_dir():
     _repo_root = _repo_root.parent
@@ -119,7 +121,6 @@ def test_extract_missing_id():
     assert ItemQueueWorker._extract_failed_item_ids([{"index": {}}]) == set()
 
 
-@pytest.mark.asyncio
 async def test_save_failed_items(queue_manager):
     await queue_manager.save_failed_items("col-a", ["item-1", "item-2"])
 
@@ -132,7 +133,6 @@ async def test_save_failed_items(queue_manager):
     assert "col-a" in cols
 
 
-@pytest.mark.asyncio
 async def test_save_failed_items_idempotent(queue_manager):
     await queue_manager.save_failed_items("col-a", ["item-1"])
     await queue_manager.save_failed_items("col-a", ["item-1", "item-2"])
@@ -142,7 +142,6 @@ async def test_save_failed_items_idempotent(queue_manager):
     assert members == {"item-1", "item-2"}
 
 
-@pytest.mark.asyncio
 async def test_save_failed_items_empty_list(queue_manager):
     await queue_manager.save_failed_items("col-a", [])
 
@@ -151,7 +150,6 @@ async def test_save_failed_items_empty_list(queue_manager):
     assert exists == 0
 
 
-@pytest.mark.asyncio
 async def test_flush_all_succeed(queue_manager, dlq_collection):
     col = dlq_collection["id"]
     db = _make_db()
@@ -168,7 +166,6 @@ async def test_flush_all_succeed(queue_manager, dlq_collection):
     assert await queue_manager.redis.scard(failed_key) == 0
 
 
-@pytest.mark.asyncio
 async def test_flush_partial_failure(queue_manager, dlq_collection):
     col = dlq_collection["id"]
     db = _make_db()
@@ -195,7 +192,6 @@ async def test_flush_partial_failure(queue_manager, dlq_collection):
     assert col in cols
 
 
-@pytest.mark.asyncio
 async def test_flush_all_fail(queue_manager, dlq_collection):
     col = dlq_collection["id"]
     db = _make_db()
@@ -213,7 +209,6 @@ async def test_flush_all_fail(queue_manager, dlq_collection):
     assert failed_members == {item["id"] for item in items}
 
 
-@pytest.mark.asyncio
 async def test_flush_dlq_save_failure_keeps_failed_in_pending(
     queue_manager, dlq_collection
 ):
@@ -245,7 +240,6 @@ async def test_flush_dlq_save_failure_keeps_failed_in_pending(
     queue_manager.save_failed_items = original_save
 
 
-@pytest.mark.asyncio
 async def test_queue_items_populates_all_structures(queue_manager):
     col = "col-atomic-1"
     items = [_valid_item(col) for _ in range(3)]
@@ -262,7 +256,6 @@ async def test_queue_items_populates_all_structures(queue_manager):
     assert col in await queue_manager.redis.smembers(collections_key)
 
 
-@pytest.mark.asyncio
 async def test_queue_items_deduplicates(queue_manager):
     col = "col-dedup"
     item = _valid_item(col, "dup-id")
@@ -275,12 +268,10 @@ async def test_queue_items_deduplicates(queue_manager):
     assert await queue_manager.redis.hlen(data_key) == 1
 
 
-@pytest.mark.asyncio
 async def test_queue_items_empty_list_returns_zero(queue_manager):
     assert await queue_manager.queue_items("col-empty", []) == 0
 
 
-@pytest.mark.asyncio
 async def test_queue_items_skips_items_without_id(queue_manager):
     col = "col-no-id"
     good = _valid_item(col)
@@ -290,7 +281,6 @@ async def test_queue_items_skips_items_without_id(queue_manager):
     assert length == 1
 
 
-@pytest.mark.asyncio
 async def test_mark_processed_removes_from_zset_and_hash(queue_manager):
     col = "col-mark-1"
     items = [_valid_item(col) for _ in range(3)]
@@ -310,7 +300,6 @@ async def test_mark_processed_removes_from_zset_and_hash(queue_manager):
     assert set(hash_keys) == {items[2]["id"]}
 
 
-@pytest.mark.asyncio
 async def test_mark_processed_no_ghosts_in_zset(queue_manager):
     col = "col-no-ghost"
     items = [_valid_item(col) for _ in range(5)]
@@ -327,7 +316,6 @@ async def test_mark_processed_no_ghosts_in_zset(queue_manager):
     assert zset_ids == hash_ids
 
 
-@pytest.mark.asyncio
 async def test_mark_processed_cleans_up_when_empty(queue_manager):
     col = "col-cleanup"
     items = [_valid_item(col) for _ in range(2)]
@@ -344,7 +332,6 @@ async def test_mark_processed_cleans_up_when_empty(queue_manager):
     assert await queue_manager.redis.exists(data_key) == 0
 
 
-@pytest.mark.asyncio
 async def test_mark_processed_empty_list_is_noop(queue_manager):
     col = "col-noop"
     items = [_valid_item(col) for _ in range(2)]
@@ -354,7 +341,6 @@ async def test_mark_processed_empty_list_is_noop(queue_manager):
     assert remaining == 2
 
 
-@pytest.mark.asyncio
 async def test_mark_processed_nonexistent_ids(queue_manager):
     col = "col-nonexist"
     items = [_valid_item(col) for _ in range(2)]
@@ -366,7 +352,6 @@ async def test_mark_processed_nonexistent_ids(queue_manager):
     assert remaining == 2
 
 
-@pytest.mark.asyncio
 async def test_remove_item_removes_from_both_structures(queue_manager):
     col = "col-rem-1"
     items = [_valid_item(col) for _ in range(2)]
@@ -383,7 +368,6 @@ async def test_remove_item_removes_from_both_structures(queue_manager):
     assert zset_ids == hash_ids == {items[1]["id"]}
 
 
-@pytest.mark.asyncio
 async def test_remove_item_cleans_up_when_last(queue_manager):
     col = "col-rem-last"
     item = _valid_item(col)
@@ -396,7 +380,6 @@ async def test_remove_item_cleans_up_when_last(queue_manager):
     assert col not in await queue_manager.redis.smembers(collections_key)
 
 
-@pytest.mark.asyncio
 async def test_remove_item_nonexistent_returns_false(queue_manager):
     col = "col-rem-none"
     item = _valid_item(col)
@@ -407,7 +390,6 @@ async def test_remove_item_nonexistent_returns_false(queue_manager):
     assert await queue_manager.get_queue_length(col) == 1
 
 
-@pytest.mark.asyncio
 async def test_concurrent_mark_no_ghosts(queue_manager):
     col = "col-concurrent"
     items = [_valid_item(col) for _ in range(10)]
@@ -429,7 +411,6 @@ async def test_concurrent_mark_no_ghosts(queue_manager):
     assert zset_ids == hash_ids
 
 
-@pytest.mark.asyncio
 async def test_concurrent_remove_no_ghosts(queue_manager):
     col = "col-conc-rem"
     items = [_valid_item(col) for _ in range(10)]
@@ -444,7 +425,6 @@ async def test_concurrent_remove_no_ghosts(queue_manager):
     assert await queue_manager.redis.hlen(data_key) == 0
 
 
-@pytest.mark.asyncio
 async def test_lock_refresh_calls_extend():
     mock_lock = AsyncMock()
     mock_lock.name = "test-lock"
@@ -464,7 +444,6 @@ async def test_lock_refresh_calls_extend():
     mock_lock.extend.assert_called_with(additional_time=300, replace_ttl=True)
 
 
-@pytest.mark.asyncio
 async def test_lock_refresh_stops_on_extend_failure():
     mock_lock = AsyncMock()
     mock_lock.name = "test-lock"
@@ -483,7 +462,6 @@ async def test_lock_refresh_stops_on_extend_failure():
     await task
 
 
-@pytest.mark.asyncio
 async def test_lock_refresh_cancellation():
     mock_lock = AsyncMock()
     mock_lock.name = "test-lock"
@@ -499,7 +477,6 @@ async def test_lock_refresh_cancellation():
         await task
 
 
-@pytest.mark.asyncio
 async def test_flush_starts_and_cancels_refresh(queue_manager):
     col = "col-lock-refresh"
     items = [_valid_item(col) for _ in range(2)]
@@ -515,7 +492,6 @@ async def test_flush_starts_and_cancels_refresh(queue_manager):
         mock_refresh.assert_called_once()
 
 
-@pytest.mark.asyncio
 async def test_flush_release_checks_owned(queue_manager):
     col = "col-owned-check"
     items = [_valid_item(col)]

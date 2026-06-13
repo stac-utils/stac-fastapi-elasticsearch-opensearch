@@ -9,8 +9,9 @@ from httpx import AsyncClient
 import stac_fastapi.sfeos_helpers.filter.client as filter_client_module
 from stac_fastapi.core.extensions.filter import DEFAULT_QUERYABLES
 
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
-@pytest.mark.asyncio
+
 async def test_root_queryables_default(app_client: AsyncClient):
     """Test that the root queryables endpoint returns the default schema."""
     resp = await app_client.get("/queryables")
@@ -19,7 +20,6 @@ async def test_root_queryables_default(app_client: AsyncClient):
     assert queryables["properties"] == DEFAULT_QUERYABLES
 
 
-@pytest.mark.asyncio
 async def test_root_queryables_config_file(
     app_client: AsyncClient, monkeypatch: pytest.MonkeyPatch, tmp_path
 ):
@@ -46,7 +46,6 @@ async def test_root_queryables_config_file(
     assert queryables["properties"] == dummy_queryables
 
 
-@pytest.mark.asyncio
 async def test_root_queryables_union(
     app_client: AsyncClient,
     load_test_data: Callable[[str], Dict],
@@ -112,7 +111,6 @@ async def test_root_queryables_union(
     r.raise_for_status()
 
 
-@pytest.mark.asyncio
 async def test_root_queryables_union_served_from_cache(
     app_client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
@@ -148,7 +146,6 @@ async def test_root_queryables_union_served_from_cache(
     assert resp.json() == sentinel
 
 
-@pytest.mark.asyncio
 async def test_root_queryables_union_cache_refreshed_after_ttl(
     app_client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,

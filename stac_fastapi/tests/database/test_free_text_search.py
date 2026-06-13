@@ -7,6 +7,8 @@ import pytest
 
 from ..conftest import create_item, refresh_indices
 
+pytestmark = pytest.mark.asyncio(loop_scope="session")
+
 
 async def _search_post_route(app_client, params):
     """Helper to search via /search POST endpoint."""
@@ -23,7 +25,6 @@ async def _item_collection_route(app_client, collection_id, params):
     return await app_client.get(f"/collections/{collection_id}/items", params=params)
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "search_func",
     [
@@ -63,7 +64,6 @@ async def test_free_text_search_single_term(app_client, txn_client, ctx, search_
     assert len(resp_json["features"]) >= 1
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "search_func",
     [
@@ -111,7 +111,6 @@ async def test_free_text_search_multiple_terms_or_logic(
     assert len(resp_json["features"]) >= 2
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "search_func",
     [
@@ -159,7 +158,6 @@ async def test_free_text_search_custom_fields_via_env(
             del os.environ["FREE_TEXT_FIELDS"]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "search_func",
     [
@@ -198,7 +196,6 @@ async def test_free_text_search_case_insensitive(
     assert len(resp_json["features"]) >= 1
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "search_func",
     [
@@ -243,7 +240,6 @@ async def test_free_text_search_partial_word_matching(
     assert len(resp_json["features"]) >= 1
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "search_func",
     [
@@ -283,7 +279,6 @@ async def test_free_text_search_typo_tolerance(
     assert len(resp_json["features"]) >= 1
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "search_func",
     [
@@ -327,7 +322,6 @@ async def test_free_text_search_fuzziness_prefix_matching(
     assert len(resp_json["features"]) >= 1
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "search_func",
     [
@@ -401,7 +395,6 @@ async def test_free_text_search_custom_field_with_env_var(
             del os.environ["FREE_TEXT_FIELDS"]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "search_func",
     [
@@ -432,7 +425,6 @@ async def test_free_text_search_no_results(app_client, txn_client, ctx, search_f
     assert len(resp_json["features"]) == 0
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "search_func",
     [
@@ -471,7 +463,6 @@ async def test_free_text_search_with_special_characters(
     assert len(resp_json["features"]) >= 1
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "search_func",
     [

@@ -24,6 +24,8 @@ from stac_fastapi.types.errors import ConflictError, NotFoundError
 
 from ..conftest import create_collection, create_item
 
+pytestmark = pytest.mark.asyncio(loop_scope="session")
+
 ROUTES = {
     "GET /_mgmt/ping",
     "GET /_mgmt/health",
@@ -88,20 +90,17 @@ ROUTES = {
 }
 
 
-@pytest.mark.asyncio
 async def test_post_search_content_type(app_client, ctx):
     params = {"limit": 1}
     resp = await app_client.post("/search", json=params)
     assert resp.headers["Content-Type"] == "application/geo+json"
 
 
-@pytest.mark.asyncio
 async def test_get_search_content_type(app_client, ctx):
     resp = await app_client.get("/search")
     assert resp.headers["Content-Type"] == "application/geo+json"
 
 
-@pytest.mark.asyncio
 async def test_api_headers(app_client):
     resp = await app_client.get("/api")
     assert (
@@ -110,14 +109,12 @@ async def test_api_headers(app_client):
     assert resp.status_code == 200
 
 
-@pytest.mark.asyncio
 async def test_router(app):
     api_routes = set([f"{list(route.methods)[0]} {route.path}" for route in app.routes])
     print(api_routes)
     assert len(api_routes - ROUTES) == 0
 
 
-@pytest.mark.asyncio
 async def test_app_transaction_extension(app_client, ctx, load_test_data):
     item = load_test_data("test_item.json")
     item["id"] = str(uuid.uuid4())
@@ -127,7 +124,6 @@ async def test_app_transaction_extension(app_client, ctx, load_test_data):
     await app_client.delete(f"/collections/{item['collection']}/items/{item['id']}")
 
 
-@pytest.mark.asyncio
 async def test_app_search_response(app_client, ctx):
     resp = await app_client.get("/search", params={"ids": ["test-item"]})
     assert resp.status_code == 200
@@ -139,7 +135,6 @@ async def test_app_search_response(app_client, ctx):
     assert resp_json.get("stac_extensions") is None
 
 
-@pytest.mark.asyncio
 async def test_app_context_results(app_client, txn_client, ctx, load_test_data):
     test_item = load_test_data("test_item.json")
     test_item["id"] = "test-item-2"
@@ -173,7 +168,6 @@ async def test_app_context_results(app_client, txn_client, ctx, load_test_data):
         assert matched == 1
 
 
-@pytest.mark.asyncio
 async def test_app_fields_extension(app_client, ctx, txn_client):
     resp = await app_client.get(
         "/search",
@@ -184,7 +178,6 @@ async def test_app_fields_extension(app_client, ctx, txn_client):
     assert list(resp_json["features"][0]["properties"]) == ["datetime"]
 
 
-@pytest.mark.asyncio
 async def test_app_fields_extension_query(app_client, ctx, txn_client):
     item = ctx.item
     resp = await app_client.post(
@@ -200,7 +193,6 @@ async def test_app_fields_extension_query(app_client, ctx, txn_client):
     assert set(resp_json["features"][0]["properties"]) == set(["datetime", "proj:epsg"])
 
 
-@pytest.mark.asyncio
 async def test_app_fields_extension_wildcard_query(app_client, ctx, txn_client):
     item = ctx.item
     include = {"include": ["properties.*.lat", "assets.*.href"]}
@@ -271,7 +263,6 @@ async def test_app_fields_extension_wildcard_query(app_client, ctx, txn_client):
         assert "properties" not in feature
 
 
-@pytest.mark.asyncio
 async def test_app_fields_extension_no_properties_get(app_client, ctx, txn_client):
     resp = await app_client.get(
         "/search", params={"collections": ["test-collection"], "fields": "-properties"}
@@ -281,7 +272,6 @@ async def test_app_fields_extension_no_properties_get(app_client, ctx, txn_clien
     assert "properties" not in resp_json["features"][0]
 
 
-@pytest.mark.asyncio
 async def test_app_fields_extension_no_properties_post(app_client, ctx, txn_client):
     resp = await app_client.post(
         "/search",
@@ -295,7 +285,6 @@ async def test_app_fields_extension_no_properties_post(app_client, ctx, txn_clie
     assert "properties" not in resp_json["features"][0]
 
 
-@pytest.mark.asyncio
 async def test_app_fields_extension_no_null_fields(app_client, ctx, txn_client):
     resp = await app_client.get("/search", params={"collections": ["test-collection"]})
     assert resp.status_code == 200
@@ -312,7 +301,6 @@ async def test_app_fields_extension_no_null_fields(app_client, ctx, txn_client):
             )
 
 
-@pytest.mark.asyncio
 async def test_app_fields_extension_return_all_properties(
     app_client, ctx, txn_client, load_test_data
 ):
@@ -337,7 +325,6 @@ async def test_app_fields_extension_return_all_properties(
             assert feature["properties"][expected_prop] == expected_value
 
 
-@pytest.mark.asyncio
 async def test_app_query_extension_gt(app_client, ctx):
     params = {"query": {"proj:epsg": {"gt": ctx.item["properties"]["proj:epsg"]}}}
     resp = await app_client.post("/search", json=params)
@@ -346,7 +333,6 @@ async def test_app_query_extension_gt(app_client, ctx):
     assert len(resp_json["features"]) == 0
 
 
-@pytest.mark.asyncio
 async def test_app_query_extension_gte(app_client, ctx):
     params = {"query": {"proj:epsg": {"gte": ctx.item["properties"]["proj:epsg"]}}}
     resp = await app_client.post("/search", json=params)
@@ -355,7 +341,6 @@ async def test_app_query_extension_gte(app_client, ctx):
     assert len(resp.json()["features"]) == 1
 
 
-@pytest.mark.asyncio
 async def test_app_query_extension_limit_lt0(app_client):
     assert (
         await app_client.post("/search", json={"query": {}, "limit": -1})
@@ -363,21 +348,18 @@ async def test_app_query_extension_limit_lt0(app_client):
 
 
 @pytest.mark.skip(reason="removal of context extension")
-@pytest.mark.asyncio
 async def test_app_query_extension_limit_gt10000(app_client):
     resp = await app_client.post("/search", json={"limit": 10001})
     assert resp.status_code == 200
     assert resp.json()["context"]["limit"] == 10000
 
 
-@pytest.mark.asyncio
 async def test_app_query_extension_limit_10000(app_client):
     params = {"limit": 10000}
     resp = await app_client.post("/search", json=params)
     assert resp.status_code == 200
 
 
-@pytest.mark.asyncio
 async def test_app_sort_extension_get_asc(app_client, txn_client, ctx):
     first_item = ctx.item
 
@@ -399,7 +381,6 @@ async def test_app_sort_extension_get_asc(app_client, txn_client, ctx):
     assert resp_json["features"][0]["id"] == second_item["id"]
 
 
-@pytest.mark.asyncio
 async def test_app_sort_extension_get_desc(app_client, txn_client, ctx):
     first_item = ctx.item
 
@@ -421,7 +402,6 @@ async def test_app_sort_extension_get_desc(app_client, txn_client, ctx):
     assert resp_json["features"][1]["id"] == second_item["id"]
 
 
-@pytest.mark.asyncio
 async def test_app_sort_extension_post_asc(app_client, txn_client, ctx):
     first_item = ctx.item
 
@@ -447,7 +427,6 @@ async def test_app_sort_extension_post_asc(app_client, txn_client, ctx):
     assert resp_json["features"][0]["id"] == second_item["id"]
 
 
-@pytest.mark.asyncio
 async def test_app_sort_extension_post_desc(app_client, txn_client, ctx):
     first_item = ctx.item
 
@@ -472,7 +451,6 @@ async def test_app_sort_extension_post_desc(app_client, txn_client, ctx):
     assert resp_json["features"][1]["id"] == second_item["id"]
 
 
-@pytest.mark.asyncio
 async def test_search_invalid_date(app_client, ctx):
     params = {
         "datetime": "2020-XX-01/2020-10-30",
@@ -483,7 +461,6 @@ async def test_search_invalid_date(app_client, ctx):
     assert resp.status_code == 400
 
 
-@pytest.mark.asyncio
 async def test_search_point_intersects_get(app_client, ctx):
     resp = await app_client.get(
         '/search?intersects={"type":"Point","coordinates":[150.04,-33.14]}'
@@ -494,7 +471,6 @@ async def test_search_point_intersects_get(app_client, ctx):
     assert len(resp_json["features"]) == 1
 
 
-@pytest.mark.asyncio
 async def test_search_polygon_intersects_get(app_client, ctx):
     resp = await app_client.get(
         '/search?intersects={"type":"Polygon","coordinates":[[[149.04, -34.14],[149.04, -32.14],[151.04, -32.14],[151.04, -34.14],[149.04, -34.14]]]}'
@@ -505,7 +481,6 @@ async def test_search_polygon_intersects_get(app_client, ctx):
     assert len(resp_json["features"]) == 1
 
 
-@pytest.mark.asyncio
 async def test_search_point_intersects_post(app_client, ctx):
     point = [150.04, -33.14]
     intersects = {"type": "Point", "coordinates": point}
@@ -521,7 +496,6 @@ async def test_search_point_intersects_post(app_client, ctx):
     assert len(resp_json["features"]) == 1
 
 
-@pytest.mark.asyncio
 async def test_search_point_does_not_intersect(app_client, ctx):
     point = [15.04, -3.14]
     intersects = {"type": "Point", "coordinates": point}
@@ -537,7 +511,6 @@ async def test_search_point_does_not_intersect(app_client, ctx):
     assert len(resp_json["features"]) == 0
 
 
-@pytest.mark.asyncio
 async def test_datetime_response_format(app_client, txn_client, ctx):
     if get_bool_env("ENABLE_DATETIME_INDEX_FILTERING"):
         pytest.skip()
@@ -577,7 +550,6 @@ async def test_datetime_response_format(app_client, txn_client, ctx):
         assert resp_json["features"][0]["properties"]["datetime"][0:19] == dt[0:19]
 
 
-@pytest.mark.asyncio
 async def test_datetime_non_interval(app_client, txn_client, ctx):
     if get_bool_env("ENABLE_DATETIME_INDEX_FILTERING"):
         pytest.skip()
@@ -616,7 +588,6 @@ async def test_datetime_non_interval(app_client, txn_client, ctx):
         assert len(resp_json["features"]) == 3
 
 
-@pytest.mark.asyncio
 async def test_datetime_interval(app_client, txn_client, ctx):
     if get_bool_env("ENABLE_DATETIME_INDEX_FILTERING"):
         pytest.skip()
@@ -655,7 +626,6 @@ async def test_datetime_interval(app_client, txn_client, ctx):
         assert len(resp_json["features"]) == 3
 
 
-@pytest.mark.asyncio
 async def test_datetime_bad_non_interval(app_client, txn_client, ctx):
     if get_bool_env("ENABLE_DATETIME_INDEX_FILTERING"):
         pytest.skip()
@@ -694,7 +664,6 @@ async def test_datetime_bad_non_interval(app_client, txn_client, ctx):
         assert len(resp_json["features"]) == 0
 
 
-@pytest.mark.asyncio
 async def test_datetime_bad_interval(app_client, txn_client, ctx):
     if get_bool_env("ENABLE_DATETIME_INDEX_FILTERING"):
         pytest.skip()
@@ -733,7 +702,6 @@ async def test_datetime_bad_interval(app_client, txn_client, ctx):
         assert len(resp_json["features"]) == 0
 
 
-@pytest.mark.asyncio
 async def test_bbox_3d(app_client, ctx):
     australia_bbox = [106.343365, -47.199523, 0.1, 168.218365, -19.437288, 0.1]
     params = {
@@ -746,7 +714,6 @@ async def test_bbox_3d(app_client, ctx):
     assert len(resp_json["features"]) == 1
 
 
-@pytest.mark.asyncio
 async def test_patch_json_collection(app_client, ctx):
     data = {
         "summaries": {"hello": "world", "gsd": [50], "instruments": None},
@@ -768,7 +735,6 @@ async def test_patch_json_collection(app_client, ctx):
     assert new_resp_json["summaries"]["platform"] == ["landsat-8"]
 
 
-@pytest.mark.asyncio
 async def test_patch_operations_collection(app_client, ctx):
     operations = [
         {"op": "add", "path": "/summaries/hello", "value": "world"},
@@ -806,7 +772,6 @@ async def test_patch_operations_collection(app_client, ctx):
     assert new_resp_json["summaries"]["license"] == ctx.collection["license"]
 
 
-@pytest.mark.asyncio
 async def test_patch_json_item(app_client, ctx):
 
     data = {
@@ -833,7 +798,6 @@ async def test_patch_json_item(app_client, ctx):
     assert new_resp_json["properties"]["platform"] == "landsat-8"
 
 
-@pytest.mark.asyncio
 async def test_patch_operations_item(app_client, ctx):
     operations = [
         {"op": "add", "path": "/properties/hello", "value": "world"},
@@ -868,7 +832,6 @@ async def test_patch_operations_item(app_client, ctx):
     assert new_resp_json["properties"]["height"] == ctx.item["properties"]["height"]
 
 
-@pytest.mark.asyncio
 async def test_search_line_string_intersects(app_client, ctx):
     line = [[150.04, -33.14], [150.22, -33.89]]
     intersects = {"type": "LineString", "coordinates": line}
@@ -885,7 +848,6 @@ async def test_search_line_string_intersects(app_client, ctx):
     assert len(resp_json["features"]) == 1
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "value, expected",
     [
@@ -961,7 +923,6 @@ async def test_big_int_eo_search(
             os.environ["ENABLE_STAC_VALIDATOR"] = original_validator_setting
 
 
-@pytest.mark.asyncio
 async def test_global_collection_max_limit_set(app_client, txn_client, load_test_data):
     """Test with global collection max limit set, expect cap the limit"""
     os.environ["STAC_GLOBAL_COLLECTION_MAX_LIMIT"] = "5"
@@ -980,7 +941,6 @@ async def test_global_collection_max_limit_set(app_client, txn_client, load_test
     del os.environ["STAC_GLOBAL_COLLECTION_MAX_LIMIT"]
 
 
-@pytest.mark.asyncio
 async def test_default_collection_limit(app_client, txn_client, load_test_data):
     """Test default collection limit set, should use default when no limit provided"""
     os.environ["STAC_DEFAULT_COLLECTION_LIMIT"] = "5"
@@ -999,7 +959,6 @@ async def test_default_collection_limit(app_client, txn_client, load_test_data):
     del os.environ["STAC_DEFAULT_COLLECTION_LIMIT"]
 
 
-@pytest.mark.asyncio
 async def test_no_global_item_max_limit_set(app_client, txn_client, load_test_data):
     """Test with no global max limit set for items"""
 
@@ -1037,7 +996,6 @@ async def test_no_global_item_max_limit_set(app_client, txn_client, load_test_da
     assert len(resp_json["features"]) == 20
 
 
-@pytest.mark.asyncio
 async def test_no_global_collection_max_limit_set(
     app_client, txn_client, load_test_data
 ):
@@ -1060,7 +1018,6 @@ async def test_no_global_collection_max_limit_set(
     assert len(resp_json["collections"]) == 20
 
 
-@pytest.mark.asyncio
 async def test_use_datetime_true(app_client, load_test_data, txn_client, monkeypatch):
     monkeypatch.setenv("USE_DATETIME", "true")
 
@@ -1100,7 +1057,6 @@ async def test_use_datetime_true(app_client, load_test_data, txn_client, monkeyp
     assert "test-item-start-end" in found_ids
 
 
-@pytest.mark.asyncio
 async def test_use_datetime_false(app_client, load_test_data, txn_client, monkeypatch):
     monkeypatch.setenv("USE_DATETIME", "false")
 
@@ -1146,7 +1102,6 @@ async def test_use_datetime_false(app_client, load_test_data, txn_client, monkey
     assert "test-item-start-end-only" in found_ids
 
 
-@pytest.mark.asyncio
 async def test_hide_private_data_from_item(app_client, txn_client, load_test_data):
     os.environ["EXCLUDED_FROM_ITEMS"] = "private_data,properties.private_data"
 
@@ -1199,7 +1154,6 @@ async def test_hide_private_data_from_item(app_client, txn_client, load_test_dat
     del os.environ["EXCLUDED_FROM_ITEMS"]
 
 
-@pytest.mark.asyncio
 async def test_search_count_timeout(
     app_client, txn_client, load_test_data, monkeypatch
 ):
@@ -1242,7 +1196,6 @@ async def test_search_count_timeout(
     monkeypatch.delenv("COUNT_TIMEOUT")
 
 
-@pytest.mark.asyncio
 async def test_datetime_search_retry_retries_success():
     call_count = {"count": 0}
 
@@ -1271,7 +1224,6 @@ async def test_datetime_search_retry_retries_success():
     assert call_count["count"] == 3
 
 
-@pytest.mark.asyncio
 async def test_connection_error_retry_retries_success():
     call_count = {"count": 0}
 
@@ -1289,7 +1241,6 @@ async def test_connection_error_retry_retries_success():
     assert mock_search_func.call_count == 5
 
 
-@pytest.mark.asyncio
 async def test_datetime_search_no_retry_no_datetime():
     call_count = {"count": 0}
 
@@ -1310,7 +1261,6 @@ async def test_datetime_search_no_retry_no_datetime():
     assert mock_search_func.call_count == 1
 
 
-@pytest.mark.asyncio
 async def test_datetime_search_max_retries():
     call_count = {"count": 0}
 
@@ -1337,7 +1287,6 @@ async def test_datetime_search_max_retries():
     assert call_count["count"] == 3
 
 
-@pytest.mark.asyncio
 async def test_connection_error_max_retries():
     call_count = {"count": 0}
 

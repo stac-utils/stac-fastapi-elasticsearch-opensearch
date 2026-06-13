@@ -2,8 +2,9 @@ import os
 
 import pytest
 
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
-@pytest.mark.asyncio
+
 async def test_get_search_not_authenticated(app_client_basic_auth, ctx):
     """Test public endpoint [GET /search] without authentication"""
     if not os.getenv("BASIC_AUTH"):
@@ -16,7 +17,6 @@ async def test_get_search_not_authenticated(app_client_basic_auth, ctx):
     assert response.json()["features"][0]["geometry"] == ctx.item["geometry"]
 
 
-@pytest.mark.asyncio
 async def test_post_search_authenticated(app_client_basic_auth, ctx):
     """Test protected endpoint [POST /search] with reader authentication"""
     if not os.getenv("BASIC_AUTH"):
@@ -30,7 +30,6 @@ async def test_post_search_authenticated(app_client_basic_auth, ctx):
     assert response.json()["features"][0]["geometry"] == ctx.item["geometry"]
 
 
-@pytest.mark.asyncio
 async def test_delete_resource_anonymous(
     app_client_basic_auth,
 ):
@@ -44,7 +43,6 @@ async def test_delete_resource_anonymous(
     assert response.json() == {"detail": "Not authenticated"}
 
 
-@pytest.mark.asyncio
 async def test_delete_resource_invalid_credentials(app_client_basic_auth, ctx):
     """Test protected endpoint [DELETE /collections/{collection_id}] with invalid credentials"""
     if not os.getenv("BASIC_AUTH"):
@@ -60,7 +58,6 @@ async def test_delete_resource_invalid_credentials(app_client_basic_auth, ctx):
     assert response.json() == {"detail": "Incorrect username or password"}
 
 
-@pytest.mark.asyncio
 async def test_delete_resource_insufficient_permissions(app_client_basic_auth, ctx):
     """Test protected endpoint [DELETE /collections/{collection_id}] with reader user which has insufficient permissions"""
     if not os.getenv("BASIC_AUTH"):
@@ -78,7 +75,6 @@ async def test_delete_resource_insufficient_permissions(app_client_basic_auth, c
     }
 
 
-@pytest.mark.asyncio
 async def test_delete_resource_sufficient_permissions(app_client_basic_auth, ctx):
     """Test protected endpoint [DELETE /collections/{collection_id}] with admin user which has sufficient permissions"""
     if not os.getenv("BASIC_AUTH"):

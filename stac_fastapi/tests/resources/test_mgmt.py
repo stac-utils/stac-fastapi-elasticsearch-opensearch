@@ -1,7 +1,8 @@
 import pytest
 
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
-@pytest.mark.asyncio
+
 async def test_ping_no_param(app_client):
     """
     Test ping endpoint with a mocked client.
