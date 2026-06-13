@@ -206,12 +206,12 @@ def bulk_txn_client():
     return BulkTransactionsClient(database=database, session=None, settings=settings)
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def app():
     return StacApi(**app_config).app
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def app_client(app):
     await create_index_templates()
     await create_collection_index()
@@ -222,7 +222,7 @@ async def app_client(app):
         yield c
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def app_rate_limit():
     """Fixture to get the FastAPI app with test-specific rate limiting."""
     app = StacApi(**app_config).app
@@ -231,7 +231,7 @@ async def app_rate_limit():
     return app
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def app_client_rate_limit(app_rate_limit):
     await create_index_templates()
     await create_collection_index()
@@ -242,7 +242,7 @@ async def app_client_rate_limit(app_rate_limit):
         yield c
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def app_basic_auth():
     """Fixture to get the FastAPI app with basic auth configured."""
 
@@ -292,7 +292,7 @@ async def app_basic_auth():
     return api.app
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def app_client_basic_auth(app_basic_auth):
     await create_index_templates()
     await create_collection_index()
@@ -316,7 +316,7 @@ def must_be_bob(
     )
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def route_dependencies_app():
     """Fixture to get the FastAPI app with custom route dependencies."""
     # Create a copy of the app config
@@ -332,7 +332,7 @@ async def route_dependencies_app():
     return api.app
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture(scope="session", loop_scope="session")
 async def route_dependencies_client(route_dependencies_app):
     await create_index_templates()
     await create_collection_index()
