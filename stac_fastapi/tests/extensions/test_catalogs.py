@@ -4028,7 +4028,9 @@ async def test_hide_alternate_parents_suppresses_related_links_on_global_collect
     catalogs_app, catalogs_app_client, load_test_data, monkeypatch
 ):
     """Test that hide_alternate_parents=True suppresses rel=related links on global /collections."""
-    catalogs_app.state.catalogs_hide_alternate_parents = True
+    monkeypatch.setattr(
+        catalogs_app.state, "catalogs_hide_alternate_parents", True, raising=False
+    )
 
     # Create two parent catalogs
     parent_catalog_1 = load_test_data("test_catalog.json")
@@ -4084,7 +4086,9 @@ async def test_hide_alternate_parents_suppresses_related_links_on_scoped_collect
     catalogs_app, catalogs_app_client, load_test_data, monkeypatch
 ):
     """Test that hide_alternate_parents=True suppresses rel=related on scoped /catalogs/{id}/collections/{id}."""
-    catalogs_app.state.catalogs_hide_alternate_parents = True
+    monkeypatch.setattr(
+        catalogs_app.state, "catalogs_hide_alternate_parents", True, raising=False
+    )
 
     # Create two parent catalogs
     parent_catalog_1 = load_test_data("test_catalog.json")
@@ -4145,7 +4149,9 @@ async def test_hide_alternate_parents_suppresses_related_links_on_catalog(
     catalogs_app, catalogs_app_client, load_test_data, monkeypatch
 ):
     """Test that hide_alternate_parents=True suppresses rel=related on catalog with multiple parents."""
-    catalogs_app.state.catalogs_hide_alternate_parents = True
+    monkeypatch.setattr(
+        catalogs_app.state, "catalogs_hide_alternate_parents", True, raising=False
+    )
 
     # Create two parent catalogs
     parent_catalog_1 = load_test_data("test_catalog.json")
@@ -4194,11 +4200,12 @@ async def test_hide_alternate_parents_suppresses_related_links_on_catalog(
 
 @pytest.mark.asyncio
 async def test_hide_alternate_parents_false_shows_related_links_on_catalog(
-    catalogs_app, catalogs_app_client, load_test_data
+    catalogs_app, catalogs_app_client, load_test_data, monkeypatch
 ):
     """Test that hide_alternate_parents=False shows rel=related links on catalogs."""
-    # Explicitly set hide_alternate_parents to False (default behavior)
-    catalogs_app.state.catalogs_hide_alternate_parents = False
+    monkeypatch.setattr(
+        catalogs_app.state, "catalogs_hide_alternate_parents", False, raising=False
+    )
 
     # Create two parent catalogs
     parent_catalog_1 = load_test_data("test_catalog.json")
@@ -4248,11 +4255,12 @@ async def test_hide_alternate_parents_false_shows_related_links_on_catalog(
 
 @pytest.mark.asyncio
 async def test_hide_alternate_parents_false_shows_related_links(
-    catalogs_app, catalogs_app_client, load_test_data
+    catalogs_app, catalogs_app_client, load_test_data, monkeypatch
 ):
     """Test that hide_alternate_parents=False (default) still shows rel=related links."""
-    # Explicitly set hide_alternate_parents to False (default behavior)
-    catalogs_app.state.catalogs_hide_alternate_parents = False
+    monkeypatch.setattr(
+        catalogs_app.state, "catalogs_hide_alternate_parents", False, raising=False
+    )
 
     # Create two parent catalogs
     parent_catalog_1 = load_test_data("test_catalog.json")
