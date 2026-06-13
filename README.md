@@ -31,13 +31,13 @@ The following organizations have contributed time and/or funding to support the 
 - **11/07/2025:** 🌍 The SFEOS STAC Viewer is now available at: https://healy-hyperspatial.github.io/sfeos-web. Use this site to examine your data and test your STAC API!
 - **10/24/2025:** Added `previous_token` pagination using Redis for efficient navigation. This feature allows users to navigate backwards through large result sets by storing pagination state in Redis. To use this feature, ensure Redis is configured (see [Redis for navigation](#redis-for-navigation)) and set `REDIS_ENABLE=true` in your environment.
 - **10/23/2025:** The `EXCLUDED_FROM_QUERYABLES` environment variable was added to exclude fields from the `queryables` endpoint. See [docs](#excluding-fields-from-queryables).
-- **10/15/2025:** 🚀 SFEOS Tools v0.1.0 Released! - The new `sfeos-tools` CLI is now available on [PyPI](https://pypi.org/project/sfeos-tools/)
-- **10/15/2025:** Added `reindex` command to **[SFEOS-tools](https://github.com/Healy-Hyperspatial/sfeos-tools)** for zero-downtime index updates when changing mappings or settings. The new `reindex` command makes it easy to apply mapping changes, update index settings, or migrate to new index structures without any service interruption, ensuring high availability of your STAC API during maintenance operations.
 
 <details style="border: 1px solid #eaecef; border-radius: 6px; padding: 10px; margin-bottom: 16px; background-color: #f9f9f9;">
 <summary style="cursor: pointer; font-weight: bold; margin: -10px -10px 0; padding: 10px; background-color: #f0f0f0; border-bottom: 1px solid #eaecef; border-top-left-radius: 6px; border-top-right-radius: 6px;">View Older News (Click to Expand)</summary>
 
 -------------
+- **10/15/2025:** 🚀 SFEOS Tools v0.1.0 Released! - The new `sfeos-tools` CLI is now available on [PyPI](https://pypi.org/project/sfeos-tools/)
+- **10/15/2025:** Added `reindex` command to **[SFEOS-tools](https://github.com/Healy-Hyperspatial/sfeos-tools)** for zero-downtime index updates when changing mappings or settings. The new `reindex` command makes it easy to apply mapping changes, update index settings, or migrate to new index structures without any service interruption, ensuring high availability of your STAC API during maintenance operations.
 - **10/12/2025:** Collections search **bbox** functionality added! The collections search extension now supports bbox queries. Collections will need to be updated via the API or with the new **[SFEOS-tools](https://github.com/Healy-Hyperspatial/sfeos-tools)** CLI package to support geospatial discoverability. 🙏 Thanks again to **CloudFerro** for their sponsorship of this work!
 - **10/04/2025:** The **[CloudFerro](https://cloudferro.com/)** logo has been added to the sponsors and supporters list above. Their sponsorship of the ongoing collections search extension work has been invaluable. This is in addition to the many other important changes and updates their developers have added to the project.
 - **09/25/2025:** v6.5.0 adds a new GET/POST /collections-search endpoint (disabled by default via ENABLE_COLLECTIONS_SEARCH_ROUTE) to avoid conflicts with the Transactions Extension, and enhances collections search with structured filtering (CQL2 JSON/text), query, and datetime filtering. These changes make collection discovery more powerful and configurable while preserving compatibility with transaction-enabled deployments.
@@ -106,6 +106,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
       - [Using Pre-built Docker Images](#using-pre-built-docker-images)
       - [Using Docker Compose](#using-docker-compose)
   - [Configuration Reference](#configuration-reference)
+  - [STAC Validation](#stac-validation)
   - [Free-Text Search (`q` parameter)](#free-text-search-q-parameter)
   - [Queryables Endpoint](#queryables-endpoint)
     - [Root Queryables Configuration](#root-queryables-configuration)
@@ -772,6 +773,11 @@ You can customize additional settings in your `.env` file:
 | `ENABLE_COLLECTIONS_SEARCH_ROUTE` | Enable the custom `/collections-search` endpoint (both GET and POST methods). When disabled, the custom endpoint will not be available, but collection search extensions will still be available on the core `/collections` endpoint if `ENABLE_COLLECTIONS_SEARCH` is true. | `false` | Optional |
 | `ENABLE_TRANSACTIONS_EXTENSIONS` | Enables or disables the Transactions and Bulk Transactions API extensions. This is useful for deployments where mutating the catalog via the API should be prevented. If set to `true`, the POST `/collections` route for search will be unavailable in the API. | `true` | Optional |
 | `ENABLE_CATALOGS_ROUTE` | Enable the **/catalogs** endpoint for hierarchical catalog browsing and navigation. **Note:** Requires the catalogs extension to be installed via `stac-fastapi-elasticsearch[catalogs]`, `stac-fastapi-opensearch[catalogs]`, or `stac-fastapi-core[catalogs]`. See [Catalogs Route](#catalogs-route) for installation instructions. | `false` | Optional |
+| `HIDE_ALTERNATE_PARENTS` | When `true`, suppresses `rel="related"` and `rel="duplicate"` links for alternate parents in poly-hierarchy. Only the contextual `rel="parent"` link is advertised. Useful for multi-tenant deployments to prevent information leakage about other tenants. Requires `ENABLE_CATALOGS_ROUTE=true`. | `false` | Optional |
+| `ENABLE_STAC_VALIDATOR` | Enable [stac-validator](https://github.com/stac-utils/stac-validator) to validate STAC items and collections on ingestion. This is especially useful for items or collections that use extensions. | `false` | Optional |
+| `VALIDATE_BEFORE_QUEUE` | When using Redis queue (`ENABLE_REDIS_QUEUE=true`), controls whether validation happens on the API thread before queuing (true) or deferred to the background worker (false). When queue is disabled, validation always happens on the API thread. Set to `true` for strict data quality, `false` for maximum API throughput. See [Validation Timing with Redis Queue](#validation-timing-with-redis-queue) for details. | `true` | Optional |
+| `ENABLE_TOPOLOGY_VALIDATION` | Enable lightweight pure-Python validation to enforce WGS84 coordinate bounds (±180° lon, ±90° lat) and detect improper antimeridian crossing in Polygon and MultiPolygon geometries. Provides CPU-efficient spatial validation without external dependencies. See [Topology Validation](#topology-validation) for details. | `false` | Optional |
+| `MAX_TOPOLOGY_VERTICES` | Maximum number of vertices allowed in a single Polygon or MultiPolygon ring when topology validation is enabled. This prevents DoS attacks with pathologically complex geometries. Only applies when `ENABLE_TOPOLOGY_VALIDATION=true`. | `5000` | Optional |
 | `STAC_INDEX_ASSETS` | Controls if Assets are indexed when added to Elasticsearch/Opensearch. This allows asset fields to be included in search queries. | `false` | Optional |
 
 ### 5. Limits & Performance
@@ -784,6 +790,8 @@ You can customize additional settings in your `.env` file:
 | `STAC_GLOBAL_ITEM_MAX_LIMIT` | Configures the maximum number of STAC items that can be returned in a single search request. | N/A | Optional |
 | `STAC_DEFAULT_ITEM_LIMIT` | Configures the default number of STAC items returned when no limit parameter is specified in the request. | `10` | Optional |
 | `COUNT_TIMEOUT` | Configures the timeout for the count task with search queries. If the count query takes longer than timeout, the search results are returned without the total count. Set to 0 to disable the timeout.. | `0.5` | Optional |
+| `MAX_BATCH_SIZE` | When set to a value > 0, enables chunked validation with fail-fast thresholds. Items are validated in chunks of this size. Set to 0 to disable chunked validation (uses standard atomic validation). See [Chunked Validation with Fail-Fast](#chunked-validation-with-fail-fast) for details. | `0` | Optional |
+| `MAX_BATCH_ERROR_SIZE` | Maximum number of validation errors allowed before halting the validation loop and rejecting the entire batch. Only applies when `MAX_BATCH_SIZE` > 0. This is a CPU optimization gate to prevent wasting resources validating hopelessly broken payloads. | `0` | Optional |
 
 
 ### 6. Database Indexing & Behavior
@@ -824,6 +832,182 @@ You can customize additional settings in your `.env` file:
 
 > [!NOTE]
 > The variables `ES_HOST`, `ES_PORT`, `ES_USE_SSL`, `ES_VERIFY_CERTS` and `ES_TIMEOUT` apply to both Elasticsearch and OpenSearch backends, so there is no need to rename the key names to `OS_` even if you're using OpenSearch.
+
+## STAC Validation
+
+STAC FastAPI provides a flexible, 2-tier validation architecture for STAC items and collections on ingestion. This ensures data quality and compliance with the STAC specification while allowing you to balance strict schema enforcement with high-throughput ingestion performance.
+
+### 1. Native Pydantic Validation (Always Enabled)
+
+By default, all STAC items and collections are validated using **Pydantic** (via `stac-pydantic`) at the API routing layer. This validation:
+
+- Enforces required STAC fields and correct data types.
+- Validates spatial and temporal properties.
+- Provides extremely fast, built-in validation without external dependencies.
+
+This validation is always enabled and happens automatically before data reaches the database or the Redis queue.
+
+### 2. Python STAC Validator
+
+If you require strict validation beyond Pydantic's type checking, you can enable the Python-based `stac-validator` package.
+
+#### Enabling STAC Validator
+
+1. **Install the validator**:
+   ```bash
+   pip install stac-fastapi-core[validator]
+   # or
+   pip install stac-fastapi-elasticsearch[validator]
+   # or
+   pip install stac-fastapi-opensearch[validator]
+   ```
+
+2. **Enable validation via environment variable**:
+   ```bash
+   export ENABLE_STAC_VALIDATOR=true
+   ```
+
+When enabled, the STAC validator will:
+- Validate items and collections against the official STAC JSON schemas
+- Check compliance with STAC extensions (e.g., EO, SAR, Projection)
+- Catch schema violations that Pydantic doesn't enforce
+- Provide detailed error messages with schema paths and validation details
+
+#### Example: Validation in Action
+
+```bash
+# Enable STAC validator
+export ENABLE_STAC_VALIDATOR=true
+
+# Now POST/PUT requests will validate against STAC schemas
+curl -X POST http://localhost:8000/collections \
+  -H "Content-Type: application/json" \
+  -d @collection.json
+```
+
+If validation fails, you'll receive a detailed error response:
+```json
+{
+  "detail": "STAC validation failed: 'eo:bands' does not match any of the regexes: '^(?!eo:)'. Error is in assets -> SR_B2"
+}
+```
+
+#### Performance Considerations
+
+- **Pydantic validation** Very fast and always enabled
+- **STAC validator (Python)** (ENABLE_STAC_VALIDATOR): Uses multi-processing for feature-collections
+
+#### Validation Timing with Redis Queue
+
+When using the Redis queue (`ENABLE_REDIS_QUEUE=true`), you can control when validation occurs:
+
+- **`VALIDATE_BEFORE_QUEUE=true` (default)**: Validates items on the API thread before queuing. This ensures data quality upfront but may impact API response times for large batches.
+  - Use this for strict data quality requirements
+  - Recommended for most production deployments
+  
+- **`VALIDATE_BEFORE_QUEUE=false`**: Skips validation on the API thread and lets the background worker validate items. This maximizes API throughput but delays error detection.
+  - Use this for high-throughput scenarios where you can tolerate delayed validation
+  - The worker will still validate and move invalid items to the Dead Letter Queue (DLQ)
+
+**Example: Enable high-throughput mode with deferred validation**
+```bash
+export ENABLE_REDIS_QUEUE=true
+export ENABLE_STAC_VALIDATOR=true
+export VALIDATE_BEFORE_QUEUE=false
+```
+
+> **Note**: When `ENABLE_REDIS_QUEUE=false` (direct database mode), validation always happens on the API thread regardless of the `VALIDATE_BEFORE_QUEUE` setting.
+
+#### Chunked Validation with Fail-Fast
+
+For high-volume ingestion scenarios, you can enable **chunked validation with fail-fast thresholds** to optimize CPU usage and prevent wasting resources on hopelessly broken payloads.
+
+**How it works:**
+
+1. **Chunking**: Items are validated in chunks of `MAX_BATCH_SIZE` items
+2. **Error Tracking**: Validation errors are accumulated across chunks
+3. **Fail-Fast**: If total errors exceed `MAX_BATCH_ERROR_SIZE`, validation stops immediately and the entire batch is rejected
+4. **Atomic Rejection**: The entire batch is always rejected if any errors are found (no partial inserts)
+
+**Example: Enable chunked validation with fail-fast**
+```bash
+export ENABLE_STAC_VALIDATOR=true
+export MAX_BATCH_SIZE=100          # Validate in chunks of 100 items
+export MAX_BATCH_ERROR_SIZE=5      # Stop after 5 errors found
+```
+
+**Behavior:**
+- If a batch of 1000 items has 6 validation errors distributed across chunks, validation stops after finding the 6th error
+- The API returns a 400 error with details about where validation stopped and how many items were checked
+- This prevents the validator from wasting CPU cycles on the remaining 994 items
+
+**When to use:**
+- High-volume ingestion (thousands of items per request)
+- Unreliable data sources where large batches may contain many errors
+- When you want to fail fast rather than validate everything
+
+**When NOT to use:**
+- Small batches (< 100 items) - overhead of chunking not worth it
+- When you need a complete error report for all items - fail-fast stops early
+- Set `MAX_BATCH_SIZE=0` (default) to disable and use standard atomic validation
+
+> **Note**: Chunked validation only applies when `VALIDATE_BEFORE_QUEUE=true` (API thread validation). When using deferred validation (`VALIDATE_BEFORE_QUEUE=false`), the worker will validate the entire batch.
+
+### 3. Topology Validation (Antimeridian & WGS84 Bounds Protection)
+
+For geospatial data ingestion, you can enable **lightweight topology validation** to enforce WGS84 coordinate bounds and detect improper antimeridian crossing without external dependencies.
+
+**How it works:**
+
+1. **WGS84 Bounds Enforcement**: Validates all coordinates fall within standard global bounds (±180° longitude, ±90° latitude)
+2. **Antimeridian Detection**: Detects improper antimeridian crossing in Polygon and MultiPolygon geometries (longitude jumps > 180°)
+3. **Vertex Limit Enforcement**: Prevents DoS attacks by rejecting geometries with excessive vertices (default 5000 per ring)
+4. **Recursive Validation**: Checks every coordinate pair in the geometry, not just the first
+5. **Zero Dependencies**: Pure Python implementation with no external service calls
+
+**Example: Enable topology validation**
+```bash
+export ENABLE_TOPOLOGY_VALIDATION=true
+```
+
+**Configuring the vertex limit:**
+```bash
+export ENABLE_TOPOLOGY_VALIDATION=true
+export MAX_TOPOLOGY_VERTICES=10000  # Allow up to 10,000 vertices per ring
+```
+
+**Behavior:**
+
+- Items with coordinates outside WGS84 bounds are rejected with HTTP 400
+- Items with geometries crossing the antimeridian without proper truncation are rejected
+- Validation runs after STAC schema validation, so it catches spatial errors that Pydantic doesn't enforce
+- Works with both single-item and bulk FeatureCollection ingestion
+
+**Example error response:**
+```json
+{
+  "detail": "Invalid item geometry: Coordinates out of global WGS84 bounds: [200.5, 45.0]"
+}
+```
+
+**When to use:**
+
+- Ingesting data from unreliable sources with potential coordinate errors
+- Enforcing strict spatial data quality standards
+- Detecting antimeridian-crossing geometries that should be split or wrapped
+- When you want lightweight validation without external service dependencies
+
+**Integration with Chunked Validation:**
+
+Topology validation integrates seamlessly with chunked validation and fail-fast thresholds. If topology errors exceed `MAX_BATCH_ERROR_SIZE`, the circuit breaker will halt validation early:
+
+```bash
+export ENABLE_TOPOLOGY_VALIDATION=true
+export MAX_BATCH_SIZE=100
+export MAX_BATCH_ERROR_SIZE=5
+```
+
+In this configuration, if 6 items have topology errors across the batch, validation stops after the chunk that causes the cumulative error count to exceed `MAX_BATCH_ERROR_SIZE`, preventing additional chunks from being processed. With `MAX_BATCH_SIZE=100`, this does not necessarily stop exactly when the 6th error is encountered; use smaller chunk sizes if you need earlier cutoff.
 
 ## Free-Text Search (`q` parameter)
 
@@ -917,8 +1101,9 @@ If your metadata uses custom fields (e.g., `properties.example_name`), follow th
 * **Be Selective**: Only add fields to `FREE_TEXT_FIELDS` that users genuinely need to search.
 * **Avoid Wildcards**: Do not use `properties.*` in `FREE_TEXT_FIELDS` for catalogs with millions of items. Searching every property simultaneously significantly increases query latency and creates "noisy" results.
 
-## Redis for Navigation environment variables:
-These Redis configuration variables to enable proper navigation functionality in STAC FastAPI.
+## Redis for Navigation Configuration
+
+These Redis configuration variables enable proper navigation functionality in STAC FastAPI.
 
 | Variable | Description| Default| Required|
 |----------|------------|--------|---------|

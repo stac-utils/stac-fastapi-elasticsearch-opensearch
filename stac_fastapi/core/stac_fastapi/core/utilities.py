@@ -14,6 +14,30 @@ from stac_fastapi.types.stac import Item
 MAX_LIMIT = 10000
 
 
+logger = logging.getLogger(__name__)
+
+
+def get_int_env(name: str, default: int = 0) -> int:
+    """
+    Retrieve an integer value from an environment variable.
+
+    Args:
+        name (str): The name of the environment variable.
+        default (int, optional): The default value to use if the variable is not set or invalid. Defaults to 0.
+
+    Returns:
+        int: The integer value parsed from the environment variable.
+    """
+    value = os.getenv(name, str(default))
+    try:
+        return int(value)
+    except ValueError:
+        logger.warning(
+            f"Environment variable '{name}' has invalid integer value '{value}'. Using default: {default}"
+        )
+        return default
+
+
 def get_bool_env(name: str, default: bool | str = False) -> bool:
     """
     Retrieve a boolean value from an environment variable.
@@ -273,3 +297,135 @@ def get_excluded_from_items(obj: dict, field_path: str) -> None:
             return
 
     current.pop(final, None)
+
+
+async def queue_items_if_enabled(
+    collection_id: str,
+    items: dict | list[dict],
+) -> str | None:
+    """Queue items to Redis if ENABLE_REDIS_QUEUE is set.
+
+    Handles both single items and bulk items. Returns a status message if queuing
+    was performed, or None if queuing is disabled.
+
+    Args:
+        collection_id: The collection ID to queue items for.
+        items: Single item dict or list of item dicts to queue.
+
+    Returns:
+        Status message if items were queued, None if queuing is disabled.
+
+    Raises:
+        Exception: Any exception from the queue manager is propagated.
+    """
+    if not get_bool_env("ENABLE_REDIS_QUEUE", default=False):
+        return None
+
+    from stac_fastapi.core.redis_utils import AsyncRedisQueueManager
+
+    queue_manager = await AsyncRedisQueueManager.create()
+    try:
+        queue_len = await queue_manager.queue_items(collection_id, items)
+
+        # Format logging message based on whether single or bulk items
+        if isinstance(items, list):
+            count = len(items)
+            return f"Successfully queued {count} items for processing."
+        else:
+            item_id = items.get("id", "unknown")
+            logger.info(
+                f"Queued item '{item_id}' for collection '{collection_id}'. "
+                f"Queue length: {queue_len}"
+            )
+            return f"Successfully queued item '{item_id}' for processing."
+    finally:
+        await queue_manager.close()
+
+
+def count_validation_errors(validation_errors: dict[str, list[str]]) -> int:
+    """Count total validation errors across all unique error profiles (DRY Helper).
+
+    Aggregates error counts from a validation_errors dictionary that maps
+    error messages to lists of affected item IDs.
+
+    Args:
+        validation_errors: Dictionary mapping error messages to lists of item IDs.
+
+    Returns:
+        Total count of validation errors across all error types.
+    """
+    return sum(
+        len(item_ids) if isinstance(item_ids, list) else 1
+        for item_ids in validation_errors.values()
+    )
+
+
+def build_bulk_summary(
+    raw_features: list,
+    processed_items: list,
+    valid_items: list,
+    validation_error_count: int,
+    conflict_errors: list | None = None,
+    other_errors: list | None = None,
+) -> dict:
+    """Build a standardized summary dictionary for bulk operations telemetry.
+
+    Aggregates counts from all processing layers (preprocessing, validation, database)
+    to provide a comprehensive view of batch operation results.
+
+    Args:
+        raw_features: Original input features before any processing.
+        processed_items: Items that passed preprocessing.
+        valid_items: Items that passed validation.
+        validation_error_count: Count of validation errors encountered.
+        conflict_errors: List of items that caused database conflicts (duplicates).
+        other_errors: List of items that caused other database errors.
+
+    Returns:
+        Dictionary with telemetry counts for input, processed, valid, skipped, and error items.
+    """
+    conflict_count = len(conflict_errors) if conflict_errors else 0
+    database_error_count = len(other_errors) if other_errors else 0
+
+    # Calculate total skipped dynamically based on what layer failed
+    skipped_total = (
+        (len(raw_features) - len(processed_items))  # input duplicates
+        + validation_error_count
+        + conflict_count
+    )
+
+    return {
+        "input_count": len(raw_features),
+        "processed_count": len(processed_items),
+        "valid_count": len(valid_items),
+        "skipped_total": skipped_total,
+        "validation_error_count": validation_error_count,
+        "conflict_count": conflict_count,
+        "database_error_count": database_error_count,
+    }
+
+
+def format_conflict_errors(conflicts: list[dict]) -> dict[str, str]:
+    """Format database conflict errors into a clean dictionary.
+
+    Parses conflict error objects and extracts human-readable messages.
+    This function is defined at module-load time to avoid memory reallocation
+    on every API request.
+
+    Args:
+        conflicts: List of conflict error dictionaries from the database.
+
+    Returns:
+        Dictionary mapping item IDs to human-readable conflict messages.
+    """
+    conflict_details = {}
+    for c in conflicts:
+        doc_id = next(iter(c.values())).get("_id", "")
+        if "|" in doc_id:
+            item_id, coll_id = doc_id.split("|", 1)
+            conflict_details[
+                item_id
+            ] = f"Item '{item_id}' already exists in collection '{coll_id}'"
+        else:
+            conflict_details[doc_id] = f"Item '{doc_id}' already exists"
+    return conflict_details
