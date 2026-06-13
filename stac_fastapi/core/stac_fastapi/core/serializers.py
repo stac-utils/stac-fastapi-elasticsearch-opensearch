@@ -363,8 +363,10 @@ class CollectionSerializer(Serializer):
             ]
 
             # Get hide_alternate_parents flag from app state
-            hide_alternate_parents = getattr(
-                request.app.state, "catalogs_hide_alternate_parents", False
+            hide_alternate_parents = (
+                getattr(request.app.state, "catalogs_hide_alternate_parents", False)
+                if request and hasattr(request.app, "state")
+                else False
             )
 
             # Generate poly-hierarchy links using helper method
@@ -437,8 +439,10 @@ class CollectionSerializer(Serializer):
             ]
 
             # Get hide_alternate_parents flag from app state
-            hide_alternate_parents = getattr(
-                request.app.state, "catalogs_hide_alternate_parents", False
+            hide_alternate_parents = (
+                getattr(request.app.state, "catalogs_hide_alternate_parents", False)
+                if request and hasattr(request.app, "state")
+                else False
             )
 
             # Generate poly-hierarchy links using helper method (catalog_id is the context)
@@ -511,8 +515,10 @@ class CatalogSerializer(Serializer):
         catalog_links = resolve_links(catalog.get("links", []), base_url)
 
         # Get hide_alternate_parents flag from app state
-        hide_alternate_parents = getattr(
-            request.app.state, "catalogs_hide_alternate_parents", False
+        hide_alternate_parents = (
+            getattr(request.app.state, "catalogs_hide_alternate_parents", False)
+            if request and hasattr(request.app, "state")
+            else False
         )
 
         # Generate poly-hierarchy links using helper method (catalog_id is the context)
