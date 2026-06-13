@@ -6,7 +6,7 @@ from slowapi.errors import RateLimitExceeded
 
 logger = logging.getLogger(__name__)
 
-pytestmark = pytest.mark.asyncio(loop_scope="session")
+pytestmark = pytest.mark.asyncio
 
 
 async def test_rate_limit(app_client_rate_limit: AsyncClient, ctx):

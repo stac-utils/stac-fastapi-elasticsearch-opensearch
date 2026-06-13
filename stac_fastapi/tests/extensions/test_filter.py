@@ -12,7 +12,7 @@ from httpx import AsyncClient
 
 from ..conftest import create_collection, create_item, refresh_indices
 
-pytestmark = pytest.mark.asyncio(loop_scope="session")
+pytestmark = pytest.mark.asyncio
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 

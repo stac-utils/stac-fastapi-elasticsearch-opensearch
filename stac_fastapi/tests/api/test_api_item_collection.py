@@ -8,7 +8,7 @@ import pytest
 
 from ..conftest import create_collection, create_item
 
-pytestmark = pytest.mark.asyncio(loop_scope="session")
+pytestmark = pytest.mark.asyncio
 
 
 async def test_global_item_max_limit_set(app_client, txn_client, load_test_data):

@@ -5,7 +5,7 @@ import pytest
 
 from ..conftest import create_collection, refresh_indices
 
-pytestmark = pytest.mark.asyncio(loop_scope="session")
+pytestmark = pytest.mark.asyncio
 
 
 async def test_collections_sort_id_asc(app_client, txn_client, ctx):

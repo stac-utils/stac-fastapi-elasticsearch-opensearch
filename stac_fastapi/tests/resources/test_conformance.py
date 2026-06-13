@@ -3,7 +3,7 @@ import urllib.parse
 import pytest
 import pytest_asyncio
 
-pytestmark = pytest.mark.asyncio(loop_scope="session")
+pytestmark = pytest.mark.asyncio
 
 
 @pytest_asyncio.fixture

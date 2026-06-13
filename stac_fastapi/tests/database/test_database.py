@@ -46,7 +46,7 @@ from ..conftest import (
     database,
 )
 
-pytestmark = pytest.mark.asyncio(loop_scope="session")
+pytestmark = pytest.mark.asyncio
 
 
 @pytest_asyncio.fixture(scope="module", autouse=True)

@@ -4,7 +4,7 @@ from unittest import mock
 
 import pytest
 
-pytestmark = pytest.mark.asyncio(loop_scope="session")
+pytestmark = pytest.mark.asyncio
 
 if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
     from stac_fastapi.opensearch.app import app_config

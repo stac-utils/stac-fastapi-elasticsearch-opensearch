@@ -18,7 +18,7 @@ else:
         ElasticsearchSettings as SearchSettings,
     )
 
-pytestmark = pytest.mark.asyncio(loop_scope="session")
+pytestmark = pytest.mark.asyncio
 
 
 async def test_bulk_item_insert(ctx, core_client, txn_client, bulk_txn_client):

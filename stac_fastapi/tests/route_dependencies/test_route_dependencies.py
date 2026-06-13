@@ -1,6 +1,6 @@
 import pytest
 
-pytestmark = pytest.mark.asyncio(loop_scope="session")
+pytestmark = pytest.mark.asyncio
 
 
 async def test_not_authenticated(route_dependencies_client):

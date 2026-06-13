@@ -15,7 +15,7 @@ from stac_fastapi.types.errors import ConflictError, NotFoundError
 
 from ..conftest import MockRequest
 
-pytestmark = pytest.mark.asyncio(loop_scope="session")
+pytestmark = pytest.mark.asyncio
 
 
 async def test_create_collection(app_client, ctx, core_client, txn_client):

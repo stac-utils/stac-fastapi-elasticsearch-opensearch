@@ -9,7 +9,7 @@ from stac_fastapi.core.validate import (
     async_validate_stac,
 )
 
-pytestmark = pytest.mark.asyncio(loop_scope="session")
+pytestmark = pytest.mark.asyncio
 
 
 async def test_async_validate_stac_valid_item(load_test_data, monkeypatch):

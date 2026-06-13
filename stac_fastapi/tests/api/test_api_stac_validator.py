@@ -6,7 +6,7 @@ import pytest
 
 from ..conftest import create_collection, create_item
 
-pytestmark = pytest.mark.asyncio(loop_scope="session")
+pytestmark = pytest.mark.asyncio
 
 
 def create_circular_polygon_ring(

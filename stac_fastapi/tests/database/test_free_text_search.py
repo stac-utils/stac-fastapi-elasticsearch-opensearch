@@ -7,7 +7,7 @@ import pytest
 
 from ..conftest import create_item, refresh_indices
 
-pytestmark = pytest.mark.asyncio(loop_scope="session")
+pytestmark = pytest.mark.asyncio
 
 
 async def _search_post_route(app_client, params):

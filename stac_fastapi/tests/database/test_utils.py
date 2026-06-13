@@ -14,7 +14,7 @@ from stac_fastapi.sfeos_helpers.database import (
 
 from ..conftest import create_item, database
 
-pytestmark = pytest.mark.asyncio(loop_scope="session")
+pytestmark = pytest.mark.asyncio
 
 
 async def test_check_item_exists_in_alias_returns_true_when_exists(ctx, txn_client):
