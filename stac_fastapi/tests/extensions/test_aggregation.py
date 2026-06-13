@@ -3,7 +3,7 @@ from urllib.parse import urlparse
 
 import pytest
 
-pytestmark = pytest.mark.asyncio
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 

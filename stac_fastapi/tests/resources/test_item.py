@@ -25,7 +25,7 @@ if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
 else:
     from stac_fastapi.elasticsearch.database_logic import DatabaseLogic
 
-pytestmark = pytest.mark.asyncio
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
 def rfc3339_str_to_datetime(s: str) -> datetime:

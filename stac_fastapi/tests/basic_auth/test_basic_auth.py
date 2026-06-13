@@ -2,7 +2,7 @@ import os
 
 import pytest
 
-pytestmark = pytest.mark.asyncio
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
 async def test_get_search_not_authenticated(app_client_basic_auth, ctx):

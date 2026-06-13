@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 import pytest
 
-pytestmark = pytest.mark.asyncio
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
 @pytest.mark.datetime_filtering

@@ -4,7 +4,7 @@ from redis.exceptions import ConnectionError as RedisConnectionError
 import stac_fastapi.core.redis_utils as redis_utils
 from stac_fastapi.core.redis_utils import connect_redis, get_prev_link, save_prev_link
 
-pytestmark = pytest.mark.asyncio
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
 async def test_redis_connection():

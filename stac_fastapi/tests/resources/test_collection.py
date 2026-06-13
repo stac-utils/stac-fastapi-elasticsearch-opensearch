@@ -13,7 +13,7 @@ from ..conftest import (
     refresh_indices,
 )
 
-pytestmark = pytest.mark.asyncio
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 CORE_COLLECTION_PROPS = [
     "id",

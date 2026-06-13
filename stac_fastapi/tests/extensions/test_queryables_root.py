@@ -9,7 +9,7 @@ from httpx import AsyncClient
 import stac_fastapi.sfeos_helpers.filter.client as filter_client_module
 from stac_fastapi.core.extensions.filter import DEFAULT_QUERYABLES
 
-pytestmark = pytest.mark.asyncio
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
 async def test_root_queryables_default(app_client: AsyncClient):

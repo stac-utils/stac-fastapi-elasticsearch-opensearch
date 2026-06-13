@@ -24,7 +24,7 @@ from stac_fastapi.types.errors import ConflictError, NotFoundError
 
 from ..conftest import create_collection, create_item
 
-pytestmark = pytest.mark.asyncio
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 ROUTES = {
     "GET /_mgmt/ping",

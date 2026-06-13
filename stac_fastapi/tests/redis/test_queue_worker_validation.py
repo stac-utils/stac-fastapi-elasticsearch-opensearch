@@ -15,7 +15,7 @@ from stac_fastapi.core.redis_utils import AsyncRedisQueueManager
 
 from ..conftest import MockRequest
 
-pytestmark = pytest.mark.asyncio
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
 async def test_worker_validates_items_in_queue(

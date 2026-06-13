@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import pytest_asyncio
 
-pytestmark = pytest.mark.asyncio
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 _repo_root = Path(__file__).resolve()
 while _repo_root != _repo_root.parent and not (_repo_root / "scripts").is_dir():

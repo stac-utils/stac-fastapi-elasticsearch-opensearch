@@ -4,7 +4,7 @@ import pytest
 
 from stac_fastapi.sfeos_helpers.database.mapping import get_queryables_mapping_shared
 
-pytestmark = pytest.mark.asyncio
+pytestmark = pytest.mark.asyncio(loop_scope="session")
 
 
 async def test_get_queryables_mapping_shared_simple():
