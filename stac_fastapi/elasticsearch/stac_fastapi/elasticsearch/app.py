@@ -78,13 +78,16 @@ ENABLE_COLLECTIONS_SEARCH_ROUTE = get_bool_env(
     "ENABLE_COLLECTIONS_SEARCH_ROUTE", default=False
 )
 ENABLE_CATALOGS_ROUTE = get_bool_env("ENABLE_CATALOGS_ROUTE", default=False)
+HIDE_ALTERNATE_PARENTS = get_bool_env("HIDE_ALTERNATE_PARENTS", default=False)
 ENABLE_STAC_VALIDATOR = get_bool_env("ENABLE_STAC_VALIDATOR", default=False)
+
 logger.info("TRANSACTIONS_EXTENSIONS is set to %s", TRANSACTIONS_EXTENSIONS)
 logger.info("ENABLE_COLLECTIONS_SEARCH is set to %s", ENABLE_COLLECTIONS_SEARCH)
 logger.info(
     "ENABLE_COLLECTIONS_SEARCH_ROUTE is set to %s", ENABLE_COLLECTIONS_SEARCH_ROUTE
 )
 logger.info("ENABLE_CATALOGS_ROUTE is set to %s", ENABLE_CATALOGS_ROUTE)
+logger.info("HIDE_ALTERNATE_PARENTS is set to %s", HIDE_ALTERNATE_PARENTS)
 logger.info("ENABLE_STAC_VALIDATOR is set to %s", ENABLE_STAC_VALIDATOR)
 
 
@@ -235,6 +238,7 @@ if ENABLE_CATALOGS_ROUTE:
         catalogs_extension = CatalogsExtension(
             client=catalogs_client,
             settings=settings.model_dump(),
+            hide_alternate_parents=HIDE_ALTERNATE_PARENTS,
         )
         catalogs_transaction_extension = CatalogsTransactionExtension(
             client=catalogs_client,

@@ -28,6 +28,7 @@ services:
       - REDIS_ENABLE=true
       - REDIS_HOST=redis
       - REDIS_PORT=6379
+      - HIDE_ALTERNATE_PARENTS=false
     ports:
       - "8080:8080"
     volumes:

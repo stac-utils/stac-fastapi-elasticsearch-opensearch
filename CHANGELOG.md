@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Added `HIDE_ALTERNATE_PARENTS` environment variable (default `False`) to suppress `rel="related"` and `rel="duplicate"` links for alternate parents in poly-hierarchy. Useful for multi-tenant deployments to prevent information leakage about other tenants. When enabled, only the contextual `rel="parent"` link is advertised. [#768](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/768)
 - Added `VALIDATE_BEFORE_QUEUE` environment variable to control validation timing when using Redis queue. When set to `true` (default), validates items on the API thread before queuing for strict data quality. When set to `false`, defers validation to the background worker for maximum API throughput. Applies to single items, feature collections, and item updates. [#742](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/742)
 - Added `MAX_BATCH_SIZE` and `MAX_BATCH_ERROR_SIZE` environment variables to enable chunked validation with fail-fast thresholds. When `MAX_BATCH_SIZE` > 0, items are validated in chunks and validation stops immediately if errors exceed `MAX_BATCH_ERROR_SIZE`. This optimizes CPU usage for high-volume ingestion by preventing wasted validation cycles on hopelessly broken payloads. [#742](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/742)
 - Added `ENABLE_STAC_VALIDATOR` environment variable to enable strict STAC schema validation on ingestion via the Python `stac-validator`. [#742](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/742)
@@ -23,6 +24,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Removed
 
 ### Updated
+
+- Updated `stac-fastapi-catalogs-extension` to `v0.4.0`. [#768](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/768)
 
 ## [v6.17.2] - 2026-06-10
 

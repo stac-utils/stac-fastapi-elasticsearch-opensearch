@@ -310,79 +310,106 @@ class CatalogsClient(AsyncBaseCatalogsClient):
 
     async def get_catalog(
         self, catalog_id: str, request: Request | None = None, **kwargs
-    ) -> Catalog | Response:
-        """Get a specific catalog by ID."""
+    ) -> Catalog:
+        """Get a specific catalog by ID according to the Multi-Tenant specification."""
+        # 1. Fetch data from index
         catalog_dict = await self.database.find_catalog(catalog_id)
+
+        # 2. Serialize database record to STAC object
         catalog_obj = self.catalog_serializer.db_to_stac(
             catalog_dict, request, extensions=["CatalogsExtension"]
         )
 
-        # Convert to dict if needed for link manipulation
-        if isinstance(catalog_obj, dict):
-            catalog_data = catalog_obj
-        else:
-            catalog_data = (
-                catalog_obj.model_dump(mode="json")
-                if hasattr(catalog_obj, "model_dump")
-                else dict(catalog_obj)
-            )
+        # Ensure we have a clean working dictionary for dynamic link building
+        catalog_data = (
+            catalog_obj.model_dump(mode="json")
+            if hasattr(catalog_obj, "model_dump")
+            else dict(catalog_obj)
+        )
 
-        # Add children endpoint link and child links
-        base_url = self._get_base_url(request)
-        catalog_links = list(catalog_data.get("links", []))
+        # Get base_url (ensure no trailing slash)
+        base_url = self._get_base_url(request).rstrip("/")
+
+        # 3. CRITICAL FIX: Clear all dynamic structural links to avoid duplication
+        catalog_data["links"] = [
+            link
+            for link in catalog_data.get("links", [])
+            if link.get("rel")
+            not in ["self", "parent", "root", "child", "related", "children"]
+        ]
+        catalog_links = catalog_data["links"]
+
+        # 4. Mandatory structural links (Self & Root)
+        # Note: base_url has no trailing slash, so add / before path
+        catalog_links.extend(
+            [
+                {
+                    "rel": "self",
+                    "type": "application/json",
+                    "href": f"{base_url}/catalogs/{catalog_id}",
+                },
+                {
+                    "rel": "root",
+                    "type": "application/json",
+                    "href": f"{base_url}/",
+                },
+            ]
+        )
+
+        # 5. Poly-hierarchy parent & related logic
         parent_ids = catalog_dict.get("parent_ids", [])
 
-        # Remove existing parent links, we'll add the correct one
-        catalog_links = [link for link in catalog_links if link.get("rel") != "parent"]
-
-        # Add parent link - to root for top-level, to first parent for nested
-        if parent_ids:
-            # Nested catalog: parent link to first parent
-            catalog_links.insert(
-                0,
+        if not parent_ids:
+            # Top-level catalog links parent to global landing page
+            catalog_links.append(
+                {
+                    "rel": "parent",
+                    "type": "application/json",
+                    "href": f"{base_url}/",
+                    "title": "Root Catalog",
+                }
+            )
+        else:
+            # First item is the contextual primary parent
+            catalog_links.append(
                 {
                     "rel": "parent",
                     "type": "application/json",
                     "href": f"{base_url}/catalogs/{parent_ids[0]}",
                     "title": parent_ids[0],
-                },
-            )
-        else:
-            # Top-level catalog: parent link to root
-            catalog_links.insert(
-                0,
-                {
-                    "rel": "parent",
-                    "type": "application/json",
-                    "href": base_url,
-                    "title": "Root Catalog",
-                },
+                }
             )
 
-        # Add root link if not already present
-        has_root = any(link.get("rel") == "root" for link in catalog_links)
-        if not has_root:
-            catalog_links.insert(
-                0,
-                {
-                    "rel": "root",
-                    "type": "application/json",
-                    "href": base_url,
-                    "title": "Root Catalog",
-                },
-            )
+            # Get multi-tenant privacy toggle from app state
+            hide_alternate_parents = False
+            if request and hasattr(request.app, "state"):
+                hide_alternate_parents = getattr(
+                    request.app.state, "catalogs_hide_alternate_parents", False
+                )
 
-        # Add children endpoint link
+            # Only advertise alternate parents if explicitly permitted
+            if not hide_alternate_parents:
+                for pid in parent_ids[1:]:
+                    catalog_links.append(
+                        {
+                            "rel": "related",
+                            "type": "application/json",
+                            "href": f"{base_url}/catalogs/{pid}",
+                            "title": f"Parent context: {pid}",
+                        }
+                    )
+
+        # 6. Add convenience children index endpoint link
         catalog_links.append(
             {
                 "rel": "children",
                 "type": "application/json",
                 "href": f"{base_url}/catalogs/{catalog_id}/children",
-                "title": "Children",
+                "title": "Children catalogs and collections",
             }
         )
 
-        # Get children (catalogs and collections) for child links
+        # 7. Dynamically inject child links (one level deep lookup)
         try:
             children_list, _, _ = await self.database.get_catalog_children(
                 catalog_id=catalog_id,
@@ -391,7 +418,6 @@ class CatalogsClient(AsyncBaseCatalogsClient):
                 request=request,
             )
 
-            # Add child links for each child (up to 100)
             for child in children_list[:100]:
                 child_id = child.get("id")
                 if not child_id:
@@ -417,10 +443,11 @@ class CatalogsClient(AsyncBaseCatalogsClient):
         except Exception as e:
             logger.warning(f"Failed to fetch children for catalog {catalog_id}: {e}")
 
-        # Filter links to remove unwanted fields
+        # Clean links list using internal normalizer
         catalog_data["links"] = [self._link_to_dict(link) for link in catalog_links]
 
-        return JSONResponse(content=catalog_data)
+        # 8. CRITICAL FIX: Return standard object type matching annotation
+        return Catalog(**catalog_data)
 
     async def update_catalog(
         self,
