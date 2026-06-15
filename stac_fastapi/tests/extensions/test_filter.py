@@ -10,6 +10,8 @@ from typing import Callable, Dict
 import pytest
 from httpx import AsyncClient
 
+from ..conftest import create_collection, create_item, refresh_indices
+
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -40,6 +42,73 @@ async def test_filter_extension_collection_link(app_client, load_test_data):
 
     resp = await app_client.delete(f"/collections/{test_collection['id']}")
     assert resp.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_collections_search_collection_mapping(
+    app_client, txn_client, load_test_data
+):
+    """Ensure collections filter resolves fields against the collections index mapping.
+
+    Uses 'license' (a root-level collection field mapped as keyword) to create a
+    collision: the non-matching collection has an item whose properties.license equals
+    the target collection's license value. If the filter mistakenly used the items index
+    mapping, it would resolve 'license' to 'properties.license' and could return the
+    wrong collection. With the correct collections mapping, it resolves to the root-level
+    'license' field and returns only the matching collection.
+    """
+    unique_suffix = uuid.uuid4().hex[:8]
+    matching_collection_id = f"filter-license-match-{unique_suffix}"
+    other_collection_id = f"filter-license-other-{unique_suffix}"
+    target_license = f"proprietary-{unique_suffix}"
+
+    matching_collection = copy.deepcopy(load_test_data("test_collection.json"))
+    matching_collection["id"] = matching_collection_id
+    matching_collection["license"] = target_license
+
+    other_collection = copy.deepcopy(load_test_data("test_collection.json"))
+    other_collection["id"] = other_collection_id
+    other_collection["license"] = f"other-license-{unique_suffix}"
+
+    matching_item = copy.deepcopy(load_test_data("test_item.json"))
+    matching_item["id"] = f"filter-license-item-match-{unique_suffix}"
+    matching_item["collection"] = matching_collection_id
+    matching_item["properties"]["license"] = "item-side-license-value"
+
+    other_item = copy.deepcopy(load_test_data("test_item.json"))
+    other_item["id"] = f"filter-license-item-other-{unique_suffix}"
+    other_item["collection"] = other_collection_id
+    other_item["properties"][
+        "license"
+    ] = target_license  # collision: same value as matching collection's license
+
+    await create_collection(txn_client, matching_collection)
+    await create_collection(txn_client, other_collection)
+    await create_item(txn_client, matching_item)
+    await create_item(txn_client, other_item)
+    await refresh_indices(txn_client)
+
+    resp = await app_client.get(
+        "/collections",
+        params={
+            "filter-lang": "cql2-json",
+            "filter": json.dumps(
+                {
+                    "op": "=",
+                    "args": [{"property": "license"}, target_license],
+                }
+            ),
+        },
+    )
+    resp_json = resp.json()
+
+    assert resp.status_code == 200
+    returned_ids = [collection["id"] for collection in resp_json["collections"]]
+    assert matching_collection_id in returned_ids
+    assert other_collection_id not in returned_ids
+
+    await app_client.delete(f"/collections/{matching_collection_id}")
+    await app_client.delete(f"/collections/{other_collection_id}")
 
 
 @pytest.mark.asyncio

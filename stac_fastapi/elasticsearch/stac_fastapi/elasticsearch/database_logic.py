@@ -275,7 +275,9 @@ class DatabaseLogic(BaseDatabaseLogic):
             if isinstance(filter, str):
                 filter = orjson.loads(filter)
             # Convert the filter to an Elasticsearch query using the filter module
-            es_query = filter_module.to_es(await self.get_queryables_mapping(), filter)
+            es_query = filter_module.to_es(
+                await self.get_collections_queryables_mapping(), filter
+            )
             query_parts.append(es_query)
 
         # Apply query extension if provided
@@ -439,6 +441,20 @@ class DatabaseLogic(BaseDatabaseLogic):
         )
         return await get_queryables_mapping_shared(
             collection_id=collection_id, mappings=mappings
+        )
+
+    async def get_collections_queryables_mapping(self) -> dict:
+        """Retrieve mapping of Queryables for collection search.
+
+        Used when translating CQL2 filters applied to collection search so that field
+        paths are resolved against the collections index rather than the items index.
+
+        Returns:
+            dict: A dictionary containing the Collection Queryables mappings.
+        """
+        mappings = await self.client.indices.get_mapping(index=COLLECTIONS_INDEX)
+        return await get_queryables_mapping_shared(
+            collection_id=COLLECTIONS_INDEX, mappings=mappings
         )
 
     async def get_all_collection_queryables(self) -> list[dict]:

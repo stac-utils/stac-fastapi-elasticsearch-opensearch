@@ -21,6 +21,47 @@ async def test_get_root_catalog(catalogs_app_client, load_test_data):
     assert "root" in link_rels
     assert "parent" in link_rels
 
+    # Verify URLs are properly formatted (no double slashes)
+    for link in links:
+        href = link.get("href", "")
+        assert "//" not in href.replace("http://", "").replace(
+            "https://", ""
+        ), f"URL has double slashes: {href}"
+
+
+@pytest.mark.asyncio
+async def test_get_catalogs_list_with_proper_links(catalogs_app_client, load_test_data):
+    """Test that /catalogs endpoint returns catalogs with properly formatted links."""
+    # Create a test catalog
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+
+    # Get the catalogs list
+    resp = await catalogs_app_client.get("/catalogs")
+    assert resp.status_code == 200
+
+    catalogs_response = resp.json()
+    catalogs_list = catalogs_response.get("catalogs", [])
+    assert len(catalogs_list) > 0
+
+    # Check that each catalog has properly formatted links
+    for catalog in catalogs_list:
+        links = catalog.get("links", [])
+        assert len(links) > 0, f"Catalog {catalog.get('id')} has no links"
+
+        # Verify no double slashes in any link
+        for link in links:
+            href = link.get("href", "")
+            assert "//" not in href.replace("http://", "").replace(
+                "https://", ""
+            ), f"Catalog {catalog.get('id')} has URL with double slashes: {href}"
+
+        # Verify parent link exists and points to correct location
+        parent_links = [link for link in links if link.get("rel") == "parent"]
+        assert len(parent_links) > 0, f"Catalog {catalog.get('id')} has no parent link"
+
 
 @pytest.mark.asyncio
 async def test_create_catalog(catalogs_app_client, load_test_data):
@@ -3975,6 +4016,295 @@ async def test_catalog_delete_logs_error_with_traceback(txn_client, caplog):
     assert len(error_records) > 0
     assert any("Error deleting catalog" in r.message for r in error_records)
     assert any(r.exc_info is not None for r in error_records)
+
+
+# ============================================================================
+# hide_alternate_parents Tests
+# ============================================================================
+
+
+@pytest.mark.asyncio
+async def test_hide_alternate_parents_suppresses_related_links_on_global_collection(
+    catalogs_app, catalogs_app_client, load_test_data, monkeypatch
+):
+    """Test that hide_alternate_parents=True suppresses rel=related links on global /collections."""
+    monkeypatch.setattr(
+        catalogs_app.state, "catalogs_hide_alternate_parents", True, raising=False
+    )
+
+    # Create two parent catalogs
+    parent_catalog_1 = load_test_data("test_catalog.json")
+    parent_id_1 = f"parent-catalog-1-{uuid.uuid4()}"
+    parent_catalog_1["id"] = parent_id_1
+
+    parent_resp_1 = await catalogs_app_client.post("/catalogs", json=parent_catalog_1)
+    assert parent_resp_1.status_code == 201
+
+    parent_catalog_2 = load_test_data("test_catalog.json")
+    parent_id_2 = f"parent-catalog-2-{uuid.uuid4()}"
+    parent_catalog_2["id"] = parent_id_2
+
+    parent_resp_2 = await catalogs_app_client.post("/catalogs", json=parent_catalog_2)
+    assert parent_resp_2.status_code == 201
+
+    # Create a collection linked to both catalogs
+    test_collection = load_test_data("test_collection.json")
+    collection_id = f"test-collection-{uuid.uuid4()}"
+    test_collection["id"] = collection_id
+
+    coll_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_id_1}/collections", json=test_collection
+    )
+    assert coll_resp.status_code == 201
+
+    link_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_id_2}/collections", json=test_collection
+    )
+    assert link_resp.status_code == 201
+
+    resp = await catalogs_app_client.get(f"/collections/{collection_id}")
+    assert resp.status_code == 200
+
+    links = resp.json().get("links", [])
+    related_links = [link for link in links if link.get("rel") == "related"]
+    assert (
+        len(related_links) == 0
+    ), f"Expected no related links with hide_alternate_parents=True, got: {related_links}"
+
+    duplicate_links = [link for link in links if link.get("rel") == "duplicate"]
+    assert (
+        len(duplicate_links) == 0
+    ), f"Expected no duplicate links with hide_alternate_parents=True, got: {duplicate_links}"
+
+    # Parent link should still point to root
+    parent_links = [link for link in links if link.get("rel") == "parent"]
+    assert len(parent_links) == 1, "Should still have exactly 1 parent link"
+
+
+@pytest.mark.asyncio
+async def test_hide_alternate_parents_suppresses_related_links_on_scoped_collection(
+    catalogs_app, catalogs_app_client, load_test_data, monkeypatch
+):
+    """Test that hide_alternate_parents=True suppresses rel=related on scoped /catalogs/{id}/collections/{id}."""
+    monkeypatch.setattr(
+        catalogs_app.state, "catalogs_hide_alternate_parents", True, raising=False
+    )
+
+    # Create two parent catalogs
+    parent_catalog_1 = load_test_data("test_catalog.json")
+    parent_id_1 = f"parent-catalog-1-{uuid.uuid4()}"
+    parent_catalog_1["id"] = parent_id_1
+
+    parent_resp_1 = await catalogs_app_client.post("/catalogs", json=parent_catalog_1)
+    assert parent_resp_1.status_code == 201
+
+    parent_catalog_2 = load_test_data("test_catalog.json")
+    parent_id_2 = f"parent-catalog-2-{uuid.uuid4()}"
+    parent_catalog_2["id"] = parent_id_2
+
+    parent_resp_2 = await catalogs_app_client.post("/catalogs", json=parent_catalog_2)
+    assert parent_resp_2.status_code == 201
+
+    # Create a collection linked to both catalogs
+    test_collection = load_test_data("test_collection.json")
+    collection_id = f"test-collection-{uuid.uuid4()}"
+    test_collection["id"] = collection_id
+
+    coll_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_id_1}/collections", json=test_collection
+    )
+    assert coll_resp.status_code == 201
+
+    link_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_id_2}/collections", json=test_collection
+    )
+    assert link_resp.status_code == 201
+
+    resp = await catalogs_app_client.get(
+        f"/catalogs/{parent_id_1}/collections/{collection_id}"
+    )
+    assert resp.status_code == 200
+
+    links = resp.json().get("links", [])
+    related_links = [link for link in links if link.get("rel") == "related"]
+    assert (
+        len(related_links) == 0
+    ), f"Expected no related links with hide_alternate_parents=True, got: {related_links}"
+
+    duplicate_links = [link for link in links if link.get("rel") == "duplicate"]
+    assert (
+        len(duplicate_links) == 0
+    ), f"Expected no duplicate links with hide_alternate_parents=True, got: {duplicate_links}"
+
+    # Parent link should still point to the contextual catalog
+    parent_links = [link for link in links if link.get("rel") == "parent"]
+    assert len(parent_links) == 1, "Should still have exactly 1 parent link"
+    assert (
+        f"/catalogs/{parent_id_1}" in parent_links[0]["href"]
+    ), "Parent link should point to contextual catalog, not alternate"
+
+
+@pytest.mark.asyncio
+async def test_hide_alternate_parents_suppresses_related_links_on_catalog(
+    catalogs_app, catalogs_app_client, load_test_data, monkeypatch
+):
+    """Test that hide_alternate_parents=True suppresses rel=related on catalog with multiple parents."""
+    monkeypatch.setattr(
+        catalogs_app.state, "catalogs_hide_alternate_parents", True, raising=False
+    )
+
+    # Create two parent catalogs
+    parent_catalog_1 = load_test_data("test_catalog.json")
+    parent_id_1 = f"parent-catalog-1-{uuid.uuid4()}"
+    parent_catalog_1["id"] = parent_id_1
+
+    parent_resp_1 = await catalogs_app_client.post("/catalogs", json=parent_catalog_1)
+    assert parent_resp_1.status_code == 201
+
+    parent_catalog_2 = load_test_data("test_catalog.json")
+    parent_id_2 = f"parent-catalog-2-{uuid.uuid4()}"
+    parent_catalog_2["id"] = parent_id_2
+
+    parent_resp_2 = await catalogs_app_client.post("/catalogs", json=parent_catalog_2)
+    assert parent_resp_2.status_code == 201
+
+    # Create a child catalog under parent_1
+    child_catalog = load_test_data("test_catalog.json")
+    child_id = f"child-catalog-{uuid.uuid4()}"
+    child_catalog["id"] = child_id
+
+    child_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_id_1}/catalogs", json=child_catalog
+    )
+    assert child_resp.status_code == 201
+
+    # Also link the child to parent_2 (poly-hierarchy)
+    link_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_id_2}/catalogs", json={"id": child_id}
+    )
+    assert link_resp.status_code in [200, 201]
+
+    resp = await catalogs_app_client.get(f"/catalogs/{child_id}")
+    assert resp.status_code == 200
+
+    links = resp.json().get("links", [])
+    related_links = [link for link in links if link.get("rel") == "related"]
+    assert (
+        len(related_links) == 0
+    ), f"Expected no related links with hide_alternate_parents=True, got: {related_links}"
+
+    # Parent link should still be present
+    parent_links = [link for link in links if link.get("rel") == "parent"]
+    assert len(parent_links) == 1, "Should still have exactly 1 parent link"
+
+
+@pytest.mark.asyncio
+async def test_hide_alternate_parents_false_shows_related_links_on_catalog(
+    catalogs_app, catalogs_app_client, load_test_data, monkeypatch
+):
+    """Test that hide_alternate_parents=False shows rel=related links on catalogs."""
+    monkeypatch.setattr(
+        catalogs_app.state, "catalogs_hide_alternate_parents", False, raising=False
+    )
+
+    # Create two parent catalogs
+    parent_catalog_1 = load_test_data("test_catalog.json")
+    parent_id_1 = f"parent-catalog-1-{uuid.uuid4()}"
+    parent_catalog_1["id"] = parent_id_1
+
+    parent_resp_1 = await catalogs_app_client.post("/catalogs", json=parent_catalog_1)
+    assert parent_resp_1.status_code == 201
+
+    parent_catalog_2 = load_test_data("test_catalog.json")
+    parent_id_2 = f"parent-catalog-2-{uuid.uuid4()}"
+    parent_catalog_2["id"] = parent_id_2
+
+    parent_resp_2 = await catalogs_app_client.post("/catalogs", json=parent_catalog_2)
+    assert parent_resp_2.status_code == 201
+
+    # Create a child catalog under parent_1
+    child_catalog = load_test_data("test_catalog.json")
+    child_id = f"child-catalog-{uuid.uuid4()}"
+    child_catalog["id"] = child_id
+
+    child_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_id_1}/catalogs", json=child_catalog
+    )
+    assert child_resp.status_code == 201
+
+    # Also link the child to parent_2 (poly-hierarchy)
+    link_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_id_2}/catalogs", json={"id": child_id}
+    )
+    assert link_resp.status_code in [200, 201]
+
+    # Get the catalog and verify related links are present
+    resp = await catalogs_app_client.get(f"/catalogs/{child_id}")
+    assert resp.status_code == 200
+
+    links = resp.json().get("links", [])
+    related_links = [link for link in links if link.get("rel") == "related"]
+    assert (
+        len(related_links) >= 1
+    ), "Expected related links when hide_alternate_parents=False, got none"
+
+    # Parent link should still be present
+    parent_links = [link for link in links if link.get("rel") == "parent"]
+    assert len(parent_links) == 1, "Should still have exactly 1 parent link"
+
+
+@pytest.mark.asyncio
+async def test_hide_alternate_parents_false_shows_related_links(
+    catalogs_app, catalogs_app_client, load_test_data, monkeypatch
+):
+    """Test that hide_alternate_parents=False (default) still shows rel=related links."""
+    monkeypatch.setattr(
+        catalogs_app.state, "catalogs_hide_alternate_parents", False, raising=False
+    )
+
+    # Create two parent catalogs
+    parent_catalog_1 = load_test_data("test_catalog.json")
+    parent_id_1 = f"parent-catalog-1-{uuid.uuid4()}"
+    parent_catalog_1["id"] = parent_id_1
+
+    parent_resp_1 = await catalogs_app_client.post("/catalogs", json=parent_catalog_1)
+    assert parent_resp_1.status_code == 201
+
+    parent_catalog_2 = load_test_data("test_catalog.json")
+    parent_id_2 = f"parent-catalog-2-{uuid.uuid4()}"
+    parent_catalog_2["id"] = parent_id_2
+
+    parent_resp_2 = await catalogs_app_client.post("/catalogs", json=parent_catalog_2)
+    assert parent_resp_2.status_code == 201
+
+    # Create a collection linked to both catalogs
+    test_collection = load_test_data("test_collection.json")
+    collection_id = f"test-collection-{uuid.uuid4()}"
+    test_collection["id"] = collection_id
+
+    coll_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_id_1}/collections", json=test_collection
+    )
+    assert coll_resp.status_code == 201
+
+    link_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_id_2}/collections", json=test_collection
+    )
+    assert link_resp.status_code == 201
+
+    resp = await catalogs_app_client.get(f"/collections/{collection_id}")
+    assert resp.status_code == 200
+
+    links = resp.json().get("links", [])
+    related_links = [link for link in links if link.get("rel") == "related"]
+    assert (
+        len(related_links) >= 1
+    ), "Expected related links when hide_alternate_parents=False, got none"
+
+    duplicate_links = [link for link in links if link.get("rel") == "duplicate"]
+    assert (
+        len(duplicate_links) >= 1
+    ), "Expected duplicate links when hide_alternate_parents=False, got none"
 
 
 @pytest.mark.asyncio

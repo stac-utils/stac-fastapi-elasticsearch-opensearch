@@ -18,6 +18,7 @@ from stac_fastapi.core.core import (
     CoreClient,
     TransactionsClient,
 )
+from stac_fastapi.core.exceptions import QueuedSuccess, queued_success_handler
 from stac_fastapi.core.extensions import QueryExtension
 from stac_fastapi.core.extensions.aggregation import (
     EsAggregationExtensionGetRequest,
@@ -77,12 +78,17 @@ ENABLE_COLLECTIONS_SEARCH_ROUTE = get_bool_env(
     "ENABLE_COLLECTIONS_SEARCH_ROUTE", default=False
 )
 ENABLE_CATALOGS_ROUTE = get_bool_env("ENABLE_CATALOGS_ROUTE", default=False)
+HIDE_ALTERNATE_PARENTS = get_bool_env("HIDE_ALTERNATE_PARENTS", default=False)
+ENABLE_STAC_VALIDATOR = get_bool_env("ENABLE_STAC_VALIDATOR", default=False)
+
 logger.info("TRANSACTIONS_EXTENSIONS is set to %s", TRANSACTIONS_EXTENSIONS)
 logger.info("ENABLE_COLLECTIONS_SEARCH is set to %s", ENABLE_COLLECTIONS_SEARCH)
 logger.info(
     "ENABLE_COLLECTIONS_SEARCH_ROUTE is set to %s", ENABLE_COLLECTIONS_SEARCH_ROUTE
 )
 logger.info("ENABLE_CATALOGS_ROUTE is set to %s", ENABLE_CATALOGS_ROUTE)
+logger.info("HIDE_ALTERNATE_PARENTS is set to %s", HIDE_ALTERNATE_PARENTS)
+logger.info("ENABLE_STAC_VALIDATOR is set to %s", ENABLE_STAC_VALIDATOR)
 
 settings = OpensearchSettings()
 session = Session.create_from_settings(settings)
@@ -230,6 +236,7 @@ if ENABLE_CATALOGS_ROUTE:
         catalogs_extension = CatalogsExtension(
             client=catalogs_client,
             settings=settings.model_dump(),
+            hide_alternate_parents=HIDE_ALTERNATE_PARENTS,
         )
         catalogs_transaction_extension = CatalogsTransactionExtension(
             client=catalogs_client,
@@ -271,7 +278,7 @@ items_get_request_model = create_request_model(
 app_config = {
     "title": os.getenv("STAC_FASTAPI_TITLE", "stac-fastapi-opensearch"),
     "description": os.getenv("STAC_FASTAPI_DESCRIPTION", "stac-fastapi-opensearch"),
-    "api_version": os.getenv("STAC_FASTAPI_VERSION", "6.17.0"),
+    "api_version": os.getenv("STAC_FASTAPI_VERSION", "6.17.2"),
     "settings": settings,
     "extensions": extensions,
     "client": CoreClient(
@@ -304,6 +311,9 @@ async def lifespan(app: FastAPI):
 
 app = api.app
 app.router.lifespan_context = lifespan
+
+# Register custom exception handler for queued items (202 Accepted)
+app.add_exception_handler(QueuedSuccess, queued_success_handler)
 app.root_path = os.getenv("STAC_FASTAPI_ROOT_PATH", "")
 
 try:
