@@ -76,12 +76,21 @@ spec:
             {{- toYaml .Values.app.readinessProbe | nindent 12 }}
           env:
             {{- include "stac-fastapi.environment" . | nindent 12 }}
+          {{- with .Values.app.envFrom }}
+          envFrom:
+            {{- range $i, $val := . }}
+              - {{ $val | toYaml | nindent 16 }}
+            {{ end -}}
+          {{- end }}
           resources:
             {{- toYaml .Values.app.resources | nindent 12 }}
           {{- with .Values.app.extraVolumeMounts }}
           volumeMounts:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+        {{- with .Values.app.extraContainers }}
+          {{- toYaml . | nindent 8 }}
+        {{- end }}
       {{- with .Values.app.extraVolumes }}
       volumes:
         {{- toYaml . | nindent 8 }}
