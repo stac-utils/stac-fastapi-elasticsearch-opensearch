@@ -2,11 +2,14 @@
 
 import logging
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, List, Literal, Set
 
 import attr
-from fastapi import Request
-from stac_fastapi_catalogs_extension.client import AsyncBaseCatalogsClient
+from fastapi import HTTPException, Request
+from stac_fastapi_catalogs_extension.client import (
+    AsyncBaseCatalogsClient,
+    AsyncCatalogsSearchClient,
+)
 from stac_fastapi_catalogs_extension.types import Catalogs, Children, ObjectUri
 from stac_pydantic.api.collections import Collections
 from stac_pydantic.catalog import Catalog
@@ -22,22 +25,24 @@ from stac_fastapi.core.serializers import (
     ItemSerializer,
 )
 from stac_fastapi.types.errors import NotFoundError
+from stac_fastapi.types.search import BaseSearchGetRequest, BaseSearchPostRequest
 
 logger = logging.getLogger(__name__)
 
 
 @attr.s
-class CatalogsClient(AsyncBaseCatalogsClient):
+class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
     """Catalogs client implementation for the multi-tenant catalogs extension.
 
-    This client implements the AsyncBaseCatalogsClient interface and delegates
-    to the database layer for all catalog operations.
+    This client implements the AsyncBaseCatalogsClient and AsyncCatalogsSearchClient
+    interfaces and delegates to the database layer for all catalog operations.
     """
 
     database: BaseDatabaseLogic = attr.ib()
     catalog_serializer: CatalogSerializer = attr.ib(default=CatalogSerializer)
     collection_serializer: CollectionSerializer = attr.ib(default=CollectionSerializer)
     item_serializer: ItemSerializer = attr.ib(default=ItemSerializer)
+    core_client: Any = attr.ib(default=None)
 
     def _get_base_url(self, request: Request | None) -> str:
         """Extract base URL from request with sensible default.
@@ -1453,3 +1458,150 @@ class CatalogsClient(AsyncBaseCatalogsClient):
                 exc_info=True,
             )
             raise
+
+    async def get_all_descendant_collections(
+        self, catalog_id: str, request: Request | None = None, **kwargs
+    ) -> List[str]:
+        """BFS DAG crawl to find all descendant collections using parent_ids field.
+
+        Args:
+            catalog_id: The root catalog ID to start traversal from.
+            request: FastAPI request object.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            List of all descendant collection IDs.
+        """
+        visited_catalogs: Set[str] = {catalog_id}
+        queue: List[str] = [catalog_id]
+        descendant_collections: Set[str] = set()
+
+        while queue:
+            # 1. Get Collections with parent_ids matching current queue
+            coll_query = {
+                "query": {"terms": {"parent_ids": queue}},
+                "_source": ["id"],
+                "size": 10000,
+            }
+            try:
+                coll_resp = await self.database.database.search(
+                    index=self.database.collection_table, body=coll_query
+                )
+                for hit in coll_resp.get("hits", {}).get("hits", []):
+                    descendant_collections.add(hit["_source"]["id"])
+            except Exception as e:
+                logger.warning(
+                    f"Error fetching collections for catalog {catalog_id}: {e}"
+                )
+
+            # 2. Get Sub-Catalogs with parent_ids matching current queue
+            cat_query = {
+                "query": {"terms": {"parent_ids": queue}},
+                "_source": ["id"],
+                "size": 10000,
+            }
+            try:
+                cat_resp = await self.database.database.search(
+                    index=self.database.catalog_table, body=cat_query
+                )
+                next_queue = []
+                for hit in cat_resp.get("hits", {}).get("hits", []):
+                    child_cat_id = hit["_source"]["id"]
+                    if child_cat_id not in visited_catalogs:
+                        visited_catalogs.add(child_cat_id)
+                        next_queue.append(child_cat_id)
+                queue = next_queue
+            except Exception as e:
+                logger.warning(
+                    f"Error fetching sub-catalogs for catalog {catalog_id}: {e}"
+                )
+                queue = []
+
+        return list(descendant_collections)
+
+    async def catalog_search_post(
+        self,
+        catalog_id: str,
+        search_request: BaseSearchPostRequest,
+        request: Request | None = None,
+        **kwargs,
+    ) -> ItemCollection | Response:
+        """Search items within a catalog and its descendants.
+
+        Args:
+            catalog_id: The catalog ID to search within.
+            search_request: The search request parameters.
+            request: FastAPI request object.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            ItemCollection with matching items.
+
+        Raises:
+            HTTPException: If requested collections are outside catalog scope.
+        """
+        # Get all descendant collections for this catalog
+        allowed_collections = await self.get_all_descendant_collections(
+            catalog_id, request
+        )
+
+        # If no collections, return empty result
+        if not allowed_collections:
+            return ItemCollection(type="FeatureCollection", features=[], links=[])
+
+        # Intersect requested collections with allowed collections
+        if search_request.collections:
+            intersected = list(
+                set(search_request.collections) & set(allowed_collections)
+            )
+            if not intersected:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Requested collections are outside the scope of this catalog.",
+                )
+            search_request.collections = intersected
+        else:
+            # No specific collections requested, use all descendant collections
+            search_request.collections = allowed_collections
+
+        # Hand off to core search logic
+        if self.core_client:
+            return await self.core_client.post_search(
+                search_request=search_request, request=request
+            )
+        else:
+            # Fallback if core_client not set
+            return ItemCollection(type="FeatureCollection", features=[], links=[])
+
+    async def catalog_search_get(
+        self,
+        catalog_id: str,
+        request: Request | None = None,
+        **kwargs,
+    ) -> ItemCollection | Response:
+        """Search items within a catalog using GET parameters.
+
+        Args:
+            catalog_id: The catalog ID to search within.
+            request: FastAPI request object.
+            **kwargs: Search parameters from GET query string.
+
+        Returns:
+            ItemCollection with matching items.
+        """
+        # Build GET model from kwargs
+        search_request = BaseSearchGetRequest(**kwargs)
+        # Convert GET request to POST for internal processing
+        post_request = BaseSearchPostRequest(
+            collections=search_request.collections,
+            bbox=search_request.bbox,
+            datetime=search_request.datetime,
+            limit=search_request.limit,
+            query=search_request.query if hasattr(search_request, "query") else None,
+            filter=search_request.filter if hasattr(search_request, "filter") else None,
+            sortby=search_request.sortby if hasattr(search_request, "sortby") else None,
+            fields=search_request.fields if hasattr(search_request, "fields") else None,
+        )
+        return await self.catalog_search_post(
+            catalog_id, post_request, request, **kwargs
+        )
