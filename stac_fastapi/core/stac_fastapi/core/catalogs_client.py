@@ -25,7 +25,7 @@ from stac_fastapi.core.serializers import (
     ItemSerializer,
 )
 from stac_fastapi.types.errors import NotFoundError
-from stac_fastapi.types.search import BaseSearchGetRequest, BaseSearchPostRequest
+from stac_fastapi.types.search import BaseSearchPostRequest
 
 logger = logging.getLogger(__name__)
 
@@ -1487,7 +1487,15 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 coll_resp = await self.database.database.search(
                     index=self.database.collection_table, body=coll_query
                 )
-                for hit in coll_resp.get("hits", {}).get("hits", []):
+                hits = coll_resp.get("hits", {}).get("hits", [])
+
+                if len(hits) == 10000:
+                    logger.warning(
+                        f"DAG traversal hit 10k result limit on collections for catalog {catalog_id}. "
+                        "Some descendants may be truncated."
+                    )
+
+                for hit in hits:
                     descendant_collections.add(hit["_source"]["id"])
             except Exception as e:
                 logger.warning(
@@ -1504,8 +1512,16 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 cat_resp = await self.database.database.search(
                     index=self.database.catalog_table, body=cat_query
                 )
+                hits = cat_resp.get("hits", {}).get("hits", [])
+
+                if len(hits) == 10000:
+                    logger.warning(
+                        f"DAG traversal hit 10k result limit on catalogs for catalog {catalog_id}. "
+                        "Some descendants may be truncated."
+                    )
+
                 next_queue = []
-                for hit in cat_resp.get("hits", {}).get("hits", []):
+                for hit in hits:
                     child_cat_id = hit["_source"]["id"]
                     if child_cat_id not in visited_catalogs:
                         visited_catalogs.add(child_cat_id)
@@ -1567,7 +1583,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         # Hand off to core search logic
         if self.core_client:
             return await self.core_client.post_search(
-                search_request=search_request, request=request
+                search_request=search_request, request=request, **kwargs
             )
         else:
             # Fallback if core_client not set
@@ -1576,6 +1592,13 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
     async def catalog_search_get(
         self,
         catalog_id: str,
+        collections: List[str] | None = None,
+        ids: List[str] | None = None,
+        bbox: List[float] | None = None,
+        intersects: str | None = None,
+        datetime: str | None = None,
+        limit: int | None = None,
+        token: str | None = None,
         request: Request | None = None,
         **kwargs,
     ) -> ItemCollection | Response:
@@ -1583,25 +1606,54 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
 
         Args:
             catalog_id: The catalog ID to search within.
+            collections: List of collection IDs to search within.
+            ids: List of item IDs to search for.
+            bbox: Bounding box to search within.
+            intersects: GeoJSON geometry to search within.
+            datetime: Datetime range to search within.
+            limit: Maximum number of results to return.
+            token: Pagination token.
             request: FastAPI request object.
-            **kwargs: Search parameters from GET query string.
+            **kwargs: Search parameters from GET query string (contains extensions like 'filter').
 
         Returns:
             ItemCollection with matching items.
         """
-        # Build GET model from kwargs
-        search_request = BaseSearchGetRequest(**kwargs)
-        # Convert GET request to POST for internal processing
-        post_request = BaseSearchPostRequest(
-            collections=search_request.collections,
-            bbox=search_request.bbox,
-            datetime=search_request.datetime,
-            limit=search_request.limit,
-            query=search_request.query if hasattr(search_request, "query") else None,
-            filter=search_request.filter if hasattr(search_request, "filter") else None,
-            sortby=search_request.sortby if hasattr(search_request, "sortby") else None,
-            fields=search_request.fields if hasattr(search_request, "fields") else None,
+        # 1. Get all descendant collections for this catalog
+        allowed_collections = await self.get_all_descendant_collections(
+            catalog_id, request
         )
-        return await self.catalog_search_post(
-            catalog_id, post_request, request, **kwargs
-        )
+
+        if not allowed_collections:
+            return ItemCollection(type="FeatureCollection", features=[], links=[])
+
+        # 2. Intersect requested collections with allowed collections
+        if collections:
+            intersected = list(set(collections) & set(allowed_collections))
+            if not intersected:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Requested collections are outside the scope of this catalog.",
+                )
+            collections = intersected
+        else:
+            # No specific collections requested, bound it to the catalog's scope
+            collections = allowed_collections
+
+        # 3. Delegate to the core client's GET search logic natively!
+        # Base arguments are passed explicitly.
+        # Extensions (like 'filter', 'sortby', 'fields') live in **kwargs and are passed implicitly!
+        if self.core_client:
+            return await self.core_client.get_search(
+                collections=collections,
+                ids=ids,
+                bbox=bbox,
+                intersects=intersects,
+                datetime=datetime,
+                limit=limit,
+                token=token,
+                request=request,
+                **kwargs,
+            )
+        else:
+            return ItemCollection(type="FeatureCollection", features=[], links=[])
