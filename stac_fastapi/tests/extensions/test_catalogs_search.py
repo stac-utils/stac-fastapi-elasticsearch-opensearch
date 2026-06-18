@@ -445,26 +445,28 @@ async def test_catalog_search_with_pagination(catalogs_app_client, load_test_dat
     )
     assert search_resp1.status_code == 200
     result1 = search_resp1.json()
-    assert len(result1["features"]) <= 2
+    # With 5 items and limit=2, first page should have exactly 2 features
+    assert len(result1["features"]) == 2
 
-    # Check for next link (pagination token)
+    # Check for next link (pagination token) - should exist since we have 5 items
     next_link = next(
         (link for link in result1.get("links", []) if link.get("rel") == "next"),
         None,
     )
+    assert next_link is not None, "Next link should be present when more items exist"
 
-    if next_link:
-        # Get next page using token
-        token = (
-            next_link.get("body", {}).get("token")
-            or next_link.get("href", "").split("token=")[-1]
-        )
-        search_resp2 = await catalogs_app_client.get(
-            f"/catalogs/{parent_id}/search?limit=2&token={token}"
-        )
-        assert search_resp2.status_code == 200
-        result2 = search_resp2.json()
-        assert len(result2["features"]) <= 2
+    # Get next page using token
+    token = (
+        next_link.get("body", {}).get("token")
+        or next_link.get("href", "").split("token=")[-1]
+    )
+    search_resp2 = await catalogs_app_client.get(
+        f"/catalogs/{parent_id}/search?limit=2&token={token}"
+    )
+    assert search_resp2.status_code == 200
+    result2 = search_resp2.json()
+    # Second page should also have exactly 2 features (we have 5 total)
+    assert len(result2["features"]) == 2
 
 
 @pytest.mark.asyncio
