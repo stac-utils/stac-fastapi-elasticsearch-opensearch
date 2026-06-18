@@ -1471,65 +1471,58 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
 
         Returns:
             List of all descendant collection IDs.
+
+        Raises:
+            NotFoundError: If the catalog does not exist.
         """
+        # Validate that the catalog exists
+        try:
+            await self.database.find_catalog(catalog_id)
+        except NotFoundError:
+            raise
+
         visited_catalogs: Set[str] = {catalog_id}
         queue: List[str] = [catalog_id]
         descendant_collections: Set[str] = set()
 
+        # SFEOS uses the 'collections' index for both catalogs and collections
+        index_name = "collections"
+
         while queue:
-            # 1. Get Collections with parent_ids matching current queue
-            coll_query = {
+            # We can fetch both Sub-Catalogs AND Collections in a single query!
+            query = {
                 "query": {"terms": {"parent_ids": queue}},
-                "_source": ["id"],
+                "_source": ["id", "type"],
                 "size": 10000,
             }
             try:
-                coll_resp = await self.database.database.search(
-                    index=self.database.collection_table, body=coll_query
-                )
-                hits = coll_resp.get("hits", {}).get("hits", [])
+                resp = await self.database.client.search(index=index_name, body=query)
+                hits = resp.get("hits", {}).get("hits", [])
 
                 if len(hits) == 10000:
                     logger.warning(
-                        f"DAG traversal hit 10k result limit on collections for catalog {catalog_id}. "
-                        "Some descendants may be truncated."
-                    )
-
-                for hit in hits:
-                    descendant_collections.add(hit["_source"]["id"])
-            except Exception as e:
-                logger.warning(
-                    f"Error fetching collections for catalog {catalog_id}: {e}"
-                )
-
-            # 2. Get Sub-Catalogs with parent_ids matching current queue
-            cat_query = {
-                "query": {"terms": {"parent_ids": queue}},
-                "_source": ["id"],
-                "size": 10000,
-            }
-            try:
-                cat_resp = await self.database.database.search(
-                    index=self.database.catalog_table, body=cat_query
-                )
-                hits = cat_resp.get("hits", {}).get("hits", [])
-
-                if len(hits) == 10000:
-                    logger.warning(
-                        f"DAG traversal hit 10k result limit on catalogs for catalog {catalog_id}. "
-                        "Some descendants may be truncated."
+                        "DAG traversal hit 10k result limit. Some descendants may be truncated."
                     )
 
                 next_queue = []
                 for hit in hits:
-                    child_cat_id = hit["_source"]["id"]
-                    if child_cat_id not in visited_catalogs:
-                        visited_catalogs.add(child_cat_id)
-                        next_queue.append(child_cat_id)
+                    source = hit.get("_source", {})
+                    doc_id = source.get("id")
+                    # Differentiate between Catalog and Collection
+                    doc_type = source.get("type", "Collection")
+
+                    if doc_type == "Catalog":
+                        if doc_id not in visited_catalogs:
+                            visited_catalogs.add(doc_id)
+                            next_queue.append(doc_id)
+                    else:
+                        descendant_collections.add(doc_id)
+
                 queue = next_queue
+
             except Exception as e:
-                logger.warning(
-                    f"Error fetching sub-catalogs for catalog {catalog_id}: {e}"
+                logger.error(
+                    f"Error fetching descendants for queue {queue}: {e}", exc_info=True
                 )
                 queue = []
 
@@ -1561,15 +1554,12 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
             catalog_id, request
         )
 
-        # If no collections, return empty result
-        if not allowed_collections:
-            return ItemCollection(type="FeatureCollection", features=[], links=[])
-
         # Intersect requested collections with allowed collections
         if search_request.collections:
             intersected = list(
                 set(search_request.collections) & set(allowed_collections)
             )
+            # If the user asked for specific collections but NONE of them are in this catalog's scope
             if not intersected:
                 raise HTTPException(
                     status_code=403,
@@ -1577,7 +1567,11 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 )
             search_request.collections = intersected
         else:
-            # No specific collections requested, use all descendant collections
+            # If the catalog is empty (no descendant collections), return empty results immediately
+            if not allowed_collections:
+                return ItemCollection(type="FeatureCollection", features=[], links=[])
+
+            # No specific collections requested, bound it to all descendant collections
             search_request.collections = allowed_collections
 
         # Hand off to core search logic
