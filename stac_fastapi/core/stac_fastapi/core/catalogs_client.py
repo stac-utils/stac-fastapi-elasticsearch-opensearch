@@ -24,6 +24,7 @@ from stac_fastapi.core.serializers import (
     CollectionSerializer,
     ItemSerializer,
 )
+from stac_fastapi.sfeos_helpers.mappings import COLLECTIONS_INDEX
 from stac_fastapi.types.errors import NotFoundError
 from stac_fastapi.types.search import BaseSearchPostRequest
 
@@ -1485,8 +1486,8 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         queue: List[str] = [catalog_id]
         descendant_collections: Set[str] = set()
 
-        # SFEOS uses the 'collections' index for both catalogs and collections
-        index_name = "collections"
+        # SFEOS uses the collections index for both catalogs and collections (configurable via STAC_COLLECTIONS_INDEX)
+        index_name = COLLECTIONS_INDEX
 
         while queue:
             # We can fetch both Sub-Catalogs AND Collections in a single query!
@@ -1524,7 +1525,10 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 logger.error(
                     f"Error fetching descendants for queue {queue}: {e}", exc_info=True
                 )
-                queue = []
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to resolve descendant collections for catalog search.",
+                ) from e
 
         return list(descendant_collections)
 
@@ -1580,8 +1584,10 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 search_request=search_request, request=request, **kwargs
             )
         else:
-            # Fallback if core_client not set
-            return ItemCollection(type="FeatureCollection", features=[], links=[])
+            raise HTTPException(
+                status_code=500,
+                detail="Catalog search is not configured (missing core_client).",
+            )
 
     async def catalog_search_get(
         self,
@@ -1650,4 +1656,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 **kwargs,
             )
         else:
-            return ItemCollection(type="FeatureCollection", features=[], links=[])
+            raise HTTPException(
+                status_code=500,
+                detail="Catalog search is not configured (missing core_client).",
+            )

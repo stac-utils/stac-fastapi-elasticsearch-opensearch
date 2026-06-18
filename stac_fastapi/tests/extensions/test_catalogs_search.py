@@ -561,3 +561,49 @@ async def test_catalog_search_combined_filters(catalogs_app_client, load_test_da
     assert search_result["type"] == "FeatureCollection"
     # With 3 items created and limit=2, should return exactly 2 features
     assert len(search_result["features"]) == 2
+
+
+@pytest.mark.asyncio
+async def test_catalog_search_with_invalid_collection_id(
+    catalogs_app_client, load_test_data
+):
+    """Test catalog search with invalid collection ID in request."""
+    # Create catalog and collection
+    parent_catalog = load_test_data("test_catalog.json")
+    parent_id = f"parent-catalog-{uuid.uuid4()}"
+    parent_catalog["id"] = parent_id
+
+    parent_resp = await catalogs_app_client.post("/catalogs", json=parent_catalog)
+    assert parent_resp.status_code == 201
+
+    # Create collection
+    test_collection = load_test_data("test_collection.json")
+    collection_id = f"test-collection-{uuid.uuid4()}"
+    test_collection["id"] = collection_id
+
+    coll_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_id}/collections", json=test_collection
+    )
+    assert coll_resp.status_code == 201
+
+    # Create items
+    for i in range(2):
+        test_item = load_test_data("test_item.json")
+        test_item["id"] = f"test-item-{i}-{uuid.uuid4()}"
+        test_item["collection"] = collection_id
+
+        item_resp = await catalogs_app_client.post(
+            f"/collections/{collection_id}/items",
+            json=test_item,
+        )
+        assert item_resp.status_code == 201
+
+    # Search requesting a collection that doesn't exist in this catalog
+    search_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_id}/search",
+        json={"collections": ["nonexistent-collection"]},
+    )
+    # Should return 403 because requested collection is outside catalog scope
+    assert search_resp.status_code == 403
+    error_resp = search_resp.json()
+    assert "outside the scope" in error_resp.get("detail", "").lower()
