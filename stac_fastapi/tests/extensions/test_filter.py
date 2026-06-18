@@ -1862,3 +1862,108 @@ async def test_queryables_excluded_fields(
     # Clean up
     r = await app_client.delete(f"/collections/{collection_id}")
     r.raise_for_status()
+
+
+# LIKE terms whose first two characters form a valid percent-escape, so a
+# double URL-decode corrupted them ("%banks%" -> "%ba" -> byte 0xBA). Terms
+# like "garden"/"ocean" were unaffected, which made the bug look term-dependent.
+HEX_PREFIX_LIKE_TERMS = ["banks", "bank", "data", "beach", "feed"]
+
+
+@pytest.mark.asyncio
+async def test_get_search_cql2_like_not_double_url_decoded(app_client, ctx):
+    """GET /search must not re-percent-decode the ``filter`` query parameter.
+
+    Starlette already decodes query params once; a second decode corrupted
+    LIKE terms with a hex-pair prefix, so GET returned 0 hits while POST (dict
+    body) worked. Asserts GET agrees with POST on first page and numberMatched.
+    """
+    collection_id = ctx.item["collection"]
+    item = copy.deepcopy(ctx.item)
+    item["id"] = "banks-bank-data-beach-feed"
+    resp = await app_client.post(f"/collections/{collection_id}/items", json=item)
+    assert resp.status_code == 201
+
+    for term in HEX_PREFIX_LIKE_TERMS:
+        cql2 = {"op": "like", "args": [{"property": "id"}, f"%{term}%"]}
+        get_resp = await app_client.get(
+            "/search",
+            params={"filter-lang": "cql2-json", "filter": json.dumps(cql2)},
+        )
+        post_resp = await app_client.post(
+            "/search", json={"filter-lang": "cql2-json", "filter": cql2}
+        )
+        assert get_resp.status_code == 200, term
+        get_json, post_json = get_resp.json(), post_resp.json()
+        get_ids = {f["id"] for f in get_json["features"]}
+        post_ids = {f["id"] for f in post_json["features"]}
+
+        assert item["id"] in get_ids, f"GET /search dropped LIKE %{term}%"
+        assert get_ids == post_ids, f"GET vs POST first page diverged for %{term}%"
+        assert (
+            get_json["numberMatched"] == post_json["numberMatched"]
+        ), f"GET vs POST count diverged for %{term}%"
+
+    # Multi-condition AND filter (the shape originally blamed in issue #368),
+    # combining several hex-prefixed terms in a single GET request.
+    multi = {
+        "op": "and",
+        "args": [
+            {"op": "like", "args": [{"property": "id"}, "%banks%"]},
+            {"op": "like", "args": [{"property": "id"}, "%data%"]},
+            {"op": "like", "args": [{"property": "id"}, "%beach%"]},
+        ],
+    }
+    get_resp = await app_client.get(
+        "/search", params={"filter-lang": "cql2-json", "filter": json.dumps(multi)}
+    )
+    post_resp = await app_client.post(
+        "/search", json={"filter-lang": "cql2-json", "filter": multi}
+    )
+    assert get_resp.status_code == 200
+    assert {f["id"] for f in get_resp.json()["features"]} == {item["id"]}
+    assert get_resp.json()["numberMatched"] == post_resp.json()["numberMatched"]
+
+
+@pytest.mark.asyncio
+async def test_get_aggregate_cql2_like_not_double_url_decoded(app_client, ctx):
+    """GET /aggregate must agree with POST /aggregate for hex-prefixed LIKE terms.
+
+    The aggregation client had the same double-decode on a str ``filter``, so
+    GET /aggregate undercounted the same terms GET /search dropped.
+    """
+    collection_id = ctx.item["collection"]
+    item = copy.deepcopy(ctx.item)
+    item["id"] = "banks-bank-data-beach-feed"
+    resp = await app_client.post(f"/collections/{collection_id}/items", json=item)
+    assert resp.status_code == 201
+
+    def total_count(payload):
+        for agg in payload["aggregations"]:
+            if agg["name"] == "total_count":
+                return agg["value"]
+        return None
+
+    for term in HEX_PREFIX_LIKE_TERMS:
+        cql2 = {"op": "like", "args": [{"property": "id"}, f"%{term}%"]}
+        get_resp = await app_client.get(
+            "/aggregate",
+            params={
+                "aggregations": "total_count",
+                "filter-lang": "cql2-json",
+                "filter": json.dumps(cql2),
+            },
+        )
+        post_resp = await app_client.post(
+            "/aggregate",
+            json={
+                "aggregations": ["total_count"],
+                "filter-lang": "cql2-json",
+                "filter": cql2,
+            },
+        )
+        assert get_resp.status_code == 200, term
+        get_total = total_count(get_resp.json())
+        post_total = total_count(post_resp.json())
+        assert get_total == post_total, f"GET vs POST /aggregate diverged for %{term}%"
+        assert get_total >= 1, f"GET /aggregate missed item for %{term}%"
