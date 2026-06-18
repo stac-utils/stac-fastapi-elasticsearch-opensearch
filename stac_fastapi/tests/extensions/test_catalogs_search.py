@@ -224,7 +224,8 @@ async def test_catalog_search_get_with_limit(catalogs_app_client, load_test_data
     assert search_resp.status_code == 200
 
     search_result = search_resp.json()
-    assert len(search_result["features"]) <= 2
+    # With 5 items created and limit=2, should return exactly 2 features
+    assert len(search_result["features"]) == 2
 
 
 @pytest.mark.asyncio
@@ -267,7 +268,8 @@ async def test_catalog_search_post_with_limit(catalogs_app_client, load_test_dat
     assert search_resp.status_code == 200
 
     search_result = search_resp.json()
-    assert len(search_result["features"]) <= 2
+    # With 5 items created and limit=2, should return exactly 2 features
+    assert len(search_result["features"]) == 2
 
 
 @pytest.mark.asyncio
@@ -555,4 +557,5 @@ async def test_catalog_search_combined_filters(catalogs_app_client, load_test_da
     assert search_resp.status_code == 200
     search_result = search_resp.json()
     assert search_result["type"] == "FeatureCollection"
-    assert len(search_result["features"]) <= 2
+    # With 3 items created and limit=2, should return exactly 2 features
+    assert len(search_result["features"]) == 2
