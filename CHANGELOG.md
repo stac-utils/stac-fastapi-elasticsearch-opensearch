@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Updated
 
+- Updated `stac-fastapi-catalogs-extension` to `v0.5.0`. [#783](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/783)
+
 ## [v6.18.0] - 2025-06-13
 
 ### Added
