@@ -10,6 +10,8 @@ import pytest
 
 from stac_fastapi.sfeos_helpers.search_engine import DatetimeIndexInserter
 
+from ..conftest import get_flattened_routes
+
 try:
     from opensearchpy import exceptions
 except ImportError:
@@ -84,7 +86,6 @@ ROUTES = {
     "DELETE /catalogs/{catalog_id}/collections/{collection_id}",
     "GET /catalogs/{catalog_id}/collections/{collection_id}/items",
     "GET /catalogs/{catalog_id}/collections/{collection_id}/items/{item_id}",
-    "",
 }
 
 
@@ -112,7 +113,7 @@ async def test_api_headers(app_client):
 
 @pytest.mark.asyncio
 async def test_router(app):
-    api_routes = set([f"{list(route.methods)[0]} {route.path}" for route in app.routes])
+    api_routes = get_flattened_routes(app)
     print(api_routes)
     assert len(api_routes - ROUTES) == 0
 
