@@ -214,7 +214,9 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
             return orjson.loads(to_cql2(parse_cql2_text(filter)))
         elif filter_lang == "cql2-json":
             if isinstance(filter, str):
-                return orjson.loads(unquote_plus(filter))
+                # Already percent-decoded by Starlette; decoding again would corrupt
+                # CQL2 LIKE patterns like "%banks%" ("%ba" is a valid escape).
+                return orjson.loads(filter)
             else:
                 return filter
         else:
