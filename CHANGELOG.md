@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- Fixed CQL2 `LIKE` filters silently returning no results on `GET /search`, `GET /aggregate`, and `GET /collections` when the search term began with a valid percent-escape (e.g. `%banks%`, `%data%`). Query parameters are already URL-decoded by Starlette, so the extra `unquote_plus` was double-decoding the filter and corrupting those terms; the decoded value is now parsed directly. [#783](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/783)
+
 ### Removed
 
 ### Updated
