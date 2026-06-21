@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Added `CatalogsSearchExtension` support to enable scoped search within catalogs and their descendants. Catalog search uses BFS DAG traversal to discover all descendant collections and enforces scope with 403 Forbidden when users request out-of-scope collections. Supports all search parameters (datetime, intersects, sortby, limit, token) via pass-through to core search logic. [#782](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/782)
+
 ### Changed
 
 ### Fixed
@@ -18,6 +20,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Removed
 
 ### Updated
+
+- Updated `stac-fastapi-catalogs-extension` to `v0.5.0`. [#783](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/783)
 
 ## [v6.18.0] - 2025-06-13
 
