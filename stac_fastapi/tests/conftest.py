@@ -591,9 +591,11 @@ def build_test_app_with_catalogs():
     extensions = [aggregation_extension] + filtered_extensions
 
     # Add catalogs search extension
+    from stac_fastapi.api.models import create_get_request_model
+
     catalogs_search_extension = CatalogsSearchExtension(
         client=catalogs_client,
-        search_get_request_model=test_config["search_post_request_model"],
+        search_get_request_model=create_get_request_model(search_extensions),
         search_post_request_model=test_config["search_post_request_model"],
         conformance_classes=list(CATALOGS_SEARCH_CONFORMANCE),
     )
