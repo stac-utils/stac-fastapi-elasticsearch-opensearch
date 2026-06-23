@@ -551,21 +551,6 @@ def build_test_app_with_catalogs():
     # Create shared catalogs client with core_client
     catalogs_client = CatalogsClient(database=test_database, core_client=core_client)
 
-    search_extensions = [
-        FieldsExtension(),
-        SortExtension(),
-        QueryExtension(),
-        TokenPaginationExtension(),
-        FilterExtension(),
-        FreeTextExtension(),
-        TransactionExtension(
-            client=TransactionsClient(
-                database=test_database, session=None, settings=test_settings
-            ),
-            settings=test_settings,
-        ),
-    ]
-
     # Create catalogs client and extensions
     catalogs_client = CatalogsClient(database=test_database)
     catalogs_extension = CatalogsExtension(
