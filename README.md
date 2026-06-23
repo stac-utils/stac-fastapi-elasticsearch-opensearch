@@ -24,6 +24,7 @@ The following organizations have contributed time and/or funding to support the 
 
 ## Latest News
 
+- **06/21/2026:** 🔍 **Catalogs Search Extension!** Search items across entire catalog hierarchies with the new `/catalogs/{catalog_id}/search` endpoint. This powerful feature uses **BFS recursive DAG traversal** to automatically discover all descendant collections within a catalog's subtree (including nested sub-catalogs) and searches items across all of them. Enforces strict scope boundaries with 403 Forbidden for out-of-scope collection requests. Supports all standard STAC search parameters (spatial filtering, temporal filtering, free-text search, CQL2 filtering, sorting, and pagination). Perfect for scoped item discovery within organizational hierarchies! Implements the [STAC API - Multi-Tenant Catalogs Scoped Search](https://github.com/StacLabs/multi-tenant-catalogs#scoped-search-recursive-traversal) specification.
 - **06/14/2026:** 🛡️ **Native STAC & Topology Validation in v6.18.0!** SFEOS now features built-in, strict STAC schema validation via the Python `stac-validator` package (available via the new `[validator]` install extra). We've also introduced a blazing-fast, pure-Python spatial topology checker to protect your database from invalid coordinates and uncut antimeridian polygons. To support massive ingestion workloads, these powerful new firewalls include configurable chunking (`MAX_BATCH_SIZE`), fail-fast error thresholds, and Redis queue deference controls (`VALIDATE_BEFORE_QUEUE`). Finally, multi-tenant deployments gain a security boost with the new `HIDE_ALTERNATE_PARENTS` poly-hierarchy privacy toggle. 🙏 Huge thanks to **CloudFerro** for their continued sponsorship of these robust new features!
 - **03/19/2026: SKOS to STAC Ingestion Demo.** 📓 Check out the interactive [SKOS-catalogs-ingestion-demo.ipynb](https://github.com/StacLabs/sfeos-tools/blob/main/demo-notebooks/SKOS-catalogs-ingestion-demo.ipynb) notebook! This tutorial demonstrates automated semantic ingestion from SKOS/RDF-XML files into hierarchical STAC catalogs, showcasing poly-hierarchy, contextual breadcrumbs, and data safety features of the Multi-Tenant Catalogs extension. Thanks to support from CloudFerro! 
 - **01/11/2026: Hierarchical Catalog Support.** Sub-catalogs are now fully supported! Catalogs can now contain other catalogs for unlimited nesting levels. This enables complex organizational hierarchies with multi-parent support for both catalogs and collections.
@@ -94,6 +95,7 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
   - [Table of Contents](#table-of-contents)
   - [Collection Search Extensions](#collection-search-extensions)
   - [Catalogs Route](#catalogs-route)
+  - [Catalogs Search Extension](#catalogs-search-extension)
   - [Documentation & Resources](#documentation--resources)
   - [SFEOS STAC Viewer](#sfeos-stac-viewer)
   - [Package Structure](#package-structure)
@@ -578,6 +580,159 @@ You can discover it as a child of forestry via:
 Because you are linking the node (the Catalog), the entire sub-tree attached to that node is automatically shared. If sentinel-2 contains millions of items and sub-catalogs, they are all instantly visible under the new forestry parent without needing to re-link individual items.
 
 > **Configuration**: The catalogs route can be enabled or disabled by setting the `ENABLE_CATALOGS_ROUTE` environment variable to `true` or `false`. By default, this endpoint is **disabled**.
+
+## Catalogs Search Extension
+
+The **Catalogs Search Extension** enables searching for items across an entire catalog's subtree, including all sub-catalogs and their collections. This is similar to the global items search, but scoped to a specific catalog hierarchy.
+
+This implementation follows the [STAC API - Multi-Tenant Catalogs Scoped Search (Recursive Traversal)](https://github.com/StacLabs/multi-tenant-catalogs#scoped-search-recursive-traversal) specification, which defines how to safely search items within catalog hierarchies while enforcing scope boundaries.
+
+### Overview
+
+The catalogs search extension provides a powerful way to discover items within organizational hierarchies without needing to know which specific collections contain them. It automatically traverses the catalog DAG (Directed Acyclic Graph) to find all descendant collections and searches items across all of them.
+
+### Key Features
+
+- **Subtree Search**: Search items across a catalog and all its sub-catalogs
+- **Rich Query Support**: All standard STAC search parameters are supported
+- **Spatial Filtering**: Filter items by bounding box
+- **Temporal Filtering**: Filter items by datetime range
+- **Free-Text Search**: Search item properties with the `q` parameter
+- **CQL2 Filtering**: Advanced structured filtering with CQL2 expressions
+- **Sorting**: Sort results by any indexed field
+- **Pagination**: Navigate large result sets with limit and token parameters
+- **DAG Traversal**: Automatic breadth-first search through catalog hierarchies
+- **Scope Enforcement**: Requests are automatically restricted to the catalog's descendant collections
+
+### Endpoints
+
+**Search Endpoints:**
+
+- **GET `/catalogs/{catalog_id}/search`**: Search items using query parameters
+- **POST `/catalogs/{catalog_id}/search`**: Search items using a JSON request body (supports large payloads)
+
+### Supported Parameters
+
+The catalogs search endpoints support all standard STAC search parameters:
+
+| Parameter | Type | Description | Example |
+|-----------|------|-------------|---------|
+| `collections` | array | Limit search to specific collections within the catalog | `?collections=sentinel-2,landsat-9` |
+| `ids` | array | Search for specific item IDs | `?ids=item-1,item-2` |
+| `bbox` | array | Bounding box filter `[minx,miny,maxx,maxy]` | `?bbox=-10,35,40,70` |
+| `intersects` | string | GeoJSON geometry filter | `?intersects={"type":"Point","coordinates":[0,0]}` |
+| `datetime` | string | Datetime range filter | `?datetime=2020-01-01T00:00:00Z/2020-12-31T23:59:59Z` |
+| `q` | string | Free-text search across item properties | `?q=landsat` |
+| `filter` | string | CQL2 filter expression (JSON or text) | `?filter={"op":"=","args":[{"property":"eo:bands"},1]}` |
+| `filter-lang` | string | CQL2 format: `cql2-json` or `cql2-text` | `?filter-lang=cql2-json` |
+| `sortby` | string | Sort results by field | `?sortby=-datetime` |
+| `fields` | string | Select specific fields to return | `?fields=id,properties.datetime` |
+| `limit` | integer | Maximum results per page (default: 10) | `?limit=50` |
+| `token` | string | Pagination token for next page | `?token=<pagination-token>` |
+
+### How It Works
+
+The catalogs search extension uses a **breadth-first search (BFS) DAG traversal** to discover all descendant collections:
+
+1. **Catalog Validation**: Verifies the requested catalog exists
+2. **DAG Traversal**: Performs BFS through the catalog hierarchy using the `parent_ids` field
+   - Starts from the requested catalog
+   - Finds all direct children (both sub-catalogs and collections)
+   - Recursively traverses sub-catalogs to find their children
+   - Collects all descendant collections
+3. **Scope Enforcement**: Restricts search to only the descendant collections
+4. **Query Delegation**: Passes the scoped search to the core search engine
+5. **Result Return**: Returns items matching the search criteria
+
+### Usage Examples
+
+```bash
+# Search all items in a catalog
+curl "http://localhost:8081/catalogs/earth-observation/search?q=landsat"
+
+# Search with spatial and temporal filters
+curl "http://localhost:8081/catalogs/earth-observation/search?bbox=-180,-90,180,90&datetime=2020-01-01T00:00:00Z/2020-12-31T23:59:59Z"
+
+# Search specific collections within a catalog
+curl "http://localhost:8081/catalogs/earth-observation/search?collections=sentinel-2,landsat-9&limit=50"
+
+# Advanced CQL2 filtering
+curl "http://localhost:8081/catalogs/earth-observation/search?filter=eo:cloud_cover%3C20&filter-lang=cql2-text"
+
+# Free-text search with sorting
+curl "http://localhost:8081/catalogs/earth-observation/search?q=forest&sortby=-datetime"
+
+# POST request with complex search (supports large payloads)
+curl -X POST "http://localhost:8081/catalogs/earth-observation/search" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "bbox": [-180, -90, 180, 90],
+    "datetime": "2020-01-01T00:00:00Z/2020-12-31T23:59:59Z",
+    "filter": {
+      "op": "and",
+      "args": [
+        {"op": "<", "args": [{"property": "eo:cloud_cover"}, 20]},
+        {"op": "=", "args": [{"property": "platform"}, "sentinel-2"]}
+      ]
+    },
+    "limit": 100
+  }'
+
+# Pagination example
+curl "http://localhost:8081/catalogs/earth-observation/search?limit=10"
+# Use the returned 'next' link token for the next page
+curl "http://localhost:8081/catalogs/earth-observation/search?limit=10&token=<token-from-previous-response>"
+```
+
+### Scope Enforcement
+
+The catalogs search extension enforces strict scope boundaries as required by the [STAC API - Multi-Tenant Catalogs specification](https://github.com/StacLabs/multi-tenant-catalogs#scoped-search-recursive-traversal):
+
+- **Allowed**: Search any collections within the catalog's subtree
+- **Allowed**: Specify a subset of descendant collections to search
+- **Blocked**: Request collections outside the catalog's scope (returns 403 Forbidden)
+- **Empty Catalog**: Returns empty results if the catalog has no descendant collections
+
+**Scope Enforcement Rules:**
+- The API computes the intersection of user-requested collections and the catalog's allowed descendant collections
+- Any requested collections outside the descendant tree are rejected with a 403 Forbidden error
+- Users cannot escape the catalog boundary through collection parameters
+- All items returned are guaranteed to be within the catalog's hierarchy
+
+Example of scope enforcement:
+
+```bash
+# This works - sentinel-2 is in earth-observation's subtree
+curl "http://localhost:8081/catalogs/earth-observation/search?collections=sentinel-2"
+
+# This fails - landsat-archive is not in earth-observation's subtree
+curl "http://localhost:8081/catalogs/earth-observation/search?collections=landsat-archive"
+# Response: 403 Forbidden - "Requested collections are outside the scope of this catalog."
+```
+
+### Performance Considerations
+
+- **DAG Traversal**: The BFS traversal is optimized with a 10,000 result limit per query level. Large hierarchies with more than 10,000 direct children at any level will log a warning.
+- **Caching**: For frequently accessed catalogs, consider caching the descendant collection list at the application level
+- **Index Size**: Searching large catalogs with millions of items may require tuning Elasticsearch/OpenSearch settings
+- **Pagination**: Use pagination tokens for efficient navigation through large result sets
+
+### Conformance Classes
+
+When the catalogs search extension is enabled, SFEOS advertises the following conformance class:
+
+- **`https://api.stacspec.org/v1.0.0-rc.2/multi-tenant-catalogs/search`** - Indicates support for scoped search endpoints with recursive traversal through catalog hierarchies
+
+This conformance class is automatically advertised in the API's `/conformance` endpoint when `ENABLE_CATALOGS_ROUTE=true`.
+
+### Configuration
+
+The catalogs search extension is automatically enabled when the catalogs route is enabled:
+
+```bash
+# Enable catalogs route (which includes search)
+export ENABLE_CATALOGS_ROUTE=true
+```
 
 ## Package Structure
 

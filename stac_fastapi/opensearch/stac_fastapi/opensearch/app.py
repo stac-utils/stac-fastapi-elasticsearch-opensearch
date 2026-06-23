@@ -222,16 +222,31 @@ if ENABLE_COLLECTIONS_SEARCH_ROUTE:
     extensions.append(collections_search_endpoint_ext)
 
 
+post_request_model = create_post_request_model(search_extensions)
+
 if ENABLE_CATALOGS_ROUTE:
     try:
         from stac_fastapi_catalogs_extension import (
+            CATALOGS_SEARCH_CONFORMANCE,
             CatalogsExtension,
+            CatalogsSearchExtension,
             CatalogsTransactionExtension,
         )
 
         from stac_fastapi.core.catalogs_client import CatalogsClient
 
-        catalogs_client = CatalogsClient(database=database_logic)
+        # Create core client for search delegation
+        core_client = CoreClient(
+            database=database_logic,
+            session=session,
+            post_request_model=post_request_model,
+            landing_page_id=os.getenv("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"),
+        )
+
+        catalogs_client = CatalogsClient(
+            database=database_logic,
+            core_client=core_client,
+        )
 
         catalogs_extension = CatalogsExtension(
             client=catalogs_client,
@@ -242,8 +257,15 @@ if ENABLE_CATALOGS_ROUTE:
             client=catalogs_client,
             settings=settings.model_dump(),
         )
+        catalogs_search_extension = CatalogsSearchExtension(
+            client=catalogs_client,
+            search_get_request_model=create_get_request_model(search_extensions),
+            search_post_request_model=post_request_model,
+            conformance_classes=list(CATALOGS_SEARCH_CONFORMANCE),
+        )
         extensions.append(catalogs_extension)
         extensions.append(catalogs_transaction_extension)
+        extensions.append(catalogs_search_extension)
     except ImportError as e:
         logger.warning(
             "ENABLE_CATALOGS_ROUTE is set to true, but the catalogs extension is not installed. "
@@ -253,8 +275,6 @@ if ENABLE_CATALOGS_ROUTE:
 
 
 database_logic.extensions = [type(ext).__name__ for ext in extensions]
-
-post_request_model = create_post_request_model(search_extensions)
 
 items_get_request_model = create_request_model(
     model_name="ItemCollectionUri",
@@ -315,6 +335,9 @@ app.router.lifespan_context = lifespan
 # Register custom exception handler for queued items (202 Accepted)
 app.add_exception_handler(QueuedSuccess, queued_success_handler)
 app.root_path = os.getenv("STAC_FASTAPI_ROOT_PATH", "")
+
+# Set multi-tenant privacy flag in app state
+setattr(app.state, "catalogs_hide_alternate_parents", HIDE_ALTERNATE_PARENTS)
 
 try:
     from stac_fastapi.sfeos_helpers.metrics import get_instrumentator

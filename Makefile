@@ -72,7 +72,7 @@ test-elasticsearch: image-es-os
 
 .PHONY: test-elasticsearch-catalogs
 test-elasticsearch-catalogs: image-es-os
-	-$(run_es) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd stac_fastapi/tests/ && pytest extensions/test_catalogs.py -v'
+	-$(run_es) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd stac_fastapi/tests/ && pytest extensions/test_catalogs.py -v && pytest extensions/test_catalogs_search.py -v'
 	docker compose down
 
 .PHONY: test-elasticsearch-validation

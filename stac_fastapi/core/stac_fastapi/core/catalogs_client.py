@@ -2,11 +2,14 @@
 
 import logging
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any, List, Literal, Set
 
 import attr
-from fastapi import Request
-from stac_fastapi_catalogs_extension.client import AsyncBaseCatalogsClient
+from fastapi import HTTPException, Request
+from stac_fastapi_catalogs_extension.client import (
+    AsyncBaseCatalogsClient,
+    AsyncCatalogsSearchClient,
+)
 from stac_fastapi_catalogs_extension.types import Catalogs, Children, ObjectUri
 from stac_pydantic.api.collections import Collections
 from stac_pydantic.catalog import Catalog
@@ -21,23 +24,26 @@ from stac_fastapi.core.serializers import (
     CollectionSerializer,
     ItemSerializer,
 )
+from stac_fastapi.sfeos_helpers.mappings import COLLECTIONS_INDEX
 from stac_fastapi.types.errors import NotFoundError
+from stac_fastapi.types.search import BaseSearchPostRequest
 
 logger = logging.getLogger(__name__)
 
 
 @attr.s
-class CatalogsClient(AsyncBaseCatalogsClient):
+class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
     """Catalogs client implementation for the multi-tenant catalogs extension.
 
-    This client implements the AsyncBaseCatalogsClient interface and delegates
-    to the database layer for all catalog operations.
+    This client implements the AsyncBaseCatalogsClient and AsyncCatalogsSearchClient
+    interfaces and delegates to the database layer for all catalog operations.
     """
 
     database: BaseDatabaseLogic = attr.ib()
     catalog_serializer: CatalogSerializer = attr.ib(default=CatalogSerializer)
     collection_serializer: CollectionSerializer = attr.ib(default=CollectionSerializer)
     item_serializer: ItemSerializer = attr.ib(default=ItemSerializer)
+    core_client: Any = attr.ib(default=None)
 
     def _get_base_url(self, request: Request | None) -> str:
         """Extract base URL from request with sensible default.
@@ -1453,3 +1459,204 @@ class CatalogsClient(AsyncBaseCatalogsClient):
                 exc_info=True,
             )
             raise
+
+    async def get_all_descendant_collections(
+        self, catalog_id: str, request: Request | None = None, **kwargs
+    ) -> List[str]:
+        """BFS DAG crawl to find all descendant collections using parent_ids field.
+
+        Args:
+            catalog_id: The root catalog ID to start traversal from.
+            request: FastAPI request object.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            List of all descendant collection IDs.
+
+        Raises:
+            NotFoundError: If the catalog does not exist.
+        """
+        # Validate that the catalog exists
+        try:
+            await self.database.find_catalog(catalog_id)
+        except NotFoundError:
+            raise
+
+        visited_catalogs: Set[str] = {catalog_id}
+        queue: List[str] = [catalog_id]
+        descendant_collections: Set[str] = set()
+
+        # SFEOS uses the collections index for both catalogs and collections (configurable via STAC_COLLECTIONS_INDEX)
+        index_name = COLLECTIONS_INDEX
+
+        while queue:
+            # We can fetch both Sub-Catalogs AND Collections in a single query!
+            query = {
+                "query": {"terms": {"parent_ids": queue}},
+                "_source": ["id", "type"],
+                "size": 10000,
+            }
+            try:
+                resp = await self.database.client.search(index=index_name, body=query)
+                hits = resp.get("hits", {}).get("hits", [])
+
+                if len(hits) == 10000:
+                    logger.warning(
+                        "DAG traversal hit 10k result limit. Some descendants may be truncated."
+                    )
+
+                next_queue = []
+                for hit in hits:
+                    source = hit.get("_source", {})
+                    doc_id = source.get("id")
+                    # Differentiate between Catalog and Collection
+                    doc_type = source.get("type", "Collection")
+
+                    if doc_type == "Catalog":
+                        if doc_id not in visited_catalogs:
+                            visited_catalogs.add(doc_id)
+                            next_queue.append(doc_id)
+                    else:
+                        descendant_collections.add(doc_id)
+
+                queue = next_queue
+
+            except Exception as e:
+                logger.error(
+                    f"Error fetching descendants for queue {queue}: {e}", exc_info=True
+                )
+                raise HTTPException(
+                    status_code=500,
+                    detail="Failed to resolve descendant collections for catalog search.",
+                ) from e
+
+        return list(descendant_collections)
+
+    async def catalog_search_post(
+        self,
+        catalog_id: str,
+        search_request: BaseSearchPostRequest,
+        request: Request | None = None,
+        **kwargs,
+    ) -> ItemCollection | Response:
+        """Search items within a catalog and its descendants.
+
+        Args:
+            catalog_id: The catalog ID to search within.
+            search_request: The search request parameters.
+            request: FastAPI request object.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            ItemCollection with matching items.
+
+        Raises:
+            HTTPException: If requested collections are outside catalog scope.
+        """
+        # Get all descendant collections for this catalog
+        allowed_collections = await self.get_all_descendant_collections(
+            catalog_id, request
+        )
+
+        # Intersect requested collections with allowed collections
+        if search_request.collections:
+            intersected = list(
+                set(search_request.collections) & set(allowed_collections)
+            )
+            # If the user asked for specific collections but NONE of them are in this catalog's scope
+            if not intersected:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Requested collections are outside the scope of this catalog.",
+                )
+            search_request.collections = intersected
+        else:
+            # If the catalog is empty (no descendant collections), return empty results immediately
+            if not allowed_collections:
+                return ItemCollection(type="FeatureCollection", features=[], links=[])
+
+            # No specific collections requested, bound it to all descendant collections
+            search_request.collections = allowed_collections
+
+        # Hand off to core search logic
+        if self.core_client:
+            return await self.core_client.post_search(
+                search_request=search_request, request=request, **kwargs
+            )
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail="Catalog search is not configured (missing core_client).",
+            )
+
+    async def catalog_search_get(
+        self,
+        catalog_id: str,
+        collections: List[str] | None = None,
+        ids: List[str] | None = None,
+        bbox: List[float] | None = None,
+        intersects: str | None = None,
+        datetime: str | None = None,
+        limit: int | None = None,
+        token: str | None = None,
+        request: Request | None = None,
+        **kwargs,
+    ) -> ItemCollection | Response:
+        """Search items within a catalog using GET parameters.
+
+        Args:
+            catalog_id: The catalog ID to search within.
+            collections: List of collection IDs to search within.
+            ids: List of item IDs to search for.
+            bbox: Bounding box to search within.
+            intersects: GeoJSON geometry to search within.
+            datetime: Datetime range to search within.
+            limit: Maximum number of results to return.
+            token: Pagination token.
+            request: FastAPI request object.
+            **kwargs: Search parameters from GET query string (contains extensions like 'filter').
+
+        Returns:
+            ItemCollection with matching items.
+        """
+        # 1. Get all descendant collections for this catalog
+        allowed_collections = await self.get_all_descendant_collections(
+            catalog_id, request
+        )
+
+        if not allowed_collections:
+            return ItemCollection(type="FeatureCollection", features=[], links=[])
+
+        # 2. Intersect requested collections with allowed collections
+        if collections:
+            intersected = list(set(collections) & set(allowed_collections))
+            if not intersected:
+                raise HTTPException(
+                    status_code=403,
+                    detail="Requested collections are outside the scope of this catalog.",
+                )
+            collections = intersected
+        else:
+            # No specific collections requested, bound it to the catalog's scope
+            collections = allowed_collections
+
+        # 3. Delegate to the core client's GET search logic natively!
+        # Base arguments are passed explicitly.
+        # Extensions (like 'filter', 'sortby', 'fields') live in **kwargs and are passed implicitly!
+        if self.core_client:
+            return await self.core_client.get_search(
+                collections=collections,
+                ids=ids,
+                bbox=bbox,
+                intersects=intersects,
+                datetime=datetime,
+                limit=limit,
+                token=token,
+                request=request,
+                **kwargs,
+            )
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail="Catalog search is not configured (missing core_client).",
+            )

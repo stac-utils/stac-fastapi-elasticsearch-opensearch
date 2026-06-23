@@ -515,7 +515,9 @@ def build_test_app():
 def build_test_app_with_catalogs():
     """Build a test app with catalogs extension enabled."""
     from stac_fastapi_catalogs_extension import (
+        CATALOGS_SEARCH_CONFORMANCE,
         CatalogsExtension,
+        CatalogsSearchExtension,
         CatalogsTransactionExtension,
     )
 
@@ -538,6 +540,16 @@ def build_test_app_with_catalogs():
     )
     aggregation_extension.POST = EsAggregationExtensionPostRequest
     aggregation_extension.GET = EsAggregationExtensionGetRequest
+    # Create core client for search delegation
+    core_client = CoreClient(
+        database=test_database,
+        session=None,
+        post_request_model=test_config["search_post_request_model"],
+        landing_page_id=os.getenv("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"),
+    )
+
+    # Create shared catalogs client with core_client
+    catalogs_client = CatalogsClient(database=test_database, core_client=core_client)
 
     search_extensions = [
         FieldsExtension(),
@@ -565,22 +577,46 @@ def build_test_app_with_catalogs():
         settings=test_settings.model_dump(),
     )
 
-    # Combine all extensions
-    extensions = (
-        [aggregation_extension]
-        + search_extensions
-        + [catalogs_extension, catalogs_transaction_extension]
+    # Filter out CollectionsSearchExtension to avoid duplicate base classes
+    from stac_fastapi.core.extensions.collections_search import (
+        CollectionsSearchEndpointExtension,
     )
-    test_config["extensions"] = extensions
+
+    filtered_extensions = [
+        ext
+        for ext in test_config["extensions"]
+        if not isinstance(ext, CollectionsSearchEndpointExtension)
+    ]
+
+    # Remove CollectionsSearchEndpointExtension from test_config["extensions"]
+    test_config["extensions"] = filtered_extensions
+
+    # Add catalogs search extension
+    # Use BaseSearchGetRequest directly to avoid duplicate base class issues
+    from stac_fastapi.types.search import BaseSearchGetRequest
+
+    catalogs_search_extension = CatalogsSearchExtension(
+        client=catalogs_client,
+        search_get_request_model=BaseSearchGetRequest,
+        search_post_request_model=test_config["search_post_request_model"],
+        conformance_classes=list(CATALOGS_SEARCH_CONFORMANCE),
+    )
+
+    # Add to extensions if not already present
+    if not any(isinstance(ext, CatalogsExtension) for ext in test_config["extensions"]):
+        test_config["extensions"].append(catalogs_extension)
+    if not any(
+        isinstance(ext, CatalogsTransactionExtension)
+        for ext in test_config["extensions"]
+    ):
+        test_config["extensions"].append(catalogs_transaction_extension)
+    if not any(
+        isinstance(ext, CatalogsSearchExtension) for ext in test_config["extensions"]
+    ):
+        test_config["extensions"].append(catalogs_search_extension)
 
     # Update client with new extensions
-    test_config["client"] = CoreClient(
-        database=test_database,
-        session=None,
-        extensions=extensions,
-        post_request_model=test_config["search_post_request_model"],
-        landing_page_id=os.getenv("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"),
-    )
+    test_config["client"] = core_client
 
     # Ensure no route dependencies (no BasicAuth) for this test app
     test_config["route_dependencies"] = []
