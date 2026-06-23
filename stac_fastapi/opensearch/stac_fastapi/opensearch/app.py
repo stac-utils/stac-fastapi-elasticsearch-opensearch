@@ -32,8 +32,9 @@ from stac_fastapi.core.rate_limit import setup_rate_limit
 from stac_fastapi.core.route_dependencies import get_route_dependencies
 from stac_fastapi.core.session import Session
 from stac_fastapi.core.utilities import get_bool_env
-from stac_fastapi.extensions.core import (
+from stac_fastapi.extensions import (
     AggregationExtension,
+    BulkTransactionExtension,
     CollectionSearchExtension,
     CollectionSearchFilterExtension,
     CollectionSearchPostExtension,
@@ -43,12 +44,11 @@ from stac_fastapi.extensions.core import (
     TokenPaginationExtension,
     TransactionExtension,
 )
-from stac_fastapi.extensions.core.fields import FieldsConformanceClasses
-from stac_fastapi.extensions.core.filter import FilterConformanceClasses
-from stac_fastapi.extensions.core.free_text import FreeTextConformanceClasses
-from stac_fastapi.extensions.core.query import QueryConformanceClasses
-from stac_fastapi.extensions.core.sort import SortConformanceClasses
-from stac_fastapi.extensions.third_party import BulkTransactionExtension
+from stac_fastapi.extensions.fields import FieldsConformanceClasses
+from stac_fastapi.extensions.filter import FilterConformanceClasses
+from stac_fastapi.extensions.free_text import FreeTextConformanceClasses
+from stac_fastapi.extensions.query import QueryConformanceClasses
+from stac_fastapi.extensions.sort import SortConformanceClasses
 from stac_fastapi.opensearch.config import OpensearchSettings
 from stac_fastapi.opensearch.database_logic import (
     DatabaseLogic,
@@ -236,9 +236,11 @@ if ENABLE_CATALOGS_ROUTE:
         from stac_fastapi.core.catalogs_client import CatalogsClient
 
         # Create core client for search delegation
+        # Must include search_extensions to properly handle search parameters
         core_client = CoreClient(
             database=database_logic,
             session=session,
+            extensions=search_extensions,
             post_request_model=post_request_model,
             landing_page_id=os.getenv("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"),
         )

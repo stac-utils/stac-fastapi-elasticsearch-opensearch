@@ -16,11 +16,8 @@ from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.datetime_utils import format_datetime_range
 from stac_fastapi.core.extensions.aggregation import EsAggregationExtensionPostRequest
 from stac_fastapi.core.session import Session
-from stac_fastapi.extensions.core.aggregation.client import AsyncBaseAggregationClient
-from stac_fastapi.extensions.core.aggregation.types import (
-    Aggregation,
-    AggregationCollection,
-)
+from stac_fastapi.extensions.aggregation.client import AsyncBaseAggregationClient
+from stac_fastapi.extensions.aggregation.types import Aggregation, AggregationCollection
 from stac_fastapi.types.rfc3339 import DateTimeType
 
 from .format import frequency_agg, metric_agg

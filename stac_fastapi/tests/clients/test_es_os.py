@@ -6,7 +6,7 @@ import pytest
 from fastapi import HTTPException
 from stac_pydantic import Item, api
 
-from stac_fastapi.extensions.core.transaction.request import (
+from stac_fastapi.extensions.transaction.request import (
     PatchAddReplaceTest,
     PatchMoveCopy,
     PatchRemove,

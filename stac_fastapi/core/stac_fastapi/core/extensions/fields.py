@@ -2,8 +2,8 @@
 
 from pydantic import BaseModel, Field
 
-from stac_fastapi.extensions.core import FieldsExtension as FieldsExtensionBase
-from stac_fastapi.extensions.core.fields import request
+from stac_fastapi.extensions import FieldsExtension as FieldsExtensionBase
+from stac_fastapi.extensions.fields import request
 
 
 class PostFieldsExtension(request.PostFieldsExtension):

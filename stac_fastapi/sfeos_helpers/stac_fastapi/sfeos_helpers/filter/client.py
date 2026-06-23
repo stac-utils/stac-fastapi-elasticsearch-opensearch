@@ -13,7 +13,7 @@ from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.extensions.filter import ALL_QUERYABLES, DEFAULT_QUERYABLES
 from stac_fastapi.core.queryables import merge_queryables
-from stac_fastapi.extensions.core.filter.client import AsyncBaseFiltersClient
+from stac_fastapi.extensions.filter.client import AsyncBaseFiltersClient
 from stac_fastapi.sfeos_helpers.mappings import ES_MAPPING_TYPE_TO_JSON
 
 _GLOBAL_QUERYABLES_CACHE: dict[str, Any] | None = None

@@ -10,7 +10,7 @@ from functools import wraps
 from typing import Any, Callable
 
 from stac_fastapi.core.utilities import bbox2polygon, get_bool_env
-from stac_fastapi.extensions.core.transaction.request import (
+from stac_fastapi.extensions.transaction.request import (
     PatchAddReplaceTest,
     PatchOperation,
     PatchRemove,

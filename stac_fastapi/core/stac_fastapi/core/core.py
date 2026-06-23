@@ -51,16 +51,16 @@ from stac_fastapi.core.validate import (
     validate_datetime_range,
     validate_item_topology_lightweight,
 )
-from stac_fastapi.extensions.core.transaction import AsyncBaseTransactionsClient
-from stac_fastapi.extensions.core.transaction.request import (
-    PartialCollection,
-    PartialItem,
-    PatchOperation,
-)
-from stac_fastapi.extensions.third_party.bulk_transactions import (
+from stac_fastapi.extensions.bulk_transactions import (
     BaseBulkTransactionsClient,
     BulkTransactionMethod,
     Items,
+)
+from stac_fastapi.extensions.transaction import AsyncBaseTransactionsClient
+from stac_fastapi.extensions.transaction.request import (
+    PartialCollection,
+    PartialItem,
+    PatchOperation,
 )
 from stac_fastapi.sfeos_helpers.database import (
     BulkIndexError,

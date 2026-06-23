@@ -13,7 +13,7 @@ from typing import Any, Callable
 from pydantic import BaseModel, model_validator
 from stac_pydantic.utils import AutoValueEnum
 
-from stac_fastapi.extensions.core.query import QueryExtension as QueryExtensionBase
+from stac_fastapi.extensions.query import QueryExtension as QueryExtensionBase
 
 logger = logging.getLogger("uvicorn")
 logger.setLevel(logging.INFO)
