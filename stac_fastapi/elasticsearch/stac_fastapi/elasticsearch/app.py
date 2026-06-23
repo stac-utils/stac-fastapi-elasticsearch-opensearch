@@ -238,9 +238,11 @@ if ENABLE_CATALOGS_ROUTE:
         from stac_fastapi.core.catalogs_client import CatalogsClient
 
         # Create core client for search delegation
+        # Must include search_extensions to properly handle search parameters
         core_client = CoreClient(
             database=database_logic,
             session=session,
+            extensions=search_extensions,
             post_request_model=post_request_model,
             landing_page_id=os.getenv("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"),
         )
