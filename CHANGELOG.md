@@ -947,7 +947,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.18.0...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.19.0...main
+[v6.19.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.18.0...v6.19.0
 [v6.18.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.17.2...v6.18.0
 [v6.17.2]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.17.1...v6.17.2
 [v6.17.1]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.17.0...v6.17.1
