@@ -82,7 +82,7 @@ from stac_fastapi.core.extensions.aggregation import (  # noqa: E402
 )
 from stac_fastapi.core.rate_limit import setup_rate_limit  # noqa: E402
 from stac_fastapi.core.utilities import get_bool_env  # noqa: E402
-from stac_fastapi.extensions.core import (  # noqa: E402
+from stac_fastapi.extensions import (  # noqa: E402
     AggregationExtension,
     FieldsExtension,
     FilterExtension,

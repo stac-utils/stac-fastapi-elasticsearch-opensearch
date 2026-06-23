@@ -38,8 +38,9 @@ from stac_fastapi.elasticsearch.database_logic import (
     create_collection_index,
     create_index_templates,
 )
-from stac_fastapi.extensions.core import (
+from stac_fastapi.extensions import (
     AggregationExtension,
+    BulkTransactionExtension,
     CollectionSearchExtension,
     CollectionSearchFilterExtension,
     CollectionSearchPostExtension,
@@ -49,12 +50,11 @@ from stac_fastapi.extensions.core import (
     TokenPaginationExtension,
     TransactionExtension,
 )
-from stac_fastapi.extensions.core.fields import FieldsConformanceClasses
-from stac_fastapi.extensions.core.filter import FilterConformanceClasses
-from stac_fastapi.extensions.core.free_text import FreeTextConformanceClasses
-from stac_fastapi.extensions.core.query import QueryConformanceClasses
-from stac_fastapi.extensions.core.sort import SortConformanceClasses
-from stac_fastapi.extensions.third_party import BulkTransactionExtension
+from stac_fastapi.extensions.fields import FieldsConformanceClasses
+from stac_fastapi.extensions.filter import FilterConformanceClasses
+from stac_fastapi.extensions.free_text import FreeTextConformanceClasses
+from stac_fastapi.extensions.query import QueryConformanceClasses
+from stac_fastapi.extensions.sort import SortConformanceClasses
 from stac_fastapi.sfeos_helpers.aggregation import EsAsyncBaseAggregationClient
 from stac_fastapi.sfeos_helpers.database.utils import sentry_initialize
 from stac_fastapi.sfeos_helpers.filter import EsAsyncBaseFiltersClient

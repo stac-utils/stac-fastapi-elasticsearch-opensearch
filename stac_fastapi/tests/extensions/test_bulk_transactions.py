@@ -6,7 +6,7 @@ from unittest.mock import patch
 import pytest
 from pydantic import ValidationError
 
-from stac_fastapi.extensions.third_party.bulk_transactions import Items
+from stac_fastapi.extensions.bulk_transactions import Items
 from stac_fastapi.sfeos_helpers.database import BulkIndexError, ItemAlreadyExistsError
 
 from ..conftest import MockRequest, create_item

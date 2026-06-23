@@ -20,7 +20,7 @@ import stac_fastapi.sfeos_helpers.filter as filter_module
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.serializers import CollectionSerializer, ItemSerializer
 from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon, get_bool_env
-from stac_fastapi.extensions.core.transaction.request import (
+from stac_fastapi.extensions.transaction.request import (
     PartialCollection,
     PartialItem,
     PatchOperation,
