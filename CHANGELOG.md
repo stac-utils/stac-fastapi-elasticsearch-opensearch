@@ -9,23 +9,31 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
-- Added `CatalogsSearchExtension` support to enable scoped search within catalogs and their descendants. Catalog search uses BFS DAG traversal to discover all descendant collections and enforces scope with 403 Forbidden when users request out-of-scope collections. Supports all search parameters (datetime, intersects, sortby, limit, token) via pass-through to core search logic. [#782](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/782)
-
 ### Changed
+
+### Fixed
+
+### Removed
+
+### Updated
+
+## [v6.19.0] - 2025-06-23
+
+### Added
+
+- Added `CatalogsSearchExtension` support to enable scoped search within catalogs and their descendants. Catalog search uses BFS DAG traversal to discover all descendant collections and enforces scope with 403 Forbidden when users request out-of-scope collections. Supports all search parameters (datetime, intersects, sortby, limit, token) via pass-through to core search logic. [#782](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/782)
 
 ### Fixed
 
 - Fixed test suite compatibility with FastAPI >= 0.137.0 by applying a monkey-patch to `add_route_dependencies` that safely recurses through `_IncludedRouter` wrappers. Also fixed "shared state leak" in `app_basic_auth` fixture by rebuilding extensions and clients to prevent route mutations from affecting other tests. [#784](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/784)
 - Fixed CQL2 `LIKE` filters silently returning no results on `GET /search`, `GET /aggregate`, and `GET /collections` when the search term began with a valid percent-escape (e.g. `%banks%`, `%data%`). Query parameters are already URL-decoded by Starlette, so the extra `unquote_plus` was double-decoding the filter and corrupting those terms; the decoded value is now parsed directly. [#783](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/783)
 
-### Removed
-
 ### Updated
 
 - Updated stac-fastapi parent dependecies from v6.2.1 -> v6.3.0 [#784](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/784)
 - Updated `stac-fastapi-catalogs-extension` to `v0.5.0`. [#783](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/783)
 
-## [v6.18.0] - 2025-06-13
+## [v6.18.0] - 2026-06-13
 
 ### Added
 
