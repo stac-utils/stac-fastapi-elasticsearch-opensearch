@@ -95,17 +95,13 @@ class BaseLinks:
 
         if extra_links:
             # For extra links passed in,
-            # add links modified with a resolved href.
+            # add links as-is without resolving.
             # Drop any links that are dynamically
             # determined by the server (e.g. self, parent, etc.)
-            # Resolving the href allows for relative paths
-            # to be stored in pgstac and for the hrefs in the
-            # links of response STAC objects to be resolved
-            # to the request url.
+            # Links are stored as-is in the database and should not be resolved here
+            # to avoid mangling absolute URLs.
             links += [
-                {**link, "href": self.resolve(link["href"])}
-                for link in extra_links
-                if link["rel"] not in INFERRED_LINK_RELS
+                link for link in extra_links if link["rel"] not in INFERRED_LINK_RELS
             ]
 
         return links
