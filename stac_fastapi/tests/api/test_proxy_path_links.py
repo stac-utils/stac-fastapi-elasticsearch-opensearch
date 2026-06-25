@@ -169,3 +169,40 @@ async def test_openapi_links_in_landing_page(app_client, ctx):
             assert href.startswith(
                 ("http://", "https://", "/")
             ), f"Invalid OpenAPI href: {href}"
+
+
+@pytest.mark.asyncio
+async def test_resolve_handles_leading_slash_edge_case(app_client, ctx):
+    """Test that resolve() correctly handles URLs with leading slashes to avoid double-slash paths."""
+    from unittest.mock import MagicMock
+
+    from stac_fastapi.core.models.links import BaseLinks
+
+    # Create a mock request with a proxy path
+    mock_request = MagicMock()
+    mock_request.base_url = "http://localhost:8000/api/v1"
+
+    base_links = BaseLinks(request=mock_request)
+
+    # Test with leading slash (edge case)
+    resolved_with_slash = base_links.resolve("/collections/123")
+    assert "//" not in resolved_with_slash.replace("http://", "").replace(
+        "https://", ""
+    ), f"Double slash detected in resolved URL: {resolved_with_slash}"
+    assert (
+        "/api/v1/collections/123" in resolved_with_slash
+    ), f"Expected /api/v1/collections/123 in {resolved_with_slash}"
+
+    # Test without leading slash (normal case)
+    resolved_without_slash = base_links.resolve("collections/123")
+    assert "//" not in resolved_without_slash.replace("http://", "").replace(
+        "https://", ""
+    ), f"Double slash detected in resolved URL: {resolved_without_slash}"
+    assert (
+        "/api/v1/collections/123" in resolved_without_slash
+    ), f"Expected /api/v1/collections/123 in {resolved_without_slash}"
+
+    # Both should produce the same result
+    assert (
+        resolved_with_slash == resolved_without_slash
+    ), f"Leading slash handling inconsistent: {resolved_with_slash} vs {resolved_without_slash}"

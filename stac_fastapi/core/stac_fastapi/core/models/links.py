@@ -60,7 +60,7 @@ class BaseLinks:
         if str(url).startswith(("http://", "https://")):
             return str(url)
         # Otherwise, prepend the proxy path to relative URLs
-        return urljoin(str(self.base_url), f"{self.path}/{str(url)}")
+        return urljoin(str(self.base_url), f"{self.path}/{str(url).lstrip('/')}")
 
     def link_self(self) -> dict:
         """Return the self link."""
