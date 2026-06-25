@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Updated
 
+- Update stac-fastapi from 6.3.0 -> 6.3.1
+
 ## [v6.19.0] - 2025-06-23
 
 ### Added

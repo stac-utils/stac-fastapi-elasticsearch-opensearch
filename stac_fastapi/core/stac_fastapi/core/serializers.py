@@ -19,6 +19,26 @@ from stac_fastapi.types.links import ItemLinks, resolve_links
 logger = logging.getLogger(__name__)
 
 
+def _filter_absolute_links(links: list[dict]) -> tuple[list[dict], list[dict]]:
+    """Separate absolute and relative links.
+
+    Args:
+        links: List of link dictionaries
+
+    Returns:
+        Tuple of (relative_links, absolute_links)
+    """
+    relative_links = []
+    absolute_links = []
+    for link in links:
+        href = link.get("href", "")
+        if str(href).startswith(("http://", "https://")):
+            absolute_links.append(link)
+        else:
+            relative_links.append(link)
+    return relative_links, absolute_links
+
+
 @attr.s
 class Serializer(abc.ABC):
     """Defines serialization methods between the API and the data model."""
@@ -164,7 +184,11 @@ class ItemSerializer(Serializer):
             A dictionary representation of the item ready for database insertion.
         """
         # Add required STAC v1.0.0 collection link if item has collection field
-        item_links = resolve_links(stac_data.get("links", []), base_url)
+        # Separate absolute and relative links to avoid double-resolving absolute URLs
+        relative_links, absolute_links = _filter_absolute_links(
+            stac_data.get("links", [])
+        )
+        item_links = resolve_links(relative_links, base_url) + absolute_links
 
         # Ensure collection link exists (required by STAC v1.0.0 spec)
         if stac_data.get("collection"):
@@ -242,7 +266,9 @@ class ItemSerializer(Serializer):
 
         original_links = item.get("links", [])
         if original_links:
-            item_links += resolve_links(original_links, base_url)
+            # Separate absolute and relative links to avoid double-resolving absolute URLs
+            relative_links, absolute_links = _filter_absolute_links(original_links)
+            item_links += resolve_links(relative_links, base_url) + absolute_links
 
         assets = (
             {

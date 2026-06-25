@@ -51,7 +51,11 @@ class BaseLinks:
 
     def resolve(self, url):
         """Resolve url to the current request url."""
-        return urljoin(str(self.base_url), str(url))
+        url_str = str(url)
+        # If URL is already absolute (starts with http/https), return as-is
+        if url_str.startswith(("http://", "https://")):
+            return url_str
+        return urljoin(str(self.base_url), url_str)
 
     def link_self(self) -> dict:
         """Return the self link."""

@@ -20,6 +20,7 @@ from stac_pydantic import Collection, Item, ItemCollection
 from stac_pydantic.links import Relations
 from stac_pydantic.shared import BBox, MimeTypes
 from stac_pydantic.version import STAC_VERSION
+from starlette.responses import Response
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
 from stac_fastapi.core.base_settings import ApiBaseSettings
@@ -1122,7 +1123,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     @overrides
     async def create_item(
         self, collection_id: str, item: Item | ItemCollection, **kwargs
-    ) -> stac_types.Item | str | dict:
+    ) -> stac_types.Item | Response | None:
         """Create an item or a feature collection of items in the specified collection.
 
         Acts as a traffic router, inspecting the payload type and delegating to the
