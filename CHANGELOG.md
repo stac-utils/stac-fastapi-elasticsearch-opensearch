@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- Fixed proxy path handling in all generated links to correctly preserve the root path when deployed behind a reverse proxy. All endpoints now properly include the proxy path in landing page links, collection links, item links, and aggregation links.
+
 ### Removed
 
 ### Updated

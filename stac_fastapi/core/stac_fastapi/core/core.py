@@ -7,7 +7,7 @@ from datetime import datetime as datetime_type
 from datetime import timezone
 from enum import Enum
 from typing import Type
-from urllib.parse import unquote_plus, urljoin
+from urllib.parse import unquote_plus, urljoin, urlsplit
 
 import attr
 import orjson
@@ -137,6 +137,7 @@ class CoreClient(AsyncBaseCoreClient):
         base_url: str,
         conformance_classes: list[str],
         extension_schemas: list[str],
+        path: str = "",
     ) -> stac_types.LandingPage:
         landing_page = stac_types.LandingPage(
             type="Catalog",
@@ -159,26 +160,26 @@ class CoreClient(AsyncBaseCoreClient):
                 {
                     "rel": "data",
                     "type": MimeTypes.json,
-                    "href": urljoin(base_url, "collections"),
+                    "href": urljoin(base_url, f"{path}/collections"),
                 },
                 {
                     "rel": Relations.conformance.value,
                     "type": MimeTypes.json,
                     "title": "STAC/WFS3 conformance classes implemented by this server",
-                    "href": urljoin(base_url, "conformance"),
+                    "href": urljoin(base_url, f"{path}/conformance"),
                 },
                 {
                     "rel": Relations.search.value,
                     "type": MimeTypes.geojson,
                     "title": "STAC search",
-                    "href": urljoin(base_url, "search"),
+                    "href": urljoin(base_url, f"{path}/search"),
                     "method": "GET",
                 },
                 {
                     "rel": Relations.search.value,
                     "type": MimeTypes.geojson,
                     "title": "STAC search",
-                    "href": urljoin(base_url, "search"),
+                    "href": urljoin(base_url, f"{path}/search"),
                     "method": "POST",
                 },
             ],
@@ -197,10 +198,16 @@ class CoreClient(AsyncBaseCoreClient):
         request: Request = kwargs["request"]
 
         base_url = get_base_url(request)
+
+        # Extract the proxy path to ensure custom extension links work correctly
+        # with reverse proxies and API gateways (e.g., root_path="/api/v1")
+        path = urlsplit(base_url).path.rstrip("/")
+
         landing_page = self._landing_page(
             base_url=base_url,
             conformance_classes=self.conformance_classes(),
             extension_schemas=[],
+            path=path,
         )
 
         if self.extension_is_enabled("FilterExtension"):
@@ -211,7 +218,7 @@ class CoreClient(AsyncBaseCoreClient):
                     # TODO: replace this with MimeTypes.jsonschema,
                     "type": "application/schema+json",
                     "title": "Queryables",
-                    "href": urljoin(base_url, "queryables"),
+                    "href": urljoin(base_url, f"{path}/queryables"),
                 }
             )
 
@@ -222,13 +229,13 @@ class CoreClient(AsyncBaseCoreClient):
                         "rel": "aggregate",
                         "type": "application/json",
                         "title": "Aggregate",
-                        "href": urljoin(base_url, "aggregate"),
+                        "href": urljoin(base_url, f"{path}/aggregate"),
                     },
                     {
                         "rel": "aggregations",
                         "type": "application/json",
                         "title": "Aggregations",
-                        "href": urljoin(base_url, "aggregations"),
+                        "href": urljoin(base_url, f"{path}/aggregations"),
                     },
                 ]
             )
@@ -240,14 +247,14 @@ class CoreClient(AsyncBaseCoreClient):
                         "rel": "collections-search",
                         "type": "application/json",
                         "title": "Collections Search",
-                        "href": urljoin(base_url, "collections-search"),
+                        "href": urljoin(base_url, f"{path}/collections-search"),
                         "method": "GET",
                     },
                     {
                         "rel": "collections-search",
                         "type": "application/json",
                         "title": "Collections Search",
-                        "href": urljoin(base_url, "collections-search"),
+                        "href": urljoin(base_url, f"{path}/collections-search"),
                         "method": "POST",
                     },
                 ]
@@ -259,7 +266,7 @@ class CoreClient(AsyncBaseCoreClient):
                     "rel": "catalogs",
                     "type": "application/json",
                     "title": "Catalogs",
-                    "href": urljoin(base_url, "catalogs"),
+                    "href": urljoin(base_url, f"{path}/catalogs"),
                 }
             )
 
@@ -270,7 +277,7 @@ class CoreClient(AsyncBaseCoreClient):
                 "type": "application/vnd.oai.openapi+json;version=3.0",
                 "title": "OpenAPI service description",
                 "href": urljoin(
-                    str(request.base_url), request.app.openapi_url.lstrip("/")
+                    base_url, f"{path}/{request.app.openapi_url.lstrip('/')}"
                 ),
             }
         )
@@ -281,9 +288,7 @@ class CoreClient(AsyncBaseCoreClient):
                 "rel": "service-doc",
                 "type": "text/html",
                 "title": "OpenAPI service documentation",
-                "href": urljoin(
-                    str(request.base_url), request.app.docs_url.lstrip("/")
-                ),
+                "href": urljoin(base_url, f"{path}/{request.app.docs_url.lstrip('/')}"),
             }
         )
 
@@ -324,6 +329,11 @@ class CoreClient(AsyncBaseCoreClient):
             A Collections object containing all the collections in the database and links to various resources.
         """
         base_url = str(request.base_url)
+
+        # Extract the proxy path to ensure collection links work correctly
+        # with reverse proxies and API gateways (e.g., root_path="/api/v1")
+        path = urlsplit(base_url).path.rstrip("/")
+
         redis_enable = get_bool_env("REDIS_ENABLE", default=False)
 
         global_max_limit = (
@@ -481,7 +491,7 @@ class CoreClient(AsyncBaseCoreClient):
             {
                 "rel": Relations.self.value,
                 "type": MimeTypes.json,
-                "href": urljoin(base_url, "collections"),
+                "href": urljoin(base_url, f"{path}/collections"),
             },
         ]
 
@@ -843,6 +853,11 @@ class CoreClient(AsyncBaseCoreClient):
         search_request.limit = limit
 
         base_url = str(request.base_url)
+
+        # Extract the proxy path to ensure collection links work correctly
+        # with reverse proxies and API gateways (e.g., root_path="/api/v1")
+        path = urlsplit(base_url).path.rstrip("/")
+
         search = self.database.make_search()
         redis_enable = get_bool_env("REDIS_ENABLE", default=False)
 
@@ -974,12 +989,16 @@ class CoreClient(AsyncBaseCoreClient):
                         {
                             "rel": "collection",
                             "type": "application/json",
-                            "href": urljoin(base_url, f"collections/{collection_id}"),
+                            "href": urljoin(
+                                base_url, f"{path}/collections/{collection_id}"
+                            ),
                         },
                         {
                             "rel": "parent",
                             "type": "application/json",
-                            "href": urljoin(base_url, f"collections/{collection_id}"),
+                            "href": urljoin(
+                                base_url, f"{path}/collections/{collection_id}"
+                            ),
                         },
                     ]
                 )

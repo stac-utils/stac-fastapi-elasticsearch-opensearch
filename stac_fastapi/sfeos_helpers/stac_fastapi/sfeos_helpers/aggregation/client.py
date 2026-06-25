@@ -1,7 +1,7 @@
 """Client implementation for the STAC API Aggregation Extension."""
 
 from typing import Any
-from urllib.parse import unquote_plus, urljoin
+from urllib.parse import unquote_plus, urljoin, urlsplit
 
 import attr
 import orjson
@@ -103,21 +103,29 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
         """
         request: Request = kwargs.get("request")
         base_url = str(request.base_url) if request else ""
+
+        # Extract the proxy path to ensure aggregation links work correctly
+        # with reverse proxies and API gateways (e.g., root_path="/api/v1")
+        path = urlsplit(base_url).path.rstrip("/") if base_url else ""
+
         links = [{"rel": "root", "type": "application/json", "href": base_url}]
 
         if collection_id is not None:
-            collection_endpoint = urljoin(base_url, f"collections/{collection_id}")
             links.extend(
                 [
                     {
                         "rel": "collection",
                         "type": "application/json",
-                        "href": collection_endpoint,
+                        "href": urljoin(
+                            base_url, f"{path}/collections/{collection_id}"
+                        ),
                     },
                     {
                         "rel": "self",
                         "type": "application/json",
-                        "href": urljoin(collection_endpoint + "/", "aggregations"),
+                        "href": urljoin(
+                            base_url, f"{path}/collections/{collection_id}/aggregations"
+                        ),
                     },
                 ]
             )
@@ -133,7 +141,7 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
                 {
                     "rel": "self",
                     "type": "application/json",
-                    "href": urljoin(base_url, "aggregations"),
+                    "href": urljoin(base_url, f"{path}/aggregations"),
                 }
             )
             aggregations = self.DEFAULT_AGGREGATIONS.copy()
@@ -245,7 +253,12 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
         """Get aggregations from the database."""
         request: Request = kwargs["request"]
         base_url = str(request.base_url)
-        path = request.url.path
+
+        # Extract the proxy path to ensure aggregation links work correctly
+        # with reverse proxies and API gateways (e.g., root_path="/api/v1")
+        proxy_path = urlsplit(base_url).path.rstrip("/")
+
+        request_path = request.url.path
         search = self.database.make_search()
 
         if aggregate_request is None:
@@ -277,8 +290,8 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
             aggregate_request = EsAggregationExtensionPostRequest(**base_args)
         else:
             # Workaround for optional path param in POST requests
-            if "collections" in path:
-                collection_id = path.split("/")[2]
+            if "collections" in request_path:
+                collection_id = request_path.split("/")[2]
 
             filter_lang = "cql2-json"
             if aggregate_request.filter_expr:
@@ -437,18 +450,22 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
         ]
 
         if collection_id:
-            collection_endpoint = urljoin(base_url, f"collections/{collection_id}")
             links.extend(
                 [
                     {
                         "rel": "collection",
                         "type": "application/json",
-                        "href": collection_endpoint,
+                        "href": urljoin(
+                            base_url, f"{proxy_path}/collections/{collection_id}"
+                        ),
                     },
                     {
                         "rel": "self",
                         "type": "application/json",
-                        "href": urljoin(collection_endpoint, "aggregate"),
+                        "href": urljoin(
+                            base_url,
+                            f"{proxy_path}/collections/{collection_id}/aggregate",
+                        ),
                     },
                 ]
             )
@@ -457,7 +474,7 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
                 {
                     "rel": "self",
                     "type": "application/json",
-                    "href": urljoin(base_url, "aggregate"),
+                    "href": urljoin(base_url, f"{proxy_path}/aggregate"),
                 }
             )
         results = AggregationCollection(
