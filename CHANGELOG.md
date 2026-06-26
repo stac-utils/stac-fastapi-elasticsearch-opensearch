@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 - Fixed proxy path handling in all generated links to correctly preserve the root path when deployed behind a reverse proxy. All endpoints now properly include the proxy path in landing page links, collection links, item links, and aggregation links. [#788](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/788)
 
+### Updated
+
+- Updated stac-fastapi parent dependecies from v6.3.0 -> v6.3.1 [#788](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/788)
+
 ### Removed
 
 ### Updated

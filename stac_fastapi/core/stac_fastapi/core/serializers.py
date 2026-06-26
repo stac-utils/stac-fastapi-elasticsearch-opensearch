@@ -14,9 +14,53 @@ from stac_fastapi.core.models import Catalog
 from stac_fastapi.core.models.links import CollectionLinks
 from stac_fastapi.core.utilities import get_bool_env, get_excluded_from_items
 from stac_fastapi.types import stac as stac_types
-from stac_fastapi.types.links import ItemLinks, resolve_links
+from stac_fastapi.types.links import ItemLinks
 
 logger = logging.getLogger(__name__)
+
+
+def unmangle_absolute_urls(links: list[dict]) -> None:
+    """Fix mangled absolute URLs in links (upstream library issue).
+
+    The upstream library mangles absolute URLs like:
+    "https://example.com" -> "http://localhost:8080/https://example.com"
+    or multiple times:
+    "https://example.com" -> "http://localhost:8080/http://localhost:8080/https://example.com"
+
+    This function extracts the original absolute URL from the mangled version.
+    Modifies links in-place.
+
+    Args:
+        links: List of link dictionaries to fix
+    """
+    for link in links:
+        if not isinstance(link, dict):
+            continue
+        href = link.get("href", "")
+        href_str = str(href)
+
+        # Keep unmangling until we find a real absolute URL (http/https at the start)
+        # that doesn't have another protocol embedded in the path
+        while href_str.startswith("http") and "://" in href_str[7:]:
+            # Extract the original absolute URL
+            # e.g., "http://localhost:8080/https://example.com" -> "https://example.com"
+            parts = href_str.split("://", 1)
+            if len(parts) == 2:
+                remainder = parts[1]
+                # Find the next :// which indicates the start of the original URL
+                if "://" in remainder:
+                    # Split on first / to get the domain part
+                    domain_and_path = remainder.split("/", 1)
+                    if len(domain_and_path) > 1:
+                        path_part = domain_and_path[1]
+                        # Check if the path part starts with a protocol
+                        if "://" in path_part:
+                            href_str = path_part
+                            continue
+            # If we can't extract further, break the loop
+            break
+
+        link["href"] = href_str
 
 
 @attr.s
@@ -164,7 +208,8 @@ class ItemSerializer(Serializer):
             A dictionary representation of the item ready for database insertion.
         """
         # Add required STAC v1.0.0 collection link if item has collection field
-        item_links = resolve_links(stac_data.get("links", []), base_url)
+        # Don't resolve links during storage - they will be resolved during retrieval
+        item_links = stac_data.get("links", [])
 
         # Ensure collection link exists (required by STAC v1.0.0 spec)
         if stac_data.get("collection"):
@@ -242,7 +287,8 @@ class ItemSerializer(Serializer):
 
         original_links = item.get("links", [])
         if original_links:
-            item_links += resolve_links(original_links, base_url)
+            # Don't resolve links during retrieval - they were stored as-is
+            item_links += original_links
 
         assets = (
             {
@@ -252,6 +298,9 @@ class ItemSerializer(Serializer):
             if get_bool_env("STAC_INDEX_ASSETS")
             else item.get("assets", {})
         )
+
+        # Fix mangled absolute URLs before creating the Item
+        unmangle_absolute_urls(item_links)
 
         stac_item = stac_types.Item(
             type="Feature",
@@ -336,9 +385,8 @@ class CollectionSerializer(Serializer):
             A dictionary representation of the collection for the database.
         """
         collection = deepcopy(collection)
-        collection["links"] = resolve_links(
-            collection.get("links", []), str(request.base_url)
-        )
+        # Don't resolve links during storage - they will be resolved during retrieval
+        # This prevents absolute URLs from being mangled by resolve_links()
         if get_bool_env("STAC_INDEX_ASSETS"):
             for key in ["assets", "item_assets"]:
                 if key in collection:
@@ -403,9 +451,13 @@ class CollectionSerializer(Serializer):
 
         original_links = collection.get("links")
         if original_links:
-            collection_links += resolve_links(original_links, base_url)
+            # Don't resolve links during retrieval - they were stored as-is
+            collection_links += original_links
 
         collection["links"] = collection_links
+
+        # Fix mangled absolute URLs before returning to API
+        unmangle_absolute_urls(collection_links)
 
         # Deserialize assets from database format
         cls._deserialize_assets(collection)
@@ -478,9 +530,13 @@ class CollectionSerializer(Serializer):
 
         original_links = collection.get("links")
         if original_links:
-            collection_links += resolve_links(original_links, base_url)
+            # Don't resolve links during retrieval - they were stored as-is
+            collection_links += original_links
 
         collection["links"] = collection_links
+
+        # Fix mangled absolute URLs before returning to API
+        unmangle_absolute_urls(collection_links)
 
         # Deserialize assets from database format
         cls._deserialize_assets(collection)
@@ -503,7 +559,8 @@ class CatalogSerializer(Serializer):
             A dictionary representation of the catalog for the database.
         """
         catalog = deepcopy(catalog)
-        catalog.links = resolve_links(catalog.links, str(request.base_url))
+        # Don't resolve links during storage - they will be resolved during retrieval
+        # This prevents absolute URLs from being mangled by resolve_links()
         return catalog
 
     @classmethod
@@ -532,7 +589,8 @@ class CatalogSerializer(Serializer):
         catalog.setdefault("title", "")
         catalog.setdefault("description", "")
 
-        catalog_links = resolve_links(catalog.get("links", []), base_url)
+        # Don't resolve links during retrieval - they were stored as-is
+        catalog_links = catalog.get("links", [])
 
         # Get hide_alternate_parents flag from app state
         hide_alternate_parents = (
@@ -554,4 +612,8 @@ class CatalogSerializer(Serializer):
         catalog_links.extend(dynamic_links)
 
         catalog["links"] = catalog_links
+
+        # Fix mangled absolute URLs before returning to API
+        unmangle_absolute_urls(catalog_links)
+
         return stac_types.Catalog(**catalog)
