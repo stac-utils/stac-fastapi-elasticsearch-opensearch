@@ -89,6 +89,7 @@ ROUTES = {
     "GET /catalogs/{catalog_id}/collections/{collection_id}/items/{item_id}",
     "GET /catalogs/{catalog_id}/search",
     "POST /catalogs/{catalog_id}/search",
+    "PUT /catalogs/{catalog_id}/collections/{collection_id}",
 }
 
 

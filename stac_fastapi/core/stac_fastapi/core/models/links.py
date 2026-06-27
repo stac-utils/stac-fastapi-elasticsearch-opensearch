@@ -1,7 +1,7 @@
 """link helpers."""
 
 from typing import Any
-from urllib.parse import ParseResult, parse_qs, urlencode, urljoin, urlparse
+from urllib.parse import ParseResult, parse_qs, urlencode, urljoin, urlparse, urlsplit
 
 import attr
 from stac_pydantic.links import Relations
@@ -49,9 +49,18 @@ class BaseLinks:
         """Get the current request url."""
         return str(self.request.url)
 
+    @property
+    def path(self):
+        """Get the proxy path to ensure links work correctly with reverse proxies."""
+        return urlsplit(self.base_url).path.rstrip("/")
+
     def resolve(self, url):
-        """Resolve url to the current request url."""
-        return urljoin(str(self.base_url), str(url))
+        """Resolve url to the current request url with proxy path support."""
+        # If the URL is already absolute (starts with http), use it as-is
+        if str(url).startswith(("http://", "https://")):
+            return str(url)
+        # Otherwise, prepend the proxy path to relative URLs
+        return urljoin(str(self.base_url), f"{self.path}/{str(url).lstrip('/')}")
 
     def link_self(self) -> dict:
         """Return the self link."""
@@ -126,7 +135,7 @@ class CollectionLinks(BaseLinks):
         href = (
             self.self_url
             if self.self_url
-            else urljoin(self.base_url, f"collections/{self.collection_id}")
+            else urljoin(self.base_url, f"{self.path}/collections/{self.collection_id}")
         )
         return dict(
             rel=Relations.self.value,
@@ -149,7 +158,9 @@ class CollectionLinks(BaseLinks):
         return dict(
             rel="items",
             type=MimeTypes.geojson.value,
-            href=urljoin(self.base_url, f"collections/{self.collection_id}/items"),
+            href=urljoin(
+                self.base_url, f"{self.path}/collections/{self.collection_id}/items"
+            ),
         )
 
     def link_queryables(self) -> dict[str, Any]:
@@ -159,7 +170,8 @@ class CollectionLinks(BaseLinks):
                 rel="queryables",
                 type=MimeTypes.jsonschema.value,
                 href=urljoin(
-                    self.base_url, f"collections/{self.collection_id}/queryables"
+                    self.base_url,
+                    f"{self.path}/collections/{self.collection_id}/queryables",
                 ),
             )
         else:
@@ -172,7 +184,8 @@ class CollectionLinks(BaseLinks):
                 rel="aggregate",
                 type=MimeTypes.json.value,
                 href=urljoin(
-                    self.base_url, f"collections/{self.collection_id}/aggregate"
+                    self.base_url,
+                    f"{self.path}/collections/{self.collection_id}/aggregate",
                 ),
             )
         else:
@@ -185,7 +198,8 @@ class CollectionLinks(BaseLinks):
                 rel="aggregations",
                 type=MimeTypes.json.value,
                 href=urljoin(
-                    self.base_url, f"collections/{self.collection_id}/aggregations"
+                    self.base_url,
+                    f"{self.path}/collections/{self.collection_id}/aggregations",
                 ),
             )
         else:
