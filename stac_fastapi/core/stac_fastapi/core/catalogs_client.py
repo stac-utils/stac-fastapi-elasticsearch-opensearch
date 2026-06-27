@@ -1127,8 +1127,8 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
             if not item_id:
                 continue
 
-            # Create item without request to avoid urljoin errors, then add all links manually
-            serialized_item = self.item_serializer.db_to_stac(item, None)
+            # Create item with base_url for proper link generation
+            serialized_item = self.item_serializer.db_to_stac(item, base_url)
 
             # Create proper links for the item
             item_links = [
@@ -1267,8 +1267,8 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         # Extract base URL as string for serializer
         base_url = self._get_base_url(request)
 
-        # Create item without request to avoid urljoin errors, then add all links manually
-        item = self.item_serializer.db_to_stac(item_dict, None)
+        # Create item with base_url for proper link generation
+        item = self.item_serializer.db_to_stac(item_dict, base_url)
 
         # Create proper links for the item
         item_links = [
