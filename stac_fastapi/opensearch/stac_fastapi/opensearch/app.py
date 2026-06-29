@@ -2,6 +2,9 @@
 
 import logging
 import os
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI
 
 from stac_fastapi.api.app import StacApi
 from stac_fastapi.api.models import (
@@ -126,10 +129,21 @@ def instantiate_api(
         request_type="GET",
     )
 
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        """Initialize index templates and the collections index at startup."""
+        await create_index_templates()
+        await create_collection_index()
+        yield
+
+    title = os.getenv("STAC_FASTAPI_TITLE", "stac-fastapi-opensearch")
+    description = os.getenv("STAC_FASTAPI_DESCRIPTION", "stac-fastapi-opensearch")
+    api_version = os.getenv("STAC_FASTAPI_VERSION", "6.19.0")
+
     app_config_local = {
-        "title": os.getenv("STAC_FASTAPI_TITLE", "stac-fastapi-opensearch"),
-        "description": os.getenv("STAC_FASTAPI_DESCRIPTION", "stac-fastapi-opensearch"),
-        "api_version": os.getenv("STAC_FASTAPI_VERSION", "6.19.0"),
+        "title": title,
+        "description": description,
+        "api_version": api_version,
         "settings": settings,
         "extensions": application_extensions,
         "client": CoreClient(
@@ -142,6 +156,15 @@ def instantiate_api(
         "search_post_request_model": post_request_model,
         "items_get_request_model": items_get_request_model,
         "route_dependencies": get_route_dependencies(),
+        "app": FastAPI(
+            title=title,
+            description=description,
+            version=api_version,
+            openapi_url="/api",
+            docs_url="/api.html",
+            redoc_url=None,
+            lifespan=lifespan,
+        ),
     }
     if collections_get_request_model is not None:
         app_config_local[
@@ -150,12 +173,6 @@ def instantiate_api(
 
     stac_api = StacApi(**app_config_local)
     fastapi_app = stac_api.app
-
-    @fastapi_app.on_event("startup")
-    async def initialize_indexes() -> None:
-        """Initialize index templates and the collections index at startup."""
-        await create_index_templates()
-        await create_collection_index()
 
     fastapi_app.add_exception_handler(QueuedSuccess, queued_success_handler)
     fastapi_app.root_path = os.getenv("STAC_FASTAPI_ROOT_PATH", "")
@@ -166,7 +183,9 @@ def instantiate_api(
         "catalogs_hide_alternate_parents",
         extensions_manager.hide_alternate_parents,
     )
-    setattr(fastapi_app.state, "app_config", app_config_local)
+    app_config_for_state = app_config_local.copy()
+    app_config_for_state.pop("app", None)
+    setattr(fastapi_app.state, "app_config", app_config_for_state)
 
     try:
         from stac_fastapi.sfeos_helpers.metrics import get_instrumentator
