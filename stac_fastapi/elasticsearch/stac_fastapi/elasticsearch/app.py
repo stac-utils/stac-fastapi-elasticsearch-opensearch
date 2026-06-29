@@ -102,6 +102,7 @@ def instantiate_api(
         *extensions_manager.collection_search,
         *extensions_manager.collections_search_route,
         *extensions_manager.catalogs,
+        *extensions_manager.extra,
     ]
 
     database_logic.extensions = [type(ext).__name__ for ext in application_extensions]

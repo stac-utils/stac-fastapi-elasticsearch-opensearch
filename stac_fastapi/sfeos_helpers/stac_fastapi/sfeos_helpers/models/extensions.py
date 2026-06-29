@@ -2,7 +2,7 @@
 
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import cached_property
 from typing import Any
 
@@ -53,6 +53,7 @@ class Extensions:
     settings: Any
     database_logic: Any
     session: Any
+    extra_map: dict[str, ApiExtension] = field(default_factory=dict)
 
     def _flag(self, attr_name: str, env_name: str, default: bool) -> bool:
         """Read feature flags from settings first, then env vars for compatibility."""
@@ -60,6 +61,11 @@ class Extensions:
         if value is not None:
             return bool(value)
         return get_bool_env(env_name, default=default)
+
+    @cached_property
+    def extra(self) -> list[ApiExtension]:
+        """Return custom out-of-tree extensions provided by users."""
+        return list(self.extra_map.values()) if self.extra_map else []
 
     @cached_property
     def transactions_enabled(self) -> bool:
