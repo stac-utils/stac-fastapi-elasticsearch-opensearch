@@ -95,6 +95,8 @@ This project is built on the following technologies: STAC, stac-fastapi, FastAPI
   - [Table of Contents](#table-of-contents)
   - [Collection Search Extensions](#collection-search-extensions)
   - [Catalogs Route](#catalogs-route)
+  - [Injecting Custom Extensions](#injecting-custom-extensions-out-of-tree)
+  - [Custom Pydantic Settings](#custom-pydantic-settings)
   - [Catalogs Search Extension](#catalogs-search-extension)
   - [Documentation & Resources](#documentation--resources)
   - [SFEOS STAC Viewer](#sfeos-stac-viewer)
@@ -580,6 +582,100 @@ You can discover it as a child of forestry via:
 Because you are linking the node (the Catalog), the entire sub-tree attached to that node is automatically shared. If sentinel-2 contains millions of items and sub-catalogs, they are all instantly visible under the new forestry parent without needing to re-link individual items.
 
 > **Configuration**: The catalogs route can be enabled or disabled by setting the `ENABLE_CATALOGS_ROUTE` environment variable to `true` or `false`. By default, this endpoint is **disabled**.
+
+## Injecting Custom Extensions (Out-of-Tree)
+
+If you need to add deployment-specific routes such as custom analytics, billing, or map tiles, SFEOS lets you inject custom extensions without forking or modifying the core repository.
+
+By leveraging the `extra_map` parameter during application instantiation, your custom endpoints are mounted alongside the built-in STAC API routes and included in the OpenAPI schema.
+
+For a practical real-world example of wiring routes, models, and dependencies in a standalone extension, see the [Catalogs Endpoint extension](https://github.com/StacLabs/stac-fastapi-catalogs-extension).
+
+### 1. Define Your Custom Extension
+
+Create a class that inherits from `ApiExtension` and bind your FastAPI routes inside `register()`.
+
+This example shows a lightweight Vector Tile extension using the native Elasticsearch/OpenSearch `_mvt` API pattern:
+
+```python
+from fastapi import APIRouter
+from stac_fastapi.types.extension import ApiExtension
+
+
+class MVTExtension(ApiExtension):
+    """Example extension serving Vector Tiles directly from the search engine."""
+
+    def register(self, app):
+        router = APIRouter()
+
+        @router.get("/api/map/{z}/{x}/{y}.mvt")
+        async def get_mvt(z: int, x: int, y: int):
+            # Your custom Elasticsearch/OpenSearch _mvt generation logic here
+            return {"tile": "data"}
+
+        app.include_router(router)
+```
+
+### 2. Inject It Into the Application Factory
+
+Once your extension is defined, instantiate the `Extensions` manager, pass your custom class into `extra_map`, and hand that manager to `instantiate_api()`.
+
+```python
+from stac_fastapi.elasticsearch.app import instantiate_api
+from stac_fastapi.elasticsearch.config import ElasticsearchSettings
+from stac_fastapi.elasticsearch.database_logic import DatabaseLogic
+from stac_fastapi.core.session import Session
+from stac_fastapi.sfeos_helpers.models.extensions import Extensions
+from your_project.extensions import MVTExtension
+
+
+settings = ElasticsearchSettings()
+database_logic = DatabaseLogic()
+session = Session.create_from_settings(settings)
+
+custom_extensions = Extensions(
+    settings=settings,
+    database_logic=database_logic,
+    session=session,
+    extra_map={
+        "mvt": MVTExtension(),
+    },
+)
+
+api = instantiate_api(
+    settings=settings,
+    database_logic=database_logic,
+    extensions_manager=custom_extensions,
+)
+app = api.app
+```
+
+The key idea is simple: build the extension class, add it to `extra_map`, and pass the resulting manager into the backend factory.
+
+## Custom Pydantic Settings
+
+If you want to override backend defaults programmatically, pass a custom settings object into `instantiate_api()` as well. This is useful when you want to set feature flags or connection defaults in code instead of relying only on environment variables.
+
+The backend factories accept concrete settings classes such as `ElasticsearchSettings` and `OpensearchSettings`, so you can subclass them or instantiate them directly before building the app.
+
+Tip: You can also override these directly during instantiation, for example `settings = ElasticsearchSettings(enable_catalogs_route=True)`.
+
+```python
+from stac_fastapi.elasticsearch.app import instantiate_api
+from stac_fastapi.elasticsearch.config import ElasticsearchSettings
+
+
+class CustomElasticsearchSettings(ElasticsearchSettings):
+    enable_catalogs_route: bool = True
+    enable_collections_search_route: bool = True
+
+
+settings = CustomElasticsearchSettings()
+api = instantiate_api(settings=settings)
+app = api.app
+```
+
+For most deployments, the same pattern applies if you are using the OpenSearch backend: import the OpenSearch settings class, customize the values you need, and pass the resulting instance into `instantiate_api()`.
 
 ## Catalogs Search Extension
 

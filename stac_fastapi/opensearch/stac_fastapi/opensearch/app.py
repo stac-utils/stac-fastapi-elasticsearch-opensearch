@@ -13,39 +13,16 @@ from stac_fastapi.api.models import (
     create_post_request_model,
     create_request_model,
 )
-from stac_fastapi.core.core import (
-    BulkTransactionsClient,
-    CoreClient,
-    TransactionsClient,
-)
+from stac_fastapi.core.core import CoreClient
 from stac_fastapi.core.exceptions import QueuedSuccess, queued_success_handler
 from stac_fastapi.core.extensions import QueryExtension
-from stac_fastapi.core.extensions.aggregation import (
-    EsAggregationExtensionGetRequest,
-    EsAggregationExtensionPostRequest,
-)
-from stac_fastapi.core.extensions.collections_search import (
-    CollectionsSearchEndpointExtension,
-)
 from stac_fastapi.core.extensions.fields import FieldsExtension
 from stac_fastapi.core.rate_limit import setup_rate_limit
 from stac_fastapi.core.route_dependencies import get_route_dependencies
 from stac_fastapi.core.session import Session
 from stac_fastapi.core.utilities import get_bool_env
-from stac_fastapi.extensions import (
-    AggregationExtension,
-    BulkTransactionExtension,
-    CollectionSearchExtension,
-    CollectionSearchFilterExtension,
-    CollectionSearchPostExtension,
-    FilterExtension,
-    FreeTextExtension,
-    SortExtension,
-    TokenPaginationExtension,
-    TransactionExtension,
-)
+from stac_fastapi.extensions import FreeTextExtension, SortExtension
 from stac_fastapi.extensions.fields import FieldsConformanceClasses
-from stac_fastapi.extensions.filter import FilterConformanceClasses
 from stac_fastapi.extensions.free_text import FreeTextConformanceClasses
 from stac_fastapi.extensions.query import QueryConformanceClasses
 from stac_fastapi.extensions.sort import SortConformanceClasses
@@ -55,9 +32,8 @@ from stac_fastapi.opensearch.database_logic import (
     create_collection_index,
     create_index_templates,
 )
-from stac_fastapi.sfeos_helpers.aggregation import EsAsyncBaseAggregationClient
 from stac_fastapi.sfeos_helpers.database.utils import sentry_initialize
-from stac_fastapi.sfeos_helpers.filter import EsAsyncBaseFiltersClient
+from stac_fastapi.sfeos_helpers.models.extensions import Extensions
 
 sentry_enable = get_bool_env("SENTRY_ENABLE", default=False)
 
@@ -72,293 +48,172 @@ if sentry_enable:
 logging.basicConfig(level=logging.INFO, force=True)
 logger = logging.getLogger(__name__)
 
-TRANSACTIONS_EXTENSIONS = get_bool_env("ENABLE_TRANSACTIONS_EXTENSIONS", default=True)
-ENABLE_COLLECTIONS_SEARCH = get_bool_env("ENABLE_COLLECTIONS_SEARCH", default=True)
-ENABLE_COLLECTIONS_SEARCH_ROUTE = get_bool_env(
-    "ENABLE_COLLECTIONS_SEARCH_ROUTE", default=False
-)
-ENABLE_CATALOGS_ROUTE = get_bool_env("ENABLE_CATALOGS_ROUTE", default=False)
-HIDE_ALTERNATE_PARENTS = get_bool_env("HIDE_ALTERNATE_PARENTS", default=False)
-ENABLE_STAC_VALIDATOR = get_bool_env("ENABLE_STAC_VALIDATOR", default=False)
 
-logger.info("TRANSACTIONS_EXTENSIONS is set to %s", TRANSACTIONS_EXTENSIONS)
-logger.info("ENABLE_COLLECTIONS_SEARCH is set to %s", ENABLE_COLLECTIONS_SEARCH)
-logger.info(
-    "ENABLE_COLLECTIONS_SEARCH_ROUTE is set to %s", ENABLE_COLLECTIONS_SEARCH_ROUTE
-)
-logger.info("ENABLE_CATALOGS_ROUTE is set to %s", ENABLE_CATALOGS_ROUTE)
-logger.info("HIDE_ALTERNATE_PARENTS is set to %s", HIDE_ALTERNATE_PARENTS)
-logger.info("ENABLE_STAC_VALIDATOR is set to %s", ENABLE_STAC_VALIDATOR)
-
-settings = OpensearchSettings()
-session = Session.create_from_settings(settings)
-
-database_logic = DatabaseLogic()
-
-filter_extension = FilterExtension(
-    client=EsAsyncBaseFiltersClient(database=database_logic, settings=settings)
-)
-filter_extension.conformance_classes.append(
-    FilterConformanceClasses.ADVANCED_COMPARISON_OPERATORS
-)
-
-aggregation_extension = AggregationExtension(
-    client=EsAsyncBaseAggregationClient(
-        database=database_logic, session=session, settings=settings
+def _log_extension_flags(extensions_manager: Extensions) -> None:
+    logger.info(
+        "ENABLE_TRANSACTIONS_EXTENSIONS is set to %s",
+        extensions_manager.transactions_enabled,
     )
-)
-aggregation_extension.POST = EsAggregationExtensionPostRequest
-aggregation_extension.GET = EsAggregationExtensionGetRequest
+    logger.info(
+        "ENABLE_COLLECTIONS_SEARCH is set to %s",
+        extensions_manager.collections_search_enabled,
+    )
+    logger.info(
+        "ENABLE_COLLECTIONS_SEARCH_ROUTE is set to %s",
+        extensions_manager.collections_search_route_enabled,
+    )
+    logger.info(
+        "ENABLE_CATALOGS_ROUTE is set to %s",
+        extensions_manager.catalogs_enabled,
+    )
+    logger.info(
+        "HIDE_ALTERNATE_PARENTS is set to %s",
+        extensions_manager.hide_alternate_parents,
+    )
+    logger.info(
+        "ENABLE_STAC_VALIDATOR is set to %s",
+        get_bool_env("ENABLE_STAC_VALIDATOR", default=False),
+    )
 
-fields_extension = FieldsExtension()
-fields_extension.conformance_classes.append(FieldsConformanceClasses.ITEMS)
 
-search_extensions = [
-    fields_extension,
-    QueryExtension(),
-    SortExtension(),
-    TokenPaginationExtension(),
-    filter_extension,
-    FreeTextExtension(
-        conformance_classes=[FreeTextConformanceClasses.SEARCH],
-    ),
-]
+def instantiate_api(
+    settings: OpensearchSettings | None = None,
+    database_logic: DatabaseLogic | None = None,
+    extensions_manager: Extensions | None = None,
+) -> StacApi:
+    """Instantiate the OpenSearch-backed STAC API."""
+    settings = settings or OpensearchSettings()
+    session = Session.create_from_settings(settings)
+    database_logic = database_logic or DatabaseLogic()
 
-
-if TRANSACTIONS_EXTENSIONS:
-    search_extensions.insert(
-        0,
-        TransactionExtension(
-            client=TransactionsClient(
-                database=database_logic, session=session, settings=settings
-            ),
+    if extensions_manager is None:
+        extensions_manager = Extensions(
             settings=settings,
-        ),
-    )
-    search_extensions.insert(
-        1,
-        BulkTransactionExtension(
-            client=BulkTransactionsClient(
-                database=database_logic,
-                session=session,
-                settings=settings,
-            )
-        ),
-    )
+            database_logic=database_logic,
+            session=session,
+        )
 
-extensions = [aggregation_extension] + search_extensions
+    _log_extension_flags(extensions_manager)
 
-# Collection search related variables
-collections_get_request_model = None
-
-if ENABLE_COLLECTIONS_SEARCH or ENABLE_COLLECTIONS_SEARCH_ROUTE:
-    # Create collection search extensions
-    collection_search_extensions = [
-        QueryExtension(conformance_classes=[QueryConformanceClasses.COLLECTIONS]),
-        SortExtension(conformance_classes=[SortConformanceClasses.COLLECTIONS]),
-        FieldsExtension(conformance_classes=[FieldsConformanceClasses.COLLECTIONS]),
-        CollectionSearchFilterExtension(
-            conformance_classes=[FilterConformanceClasses.COLLECTIONS]
-        ),
-        FreeTextExtension(conformance_classes=[FreeTextConformanceClasses.COLLECTIONS]),
+    search_extensions = extensions_manager.search
+    application_extensions = [
+        *extensions_manager.aggregation,
+        *search_extensions,
+        *extensions_manager.collection_search,
+        *extensions_manager.collections_search_route,
+        *extensions_manager.catalogs,
+        *extensions_manager.extra,
     ]
 
-    # Initialize collection search with its extensions
-    collection_search_ext = CollectionSearchExtension.from_extensions(
-        collection_search_extensions
-    )
-    collections_get_request_model = collection_search_ext.GET
+    database_logic.extensions = [type(ext).__name__ for ext in application_extensions]
 
-    # Create a post request model for collection search
-    collection_search_post_request_model = create_post_request_model(
-        collection_search_extensions
-    )
+    post_request_model = create_post_request_model(search_extensions)
+    get_request_model = create_get_request_model(search_extensions)
+    collections_get_request_model = extensions_manager.collections_get_request_model
 
-# Create collection search extensions if enabled
-if ENABLE_COLLECTIONS_SEARCH:
-    # Initialize collection search POST extension
-    collection_search_post_ext = CollectionSearchPostExtension(
-        client=CoreClient(
-            database=database_logic,
-            session=session,
-            post_request_model=collection_search_post_request_model,
-            landing_page_id=os.getenv("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"),
-        ),
-        settings=settings,
-        POST=collection_search_post_request_model,
-        conformance_classes=[
-            "https://api.stacspec.org/v1.0.0-rc.1/collection-search",
-            QueryConformanceClasses.COLLECTIONS,
-            FilterConformanceClasses.COLLECTIONS,
-            FreeTextConformanceClasses.COLLECTIONS,
-            SortConformanceClasses.COLLECTIONS,
-            FieldsConformanceClasses.COLLECTIONS,
+    items_get_request_model = create_request_model(
+        model_name="ItemCollectionUri",
+        base_model=ItemCollectionUri,
+        extensions=[
+            SortExtension(
+                conformance_classes=[SortConformanceClasses.ITEMS],
+            ),
+            QueryExtension(
+                conformance_classes=[QueryConformanceClasses.ITEMS],
+            ),
+            extensions_manager.filter_extension,
+            FieldsExtension(conformance_classes=[FieldsConformanceClasses.ITEMS]),
+            FreeTextExtension(
+                conformance_classes=[FreeTextConformanceClasses.ITEMS],
+            ),
         ],
+        request_type="GET",
     )
-    extensions.append(collection_search_ext)
-    extensions.append(collection_search_post_ext)
 
-if ENABLE_COLLECTIONS_SEARCH_ROUTE:
-    # Initialize collections-search endpoint extension
-    collections_search_endpoint_ext = CollectionsSearchEndpointExtension(
-        client=CoreClient(
+    @asynccontextmanager
+    async def lifespan(_: FastAPI):
+        """Initialize index templates and the collections index at startup."""
+        await create_index_templates()
+        await create_collection_index()
+        yield
+
+    title = os.getenv("STAC_FASTAPI_TITLE", "stac-fastapi-opensearch")
+    description = os.getenv("STAC_FASTAPI_DESCRIPTION", "stac-fastapi-opensearch")
+    api_version = os.getenv("STAC_FASTAPI_VERSION", "6.19.0")
+
+    app_config_local = {
+        "title": title,
+        "description": description,
+        "api_version": api_version,
+        "settings": settings,
+        "extensions": application_extensions,
+        "client": CoreClient(
             database=database_logic,
             session=session,
-            post_request_model=collection_search_post_request_model,
-            landing_page_id=os.getenv("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"),
-        ),
-        settings=settings,
-        GET=collections_get_request_model,
-        POST=collection_search_post_request_model,
-        conformance_classes=[
-            "https://api.stacspec.org/v1.0.0-rc.1/collection-search",
-            QueryConformanceClasses.COLLECTIONS,
-            FilterConformanceClasses.COLLECTIONS,
-            FreeTextConformanceClasses.COLLECTIONS,
-            SortConformanceClasses.COLLECTIONS,
-            FieldsConformanceClasses.COLLECTIONS,
-        ],
-    )
-    extensions.append(collections_search_endpoint_ext)
-
-
-post_request_model = create_post_request_model(search_extensions)
-
-if ENABLE_CATALOGS_ROUTE:
-    try:
-        from stac_fastapi_catalogs_extension import (
-            CATALOGS_SEARCH_CONFORMANCE,
-            CatalogsExtension,
-            CatalogsSearchExtension,
-            CatalogsTransactionExtension,
-        )
-
-        from stac_fastapi.core.catalogs_client import CatalogsClient
-
-        # Create core client for search delegation
-        # Must include search_extensions to properly handle search parameters
-        core_client = CoreClient(
-            database=database_logic,
-            session=session,
-            extensions=search_extensions,
             post_request_model=post_request_model,
             landing_page_id=os.getenv("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"),
-        )
-
-        catalogs_client = CatalogsClient(
-            database=database_logic,
-            core_client=core_client,
-        )
-
-        catalogs_extension = CatalogsExtension(
-            client=catalogs_client,
-            settings=settings.model_dump(),
-            hide_alternate_parents=HIDE_ALTERNATE_PARENTS,
-        )
-        catalogs_transaction_extension = CatalogsTransactionExtension(
-            client=catalogs_client,
-            settings=settings.model_dump(),
-        )
-        catalogs_search_extension = CatalogsSearchExtension(
-            client=catalogs_client,
-            search_get_request_model=create_get_request_model(search_extensions),
-            search_post_request_model=post_request_model,
-            conformance_classes=list(CATALOGS_SEARCH_CONFORMANCE),
-        )
-        extensions.append(catalogs_extension)
-        extensions.append(catalogs_transaction_extension)
-        extensions.append(catalogs_search_extension)
-    except ImportError as e:
-        logger.warning(
-            "ENABLE_CATALOGS_ROUTE is set to true, but the catalogs extension is not installed. "
-            "Please install it with: pip install stac-fastapi-core[catalogs]. "
-            f"Error: {e}"
-        )
-
-
-database_logic.extensions = [type(ext).__name__ for ext in extensions]
-
-items_get_request_model = create_request_model(
-    model_name="ItemCollectionUri",
-    base_model=ItemCollectionUri,
-    extensions=[
-        SortExtension(
-            conformance_classes=[SortConformanceClasses.ITEMS],
         ),
-        QueryExtension(
-            conformance_classes=[QueryConformanceClasses.ITEMS],
+        "search_get_request_model": get_request_model,
+        "search_post_request_model": post_request_model,
+        "items_get_request_model": items_get_request_model,
+        "route_dependencies": get_route_dependencies(),
+        "app": FastAPI(
+            title=title,
+            description=description,
+            version=api_version,
+            openapi_url="/api",
+            docs_url="/api.html",
+            redoc_url=None,
+            lifespan=lifespan,
         ),
-        filter_extension,
-        FieldsExtension(conformance_classes=[FieldsConformanceClasses.ITEMS]),
-        FreeTextExtension(
-            conformance_classes=[FreeTextConformanceClasses.ITEMS],
-        ),
-    ],
-    request_type="GET",
-)
+    }
+    if collections_get_request_model is not None:
+        app_config_local[
+            "collections_get_request_model"
+        ] = collections_get_request_model
 
-app_config = {
-    "title": os.getenv("STAC_FASTAPI_TITLE", "stac-fastapi-opensearch"),
-    "description": os.getenv("STAC_FASTAPI_DESCRIPTION", "stac-fastapi-opensearch"),
-    "api_version": os.getenv("STAC_FASTAPI_VERSION", "6.19.0"),
-    "settings": settings,
-    "extensions": extensions,
-    "client": CoreClient(
-        database=database_logic,
-        session=session,
-        post_request_model=post_request_model,
-        landing_page_id=os.getenv("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"),
-    ),
-    "collections_get_request_model": collections_get_request_model,
-    "search_get_request_model": create_get_request_model(search_extensions),
-    "search_post_request_model": post_request_model,
-    "items_get_request_model": items_get_request_model,
-    "route_dependencies": get_route_dependencies(),
-}
+    stac_api = StacApi(**app_config_local)
+    fastapi_app = stac_api.app
 
-# Add collections_get_request_model if it was created
-if collections_get_request_model:
-    app_config["collections_get_request_model"] = collections_get_request_model
+    fastapi_app.add_exception_handler(QueuedSuccess, queued_success_handler)
+    fastapi_app.root_path = os.getenv("STAC_FASTAPI_ROOT_PATH", "")
 
-api = StacApi(**app_config)
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Lifespan handler for FastAPI app. Initializes index templates and collections at startup."""
-    await create_index_templates()
-    await create_collection_index()
-    yield
-
-
-app = api.app
-app.router.lifespan_context = lifespan
-
-# Register custom exception handler for queued items (202 Accepted)
-app.add_exception_handler(QueuedSuccess, queued_success_handler)
-app.root_path = os.getenv("STAC_FASTAPI_ROOT_PATH", "")
-
-# Set multi-tenant privacy flag in app state
-setattr(app.state, "catalogs_hide_alternate_parents", HIDE_ALTERNATE_PARENTS)
-
-try:
-    from stac_fastapi.sfeos_helpers.metrics import get_instrumentator
-
-    metrics = get_instrumentator()
-    metrics.instrument(app).expose(app, endpoint="/metrics")
-except ImportError:
-    logger.warning(
-        "prometheus-fastapi-instrumentator not installed; metrics endpoint disabled"
+    # Make this available for serializers and tests that inspect app config.
+    setattr(
+        fastapi_app.state,
+        "catalogs_hide_alternate_parents",
+        extensions_manager.hide_alternate_parents,
     )
+    app_config_for_state = app_config_local.copy()
+    app_config_for_state.pop("app", None)
+    setattr(fastapi_app.state, "app_config", app_config_for_state)
 
-# Add rate limit
-setup_rate_limit(app, rate_limit=os.getenv("STAC_FASTAPI_RATE_LIMIT"))
+    try:
+        from stac_fastapi.sfeos_helpers.metrics import get_instrumentator
+
+        metrics = get_instrumentator()
+        metrics.instrument(fastapi_app).expose(fastapi_app, endpoint="/metrics")
+    except ImportError:
+        logger.warning(
+            "prometheus-fastapi-instrumentator not installed; metrics endpoint disabled"
+        )
+
+    setup_rate_limit(fastapi_app, rate_limit=os.getenv("STAC_FASTAPI_RATE_LIMIT"))
+
+    return stac_api
+
+
+api = instantiate_api()
+app = api.app
+app_config = app.state.app_config
 
 
 def run() -> None:
     """Run app from command line using uvicorn if available."""
     try:
         import uvicorn
+
+        settings = OpensearchSettings()
 
         uvicorn.run(
             "stac_fastapi.opensearch.app:app",
