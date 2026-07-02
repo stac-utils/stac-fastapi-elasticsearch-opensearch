@@ -78,9 +78,7 @@ spec:
             {{- include "stac-fastapi.environment" . | nindent 12 }}
           {{- with .Values.app.envFrom }}
           envFrom:
-            {{- range $i, $val := . }}
-              - {{ $val | toYaml | nindent 16 }}
-            {{ end -}}
+            {{- toYaml . | nindent 12 }}
           {{- end }}
           resources:
             {{- toYaml .Values.app.resources | nindent 12 }}
