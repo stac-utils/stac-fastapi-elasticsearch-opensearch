@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+- Added `app.extraContainers` to allow injecting additional sidecar containers into the Deployment.
+- Added `app.envFrom` to allow configuring container `envFrom` sources.
+- Added `app.extraEnv` to allow adding additional container environment entries.
+
 ### Added
 
 ### Changed

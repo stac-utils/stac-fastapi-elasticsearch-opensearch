@@ -178,9 +178,18 @@ app:
   extraVolumeMounts: []
   extraVolumes: []
 
+  # Additional containers to add to deployment
+  extraContainers: []
+
   # Additional environment variables from secrets
   envFromSecret: {}
     # ES_API_KEY: "es-api-key-secret"
+
+  # Extra environment variable
+  extraEnv: []
+
+  # Load environment variables using envFrom
+  envFrom: []
 
   # Database authentication configuration for bundled backends
   databaseAuth:
