@@ -231,6 +231,7 @@ Create environment variables for the application
 {{- define "stac-fastapi.environment" -}}
 {{- $env := default (dict) .Values.app.env -}}
 {{- $envFromSecret := default (dict) .Values.app.envFromSecret -}}
+{{- $extraEnv := default (dict) .Values.app.extraEnv -}}
 {{- $dbAuth := deepCopy (default (dict) .Values.app.databaseAuth) -}}
 {{- $opensearchSecurity := default (dict) .Values.opensearchSecurity -}}
 {{- $redisConfig := default (dict) .Values.redis -}}
@@ -306,6 +307,9 @@ Create environment variables for the application
     secretKeyRef:
       name: {{ $secretName }}
       key: {{ $key }}
+{{- end }}
+{{- range $i, $val := $extraEnv }}
+- {{ $val | toYaml | nindent 2 }}
 {{- end }}
 {{- end }}
 
