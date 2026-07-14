@@ -41,7 +41,7 @@ dependencies = [
     "pygeofilter>=0.3.1,<0.5.0",
     "jsonschema~=4.26.0",
     "slowapi~=0.1.9",
-    "uvicorn>=0.23,<0.51",
+    "uvicorn>=0.23,<0.52",
     "starlette>=0.35.0,<1.4.0",
 ]
 
