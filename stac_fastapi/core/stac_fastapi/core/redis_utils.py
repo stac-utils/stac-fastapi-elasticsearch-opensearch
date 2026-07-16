@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import datetime as dt_datetime
 from functools import wraps
-from typing import Callable, Literal, cast
+from typing import Any, Callable, Literal, cast
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from pydantic import Field, field_validator
@@ -256,7 +256,7 @@ async def save_prev_link(
         elif settings.REDIS_HOST:
             ttl_seconds = settings.REDIS_SELF_LINK_TTL
         key = get_redis_key(next_url, next_token)
-        payload = {"href": current_url, "method": current_method}
+        payload: dict[str, Any] = {"href": current_url, "method": current_method}
         if current_method == "POST" and current_body is not None:
             payload["body"] = current_body
         await redis.setex(key, ttl_seconds, json.dumps(payload))
