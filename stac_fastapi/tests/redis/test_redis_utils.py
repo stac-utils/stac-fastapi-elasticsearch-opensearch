@@ -38,7 +38,9 @@ async def test_redis_utils_functions():
     await save_prev_link(redis, next_url, current_url, token)
 
     retrieved_link = await get_prev_link(redis, next_url, token)
-    assert retrieved_link == current_url
+    assert retrieved_link
+    assert retrieved_link["href"] == current_url
+    assert retrieved_link["method"] == "GET"
 
     await save_prev_link(redis, None, "should_not_save", None)
     null_result = await get_prev_link(redis, None, None)
