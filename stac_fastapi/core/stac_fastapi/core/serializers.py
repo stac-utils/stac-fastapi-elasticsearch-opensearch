@@ -14,7 +14,7 @@ from stac_fastapi.core.models import Catalog
 from stac_fastapi.core.models.links import CollectionLinks
 from stac_fastapi.core.utilities import get_bool_env, get_excluded_from_items
 from stac_fastapi.types import stac as stac_types
-from stac_fastapi.types.links import ItemLinks, resolve_links
+from stac_fastapi.types.links import ItemLinks
 
 logger = logging.getLogger(__name__)
 
@@ -164,7 +164,8 @@ class ItemSerializer(Serializer):
             A dictionary representation of the item ready for database insertion.
         """
         # Add required STAC v1.0.0 collection link if item has collection field
-        item_links = resolve_links(stac_data.get("links", []), base_url)
+        # Don't resolve links during storage - they will be resolved during retrieval
+        item_links = stac_data.get("links", [])
 
         # Ensure collection link exists (required by STAC v1.0.0 spec)
         if stac_data.get("collection"):
@@ -242,7 +243,8 @@ class ItemSerializer(Serializer):
 
         original_links = item.get("links", [])
         if original_links:
-            item_links += resolve_links(original_links, base_url)
+            # Don't resolve links during retrieval - they were stored as-is
+            item_links += original_links
 
         assets = (
             {
@@ -336,9 +338,8 @@ class CollectionSerializer(Serializer):
             A dictionary representation of the collection for the database.
         """
         collection = deepcopy(collection)
-        collection["links"] = resolve_links(
-            collection.get("links", []), str(request.base_url)
-        )
+        # Don't resolve links during storage - they will be resolved during retrieval
+        # This prevents absolute URLs from being mangled by resolve_links()
         if get_bool_env("STAC_INDEX_ASSETS"):
             for key in ["assets", "item_assets"]:
                 if key in collection:
@@ -403,7 +404,8 @@ class CollectionSerializer(Serializer):
 
         original_links = collection.get("links")
         if original_links:
-            collection_links += resolve_links(original_links, base_url)
+            # Don't resolve links during retrieval - they were stored as-is
+            collection_links += original_links
 
         collection["links"] = collection_links
 
@@ -478,7 +480,8 @@ class CollectionSerializer(Serializer):
 
         original_links = collection.get("links")
         if original_links:
-            collection_links += resolve_links(original_links, base_url)
+            # Don't resolve links during retrieval - they were stored as-is
+            collection_links += original_links
 
         collection["links"] = collection_links
 
@@ -503,7 +506,8 @@ class CatalogSerializer(Serializer):
             A dictionary representation of the catalog for the database.
         """
         catalog = deepcopy(catalog)
-        catalog.links = resolve_links(catalog.links, str(request.base_url))
+        # Don't resolve links during storage - they will be resolved during retrieval
+        # This prevents absolute URLs from being mangled by resolve_links()
         return catalog
 
     @classmethod
@@ -532,7 +536,8 @@ class CatalogSerializer(Serializer):
         catalog.setdefault("title", "")
         catalog.setdefault("description", "")
 
-        catalog_links = resolve_links(catalog.get("links", []), base_url)
+        # Don't resolve links during retrieval - they were stored as-is
+        catalog_links = catalog.get("links", [])
 
         # Get hide_alternate_parents flag from app state
         hide_alternate_parents = (
