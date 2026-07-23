@@ -56,14 +56,6 @@ def get_default_extensions_map(
         FilterConformanceClasses.ADVANCED_COMPARISON_OPERATORS
     )
 
-    aggregation_extension = AggregationExtension(
-        client=EsAsyncBaseAggregationClient(
-            database=database_logic, session=session, settings=settings
-        )
-    )
-    aggregation_extension.POST = EsAggregationExtensionPostRequest
-    aggregation_extension.GET = EsAggregationExtensionGetRequest
-
     fields_extension = FieldsExtension()
     fields_extension.conformance_classes.append(FieldsConformanceClasses.ITEMS)
 
@@ -284,25 +276,25 @@ class Extensions:
         if not self.collections_search_enabled:
             return []
 
-        if (
-            self.collection_search_extension is None
-            or self.collection_search_post_request_model is None
-        ):
+        ext = self.collection_search_extension
+        post_model = self.collection_search_post_request_model
+
+        if ext is None or post_model is None:
             return []
 
         return [
-            self.collection_search_extension,
+            ext,
             CollectionSearchPostExtension(
                 client=CoreClient(
                     database=self.database_logic,
                     session=self.session,
-                    post_request_model=self.collection_search_post_request_model,
+                    post_request_model=post_model,
                     landing_page_id=os.getenv(
                         "STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"
                     ),
                 ),
                 settings=self.settings,
-                POST=self.collection_search_post_request_model,
+                POST=post_model,
                 conformance_classes=[
                     "https://api.stacspec.org/v1.0.0-rc.1/collection-search",
                     QueryConformanceClasses.COLLECTIONS,
@@ -320,10 +312,10 @@ class Extensions:
         if not self.collections_search_route_enabled:
             return []
 
-        if (
-            self.collections_get_request_model is None
-            or self.collection_search_post_request_model is None
-        ):
+        get_model = self.collections_get_request_model
+        post_model = self.collection_search_post_request_model
+
+        if get_model is None or post_model is None:
             return []
 
         return [
@@ -331,14 +323,14 @@ class Extensions:
                 client=CoreClient(
                     database=self.database_logic,
                     session=self.session,
-                    post_request_model=self.collection_search_post_request_model,
+                    post_request_model=post_model,
                     landing_page_id=os.getenv(
                         "STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"
                     ),
                 ),
                 settings=self.settings,
-                GET=self.collections_get_request_model,
-                POST=self.collection_search_post_request_model,
+                GET=get_model,
+                POST=post_model,
                 conformance_classes=[
                     "https://api.stacspec.org/v1.0.0-rc.1/collection-search",
                     QueryConformanceClasses.COLLECTIONS,
