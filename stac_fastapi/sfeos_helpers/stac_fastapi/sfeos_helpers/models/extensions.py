@@ -149,6 +149,37 @@ class Extensions:
             return bool(value)
         return get_bool_env(env_name, default=default)
 
+    @property
+    def transactions_enabled(self) -> bool:
+        """Whether transaction extensions should be enabled."""
+        return self._flag(
+            "enable_transactions_extensions", "ENABLE_TRANSACTIONS_EXTENSIONS", True
+        )
+
+    @property
+    def collections_search_enabled(self) -> bool:
+        """Whether collection-search extension routes should be enabled."""
+        return self._flag(
+            "enable_collections_search", "ENABLE_COLLECTIONS_SEARCH", True
+        )
+
+    @property
+    def collections_search_route_enabled(self) -> bool:
+        """Whether the dedicated collections-search endpoint should be enabled."""
+        return self._flag(
+            "enable_collections_search_route", "ENABLE_COLLECTIONS_SEARCH_ROUTE", False
+        )
+
+    @property
+    def catalogs_enabled(self) -> bool:
+        """Whether multi-tenant catalogs extension routes should be enabled."""
+        return self._flag("enable_catalogs_route", "ENABLE_CATALOGS_ROUTE", False)
+
+    @property
+    def hide_alternate_parents(self) -> bool:
+        """Whether alternate parent links should be hidden in catalog responses."""
+        return self._flag("hide_alternate_parents", "HIDE_ALTERNATE_PARENTS", False)
+
     def get_enabled_extensions(self, key: str) -> list[ApiExtension]:
         """Return the enabled extensions for the named endpoint mapping."""
         extensions_map = getattr(self, f"{key}_map")
@@ -195,9 +226,7 @@ class Extensions:
     @property
     def transaction(self) -> list[ApiExtension]:
         """Return transaction extensions when enabled."""
-        if not self._flag(
-            "enable_transactions_extensions", "ENABLE_TRANSACTIONS_EXTENSIONS", True
-        ):
+        if not self.transactions_enabled:
             return []
 
         return [
@@ -221,12 +250,8 @@ class Extensions:
     @property
     def collection_search_extension(self) -> CollectionSearchExtension | None:
         """Return the collection search extension when enabled."""
-        collections_search = self._flag(
-            "enable_collections_search", "ENABLE_COLLECTIONS_SEARCH", True
-        )
-        collections_route = self._flag(
-            "enable_collections_search_route", "ENABLE_COLLECTIONS_SEARCH_ROUTE", False
-        )
+        collections_search = self.collections_search_enabled
+        collections_route = self.collections_search_route_enabled
 
         if not (collections_search or collections_route):
             return None
@@ -237,12 +262,8 @@ class Extensions:
     @property
     def collection_search_post_request_model(self) -> Any | None:
         """Return the collection search POST request model when enabled."""
-        collections_search = self._flag(
-            "enable_collections_search", "ENABLE_COLLECTIONS_SEARCH", True
-        )
-        collections_route = self._flag(
-            "enable_collections_search_route", "ENABLE_COLLECTIONS_SEARCH_ROUTE", False
-        )
+        collections_search = self.collections_search_enabled
+        collections_route = self.collections_search_route_enabled
 
         if not (collections_search or collections_route):
             return None
@@ -260,9 +281,7 @@ class Extensions:
     @property
     def collection_search(self) -> list[ApiExtension]:
         """Return the collection search extension set when enabled."""
-        if not self._flag(
-            "enable_collections_search", "ENABLE_COLLECTIONS_SEARCH", True
-        ):
+        if not self.collections_search_enabled:
             return []
 
         if (
@@ -298,9 +317,7 @@ class Extensions:
     @property
     def collections_search_route(self) -> list[ApiExtension]:
         """Return the collections search route extension when enabled."""
-        if not self._flag(
-            "enable_collections_search_route", "ENABLE_COLLECTIONS_SEARCH_ROUTE", False
-        ):
+        if not self.collections_search_route_enabled:
             return []
 
         if (
@@ -336,7 +353,7 @@ class Extensions:
     @property
     def catalogs(self) -> list[ApiExtension]:
         """Return catalog extensions when the catalogs route is enabled."""
-        if not self._flag("enable_catalogs_route", "ENABLE_CATALOGS_ROUTE", False):
+        if not self.catalogs_enabled:
             return []
 
         try:
