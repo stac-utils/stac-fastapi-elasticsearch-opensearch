@@ -63,7 +63,7 @@ redis = [
     "stac-fastapi-core[redis]==6.19.0",
 ]
 server = [
-    "uvicorn[standard]>=0.23,<0.50",
+    "uvicorn[standard]>=0.23,<0.52",
 ]
 validator = [
     "stac-fastapi-core[validator]==6.19.0",
