@@ -15,17 +15,10 @@ from stac_fastapi.api.models import (
 )
 from stac_fastapi.core.core import CoreClient
 from stac_fastapi.core.exceptions import QueuedSuccess, queued_success_handler
-from stac_fastapi.core.extensions import QueryExtension
-from stac_fastapi.core.extensions.fields import FieldsExtension
 from stac_fastapi.core.rate_limit import setup_rate_limit
 from stac_fastapi.core.route_dependencies import get_route_dependencies
 from stac_fastapi.core.session import Session
 from stac_fastapi.core.utilities import get_bool_env
-from stac_fastapi.extensions import FreeTextExtension, SortExtension
-from stac_fastapi.extensions.fields import FieldsConformanceClasses
-from stac_fastapi.extensions.free_text import FreeTextConformanceClasses
-from stac_fastapi.extensions.query import QueryConformanceClasses
-from stac_fastapi.extensions.sort import SortConformanceClasses
 from stac_fastapi.opensearch.config import OpensearchSettings
 from stac_fastapi.opensearch.database_logic import (
     DatabaseLogic,
@@ -114,20 +107,7 @@ def instantiate_api(
     items_get_request_model = create_request_model(
         model_name="ItemCollectionUri",
         base_model=ItemCollectionUri,
-        extensions=[
-            SortExtension(
-                conformance_classes=[SortConformanceClasses.ITEMS],
-            ),
-            QueryExtension(
-                conformance_classes=[QueryConformanceClasses.ITEMS],
-            ),
-            extensions_manager.filter_extension,
-            FieldsExtension(conformance_classes=[FieldsConformanceClasses.ITEMS]),
-            FreeTextExtension(
-                conformance_classes=[FreeTextConformanceClasses.ITEMS],
-            ),
-        ],
-        request_type="GET",
+        extensions=extensions_manager.item_collection,
     )
 
     @asynccontextmanager
@@ -150,6 +130,9 @@ def instantiate_api(
         "client": CoreClient(
             database=database_logic,
             session=session,
+            extensions=application_extensions,
+            title=title,
+            description=description,
             post_request_model=post_request_model,
             landing_page_id=os.getenv("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"),
         ),

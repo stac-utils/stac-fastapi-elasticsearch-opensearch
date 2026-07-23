@@ -3,7 +3,6 @@
 import logging
 import os
 from dataclasses import dataclass, field
-from functools import cached_property
 from typing import Any
 
 from stac_fastapi.api.models import create_get_request_model, create_post_request_model
@@ -46,6 +45,73 @@ from stac_fastapi.types.extension import ApiExtension
 logger = logging.getLogger(__name__)
 
 
+def get_default_extensions_map(
+    key: str, database_logic: Any, session: Any, settings: Any
+) -> dict[str, ApiExtension]:
+    """Generate fresh default extensions per instance to avoid global mutations."""
+    filter_extension = FilterExtension(
+        client=EsAsyncBaseFiltersClient(database=database_logic, settings=settings)
+    )
+    filter_extension.conformance_classes.append(
+        FilterConformanceClasses.ADVANCED_COMPARISON_OPERATORS
+    )
+
+    aggregation_extension = AggregationExtension(
+        client=EsAsyncBaseAggregationClient(
+            database=database_logic, session=session, settings=settings
+        )
+    )
+    aggregation_extension.POST = EsAggregationExtensionPostRequest
+    aggregation_extension.GET = EsAggregationExtensionGetRequest
+
+    fields_extension = FieldsExtension()
+    fields_extension.conformance_classes.append(FieldsConformanceClasses.ITEMS)
+
+    DEFAULT_EXTENSIONS = {
+        "search_map": {
+            "fields": fields_extension,
+            "query": QueryExtension(),
+            "sort": SortExtension(),
+            "pagination": TokenPaginationExtension(),
+            "filter": filter_extension,
+            "free_text": FreeTextExtension(
+                conformance_classes=[FreeTextConformanceClasses.SEARCH],
+            ),
+        },
+        "collection_search_map": {
+            "query": QueryExtension(
+                conformance_classes=[QueryConformanceClasses.COLLECTIONS]
+            ),
+            "sort": SortExtension(
+                conformance_classes=[SortConformanceClasses.COLLECTIONS]
+            ),
+            "fields": FieldsExtension(
+                conformance_classes=[FieldsConformanceClasses.COLLECTIONS]
+            ),
+            "filter": CollectionSearchFilterExtension(
+                conformance_classes=[FilterConformanceClasses.COLLECTIONS]
+            ),
+            "free_text": FreeTextExtension(
+                conformance_classes=[FreeTextConformanceClasses.COLLECTIONS]
+            ),
+        },
+        "item_collection_map": {
+            "sort": SortExtension(conformance_classes=[SortConformanceClasses.ITEMS]),
+            "query": QueryExtension(
+                conformance_classes=[QueryConformanceClasses.ITEMS]
+            ),
+            "filter": filter_extension,
+            "fields": FieldsExtension(
+                conformance_classes=[FieldsConformanceClasses.ITEMS]
+            ),
+            "free_text": FreeTextExtension(
+                conformance_classes=[FreeTextConformanceClasses.ITEMS]
+            ),
+        },
+    }
+    return DEFAULT_EXTENSIONS.get(key, {})
+
+
 @dataclass
 class Extensions:
     """Build and expose API extensions based on runtime settings and flags."""
@@ -53,7 +119,28 @@ class Extensions:
     settings: Any
     database_logic: Any
     session: Any
+
+    search_map: dict[str, ApiExtension] = field(default_factory=dict)
+    collection_search_map: dict[str, ApiExtension] = field(default_factory=dict)
+    item_collection_map: dict[str, ApiExtension] = field(default_factory=dict)
     extra_map: dict[str, ApiExtension] = field(default_factory=dict)
+
+    def __post_init__(self):
+        """Merge fresh defaults with user-provided overrides exactly once."""
+        for key in [
+            "search_map",
+            "collection_search_map",
+            "item_collection_map",
+            "extra_map",
+        ]:
+            defaults = get_default_extensions_map(
+                key,
+                database_logic=self.database_logic,
+                session=self.session,
+                settings=self.settings,
+            )
+            merged = {**defaults, **getattr(self, key)}
+            setattr(self, key, merged)
 
     def _flag(self, attr_name: str, env_name: str, default: bool) -> bool:
         """Read feature flags from settings first, then env vars for compatibility."""
@@ -62,73 +149,23 @@ class Extensions:
             return bool(value)
         return get_bool_env(env_name, default=default)
 
-    @cached_property
-    def extra(self) -> list[ApiExtension]:
-        """Return custom out-of-tree extensions provided by users."""
-        return list(self.extra_map.values()) if self.extra_map else []
+    def get_enabled_extensions(self, key: str) -> list[ApiExtension]:
+        """Return the enabled extensions for the named endpoint mapping."""
+        extensions_map = getattr(self, f"{key}_map")
+        enabled_extensions_keys = getattr(self.settings, "enabled_extensions", None)
 
-    @cached_property
-    def transactions_enabled(self) -> bool:
-        """Whether transaction extensions should be enabled."""
-        return self._flag(
-            attr_name="enable_transactions_extensions",
-            env_name="ENABLE_TRANSACTIONS_EXTENSIONS",
-            default=True,
-        )
+        if enabled_extensions_keys is None:
+            return list(extensions_map.values())
+        else:
+            return [
+                extension
+                for k, extension in extensions_map.items()
+                if k in enabled_extensions_keys
+            ]
 
-    @cached_property
-    def collections_search_enabled(self) -> bool:
-        """Whether collection-search extension routes should be enabled."""
-        return self._flag(
-            attr_name="enable_collections_search",
-            env_name="ENABLE_COLLECTIONS_SEARCH",
-            default=True,
-        )
-
-    @cached_property
-    def collections_search_route_enabled(self) -> bool:
-        """Whether the dedicated collections-search endpoint should be enabled."""
-        return self._flag(
-            attr_name="enable_collections_search_route",
-            env_name="ENABLE_COLLECTIONS_SEARCH_ROUTE",
-            default=False,
-        )
-
-    @cached_property
-    def catalogs_enabled(self) -> bool:
-        """Whether multi-tenant catalogs extension routes should be enabled."""
-        return self._flag(
-            attr_name="enable_catalogs_route",
-            env_name="ENABLE_CATALOGS_ROUTE",
-            default=False,
-        )
-
-    @cached_property
-    def hide_alternate_parents(self) -> bool:
-        """Whether alternate parent links should be hidden in catalog responses."""
-        return self._flag(
-            attr_name="hide_alternate_parents",
-            env_name="HIDE_ALTERNATE_PARENTS",
-            default=False,
-        )
-
-    @cached_property
-    def filter_extension(self) -> FilterExtension:
-        """Filter extension configured with SFEOS filter backend capabilities."""
-        filter_extension = FilterExtension(
-            client=EsAsyncBaseFiltersClient(
-                database=self.database_logic,
-                settings=self.settings,
-            )
-        )
-        filter_extension.conformance_classes.append(
-            FilterConformanceClasses.ADVANCED_COMPARISON_OPERATORS
-        )
-        return filter_extension
-
-    @cached_property
+    @property
     def aggregation(self) -> list[ApiExtension]:
-        """Build aggregation extension with SFEOS aggregation request models."""
+        """Return the aggregation extension."""
         aggregation_extension = AggregationExtension(
             client=EsAsyncBaseAggregationClient(
                 database=self.database_logic,
@@ -140,27 +177,27 @@ class Extensions:
         aggregation_extension.GET = EsAggregationExtensionGetRequest
         return [aggregation_extension]
 
-    @cached_property
-    def base_search(self) -> list[ApiExtension]:
-        """Build base search extensions for item-search request model assembly."""
-        fields_extension = FieldsExtension()
-        fields_extension.conformance_classes.append(FieldsConformanceClasses.ITEMS)
+    @property
+    def search(self) -> list[ApiExtension]:
+        """Return the complete item search extension set."""
+        return [*self.transaction, *self.get_enabled_extensions("search")]
 
-        return [
-            fields_extension,
-            QueryExtension(),
-            SortExtension(),
-            TokenPaginationExtension(),
-            self.filter_extension,
-            FreeTextExtension(
-                conformance_classes=[FreeTextConformanceClasses.SEARCH],
-            ),
-        ]
+    @property
+    def item_collection(self) -> list[ApiExtension]:
+        """Return the item collection extensions."""
+        return self.get_enabled_extensions("item_collection")
 
-    @cached_property
+    @property
+    def extra(self) -> list[ApiExtension]:
+        """Return custom user-provided out-of-tree extensions."""
+        return self.get_enabled_extensions("extra")
+
+    @property
     def transaction(self) -> list[ApiExtension]:
-        """Transaction-related extensions enabled by runtime feature flags."""
-        if not self.transactions_enabled:
+        """Return transaction extensions when enabled."""
+        if not self._flag(
+            "enable_transactions_extensions", "ENABLE_TRANSACTIONS_EXTENSIONS", True
+        ):
             return []
 
         return [
@@ -181,56 +218,53 @@ class Extensions:
             ),
         ]
 
-    @cached_property
-    def search(self) -> list[ApiExtension]:
-        """Complete item search extension set including optional transactions."""
-        return [*self.transaction, *self.base_search]
-
-    @cached_property
-    def collections_search_base(self) -> list[ApiExtension]:
-        """Build base extensions for collections-search request and route models."""
-        return [
-            QueryExtension(conformance_classes=[QueryConformanceClasses.COLLECTIONS]),
-            SortExtension(conformance_classes=[SortConformanceClasses.COLLECTIONS]),
-            FieldsExtension(conformance_classes=[FieldsConformanceClasses.COLLECTIONS]),
-            CollectionSearchFilterExtension(
-                conformance_classes=[FilterConformanceClasses.COLLECTIONS]
-            ),
-            FreeTextExtension(
-                conformance_classes=[FreeTextConformanceClasses.COLLECTIONS]
-            ),
-        ]
-
-    @cached_property
+    @property
     def collection_search_extension(self) -> CollectionSearchExtension | None:
-        """Return collection search extension when any related feature flag is enabled."""
-        if not (
-            self.collections_search_enabled or self.collections_search_route_enabled
-        ):
-            return None
-        return CollectionSearchExtension.from_extensions(self.collections_search_base)
+        """Return the collection search extension when enabled."""
+        collections_search = self._flag(
+            "enable_collections_search", "ENABLE_COLLECTIONS_SEARCH", True
+        )
+        collections_route = self._flag(
+            "enable_collections_search_route", "ENABLE_COLLECTIONS_SEARCH_ROUTE", False
+        )
 
-    @cached_property
+        if not (collections_search or collections_route):
+            return None
+        return CollectionSearchExtension.from_extensions(
+            self.get_enabled_extensions("collection_search")
+        )
+
+    @property
     def collection_search_post_request_model(self) -> Any | None:
-        """POST request model for collections search when that feature is enabled."""
-        if not (
-            self.collections_search_enabled or self.collections_search_route_enabled
-        ):
-            return None
-        return create_post_request_model(self.collections_search_base)
+        """Return the collection search POST request model when enabled."""
+        collections_search = self._flag(
+            "enable_collections_search", "ENABLE_COLLECTIONS_SEARCH", True
+        )
+        collections_route = self._flag(
+            "enable_collections_search_route", "ENABLE_COLLECTIONS_SEARCH_ROUTE", False
+        )
 
-    @cached_property
+        if not (collections_search or collections_route):
+            return None
+        return create_post_request_model(
+            self.get_enabled_extensions("collection_search")
+        )
+
+    @property
     def collections_get_request_model(self) -> Any | None:
-        """GET request model for collections search derived from extension metadata."""
+        """Return the collections GET request model when available."""
         if self.collection_search_extension is None:
             return None
         return self.collection_search_extension.GET
 
-    @cached_property
+    @property
     def collection_search(self) -> list[ApiExtension]:
-        """Return collection search extensions attached to standard STAC API routes."""
-        if not self.collections_search_enabled:
+        """Return the collection search extension set when enabled."""
+        if not self._flag(
+            "enable_collections_search", "ENABLE_COLLECTIONS_SEARCH", True
+        ):
             return []
+
         if (
             self.collection_search_extension is None
             or self.collection_search_post_request_model is None
@@ -261,11 +295,14 @@ class Extensions:
             ),
         ]
 
-    @cached_property
+    @property
     def collections_search_route(self) -> list[ApiExtension]:
-        """Dedicated `/collections-search` endpoint extension set, when enabled."""
-        if not self.collections_search_route_enabled:
+        """Return the collections search route extension when enabled."""
+        if not self._flag(
+            "enable_collections_search_route", "ENABLE_COLLECTIONS_SEARCH_ROUTE", False
+        ):
             return []
+
         if (
             self.collections_get_request_model is None
             or self.collection_search_post_request_model is None
@@ -296,10 +333,10 @@ class Extensions:
             )
         ]
 
-    @cached_property
+    @property
     def catalogs(self) -> list[ApiExtension]:
-        """Multi-tenant catalogs extensions when dependency and flag are available."""
-        if not self.catalogs_enabled:
+        """Return catalog extensions when the catalogs route is enabled."""
+        if not self._flag("enable_catalogs_route", "ENABLE_CATALOGS_ROUTE", False):
             return []
 
         try:
@@ -333,11 +370,15 @@ class Extensions:
             core_client=core_client,
         )
 
+        hide_parents = self._flag(
+            "hide_alternate_parents", "HIDE_ALTERNATE_PARENTS", False
+        )
+
         return [
             CatalogsExtension(
                 client=catalogs_client,
                 settings=self.settings.model_dump(),
-                hide_alternate_parents=self.hide_alternate_parents,
+                hide_alternate_parents=hide_parents,
             ),
             CatalogsTransactionExtension(
                 client=catalogs_client,
