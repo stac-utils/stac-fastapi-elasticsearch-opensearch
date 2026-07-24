@@ -186,9 +186,17 @@ def instantiate_api(
     return stac_api
 
 
-api = instantiate_api()
-app = api.app
-app_config = app.state.app_config
+def create_app() -> FastAPI:
+    """Create a new FastAPI application instance using the factory pattern.
+
+    This function is designed to be used with Uvicorn's --factory flag:
+    uvicorn stac_fastapi.opensearch.app:create_app --factory
+
+    Returns:
+        FastAPI: A fresh FastAPI application instance with all routes configured.
+    """
+    api = instantiate_api()
+    return api.app
 
 
 def run() -> None:
@@ -199,7 +207,8 @@ def run() -> None:
         settings = OpensearchSettings()
 
         uvicorn.run(
-            "stac_fastapi.opensearch.app:app",
+            "stac_fastapi.opensearch.app:create_app",
+            factory=True,
             host=settings.app_host,
             port=settings.app_port,
             log_level="info",
@@ -213,7 +222,7 @@ if __name__ == "__main__":
     run()
 
 
-def create_handler(app):
+def create_handler(app: FastAPI):
     """Create a handler to use with AWS Lambda if mangum available."""
     try:
         from mangum import Mangum
@@ -223,4 +232,5 @@ def create_handler(app):
         return None
 
 
-handler = create_handler(app)
+# For AWS Lambda and other serverless platforms
+handler = create_handler(create_app())

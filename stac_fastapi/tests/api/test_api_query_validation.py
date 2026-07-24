@@ -4,30 +4,11 @@ from unittest import mock
 
 import pytest
 
-if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
-    from stac_fastapi.opensearch.app import app_config
-else:
-    from stac_fastapi.elasticsearch.app import app_config
-
-
-def get_core_client():
-    if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
-        from stac_fastapi.opensearch.app import app_config
-    else:
-        from stac_fastapi.elasticsearch.app import app_config
-    return app_config["client"]
-
-
-def reload_queryables_settings():
-    client = get_core_client()
-    if hasattr(client, "queryables_cache"):
-        client.queryables_cache.reload_settings()
-
 
 @pytest.fixture(autouse=True)
-def enable_validation():
-
-    client = app_config["client"]
+def enable_validation(app):
+    """Enable queryables validation for all tests in this module."""
+    client = app.state.app_config["client"]
     with mock.patch.dict(os.environ, {"VALIDATE_QUERYABLES": "true"}):
         client.queryables_cache.reload_settings()
         client.queryables_cache._cache = {}
@@ -89,11 +70,11 @@ async def test_item_collection_get_filter_invalid_param(app_client, ctx):
 
 
 @pytest.mark.asyncio
-async def test_validate_queryables_excluded(app_client, ctx):
+async def test_validate_queryables_excluded(app, app_client, ctx):
     """Test that excluded queryables are rejected when validation is enabled."""
 
     excluded_field = "eo:cloud_cover"
-    client = app_config["client"]
+    client = app.state.app_config["client"]
 
     with mock.patch.dict(
         os.environ,
