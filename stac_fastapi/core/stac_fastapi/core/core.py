@@ -994,6 +994,8 @@ class CoreClient(AsyncBaseCoreClient):
                 token=token_param,
                 next_token=next_token,
                 links=links,
+                method=request.method,
+                body=getattr(request, "postbody", None),
             )
 
         return stac_types.ItemCollection(

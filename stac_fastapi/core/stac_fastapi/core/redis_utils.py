@@ -4,7 +4,7 @@ import json
 import logging
 from datetime import datetime as dt_datetime
 from functools import wraps
-from typing import Callable, Literal, cast
+from typing import Any, Callable, Literal, cast
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from pydantic import Field, field_validator
@@ -242,7 +242,12 @@ def build_url_with_token(base_url: str, token: str) -> str:
 
 @redis_retry
 async def save_prev_link(
-    redis: aioredis.Redis, next_url: str, current_url: str, next_token: str
+    redis: aioredis.Redis,
+    next_url: str,
+    current_url: str,
+    next_token: str,
+    current_method: str = "GET",
+    current_body: dict | None = None,
 ) -> None:
     """Save the current page as the previous link for the next URL."""
     if next_url and next_token:
@@ -251,22 +256,38 @@ async def save_prev_link(
         elif settings.REDIS_HOST:
             ttl_seconds = settings.REDIS_SELF_LINK_TTL
         key = get_redis_key(next_url, next_token)
-        await redis.setex(key, ttl_seconds, current_url)
+        payload: dict[str, Any] = {"href": current_url, "method": current_method}
+        if current_method == "POST" and current_body is not None:
+            payload["body"] = current_body
+        await redis.setex(key, ttl_seconds, json.dumps(payload))
 
 
 @redis_retry
 async def get_prev_link(
     redis: aioredis.Redis, current_url: str, current_token: str
-) -> str | None:
+) -> dict | None:
     """Get the previous page link for the current token."""
     if not current_url or not current_token:
         return None
     key = get_redis_key(current_url, current_token)
-    return await redis.get(key)
+    prev_link = await redis.get(key)
+    if not prev_link:
+        return None
+
+    try:
+        return json.loads(prev_link)
+    except json.JSONDecodeError:
+        # Backward compatibility for previously stored plain URLs.
+        return {"href": prev_link, "method": "GET"}
 
 
 async def redis_pagination_links(
-    current_url: str, token: str, next_token: str, links: list
+    current_url: str,
+    token: str,
+    next_token: str,
+    links: list,
+    method: str = "GET",
+    body: dict | None = None,
 ) -> None:
     """Handle Redis pagination."""
     redis = await connect_redis()
@@ -277,20 +298,27 @@ async def redis_pagination_links(
     try:
         if next_token:
             next_url = build_url_with_token(current_url, next_token)
-            await save_prev_link(redis, next_url, current_url, next_token)
+            await save_prev_link(
+                redis,
+                next_url,
+                current_url,
+                next_token,
+                current_method=method,
+                current_body=body,
+            )
 
         if token:
             prev_link = await get_prev_link(redis, current_url, token)
             if prev_link:
-                links.insert(
-                    0,
-                    {
-                        "rel": "previous",
-                        "type": "application/json",
-                        "method": "GET",
-                        "href": prev_link,
-                    },
-                )
+                link = {
+                    "rel": "previous",
+                    "type": "application/json",
+                    "method": prev_link.get("method", "GET"),
+                    "href": prev_link["href"],
+                }
+                if prev_link.get("method") == "POST" and "body" in prev_link:
+                    link["body"] = prev_link["body"]
+                links.insert(0, link)
     except Exception as e:
         logger.warning(f"Redis pagination operation failed: {e}")
     finally:
