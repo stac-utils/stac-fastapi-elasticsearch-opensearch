@@ -452,7 +452,8 @@ def add_commands(
     if isinstance(path.key, int):
         commands.add(
             f"if (ctx._source{path.es_nest} instanceof ArrayList)"
-            f"{{ctx._source{path.es_nest}.{'add' if operation.op in ['add', 'move'] else 'set'}({path.es_key}, {value});}}"
+            "{int insertPos = ctx._source.links.size() > 0 ? ctx._source.links.size() - 1 : 0;"
+            f"ctx._source{path.es_nest}.{'add' if operation.op in ['add', 'move'] else 'set'}(insertPos, {value});}}"
             f" else ctx._source{path.es_path} = {value};"
         )
 
