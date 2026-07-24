@@ -98,7 +98,6 @@ class ElasticPath(BaseModel):
 
         data["key"] = data["parts"].pop(-1)
         data["nest"] = "/".join(data["parts"])
-        data["path"] = data["nest"] + "/" + data["key"]
 
         data["es_key"] = data["key"]
         data["es_nest"] = "".join([f"['{part}']" for part in data["parts"]])
@@ -117,6 +116,7 @@ class ElasticPath(BaseModel):
             f"{data['nest'].replace('/','_').replace(':','_')}"
             f"_{str(data['key']).replace(':','_')}"
         )
+        data["path"] = data["nest"] + "/" + "end" if data["key"] == -1 else data["key"]
         data["param_key"] = data["path"].translate(replacements)
 
         return data
