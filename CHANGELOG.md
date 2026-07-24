@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- Fixed Redis pagination for POST requests. Properly handled pagination tokens for the previous, self, and next links in the response. [#808](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/808)
+
 ### Removed
 
 ### Updated
