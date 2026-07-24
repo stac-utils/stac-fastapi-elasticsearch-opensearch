@@ -26,7 +26,6 @@ from stac_fastapi.extensions import (
     BulkTransactionExtension,
     CollectionSearchExtension,
     CollectionSearchFilterExtension,
-    CollectionSearchPostExtension,
     FilterExtension,
     FreeTextExtension,
     SortExtension,
@@ -272,39 +271,24 @@ class Extensions:
 
     @property
     def collection_search(self) -> list[ApiExtension]:
-        """Return the collection search extension set when enabled."""
+        """Return the collection search extension set when enabled.
+
+        Note: We only return the GET handler (CollectionSearchExtension).
+        POST /collections is exclusively handled by TransactionExtension
+        when transactions are enabled. This prevents route conflicts and
+        ensures POST /collections is only available for creating collections.
+        """
         if not self.collections_search_enabled:
             return []
 
         ext = self.collection_search_extension
-        post_model = self.collection_search_post_request_model
 
-        if ext is None or post_model is None:
+        if ext is None:
             return []
 
-        return [
-            ext,
-            CollectionSearchPostExtension(
-                client=CoreClient(
-                    database=self.database_logic,
-                    session=self.session,
-                    post_request_model=post_model,
-                    landing_page_id=os.getenv(
-                        "STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"
-                    ),
-                ),
-                settings=self.settings,
-                POST=post_model,
-                conformance_classes=[
-                    "https://api.stacspec.org/v1.0.0-rc.1/collection-search",
-                    QueryConformanceClasses.COLLECTIONS,
-                    FilterConformanceClasses.COLLECTIONS,
-                    FreeTextConformanceClasses.COLLECTIONS,
-                    SortConformanceClasses.COLLECTIONS,
-                    FieldsConformanceClasses.COLLECTIONS,
-                ],
-            ),
-        ]
+        # Only return the GET handler, not the POST handler
+        # POST /collections is exclusively for TransactionExtension
+        return [ext]
 
     @property
     def collections_search_route(self) -> list[ApiExtension]:
