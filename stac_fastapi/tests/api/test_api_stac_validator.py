@@ -1238,3 +1238,197 @@ async def test_datetime_validation_datetime_equals_end(
         item_id="datetime-equals-end", collection_id=test_collection["id"]
     )
     assert db_item is not None, "Item with datetime == end_datetime should be inserted"
+
+
+@pytest.mark.asyncio
+async def test_patch_item_with_invalid_bbox_rejected(
+    app_client, txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
+):
+    """Test that PATCH requests with invalid bbox (5 coordinates) are rejected.
+
+    This test verifies the fix for the SFEOS validation bug where PATCH requests
+    were bypassing STAC validation. The final patched item should be validated
+    before being saved to the database.
+    """
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
+
+    # Setup: Create a collection and valid item
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = f"test-collection-patch-{uuid.uuid4()}"
+    await create_collection(txn_client, collection=test_collection)
+
+    base_item = load_test_data("test_item.json")
+    base_item["id"] = "patch-test-item"
+    base_item["collection"] = test_collection["id"]
+
+    # Create the initial valid item
+    await create_item(txn_client, base_item)
+
+    # Now try to PATCH the item with an invalid bbox (5 coordinates instead of 4)
+    # This should fail validation because the final patched item will have invalid bbox
+    invalid_patch = {
+        "op": "replace",
+        "path": "/bbox",
+        "value": [-120.0, 40.0, -110.0, 50.0, 0.0],  # 5 coordinates - INVALID
+    }
+
+    # PATCH should fail with 400 Bad Request
+    resp = await app_client.patch(
+        f"/collections/{test_collection['id']}/items/{base_item['id']}",
+        json=[invalid_patch],
+        headers={"Content-Type": "application/json-patch+json"},
+    )
+
+    assert (
+        resp.status_code == 400
+    ), f"Expected 400 for invalid bbox patch, got {resp.status_code}: {resp.text}"
+    response_data = resp.json()
+    assert "detail" in response_data
+    # The validation error comes from Pydantic's bbox tuple validation
+    # which catches the 5-coordinate bbox
+    detail = response_data["detail"]
+    assert isinstance(detail, str) and (
+        "Invalid item" in detail or "validation" in detail.lower()
+    )
+
+
+@pytest.mark.asyncio
+async def test_patch_item_with_valid_changes_accepted(
+    app_client, txn_client, core_client, load_test_data, monkeypatch: pytest.MonkeyPatch
+):
+    """Test that PATCH requests with valid changes are accepted.
+
+    This test verifies that valid PATCH operations pass validation and are
+    successfully applied to the item.
+    """
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
+
+    # Setup: Create a collection and valid item
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = f"test-collection-patch-valid-{uuid.uuid4()}"
+    await create_collection(txn_client, collection=test_collection)
+
+    base_item = load_test_data("test_item.json")
+    base_item["id"] = "patch-test-valid-item"
+    base_item["collection"] = test_collection["id"]
+
+    # Create the initial valid item
+    await create_item(txn_client, base_item)
+
+    # PATCH the item with a valid change (add a new property)
+    valid_patch = {
+        "op": "add",
+        "path": "/properties/custom_field",
+        "value": "Updated via PATCH",
+    }
+
+    # PATCH should succeed
+    resp = await app_client.patch(
+        f"/collections/{test_collection['id']}/items/{base_item['id']}",
+        json=[valid_patch],
+        headers={"Content-Type": "application/json-patch+json"},
+    )
+
+    assert (
+        resp.status_code == 200
+    ), f"Expected 200 for valid patch, got {resp.status_code}: {resp.text}"
+
+    # Verify the patch was applied by fetching the item
+    get_resp = await app_client.get(
+        f"/collections/{test_collection['id']}/items/{base_item['id']}"
+    )
+    assert get_resp.status_code == 200
+    patched_item = get_resp.json()
+    assert patched_item["properties"]["custom_field"] == "Updated via PATCH"
+
+
+@pytest.mark.asyncio
+async def test_put_item_with_invalid_bbox_rejected(
+    app_client, txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
+):
+    """Test that PUT requests with invalid bbox are rejected.
+
+    This test verifies that full item replacement (PUT) validates the
+    replacement item before saving it.
+    """
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
+
+    # Setup: Create a collection and valid item
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = f"test-collection-put-{uuid.uuid4()}"
+    await create_collection(txn_client, collection=test_collection)
+
+    base_item = load_test_data("test_item.json")
+    base_item["id"] = "put-test-item"
+    base_item["collection"] = test_collection["id"]
+
+    # Create the initial valid item
+    await create_item(txn_client, base_item)
+
+    # Now try to PUT an invalid replacement (5-coordinate bbox)
+    invalid_replacement = deepcopy(base_item)
+    invalid_replacement["bbox"] = [-120.0, 40.0, -110.0, 50.0, 0.0]  # INVALID
+
+    # PUT should fail with 400 Bad Request
+    resp = await app_client.put(
+        f"/collections/{test_collection['id']}/items/{base_item['id']}",
+        json=invalid_replacement,
+    )
+
+    assert (
+        resp.status_code == 400
+    ), f"Expected 400 for invalid bbox PUT, got {resp.status_code}: {resp.text}"
+    response_data = resp.json()
+    assert "detail" in response_data
+    # The validation error comes from Pydantic's bbox tuple validation
+    # which catches the 5-coordinate bbox before STAC validator runs
+    detail = response_data["detail"]
+    assert isinstance(
+        detail, (str, list)
+    ), f"Expected detail to be string or list, got {type(detail)}"
+
+
+@pytest.mark.asyncio
+async def test_put_item_with_valid_replacement_accepted(
+    app_client, txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
+):
+    """Test that PUT requests with valid replacements are accepted.
+
+    This test verifies that full item replacement (PUT) with valid data
+    passes validation and updates the item.
+    """
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
+
+    # Setup: Create a collection and valid item
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = f"test-collection-put-valid-{uuid.uuid4()}"
+    await create_collection(txn_client, collection=test_collection)
+
+    base_item = load_test_data("test_item.json")
+    base_item["id"] = "put-test-valid-item"
+    base_item["collection"] = test_collection["id"]
+
+    # Create the initial valid item
+    await create_item(txn_client, base_item)
+
+    # PUT a valid replacement with updated properties
+    valid_replacement = deepcopy(base_item)
+    valid_replacement["properties"]["description"] = "Updated via PUT"
+
+    # PUT should succeed
+    resp = await app_client.put(
+        f"/collections/{test_collection['id']}/items/{base_item['id']}",
+        json=valid_replacement,
+    )
+
+    assert (
+        resp.status_code == 200
+    ), f"Expected 200 for valid PUT, got {resp.status_code}: {resp.text}"
+
+    # Verify the replacement was applied
+    get_resp = await app_client.get(
+        f"/collections/{test_collection['id']}/items/{base_item['id']}"
+    )
+    assert get_resp.status_code == 200
+    updated_item = get_resp.json()
+    assert updated_item["properties"]["description"] == "Updated via PUT"

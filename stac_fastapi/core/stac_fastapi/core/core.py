@@ -1621,7 +1621,30 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             )
 
         if item:
-            return ItemSerializer.db_to_stac(item, base_url=base_url)
+            # Convert DB item to STAC format
+            stac_item = ItemSerializer.db_to_stac(item, base_url=base_url)
+
+            # Validate the patched result to ensure PATCH operations produce valid STAC items
+            # Only validate if ENABLE_STAC_VALIDATOR is explicitly set
+            if get_bool_env("ENABLE_STAC_VALIDATOR"):
+                # Extract the dictionary for validation
+                item_dict = (
+                    stac_item.model_dump(mode="json")
+                    if hasattr(stac_item, "model_dump")
+                    else stac_item
+                )
+
+                try:
+                    await self._validate_single_item(item_dict)
+                except HTTPException:
+                    # Validation failed - rollback by deleting the patched item
+                    await self.database.delete_item(
+                        item_id=item_id, collection_id=collection_id, **kwargs
+                    )
+                    # Re-raise the validation error
+                    raise
+
+            return stac_item
 
         raise NotImplementedError(
             f"Content-Type: {content_type} and body: {patch} combination not implemented"
