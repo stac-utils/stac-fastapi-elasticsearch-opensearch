@@ -68,32 +68,14 @@ def _patched_add_route_dependencies(
 # Apply the monkey-patch BEFORE StacApi is imported
 stac_fastapi.api.routes.add_route_dependencies = _patched_add_route_dependencies
 
-from stac_fastapi.api.app import StacApi  # noqa: E402
 from stac_fastapi.core.basic_auth import BasicAuth  # noqa: E402
 from stac_fastapi.core.core import (  # noqa: E402
     BulkTransactionsClient,
     CoreClient,
     TransactionsClient,
 )
-from stac_fastapi.core.extensions import QueryExtension  # noqa: E402
-from stac_fastapi.core.extensions.aggregation import (  # noqa: E402
-    EsAggregationExtensionGetRequest,
-    EsAggregationExtensionPostRequest,
-)
 from stac_fastapi.core.rate_limit import setup_rate_limit  # noqa: E402
 from stac_fastapi.core.utilities import get_bool_env  # noqa: E402
-from stac_fastapi.extensions import (  # noqa: E402
-    AggregationExtension,
-    FieldsExtension,
-    FilterExtension,
-    FreeTextExtension,
-    SortExtension,
-    TokenPaginationExtension,
-    TransactionExtension,
-)
-from stac_fastapi.sfeos_helpers.aggregation import (  # noqa: E402
-    EsAsyncBaseAggregationClient,
-)
 from stac_fastapi.sfeos_helpers.mappings import ITEMS_INDEX_PREFIX  # noqa: E402
 from stac_fastapi.types.config import Settings  # noqa: E402
 
@@ -102,7 +84,7 @@ os.environ.setdefault("ENABLE_CATALOGS_ROUTE", "false")
 os.environ.setdefault("DATABASE_REFRESH", "true")
 
 if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
-    from stac_fastapi.opensearch.app import app_config
+    from stac_fastapi.opensearch.app import instantiate_api
     from stac_fastapi.opensearch.config import AsyncOpensearchSettings as AsyncSettings
     from stac_fastapi.opensearch.config import OpensearchSettings as SearchSettings
     from stac_fastapi.opensearch.database_logic import (
@@ -111,7 +93,7 @@ if os.getenv("BACKEND", "elasticsearch").lower() == "opensearch":
         create_index_templates,
     )
 else:
-    from stac_fastapi.elasticsearch.app import app_config
+    from stac_fastapi.elasticsearch.app import instantiate_api
     from stac_fastapi.elasticsearch.config import (
         AsyncElasticsearchSettings as AsyncSettings,
     )
@@ -276,11 +258,9 @@ def bulk_txn_client():
 
 @pytest_asyncio.fixture(scope="session")
 async def app():
-    # Ensure the main app fixture doesn't have any route dependencies
-    # (no BasicAuth or other authentication)
-    test_config = app_config.copy()
-    test_config["route_dependencies"] = []
-    api = StacApi(**test_config)
+    """Return a fresh FastAPI app with no route dependencies."""
+    api = instantiate_api()
+    api.app.router.dependencies = []
     return api.app
 
 
@@ -298,16 +278,11 @@ async def app_client(app):
 @pytest_asyncio.fixture(scope="session")
 async def app_rate_limit():
     """Fixture to get the FastAPI app with test-specific rate limiting."""
-    # Create a shallow copy of the base config
-    test_config = app_config.copy()
+    api = instantiate_api()
+    api.app.router.dependencies = []
+    setup_rate_limit(api.app, rate_limit="2/minute")
 
-    # Explicitly clear route dependencies to prevent state leakage
-    test_config["route_dependencies"] = []
-
-    app = StacApi(**test_config).app
-    setup_rate_limit(app, rate_limit="2/minute")
-
-    return app
+    return api.app
 
 
 @pytest_asyncio.fixture(scope="session")
@@ -324,52 +299,16 @@ async def app_client_rate_limit(app_rate_limit):
 @pytest_asyncio.fixture(scope="session")
 async def app_basic_auth():
     """Fixture to get the FastAPI app with basic auth configured cleanly."""
+    # 1. Get a fresh, isolated app from the factory
+    api = instantiate_api()
+    app = api.app
 
-    # 1. Create a shallow copy of the base config
-    test_config = app_config.copy()
-
-    # 2. CRITICAL FIX: Rebuild extensions and clients from scratch!
-    # This ensures app_basic_auth gets its own fresh APIRouters.
-    # If we share the global extensions, our monkey-patch will poison
-    # the routes for the entire test suite (FastAPI >= 0.137 shared state leak).
-    auth_settings = AsyncSettings()
-    aggregation_extension = AggregationExtension(
-        client=EsAsyncBaseAggregationClient(
-            database=database, session=None, settings=auth_settings
-        )
-    )
-    aggregation_extension.POST = EsAggregationExtensionPostRequest
-    aggregation_extension.GET = EsAggregationExtensionGetRequest
-
-    auth_extensions = [
-        aggregation_extension,
-        FieldsExtension(),
-        SortExtension(),
-        QueryExtension(),
-        TokenPaginationExtension(),
-        FilterExtension(),
-        FreeTextExtension(),
-        TransactionExtension(
-            client=TransactionsClient(
-                database=database, session=None, settings=auth_settings
-            ),
-            settings=auth_settings,
-        ),
-    ]
-    test_config["extensions"] = auth_extensions
-    test_config["client"] = CoreClient(
-        database=database,
-        session=None,
-        extensions=auth_extensions,
-        post_request_model=test_config["search_post_request_model"],
-    )
-
-    # 3. Create basic auth dependency
+    # 2. Create basic auth dependency
     basic_auth = Depends(
         BasicAuth(credentials=[{"username": "admin", "password": "admin"}])
     )
 
-    # 4. Define public routes that don't require auth
+    # 3. Define public routes that don't require auth
     public_paths = {
         "/": ["GET"],
         "/conformance": ["GET"],
@@ -383,19 +322,22 @@ async def app_basic_auth():
         "/_mgmt/ping": ["GET"],
     }
 
-    test_config["route_dependencies"] = [
-        ([{"path": path, "method": method} for method in methods], [])
+    # 4. Build scopes list for public routes (no auth required)
+    public_scopes = [
+        {"path": path, "method": method}
         for path, methods in public_paths.items()
+        for method in methods
     ]
 
-    # Add catch-all route with basic auth
-    test_config["route_dependencies"].extend(
-        [([{"path": "*", "method": "*"}], [basic_auth])]
+    # 5. Apply public routes with no dependencies
+    _patched_add_route_dependencies(app.router.routes, public_scopes, [])
+
+    # 6. Apply catch-all with basic auth
+    _patched_add_route_dependencies(
+        app.router.routes, [{"path": "*", "method": "*"}], [basic_auth]
     )
 
-    # 5. Create the app with basic auth
-    api = StacApi(**test_config)
-    return api.app
+    return app
 
 
 @pytest_asyncio.fixture(scope="session")
@@ -425,17 +367,17 @@ def must_be_bob(
 @pytest_asyncio.fixture(scope="session")
 async def route_dependencies_app():
     """Fixture to get the FastAPI app with custom route dependencies."""
-    # Create a copy of the app config
-    test_config = app_config.copy()
+    # Get a fresh app from the factory
+    api = instantiate_api()
+    app = api.app
 
     # Define route dependencies (explicitly override any from app_config)
-    test_config["route_dependencies"] = [
-        ([{"method": "GET", "path": "/collections"}], [Depends(must_be_bob)])
-    ]
+    scopes = [{"method": "GET", "path": "/collections"}]
 
-    # Create the app with custom route dependencies
-    api = StacApi(**test_config)
-    return api.app
+    # Apply the route dependencies
+    _patched_add_route_dependencies(app.router.routes, scopes, [Depends(must_be_bob)])
+
+    return app
 
 
 @pytest_asyncio.fixture(scope="session")
@@ -452,174 +394,37 @@ async def route_dependencies_client(route_dependencies_app):
 
 def build_test_app():
     """Build a test app with configurable transaction extensions."""
-    # Create a copy of the base config
-    test_config = app_config.copy()
+    # 1. Read the environment variable that the test monkeypatched
+    transactions_enabled = get_bool_env("ENABLE_TRANSACTIONS_EXTENSIONS", default=True)
 
-    # Get transaction extensions setting
-    TRANSACTIONS_EXTENSIONS = get_bool_env(
-        "ENABLE_TRANSACTIONS_EXTENSIONS", default=True
-    )
+    # 2. Pass it into a fresh settings object
+    test_settings = AsyncSettings(enable_transactions_extensions=transactions_enabled)
+    test_database = DatabaseLogic()
 
-    # CRITICAL FIX: Rebuild extensions and clients from scratch!
-    # This ensures build_test_app gets its own fresh APIRouters and prevents
-    # shared state leakage between tests (FastAPI >= 0.137 shared state leak).
-    test_settings = AsyncSettings()
-    aggregation_extension = AggregationExtension(
-        client=EsAsyncBaseAggregationClient(
-            database=database, session=None, settings=test_settings
-        )
-    )
-    aggregation_extension.POST = EsAggregationExtensionPostRequest
-    aggregation_extension.GET = EsAggregationExtensionGetRequest
+    # 3. Call the factory!
+    api = instantiate_api(settings=test_settings, database_logic=test_database)
 
-    search_extensions = [
-        FieldsExtension(),
-        SortExtension(),
-        QueryExtension(),
-        TokenPaginationExtension(),
-        FilterExtension(),
-        FreeTextExtension(),
-    ]
+    # 4. Clear route dependencies (like BasicAuth) for tests
+    api.app.router.dependencies = []
 
-    # Add transaction extension if enabled
-    if TRANSACTIONS_EXTENSIONS:
-        search_extensions.append(
-            TransactionExtension(
-                client=TransactionsClient(
-                    database=database, session=None, settings=test_settings
-                ),
-                settings=test_settings,
-            )
-        )
-
-    # Update extensions in config
-    extensions = [aggregation_extension] + search_extensions
-    test_config["extensions"] = extensions
-
-    # Update client with new extensions
-    test_config["client"] = CoreClient(
-        database=database,
-        session=None,
-        extensions=extensions,
-        post_request_model=test_config["search_post_request_model"],
-    )
-
-    # Ensure no route dependencies (no BasicAuth) for this test app
-    test_config["route_dependencies"] = []
-
-    # Create and return the app
-    api = StacApi(**test_config)
     return api.app
 
 
 def build_test_app_with_catalogs():
     """Build a test app with catalogs extension enabled."""
-    from stac_fastapi_catalogs_extension import (
-        CATALOGS_SEARCH_CONFORMANCE,
-        CatalogsExtension,
-        CatalogsSearchExtension,
-        CatalogsTransactionExtension,
-    )
-
-    from stac_fastapi.core.catalogs_client import CatalogsClient
-
-    # Get the base config
-    test_config = app_config.copy()
-
-    # CRITICAL FIX: Rebuild extensions and clients from scratch!
-    # This ensures build_test_app_with_catalogs gets its own fresh APIRouters and prevents
-    # shared state leakage between tests (FastAPI >= 0.137 shared state leak).
-    test_settings = AsyncSettings()
+    # Turn on the flag in settings
+    test_settings = AsyncSettings(enable_catalogs_route=True)
     test_database = DatabaseLogic()
 
-    # Rebuild all extensions from scratch (not reusing global ones)
-    aggregation_extension = AggregationExtension(
-        client=EsAsyncBaseAggregationClient(
-            database=test_database, session=None, settings=test_settings
-        )
-    )
-    aggregation_extension.POST = EsAggregationExtensionPostRequest
-    aggregation_extension.GET = EsAggregationExtensionGetRequest
-
-    search_extensions = [
-        FieldsExtension(),
-        SortExtension(),
-        QueryExtension(),
-        TokenPaginationExtension(),
-        FilterExtension(),
-        FreeTextExtension(),
-        TransactionExtension(
-            client=TransactionsClient(
-                database=test_database, session=None, settings=test_settings
-            ),
-            settings=test_settings,
-        ),
-    ]
-
-    # Create core client for search delegation with search extensions
-    core_client = CoreClient(
-        database=test_database,
-        session=None,
-        extensions=search_extensions,
-        post_request_model=test_config["search_post_request_model"],
-        landing_page_id=os.getenv("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"),
+    # Let the factory do all the hard work!
+    api = instantiate_api(
+        settings=test_settings,
+        database_logic=test_database,
     )
 
-    # Create catalogs client with core_client for search delegation
-    catalogs_client = CatalogsClient(database=test_database, core_client=core_client)
-    catalogs_extension = CatalogsExtension(
-        client=catalogs_client,
-        settings=test_settings.model_dump(),
-    )
-    catalogs_transaction_extension = CatalogsTransactionExtension(
-        client=catalogs_client,
-        settings=test_settings.model_dump(),
-    )
+    # Clear auth dependencies for testing
+    api.app.router.dependencies = []
 
-    # Filter out CollectionsSearchExtension to avoid duplicate base classes
-    from stac_fastapi.core.extensions.collections_search import (
-        CollectionsSearchEndpointExtension,
-    )
-
-    filtered_extensions = [
-        ext
-        for ext in test_config["extensions"]
-        if not isinstance(ext, CollectionsSearchEndpointExtension)
-    ]
-
-    # Build complete extensions list with aggregation + search + catalogs
-    extensions = [aggregation_extension] + filtered_extensions
-
-    # Add catalogs search extension
-    from stac_fastapi.api.models import create_get_request_model
-
-    catalogs_search_extension = CatalogsSearchExtension(
-        client=catalogs_client,
-        search_get_request_model=create_get_request_model(search_extensions),
-        search_post_request_model=test_config["search_post_request_model"],
-        conformance_classes=list(CATALOGS_SEARCH_CONFORMANCE),
-    )
-
-    # Add catalogs extensions
-    extensions.append(catalogs_extension)
-    extensions.append(catalogs_transaction_extension)
-    extensions.append(catalogs_search_extension)
-
-    # Update config with complete extensions and client
-    test_config["extensions"] = extensions
-    test_config["client"] = CoreClient(
-        database=test_database,
-        session=None,
-        extensions=extensions,
-        post_request_model=test_config["search_post_request_model"],
-        landing_page_id=os.getenv("STAC_FASTAPI_LANDING_PAGE_ID", "stac-fastapi"),
-    )
-
-    # Ensure no route dependencies (no BasicAuth) for this test app
-    test_config["route_dependencies"] = []
-
-    # Create and return the app
-    api = StacApi(**test_config)
     return api.app
 
 

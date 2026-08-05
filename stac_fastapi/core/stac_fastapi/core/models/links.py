@@ -55,6 +55,15 @@ class BaseLinks:
 
     def link_self(self) -> dict:
         """Return the self link."""
+        if self.request.method == "POST" and hasattr(self.request, "postbody"):
+            return dict(
+                rel=Relations.self.value,
+                type=MimeTypes.json.value,
+                method="POST",
+                href=self.url,
+                body=self.request.postbody,
+            )
+
         return dict(rel=Relations.self.value, type=MimeTypes.json.value, href=self.url)
 
     def link_root(self) -> dict:

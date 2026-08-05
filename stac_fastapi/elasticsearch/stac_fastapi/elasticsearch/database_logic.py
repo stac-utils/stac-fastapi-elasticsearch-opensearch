@@ -475,8 +475,8 @@ class DatabaseLogic(BaseDatabaseLogic):
             response = await self.client.search(
                 index=COLLECTIONS_INDEX,
                 scroll="2m",  # Keep the search context alive for 2 minutes
-                size=1000,  # Fetch in memory-safe chunks of 1000
                 body={
+                    "size": 1000,  # Fetch in memory-safe chunks of 1000
                     "_source": ["id"],
                     "query": {"term": {"type": "Collection"}},
                 },

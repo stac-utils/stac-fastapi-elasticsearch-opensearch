@@ -11,6 +11,7 @@ from elasticsearch._async.client import AsyncElasticsearch
 from elasticsearch import Elasticsearch  # type: ignore[attr-defined]
 from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.utilities import get_bool_env
+from stac_fastapi.sfeos_helpers.config import SfeosExtensionsSettings
 from stac_fastapi.sfeos_helpers.database import validate_refresh
 from stac_fastapi.types.config import ApiSettings
 
@@ -74,7 +75,7 @@ def _es_config() -> dict[str, Any]:
 _forbidden_fields: set[str] = {"type"}
 
 
-class ElasticsearchSettings(ApiSettings, ApiBaseSettings):
+class ElasticsearchSettings(ApiSettings, SfeosExtensionsSettings, ApiBaseSettings):
     """
     API settings.
 
@@ -121,7 +122,7 @@ class ElasticsearchSettings(ApiSettings, ApiBaseSettings):
         return Elasticsearch(**_es_config())
 
 
-class AsyncElasticsearchSettings(ApiSettings, ApiBaseSettings):
+class AsyncElasticsearchSettings(ApiSettings, SfeosExtensionsSettings, ApiBaseSettings):
     """
     API settings.
 

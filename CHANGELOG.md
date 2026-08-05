@@ -7,21 +7,29 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [Unreleased]
 
+### Added
+
 - Added `app.extraContainers` to allow injecting additional sidecar containers into the Deployment.
 - Added `app.envFrom` to allow configuring container `envFrom` sources.
-- Added `app.extraEnv` to allow adding additional container environment entries.
-
-### Added
+- Added `app.extraEnv` to allow adding additional container environment entries. [#796](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/796)
 
 ### Changed
 
+- Refactored extension initialization to use a dynamic `Extensions` manager class rather than global dictionaries. This eliminates configuration state leakage across instances and allows developers to easily inject custom out-of-tree endpoints (via `extra_map`) or override core extensions without monkey-patching. [#792](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/792)
+- Transitioned backend applications to use the factory pattern (`create_app`), fully supporting Uvicorn's `--factory` flag. This eliminates global state side-effects on import, guarantees memory isolation per worker, and allowed for the removal of extensive state-resetting boilerplate in `conftest.py`. [#810](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/810)
+
 ### Fixed
+
+- Fixed Redis pagination for POST requests. Properly handled pagination tokens for the previous, self, and next links in the response. [#808](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/808)
 
 ### Removed
 
 ### Updated
 
 - Updated stac-fastapi parent dependencies from v6.3.0 -> v6.3.2 [#786](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/786)
+- Updated stac-fastapi parent dependencies from v6.3.2 -> v6.4.1 [#812](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/812)
+- Update sort extension to use new conformance classes in app.py for search, collection search, and item search endpoints [#812](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/812)
+
 
 ## [v6.19.0] - 2025-06-23
 
