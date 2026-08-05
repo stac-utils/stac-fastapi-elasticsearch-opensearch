@@ -1599,6 +1599,13 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         content_type = kwargs["request"].headers.get("content-type")
 
+        # Fetch the original item before patching so we can restore it if validation fails
+        original_item = None
+        if get_bool_env("ENABLE_STAC_VALIDATOR"):
+            original_item = await self.database.get_one_item(
+                item_id=item_id, collection_id=collection_id
+            )
+
         item = None
         if isinstance(patch, list) and content_type == "application/json-patch+json":
             item = await self.database.json_patch_item(
@@ -1639,10 +1646,19 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 try:
                     await self._validate_single_item(item_dict)
                 except HTTPException:
-                    # Validation failed - rollback by deleting the patched item
-                    await self.database.delete_item(
-                        item_id=item_id, collection_id=collection_id, **kwargs
-                    )
+                    # Validation failed - rollback by restoring the original item
+                    if original_item:
+                        # Convert DB item back to STAC format for restoration
+                        original_stac = ItemSerializer.db_to_stac(
+                            original_item, base_url=base_url
+                        )
+                        # Re-index the original item with upsert=True to restore it
+                        await self.database.create_item(
+                            item=original_stac,
+                            base_url=base_url,
+                            upsert=True,
+                            refresh=True,
+                        )
                     # Re-raise the validation error
                     raise
 
