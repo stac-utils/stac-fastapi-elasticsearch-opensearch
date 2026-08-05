@@ -1291,6 +1291,17 @@ async def test_patch_item_with_invalid_bbox_rejected(
         "Invalid item" in detail or "validation" in detail.lower()
     )
 
+    # Verify that the original item was restored (rollback successful)
+    # This confirms the item was not deleted and the original bbox is intact
+    get_resp = await app_client.get(
+        f"/collections/{test_collection['id']}/items/{base_item['id']}"
+    )
+    assert get_resp.status_code == 200, "Item should still exist after failed PATCH"
+    restored_item = get_resp.json()
+    assert (
+        len(restored_item["bbox"]) == 4
+    ), f"Original 4-coordinate bbox should be restored, got {len(restored_item['bbox'])} coordinates"
+
 
 @pytest.mark.asyncio
 async def test_patch_item_with_valid_changes_accepted(
