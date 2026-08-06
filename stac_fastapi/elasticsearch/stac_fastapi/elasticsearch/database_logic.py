@@ -1407,7 +1407,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             # Note: Validation is now handled in core.py patch_item() method
             # This ensures shared validation logic across all backends
 
-            # Write to database ONLY after patch is applied in-memory
+            # Write to database using script operations
             if script_operations:
                 script = operations_to_script(
                     script_operations, create_nest=create_nest
