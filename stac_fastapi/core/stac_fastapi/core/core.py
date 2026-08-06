@@ -1085,12 +1085,17 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         # Handle JSON Patch (RFC 6902)
         if isinstance(patch, list) and content_type == "application/json-patch+json":
-            ops_dicts = [
-                {"op": op.op, "path": op.path, "value": op.value}
-                if op.value is not None
-                else {"op": op.op, "path": op.path}
-                for op in patch
-            ]
+            ops_dicts = []
+            for op in patch:
+                if isinstance(op, dict):
+                    ops_dicts.append(op)
+                elif hasattr(op, "model_dump"):
+                    ops_dicts.append(op.model_dump(exclude_unset=True))
+                elif hasattr(op, "dict"):
+                    ops_dicts.append(op.dict(exclude_unset=True))
+                else:
+                    ops_dicts.append(vars(op))
+
             patched_dict = deepcopy(existing_dict)
             if ops_dicts:
                 patched_dict = jsonpatch.apply_patch(patched_dict, ops_dicts)

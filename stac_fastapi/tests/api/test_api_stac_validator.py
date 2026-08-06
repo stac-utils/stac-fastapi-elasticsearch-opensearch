@@ -1580,3 +1580,49 @@ async def test_patch_collection_nonexistent_returns_404(app_client):
     )
 
     assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_patch_collection_with_jsonpatch_invalid_bbox_rejected(
+    app_client, txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
+):
+    """Test that JSON Patch (RFC 6902) requests with invalid bbox are rejected.
+
+    This verifies that array-based patch operations on collections are correctly
+    applied in-memory and validated before saving. Uses Yuri's exact JSON Patch
+    payload to ensure collections are protected from invalid patches.
+    """
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
+
+    # Setup: Create a collection
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = f"test-jsonpatch-collection-{uuid.uuid4()}"
+    await create_collection(txn_client, collection=test_collection)
+
+    # Yuri's exact JSON Patch payload with a 5-coordinate bbox
+    invalid_patch = [
+        {
+            "op": "replace",
+            "path": "/extent/spatial/bbox",
+            "value": [[-180, -90, 180, 90, 10]],
+        }
+    ]
+
+    # PATCH should fail with 400 Bad Request
+    resp = await app_client.patch(
+        f"/collections/{test_collection['id']}",
+        json=invalid_patch,
+        headers={"Content-Type": "application/json-patch+json"},
+    )
+
+    assert (
+        resp.status_code == 400
+    ), f"Expected 400 for invalid bbox json-patch, got {resp.status_code}: {resp.text}"
+    response_data = resp.json()
+    assert "detail" in response_data
+
+    # Verify the database remained untouched
+    get_resp = await app_client.get(f"/collections/{test_collection['id']}")
+    assert get_resp.status_code == 200
+    restored_collection = get_resp.json()
+    assert len(restored_collection["extent"]["spatial"]["bbox"][0]) == 4
