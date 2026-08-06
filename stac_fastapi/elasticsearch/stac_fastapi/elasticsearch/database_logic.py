@@ -1404,9 +1404,6 @@ class DatabaseLogic(BaseDatabaseLogic):
                 self.async_index_inserter.validate_datetime_field_update,
             )
 
-            # Note: Validation is now handled in core.py patch_item() method
-            # This ensures shared validation logic across all backends
-
             # Write to database using script operations
             if script_operations:
                 script = operations_to_script(
