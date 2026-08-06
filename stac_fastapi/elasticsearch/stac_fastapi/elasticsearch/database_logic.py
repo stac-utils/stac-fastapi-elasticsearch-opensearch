@@ -8,6 +8,7 @@ from typing import Any, Iterable, Type
 
 import attr
 import elasticsearch.helpers as helpers
+import jsonpatch
 import orjson
 from elasticsearch.dsl import Q, Search
 from elasticsearch.exceptions import BadRequestError
@@ -1404,6 +1405,21 @@ class DatabaseLogic(BaseDatabaseLogic):
                 self.async_index_inserter.validate_datetime_field_update,
             )
 
+            # Apply patch IN-MEMORY before writing to database
+            # Convert PatchOperation objects to dicts for jsonpatch
+            ops_dicts = [
+                {"op": op.op, "path": op.path, "value": op.value}
+                if op.value is not None
+                else {"op": op.op, "path": op.path}
+                for op in script_operations
+            ]
+
+            # Apply patch to a copy of the existing item
+            patched_item = deepcopy(existing_source)
+            if ops_dicts:
+                patched_item = jsonpatch.apply_patch(patched_item, ops_dicts)
+
+            # Write to database ONLY after patch is applied in-memory
             if script_operations:
                 script = operations_to_script(
                     script_operations, create_nest=create_nest
