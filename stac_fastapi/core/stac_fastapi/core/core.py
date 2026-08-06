@@ -1116,8 +1116,19 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 detail=f"Content-Type: {content_type} and body: {patch} combination not implemented",
             )
 
-        # Validate the patched result
-        await self._validate_single_item(patched_dict)
+        # Validate the patched result based on type
+        if item_type == "collection":
+            # For collections, validate using async_validate_stac with Collection model
+            if get_bool_env("ENABLE_STAC_VALIDATOR"):
+                try:
+                    await async_validate_stac(patched_dict, pydantic_model=Collection)
+                except (ValidationError, ValueError) as e:
+                    raise HTTPException(
+                        status_code=400, detail=f"Invalid collection: {e}"
+                    )
+        else:
+            # For items, use the standard item validation
+            await self._validate_single_item(patched_dict)
 
         return patched_dict
 
@@ -1743,14 +1754,14 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         # 3. SAVE TO DB (Full replacement update)
         # Convert validated patched dict back to DB format and save
         db_item = ItemSerializer.stac_to_db(patched_dict, base_url=base_url)
-        updated_item = await self.database.update_item(
-            item_id=item_id,
-            collection_id=collection_id,
-            item=db_item,
+        await self.database.create_item(
+            db_item,
+            base_url=base_url,
+            upsert=True,
             **kwargs,
         )
 
-        return ItemSerializer.db_to_stac(updated_item, base_url=base_url)
+        return ItemSerializer.db_to_stac(db_item, base_url=base_url)
 
     @overrides
     async def delete_item(self, item_id: str, collection_id: str, **kwargs) -> None:
@@ -1918,7 +1929,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         # When validation is ENABLED, do all logic in core.py
         # 1. FETCH current collection state from DB
-        existing_collection = await self.database.get_collection(collection_id)
+        existing_collection = await self.database.find_collection(collection_id)
         if not existing_collection:
             raise HTTPException(
                 status_code=404,
@@ -1953,7 +1964,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         await self.database.update_collection(
             collection_id=collection_id,
             collection=db_collection,
-            **kwargs,
+            refresh=True,
         )
 
         return CollectionSerializer.db_to_stac(

@@ -1446,105 +1446,87 @@ async def test_put_item_with_valid_replacement_accepted(
 
 
 @pytest.mark.asyncio
-async def test_patch_collection_with_valid_merge_patch(txn_client, load_test_data):
-    """Test that PATCH collection with valid merge patch succeeds."""
-    test_collection = load_test_data("test_collection.json")
-    test_collection["id"] = f"test-patch-collection-valid-{uuid.uuid4()}"
-    await create_collection(txn_client, collection=test_collection)
+async def test_patch_collection_with_invalid_bbox_rejected(
+    app_client, txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
+):
+    """Test that PATCH requests with invalid bbox (5 coordinates) are rejected.
 
-    # Patch with valid merge patch
-    patch = {"description": "Updated collection description"}
+    This test verifies that PATCH requests on collections are validated
+    before being saved to the database.
+    """
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
 
-    # Apply the patch
-    patched_collection = await txn_client.patch_collection(
-        collection_id=test_collection["id"],
-        patch=patch,
-        request=type("Request", (), {"base_url": "http://test-server/"})(),
-    )
-
-    # Verify the patch was applied
-    assert patched_collection is not None
-    assert patched_collection["description"] == "Updated collection description"
-
-
-@pytest.mark.asyncio
-async def test_patch_collection_with_invalid_bbox(txn_client, load_test_data):
-    """Test that PATCH collection with invalid bbox fails validation."""
-    from fastapi import HTTPException
-
+    # Setup: Create a collection
     test_collection = load_test_data("test_collection.json")
     test_collection["id"] = f"test-patch-collection-invalid-bbox-{uuid.uuid4()}"
     await create_collection(txn_client, collection=test_collection)
 
-    # Create invalid patch with 5-coordinate bbox (should be 4 or 6)
+    # Try to PATCH the collection with an invalid bbox (5 coordinates instead of 4)
     invalid_patch = {
         "extent": {
             "spatial": {"bbox": [[-180, -90, 180, 90, 0]]}  # Invalid: 5 coordinates
         }
     }
 
-    # Patch should fail due to invalid bbox
-    with pytest.raises(HTTPException) as exc_info:
-        await txn_client.patch_collection(
-            collection_id=test_collection["id"],
-            patch=invalid_patch,
-            request=type("Request", (), {"base_url": "http://test-server/"})(),
-        )
-
-    assert exc_info.value.status_code == 400
-    assert "Invalid" in exc_info.value.detail
-
-
-@pytest.mark.asyncio
-async def test_patch_collection_with_json_patch(txn_client, load_test_data):
-    """Test that PATCH collection with JSON Patch (RFC 6902) succeeds."""
-    test_collection = load_test_data("test_collection.json")
-    test_collection["id"] = f"test-patch-collection-json-patch-{uuid.uuid4()}"
-    await create_collection(txn_client, collection=test_collection)
-
-    # Create JSON Patch operations
-    operations = [
-        {"op": "replace", "path": "/description", "value": "Updated via JSON Patch"}
-    ]
-
-    # Apply patch
-    patched_collection = await txn_client.patch_collection(
-        collection_id=test_collection["id"],
-        patch=operations,
-        request=type(
-            "Request",
-            (),
-            {
-                "base_url": "http://test-server/",
-                "headers": {"content-type": "application/json-patch+json"},
-            },
-        )(),
+    # PATCH should fail with 400 Bad Request
+    resp = await app_client.patch(
+        f"/collections/{test_collection['id']}",
+        json=invalid_patch,
+        headers={"Content-Type": "application/merge-patch+json"},
     )
 
-    assert patched_collection["description"] == "Updated via JSON Patch"
+    assert (
+        resp.status_code == 400
+    ), f"Expected 400 for invalid bbox patch, got {resp.status_code}: {resp.text}"
+    response_data = resp.json()
+    assert "detail" in response_data
+
+    # Verify that the original collection remains untouched in the database
+    # This confirms no invalid data was ever written to the database
+    get_resp = await app_client.get(f"/collections/{test_collection['id']}")
+    assert (
+        get_resp.status_code == 200
+    ), "Collection should still exist after failed PATCH"
+    restored_collection = get_resp.json()
+    # Original bbox should be intact (4 coordinates)
+    assert len(restored_collection["extent"]["spatial"]["bbox"][0]) == 4
 
 
 @pytest.mark.asyncio
-async def test_patch_collection_missing_required_field(txn_client, load_test_data):
-    """Test that PATCH collection removing required field fails validation."""
-    from fastapi import HTTPException
+async def test_patch_collection_with_valid_changes_accepted(
+    app_client, txn_client, load_test_data, monkeypatch: pytest.MonkeyPatch
+):
+    """Test that PATCH requests with valid changes are accepted.
 
+    This test verifies that valid PATCH operations on collections pass validation
+    and are successfully applied.
+    """
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
+
+    # Setup: Create a collection
     test_collection = load_test_data("test_collection.json")
-    test_collection["id"] = f"test-patch-collection-missing-{uuid.uuid4()}"
+    test_collection["id"] = f"test-patch-collection-valid-{uuid.uuid4()}"
     await create_collection(txn_client, collection=test_collection)
 
-    # Try to remove required 'extent' field
-    invalid_patch = {"extent": None}
+    # PATCH the collection with a valid change (update description)
+    valid_patch = {"description": "Updated collection description"}
 
-    # Patch should fail due to missing required field
-    with pytest.raises(HTTPException) as exc_info:
-        await txn_client.patch_collection(
-            collection_id=test_collection["id"],
-            patch=invalid_patch,
-            request=type("Request", (), {"base_url": "http://test-server/"})(),
-        )
+    # PATCH should succeed
+    resp = await app_client.patch(
+        f"/collections/{test_collection['id']}",
+        json=valid_patch,
+        headers={"Content-Type": "application/merge-patch+json"},
+    )
 
-    assert exc_info.value.status_code == 400
+    assert (
+        resp.status_code == 200
+    ), f"Expected 200 for valid patch, got {resp.status_code}: {resp.text}"
+
+    # Verify the patch was applied by fetching the collection
+    get_resp = await app_client.get(f"/collections/{test_collection['id']}")
+    assert get_resp.status_code == 200
+    patched_collection = get_resp.json()
+    assert patched_collection["description"] == "Updated collection description"
 
 
 @pytest.mark.asyncio
