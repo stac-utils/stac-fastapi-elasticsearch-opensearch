@@ -1406,19 +1406,23 @@ class DatabaseLogic(BaseDatabaseLogic):
                 self.async_index_inserter.validate_datetime_field_update,
             )
 
-            # Apply patch IN-MEMORY before writing to database
-            # Convert PatchOperation objects to dicts for jsonpatch
-            ops_dicts = [
-                {"op": op.op, "path": op.path, "value": op.value}
-                if op.value is not None
-                else {"op": op.op, "path": op.path}
-                for op in script_operations
-            ]
+            # Only calculate in-memory patch and validate if STAC Validator is enabled
+            if get_bool_env("ENABLE_STAC_VALIDATOR"):
+                # Convert PatchOperation objects to dicts for jsonpatch
+                ops_dicts = [
+                    {"op": op.op, "path": op.path, "value": op.value}
+                    if op.value is not None
+                    else {"op": op.op, "path": op.path}
+                    for op in script_operations
+                ]
 
-            # Apply patch to a copy of the existing item
-            patched_item = deepcopy(existing_source)
-            if ops_dicts:
-                patched_item = jsonpatch.apply_patch(patched_item, ops_dicts)
+                # Apply patch to a copy of the existing item
+                patched_item = deepcopy(existing_source)
+                if ops_dicts:
+                    patched_item = jsonpatch.apply_patch(patched_item, ops_dicts)
+
+                # Note: Validation is now handled in core.py patch_item() method
+                # This ensures shared validation logic across all backends
 
             # Write to database ONLY after patch is applied in-memory
             if script_operations:

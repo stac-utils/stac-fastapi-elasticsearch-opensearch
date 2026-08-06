@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Fixed
 
 - Fixed Redis pagination for POST requests. Properly handled pagination tokens for the previous, self, and next links in the response. [#808](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/808)
-- Fixed PATCH and PUT request validation to validate the final item state after patching, not the raw patch payload. Invalid PATCH/PUT operations are now properly rejected before being saved. Includes rollback mechanism to restore original item if validation fails.
+- Fixed PATCH and PUT request validation to validate the final item state after patching, not the raw patch payload. Invalid PATCH/PUT operations are now validated in-memory and rejected prior to database writes, preventing invalid items from being saved.
 
 ### Removed
 
