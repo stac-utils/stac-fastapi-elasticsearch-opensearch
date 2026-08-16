@@ -1107,6 +1107,7 @@ async def test_use_datetime_true(app_client, load_test_data, txn_client, monkeyp
 @pytest.mark.asyncio
 async def test_use_datetime_false(app_client, load_test_data, txn_client, monkeypatch):
     monkeypatch.setenv("USE_DATETIME", "false")
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "false")
 
     test_collection = load_test_data("test_collection.json")
     test_collection["id"] = "test-collection-datetime-false"
