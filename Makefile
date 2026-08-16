@@ -90,6 +90,11 @@ test-opensearch-catalogs: image-es-os
 	-$(run_os) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh opensearch:9202 && cd stac_fastapi/tests/ && pytest extensions/test_catalogs.py -v'
 	docker compose down
 
+.PHONY: test-opensearch-validation
+test-opensearch-validation: image-es-os
+	-$(run_os) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh opensearch:9202 && cd stac_fastapi/tests/ && pytest api/test_api_stac_validator.py -v'
+	docker compose down
+
 .PHONY: test-datetime-filtering-es
 test-datetime-filtering-es: image-es-os
 	-$(run_es) /bin/bash -c 'export ENABLE_DATETIME_INDEX_FILTERING=true && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd stac_fastapi/tests/ && pytest -s --cov=stac_fastapi --cov-report=term-missing -m datetime_filtering'

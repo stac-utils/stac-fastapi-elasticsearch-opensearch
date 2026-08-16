@@ -51,13 +51,14 @@ redis = [
     "retry~=0.9.2",
 ]
 sentry = [
-    "sentry-sdk>=2.49,<2.66",
+    "sentry-sdk>=2.49,<2.67",
 ]
 catalogs = [
     "stac-fastapi-catalogs-extension==0.5.0",
 ]
 validator = [
-    "stac-valid>=4.2.2,<4.5.0"
+    "stac-valid>=4.2.2,<4.5.0",
+    "jsonpatch"
 ]
 
 [project.urls]
