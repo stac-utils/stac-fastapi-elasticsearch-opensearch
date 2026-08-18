@@ -396,6 +396,7 @@ redis:
     enabled: false
     host: ""
     port: 6379
+    database: 0
     # Optional secret that stores the Redis password for the external instance
     passwordSecret: ""
     passwordKey: "redis-password"

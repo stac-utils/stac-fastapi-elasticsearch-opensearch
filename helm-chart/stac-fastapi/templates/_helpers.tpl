@@ -208,6 +208,19 @@ Resolve the Redis port based on the active configuration
 {{- end }}
 
 {{/*
+Resolve the Redis database based on the active configuration
+*/}}
+{{- define "stac-fastapi.redisDatabase" -}}
+{{- if and (.Values.redis.enabled) (not (and .Values.redis.external .Values.redis.external.enabled)) -}}
+  {{- .Values.redis.database -}}
+{{- else if and .Values.redis.external .Values.redis.external.enabled -}}
+  {{- .Values.redis.external.database | default 0 -}}
+{{- else }}
+  {{- 0 -}}
+{{- end }}
+{{- end }}
+
+{{/*
 Create the image repository with tag
 */}}
 {{- define "stac-fastapi.image" -}}
@@ -235,6 +248,7 @@ Create environment variables for the application
 {{- $dbAuth := deepCopy (default (dict) .Values.app.databaseAuth) -}}
 {{- $opensearchSecurity := default (dict) .Values.opensearchSecurity -}}
 {{- $redisConfig := default (dict) .Values.redis -}}
+{{- $redisAuth := default (dict) (get $redisConfig "auth") -}}
 {{- $redisExternal := default (dict) (get $redisConfig "external") -}}
 {{- $redisEnabled := or ($redisConfig.enabled) (and $redisExternal ($redisExternal.enabled)) -}}
 {{- if and (eq .Values.backend "opensearch") (get $opensearchSecurity "generateAdminPassword") }}
@@ -310,6 +324,29 @@ Create environment variables for the application
 {{- end }}
 {{- range $i, $val := $extraEnv }}
 - {{ $val | toYaml | nindent 2 }}
+{{- end }}
+{{- if $redisEnabled }}
+- name: REDIS_ENABLE
+  value: "true"
+- name: REDIS_HOST
+  value: {{ include "stac-fastapi.redisHost" . | quote }}
+- name: REDIS_PORT
+  value: {{ include "stac-fastapi.redisPort" . | quote }}
+- name: REDIS_DB
+  value: {{ include "stac-fastapi.redisDatabase" . | quote }}
+{{- if $redisAuth.enabled }}
+- name: REDIS_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ $redisAuth.existingSecret | required "When redis auth is enabled you must provide a credential secret at redis.auth.existingSecret." }}
+      key: {{ $redisAuth.existingSecretPasswordKey | required "When redis auth is enabled you must provide the target key in the credential secret at redis.auth.existingSecretPasswordKey." }}
+{{- else if and $redisExternal.passwordSecret $redisExternal.passwordKey }}
+- name: REDIS_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ $redisExternal.passwordSecret }}
+      key: {{ $redisExternal.passwordKey }}
+{{- end }}
 {{- end }}
 {{- end }}
 
