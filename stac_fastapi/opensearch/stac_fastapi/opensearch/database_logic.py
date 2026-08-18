@@ -1405,6 +1405,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 self.async_index_inserter.validate_datetime_field_update,
             )
 
+            # Write to database using script operations
             if script_operations:
                 script = operations_to_script(
                     script_operations, create_nest=create_nest
