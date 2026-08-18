@@ -1369,6 +1369,8 @@ These Redis configuration variables enable proper navigation functionality in ST
 | `REDIS_PORT` | Redis server port for Redis configuration. | `6379`                   | Conditional (required for standalone Redis)                                                 |
 | **Both** |                                                                                              |                          |                                                                                             |
 | `REDIS_DB` | Redis database number to use for caching.                                                    | `0` (Sentinel) / `15` (Standalone) | Optional                                                                                    |
+| `REDIS_USERNAME` | If your redis instance uses ACLs for authentication you may provide a username here. | `""` | Optional |
+| `REDIS_PASSWORD` | Password for authentication enabled redis instances. | `""` | Optional |
 | `REDIS_MAX_CONNECTIONS` | Maximum number of connections in the Redis connection pool.                                  | `10`                     | Optional                                                                                    |
 | `REDIS_RETRY_TIMEOUT` | Enable retry on timeout for Redis operations.                                                | `true`                   | Optional                                                                                    |
 | `REDIS_DECODE_RESPONSES`      | Automatically decode Redis responses to strings.                                             | `true`                   | Optional                                                                                    |
