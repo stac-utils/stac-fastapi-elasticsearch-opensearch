@@ -36,7 +36,7 @@ dependencies = [
     "stac-fastapi.types==6.4.1",
     "stac-fastapi.api==6.4.1",
     "stac-fastapi.extensions==6.4.1",
-    "orjson~=3.11.0",
+    "orjson>=3.11,<3.13",
     "overrides>=7.4,<7.8",
     "pygeofilter>=0.3.1,<0.5.0",
     "jsonschema~=4.26.0",
