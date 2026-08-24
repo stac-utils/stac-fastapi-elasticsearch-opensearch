@@ -326,14 +326,23 @@ Create environment variables for the application
 - {{ $val | toYaml | nindent 2 }}
 {{- end }}
 {{- if $redisEnabled }}
+{{- if not (hasKey $env "REDIS_ENABLE") }}
 - name: REDIS_ENABLE
   value: "true"
+{{- end }}
+{{- if not (hasKey $env "REDIS_HOST") }}
 - name: REDIS_HOST
   value: {{ include "stac-fastapi.redisHost" . | quote }}
+{{- end }}
+{{- if not (hasKey $env "REDIS_PORT") }}
 - name: REDIS_PORT
   value: {{ include "stac-fastapi.redisPort" . | quote }}
+{{- end }}
+{{- if not (hasKey $env "REDIS_DB") }}
 - name: REDIS_DB
   value: {{ include "stac-fastapi.redisDatabase" . | quote }}
+{{- end }}
+{{- if not (or (hasKey $env "REDIS_PASSWORD") (hasKey $envFromSecret "REDIS_PASSWORD")) }}
 {{- if $redisAuth.enabled }}
 - name: REDIS_PASSWORD
   valueFrom:
