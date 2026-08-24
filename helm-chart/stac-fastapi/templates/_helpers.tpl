@@ -208,19 +208,6 @@ Resolve the Redis port based on the active configuration
 {{- end }}
 
 {{/*
-Resolve the Redis database based on the active configuration
-*/}}
-{{- define "stac-fastapi.redisDatabase" -}}
-{{- if and (.Values.redis.enabled) (not (and .Values.redis.external .Values.redis.external.enabled)) -}}
-  {{- .Values.redis.database -}}
-{{- else if and .Values.redis.external .Values.redis.external.enabled -}}
-  {{- .Values.redis.external.database | default 0 -}}
-{{- else }}
-  {{- 0 -}}
-{{- end }}
-{{- end }}
-
-{{/*
 Create the image repository with tag
 */}}
 {{- define "stac-fastapi.image" -}}
@@ -339,8 +326,13 @@ Create environment variables for the application
   value: {{ include "stac-fastapi.redisPort" . | quote }}
 {{- end }}
 {{- if not (hasKey $env "REDIS_DB") }}
+{{- if and (.Values.redis.enabled) (not (and .Values.redis.external .Values.redis.external.enabled)) -}}
 - name: REDIS_DB
-  value: {{ include "stac-fastapi.redisDatabase" . | quote }}
+  value: {{- .Values.redis.database -}}
+{{- else if and .Values.redis.external .Values.redis.external.enabled -}}
+- name: REDIS_DB
+  value: {{- .Values.redis.external.database | default 0 -}}
+{{- end }}
 {{- end }}
 {{- if not (or (hasKey $env "REDIS_PASSWORD") (hasKey $envFromSecret "REDIS_PASSWORD")) }}
 {{- if $redisAuth.enabled }}
