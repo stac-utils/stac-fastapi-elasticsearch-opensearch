@@ -347,8 +347,8 @@ Create environment variables for the application
 - name: REDIS_PASSWORD
   valueFrom:
     secretKeyRef:
-      name: {{ $redisAuth.existingSecret | required "When redis auth is enabled you must provide a credential secret at redis.auth.existingSecret." }}
-      key: {{ $redisAuth.existingSecretPasswordKey | required "When redis auth is enabled you must provide the target key in the credential secret at redis.auth.existingSecretPasswordKey." }}
+      name: {{ $redisAuth.existingSecret }}
+      key: {{ $redisAuth.existingSecretPasswordKey }}
 {{- else if and $redisExternal.passwordSecret $redisExternal.passwordKey }}
 - name: REDIS_PASSWORD
   valueFrom:
