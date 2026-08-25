@@ -350,6 +350,7 @@ Create environment variables for the application
 {{- end }}
 {{- end }}
 {{- end }}
+{{- end }}
 
 {{/*
 Determine if Elasticsearch should be enabled based on backend selection
