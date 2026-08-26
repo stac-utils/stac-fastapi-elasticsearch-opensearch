@@ -4,8 +4,8 @@ requires-python = ">=3.11"
 
 [manifest]
 members = [
+    "sfeos",
     "sfeos-helpers",
-    "stac-fastapi",
     "stac-fastapi-core",
     "stac-fastapi-elasticsearch",
     "stac-fastapi-opensearch",
@@ -1016,6 +1016,27 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/df/bf/f7da0350254c0ed7c72f3e33cef02e048281fec7ecec5f032d4aac52226b/jinja2-3.1.6.tar.gz", hash = "sha256:0137fb05990d35f1275a587e9aee6d56da821fc83491a0fb838183be43f66d6d", size = 245115, upload-time = "2025-03-05T20:05:02.478Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/62/a1/3d680cbfd5f4b8f15abc1d571870c5fc3e594bb582bc3b64ea099db13e56/jinja2-3.1.6-py3-none-any.whl", hash = "sha256:85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67", size = 134899, upload-time = "2025-03-05T20:05:00.369Z" },
+]
+
+[[package]]
+name = "jsonpatch"
+version = "1.33"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "jsonpointer" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/42/78/18813351fe5d63acad16aec57f94ec2b70a09e53ca98145589e185423873/jsonpatch-1.33.tar.gz", hash = "sha256:9fcd4009c41e6d12348b4a0ff2563ba56a2923a7dfee731d004e212e1ee5030c", size = 21699, upload-time = "2023-06-26T12:07:29.144Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/73/07/02e16ed01e04a374e644b575638ec7987ae846d25ad97bcc9945a3ee4b0e/jsonpatch-1.33-py2.py3-none-any.whl", hash = "sha256:0ae28c0cd062bbd8b8ecc26d7d164fbbea9652a1a3693f3b956c1eae5145dade", size = 12898, upload-time = "2023-06-16T21:01:28.466Z" },
+]
+
+[[package]]
+name = "jsonpointer"
+version = "3.1.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/18/c7/af399a2e7a67fd18d63c40c5e62d3af4e67b836a2107468b6a5ea24c4304/jsonpointer-3.1.1.tar.gz", hash = "sha256:0b801c7db33a904024f6004d526dcc53bbb8a4a0f4e32bfd10beadf60adf1900", size = 9068, upload-time = "2026-03-23T22:32:32.458Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/9e/6a/a83720e953b1682d2d109d3c2dbb0bc9bf28cc1cbc205be4ef4be5da709d/jsonpointer-3.1.1-py3-none-any.whl", hash = "sha256:8ff8b95779d071ba472cf5bc913028df06031797532f08a7d5b602d8b2a488ca", size = 7659, upload-time = "2026-03-23T22:32:31.568Z" },
 ]
 
 [[package]]
@@ -2337,6 +2358,51 @@ wheels = [
 ]
 
 [[package]]
+name = "sfeos"
+version = "6.19.0"
+source = { virtual = "." }
+dependencies = [
+    { name = "sfeos-helpers" },
+    { name = "stac-fastapi-core" },
+    { name = "stac-fastapi-elasticsearch" },
+    { name = "stac-fastapi-opensearch" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "ciso8601" },
+    { name = "httpx" },
+    { name = "pre-commit" },
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "redis" },
+    { name = "retry" },
+    { name = "stac-fastapi-core", extra = ["catalogs", "redis", "sentry", "validator"] },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "sfeos-helpers", editable = "stac_fastapi/sfeos_helpers" },
+    { name = "stac-fastapi-core", editable = "stac_fastapi/core" },
+    { name = "stac-fastapi-elasticsearch", editable = "stac_fastapi/elasticsearch" },
+    { name = "stac-fastapi-opensearch", editable = "stac_fastapi/opensearch" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "ciso8601", specifier = "~=2.3.0" },
+    { name = "httpx", specifier = ">=0.24.0,<0.29.0" },
+    { name = "pre-commit", specifier = ">=3.0,<4.7" },
+    { name = "pytest", specifier = ">=8,<10" },
+    { name = "pytest-asyncio", specifier = ">=0.21,<1.5" },
+    { name = "pytest-cov", specifier = ">=4.0,<7.2" },
+    { name = "redis", specifier = ">=6.4,<8.2" },
+    { name = "retry", specifier = "~=0.9.2" },
+    { name = "stac-fastapi-core", extras = ["sentry", "redis", "catalogs", "validator"], editable = "stac_fastapi/core" },
+]
+
+[[package]]
 name = "sfeos-helpers"
 source = { editable = "stac_fastapi/sfeos_helpers" }
 dependencies = [
@@ -2385,51 +2451,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/a2/87/a6771e1546d97e7e041b6ae58d80074f81b7d5121207425c964ddf5cfdbd/sniffio-1.3.1.tar.gz", hash = "sha256:f4324edc670a0f49750a81b895f35c3adb843cca46f0530f79fc1babb23789dc", size = 20372, upload-time = "2024-02-25T23:20:04.057Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e9/44/75a9c9421471a6c4805dbf2356f7c181a29c1879239abab1ea2cc8f38b40/sniffio-1.3.1-py3-none-any.whl", hash = "sha256:2f6da418d1f1e0fddd844478f41680e794e6051915791a034ff65e5f100525a2", size = 10235, upload-time = "2024-02-25T23:20:01.196Z" },
-]
-
-[[package]]
-name = "stac-fastapi"
-version = "6.19.0"
-source = { virtual = "." }
-dependencies = [
-    { name = "sfeos-helpers" },
-    { name = "stac-fastapi-core" },
-    { name = "stac-fastapi-elasticsearch" },
-    { name = "stac-fastapi-opensearch" },
-]
-
-[package.dev-dependencies]
-dev = [
-    { name = "ciso8601" },
-    { name = "httpx" },
-    { name = "pre-commit" },
-    { name = "pytest" },
-    { name = "pytest-asyncio" },
-    { name = "pytest-cov" },
-    { name = "redis" },
-    { name = "retry" },
-    { name = "stac-fastapi-core", extra = ["catalogs", "redis", "sentry", "validator"] },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "sfeos-helpers", editable = "stac_fastapi/sfeos_helpers" },
-    { name = "stac-fastapi-core", editable = "stac_fastapi/core" },
-    { name = "stac-fastapi-elasticsearch", editable = "stac_fastapi/elasticsearch" },
-    { name = "stac-fastapi-opensearch", editable = "stac_fastapi/opensearch" },
-]
-
-[package.metadata.requires-dev]
-dev = [
-    { name = "ciso8601", specifier = "~=2.3.0" },
-    { name = "httpx", specifier = ">=0.24.0,<0.29.0" },
-    { name = "pre-commit", specifier = ">=3.0,<4.7" },
-    { name = "pytest", specifier = ">=8,<10" },
-    { name = "pytest-asyncio", specifier = ">=0.21,<1.5" },
-    { name = "pytest-cov", specifier = ">=4.0,<7.2" },
-    { name = "redis", specifier = ">=6.4,<8.1" },
-    { name = "retry", specifier = "~=0.9.2" },
-    { name = "stac-fastapi-core", extras = ["sentry", "redis", "catalogs", "validator"], editable = "stac_fastapi/core" },
 ]
 
 [[package]]
@@ -2496,29 +2517,31 @@ sentry = [
     { name = "sentry-sdk" },
 ]
 validator = [
+    { name = "jsonpatch" },
     { name = "stac-valid" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "attrs", specifier = ">=23.2.0" },
-    { name = "fastapi", specifier = ">=0.109,<0.140" },
+    { name = "fastapi", specifier = ">=0.109,<0.142" },
+    { name = "jsonpatch", marker = "extra == 'validator'" },
     { name = "jsonschema", specifier = "~=4.26.0" },
-    { name = "orjson", specifier = "~=3.11.0" },
+    { name = "orjson", specifier = ">=3.11,<3.13" },
     { name = "overrides", specifier = ">=7.4,<7.8" },
     { name = "pydantic", specifier = ">=2.4.1,<3.0.0" },
     { name = "pygeofilter", specifier = ">=0.3.1,<0.5.0" },
-    { name = "redis", marker = "extra == 'redis'", specifier = ">=6.4,<8.1" },
+    { name = "redis", marker = "extra == 'redis'", specifier = ">=6.4,<8.2" },
     { name = "retry", marker = "extra == 'redis'", specifier = "~=0.9.2" },
-    { name = "sentry-sdk", marker = "extra == 'sentry'", specifier = ">=2.49,<2.66" },
+    { name = "sentry-sdk", marker = "extra == 'sentry'", specifier = ">=2.49,<2.67" },
     { name = "slowapi", specifier = "~=0.1.9" },
     { name = "stac-fastapi-api", specifier = "==6.4.1" },
     { name = "stac-fastapi-catalogs-extension", marker = "extra == 'catalogs'", specifier = "==0.5.0" },
     { name = "stac-fastapi-extensions", specifier = "==6.4.1" },
     { name = "stac-fastapi-types", specifier = "==6.4.1" },
     { name = "stac-pydantic", specifier = ">=3.3,<3.7" },
-    { name = "stac-valid", marker = "extra == 'validator'", specifier = ">=4.2.2,<4.5.0" },
-    { name = "starlette", specifier = ">=0.35.0,<1.4.0" },
+    { name = "stac-valid", marker = "extra == 'validator'", specifier = ">=4.2.2,<4.6.0" },
+    { name = "starlette", specifier = ">=0.35.0,<1.7.0" },
     { name = "uvicorn", specifier = ">=0.23,<0.52" },
 ]
 provides-extras = ["catalogs", "redis", "sentry", "validator"]
@@ -2567,7 +2590,7 @@ validator = [
 [package.metadata]
 requires-dist = [
     { name = "ciso8601", marker = "extra == 'dev'", specifier = "~=2.3.0" },
-    { name = "elasticsearch", extras = ["async"], specifier = ">=8.19.1,<9.5.0" },
+    { name = "elasticsearch", extras = ["async"], specifier = ">=8.19.1,<9.6.0" },
     { name = "httpx", marker = "extra == 'dev'", specifier = ">=0.24.0,<0.29.0" },
     { name = "mkdocs", marker = "extra == 'docs'", specifier = ">=1.4,<1.7" },
     { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.0,<9.8" },
@@ -2576,8 +2599,8 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8,<10" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = "~=0.21.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0,<7.2" },
-    { name = "redis", marker = "extra == 'dev'", specifier = ">=6.4,<8.1" },
-    { name = "redis", marker = "extra == 'docs'", specifier = ">=6.4,<8.1" },
+    { name = "redis", marker = "extra == 'dev'", specifier = ">=6.4,<8.2" },
+    { name = "redis", marker = "extra == 'docs'", specifier = ">=6.4,<8.2" },
     { name = "retry", marker = "extra == 'dev'", specifier = "~=0.9.2" },
     { name = "retry", marker = "extra == 'docs'", specifier = "~=0.9.2" },
     { name = "sfeos-helpers", editable = "stac_fastapi/sfeos_helpers" },
@@ -2587,7 +2610,7 @@ requires-dist = [
     { name = "stac-fastapi-core", extras = ["redis"], marker = "extra == 'redis'", editable = "stac_fastapi/core" },
     { name = "stac-fastapi-core", extras = ["sentry"], marker = "extra == 'dev'", editable = "stac_fastapi/core" },
     { name = "stac-fastapi-core", extras = ["validator"], marker = "extra == 'validator'", editable = "stac_fastapi/core" },
-    { name = "uvicorn", extras = ["standard"], marker = "extra == 'server'", specifier = ">=0.23,<0.52" },
+    { name = "uvicorn", extras = ["standard"], marker = "extra == 'server'", specifier = ">=0.23,<0.53" },
 ]
 provides-extras = ["catalogs", "dev", "docs", "redis", "server", "validator"]
 
@@ -2656,7 +2679,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8,<10" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.21,<1.5" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.0,<7.2" },
-    { name = "redis", marker = "extra == 'dev'", specifier = ">=6.4,<8.1" },
+    { name = "redis", marker = "extra == 'dev'", specifier = ">=6.4,<8.2" },
     { name = "retry", marker = "extra == 'dev'", specifier = "~=0.9.2" },
     { name = "sfeos-helpers", editable = "stac_fastapi/sfeos_helpers" },
     { name = "stac-fastapi-core", editable = "stac_fastapi/core" },
@@ -2665,7 +2688,7 @@ requires-dist = [
     { name = "stac-fastapi-core", extras = ["redis"], marker = "extra == 'redis'", editable = "stac_fastapi/core" },
     { name = "stac-fastapi-core", extras = ["sentry"], marker = "extra == 'dev'", editable = "stac_fastapi/core" },
     { name = "stac-fastapi-core", extras = ["validator"], marker = "extra == 'validator'", editable = "stac_fastapi/core" },
-    { name = "uvicorn", extras = ["standard"], marker = "extra == 'server'", specifier = ">=0.23,<0.52" },
+    { name = "uvicorn", extras = ["standard"], marker = "extra == 'server'", specifier = ">=0.23,<0.53" },
 ]
 provides-extras = ["catalogs", "dev", "docs", "redis", "server", "validator"]
 
