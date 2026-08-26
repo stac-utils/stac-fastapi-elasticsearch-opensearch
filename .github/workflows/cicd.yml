@@ -100,7 +100,7 @@ jobs:
 
       - name: Run test suite
         run: |
-          pytest -svvv --timeout=300
+          uv run pytest -svvv --timeout=300
         env:
           ENVIRONMENT: testing
           ES_PORT: ${{ matrix.port }}
