@@ -2547,7 +2547,7 @@ requires-dist = [
     { name = "pygeofilter", specifier = ">=0.3.1,<0.5.0" },
     { name = "redis", marker = "extra == 'redis'", specifier = ">=6.4,<8.2" },
     { name = "retry", marker = "extra == 'redis'", specifier = "~=0.9.2" },
-    { name = "sentry-sdk", marker = "extra == 'sentry'", specifier = ">=2.49,<2.67" },
+    { name = "sentry-sdk", marker = "extra == 'sentry'", specifier = ">=2.49,<2.69" },
     { name = "slowapi", specifier = "~=0.1.9" },
     { name = "stac-fastapi-api", specifier = "==6.4.1" },
     { name = "stac-fastapi-catalogs-extension", marker = "extra == 'catalogs'", specifier = "==0.5.0" },
