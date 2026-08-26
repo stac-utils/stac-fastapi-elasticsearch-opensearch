@@ -326,12 +326,16 @@ Create environment variables for the application
   value: {{ include "stac-fastapi.redisPort" . | quote }}
 {{- end }}
 {{- if not (hasKey $env "REDIS_DB") }}
-{{- if and (.Values.redis.enabled) (not (and .Values.redis.external .Values.redis.external.enabled)) -}}
+{{- if and (.Values.redis.enabled) (not (and .Values.redis.external .Values.redis.external.enabled)) }}
+{{- if ne .Values.redis.database nil }}
 - name: REDIS_DB
-  value: {{- .Values.redis.database -}}
-{{- else if and .Values.redis.external .Values.redis.external.enabled -}}
+  value: {{ .Values.redis.database | quote }}
+{{- end }}
+{{- else if and .Values.redis.external .Values.redis.external.enabled }}
+{{- if ne .Values.redis.external.database nil }}
 - name: REDIS_DB
-  value: {{- .Values.redis.external.database | default 0 -}}
+  value: {{ (.Values.redis.external.database | default 0) | quote }}
+{{- end }}
 {{- end }}
 {{- end }}
 {{- if not (or (hasKey $env "REDIS_PASSWORD") (hasKey $envFromSecret "REDIS_PASSWORD")) }}
