@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Removed
+
+### Updated
+
+
+## [v7.0.0] - 2026-08-27
+
+### Breaking Changes
+
+- **Application Factory Pattern (#810):** Removed global `app` variables from backend `app.py` modules in favor of `create_app()`. Downstream deployments running Uvicorn/Gunicorn must update their commands to use `create_app` with the `--factory` flag (e.g., `uvicorn stac_fastapi_opensearch.app:create_app --factory`).
+- **Dynamic Extension Manager (#792):** Replaced global extension dictionaries with a dynamic dataclass manager. Direct mutation of global extension dictionaries is no longer supported; custom routes or overrides should now be passed via `extra_map` or the new extension manager interface.
+
+### Added
+
 - Added `app.extraContainers` to allow injecting additional sidecar containers into the Deployment.
 - Added `app.envFrom` to allow configuring container `envFrom` sources.
 - Added `app.extraEnv` to allow adding additional container environment entries. [#796](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/796)
@@ -25,8 +43,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Fixed Helm chart redis values. Settings are now propagated to the sfeos pod. [#829](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/829)
 - Implemented STAC validation for PATCH and PUT requests on Items and Collections. Previously, patch operations bypassed the STAC validator. Now, when `ENABLE_STAC_VALIDATOR=true`, the final item or collection state is computed in-memory and validated prior to any database writes. This guarantees invalid resources are rejected before saving, and uniformly protects both endpoints against invalid JSON Patch (RFC 6902) and Merge Patch payloads.[#827](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/827)
 
-### Removed
-
 ### Updated
 
 - Updated stac-fastapi parent dependencies from v6.3.0 -> v6.3.2 [#786](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/786)
@@ -35,7 +51,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Update sort extension to use new conformance classes in app.py for search, collection search, and item search endpoints [#812](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/812)
 
 
-## [v6.19.0] - 2025-06-23
+## [v6.19.0] - 2026-06-23
 
 ### Added
 
@@ -965,7 +981,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.19.0...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v7.0.0...main
+[v7.0.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.19.0...v7.0.0
 [v6.19.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.18.0...v6.19.0
 [v6.18.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.17.2...v6.18.0
 [v6.17.2]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.17.1...v6.17.2

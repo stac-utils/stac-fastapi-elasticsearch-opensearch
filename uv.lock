@@ -2371,7 +2371,7 @@ wheels = [
 
 [[package]]
 name = "sfeos"
-version = "6.19.0"
+version = "7.0.0"
 source = { virtual = "." }
 dependencies = [
     { name = "sfeos-helpers" },
