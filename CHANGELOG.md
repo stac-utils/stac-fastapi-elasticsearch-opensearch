@@ -15,12 +15,14 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 
+- Integrated `uv` for dependency management across local development, Docker containers, and CI/CD pipeline. Updated `pyproject.toml` to use `uv` workspace configuration, Dockerfiles to use the official `uv` image with build cache mounts, and CI/CD workflow to use `astral-sh/setup-uv` action. This ensures consistent, reproducible dependency resolution and faster builds across all environments. [#845](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/845)
 - Refactored extension initialization to use a dynamic `Extensions` manager class rather than global dictionaries. This eliminates configuration state leakage across instances and allows developers to easily inject custom out-of-tree endpoints (via `extra_map`) or override core extensions without monkey-patching. [#792](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/792)
 - Transitioned backend applications to use the factory pattern (`create_app`), fully supporting Uvicorn's `--factory` flag. This eliminates global state side-effects on import, guarantees memory isolation per worker, and allowed for the removal of extensive state-resetting boilerplate in `conftest.py`. [#810](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/810)
 
 ### Fixed
 
 - Fixed Redis pagination for POST requests. Properly handled pagination tokens for the previous, self, and next links in the response. [#808](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/808)
+- Fixed Helm chart redis values. Settings are now propagated to the sfeos pod. [#829](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/829)
 - Implemented STAC validation for PATCH and PUT requests on Items and Collections. Previously, patch operations bypassed the STAC validator. Now, when `ENABLE_STAC_VALIDATOR=true`, the final item or collection state is computed in-memory and validated prior to any database writes. This guarantees invalid resources are rejected before saving, and uniformly protects both endpoints against invalid JSON Patch (RFC 6902) and Merge Patch payloads.[#827](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/827)
 
 ### Removed
