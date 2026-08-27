@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 - Updated stac-fastapi parent dependencies from v6.3.0 -> v6.3.2 [#786](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/786)
 - Updated stac-fastapi parent dependencies from v6.3.2 -> v6.4.1 [#812](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/812)
+- Updated stac-fastapi parent dependencies from v6.4.1 -> v6.5.0 [#812](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/812)
 - Update sort extension to use new conformance classes in app.py for search, collection search, and item search endpoints [#812](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/812)
 
 
