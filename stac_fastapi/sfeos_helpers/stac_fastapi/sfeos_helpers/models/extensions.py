@@ -28,7 +28,6 @@ from stac_fastapi.extensions import (
     CollectionSearchFilterExtension,
     FilterExtension,
     FreeTextExtension,
-    SortExtension,
     TokenPaginationExtension,
     TransactionExtension,
 )
@@ -36,7 +35,11 @@ from stac_fastapi.extensions.fields import FieldsConformanceClasses
 from stac_fastapi.extensions.filter import FilterConformanceClasses
 from stac_fastapi.extensions.free_text import FreeTextConformanceClasses
 from stac_fastapi.extensions.query import QueryConformanceClasses
-from stac_fastapi.extensions.sort import SortConformanceClasses
+from stac_fastapi.extensions.sort import (
+    CollectionSearchSortExtension,
+    ItemCollectionSortExtension,
+    SearchSortExtension,
+)
 from stac_fastapi.sfeos_helpers.aggregation import EsAsyncBaseAggregationClient
 from stac_fastapi.sfeos_helpers.filter import EsAsyncBaseFiltersClient
 from stac_fastapi.types.extension import ApiExtension
@@ -62,7 +65,7 @@ def get_default_extensions_map(
         "search_map": {
             "fields": fields_extension,
             "query": QueryExtension(),
-            "sort": SortExtension(),
+            "sort": SearchSortExtension(),
             "pagination": TokenPaginationExtension(),
             "filter": filter_extension,
             "free_text": FreeTextExtension(
@@ -73,9 +76,7 @@ def get_default_extensions_map(
             "query": QueryExtension(
                 conformance_classes=[QueryConformanceClasses.COLLECTIONS]
             ),
-            "sort": SortExtension(
-                conformance_classes=[SortConformanceClasses.COLLECTIONS]
-            ),
+            "sort": CollectionSearchSortExtension(),
             "fields": FieldsExtension(
                 conformance_classes=[FieldsConformanceClasses.COLLECTIONS]
             ),
@@ -87,7 +88,7 @@ def get_default_extensions_map(
             ),
         },
         "item_collection_map": {
-            "sort": SortExtension(conformance_classes=[SortConformanceClasses.ITEMS]),
+            "sort": ItemCollectionSortExtension(),
             "query": QueryExtension(
                 conformance_classes=[QueryConformanceClasses.ITEMS]
             ),
@@ -302,6 +303,11 @@ class Extensions:
         if get_model is None or post_model is None:
             return []
 
+        # Dynamically build conformance classes from enabled extensions
+        conformance = ["https://api.stacspec.org/v1.0.0-rc.1/collection-search"]
+        for ext in self.get_enabled_extensions("collection_search"):
+            conformance.extend(ext.conformance_classes)
+
         return [
             CollectionsSearchEndpointExtension(
                 client=CoreClient(
@@ -315,14 +321,7 @@ class Extensions:
                 settings=self.settings,
                 GET=get_model,
                 POST=post_model,
-                conformance_classes=[
-                    "https://api.stacspec.org/v1.0.0-rc.1/collection-search",
-                    QueryConformanceClasses.COLLECTIONS,
-                    FilterConformanceClasses.COLLECTIONS,
-                    FreeTextConformanceClasses.COLLECTIONS,
-                    SortConformanceClasses.COLLECTIONS,
-                    FieldsConformanceClasses.COLLECTIONS,
-                ],
+                conformance_classes=conformance,
             )
         ]
 

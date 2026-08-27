@@ -1053,6 +1053,90 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                     status_code=400, detail=f"Invalid item geometry: {e}"
                 )
 
+    async def _apply_and_validate_patch(
+        self,
+        existing_dict: dict,
+        patch: PartialItem | PartialCollection | list[PatchOperation],
+        content_type: str,
+        item_type: str = "item",
+    ) -> dict:
+        """Apply and validate a patch in-memory.
+
+        Generic helper for both items and collections. Applies patch in-memory,
+        validates the result, and returns the patched dictionary.
+
+        Args:
+            existing_dict: The existing STAC item or collection as a dictionary.
+            patch: The patch to apply (PartialItem, PartialCollection, or list of operations).
+            content_type: The content type of the patch request.
+            item_type: Either "item" or "collection" for error messages.
+
+        Returns:
+            The patched dictionary.
+
+        Raises:
+            HTTPException: If patch format is invalid or validation fails.
+        """
+        from copy import deepcopy
+
+        import jsonpatch
+
+        patched_dict = None
+
+        # Handle JSON Patch (RFC 6902)
+        if isinstance(patch, list) and content_type == "application/json-patch+json":
+            ops_dicts = []
+            for op in patch:
+                if isinstance(op, dict):
+                    ops_dicts.append(op)
+                elif hasattr(op, "model_dump"):
+                    ops_dicts.append(op.model_dump(exclude_unset=True))
+                elif hasattr(op, "dict"):
+                    ops_dicts.append(op.dict(exclude_unset=True))
+                else:
+                    ops_dicts.append(vars(op))
+
+            patched_dict = deepcopy(existing_dict)
+            if ops_dicts:
+                patched_dict = jsonpatch.apply_patch(patched_dict, ops_dicts)
+
+        # Handle Merge Patch or JSON
+        elif isinstance(
+            patch, (dict, PartialItem, PartialCollection)
+        ) and content_type in [
+            "application/merge-patch+json",
+            "application/json",
+        ]:
+            patch_dict = (
+                patch.model_dump(mode="json", exclude_unset=True)
+                if hasattr(patch, "model_dump")
+                else patch
+            )
+            patched_dict = deepcopy(existing_dict)
+            patched_dict.update(patch_dict)
+
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Content-Type: {content_type} and body: {patch} combination not implemented",
+            )
+
+        # Validate the patched result based on type
+        if item_type == "collection":
+            # For collections, validate using async_validate_stac with Collection model
+            if get_bool_env("ENABLE_STAC_VALIDATOR"):
+                try:
+                    await async_validate_stac(patched_dict, pydantic_model=Collection)
+                except (ValidationError, ValueError) as e:
+                    raise HTTPException(
+                        status_code=400, detail=f"Invalid collection: {e}"
+                    )
+        else:
+            # For items, use the standard item validation
+            await self._validate_single_item(patched_dict)
+
+        return patched_dict
+
     async def _validate_feature_collection(
         self, features: list[dict], skip_validation: bool
     ) -> tuple[list[dict], dict[str, list[str]]]:
@@ -1582,6 +1666,16 @@ class TransactionsClient(AsyncBaseTransactionsClient):
     ):
         """Patch an item in the collection.
 
+        When ENABLE_STAC_VALIDATOR=true:
+        - All patch logic (fetch, apply, validate, save) happens in core.py
+        - Ensures shared validation logic across all backends
+        - Zero database mutations for invalid patches (validation before DB write)
+        - No rollbacks needed (validation happens in-memory)
+
+        When ENABLE_STAC_VALIDATOR=false:
+        - Delegates to database layer for direct patch execution
+        - Zero overhead (skips in-memory patch calculation and validation)
+
         Args:
             collection_id (str): The ID of the collection the item belongs to.
             item_id (str): The ID of the item to be updated.
@@ -1593,41 +1687,86 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         Raises:
             NotFound: If the specified collection is not found in the database.
+            HTTPException: If the patched item fails validation (when enabled).
 
         """
         base_url = str(kwargs["request"].base_url)
-
         content_type = kwargs["request"].headers.get("content-type")
 
-        item = None
-        if isinstance(patch, list) and content_type == "application/json-patch+json":
-            item = await self.database.json_patch_item(
-                collection_id=collection_id,
-                item_id=item_id,
-                operations=patch,
-                base_url=base_url,
+        # When validation is DISABLED, delegate to database layer for direct execution
+        if not get_bool_env("ENABLE_STAC_VALIDATOR"):
+            item = None
+            if (
+                isinstance(patch, list)
+                and content_type == "application/json-patch+json"
+            ):
+                item = await self.database.json_patch_item(
+                    collection_id=collection_id,
+                    item_id=item_id,
+                    operations=patch,
+                    base_url=base_url,
+                )
+
+            if isinstance(patch, dict):
+                patch = partialItemValidator.validate_python(patch)
+
+            if isinstance(patch, PartialItem) and content_type in [
+                "application/merge-patch+json",
+                "application/json",
+            ]:
+                item = await self.database.merge_patch_item(
+                    collection_id=collection_id,
+                    item_id=item_id,
+                    item=patch,
+                    base_url=base_url,
+                )
+
+            if item:
+                return ItemSerializer.db_to_stac(item, base_url=base_url)
+
+            raise HTTPException(
+                status_code=400,
+                detail=f"Content-Type: {content_type} and body: {patch} combination not implemented",
             )
 
+        # When validation is ENABLED, do all logic in core.py
+        # 1. FETCH current item state from DB
+        existing_item = await self.database.get_one_item(
+            item_id=item_id, collection_id=collection_id
+        )
+        if not existing_item:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Item {item_id} in collection {collection_id} not found",
+            )
+
+        # Convert DB item to STAC dictionary for patching
+        stac_item = ItemSerializer.db_to_stac(existing_item, base_url=base_url)
+        item_dict = (
+            stac_item.model_dump(mode="json")
+            if hasattr(stac_item, "model_dump")
+            else stac_item
+        )
+
+        # 2. APPLY PATCH IN-MEMORY and VALIDATE
         if isinstance(patch, dict):
             patch = partialItemValidator.validate_python(patch)
 
-        if isinstance(patch, PartialItem) and content_type in [
-            "application/merge-patch+json",
-            "application/json",
-        ]:
-            item = await self.database.merge_patch_item(
-                collection_id=collection_id,
-                item_id=item_id,
-                item=patch,
-                base_url=base_url,
-            )
-
-        if item:
-            return ItemSerializer.db_to_stac(item, base_url=base_url)
-
-        raise NotImplementedError(
-            f"Content-Type: {content_type} and body: {patch} combination not implemented"
+        patched_dict = await self._apply_and_validate_patch(
+            item_dict, patch, content_type, item_type="item"
         )
+
+        # 3. SAVE TO DB (Full replacement update)
+        # Convert validated patched dict back to DB format and save
+        db_item = ItemSerializer.stac_to_db(patched_dict, base_url=base_url)
+        await self.database.create_item(
+            db_item,
+            base_url=base_url,
+            upsert=True,
+            **kwargs,
+        )
+
+        return ItemSerializer.db_to_stac(db_item, base_url=base_url)
 
     @overrides
     async def delete_item(self, item_id: str, collection_id: str, **kwargs) -> None:
@@ -1731,50 +1870,112 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         patch: PartialCollection | list[PatchOperation],
         **kwargs,
     ):
-        """Update a collection.
+        """Patch a collection.
 
-        Called with `PATCH /collections/{collection_id}`
+        When ENABLE_STAC_VALIDATOR=true:
+        - All patch logic (fetch, apply, validate, save) happens in core.py
+        - Ensures shared validation logic across all backends
+        - Zero database mutations for invalid patches (validation before DB write)
+        - No rollbacks needed (validation happens in-memory)
+
+        When ENABLE_STAC_VALIDATOR=false:
+        - Delegates to database layer for direct patch execution
+        - Zero overhead (skips in-memory patch calculation and validation)
 
         Args:
             collection_id: id of the collection.
             patch: either the partial collection or list of patch operations.
+            kwargs: Other optional arguments, including the request object.
 
         Returns:
             The patched collection.
         """
         base_url = str(kwargs["request"].base_url)
         content_type = kwargs["request"].headers.get("content-type")
+        request = kwargs["request"]
 
-        collection = None
-        if isinstance(patch, list) and content_type == "application/json-patch+json":
-            collection = await self.database.json_patch_collection(
-                collection_id=collection_id,
-                operations=patch,
-                base_url=base_url,
+        # When validation is DISABLED, delegate to database layer for direct execution
+        if not get_bool_env("ENABLE_STAC_VALIDATOR"):
+            collection = None
+            if (
+                isinstance(patch, list)
+                and content_type == "application/json-patch+json"
+            ):
+                collection = await self.database.json_patch_collection(
+                    collection_id=collection_id,
+                    operations=patch,
+                    base_url=base_url,
+                )
+
+            if isinstance(patch, dict):
+                patch = partialCollectionValidator.validate_python(patch)
+
+            if isinstance(patch, PartialCollection) and content_type in [
+                "application/merge-patch+json",
+                "application/json",
+            ]:
+                collection = await self.database.merge_patch_collection(
+                    collection_id=collection_id,
+                    collection=patch,
+                    base_url=base_url,
+                )
+
+            if collection:
+                return CollectionSerializer.db_to_stac(
+                    collection,
+                    request,
+                    extensions=[type(ext).__name__ for ext in self.database.extensions],
+                )
+
+            raise HTTPException(
+                status_code=400,
+                detail=f"Content-Type: {content_type} and body: {patch} combination not implemented",
             )
 
+        # When validation is ENABLED, do all logic in core.py
+        # 1. FETCH current collection state from DB
+        existing_collection = await self.database.find_collection(collection_id)
+        if not existing_collection:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Collection {collection_id} not found",
+            )
+
+        # Convert DB collection to STAC dictionary for patching
+        stac_collection = CollectionSerializer.db_to_stac(
+            existing_collection,
+            request,
+            extensions=[type(ext).__name__ for ext in self.database.extensions],
+        )
+        collection_dict = (
+            stac_collection.model_dump(mode="json")
+            if hasattr(stac_collection, "model_dump")
+            else stac_collection
+        )
+
+        # 2. APPLY PATCH IN-MEMORY and VALIDATE
         if isinstance(patch, dict):
             patch = partialCollectionValidator.validate_python(patch)
 
-        if isinstance(patch, PartialCollection) and content_type in [
-            "application/merge-patch+json",
-            "application/json",
-        ]:
-            collection = await self.database.merge_patch_collection(
-                collection_id=collection_id,
-                collection=patch,
-                base_url=base_url,
-            )
+        patched_dict = await self._apply_and_validate_patch(
+            collection_dict, patch, content_type, item_type="collection"
+        )
 
-        if collection:
-            return CollectionSerializer.db_to_stac(
-                collection,
-                kwargs["request"],
-                extensions=[type(ext).__name__ for ext in self.database.extensions],
-            )
+        # 3. SAVE TO DB (Full replacement update)
+        # Convert validated patched dict back to DB format and save
+        db_collection = self.database.collection_serializer.stac_to_db(
+            patched_dict, request
+        )
+        await self.database.update_collection(
+            collection_id=collection_id,
+            collection=db_collection,
+            refresh=True,
+        )
 
-        raise NotImplementedError(
-            f"Content-Type: {content_type} and body: {patch} combination not implemented"
+        return CollectionSerializer.db_to_stac(
+            db_collection,
+            request,
+            extensions=[type(ext).__name__ for ext in self.database.extensions],
         )
 
     @overrides
