@@ -2,7 +2,12 @@ import pytest
 from redis.exceptions import ConnectionError as RedisConnectionError
 
 import stac_fastapi.core.redis_utils as redis_utils
-from stac_fastapi.core.redis_utils import connect_redis, get_prev_link, save_prev_link
+from stac_fastapi.core.redis_utils import (
+    AsyncRedisQueueManager,
+    connect_redis,
+    get_prev_link,
+    save_prev_link,
+)
 
 
 @pytest.mark.asyncio
@@ -50,6 +55,120 @@ async def test_redis_utils_functions():
         redis, "http://mywebsite.com/search", "non_existent_token"
     )
     assert non_existent is None
+
+
+@pytest.mark.asyncio
+async def test_connect_redis_standalone_passes_username_and_password(monkeypatch):
+    monkeypatch.setattr(
+        redis_utils.sentinel_settings, "REDIS_SENTINEL_HOSTS", "", raising=False
+    )
+    monkeypatch.setattr(redis_utils.settings, "REDIS_HOST", "redis-host", raising=False)
+    monkeypatch.setattr(
+        redis_utils.settings, "REDIS_USERNAME", "testuser", raising=False
+    )
+    monkeypatch.setattr(
+        redis_utils.settings, "REDIS_PASSWORD", "testpass", raising=False
+    )
+
+    captured_kwargs = {}
+
+    class FakeConnectionPool:
+        def __init__(self, **kwargs):
+            captured_kwargs.update(kwargs)
+
+    monkeypatch.setattr(redis_utils.aioredis, "ConnectionPool", FakeConnectionPool)
+    monkeypatch.setattr(redis_utils.aioredis, "Redis", lambda **kwargs: object())
+
+    await redis_utils._connect_redis_internal()
+
+    assert captured_kwargs["username"] == "testuser"
+    assert captured_kwargs["password"] == "testpass"
+
+
+@pytest.mark.asyncio
+async def test_connect_redis_sentinel_passes_username_and_password(monkeypatch):
+    # `settings` and `sentinel_settings` are the same object whenever sentinel mode
+    # is active in a real process (both derived from REDIS_SENTINEL_HOSTS at import
+    # time) - keep that invariant here so `settings.get_sentinel_nodes()` resolves.
+    monkeypatch.setattr(redis_utils, "settings", redis_utils.sentinel_settings)
+    monkeypatch.setattr(
+        redis_utils.sentinel_settings,
+        "REDIS_SENTINEL_HOSTS",
+        "sentinel-host",
+        raising=False,
+    )
+    monkeypatch.setattr(
+        redis_utils.sentinel_settings, "REDIS_USERNAME", "testuser", raising=False
+    )
+    monkeypatch.setattr(
+        redis_utils.sentinel_settings, "REDIS_PASSWORD", "testpass", raising=False
+    )
+
+    captured_kwargs = {}
+
+    class FakeSentinel:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def master_for(self, *args, **kwargs):
+            captured_kwargs.update(kwargs)
+            return object()
+
+    monkeypatch.setattr(redis_utils, "Sentinel", FakeSentinel)
+
+    await redis_utils._connect_redis_internal()
+
+    assert captured_kwargs["username"] == "testuser"
+    assert captured_kwargs["password"] == "testpass"
+
+
+@pytest.mark.asyncio
+async def test_queue_manager_connect_standalone_passes_username_and_password(
+    monkeypatch,
+):
+    monkeypatch.delenv("REDIS_SENTINEL_HOSTS", raising=False)
+    monkeypatch.setenv("REDIS_HOST", "redis-host")
+    monkeypatch.setenv("REDIS_USERNAME", "testuser")
+    monkeypatch.setenv("REDIS_PASSWORD", "testpass")
+
+    captured_kwargs = {}
+
+    def fake_redis(**kwargs):
+        captured_kwargs.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(redis_utils.aioredis, "Redis", fake_redis)
+
+    await AsyncRedisQueueManager._connect()
+
+    assert captured_kwargs["username"] == "testuser"
+    assert captured_kwargs["password"] == "testpass"
+
+
+@pytest.mark.asyncio
+async def test_queue_manager_connect_sentinel_passes_username_and_password(
+    monkeypatch,
+):
+    monkeypatch.setenv("REDIS_SENTINEL_HOSTS", "sentinel-host")
+    monkeypatch.setenv("REDIS_USERNAME", "testuser")
+    monkeypatch.setenv("REDIS_PASSWORD", "testpass")
+
+    captured_kwargs = {}
+
+    class FakeSentinel:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def master_for(self, *args, **kwargs):
+            captured_kwargs.update(kwargs)
+            return object()
+
+    monkeypatch.setattr(redis_utils, "Sentinel", FakeSentinel)
+
+    await AsyncRedisQueueManager._connect()
+
+    assert captured_kwargs["username"] == "testuser"
+    assert captured_kwargs["password"] == "testpass"
 
 
 @pytest.mark.asyncio

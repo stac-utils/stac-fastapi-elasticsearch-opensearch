@@ -380,7 +380,7 @@ redis:
   # Optional override for the generated Redis fullname
   fullnameOverride: ""
   # Default Redis database index used by the application
-  database: 0
+  # database:
   architecture: standalone
   master:
     service:
@@ -396,6 +396,7 @@ redis:
     enabled: false
     host: ""
     port: 6379
+    # database:
     # Optional secret that stores the Redis password for the external instance
     passwordSecret: ""
     passwordKey: "redis-password"

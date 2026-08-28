@@ -23,6 +23,8 @@ class RedisCommonSettings(BaseSettings):
     """Common configuration for Redis Sentinel and Redis Standalone."""
 
     REDIS_DB: int = 15
+    REDIS_USERNAME: str | None = None
+    REDIS_PASSWORD: str | None = None
     REDIS_MAX_CONNECTIONS: int | None = None
     REDIS_RETRY_TIMEOUT: bool = True
     REDIS_DECODE_RESPONSES: bool = True
@@ -163,6 +165,8 @@ async def _connect_redis_internal() -> aioredis.Redis | None:
         redis = sentinel.master_for(
             service_name=settings.REDIS_SENTINEL_MASTER_NAME,
             db=settings.REDIS_DB,
+            username=settings.REDIS_USERNAME,
+            password=settings.REDIS_PASSWORD,
             decode_responses=settings.REDIS_DECODE_RESPONSES,
             retry_on_timeout=settings.REDIS_RETRY_TIMEOUT,
             client_name=settings.REDIS_CLIENT_NAME,
@@ -176,6 +180,8 @@ async def _connect_redis_internal() -> aioredis.Redis | None:
             host=settings.REDIS_HOST,
             port=settings.REDIS_PORT,
             db=settings.REDIS_DB,
+            username=settings.REDIS_USERNAME,
+            password=settings.REDIS_PASSWORD,
             max_connections=settings.REDIS_MAX_CONNECTIONS,
             decode_responses=settings.REDIS_DECODE_RESPONSES,
             retry_on_timeout=settings.REDIS_RETRY_TIMEOUT,
@@ -374,6 +380,8 @@ class AsyncRedisQueueManager:
             return sentinel.master_for(
                 _sentinel_settings.REDIS_SENTINEL_MASTER_NAME,
                 db=_sentinel_settings.REDIS_DB,
+                username=_sentinel_settings.REDIS_USERNAME,
+                password=_sentinel_settings.REDIS_PASSWORD,
                 decode_responses=True,
             )
         else:
@@ -385,6 +393,8 @@ class AsyncRedisQueueManager:
                 host=standalone_settings.REDIS_HOST,
                 port=standalone_settings.REDIS_PORT,
                 db=standalone_settings.REDIS_DB,
+                username=standalone_settings.REDIS_USERNAME,
+                password=standalone_settings.REDIS_PASSWORD,
                 decode_responses=True,
             )
 

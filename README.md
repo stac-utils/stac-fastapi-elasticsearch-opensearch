@@ -11,7 +11,7 @@
   [![GitHub forks](https://img.shields.io/github/forks/stac-utils/stac-fastapi-elasticsearch-opensearch.svg?color=blue)](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/network/members)
    [![PyPI version](https://img.shields.io/pypi/v/stac-fastapi-elasticsearch.svg?color=blue)](https://pypi.org/project/stac-fastapi-elasticsearch/)
   [![STAC](https://img.shields.io/badge/STAC-1.1.0-blue.svg)](https://github.com/radiantearth/stac-spec/tree/v1.1.0)
-  [![stac-fastapi](https://img.shields.io/badge/stac--fastapi-6.4.1-blue.svg)](https://github.com/stac-utils/stac-fastapi)
+  [![stac-fastapi](https://img.shields.io/badge/stac--fastapi-6.5.0-blue.svg)](https://github.com/stac-utils/stac-fastapi)
 
 ## Sponsors & Supporters
 
@@ -965,12 +965,33 @@ docker compose up elasticsearch app-elasticsearch
 # For OpenSearch backend
 docker compose up opensearch app-opensearch
 ```
+
 - **Configuration**: By default, Docker Compose uses Elasticsearch 9.x and OpenSearch 3.5.0. To use different versions, create a `.env` file:
   ```shell
   ELASTICSEARCH_VERSION=9.3.2
   OPENSEARCH_VERSION=3.5.0
   ENABLE_DIRECT_RESPONSE=false
   ```
+
+**Setting up your development environment with `uv`:**
+
+This project uses [`uv`](https://docs.astral.sh/uv/) for fast, reproducible dependency management. To set up your local development environment:
+
+```shell
+# Install uv (if not already installed)
+pip install uv
+
+# Sync dependencies using the locked uv.lock file
+uv sync --all-extras
+
+# Run tests
+uv run pytest -svvv
+
+# Run pre-commit checks
+uv run pre-commit run --all-files
+```
+
+The `uv.lock` file ensures that all developers, CI/CD pipelines, and Docker containers use the exact same dependency versions for consistency and reproducibility.
 
 
 ## Configuration Reference
@@ -1369,6 +1390,8 @@ These Redis configuration variables enable proper navigation functionality in ST
 | `REDIS_PORT` | Redis server port for Redis configuration. | `6379`                   | Conditional (required for standalone Redis)                                                 |
 | **Both** |                                                                                              |                          |                                                                                             |
 | `REDIS_DB` | Redis database number to use for caching.                                                    | `0` (Sentinel) / `15` (Standalone) | Optional                                                                                    |
+| `REDIS_USERNAME` | If your redis instance uses ACLs for authentication you may provide a username here. | `""` | Optional |
+| `REDIS_PASSWORD` | Password for authentication enabled redis instances. | `""` | Optional |
 | `REDIS_MAX_CONNECTIONS` | Maximum number of connections in the Redis connection pool.                                  | `10`                     | Optional                                                                                    |
 | `REDIS_RETRY_TIMEOUT` | Enable retry on timeout for Redis operations.                                                | `true`                   | Optional                                                                                    |
 | `REDIS_DECODE_RESPONSES`      | Automatically decode Redis responses to strings.                                             | `true`                   | Optional                                                                                    |
