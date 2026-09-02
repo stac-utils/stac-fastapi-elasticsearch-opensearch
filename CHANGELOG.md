@@ -9,7 +9,11 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Added configurable sort field remapping via `STAC_FASTAPI_SORT_FIELD_REMAPS` (global) and `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS` (collections-specific override).
+
 ### Changed
+
+- Sort remap dictionaries are now computed once at application startup. For collection sorting, SFEOS can auto-detect keyword sort targets (for example `title` → `title.keyword`) from generated mappings when no explicit remap is provided.
 
 ### Fixed
 

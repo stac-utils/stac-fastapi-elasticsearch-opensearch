@@ -3,14 +3,109 @@
 This module provides functions for building and manipulating Elasticsearch/OpenSearch queries.
 """
 
+import json
 import logging
 import os
 from typing import Any
 
 from stac_fastapi.core.utilities import bbox2polygon
-from stac_fastapi.sfeos_helpers.mappings import Geometry
+from stac_fastapi.sfeos_helpers.mappings import (
+    ES_COLLECTIONS_MAPPINGS,
+    ES_ITEMS_MAPPINGS,
+    Geometry,
+)
 
 ES_MAX_URL_LENGTH = int(os.getenv("ES_MAX_URL_LENGTH", "4096"))
+
+
+def _parse_sort_field_remaps(env_var: str) -> dict[str, str]:
+    """Parse sort field remaps from a JSON object environment variable."""
+    value = os.getenv(env_var)
+    if not value:
+        return {}
+
+    try:
+        parsed = json.loads(value)
+    except json.JSONDecodeError:
+        logging.warning("Invalid JSON in %s; expected an object.", env_var)
+        return {}
+
+    if not isinstance(parsed, dict):
+        logging.warning("Invalid value in %s; expected an object.", env_var)
+        return {}
+
+    remaps: dict[str, str] = {}
+    for key, mapped in parsed.items():
+        if isinstance(key, str) and isinstance(mapped, str) and key and mapped:
+            remaps[key] = mapped
+
+    return remaps
+
+
+def _detect_keyword_sort_remaps_from_mapping(
+    mapping: dict[str, Any],
+) -> dict[str, str]:
+    """Detect sortable keyword subfields from explicit mappings.
+
+    For a text field with a keyword multi-field, this returns a remap like:
+    {"title": "title.keyword"}
+    """
+    remaps: dict[str, str] = {}
+
+    def walk(path: str, field_def: dict[str, Any]) -> None:
+        field_type = field_def.get("type")
+        multi_fields = field_def.get("fields", {})
+
+        if field_type == "text" and isinstance(multi_fields, dict):
+            for sub_name, sub_def in multi_fields.items():
+                if isinstance(sub_def, dict) and sub_def.get("type") == "keyword":
+                    remaps.setdefault(path, f"{path}.{sub_name}")
+                    break
+
+        nested = field_def.get("properties")
+        if isinstance(nested, dict):
+            for child_name, child_def in nested.items():
+                if isinstance(child_def, dict):
+                    child_path = f"{path}.{child_name}" if path else child_name
+                    walk(child_path, child_def)
+
+    properties = mapping.get("properties", {})
+    if isinstance(properties, dict):
+        for field_name, field_def in properties.items():
+            if isinstance(field_def, dict):
+                walk(field_name, field_def)
+
+    return remaps
+
+
+MANUAL_SORT_FIELD_REMAPS = _parse_sort_field_remaps("STAC_FASTAPI_SORT_FIELD_REMAPS")
+MANUAL_COLLECTIONS_SORT_FIELD_REMAPS = _parse_sort_field_remaps(
+    "STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS"
+)
+
+AUTO_SORT_FIELD_REMAPS = _detect_keyword_sort_remaps_from_mapping(ES_ITEMS_MAPPINGS)
+AUTO_COLLECTIONS_SORT_FIELD_REMAPS = _detect_keyword_sort_remaps_from_mapping(
+    ES_COLLECTIONS_MAPPINGS
+)
+
+
+def remap_sort_field_shared(field_name: str, is_collection: bool = False) -> str:
+    """Remap API sort field names to engine fields via optional env config.
+
+    Env vars (JSON objects):
+    - STAC_FASTAPI_SORT_FIELD_REMAPS
+    - STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS (overrides global for collections)
+    """
+    if is_collection:
+        if field_name in MANUAL_COLLECTIONS_SORT_FIELD_REMAPS:
+            return MANUAL_COLLECTIONS_SORT_FIELD_REMAPS[field_name]
+        if field_name in MANUAL_SORT_FIELD_REMAPS:
+            return MANUAL_SORT_FIELD_REMAPS[field_name]
+        return AUTO_COLLECTIONS_SORT_FIELD_REMAPS.get(field_name, field_name)
+
+    if field_name in MANUAL_SORT_FIELD_REMAPS:
+        return MANUAL_SORT_FIELD_REMAPS[field_name]
+    return AUTO_SORT_FIELD_REMAPS.get(field_name, field_name)
 
 
 def apply_free_text_filter_shared(
@@ -315,7 +410,9 @@ def apply_collections_bbox_filter_shared(
     }
 
 
-def populate_sort_shared(sortby: list) -> dict[str, dict[str, str]] | None:
+def populate_sort_shared(
+    sortby: list, is_collection: bool = False
+) -> dict[str, dict[str, str]] | None:
     """Create a sort configuration for Elasticsearch/OpenSearch queries.
 
     Args:
@@ -338,7 +435,7 @@ def populate_sort_shared(sortby: list) -> dict[str, dict[str, str]] | None:
     if sortby:
         sort_config = {}
         for s in sortby:
-            field_name = s.field
+            field_name = remap_sort_field_shared(s.field, is_collection=is_collection)
             direction = s.direction
             sort_obj = {"order": direction}
 

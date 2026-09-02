@@ -245,6 +245,8 @@ These extensions make it easier to build user interfaces that display and naviga
 >
 > **Important**: Adding keyword fields to make text fields sortable can significantly increase the index size, especially for large text fields. Consider the storage implications when deciding which fields to make sortable.
 
+> **Tip**: If you add a keyword subfield for sorting (for example `title.keyword`) through custom mappings, SFEOS can remap sort fields automatically at startup based on the generated mappings. You can also override this behavior explicitly with `STAC_FASTAPI_SORT_FIELD_REMAPS` and `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS`.
+
 
 ## Catalogs Route
 
@@ -1088,6 +1090,8 @@ You can customize additional settings in your `.env` file:
 | `STAC_FASTAPI_ES_DYNAMIC_TEMPLATES_FILE` | Path to a JSON file containing custom Elasticsearch/OpenSearch dynamic template to merge with defaults. See [Custom Index Mappings](#custom-index-mappings). | `None` | Optional |
 | `STAC_FASTAPI_ES_DYNAMIC_MAPPING` | Controls dynamic mapping behavior for item indices. Values: `true` (default), `false`, or `strict`. See [Custom Index Mappings](#custom-index-mappings). | `true` | Optional |
 | `STAC_FASTAPI_ES_COLLECTIONS_DYNAMIC_MAPPING` | Controls dynamic mapping behavior for collection indices. Values: `true` (default), `false`, or `strict`. See [Custom Index Mappings](#custom-index-mappings). | `true` | Optional |
+| `STAC_FASTAPI_SORT_FIELD_REMAPS` | JSON object mapping API sort fields to backend fields for all endpoints. Example: `{"title":"title.keyword"}`. | `{}` | Optional |
+| `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS` | JSON object mapping API sort fields to backend fields for collection endpoints only. Overrides `STAC_FASTAPI_SORT_FIELD_REMAPS` for collections. Example: `{"title":"title.keyword"}`. | `{}` | Optional |
 | `STAC_FASTAPI_ES_COERCE_GLOBAL` | Sets the index-level coerce setting. When true (default), coercion is allowed (e.g., "10" → 10, 5.0 → 5). When false, coercion is disabled, documents with type mismatches are rejected unless overridden at the field level. | `true` | Optional |
 
 ### 7. Filtering, Exclusions & Queryables
@@ -1907,6 +1911,38 @@ export STAC_FASTAPI_ES_CUSTOM_MAPPINGS='{
   }
 }'
 ```
+
+### Sorting Text Fields with Keyword Subfields
+
+If you need to sort on text fields such as `title`, create a keyword subfield via custom mappings and then use sort field remaps (or rely on startup auto-detection).
+
+**Example - Collection title as text + keyword:**
+
+```bash
+export STAC_FASTAPI_ES_COLLECTIONS_CUSTOM_MAPPINGS='{
+  "properties": {
+    "title": {
+      "type": "text",
+      "fields": {
+        "keyword": {"type": "keyword"}
+      }
+    }
+  }
+}'
+```
+
+Optional explicit remap override:
+
+```bash
+export STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS='{"title":"title.keyword"}'
+```
+
+Remap resolution order is:
+
+1. `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS`
+2. `STAC_FASTAPI_SORT_FIELD_REMAPS`
+3. Auto-detection from generated mappings at startup
+4. Original sort field name
 
 **Example - Adding Cube Extension Fields:**
 
