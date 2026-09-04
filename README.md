@@ -241,11 +241,13 @@ These extensions make it easier to build user interfaces that display and naviga
 > - `extent.temporal.interval` (date field)
 > - `temporal` (alias to extent.temporal.interval)
 >
-> Text fields like `title` and `description` are not sortable by default as they use text analysis for better search capabilities. Attempting to sort on these fields will result in a user-friendly error message explaining which fields are sortable and how to make additional fields sortable by updating the mappings.
+> For collections, the default mapping also includes an explicit `title` field mapped as `text` with a `title.keyword` subfield, so title sorting works out of the box without extra custom mapping.
+>
+> Text fields like `description` are not sortable by default as they use text analysis for better search capabilities. Attempting to sort on these fields will result in a user-friendly error message explaining which fields are sortable and how to make additional fields sortable by updating the mappings.
 >
 > **Important**: Adding keyword fields to make text fields sortable can significantly increase the index size, especially for large text fields. Consider the storage implications when deciding which fields to make sortable.
 
-> **Tip**: If you add a keyword subfield for sorting (for example `title.keyword`) through custom mappings, SFEOS can remap sort fields automatically at startup based on the generated mappings. You can also override this behavior explicitly with `STAC_FASTAPI_SORT_FIELD_REMAPS` and `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS`.
+> **Tip**: If you add a keyword subfield for sorting (for example `title.keyword`) through custom mappings, SFEOS can remap sort fields automatically at startup based on the generated mappings. You can also override this behavior explicitly with `STAC_FASTAPI_SORT_FIELD_REMAPS` and `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS`. See [Sorting Text Fields with Keyword Subfields](#sorting-text-fields-with-keyword-subfields) for the full example.
 
 
 ## Catalogs Route
