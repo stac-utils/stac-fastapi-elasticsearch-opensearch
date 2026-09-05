@@ -78,12 +78,16 @@ def _detect_keyword_sort_remaps_from_mapping(
     return remaps
 
 
-MANUAL_SORT_FIELD_REMAPS = _parse_sort_field_remaps("STAC_FASTAPI_SORT_FIELD_REMAPS")
+MANUAL_ITEMS_SORT_FIELD_REMAPS = _parse_sort_field_remaps(
+    "STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS"
+)
 MANUAL_COLLECTIONS_SORT_FIELD_REMAPS = _parse_sort_field_remaps(
     "STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS"
 )
 
-AUTO_SORT_FIELD_REMAPS = _detect_keyword_sort_remaps_from_mapping(ES_ITEMS_MAPPINGS)
+AUTO_ITEMS_SORT_FIELD_REMAPS = _detect_keyword_sort_remaps_from_mapping(
+    ES_ITEMS_MAPPINGS
+)
 AUTO_COLLECTIONS_SORT_FIELD_REMAPS = _detect_keyword_sort_remaps_from_mapping(
     ES_COLLECTIONS_MAPPINGS
 )
@@ -93,19 +97,17 @@ def remap_sort_field_shared(field_name: str, is_collection: bool = False) -> str
     """Remap API sort field names to engine fields via optional env config.
 
     Env vars (JSON objects):
-    - STAC_FASTAPI_SORT_FIELD_REMAPS
-    - STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS (overrides global for collections)
+    - STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS (items endpoints)
+    - STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS (collection endpoints)
     """
     if is_collection:
         if field_name in MANUAL_COLLECTIONS_SORT_FIELD_REMAPS:
             return MANUAL_COLLECTIONS_SORT_FIELD_REMAPS[field_name]
-        if field_name in MANUAL_SORT_FIELD_REMAPS:
-            return MANUAL_SORT_FIELD_REMAPS[field_name]
         return AUTO_COLLECTIONS_SORT_FIELD_REMAPS.get(field_name, field_name)
 
-    if field_name in MANUAL_SORT_FIELD_REMAPS:
-        return MANUAL_SORT_FIELD_REMAPS[field_name]
-    return AUTO_SORT_FIELD_REMAPS.get(field_name, field_name)
+    if field_name in MANUAL_ITEMS_SORT_FIELD_REMAPS:
+        return MANUAL_ITEMS_SORT_FIELD_REMAPS[field_name]
+    return AUTO_ITEMS_SORT_FIELD_REMAPS.get(field_name, field_name)
 
 
 def apply_free_text_filter_shared(

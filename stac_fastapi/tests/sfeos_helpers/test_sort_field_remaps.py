@@ -15,21 +15,16 @@ class _SortField:
 def test_remap_sort_field_shared_global(monkeypatch):
     monkeypatch.setattr(
         query_module,
-        "MANUAL_SORT_FIELD_REMAPS",
+        "MANUAL_ITEMS_SORT_FIELD_REMAPS",
         {"title": "title.keyword"},
     )
-    monkeypatch.setattr(query_module, "AUTO_SORT_FIELD_REMAPS", {})
+    monkeypatch.setattr(query_module, "AUTO_ITEMS_SORT_FIELD_REMAPS", {})
 
     assert remap_sort_field_shared("title") == "title.keyword"
     assert remap_sort_field_shared("id") == "id"
 
 
-def test_remap_sort_field_shared_collections_override(monkeypatch):
-    monkeypatch.setattr(
-        query_module,
-        "MANUAL_SORT_FIELD_REMAPS",
-        {"title": "global_title.keyword"},
-    )
+def test_remap_sort_field_shared_collections_manual_remap(monkeypatch):
     monkeypatch.setattr(
         query_module,
         "MANUAL_COLLECTIONS_SORT_FIELD_REMAPS",
@@ -40,14 +35,14 @@ def test_remap_sort_field_shared_collections_override(monkeypatch):
 
 
 def test_remap_sort_field_shared_invalid_json_is_ignored(monkeypatch):
-    monkeypatch.setattr(query_module, "MANUAL_SORT_FIELD_REMAPS", {})
-    monkeypatch.setattr(query_module, "AUTO_SORT_FIELD_REMAPS", {})
+    monkeypatch.setattr(query_module, "MANUAL_ITEMS_SORT_FIELD_REMAPS", {})
+    monkeypatch.setattr(query_module, "AUTO_ITEMS_SORT_FIELD_REMAPS", {})
 
     assert remap_sort_field_shared("title") == "title"
 
 
 def test_populate_sort_shared_applies_collection_remap(monkeypatch):
-    monkeypatch.setattr(query_module, "MANUAL_SORT_FIELD_REMAPS", {})
+    monkeypatch.setattr(query_module, "MANUAL_ITEMS_SORT_FIELD_REMAPS", {})
     monkeypatch.setattr(
         query_module,
         "MANUAL_COLLECTIONS_SORT_FIELD_REMAPS",
@@ -63,7 +58,7 @@ def test_populate_sort_shared_applies_collection_remap(monkeypatch):
 
 
 def test_populate_sort_shared_default_without_remap(monkeypatch):
-    monkeypatch.setattr(query_module, "MANUAL_SORT_FIELD_REMAPS", {})
+    monkeypatch.setattr(query_module, "MANUAL_ITEMS_SORT_FIELD_REMAPS", {})
     monkeypatch.setattr(query_module, "MANUAL_COLLECTIONS_SORT_FIELD_REMAPS", {})
     monkeypatch.setattr(query_module, "AUTO_COLLECTIONS_SORT_FIELD_REMAPS", {})
 
@@ -100,7 +95,7 @@ def test_detect_keyword_sort_remaps_from_mapping():
 
 
 def test_remap_sort_field_shared_uses_auto_detection_for_collections(monkeypatch):
-    monkeypatch.setattr(query_module, "MANUAL_SORT_FIELD_REMAPS", {})
+    monkeypatch.setattr(query_module, "MANUAL_ITEMS_SORT_FIELD_REMAPS", {})
     monkeypatch.setattr(query_module, "MANUAL_COLLECTIONS_SORT_FIELD_REMAPS", {})
     monkeypatch.setattr(
         query_module,
@@ -112,7 +107,7 @@ def test_remap_sort_field_shared_uses_auto_detection_for_collections(monkeypatch
 
 
 def test_manual_collection_remap_overrides_auto_detection(monkeypatch):
-    monkeypatch.setattr(query_module, "MANUAL_SORT_FIELD_REMAPS", {})
+    monkeypatch.setattr(query_module, "MANUAL_ITEMS_SORT_FIELD_REMAPS", {})
     monkeypatch.setattr(
         query_module,
         "MANUAL_COLLECTIONS_SORT_FIELD_REMAPS",
@@ -128,8 +123,22 @@ def test_manual_collection_remap_overrides_auto_detection(monkeypatch):
 
 
 def test_env_changes_after_import_do_not_change_remaps(monkeypatch):
-    monkeypatch.setattr(query_module, "MANUAL_SORT_FIELD_REMAPS", {})
-    monkeypatch.setattr(query_module, "AUTO_SORT_FIELD_REMAPS", {})
-    monkeypatch.setenv("STAC_FASTAPI_SORT_FIELD_REMAPS", '{"title":"title.keyword"}')
+    monkeypatch.setattr(query_module, "MANUAL_ITEMS_SORT_FIELD_REMAPS", {})
+    monkeypatch.setattr(query_module, "AUTO_ITEMS_SORT_FIELD_REMAPS", {})
+    monkeypatch.setenv(
+        "STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS", '{"title":"title.keyword"}'
+    )
 
     assert remap_sort_field_shared("title") == "title"
+
+
+def test_collection_remap_does_not_fallback_to_items_manual(monkeypatch):
+    monkeypatch.setattr(
+        query_module,
+        "MANUAL_ITEMS_SORT_FIELD_REMAPS",
+        {"title": "items_title.keyword"},
+    )
+    monkeypatch.setattr(query_module, "MANUAL_COLLECTIONS_SORT_FIELD_REMAPS", {})
+    monkeypatch.setattr(query_module, "AUTO_COLLECTIONS_SORT_FIELD_REMAPS", {})
+
+    assert remap_sort_field_shared("title", is_collection=True) == "title"

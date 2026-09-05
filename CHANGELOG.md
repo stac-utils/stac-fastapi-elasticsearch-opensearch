@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
-- Added configurable sort field remapping via `STAC_FASTAPI_SORT_FIELD_REMAPS` (global) and `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS` (collections-specific override).
+- Added configurable sort field remapping via `STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS` (items) and `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS` (collections).
 - Added automatic keyword-sort remap detection for explicitly declared text fields with keyword subfields, including collection `title` mappings.
 
 ### Changed
