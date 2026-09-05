@@ -247,7 +247,7 @@ These extensions make it easier to build user interfaces that display and naviga
 >
 > **Important**: Adding keyword fields to make text fields sortable can significantly increase the index size, especially for large text fields. Consider the storage implications when deciding which fields to make sortable.
 
-> **Tip**: If you add a keyword subfield for sorting (for example `title.keyword`) through custom mappings, SFEOS can remap sort fields automatically at startup based on the generated mappings. You can also override this behavior explicitly with `STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS` and `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS`. See [Sorting Text Fields with Keyword Subfields](#sorting-text-fields-with-keyword-subfields) for the full example.
+> **Tip**: If you add a keyword subfield for sorting (for example `title.keyword`) through custom mappings, SFEOS can remap sort fields automatically at startup based on the generated mappings. You can also override this behavior explicitly with `STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS` / `STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS_FILE` and `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS` / `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS_FILE`. See [Sorting Text Fields with Keyword Subfields](#sorting-text-fields-with-keyword-subfields) for the full example.
 
 
 ## Catalogs Route
@@ -1092,8 +1092,10 @@ You can customize additional settings in your `.env` file:
 | `STAC_FASTAPI_ES_DYNAMIC_TEMPLATES_FILE` | Path to a JSON file containing custom Elasticsearch/OpenSearch dynamic template to merge with defaults. See [Custom Index Mappings](#custom-index-mappings). | `None` | Optional |
 | `STAC_FASTAPI_ES_DYNAMIC_MAPPING` | Controls dynamic mapping behavior for item indices. Values: `true` (default), `false`, or `strict`. See [Custom Index Mappings](#custom-index-mappings). | `true` | Optional |
 | `STAC_FASTAPI_ES_COLLECTIONS_DYNAMIC_MAPPING` | Controls dynamic mapping behavior for collection indices. Values: `true` (default), `false`, or `strict`. See [Custom Index Mappings](#custom-index-mappings). | `true` | Optional |
-| `STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS` | JSON object mapping API sort fields to backend fields for item endpoints only. Example: `{"title":"title.keyword"}`. | `{}` | Optional |
+| `STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS` | JSON object mapping API sort fields to backend fields for item endpoints only. Example: `{"properties.platform_name":"properties.platform_name.keyword"}`. | `{}` | Optional |
+| `STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS_FILE` | Path to a JSON file containing sort field remaps for item endpoints only. Uses the same object format as `STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS`. | `None` | Optional |
 | `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS` | JSON object mapping API sort fields to backend fields for collection endpoints only. Example: `{"title":"title.keyword"}`. | `{}` | Optional |
+| `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS_FILE` | Path to a JSON file containing sort field remaps for collection endpoints only. Uses the same object format as `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS`. | `None` | Optional |
 | `STAC_FASTAPI_ES_COERCE_GLOBAL` | Sets the index-level coerce setting. When true (default), coercion is allowed (e.g., "10" → 10, 5.0 → 5). When false, coercion is disabled, documents with type mismatches are rejected unless overridden at the field level. | `true` | Optional |
 
 ### 7. Filtering, Exclusions & Queryables
@@ -1939,11 +1941,60 @@ Optional explicit remap override:
 export STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS='{"title":"title.keyword"}'
 ```
 
+Or use file-based configuration:
+
+```bash
+export STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS_FILE=/app/collections-sort-remaps.json
+```
+
 Remap resolution order is:
 
 1. `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS`
-2. Auto-detection from generated mappings at startup
-3. Original sort field name
+2. `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS_FILE`
+3. Auto-detection from generated mappings at startup
+4. Original sort field name
+
+In practice, this is an ordered fallback with **OR** semantics between `VAR` and `FILE`:
+- If `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS` is set and non-empty, it is used.
+- `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS_FILE` is only read when `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS` is unset or empty.
+
+**Example - Item property under `properties.*` with file-based remap:**
+
+```bash
+export STAC_FASTAPI_ES_CUSTOM_MAPPINGS='{
+  "properties": {
+    "properties": {
+      "properties": {
+        "platform_name": {
+          "type": "text",
+          "fields": {
+            "keyword": {"type": "keyword"}
+          }
+        }
+      }
+    }
+  }
+}'
+
+cat > /app/items-sort-remaps.json <<EOF
+{
+  "properties.platform_name": "properties.platform_name.keyword"
+}
+EOF
+
+export STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS_FILE=/app/items-sort-remaps.json
+```
+
+For items, remap resolution order is:
+
+1. `STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS`
+2. `STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS_FILE`
+3. Auto-detection from generated mappings at startup
+4. Original sort field name
+
+In practice, this is an ordered fallback with **OR** semantics between `VAR` and `FILE`:
+- If `STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS` is set and non-empty, it is used.
+- `STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS_FILE` is only read when `STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS` is unset or empty.
 
 **Example - Adding Cube Extension Fields:**
 

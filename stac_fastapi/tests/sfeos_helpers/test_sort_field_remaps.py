@@ -1,6 +1,7 @@
 import stac_fastapi.sfeos_helpers.database.query as query_module
 from stac_fastapi.sfeos_helpers.database.query import (
     _detect_keyword_sort_remaps_from_mapping,
+    _parse_sort_field_remaps,
     populate_sort_shared,
     remap_sort_field_shared,
 )
@@ -142,3 +143,60 @@ def test_collection_remap_does_not_fallback_to_items_manual(monkeypatch):
     monkeypatch.setattr(query_module, "AUTO_COLLECTIONS_SORT_FIELD_REMAPS", {})
 
     assert remap_sort_field_shared("title", is_collection=True) == "title"
+
+
+def test_parse_sort_field_remaps_from_file(monkeypatch, tmp_path):
+    remaps_file = tmp_path / "item-remaps.json"
+    remaps_file.write_text('{"title":"title.keyword"}', encoding="utf-8")
+
+    monkeypatch.delenv("STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS", raising=False)
+    monkeypatch.setenv("STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS_FILE", str(remaps_file))
+
+    parsed = _parse_sort_field_remaps(
+        "STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS",
+        "STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS_FILE",
+    )
+    assert parsed == {"title": "title.keyword"}
+
+
+def test_parse_sort_field_remaps_env_overrides_file(monkeypatch, tmp_path):
+    remaps_file = tmp_path / "item-remaps.json"
+    remaps_file.write_text('{"title":"title.from.file"}', encoding="utf-8")
+
+    monkeypatch.setenv(
+        "STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS", '{"title":"title.from.env"}'
+    )
+    monkeypatch.setenv("STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS_FILE", str(remaps_file))
+
+    parsed = _parse_sort_field_remaps(
+        "STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS",
+        "STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS_FILE",
+    )
+    assert parsed == {"title": "title.from.env"}
+
+
+def test_parse_sort_field_remaps_missing_file_is_ignored(monkeypatch):
+    monkeypatch.delenv("STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS", raising=False)
+    monkeypatch.setenv(
+        "STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS_FILE", "/tmp/does-not-exist-remaps.json"
+    )
+
+    parsed = _parse_sort_field_remaps(
+        "STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS",
+        "STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS_FILE",
+    )
+    assert parsed == {}
+
+
+def test_parse_sort_field_remaps_invalid_file_json_is_ignored(monkeypatch, tmp_path):
+    remaps_file = tmp_path / "invalid-remaps.json"
+    remaps_file.write_text("not-json", encoding="utf-8")
+
+    monkeypatch.delenv("STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS", raising=False)
+    monkeypatch.setenv("STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS_FILE", str(remaps_file))
+
+    parsed = _parse_sort_field_remaps(
+        "STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS",
+        "STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS_FILE",
+    )
+    assert parsed == {}

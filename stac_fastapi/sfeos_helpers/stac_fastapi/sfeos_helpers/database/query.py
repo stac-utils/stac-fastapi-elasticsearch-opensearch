@@ -18,20 +18,38 @@ from stac_fastapi.sfeos_helpers.mappings import (
 ES_MAX_URL_LENGTH = int(os.getenv("ES_MAX_URL_LENGTH", "4096"))
 
 
-def _parse_sort_field_remaps(env_var: str) -> dict[str, str]:
-    """Parse sort field remaps from a JSON object environment variable."""
+def _parse_sort_field_remaps(
+    env_var: str, file_env_var: str | None = None
+) -> dict[str, str]:
+    """Parse sort field remaps from env JSON or optional *_FILE JSON.
+
+    Precedence is env_var first, then file_env_var.
+    """
     value = os.getenv(env_var)
+    source_name = env_var
+
+    if not value and file_env_var:
+        file_path = os.getenv(file_env_var)
+        if file_path:
+            try:
+                with open(file_path, encoding="utf-8") as f:
+                    value = f.read()
+                source_name = file_env_var
+            except OSError:
+                logging.warning("Could not read %s path: %s", file_env_var, file_path)
+                return {}
+
     if not value:
         return {}
 
     try:
         parsed = json.loads(value)
     except json.JSONDecodeError:
-        logging.warning("Invalid JSON in %s; expected an object.", env_var)
+        logging.warning("Invalid JSON in %s; expected an object.", source_name)
         return {}
 
     if not isinstance(parsed, dict):
-        logging.warning("Invalid value in %s; expected an object.", env_var)
+        logging.warning("Invalid value in %s; expected an object.", source_name)
         return {}
 
     remaps: dict[str, str] = {}
@@ -79,10 +97,12 @@ def _detect_keyword_sort_remaps_from_mapping(
 
 
 MANUAL_ITEMS_SORT_FIELD_REMAPS = _parse_sort_field_remaps(
-    "STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS"
+    "STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS",
+    "STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS_FILE",
 )
 MANUAL_COLLECTIONS_SORT_FIELD_REMAPS = _parse_sort_field_remaps(
-    "STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS"
+    "STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS",
+    "STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS_FILE",
 )
 
 AUTO_ITEMS_SORT_FIELD_REMAPS = _detect_keyword_sort_remaps_from_mapping(
@@ -98,7 +118,9 @@ def remap_sort_field_shared(field_name: str, is_collection: bool = False) -> str
 
     Env vars (JSON objects):
     - STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS (items endpoints)
+    - STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS_FILE (items endpoints)
     - STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS (collection endpoints)
+    - STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS_FILE (collection endpoints)
     """
     if is_collection:
         if field_name in MANUAL_COLLECTIONS_SORT_FIELD_REMAPS:
