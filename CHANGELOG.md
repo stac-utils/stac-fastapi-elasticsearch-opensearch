@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 
+- Updated `stac-validator` from v4.5.x to v4.6.1. Removed obsolete global `QUIET_MODE` flag in favor of passing `quiet=True` directly to `get_validator()`. Enhanced error handling to unpack multi-error accumulation exceptions (`FastSTACMultiValidationError` and `FastSTACValidationError`) to surface all field failures per item during batch ingestion, providing more comprehensive validation feedback. [#853](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/853)
+
 ### Fixed
 
 ### Removed
