@@ -1378,6 +1378,8 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         for feature in unique_features:
             try:
+                # Guarantee the collection field is set correctly (same as single-item path)
+                feature["collection"] = collection_id
                 prepped = bulk_client.preprocess_item(feature, base_url)
                 if prepped is not None:
                     processed_items.append(prepped)
