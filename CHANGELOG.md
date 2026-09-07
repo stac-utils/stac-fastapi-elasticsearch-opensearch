@@ -9,9 +9,14 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+- Added configurable sort field remapping via `STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS` (items) and `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS` (collections).
+- Added file-based sort remap configuration via `STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS_FILE` and `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS_FILE`.
+- Added automatic keyword-sort remap detection for explicitly declared text fields with keyword subfields, including collection `title` mappings.
+
 ### Changed
 
 - Updated `stac-validator` from v4.5.x to v4.6.1. Removed obsolete global `QUIET_MODE` flag in favor of passing `quiet=True` directly to `get_validator()`. Enhanced error handling to unpack multi-error accumulation exceptions (`FastSTACMultiValidationError` and `FastSTACValidationError`) to surface all field failures per item during batch ingestion, providing more comprehensive validation feedback. [#853](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/853)
+- Default collection title mappings now index `title` as `text` with a `title.keyword` subfield so collection titles are sortable without custom mapping.
 
 ### Fixed
 
