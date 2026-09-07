@@ -66,6 +66,7 @@ from stac_fastapi.sfeos_helpers.database.catalogs import (
 from stac_fastapi.sfeos_helpers.database.query import (
     ES_MAX_URL_LENGTH,
     add_collections_to_body,
+    remap_sort_field_shared,
 )
 from stac_fastapi.sfeos_helpers.database.utils import (
     add_hidden_filter,
@@ -229,7 +230,9 @@ class DatabaseLogic(BaseDatabaseLogic):
         formatted_sort = []
         if sort:
             for item in sort:
-                field = item.get("field")
+                field = remap_sort_field_shared(
+                    item.get("field", ""), is_collection=True
+                )
                 direction = item.get("direction", "asc")
                 if field:
                     formatted_sort.append({field: {"order": direction}})
