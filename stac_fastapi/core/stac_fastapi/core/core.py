@@ -6,7 +6,7 @@ import os
 from datetime import datetime as datetime_type
 from datetime import timezone
 from enum import Enum
-from typing import Type
+from typing import Type, cast
 from urllib.parse import unquote_plus, urljoin
 
 import attr
@@ -54,6 +54,7 @@ from stac_fastapi.core.validate import (
 )
 from stac_fastapi.extensions.bulk_transactions import (
     BaseBulkTransactionsClient,
+    BulkTransaction,
     BulkTransactionMethod,
     Items,
 )
@@ -2030,7 +2031,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
     @overrides
     def bulk_item_insert(
         self, items: Items, chunk_size: int | None = None, **kwargs
-    ) -> str:
+    ) -> BulkTransaction | Response:
         """Perform a bulk insertion of items into the database using Elasticsearch.
 
         Args:
@@ -2075,7 +2076,15 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
         skipped_batch_duplicates = len(raw_items) - len(unique_items)
 
         if not unique_items:
-            return f"No items to insert. {skipped_batch_duplicates} items were skipped (duplicates)."
+            return cast(
+                BulkTransaction,
+                {
+                    "received": len(raw_items),
+                    "success": 0,
+                    "skipped": skipped_batch_duplicates,
+                    "errors": [],
+                },
+            )
 
         # 2. VALIDATION LAYER (Use batch validator for efficiency)
         if get_bool_env("ENABLE_STAC_VALIDATOR"):
@@ -2115,7 +2124,15 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
                 processed_items.append(prepped)
 
         if not processed_items:
-            return f"No items to insert after preprocessing. Skipped {skipped_batch_duplicates} duplicates."
+            return cast(
+                BulkTransaction,
+                {
+                    "received": len(raw_items),
+                    "success": 0,
+                    "skipped": skipped_batch_duplicates + len(valid_items),
+                    "errors": [],
+                },
+            )
 
         # 4. DATABASE INSERTION LAYER
         collection_id = processed_items[0]["collection"]
@@ -2141,4 +2158,16 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
             logger.info(f"Bulk sync operation succeeded with {success} actions.")
 
         total_skipped = skipped_batch_duplicates + len(conflict_errors)
-        return f"Successfully added/updated {success} Items. {total_skipped} skipped (duplicates). {len(other_errors)} errors occurred."
+
+        # Combine all errors (conflicts + other errors)
+        all_errors = conflict_errors + other_errors if other_errors else conflict_errors
+
+        return cast(
+            BulkTransaction,
+            {
+                "received": len(raw_items),
+                "success": success,
+                "skipped": total_skipped,
+                "errors": all_errors if all_errors else [],
+            },
+        )

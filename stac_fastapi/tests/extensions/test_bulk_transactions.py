@@ -75,7 +75,9 @@ async def test_bulk_item_insert_with_raise_on_error(
     )
 
     # Validate the results - duplicate should be skipped, not inserted
-    assert "1 skipped (duplicates)" in result
+    assert result["received"] == 1
+    assert result["success"] == 0
+    assert result["skipped"] == 1
 
     # Clean up the inserted item
     await txn_client.delete_item(initial_item["id"], ctx.item["collection"])
@@ -323,9 +325,11 @@ async def test_bulk_insert_with_in_batch_duplicates(ctx, core_client, bulk_txn_c
     result = bulk_txn_client.bulk_item_insert(Items(items=items), refresh=True)
 
     # Should report 1 item added and 2 skipped (in-batch duplicates)
-    # bulk_item_insert returns: "Successfully added/updated {n} Items. {m} skipped (duplicates). {k} errors occurred."
-    assert "Successfully added/updated 1 Items" in result
-    assert "2 skipped (duplicates)" in result
+    # bulk_item_insert returns: {"received": 3, "success": 1, "skipped": 2, "errors": []}
+    assert result["received"] == 3
+    assert result["success"] == 1
+    assert result["skipped"] == 2
+    assert result["errors"] == []
 
     # Verify only 1 item exists in the collection with this ID
     fc = await core_client.item_collection(ctx.collection["id"], request=MockRequest())
@@ -468,8 +472,10 @@ async def test_bulk_non_conflict_errors_not_raised_in_permissive_mode(
     ):
         result = bulk_txn_client.bulk_item_insert(Items(items=items), refresh=True)
 
-    assert "Successfully added/updated 1 Items" in result
-    assert "2 errors occurred" in result
+    assert result["received"] == 3
+    assert result["success"] == 1
+    assert result["skipped"] == 0
+    assert len(result["errors"]) == 2
 
 
 @pytest.mark.asyncio
