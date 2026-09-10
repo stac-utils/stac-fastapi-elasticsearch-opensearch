@@ -2554,7 +2554,7 @@ requires-dist = [
     { name = "stac-fastapi-extensions", specifier = "==7.0.0" },
     { name = "stac-fastapi-types", specifier = "==7.0.0" },
     { name = "stac-pydantic", specifier = ">=3.3,<3.7" },
-    { name = "stac-valid", marker = "extra == 'validator'", specifier = ">=4.2.2,<4.6.0" },
+    { name = "stac-valid", marker = "extra == 'validator'", specifier = ">=4.6.1" },
     { name = "starlette", specifier = ">=0.35.0,<1.7.0" },
     { name = "uvicorn", specifier = ">=0.23,<0.53" },
 ]
@@ -2739,7 +2739,7 @@ wheels = [
 
 [[package]]
 name = "stac-valid"
-version = "4.4.0"
+version = "4.6.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -2750,9 +2750,9 @@ dependencies = [
     { name = "requests" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/bb/9c/44e5ba0b15c590c41e49d3860fd70cb150da63c6871a72054f02a2bfc6f4/stac_valid-4.4.0.tar.gz", hash = "sha256:4cbc9791dbf8b93c489ab76709de848dcc272586806c0fec5b15d5dd8ed47404", size = 90262, upload-time = "2026-05-13T06:03:42.229Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/54/4a/eb40e1904ceff773247ec664d7d036e16362e341cf2bece1e2984b32c45f/stac_valid-4.6.1.tar.gz", hash = "sha256:6abab3b9a3292e51eea17424a0dd500360a5214c2bbf2552ec6d1e9d49a9d789", size = 102754, upload-time = "2026-09-04T15:09:38.446Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/9c/11/a1a1df59b806b0a2985897f58a9203c42377b42c304399dd5c1a9ba8221a/stac_valid-4.4.0-py3-none-any.whl", hash = "sha256:c07465dbe70f0985ace856a98a18a6d086a3a220d7e26eb62b48290333aec990", size = 52585, upload-time = "2026-05-13T06:03:40.837Z" },
+    { url = "https://files.pythonhosted.org/packages/05/41/6ea44aaa739ed070b2457a42e09d9ba056fc80765843e98c33b43039f38f/stac_valid-4.6.1-py3-none-any.whl", hash = "sha256:0c1ef9905adcd45b07e6980b6531b3480f9a2826860e978e2724eef4eda00abf", size = 58844, upload-time = "2026-09-04T15:09:37.147Z" },
 ]
 
 [[package]]

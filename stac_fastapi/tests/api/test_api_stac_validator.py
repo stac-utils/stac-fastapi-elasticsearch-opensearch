@@ -231,21 +231,27 @@ async def test_stac_validator_feature_collection_with_invalid_item_skip_on_error
 
 
 @pytest.mark.asyncio
-async def test_stac_validator_catches_invalid_snow_cover(txn_client, load_test_data):
-    """Test that STAC validator catches invalid eo:snow_cover values."""
+async def test_stac_validator_catches_invalid_sat_relative_orbit(
+    txn_client, load_test_data
+):
+    """Test that STAC validator catches invalid sat:relative_orbit values (must be integer)."""
     from fastapi import HTTPException
 
     test_collection = load_test_data("test_collection.json")
-    test_collection["id"] = f"test-collection-snow-{uuid.uuid4()}"
+    test_collection["id"] = f"test-collection-sat-{uuid.uuid4()}"
     await create_collection(txn_client, collection=test_collection)
 
     base_item = load_test_data("test_item.json")
 
-    # Create item with invalid snow_cover (must be 0-100)
+    # Create item with invalid sat:relative_orbit (must be integer, not float)
+    # Add SAT extension to enable validation
     invalid_item = deepcopy(base_item)
-    invalid_item["id"] = "invalid-snow-cover"
+    invalid_item["id"] = "invalid-sat-orbit"
     invalid_item["collection"] = test_collection["id"]
-    invalid_item["properties"]["eo:snow_cover"] = -10  # Invalid: < 0
+    invalid_item["stac_extensions"].append(
+        "https://stac-extensions.github.io/sat/v1.1.0/schema.json"
+    )
+    invalid_item["properties"]["sat:relative_orbit"] = 27.5  # Invalid: must be integer
 
     # This should raise HTTPException due to STAC validation failure
     with pytest.raises(HTTPException) as exc_info:
@@ -254,7 +260,7 @@ async def test_stac_validator_catches_invalid_snow_cover(txn_client, load_test_d
     # Verify the error message mentions the validation failure
     assert exc_info.value.status_code == 400
     assert "STAC validation failed" in exc_info.value.detail
-    assert "invalid-snow-cover" in exc_info.value.detail
+    assert "invalid-sat-orbit" in exc_info.value.detail
 
 
 @pytest.mark.asyncio
