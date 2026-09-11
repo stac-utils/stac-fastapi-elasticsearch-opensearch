@@ -1,6 +1,6 @@
 [project]
 name = "sfeos"
-version = "7.0.0"
+version = "7.1.0"
 description = "Python library for building a STAC-compliant FastAPI application for Opensearch and Elasticsearch."
 requires-python = ">=3.11"
 readme = "README.md"

@@ -9,18 +9,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
-- Added configurable sort field remapping via `STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS` (items) and `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS` (collections).
-- Added file-based sort remap configuration via `STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS_FILE` and `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS_FILE`.
-- Added automatic keyword-sort remap detection for explicitly declared text fields with keyword subfields, including collection `title` mappings.
-
-### Breaking Changes
-
-- **stac-fastapi v7.0.0 Upgrade:** The `bulk_item_insert` method now returns a structured `BulkTransaction` dictionary with `received`, `success`, `skipped`, and `errors` fields instead of a string message. Code that expects a string response will need to be updated to access the dictionary fields instead.
-
 ### Changed
-
-- Updated stac-fastapi dependencies to v7.0.0 (`stac-fastapi.types`, `stac-fastapi.api`, `stac-fastapi.extensions`).
-- Default collection title mappings now index `title` as `text` with a `title.keyword` subfield so collection titles are sortable without custom mapping.
 
 ### Fixed
 
@@ -28,6 +17,23 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Updated
 
+
+## [v7.1.0] - 2026-09-10
+
+### Added
+
+- Added configurable sort field remapping via `STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS` (items) and `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS` (collections).
+- Added file-based sort remap configuration via `STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS_FILE` and `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS_FILE`.
+- Added automatic keyword-sort remap detection for explicitly declared text fields with keyword subfields, including collection `title` mappings. [#854](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/854)
+
+### Breaking Changes
+
+- **stac-fastapi v7.0.0 Upgrade:** The `bulk_item_insert` method now returns a structured `BulkTransaction` dictionary with `received`, `success`, `skipped`, and `errors` fields instead of a string message. Code that expects a string response will need to be updated to access the dictionary fields instead. [#858](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/858)
+
+### Changed
+
+- Updated stac-fastapi dependencies to v7.0.0 (`stac-fastapi.types`, `stac-fastapi.api`, `stac-fastapi.extensions`). [#858](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/858)
+- Default collection title mappings now index `title` as `text` with a `title.keyword` subfield so collection titles are sortable without custom mapping. [#854](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/854)
 
 ## [v7.0.0] - 2026-08-27
 
@@ -992,7 +998,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v7.0.0...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v7.1.0...main
+[v7.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v7.0.0...v7.1.0
 [v7.0.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.19.0...v7.0.0
 [v6.19.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.18.0...v6.19.0
 [v6.18.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.17.2...v6.18.0
