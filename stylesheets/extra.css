@@ -1,0 +1,35 @@
+:root {
+    --md-primary-fg-color:        rgb(13, 118, 160);
+}
+
+/* Control the size of the main logo */
+img[src*="sfeos.png"] {
+    max-width: 100%;
+    height: auto;
+    width: auto !important;
+    max-height: 200px;
+}
+
+/* Control the size of sponsor logos */
+img[src*="logo"], img[src*="VITO.png"] {
+    max-height: 60px !important;
+    width: auto !important;
+    height: auto !important;
+}
+
+/* Control the size of technology logos */
+img[src*="STAC-01.png"],
+img[src*="python.png"],
+img[src*="fastapi.svg"],
+img[src*="elasticsearch.png"],
+img[src*="opensearch.svg"] {
+    max-height: 50px !important;
+    width: auto !important;
+    height: auto !important;
+}
+
+/* Make sure all images are responsive and don't overflow */
+img {
+    max-width: 100%;
+    height: auto;
+}
