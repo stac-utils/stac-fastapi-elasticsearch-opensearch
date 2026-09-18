@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- `POST /catalogs/{catalog_id}/collections` and `POST /catalogs/{catalog_id}/catalogs` now return `200 OK` when linking an existing resource (previously `201 Created`), per the Multi-Tenant Catalogs spec. `201 Created` is reserved for newly created documents, so clients can distinguish "created" from "linked" responses; a full body POSTed for an existing `id` links the resource without replacing the stored document. [#814](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/814)
+
 ### Removed
 
 ### Updated

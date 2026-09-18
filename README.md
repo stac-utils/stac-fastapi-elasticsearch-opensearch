@@ -530,8 +530,8 @@ This extension supports **Poly-Hierarchy**, meaning a single Catalog or Collecti
 To link an **existing** Catalog or Collection to a new parent, simply `POST` it to the new parent's endpoint using its existing `id`. The API implements an **Upsert** (Update or Insert) logic:
 
 1. **Check:** Does a resource with this `id` already exist?
-2. **If YES (Link):** The API adds the new parent to the resource's `parent_ids` list. No data is duplicated.
-3. **If NO (Create):** The API creates a new resource.
+2. **If YES (Link):** The API adds the new parent to the resource's `parent_ids` list and returns `200 OK`. No data is duplicated, and the posted body does not replace the stored document.
+3. **If NO (Create):** The API creates a new resource and returns `201 Created`.
 
 #### Important: Flat Catalog URL Structure
 
