@@ -1410,6 +1410,44 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         filtered_links = [self._link_to_dict(link) for link in links]
         children_dicts = [self._to_dict(child) for child in children]
 
+        # Per STAC API - Children v1.0.0, every child entity MUST include
+        # self, root, and parent link relations
+        for child_dict, raw_child in zip(children_dicts, children_list):
+            child_id = raw_child.get("id")
+            if raw_child.get("type") == "Catalog":
+                self_href = f"{base_url}/catalogs/{child_id}"
+            else:
+                self_href = f"{base_url}/catalogs/{catalog_id}/collections/{child_id}"
+
+            child_links = [
+                link
+                for link in child_dict.get("links", [])
+                if link.get("rel") not in ("self", "root", "parent")
+            ]
+            child_dict["links"] = [
+                self._link_to_dict(link)
+                for link in [
+                    {
+                        "rel": "self",
+                        "type": "application/json",
+                        "href": self_href,
+                    },
+                    {
+                        "rel": "parent",
+                        "type": "application/json",
+                        "href": f"{base_url}/catalogs/{catalog_id}",
+                        "title": "Parent Catalog",
+                    },
+                    {
+                        "rel": "root",
+                        "type": "application/json",
+                        "href": base_url,
+                        "title": "Root Catalog",
+                    },
+                    *child_links,
+                ]
+            ]
+
         return JSONResponse(
             content={
                 "children": children_dicts,
@@ -1422,14 +1460,23 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
     async def get_catalog_conformance(
         self, catalog_id: str, request: Request | None = None, **kwargs
     ) -> dict | Response:
-        """Get conformance classes specific to this sub-catalog."""
-        # Return standard conformance classes for now
+        """Get conformance classes specific to this sub-catalog.
+
+        SFEOS always enables the transaction and scoped search extensions
+        alongside the catalogs extension, so their conformance classes are
+        advertised here. The extension also merges in the conformance classes
+        of registered catalog extensions via
+        ``app.state.catalogs_conformance_classes``.
+        """
         return {
             "conformsTo": [
                 "https://api.stacspec.org/v1.0.0/core",
-                "https://api.stacspec.org/v1.0.0-rc.1/multi-tenant-catalogs",
-                "https://api.stacspec.org/v1.0.0-rc.1/multi-tenant-catalogs/transaction",
-                "https://api.stacspec.org/v1.0.0-rc.2/children",
+                "https://api.stacspec.org/v1.0.0/multi-tenant-catalogs",
+                "https://api.stacspec.org/v1.0.0/multi-tenant-catalogs/transaction",
+                "https://api.stacspec.org/v1.0.0/multi-tenant-catalogs/search",
+                "https://api.stacspec.org/v1.0.0/children",
+                "https://api.stacspec.org/v1.0.0/children#type-filter",
+                "https://api.stacspec.org/v1.0.0/item-search",
             ]
         }
 

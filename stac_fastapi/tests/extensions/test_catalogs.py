@@ -1530,6 +1530,21 @@ async def test_get_catalog_children(catalogs_app_client, load_test_data):
     assert "root" in link_rels
     assert "parent" in link_rels
 
+    # Per STAC API - Children v1.0.0, each child entity MUST include
+    # self, root, and parent link relations
+    for child in children_data["children"]:
+        child_links = child.get("links", [])
+        child_rels = [link["rel"] for link in child_links]
+        assert "self" in child_rels
+        assert "root" in child_rels
+        assert "parent" in child_rels
+
+        self_link = next(link for link in child_links if link["rel"] == "self")
+        assert child["id"] in self_link["href"]
+
+        parent_link = next(link for link in child_links if link["rel"] == "parent")
+        assert parent_link["href"].endswith(f"/catalogs/{catalog_id}")
+
 
 @pytest.mark.asyncio
 async def test_get_catalog_children_type_filter_catalog(
@@ -3464,6 +3479,26 @@ async def test_children_endpoint_mixed_content_with_links(
             coll_in_children is not None
         ), f"Collection {coll_id} should be in /children"
 
+    # Per STAC API - Children v1.0.0, every child entity MUST include
+    # self, root, and parent link relations
+    for child in children:
+        child_rels = [link["rel"] for link in child.get("links", [])]
+        assert (
+            "self" in child_rels
+        ), f"Child {child.get('id')} missing required self link"
+        assert (
+            "root" in child_rels
+        ), f"Child {child.get('id')} missing required root link"
+        assert (
+            "parent" in child_rels
+        ), f"Child {child.get('id')} missing required parent link"
+
+        self_link = next(link for link in child["links"] if link["rel"] == "self")
+        assert child["id"] in self_link["href"]
+
+        parent_link = next(link for link in child["links"] if link["rel"] == "parent")
+        assert parent_link["href"].endswith(f"/catalogs/{parent_id}")
+
 
 @pytest.mark.asyncio
 async def test_scoped_collection_links_poly_hierarchy(
@@ -3939,12 +3974,15 @@ async def test_catalog_conformance_endpoint(catalogs_app_client, load_test_data)
 
     # Check for required conformance classes
     assert "https://api.stacspec.org/v1.0.0/core" in conforms_to
-    assert "https://api.stacspec.org/v1.0.0-rc.1/multi-tenant-catalogs" in conforms_to
+    assert "https://api.stacspec.org/v1.0.0/multi-tenant-catalogs" in conforms_to
     assert (
-        "https://api.stacspec.org/v1.0.0-rc.1/multi-tenant-catalogs/transaction"
+        "https://api.stacspec.org/v1.0.0/multi-tenant-catalogs/transaction"
         in conforms_to
     )
-    assert "https://api.stacspec.org/v1.0.0-rc.2/children" in conforms_to
+    assert "https://api.stacspec.org/v1.0.0/children" in conforms_to
+    assert "https://api.stacspec.org/v1.0.0/children#type-filter" in conforms_to
+    assert "https://api.stacspec.org/v1.0.0/multi-tenant-catalogs/search" in conforms_to
+    assert "https://api.stacspec.org/v1.0.0/item-search" in conforms_to
 
 
 # ============================================================================

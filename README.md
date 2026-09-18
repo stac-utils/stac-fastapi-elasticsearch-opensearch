@@ -289,7 +289,7 @@ This ensures you have the `stac-fastapi-catalogs-extension` dependency required 
 
 ### DAG Specification & Dynamic Link Generation
 
-SFEOS implements the [STAC API - Multi-Tenant Catalogs Endpoint Extension](https://github.com/stac-api-extensions/multi-tenant-catalogs) (v1.0.0-beta.4) with full support for Directed Acyclic Graph (DAG) structures and strict STAC core compliance:
+SFEOS implements the [STAC API - Multi-Tenant Catalogs Endpoint Extension](https://github.com/stac-api-extensions/multi-tenant-catalogs) (v1.0.0) with full support for Directed Acyclic Graph (DAG) structures and strict STAC core compliance:
 
 #### Link Relations
 
@@ -821,7 +821,7 @@ curl "http://localhost:8081/catalogs/earth-observation/search?collections=landsa
 
 When the catalogs search extension is enabled, SFEOS advertises the following conformance class:
 
-- **`https://api.stacspec.org/v1.0.0-rc.2/multi-tenant-catalogs/search`** - Indicates support for scoped search endpoints with recursive traversal through catalog hierarchies
+- **`https://api.stacspec.org/v1.0.0/multi-tenant-catalogs/search`** - Indicates support for scoped search endpoints with recursive traversal through catalog hierarchies
 
 This conformance class is automatically advertised in the API's `/conformance` endpoint when `ENABLE_CATALOGS_ROUTE=true`.
 
