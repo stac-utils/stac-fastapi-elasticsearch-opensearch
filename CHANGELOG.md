@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Updated
 
+- Updated `stac-fastapi-catalogs-extension` to `v1.0.0`. Conformance classes now advertise `v1.0.0` URIs (replacing `v1.0.0-rc.*`), and every entity in the `/catalogs/{catalog_id}/children` response now includes `root`, `self`, and `parent` links per STAC API - Children v1.0.0. [#863](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/863)
 
 ## [v7.1.0] - 2026-09-10
 
