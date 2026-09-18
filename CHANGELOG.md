@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+- A `Warning` response header is now returned when a full Catalog or Collection body is POSTed to `POST /catalogs/{catalog_id}/collections` or `POST /catalogs/{catalog_id}/catalogs` for an existing `id`. The header indicates that the resource was linked but the posted content was not applied, and points to the `PUT` endpoint for updates. [#814](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/814)
+
 ### Changed
 
 ### Fixed

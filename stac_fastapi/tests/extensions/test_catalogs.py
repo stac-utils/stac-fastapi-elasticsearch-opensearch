@@ -794,6 +794,11 @@ async def test_repost_existing_collection_returns_200_and_preserves_content(
     )
     assert repost_resp.status_code == 200
 
+    # A Warning header signals that the posted content was not applied
+    assert "warning" in repost_resp.headers
+    assert "not applied" in repost_resp.headers["warning"]
+    assert "PUT" in repost_resp.headers["warning"]
+
     # The stored document still has the original content
     get_resp = await catalogs_app_client.get(
         f"/catalogs/{catalog_id}/collections/{collection_id}"
@@ -1808,6 +1813,8 @@ async def test_link_existing_sub_catalog_by_id_returns_200(
     )
     assert link_resp.status_code == 200
     assert link_resp.json()["id"] == child_id
+    # ObjectUri is explicit link intent, so no warning is emitted
+    assert "warning" not in link_resp.headers
 
 
 @pytest.mark.asyncio
@@ -2195,6 +2202,10 @@ async def test_catalog_poly_hierarchy(catalogs_app_client, load_test_data):
         json=load_test_data("test_catalog.json") | {"id": sub_id},
     )
     assert link_resp.status_code == 200
+    # A full body for an existing id triggers a warning that the posted
+    # content was not applied
+    assert "warning" in link_resp.headers
+    assert "not applied" in link_resp.headers["warning"]
 
     # Verify sub-catalog appears in both parents' sub-catalogs lists
     for parent_id in parent_ids:

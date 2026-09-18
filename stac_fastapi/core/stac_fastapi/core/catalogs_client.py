@@ -763,7 +763,18 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
             ]
             # Linking an existing catalog returns 200 OK (Mode B);
             # 201 Created is reserved for newly created catalogs
-            return JSONResponse(content=existing_dict, status_code=200)
+            headers = (
+                {
+                    "Warning": (
+                        f'299 - "Catalog {cat_id} already exists and was linked '
+                        f"to catalog {catalog_id}; posted content was not "
+                        f'applied. Use PUT /catalogs/{cat_id} to update."'
+                    )
+                }
+                if not is_object_uri
+                else None
+            )
+            return JSONResponse(content=existing_dict, status_code=200, headers=headers)
         except NotFoundError:
             # An ObjectUri payload must reference an existing catalog
             if is_object_uri:
@@ -880,7 +891,18 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 extensions=["CatalogsExtension"],
             )
             content = self._to_dict(collection_obj)
-            return JSONResponse(content=content, status_code=200)
+            return JSONResponse(
+                content=content,
+                status_code=200,
+                headers={
+                    "Warning": (
+                        f'299 - "Collection {col_id} already exists and was '
+                        f"linked to catalog {catalog_id}; posted content was "
+                        f"not applied. Use PUT /catalogs/{catalog_id}/"
+                        f'collections/{col_id} to update."'
+                    )
+                },
+            )
 
         # Create new collection
         col_dict = self._to_dict(collection)
