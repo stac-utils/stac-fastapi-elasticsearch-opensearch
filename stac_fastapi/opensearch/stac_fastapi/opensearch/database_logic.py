@@ -2099,13 +2099,15 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         # The collections index is shared with Collection documents; a catalog
         # write must never overwrite a Collection.
-        if await self.client.exists(index=COLLECTIONS_INDEX, id=doc_id):
+        try:
             existing = await self.client.get(index=COLLECTIONS_INDEX, id=doc_id)
-            if existing["_source"].get("type") != "Catalog":
-                raise ConflictError(
-                    f"Cannot create catalog {doc_id}: a non-Catalog document "
-                    "with this id already exists"
-                )
+        except OSNotFoundError:
+            existing = None
+        if existing and existing["_source"].get("type") != "Catalog":
+            raise ConflictError(
+                f"Cannot create catalog {doc_id}: a non-Catalog document "
+                "with this id already exists"
+            )
 
         try:
             await self.client.index(
