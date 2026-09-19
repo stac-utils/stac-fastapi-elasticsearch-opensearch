@@ -730,8 +730,17 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         **kwargs,
     ) -> Catalog | Response:
         """Create a new catalog or link an existing catalog as a sub-catalog."""
+        # Verify the parent catalog exists
+        await self.database.find_catalog(catalog_id)
+
         # Check if it's an existing catalog or a new one
         cat_id = catalog.id if hasattr(catalog, "id") else catalog.get("id")
+
+        # Detect an ObjectUri payload ({"id": ...} only) vs a full Catalog body
+        if isinstance(catalog, dict):
+            is_object_uri = len(catalog) == 1 and "id" in catalog
+        else:
+            is_object_uri = isinstance(catalog, ObjectUri)
 
         try:
             existing = await self.database.find_catalog(cat_id)
@@ -752,8 +761,25 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
             existing_dict["links"] = [
                 self._link_to_dict(link) for link in existing_dict.get("links", [])
             ]
-            return JSONResponse(content=existing_dict, status_code=201)
+            # Linking an existing catalog returns 200 OK (Mode B);
+            # 201 Created is reserved for newly created catalogs
+            headers = (
+                {
+                    "Warning": (
+                        f'299 - "Catalog {cat_id} already exists and was linked '
+                        f"to catalog {catalog_id}; posted content was not "
+                        f'applied. Use PUT /catalogs/{cat_id} to update."'
+                    )
+                }
+                if not is_object_uri
+                else None
+            )
+            return JSONResponse(content=existing_dict, status_code=200, headers=headers)
         except NotFoundError:
+            # An ObjectUri payload must reference an existing catalog
+            if is_object_uri:
+                raise NotFoundError(f"Catalog {cat_id} not found")
+
             # Create new catalog
             db_catalog_dict = self._to_dict(catalog)
             db_catalog_dict["type"] = "Catalog"
@@ -805,10 +831,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         else:
             col_id = collection.id
             # Check if this is an ObjectUri (only has id field)
-            is_object_uri = (
-                hasattr(collection, "__class__")
-                and collection.__class__.__name__ == "ObjectUri"
-            )
+            is_object_uri = isinstance(collection, ObjectUri)
 
         # If only an ID was provided (ObjectUri), the collection must already exist
         if is_object_uri:
@@ -833,9 +856,10 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 catalog_id=catalog_id,
                 extensions=["CatalogsExtension"],
             )
-            # Return 201 Created for all collection operations
+            # Linking an existing collection returns 200 OK (Mode B);
+            # 201 Created is reserved for newly created collections
             content = self._to_dict(collection_obj)
-            return JSONResponse(content=content, status_code=201)
+            return JSONResponse(content=content, status_code=200)
 
         # Full collection data provided - try to link existing or create new
         try:
@@ -845,7 +869,9 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
             # Collection doesn't exist, will create new one below
             pass
         else:
-            # Collection exists, link it
+            # Collection exists, link it. POST does not replace the stored
+            # document, so return 200 to signal the collection already existed
+            # (201 is reserved for a newly created collection document).
             try:
                 await self.database.update_collection(col_id, existing, refresh=True)
             except Exception as e:
@@ -861,9 +887,19 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 catalog_id=catalog_id,
                 extensions=["CatalogsExtension"],
             )
-            # Return 201 Created for full collection data (even if linking existing)
             content = self._to_dict(collection_obj)
-            return JSONResponse(content=content, status_code=201)
+            return JSONResponse(
+                content=content,
+                status_code=200,
+                headers={
+                    "Warning": (
+                        f'299 - "Collection {col_id} already exists and was '
+                        f"linked to catalog {catalog_id}; posted content was "
+                        f"not applied. Use PUT /catalogs/{catalog_id}/"
+                        f'collections/{col_id} to update."'
+                    )
+                },
+            )
 
         # Create new collection
         col_dict = self._to_dict(collection)
