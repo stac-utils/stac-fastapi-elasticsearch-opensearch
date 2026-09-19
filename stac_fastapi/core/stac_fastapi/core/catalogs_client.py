@@ -740,10 +740,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         if isinstance(catalog, dict):
             is_object_uri = len(catalog) == 1 and "id" in catalog
         else:
-            is_object_uri = (
-                hasattr(catalog, "__class__")
-                and catalog.__class__.__name__ == "ObjectUri"
-            )
+            is_object_uri = isinstance(catalog, ObjectUri)
 
         try:
             existing = await self.database.find_catalog(cat_id)
@@ -834,10 +831,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         else:
             col_id = collection.id
             # Check if this is an ObjectUri (only has id field)
-            is_object_uri = (
-                hasattr(collection, "__class__")
-                and collection.__class__.__name__ == "ObjectUri"
-            )
+            is_object_uri = isinstance(collection, ObjectUri)
 
         # If only an ID was provided (ObjectUri), the collection must already exist
         if is_object_uri:
