@@ -788,9 +788,7 @@ async def test_delete_catalog(catalogs_app_client, load_test_data):
 
 
 @pytest.mark.asyncio
-async def test_delete_catalog_with_collection_id_returns_404(
-    catalogs_app_client, ctx
-):
+async def test_delete_catalog_with_collection_id_returns_404(catalogs_app_client, ctx):
     """DELETE /catalogs/{id} with a Collection id returns 404 and preserves data.
 
     Catalogs and Collections share the same index, so the delete must verify
