@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- `PUT /collections/{collection_id}` returns 400 when the body `id` differs from the URI, before database access, instead of renaming the collection and its items. Internal database rename methods remain available. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
+
 ### Updated
 
 ## [v7.2.0] - 2026-09-19
