@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- The Elasticsearch and OpenSearch module entrypoints now start when `.env` does not supply `APP_HOST`, `APP_PORT`, and `RELOAD`. Launchers preserve `.env` settings with process environment overrides and defaults of `0.0.0.0`, `8000`, and `true`. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
+
 ### Updated
 
 ## [v7.2.0] - 2026-09-19

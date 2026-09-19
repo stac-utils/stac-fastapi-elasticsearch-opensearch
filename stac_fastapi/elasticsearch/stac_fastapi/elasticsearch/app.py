@@ -205,14 +205,23 @@ def run() -> None:
         import uvicorn
 
         settings = ElasticsearchSettings()
+        host = os.getenv("APP_HOST", getattr(settings, "app_host", "0.0.0.0"))
+        port = os.getenv("APP_PORT", getattr(settings, "app_port", 8000))
+        try:
+            port = int(port)
+        except (TypeError, ValueError):
+            port = 8000
+        reload = os.getenv("RELOAD", getattr(settings, "reload", True))
+        # Match get_bool_env's false values; missing or invalid values default to true.
+        reload = str(reload).lower() not in ("false", "0", "no", "n")
 
         uvicorn.run(
             "stac_fastapi.elasticsearch.app:create_app",
             factory=True,
-            host=settings.app_host,
-            port=settings.app_port,
+            host=host,
+            port=port,
             log_level="info",
-            reload=settings.reload,
+            reload=reload,
         )
     except ImportError:
         raise RuntimeError("Uvicorn must be installed in order to use command")
