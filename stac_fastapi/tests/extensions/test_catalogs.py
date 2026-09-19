@@ -2481,11 +2481,11 @@ async def test_get_catalog_dynamic_parent_links_poly_hierarchy(
     child_catalog["id"] = child_id
 
     # Link child to both parents (first POST creates -> 201, second links -> 200)
-    for parent_id in parent_ids:
+    for i, parent_id in enumerate(parent_ids):
         link_resp = await catalogs_app_client.post(
             f"/catalogs/{parent_id}/catalogs", json=child_catalog
         )
-        assert link_resp.status_code in [200, 201]
+        assert link_resp.status_code == (201 if i == 0 else 200)
 
     # Get the child catalog and verify link structure
     resp = await catalogs_app_client.get(f"/catalogs/{child_id}")
