@@ -9,17 +9,27 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Updated
+
+## [v7.2.0] - 2026-09-19
+
+### Added
+
 - A `Warning` response header is now returned when a full Catalog or Collection body is POSTed to `POST /catalogs/{catalog_id}/collections` or `POST /catalogs/{catalog_id}/catalogs` for an existing `id`. The header indicates that the resource was linked but the posted content was not applied, and points to the `PUT` endpoint for updates. [#814](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/814)
 
-### Changed
+### Breaking Changes
+
+- `POST /catalogs/{catalog_id}/collections` and `POST /catalogs/{catalog_id}/catalogs` now return `200 OK` instead of `201 Created` when linking an existing `id`, and `404 Not Found` when the parent or referenced resource does not exist. `DELETE /catalogs/{id}` returns `404` (instead of `204`) when `id` is not a Catalog, and core `/collections` endpoints return `404` when `id` belongs to a Catalog. [#814](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/814) [#866](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/866)
 
 ### Fixed
 
 - `POST /catalogs/{catalog_id}/collections` and `POST /catalogs/{catalog_id}/catalogs` now return `200 OK` when linking an existing resource (previously `201 Created`), per the Multi-Tenant Catalogs spec. `201 Created` is reserved for newly created documents, so clients can distinguish "created" from "linked" responses; a full body POSTed for an existing `id` links the resource without replacing the stored document. [#814](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/814)
 - `POST /catalogs/{catalog_id}/catalogs` now returns `404 Not Found` when the parent catalog does not exist, and an `{"id"}` (ObjectUri) payload referencing a nonexistent catalog returns `404` instead of silently creating a stub catalog. [#814](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/814)
 - `DELETE /catalogs/{catalog_id}` now verifies the document exists and is a Catalog before deleting, returning `404 Not Found` otherwise. Previously, deleting a catalog whose `id` matched a Collection document silently deleted the Collection, since catalogs and collections share the same index. Catalog writes (`POST /catalogs` and internal catalog updates) now also reject ids that collide with a non-Catalog document with `409 Conflict`, so a catalog operation can never overwrite Collection data. Symmetrically, `find_collection` now verifies `type == "Collection"`, so core `/collections` endpoints no longer return, update, or delete Catalog documents when a catalog's `id` is passed. [#866](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/866)
-
-### Removed
 
 ### Updated
 
@@ -1005,7 +1015,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v7.1.0...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v7.2.0...main
+[v7.2.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v7.1.0...v7.2.0
 [v7.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v7.0.0...v7.1.0
 [v7.0.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.19.0...v7.0.0
 [v6.19.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.18.0...v6.19.0
