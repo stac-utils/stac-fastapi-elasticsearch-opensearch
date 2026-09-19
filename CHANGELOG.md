@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- `DELETE /catalogs/{catalog_id}` now verifies the document exists and is a Catalog before deleting, returning `404 Not Found` otherwise. Previously, deleting a catalog whose `id` matched a Collection document silently deleted the Collection, since catalogs and collections share the same index. Catalog writes (`POST /catalogs` and internal catalog updates) now also reject ids that collide with a non-Catalog document with `409 Conflict`, so a catalog operation can never overwrite Collection data. Symmetrically, `find_collection` now verifies `type == "Collection"`, so core `/collections` endpoints no longer return, update, or delete Catalog documents when a catalog's `id` is passed. [#866](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/866)
+
 ### Removed
 
 ### Updated

@@ -788,6 +788,57 @@ async def test_delete_catalog(catalogs_app_client, load_test_data):
 
 
 @pytest.mark.asyncio
+async def test_delete_catalog_with_collection_id_returns_404(catalogs_app_client, ctx):
+    """DELETE /catalogs/{id} with a Collection id returns 404 and preserves data.
+
+    Catalogs and Collections share the same index, so the delete must verify
+    the document type and never remove Collection data.
+    """
+    collection_id = ctx.collection["id"]
+
+    delete_resp = await catalogs_app_client.delete(f"/catalogs/{collection_id}")
+    assert delete_resp.status_code == 404
+
+    # The collection document is untouched
+    get_resp = await catalogs_app_client.get(f"/collections/{collection_id}")
+    assert get_resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_create_catalog_with_collection_id_returns_409(
+    catalogs_app_client, load_test_data, ctx
+):
+    """POST /catalogs with an existing Collection id returns 409 and preserves data.
+
+    Catalogs and Collections share the same index, so a catalog write must
+    never overwrite a Collection document.
+    """
+    collection_id = ctx.collection["id"]
+
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = collection_id
+    test_catalog["links"] = [
+        link for link in test_catalog.get("links", []) if link.get("rel") != "child"
+    ]
+
+    resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert resp.status_code == 409
+
+    # The collection document is untouched
+    get_resp = await catalogs_app_client.get(f"/collections/{collection_id}")
+    assert get_resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_delete_nonexistent_catalog_returns_404(catalogs_app_client):
+    """DELETE /catalogs/{id} with a nonexistent id returns 404."""
+    resp = await catalogs_app_client.delete(
+        f"/catalogs/nonexistent-catalog-{uuid.uuid4()}"
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_delete_catalog_no_cascade(catalogs_app_client, load_test_data):
     """Test deleting a catalog (collections remain and are adopted by root)."""
     # Create a catalog
@@ -4041,7 +4092,12 @@ async def test_catalog_delete_logs_error_with_traceback(txn_client, caplog):
     async def mock_delete_error(*args, **kwargs):
         raise Exception("Simulated deletion error")
 
+    # find_catalog must succeed so delete_catalog reaches the mocked delete
     with patch.object(
+        txn_client.database,
+        "find_catalog",
+        return_value={"id": "test-catalog", "type": "Catalog"},
+    ), patch.object(
         txn_client.database.client, "delete", side_effect=mock_delete_error
     ):
         try:
