@@ -730,6 +730,9 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         **kwargs,
     ) -> Catalog | Response:
         """Create a new catalog or link an existing catalog as a sub-catalog."""
+        # Verify the parent catalog exists
+        await self.database.find_catalog(catalog_id)
+
         # Check if it's an existing catalog or a new one
         cat_id = catalog.id if hasattr(catalog, "id") else catalog.get("id")
 

@@ -1772,6 +1772,20 @@ async def test_create_sub_catalog(catalogs_app_client, load_test_data):
 
 
 @pytest.mark.asyncio
+async def test_create_sub_catalog_nonexistent_parent(
+    catalogs_app_client, load_test_data
+):
+    """Creating a sub-catalog under a nonexistent parent returns 404."""
+    sub_catalog = load_test_data("test_catalog.json")
+    sub_catalog["id"] = f"sub-catalog-{uuid.uuid4()}"
+
+    resp = await catalogs_app_client.post(
+        "/catalogs/nonexistent-catalog/catalogs", json=sub_catalog
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
 async def test_link_nonexistent_sub_catalog_by_id_returns_404(
     catalogs_app_client, load_test_data
 ):
