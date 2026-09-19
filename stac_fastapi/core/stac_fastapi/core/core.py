@@ -1619,8 +1619,16 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         # Fix Spot 3: Database writes failed completely
         if success == 0:
+            all_conflicts = (
+                bool(conflict_errors)
+                and len(conflict_errors) == len(valid_items)
+                and not other_errors
+                and not validation_errors
+                and not skipped_db_duplicates
+                and not skipped_batch_duplicates
+            )
             raise HTTPException(
-                status_code=400,
+                status_code=409 if all_conflicts else 400,
                 detail={
                     "message": "No items were added to the database.",
                     "summary": build_bulk_summary(

@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- Non-strict ItemCollection POST returns `409 Conflict` when every item fails solely because it already exists. Requests with validation errors, preprocessing skips, input duplicates, other database errors, or incomplete conflict results retain `400`; strict-mode behavior and error details are unchanged. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
 - New root and sub-catalog documents use atomic create-only indexing; a duplicate root catalog returns `409 Conflict` instead of replacing the stored catalog. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
 - Item PUT rejects body identifiers that differ from the URI with `400`, and fills an omitted collection from the URI. ItemCollection creation also populates omitted collection values and rejects mismatched values. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
 - Item and collection PATCH reject identity changes before writing; collection PATCH also rejects resource-type changes. Missing collection PATCH targets and catalog ids return `404` before any update script runs. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
