@@ -1619,6 +1619,11 @@ class DatabaseLogic(BaseDatabaseLogic):
         except OSNotFoundError:
             raise NotFoundError(f"Collection {collection_id} not found")
 
+        # The collections index is shared with Catalog documents; verify
+        # the document is actually a Collection.
+        if collection["_source"].get("type") != "Collection":
+            raise NotFoundError(f"Collection {collection_id} not found")
+
         return collection["_source"]
 
     @retry_on_connection_error
@@ -2085,11 +2090,29 @@ class DatabaseLogic(BaseDatabaseLogic):
         Args:
             catalog (dict): The catalog document to create.
             refresh (bool): Whether to refresh the index after creation.
+
+        Raises:
+            ConflictError: If a non-Catalog document (e.g. a Collection) already
+                exists with the same id in the shared index.
         """
+        doc_id = catalog.get("id")
+
+        # The collections index is shared with Collection documents; a catalog
+        # write must never overwrite a Collection.
+        try:
+            existing = await self.client.get(index=COLLECTIONS_INDEX, id=doc_id)
+        except OSNotFoundError:
+            existing = None
+        if existing and existing["_source"].get("type") != "Catalog":
+            raise ConflictError(
+                f"Cannot create catalog {doc_id}: a non-Catalog document "
+                "with this id already exists"
+            )
+
         try:
             await self.client.index(
                 index=COLLECTIONS_INDEX,
-                id=catalog.get("id"),
+                id=doc_id,
                 body=catalog,
                 refresh=refresh,
             )
@@ -2131,7 +2154,16 @@ class DatabaseLogic(BaseDatabaseLogic):
         Args:
             catalog_id (str): The ID of the catalog to delete.
             refresh (bool): Whether to refresh the index after deletion.
+
+        Raises:
+            NotFoundError: If the document does not exist or is not a Catalog
+                (e.g. a Collection sharing the same index). Deleting a catalog
+                must never remove Collection or Item data.
         """
+        # Verify the document exists and is a Catalog before deleting; the
+        # collections index is shared with Collection documents.
+        await self.find_catalog(catalog_id)
+
         try:
             await self.client.delete(
                 index=COLLECTIONS_INDEX,
