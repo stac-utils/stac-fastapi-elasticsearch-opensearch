@@ -476,6 +476,8 @@ async def test_bulk_non_conflict_errors_not_raised_in_permissive_mode(
     assert result["success"] == 1
     assert result["skipped"] == 0
     assert len(result["errors"]) == 2
+    # Entries must match TransactionErrorModel, not the raw bulk actions
+    assert all({"id", "msg"} == set(error) for error in result["errors"])
 
 
 @pytest.mark.asyncio
@@ -523,3 +525,25 @@ async def test_bulk_conflict_error_takes_precedence_over_other_errors(
 
         assert exc_info.value.item_id == item_id
         assert exc_info.value.collection_id == ctx.collection["id"]
+
+
+@pytest.mark.asyncio
+async def test_bulk_items_route_returns_formatted_errors(app_client, ctx, txn_client):
+    """Test a conflict in permissive mode returns 200 with serialisable errors."""
+    existing = deepcopy(ctx.item)
+    new_item = deepcopy(ctx.item)
+    new_item["id"] = str(uuid.uuid4())
+
+    resp = await app_client.post(
+        f"/collections/{ctx.item['collection']}/bulk_items",
+        json={
+            "items": {existing["id"]: existing, new_item["id"]: new_item},
+            "method": "insert",
+        },
+    )
+
+    assert resp.status_code == 200, resp.text
+    errors = resp.json()["errors"]
+    assert errors
+    assert all({"id", "msg"} == set(error) for error in errors)
+    assert errors[0]["id"] == existing["id"]

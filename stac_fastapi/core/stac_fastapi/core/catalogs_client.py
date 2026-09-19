@@ -298,7 +298,9 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
             ]
 
         try:
-            await self.database.create_catalog(db_catalog_dict, refresh=True)
+            await self.database.create_catalog(
+                db_catalog_dict, refresh=True, upsert=False
+            )
         except Exception as e:
             logger.error(
                 f"Error creating catalog {db_catalog_dict.get('id')}: {e}",
@@ -795,7 +797,9 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 ]
 
             try:
-                await self.database.create_catalog(db_catalog_dict, refresh=True)
+                await self.database.create_catalog(
+                    db_catalog_dict, refresh=True, upsert=False
+                )
             except Exception as e:
                 logger.error(
                     f"Error creating sub-catalog {db_catalog_dict.get('id')} under catalog {catalog_id}: {e}",
@@ -1504,6 +1508,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         of registered catalog extensions via
         ``app.state.catalogs_conformance_classes``.
         """
+        await self.database.find_catalog(catalog_id)
         return {
             "conformsTo": [
                 "https://api.stacspec.org/v1.0.0/core",
@@ -1520,6 +1525,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         self, catalog_id: str, request: Request | None = None, **kwargs
     ) -> dict | Response:
         """Get queryable fields available for filtering in this sub-catalog."""
+        await self.database.find_catalog(catalog_id)
         # Delegate to database for queryables
         return await self.database.get_queryables_mapping(collection_id="*")
 
@@ -1531,6 +1537,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         **kwargs,
     ) -> None:
         """Unlink a sub-catalog from its parent."""
+        await self.database.find_catalog(catalog_id)
         sub_catalog = await self.database.find_catalog(sub_catalog_id)
 
         self._remove_parent_id(sub_catalog, catalog_id)

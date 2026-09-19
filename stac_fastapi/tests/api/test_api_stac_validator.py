@@ -1626,3 +1626,149 @@ async def test_patch_collection_with_jsonpatch_invalid_bbox_rejected(
     assert get_resp.status_code == 200
     restored_collection = get_resp.json()
     assert len(restored_collection["extent"]["spatial"]["bbox"][0]) == 4
+
+
+async def _create_validator_item(txn_client, load_test_data):
+    """Create a collection with one item and return the item."""
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = f"test-merge-patch-{uuid.uuid4()}"
+    await create_collection(txn_client, collection=test_collection)
+
+    item = load_test_data("test_item.json")
+    item["collection"] = test_collection["id"]
+    item["id"] = f"test-merge-patch-item-{uuid.uuid4()}"
+    item["properties"]["title"] = "original"
+    await create_item(txn_client, item)
+    return item
+
+
+@pytest.mark.asyncio
+async def test_merge_patch_item_preserves_sibling_properties(
+    app_client, txn_client, load_test_data
+):
+    """Test a merge patch on properties leaves the other properties in place."""
+    validator_item = await _create_validator_item(txn_client, load_test_data)
+    resp = await app_client.patch(
+        f"/collections/{validator_item['collection']}/items/{validator_item['id']}",
+        json={"properties": {"title": "patched"}},
+        headers={"Content-Type": "application/merge-patch+json"},
+    )
+
+    assert resp.status_code == 200, resp.text
+    properties = resp.json()["properties"]
+    assert properties["title"] == "patched"
+    assert properties["datetime"] == validator_item["properties"]["datetime"]
+
+
+@pytest.mark.asyncio
+async def test_merge_patch_item_null_removes_only_that_member(
+    app_client, txn_client, load_test_data
+):
+    """Test a null in a merge patch removes just that member (RFC 7386)."""
+    validator_item = await _create_validator_item(txn_client, load_test_data)
+    resp = await app_client.patch(
+        f"/collections/{validator_item['collection']}/items/{validator_item['id']}",
+        json={"properties": {"title": None}},
+        headers={"Content-Type": "application/merge-patch+json"},
+    )
+
+    assert resp.status_code == 200, resp.text
+    properties = resp.json()["properties"]
+    assert "title" not in properties
+    assert properties["datetime"] == validator_item["properties"]["datetime"]
+
+
+@pytest.mark.asyncio
+async def test_merge_patch_item_nested_null_over_absent_member(
+    app_client, txn_client, load_test_data
+):
+    """Test a nested null over an absent member yields an empty object."""
+    validator_item = await _create_validator_item(txn_client, load_test_data)
+
+    resp = await app_client.patch(
+        f"/collections/{validator_item['collection']}/items/{validator_item['id']}",
+        json={"properties": {"custom": {"a": None}}},
+        headers={"Content-Type": "application/merge-patch+json"},
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["properties"]["custom"] == {}
+
+
+@pytest.mark.asyncio
+async def test_json_patch_item_absent_path_returns_400(
+    app_client, txn_client, load_test_data
+):
+    """Test a JSON Patch replace on an absent path returns 400, not 500."""
+    validator_item = await _create_validator_item(txn_client, load_test_data)
+    from stac_fastapi.sfeos_helpers.database import (
+        index_alias_by_collection_id,
+        mk_item_id,
+    )
+
+    document = {
+        "index": index_alias_by_collection_id(validator_item["collection"]),
+        "id": mk_item_id(validator_item["id"], validator_item["collection"]),
+    }
+    before = await txn_client.database.client.get(**document)
+    resp = await app_client.patch(
+        f"/collections/{validator_item['collection']}/items/{validator_item['id']}",
+        json=[{"op": "replace", "path": "/properties/absent", "value": 1}],
+        headers={"Content-Type": "application/json-patch+json"},
+    )
+
+    assert resp.status_code == 400, resp.text
+    after = await txn_client.database.client.get(**document)
+    assert after["_source"] == before["_source"]
+    assert after["_version"] == before["_version"]
+
+
+@pytest.mark.parametrize(
+    "operations",
+    [
+        [{"op": "replace", "path": "/id", "value": "validator-renamed"}],
+        [{"op": "replace", "path": "", "value": {"id": "validator-root-renamed"}}],
+    ],
+)
+@pytest.mark.asyncio
+async def test_json_patch_item_identity_rejected_with_validator(
+    app_client, txn_client, load_test_data, operations
+):
+    """Test identity-changing item patches return 400 with the validator on."""
+    validator_item = await _create_validator_item(txn_client, load_test_data)
+    resp = await app_client.patch(
+        f"/collections/{validator_item['collection']}/items/{validator_item['id']}",
+        json=operations,
+        headers={"Content-Type": "application/json-patch+json"},
+    )
+
+    assert resp.status_code == 400, resp.text
+
+    for renamed in ("validator-renamed", "validator-root-renamed"):
+        missing = await app_client.get(
+            f"/collections/{validator_item['collection']}/items/{renamed}"
+        )
+        assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_patch_collection_id_rejected_with_validator(
+    app_client, txn_client, load_test_data
+):
+    """Test a collection patch that renames the collection returns 400."""
+    test_collection = load_test_data("test_collection.json")
+    test_collection["id"] = f"test-patch-rename-{uuid.uuid4()}"
+    await create_collection(txn_client, collection=test_collection)
+
+    resp = await app_client.patch(
+        f"/collections/{test_collection['id']}",
+        json=[{"op": "replace", "path": "/id", "value": "renamed-collection"}],
+        headers={"Content-Type": "application/json-patch+json"},
+    )
+
+    assert resp.status_code == 400, resp.text
+
+    assert (
+        await app_client.get(f"/collections/{test_collection['id']}")
+    ).status_code == 200
+    assert (await app_client.get("/collections/renamed-collection")).status_code == 404

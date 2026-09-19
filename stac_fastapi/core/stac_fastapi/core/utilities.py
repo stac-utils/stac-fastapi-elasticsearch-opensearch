@@ -282,6 +282,26 @@ def dict_deep_update(merge_to: dict[str, Any], merge_from: dict[str, Any]) -> No
             merge_to[k] = v
 
 
+def json_merge_patch(target: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
+    """Apply an RFC 7386 JSON Merge Patch to target in place and return it.
+
+    Unlike :func:`dict_deep_update`, an object in the patch recurses into a
+    fresh object when the target member is absent or not an object, and a null
+    removes the member.
+    """
+    for key, value in patch.items():
+        if isinstance(value, dict):
+            current = target.get(key)
+            target[key] = json_merge_patch(
+                current if isinstance(current, dict) else {}, value
+            )
+        elif value is None:
+            target.pop(key, None)
+        else:
+            target[key] = value
+    return target
+
+
 def get_excluded_from_items(obj: dict, field_path: str) -> None:
     """Remove a field from items.
 
@@ -403,6 +423,28 @@ def build_bulk_summary(
         "conflict_count": conflict_count,
         "database_error_count": database_error_count,
     }
+
+
+def format_bulk_errors(errors: list[dict]) -> list[dict[str, str]]:
+    """Format raw bulk action errors into TransactionErrorModel entries.
+
+    The database returns whole bulk actions ({"create": {"_id": ..., "error":
+    {...}}}), which the bulk transaction response model cannot serialise.
+
+    Args:
+        errors: List of raw bulk action dictionaries from the database.
+
+    Returns:
+        List of {"id", "msg"} dictionaries, one per failed action.
+    """
+    formatted = []
+    for action in errors:
+        detail = next(iter(action.values()))
+        doc_id = detail.get("_id", "")
+        error = detail.get("error", {})
+        reason = error.get("reason") if isinstance(error, dict) else None
+        formatted.append({"id": doc_id.split("|", 1)[0], "msg": reason or str(error)})
+    return formatted
 
 
 def format_conflict_errors(conflicts: list[dict]) -> dict[str, str]:

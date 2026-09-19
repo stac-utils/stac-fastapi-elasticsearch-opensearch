@@ -1,10 +1,14 @@
 import copy
 import os
 import uuid
+from unittest.mock import AsyncMock
 
 import pytest
 from httpx import ASGITransport, AsyncClient
 from stac_pydantic import api
+
+from stac_fastapi.sfeos_helpers.database import index_alias_by_collection_id, mk_item_id
+from stac_fastapi.sfeos_helpers.mappings import COLLECTIONS_INDEX
 
 from ..conftest import (
     build_test_app,
@@ -233,3 +237,202 @@ async def test_links_collection(app_client, ctx, txn_client):
         len([link for link in response.json()["links"] if link["rel"] == "license"])
         == 1
     )
+
+
+@pytest.mark.parametrize("validator", ["false", "true"])
+@pytest.mark.asyncio
+async def test_patch_missing_collection_returns_404(app_client, monkeypatch, validator):
+    """Test PATCH on a missing collection returns 404 instead of 500."""
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", validator)
+    resp = await app_client.patch(
+        f"/collections/missing-collection-{uuid.uuid4()}",
+        json={"title": "does not exist"},
+        headers={"Content-Type": "application/merge-patch+json"},
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.parametrize("validator", ["false", "true"])
+@pytest.mark.asyncio
+async def test_patch_collection_accepts_parameterised_media_type(
+    app_client, ctx, monkeypatch, validator
+):
+    """Test an upper-case, parameterised patch media type is accepted."""
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", validator)
+    resp = await app_client.patch(
+        f"/collections/{ctx.collection['id']}",
+        json={"title": "cased"},
+        headers={"Content-Type": "application/MERGE-PATCH+JSON; charset=utf-8"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["title"] == "cased"
+
+
+@pytest.mark.parametrize(
+    "patch,content_type",
+    [
+        ([{"op": "replace", "path": "/id", "value": "renamed"}], "json-patch"),
+        ([{"op": "add", "path": "collection", "value": "renamed"}], "json-patch"),
+        ([{"op": "replace", "path": "collection", "value": "renamed"}], "json-patch"),
+        ([{"op": "move", "from": "/id", "path": "/title"}], "json-patch"),
+        ([{"op": "remove", "path": "/id"}], "json-patch"),
+        ([{"op": "replace", "path": "", "value": {"id": "renamed"}}], "json-patch"),
+        ({"id": "renamed"}, "merge-patch"),
+    ],
+)
+@pytest.mark.parametrize("validator", ["false", "true"])
+@pytest.mark.asyncio
+async def test_patch_collection_rejects_id_changes(
+    app_client, ctx, txn_client, monkeypatch, validator, patch, content_type
+):
+    """Test a patch that changes the collection id returns 400 and changes nothing."""
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", validator)
+    before = await txn_client.database.client.get(
+        index=COLLECTIONS_INDEX, id=ctx.collection["id"]
+    )
+    item_index = index_alias_by_collection_id(ctx.collection["id"])
+    item_id = mk_item_id(ctx.item["id"], ctx.collection["id"])
+    item_before = await txn_client.database.client.get(index=item_index, id=item_id)
+    if isinstance(patch, list):
+        patch = [{"op": "add", "path": "/title", "value": "must not persist"}] + patch
+    else:
+        patch = {**patch, "title": "must not persist"}
+    lookup = AsyncMock(side_effect=AssertionError("Invalid identity reached lookup"))
+    with monkeypatch.context() as guarded:
+        guarded.setattr(type(txn_client.database), "find_collection", lookup)
+        resp = await app_client.patch(
+            f"/collections/{ctx.collection['id']}",
+            json=patch,
+            headers={"Content-Type": f"application/{content_type}+json"},
+        )
+    assert resp.status_code == 400
+    lookup.assert_not_awaited()
+    after = await txn_client.database.client.get(
+        index=COLLECTIONS_INDEX, id=ctx.collection["id"]
+    )
+    assert after["_source"] == before["_source"]
+    assert after["_version"] == before["_version"]
+    item_after = await txn_client.database.client.get(index=item_index, id=item_id)
+    assert item_after["_source"] == item_before["_source"]
+    assert item_after["_version"] == item_before["_version"]
+    assert item_after["_source"]["collection"] == ctx.collection["id"]
+    assert not await txn_client.database.client.exists(
+        index=index_alias_by_collection_id("renamed"),
+        id=mk_item_id(ctx.item["id"], "renamed"),
+    )
+
+    stored = await app_client.get(f"/collections/{ctx.collection['id']}")
+    assert stored.status_code == 200
+    assert stored.json()["id"] == ctx.collection["id"]
+    assert (await app_client.get("/collections/renamed")).status_code == 404
+
+
+@pytest.mark.parametrize("validator", ["false", "true"])
+@pytest.mark.parametrize(
+    "patch,content_type",
+    [
+        ([{"op": "replace", "path": "/type", "value": "Catalog"}], "json-patch"),
+        ([{"op": "add", "path": "/type", "value": "Catalog"}], "json-patch"),
+        ([{"op": "replace", "path": "/type", "value": None}], "json-patch"),
+        ([{"op": "remove", "path": "/type"}], "json-patch"),
+        ([{"op": "copy", "from": "/description", "path": "/type"}], "json-patch"),
+        ([{"op": "move", "from": "/description", "path": "/type"}], "json-patch"),
+        ([{"op": "move", "from": "/type", "path": "/title"}], "json-patch"),
+        ("replace-root-type", "json-patch"),
+        ("remove-root-type", "json-patch"),
+        ({"type": "Catalog"}, "merge-patch"),
+        ({"type": None}, "merge-patch"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_patch_collection_rejects_type_changes_before_writing(
+    app_client, ctx, txn_client, monkeypatch, validator, patch, content_type
+):
+    """Reject type changes without persisting any operation in the request."""
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", validator)
+    collection_id = ctx.collection["id"]
+    url = f"/collections/{collection_id}"
+    before = await txn_client.database.client.get(
+        index=COLLECTIONS_INDEX, id=collection_id
+    )
+    if isinstance(patch, str):
+        replacement = copy.deepcopy(ctx.collection)
+        if patch == "replace-root-type":
+            replacement["type"] = "Catalog"
+        else:
+            del replacement["type"]
+        patch = [{"op": "replace", "path": "", "value": replacement}]
+    if isinstance(patch, list):
+        patch = [{"op": "add", "path": "/title", "value": "must not persist"}] + patch
+    else:
+        patch = {**patch, "title": "must not persist"}
+
+    response = await app_client.patch(
+        url, json=patch, headers={"Content-Type": f"application/{content_type}+json"}
+    )
+
+    assert response.status_code == 400
+    after = await txn_client.database.client.get(
+        index=COLLECTIONS_INDEX, id=collection_id
+    )
+    assert after["_source"] == before["_source"]
+    assert after["_version"] == before["_version"]
+    readable = await app_client.get(url)
+    assert readable.status_code == 200
+    assert readable.json()["type"] == "Collection"
+
+
+@pytest.mark.parametrize("validator", ["false", "true"])
+@pytest.mark.parametrize(
+    "patch,content_type",
+    [
+        ([{"op": "replace", "path": "/type", "value": "Collection"}], "json-patch"),
+        ([{"op": "add", "path": "/type", "value": "Collection"}], "json-patch"),
+        ([{"op": "copy", "from": "/type", "path": "/title"}], "json-patch"),
+        ({"type": "Collection"}, "merge-patch"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_patch_collection_preserving_type_succeeds(
+    app_client, ctx, monkeypatch, validator, patch, content_type
+):
+    """Allow unchanged type values and copies of type into unrelated metadata."""
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", validator)
+    url = f"/collections/{ctx.collection['id']}"
+    response = await app_client.patch(
+        url, json=patch, headers={"Content-Type": f"application/{content_type}+json"}
+    )
+    assert response.status_code == 200
+    stored = await app_client.get(url)
+    assert stored.status_code == 200
+    assert stored.json()["type"] == "Collection"
+    if isinstance(patch, list) and patch[0]["op"] == "copy":
+        assert stored.json()["title"] == "Collection"
+
+
+@pytest.mark.parametrize("validator", ["false", "true"])
+@pytest.mark.asyncio
+async def test_patch_collection_field_is_not_a_rename_alias(
+    app_client, ctx, txn_client, monkeypatch, validator
+):
+    """A JSON Pointer to collection metadata does not rename the resource."""
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", validator)
+    collection_id = ctx.collection["id"]
+    item_index = index_alias_by_collection_id(collection_id)
+    item_id = mk_item_id(ctx.item["id"], collection_id)
+    item_before = await txn_client.database.client.get(index=item_index, id=item_id)
+    for operation, value in [("add", "custom metadata"), ("replace", "new metadata")]:
+        response = await app_client.patch(
+            f"/collections/{collection_id}",
+            json=[{"op": operation, "path": "/collection", "value": value}],
+            headers={"Content-Type": "application/json-patch+json"},
+        )
+        assert response.status_code == 200
+        stored = await txn_client.database.client.get(
+            index=COLLECTIONS_INDEX, id=collection_id
+        )
+        assert stored["_source"]["id"] == collection_id
+        assert stored["_source"]["collection"] == value
+    item_after = await txn_client.database.client.get(index=item_index, id=item_id)
+    assert item_after["_source"] == item_before["_source"]
+    assert item_after["_version"] == item_before["_version"]

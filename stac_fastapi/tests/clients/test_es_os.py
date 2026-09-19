@@ -1,6 +1,8 @@
+import asyncio
 import uuid
 from copy import deepcopy
 from typing import Callable
+from unittest.mock import AsyncMock
 
 import pytest
 from fastapi import HTTPException
@@ -1053,3 +1055,71 @@ async def test_json_patch_collection_copy_property_does_not_exists(
                 headers={"content-type": "application/json-patch+json"}
             ),
         )
+
+
+@pytest.mark.asyncio
+async def test_create_catalog_without_upsert_conflicts(txn_client):
+    """Test a second create_catalog(upsert=False) conflicts and keeps the original."""
+    catalog = {
+        "id": f"test-catalog-{uuid.uuid4()}",
+        "type": "Catalog",
+        "description": "original",
+    }
+    await txn_client.database.create_catalog(catalog, refresh=True, upsert=False)
+
+    with pytest.raises(ConflictError):
+        await txn_client.database.create_catalog(
+            catalog | {"description": "overwritten"}, refresh=True, upsert=False
+        )
+
+    stored = await txn_client.database.find_catalog(catalog["id"])
+    assert stored["description"] == "original"
+
+    await txn_client.database.delete_catalog(catalog["id"], refresh=True)
+
+
+@pytest.mark.asyncio
+async def test_concurrent_catalog_creates_have_one_winner(app_client, txn_client):
+    """Create-only indexing prevents two simultaneous creators from overwriting."""
+    catalog = {"id": f"atomic-{uuid.uuid4()}", "type": "Catalog"}
+    results = await asyncio.gather(
+        txn_client.database.create_catalog(
+            catalog | {"description": "first"}, refresh=True, upsert=False
+        ),
+        txn_client.database.create_catalog(
+            catalog | {"description": "second"}, refresh=True, upsert=False
+        ),
+        return_exceptions=True,
+    )
+    assert sum(result is None for result in results) == 1
+    assert sum(isinstance(result, ConflictError) for result in results) == 1
+    stored = await txn_client.database.find_catalog(catalog["id"])
+    assert stored["description"] == ("first" if results[0] is None else "second")
+    await txn_client.database.delete_catalog(catalog["id"], refresh=True)
+
+
+@pytest.mark.parametrize("upsert", [True, False])
+@pytest.mark.asyncio
+async def test_catalog_write_preserves_non_catalog_document(ctx, txn_client, upsert):
+    """Both write modes retain the shared-index resource-type collision guard."""
+    with pytest.raises(ConflictError):
+        await txn_client.database.create_catalog(
+            {"id": ctx.collection["id"], "type": "Catalog"}, refresh=True, upsert=upsert
+        )
+    stored = await txn_client.database.find_collection(ctx.collection["id"])
+    assert stored["type"] == "Collection"
+
+
+@pytest.mark.asyncio
+async def test_catalog_delete_race_translates_not_found(
+    app_client, txn_client, monkeypatch
+):
+    """Translate a backend miss if a catalog disappears after its type check."""
+    catalog_id = f"deleted-{uuid.uuid4()}"
+    monkeypatch.setattr(
+        txn_client.database,
+        "find_catalog",
+        AsyncMock(return_value={"id": catalog_id, "type": "Catalog"}),
+    )
+    with pytest.raises(NotFoundError):
+        await txn_client.database.delete_catalog(catalog_id, refresh=True)

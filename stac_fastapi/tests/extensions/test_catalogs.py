@@ -2,6 +2,8 @@ import uuid
 
 import pytest
 
+from stac_fastapi.sfeos_helpers.mappings import COLLECTIONS_INDEX
+
 
 @pytest.mark.asyncio
 async def test_get_root_catalog(catalogs_app_client, load_test_data):
@@ -4550,3 +4552,109 @@ async def test_collection_index_logs_error_with_traceback(txn_client, caplog):
     assert len(error_records) > 0
     assert any("Error indexing collection" in r.message for r in error_records)
     assert any(r.exc_info is not None for r in error_records)
+
+
+async def _create_catalog(catalogs_app_client, load_test_data, prefix="test-catalog"):
+    """Create a root-level catalog with a unique id and return the id."""
+    catalog = load_test_data("test_catalog.json")
+    catalog["id"] = f"{prefix}-{uuid.uuid4()}"
+    resp = await catalogs_app_client.post("/catalogs", json=catalog)
+    assert resp.status_code == 201
+    return catalog["id"]
+
+
+@pytest.mark.asyncio
+async def test_create_catalog_conflict_returns_409(catalogs_app_client, load_test_data):
+    """Test creating a catalog with an existing id returns 409 and keeps the original."""
+    catalog = load_test_data("test_catalog.json")
+    catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+    resp = await catalogs_app_client.post("/catalogs", json=catalog)
+    assert resp.status_code == 201
+
+    resp = await catalogs_app_client.post(
+        "/catalogs", json=catalog | {"description": "Changed description"}
+    )
+    assert resp.status_code == 409
+
+    get_resp = await catalogs_app_client.get(f"/catalogs/{catalog['id']}")
+    assert get_resp.status_code == 200
+    assert get_resp.json()["description"] == catalog["description"]
+
+
+@pytest.mark.asyncio
+async def test_unlink_sub_catalog_returns_204(catalogs_app_client, load_test_data):
+    """Test unlinking a sub-catalog removes the link and keeps the sub-catalog."""
+    parent_id = await _create_catalog(catalogs_app_client, load_test_data, "parent")
+    child = load_test_data("test_catalog.json")
+    child["id"] = f"child-catalog-{uuid.uuid4()}"
+    create_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_id}/catalogs", json=child
+    )
+    assert create_resp.status_code == 201
+
+    resp = await catalogs_app_client.delete(
+        f"/catalogs/{parent_id}/catalogs/{child['id']}"
+    )
+    assert resp.status_code == 204
+
+    list_resp = await catalogs_app_client.get(f"/catalogs/{parent_id}/catalogs")
+    assert child["id"] not in [c["id"] for c in list_resp.json()["catalogs"]]
+    get_resp = await catalogs_app_client.get(f"/catalogs/{child['id']}")
+    assert get_resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_unlink_sub_catalog_nonexistent_parent_returns_404(
+    catalogs_app_client, load_test_data
+):
+    """Test unlinking from a nonexistent parent catalog returns 404."""
+    child_id = await _create_catalog(catalogs_app_client, load_test_data, "child")
+
+    resp = await catalogs_app_client.delete(
+        f"/catalogs/missing-parent-{uuid.uuid4()}/catalogs/{child_id}"
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_catalog_conformance_nonexistent_catalog_returns_404(catalogs_app_client):
+    """Test the conformance endpoint of a nonexistent catalog returns 404."""
+    resp = await catalogs_app_client.get(
+        f"/catalogs/missing-catalog-{uuid.uuid4()}/conformance"
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_catalog_queryables_nonexistent_catalog_returns_404(catalogs_app_client):
+    """Test the queryables endpoint of a nonexistent catalog returns 404."""
+    resp = await catalogs_app_client.get(
+        f"/catalogs/missing-catalog-{uuid.uuid4()}/queryables"
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.parametrize("validator", ["false", "true"])
+@pytest.mark.parametrize("media_type", ["json-patch", "merge-patch"])
+@pytest.mark.asyncio
+async def test_collection_patch_rejects_catalog_before_writing(
+    catalogs_app_client, load_test_data, txn_client, monkeypatch, validator, media_type
+):
+    """A collection PATCH must not mutate a catalog before returning 404."""
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", validator)
+    catalog_id = await _create_catalog(catalogs_app_client, load_test_data, "typed")
+    before = await txn_client.database.client.get(
+        index=COLLECTIONS_INDEX, id=catalog_id
+    )
+    patch = {"title": "hijacked"}
+    if media_type == "json-patch":
+        patch = [{"op": "add", "path": "/title", "value": "hijacked"}]
+    response = await catalogs_app_client.patch(
+        f"/collections/{catalog_id}",
+        json=patch,
+        headers={"Content-Type": f"application/{media_type}+json"},
+    )
+    assert response.status_code == 404
+    after = await txn_client.database.client.get(index=COLLECTIONS_INDEX, id=catalog_id)
+    assert after["_source"] == before["_source"]
+    assert after["_version"] == before["_version"]

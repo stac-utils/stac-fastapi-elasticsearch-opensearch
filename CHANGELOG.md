@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- New root and sub-catalog documents use atomic create-only indexing; a duplicate root catalog returns `409 Conflict` instead of replacing the stored catalog. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
+- Item PUT rejects body identifiers that differ from the URI with `400`, and fills an omitted collection from the URI. ItemCollection creation also populates omitted collection values and rejects mismatched values. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
+- Item and collection PATCH reject identity changes before writing; collection PATCH also rejects resource-type changes. Missing collection PATCH targets and catalog ids return `404` before any update script runs. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
+- Validated merge patches recursively merge nested objects and remove null-valued members; invalid validated JSON Patch operations return `400`. Supported PATCH media types accept case differences and parameters. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
+- Bulk item errors use the expected `id` and `msg` fields, avoiding response-validation failures for lenient conflicts. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
+- Catalog conformance, queryables and sub-catalog unlink operations return `404` for missing catalog parents. Backend catalog deletion translates a not-found error after its existence check into `404`. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
+
 ### Updated
 
 ## [v7.2.0] - 2026-09-19

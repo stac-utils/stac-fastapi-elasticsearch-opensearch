@@ -14,6 +14,7 @@ from stac_pydantic import api
 from stac_fastapi.core.core import CoreClient
 from stac_fastapi.core.datetime_utils import datetime_to_str, now_to_rfc3339_str
 from stac_fastapi.core.utilities import get_bool_env
+from stac_fastapi.sfeos_helpers.database import index_alias_by_collection_id, mk_item_id
 from stac_fastapi.types.core import LandingPageMixin
 
 from ..conftest import create_collection, create_item, refresh_indices
@@ -1362,3 +1363,220 @@ async def test_hidden_items_counter(app_client, txn_client, load_test_data):
 
     assert result["numberReturned"] == 3
     assert result["numberMatched"] == 3
+
+
+async def _stored_item(txn_client, item):
+    """Return the raw stored document and version for write-rejection assertions."""
+    return await txn_client.database.client.get(
+        index=index_alias_by_collection_id(item["collection"]),
+        id=mk_item_id(item["id"], item["collection"]),
+    )
+
+
+@pytest.mark.parametrize("validator", ["false", "true"])
+@pytest.mark.asyncio
+async def test_update_item_rejects_mismatched_body_id(
+    app_client, ctx, txn_client, monkeypatch, validator
+):
+    """Test PUT with a body id different from the URI returns 400."""
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", validator)
+    before = await _stored_item(txn_client, ctx.item)
+    item = deepcopy(ctx.item)
+    item["id"] = f"other-{uuid.uuid4()}"
+
+    resp = await app_client.put(
+        f"/collections/{ctx.item['collection']}/items/{ctx.item['id']}", json=item
+    )
+    assert resp.status_code == 400
+    after = await _stored_item(txn_client, ctx.item)
+    assert after["_source"] == before["_source"]
+    assert after["_version"] == before["_version"]
+
+    missing = await app_client.get(
+        f"/collections/{ctx.item['collection']}/items/{item['id']}"
+    )
+    assert missing.status_code == 404
+
+
+@pytest.mark.parametrize("validator", ["false", "true"])
+@pytest.mark.asyncio
+async def test_update_item_rejects_mismatched_body_collection(
+    app_client, ctx, txn_client, monkeypatch, validator
+):
+    """Test PUT with a body collection different from the URI returns 400."""
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", validator)
+    before = await _stored_item(txn_client, ctx.item)
+    item = deepcopy(ctx.item)
+    item["collection"] = f"other-collection-{uuid.uuid4()}"
+
+    resp = await app_client.put(
+        f"/collections/{ctx.item['collection']}/items/{ctx.item['id']}", json=item
+    )
+    assert resp.status_code == 400
+    after = await _stored_item(txn_client, ctx.item)
+    assert after["_source"] == before["_source"]
+    assert after["_version"] == before["_version"]
+
+
+@pytest.mark.asyncio
+async def test_update_item_without_collection_uses_uri(app_client, ctx):
+    """Test PUT whose body omits collection stores the collection from the URI."""
+    item = deepcopy(ctx.item)
+    del item["collection"]
+    item["properties"]["title"] = "no collection in body"
+
+    resp = await app_client.put(
+        f"/collections/{ctx.item['collection']}/items/{ctx.item['id']}", json=item
+    )
+    assert resp.status_code == 200
+
+    stored = await app_client.get(
+        f"/collections/{ctx.item['collection']}/items/{ctx.item['id']}"
+    )
+    assert stored.status_code == 200
+    assert stored.json()["collection"] == ctx.item["collection"]
+
+
+@pytest.mark.asyncio
+async def test_create_item_collection_without_collection_field(
+    app_client, ctx, txn_client
+):
+    """Test an ItemCollection whose features omit collection is created from the URI."""
+    features = []
+    for _ in range(2):
+        feature = deepcopy(ctx.item)
+        feature["id"] = str(uuid.uuid4())
+        del feature["collection"]
+        features.append(feature)
+
+    resp = await app_client.post(
+        f"/collections/{ctx.item['collection']}/items",
+        json={"type": "FeatureCollection", "features": features},
+    )
+    assert resp.status_code == 201
+
+    await refresh_indices(txn_client)
+    for feature in features:
+        stored = await app_client.get(
+            f"/collections/{ctx.item['collection']}/items/{feature['id']}"
+        )
+        assert stored.status_code == 200
+        assert stored.json()["collection"] == ctx.item["collection"]
+
+
+@pytest.mark.asyncio
+async def test_create_item_collection_rejects_mismatched_collection(app_client, ctx):
+    """Test an ItemCollection feature naming another collection rejects the batch."""
+    feature = deepcopy(ctx.item)
+    feature["id"] = str(uuid.uuid4())
+    feature["collection"] = f"other-collection-{uuid.uuid4()}"
+
+    valid = deepcopy(ctx.item)
+    valid["id"] = str(uuid.uuid4())
+    resp = await app_client.post(
+        f"/collections/{ctx.item['collection']}/items",
+        json={"type": "FeatureCollection", "features": [valid, feature]},
+    )
+    assert resp.status_code == 400
+
+    for item in (valid, feature):
+        stored = await app_client.get(
+            f"/collections/{ctx.item['collection']}/items/{item['id']}"
+        )
+        assert stored.status_code == 404
+
+
+@pytest.mark.parametrize("validator", ["false", "true"])
+@pytest.mark.asyncio
+async def test_patch_item_accepts_parameterised_media_type(
+    app_client, ctx, monkeypatch, validator
+):
+    """Test an upper-case, parameterised patch media type is accepted."""
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", validator)
+    resp = await app_client.patch(
+        f"/collections/{ctx.item['collection']}/items/{ctx.item['id']}",
+        json=[{"op": "add", "path": "/properties/title", "value": "cased"}],
+        headers={"Content-Type": "application/JSON-PATCH+JSON; charset=utf-8"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["properties"]["title"] == "cased"
+
+
+@pytest.mark.parametrize(
+    "operations",
+    [
+        [{"op": "replace", "path": "/id", "value": "renamed-item"}],
+        [{"op": "replace", "path": "/collection", "value": "renamed-collection"}],
+        [{"op": "move", "from": "/id", "path": "/properties/moved_id"}],
+        [{"op": "remove", "path": "/id"}],
+        [{"op": "replace", "path": "", "value": {"id": "root-renamed"}}],
+    ],
+)
+@pytest.mark.parametrize("validator", ["false", "true"])
+@pytest.mark.asyncio
+async def test_patch_item_rejects_identity_changes(
+    app_client, ctx, txn_client, monkeypatch, validator, operations
+):
+    """Test JSON Patch operations that change item identity return 400."""
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", validator)
+    before = await _stored_item(txn_client, ctx.item)
+    operations = [
+        {"op": "add", "path": "/properties/title", "value": "must not persist"}
+    ] + operations
+    resp = await app_client.patch(
+        f"/collections/{ctx.item['collection']}/items/{ctx.item['id']}",
+        json=operations,
+        headers={"Content-Type": "application/json-patch+json"},
+    )
+    assert resp.status_code == 400
+    after = await _stored_item(txn_client, ctx.item)
+    assert after["_source"] == before["_source"]
+    assert after["_version"] == before["_version"]
+
+    stored = await app_client.get(
+        f"/collections/{ctx.item['collection']}/items/{ctx.item['id']}"
+    )
+    assert stored.status_code == 200
+    assert stored.json()["id"] == ctx.item["id"]
+    assert stored.json()["collection"] == ctx.item["collection"]
+
+    for renamed in ("renamed-item", "root-renamed"):
+        missing = await app_client.get(
+            f"/collections/{ctx.item['collection']}/items/{renamed}"
+        )
+        assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_patch_item_allows_copy_from_id(app_client, ctx):
+    """Test copying /id elsewhere is allowed and leaves the id in place."""
+    resp = await app_client.patch(
+        f"/collections/{ctx.item['collection']}/items/{ctx.item['id']}",
+        json=[{"op": "copy", "from": "/id", "path": "/properties/original_id"}],
+        headers={"Content-Type": "application/json-patch+json"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["id"] == ctx.item["id"]
+    assert resp.json()["properties"]["original_id"] == ctx.item["id"]
+
+
+@pytest.mark.parametrize(
+    "patch", [{"id": "merge-renamed"}, {"collection": "merge-renamed-collection"}]
+)
+@pytest.mark.parametrize("validator", ["false", "true"])
+@pytest.mark.asyncio
+async def test_merge_patch_item_rejects_identity_changes(
+    app_client, ctx, txn_client, monkeypatch, validator, patch
+):
+    """Test a merge patch that changes item identity returns 400."""
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", validator)
+    before = await _stored_item(txn_client, ctx.item)
+    resp = await app_client.patch(
+        f"/collections/{ctx.item['collection']}/items/{ctx.item['id']}",
+        json={**patch, "properties": {"title": "must not persist"}},
+        headers={"Content-Type": "application/merge-patch+json"},
+    )
+    assert resp.status_code == 400
+    after = await _stored_item(txn_client, ctx.item)
+    assert after["_source"] == before["_source"]
+    assert after["_version"] == before["_version"]

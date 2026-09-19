@@ -6,7 +6,7 @@ import os
 from datetime import datetime as datetime_type
 from datetime import timezone
 from enum import Enum
-from typing import Type, cast
+from typing import Any, Type, cast
 from urllib.parse import unquote_plus, urljoin
 
 import attr
@@ -41,9 +41,11 @@ from stac_fastapi.core.utilities import (
     build_bulk_summary,
     count_validation_errors,
     filter_fields,
+    format_bulk_errors,
     format_conflict_errors,
     get_bool_env,
     get_int_env,
+    json_merge_patch,
 )
 from stac_fastapi.core.validate import (
     async_validate_batch_with_stac_validator,
@@ -80,6 +82,66 @@ logger = logging.getLogger(__name__)
 
 partialItemValidator = TypeAdapter(PartialItem)
 partialCollectionValidator = TypeAdapter(PartialCollection)
+
+FIELD_LABELS = {"id": "Item ID", "collection": "Collection ID"}
+
+
+def bare_media_type(header: str | None) -> str:
+    """Return a Content-Type header's media type, lower-cased and unparameterised."""
+    return (header or "").split(";")[0].strip().lower()
+
+
+def populate_from_uri(obj: dict, field: str, value: str) -> None:
+    """Set a body field from the request URI, rejecting a conflicting body value."""
+    label = FIELD_LABELS.get(field, field)
+    if obj.get(field) is not None and obj[field] != value:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{label} from path does not match {label} from Item.",
+        )
+    obj[field] = value
+
+
+def _op_member(op: Any, name: str) -> Any:
+    """Read a patch operation member from a dict or from a patch operation model."""
+    if isinstance(op, dict):
+        return op.get(name)
+    return getattr(op, name, None)
+
+
+def patch_changes_field(patch: Any, field: str, expected: str) -> bool:
+    """Return True if the patch asks to change field away from expected.
+
+    For a JSON Patch an operation touches the field when its path strips to it,
+    when it is a move whose source strips to it (copy only reads its source), or
+    when it is a root operation, whose empty pointer replaces the whole document.
+    """
+    if not isinstance(patch, list):
+        data = (
+            patch.model_dump(exclude_unset=True)
+            if hasattr(patch, "model_dump")
+            else patch
+        )
+        return field in data and data[field] != expected
+
+    for op in patch:
+        path = _op_member(op, "path") or ""
+        kind = _op_member(op, "op")
+        value = _op_member(op, "value")
+
+        if path == "":
+            if not isinstance(value, dict) or value.get(field) != expected:
+                return True
+            continue
+
+        source = _op_member(op, "from") or _op_member(op, "from_") or ""
+        touches = path.strip("/") == field or (
+            kind == "move" and source.strip("/") == field
+        )
+        if touches and not (kind in ("add", "replace", "test") and value == expected):
+            return True
+
+    return False
 
 
 @attr.s
@@ -1099,7 +1161,15 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
             patched_dict = deepcopy(existing_dict)
             if ops_dicts:
-                patched_dict = jsonpatch.apply_patch(patched_dict, ops_dicts)
+                try:
+                    patched_dict = jsonpatch.apply_patch(patched_dict, ops_dicts)
+                except (
+                    jsonpatch.JsonPatchException,
+                    jsonpatch.JsonPointerException,
+                ) as e:
+                    raise HTTPException(
+                        status_code=400, detail=f"Invalid JSON Patch: {e}"
+                    )
 
         # Handle Merge Patch or JSON
         elif isinstance(
@@ -1113,8 +1183,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 if hasattr(patch, "model_dump")
                 else patch
             )
-            patched_dict = deepcopy(existing_dict)
-            patched_dict.update(patch_dict)
+            patched_dict = json_merge_patch(deepcopy(existing_dict), patch_dict)
 
         else:
             raise HTTPException(
@@ -1241,18 +1310,14 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         # Route the request to the dedicated handler
         item_type = item_dict.get("type")
         if item_type == "FeatureCollection":
+            for feature in item_dict.get("features", []):
+                populate_from_uri(feature, "collection", collection_id)
             return await self._create_feature_collection(
                 collection_id, item_dict, base_url, use_queue, **kwargs
             )
         elif item_type == "Feature":
             # 2. SAFETY CHECK: Ensure item collection matches URL path
-            if item_dict.get("collection") and item_dict["collection"] != collection_id:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Collection ID from path does not match Collection ID from Item.",
-                )
-            # Guarantee the collection field is set correctly
-            item_dict["collection"] = collection_id
+            populate_from_uri(item_dict, "collection", collection_id)
 
             return await self._create_single_item(
                 collection_id, item_dict, base_url, use_queue, **kwargs
@@ -1615,6 +1680,8 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         """
         item_dict = item.model_dump(mode="json")
+        populate_from_uri(item_dict, "id", item_id)
+        populate_from_uri(item_dict, "collection", collection_id)
         base_url = str(kwargs["request"].base_url)
 
         now = datetime_type.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -1692,7 +1759,14 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         """
         base_url = str(kwargs["request"].base_url)
-        content_type = kwargs["request"].headers.get("content-type")
+        content_type = bare_media_type(kwargs["request"].headers.get("content-type"))
+
+        for field, expected in (("id", item_id), ("collection", collection_id)):
+            if patch_changes_field(patch, field, expected):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"A patch may not change the item {field}.",
+                )
 
         # When validation is DISABLED, delegate to database layer for direct execution
         if not get_bool_env("ENABLE_STAC_VALIDATOR"):
@@ -1756,6 +1830,16 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         patched_dict = await self._apply_and_validate_patch(
             item_dict, patch, content_type, item_type="item"
         )
+
+        # Whatever pointer syntax was used, the patched item keeps its identity
+        if (
+            patched_dict.get("id") != item_id
+            or patched_dict.get("collection") != collection_id
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="A patch may not change the item id or collection.",
+            )
 
         # 3. SAVE TO DB (Full replacement update)
         # Convert validated patched dict back to DB format and save
@@ -1892,11 +1976,33 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             The patched collection.
         """
         base_url = str(kwargs["request"].base_url)
-        content_type = kwargs["request"].headers.get("content-type")
+        content_type = bare_media_type(kwargs["request"].headers.get("content-type"))
         request = kwargs["request"]
+
+        # The database layer accepts an unprefixed collection rename alias.
+        changes_collection_alias = isinstance(patch, list) and any(
+            _op_member(op, "path") == "collection"
+            and _op_member(op, "op") in ("add", "replace")
+            and _op_member(op, "value") != collection_id
+            for op in patch
+        )
+        if patch_changes_field(patch, "id", collection_id) or changes_collection_alias:
+            raise HTTPException(
+                status_code=400,
+                detail="A patch may not change the collection id.",
+            )
+
+        if patch_changes_field(patch, "type", "Collection"):
+            raise HTTPException(
+                status_code=400,
+                detail="A patch may not change the collection type.",
+            )
 
         # When validation is DISABLED, delegate to database layer for direct execution
         if not get_bool_env("ENABLE_STAC_VALIDATOR"):
+            # The database scripts update blindly, so a catalog id would be
+            # mutated before the type guard rejects it
+            await self.database.find_collection(collection_id)
             collection = None
             if (
                 isinstance(patch, list)
@@ -1961,6 +2067,13 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         patched_dict = await self._apply_and_validate_patch(
             collection_dict, patch, content_type, item_type="collection"
         )
+
+        # Whatever pointer syntax was used, the patched collection keeps its id
+        if patched_dict.get("id") != collection_id:
+            raise HTTPException(
+                status_code=400,
+                detail="A patch may not change the collection id.",
+            )
 
         # 3. SAVE TO DB (Full replacement update)
         # Convert validated patched dict back to DB format and save
@@ -2168,6 +2281,6 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
                 "received": len(raw_items),
                 "success": success,
                 "skipped": total_skipped,
-                "errors": all_errors if all_errors else [],
+                "errors": format_bulk_errors(all_errors),
             },
         )

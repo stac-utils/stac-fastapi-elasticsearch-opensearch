@@ -359,7 +359,7 @@ The catalogs extension implements a **safety-first design** that protects collec
 **Catalog Management:**
 
 - **GET `/catalogs`**: Retrieve the root catalog and its child catalogs
-- **POST `/catalogs`**: Create a new catalog (requires appropriate permissions)
+- **POST `/catalogs`**: Create a new catalog (requires appropriate permissions); returns `409 Conflict` if the id already exists
 - **GET `/catalogs/{catalog_id}`**: Retrieve a specific catalog and its children
 - **PUT `/catalogs/{catalog_id}`**: Update an existing catalog (title, description, etc.)
 - **DELETE `/catalogs/{catalog_id}`**: Delete a catalog (collections and sub-catalogs are unlinked and adopted by root if orphaned)
