@@ -25,7 +25,7 @@ from stac_fastapi.core.serializers import (
     ItemSerializer,
 )
 from stac_fastapi.sfeos_helpers.mappings import COLLECTIONS_INDEX
-from stac_fastapi.types.errors import NotFoundError
+from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.search import BaseSearchPostRequest
 
 logger = logging.getLogger(__name__)
@@ -744,37 +744,6 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
 
         try:
             existing = await self.database.find_catalog(cat_id)
-            # Link existing catalog
-            self._add_parent_id(existing, catalog_id)
-            try:
-                await self.database.create_catalog(existing, refresh=True)
-            except Exception as e:
-                logger.error(
-                    f"Error linking existing catalog {cat_id} to catalog {catalog_id}: {e}",
-                    exc_info=True,
-                )
-                raise
-            existing_obj = self.catalog_serializer.db_to_stac(
-                existing, request, extensions=["CatalogsExtension"]
-            )
-            existing_dict = self._to_dict(existing_obj)
-            existing_dict["links"] = [
-                self._link_to_dict(link) for link in existing_dict.get("links", [])
-            ]
-            # Linking an existing catalog returns 200 OK (Mode B);
-            # 201 Created is reserved for newly created catalogs
-            headers = (
-                {
-                    "Warning": (
-                        f'299 - "Catalog {cat_id} already exists and was linked '
-                        f"to catalog {catalog_id}; posted content was not "
-                        f'applied. Use PUT /catalogs/{cat_id} to update."'
-                    )
-                }
-                if not is_object_uri
-                else None
-            )
-            return JSONResponse(content=existing_dict, status_code=200, headers=headers)
         except NotFoundError:
             # An ObjectUri payload must reference an existing catalog
             if is_object_uri:
@@ -810,6 +779,36 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 self._link_to_dict(link) for link in new_dict.get("links", [])
             ]
             return JSONResponse(content=new_dict, status_code=201)
+
+        # The spec defines linking only via a minimal {"id"} payload; a full
+        # Catalog body for an existing id is a conflict.
+        if not is_object_uri:
+            raise ConflictError(
+                f"Catalog {cat_id} already exists. To link it to catalog "
+                f'{catalog_id}, POST {{"id": "{cat_id}"}}; to update it, use '
+                f"PUT /catalogs/{cat_id}."
+            )
+
+        # Link existing catalog
+        self._add_parent_id(existing, catalog_id)
+        try:
+            await self.database.create_catalog(existing, refresh=True)
+        except Exception as e:
+            logger.error(
+                f"Error linking existing catalog {cat_id} to catalog {catalog_id}: {e}",
+                exc_info=True,
+            )
+            raise
+        existing_obj = self.catalog_serializer.db_to_stac(
+            existing, request, extensions=["CatalogsExtension"]
+        )
+        existing_dict = self._to_dict(existing_obj)
+        existing_dict["links"] = [
+            self._link_to_dict(link) for link in existing_dict.get("links", [])
+        ]
+        # Linking an existing catalog returns 200 OK (Mode B);
+        # 201 Created is reserved for newly created catalogs
+        return JSONResponse(content=existing_dict, status_code=200)
 
     async def create_catalog_collection(
         self,
@@ -861,44 +860,18 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
             content = self._to_dict(collection_obj)
             return JSONResponse(content=content, status_code=200)
 
-        # Full collection data provided - try to link existing or create new
+        # The spec defines linking only via a minimal {"id"} payload; a full
+        # Collection body for an existing id is a conflict.
         try:
-            existing = await self.database.find_collection(col_id)
-            self._add_parent_id(existing, catalog_id)
+            await self.database.find_collection(col_id)
         except NotFoundError:
             # Collection doesn't exist, will create new one below
             pass
         else:
-            # Collection exists, link it. POST does not replace the stored
-            # document, so return 200 to signal the collection already existed
-            # (201 is reserved for a newly created collection document).
-            try:
-                await self.database.update_collection(col_id, existing, refresh=True)
-            except Exception as e:
-                logger.error(
-                    f"Error linking existing collection {col_id} to catalog {catalog_id}: {e}",
-                    exc_info=True,
-                )
-                raise
-
-            collection_obj = self.collection_serializer.db_to_stac_in_catalog(
-                existing,
-                request,
-                catalog_id=catalog_id,
-                extensions=["CatalogsExtension"],
-            )
-            content = self._to_dict(collection_obj)
-            return JSONResponse(
-                content=content,
-                status_code=200,
-                headers={
-                    "Warning": (
-                        f'299 - "Collection {col_id} already exists and was '
-                        f"linked to catalog {catalog_id}; posted content was "
-                        f"not applied. Use PUT /catalogs/{catalog_id}/"
-                        f'collections/{col_id} to update."'
-                    )
-                },
+            raise ConflictError(
+                f"Collection {col_id} already exists. To link it to catalog "
+                f'{catalog_id}, POST {{"id": "{col_id}"}}; to update it, use '
+                f"PUT /collections/{col_id}."
             )
 
         # Create new collection
