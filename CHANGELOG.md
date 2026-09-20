@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- Deleting a Catalog now removes its ID from direct child Catalog and Collection parent lists before deleting the Catalog, preserving other parents and resource data. Cleanup is prospective only and requires callers to serialize graph mutations; it does not repair historical orphans or fence concurrent writes. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
+
 ### Updated
 
 ## [v7.2.0] - 2026-09-19
