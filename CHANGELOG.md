@@ -18,7 +18,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
-- Item writes now validate URI identities and require an indexed target for PUT. Hidden items remain writable through explicit write lookups; `HIDE_ITEM_PATH` controls read visibility only. The searchable-index consistency boundary remains governed by `DATABASE_REFRESH` (use `true` or `wait_for` when an immediate follow-up PUT is required). [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
+- Item writes now validate URI identities and require an indexed target for PUT. Queued PUT and direct JSON Patch operations also reject changes to protected datetime index fields including JSON Patch copy/move and whole-properties changes before enqueueing or updating. Hidden items remain writable through explicit write lookups; `HIDE_ITEM_PATH` controls read visibility only. The searchable-index consistency boundary remains governed by `DATABASE_REFRESH` (use `true` or `wait_for` when an immediate follow-up PUT is required). [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
 
 - The Elasticsearch and OpenSearch module entrypoints now start when `.env` does not supply `APP_HOST`, `APP_PORT`, and `RELOAD`. Launchers preserve `.env` settings with process environment overrides and defaults of `0.0.0.0`, `8000`, and `true`. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
 

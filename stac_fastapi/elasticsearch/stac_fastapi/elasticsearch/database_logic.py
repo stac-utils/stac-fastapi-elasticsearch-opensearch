@@ -72,6 +72,7 @@ from stac_fastapi.sfeos_helpers.database.utils import (
     add_hidden_filter,
     merge_to_operations,
     operations_to_script,
+    protect_datetime_script,
     validate_datetime_operations,
 )
 from stac_fastapi.sfeos_helpers.filter import build_cql2_filter, resolve_cql2_indexes
@@ -1414,6 +1415,10 @@ class DatabaseLogic(BaseDatabaseLogic):
                 script = operations_to_script(
                     script_operations, create_nest=create_nest
                 )
+                if isinstance(self.async_index_inserter, DatetimeIndexInserter):
+                    protect_datetime_script(
+                        script, self.async_index_inserter.use_datetime
+                    )
                 document_index = search_response["hits"]["hits"][0]["_index"]
                 await self.client.update(
                     index=document_index,

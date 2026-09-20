@@ -69,6 +69,7 @@ from stac_fastapi.sfeos_helpers.database import (
     ItemAlreadyExistsError,
     separate_bulk_conflict_errors,
 )
+from stac_fastapi.sfeos_helpers.search_engine import DatetimeIndexInserter
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
 from stac_fastapi.types.core import AsyncBaseCoreClient
@@ -1628,7 +1629,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         populate_from_uri(item_dict, "collection", collection_id)
         base_url = str(kwargs["request"].base_url)
 
-        await self.database.get_item_for_write(collection_id, item_id)
+        existing_item = await self.database.get_item_for_write(collection_id, item_id)
 
         now = datetime_type.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         item_dict["properties"]["updated"] = now
@@ -1657,6 +1658,18 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         # 3. ROUTING LAYER (Queue)
         if use_queue:
             from stac_fastapi.core.utilities import queue_items_if_enabled
+
+            # Queued PUT must enforce the same index immutability as direct writes.
+            inserter = self.database.async_index_inserter
+            if isinstance(inserter, DatetimeIndexInserter):
+                fields = [inserter.primary_datetime_name]
+                if inserter.primary_datetime_name == "start_datetime":
+                    fields.append("end_datetime")
+                for field in fields:
+                    if existing_item.get("properties", {}).get(field) != processed_item[
+                        "properties"
+                    ].get(field):
+                        inserter.validate_datetime_field_update(f"properties/{field}")
 
             result = await queue_items_if_enabled(collection_id, processed_item)
             if result:

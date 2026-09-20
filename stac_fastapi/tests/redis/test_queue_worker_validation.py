@@ -491,6 +491,7 @@ async def test_performance_mode_deferred_validation(
             pass
 
 
+@pytest.mark.datetime_filtering
 @pytest.mark.asyncio
 async def test_update_item_with_queue_returns_queued_response(
     txn_client, core_client, load_test_data, monkeypatch: pytest.MonkeyPatch
@@ -547,6 +548,7 @@ async def test_update_item_with_queue_returns_queued_response(
         with pytest.raises(QueuedSuccess):
             await create_item(txn_client, pending_item)
 
+        pending_before = await queue_manager.get_pending_items(test_collection["id"])
         pending_update = deepcopy(pending_item)
         pending_update["properties"]["foo"] = "must not queue"
         with pytest.raises(NotFoundError):
@@ -557,6 +559,10 @@ async def test_update_item_with_queue_returns_queued_response(
                 request=MockRequest(),
             )
 
+        assert (
+            await queue_manager.get_pending_items(test_collection["id"])
+            == pending_before
+        )
         pending_ids = await queue_manager.get_pending_item_ids(test_collection["id"])
         assert pending_item["id"] in pending_ids
         assert pending_ids.count(pending_item["id"]) == 1
