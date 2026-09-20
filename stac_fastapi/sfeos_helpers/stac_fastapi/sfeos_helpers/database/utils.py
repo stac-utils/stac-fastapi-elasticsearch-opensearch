@@ -329,11 +329,12 @@ def merge_to_operations(data: dict) -> list:
     operations = []
 
     for key, value in data.copy().items():
+        key = key.replace("~", "~0").replace("/", "~1")
 
         if value is None:
             operations.append(PatchRemove(op="remove", path=key))
 
-        elif isinstance(value, dict):
+        elif isinstance(value, dict) and value:
             nested_operations = merge_to_operations(value)
 
             for nested_operation in nested_operations:
@@ -498,6 +499,48 @@ def operations_to_script(operations: list, create_nest: bool = False) -> dict:
     Returns:
         dict: elasticsearch update script.
     """
+    if create_nest:
+        # Merge members are literal string keys, never array indexes or script text.
+        return {
+            "source": """
+                for (def operation : params.operations) {
+                    def target = ctx._source;
+                    def parts = operation.path;
+                    for (int i = 0; i < parts.size() - 1; i++) {
+                        def key = parts[i];
+                        if (!(target[key] instanceof Map)) {
+                            target[key] = [:];
+                        }
+                        target = target[key];
+                    }
+                    def key = parts[parts.size() - 1];
+                    if (operation.op == 'remove') {
+                        target.remove(key);
+                    } else if (operation.value instanceof Map && operation.value.isEmpty()) {
+                        if (!(target[key] instanceof Map)) {
+                            target[key] = [:];
+                        }
+                    } else {
+                        target[key] = operation.value;
+                    }
+                }
+            """,
+            "lang": "painless",
+            "params": {
+                "operations": [
+                    {
+                        "op": operation.op,
+                        "path": [
+                            part.replace("~1", "/").replace("~0", "~")
+                            for part in operation.path.split("/")
+                        ],
+                        "value": getattr(operation, "value", None),
+                    }
+                    for operation in operations
+                ]
+            },
+        }
+
     commands: ESCommandSet = ESCommandSet()
     params: dict = {}
 
