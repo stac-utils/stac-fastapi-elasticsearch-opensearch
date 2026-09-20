@@ -214,7 +214,7 @@ def run() -> None:
             port = 8000
         if not (0 < port <= 65535):
             port = 8000
-        reload_value = os.getenv("RELOAD", str(getattr(settings, "reload", "true")))
+        reload_value = os.getenv("RELOAD", str(getattr(settings, "reload", "1")))
         # Match get_bool_env's false values; missing or invalid values default to true.
         reload_enabled = str(reload_value).lower() not in ("false", "0", "no", "n")
 

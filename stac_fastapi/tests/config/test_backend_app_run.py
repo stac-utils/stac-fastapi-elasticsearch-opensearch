@@ -74,3 +74,36 @@ def test_run_falls_back_to_safe_defaults(monkeypatch, module_name, settings_clas
     assert kwargs["host"] == "0.0.0.0"
     assert kwargs["port"] == 8000
     assert kwargs["reload"] is True
+
+
+@pytest.mark.parametrize(
+    "module_name,settings_class_name",
+    [
+        ("stac_fastapi.elasticsearch.app", "ElasticsearchSettings"),
+        ("stac_fastapi.opensearch.app", "OpensearchSettings"),
+    ],
+)
+def test_run_uses_settings_reload_when_env_missing(
+    monkeypatch, module_name, settings_class_name
+):
+    module = importlib.import_module(module_name)
+
+    class DummySettings:
+        app_host = "settings-host"
+        app_port = "7001"
+        reload = False
+
+    captured: dict[str, object] = {}
+
+    def fake_run(*args, **kwargs):
+        captured["kwargs"] = kwargs
+
+    monkeypatch.setitem(sys.modules, "uvicorn", SimpleNamespace(run=fake_run))
+    monkeypatch.setattr(module, settings_class_name, DummySettings)
+    monkeypatch.delenv("RELOAD", raising=False)
+
+    module.run()
+
+    kwargs = captured["kwargs"]
+    assert isinstance(kwargs, dict)
+    assert kwargs["reload"] is False
