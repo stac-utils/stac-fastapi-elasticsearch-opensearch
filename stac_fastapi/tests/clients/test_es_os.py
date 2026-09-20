@@ -30,9 +30,6 @@ async def test_create_collection(app_client, ctx, core_client, txn_client):
 async def test_create_collection_already_exists(app_client, ctx, txn_client):
     data = deepcopy(ctx.collection)
 
-    # change id to avoid elasticsearch duplicate key error
-    data["_id"] = str(uuid.uuid4())
-
     with pytest.raises(ConflictError):
         await txn_client.create_collection(api.Collection(**data), request=MockRequest)
 

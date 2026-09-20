@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- Make Collection creation atomic in Elasticsearch and OpenSearch: concurrent creations of the same ID return one `201 Created` and one `409 Conflict`, preserving the winner and provisioning its item index only once. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
+
 ### Updated
 
 ## [v7.2.0] - 2026-09-19

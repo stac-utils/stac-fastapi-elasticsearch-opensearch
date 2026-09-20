@@ -1579,10 +1579,6 @@ class DatabaseLogic(BaseDatabaseLogic):
         # Log the creation attempt
         logger.info(f"Creating collection {collection_id} with refresh={refresh}")
 
-        # Check if the collection already exists
-        if await self.client.exists(index=COLLECTIONS_INDEX, id=collection_id):
-            raise ConflictError(f"Collection {collection_id} already exists")
-
         if get_bool_env("ENABLE_COLLECTIONS_SEARCH") or get_bool_env(
             "ENABLE_COLLECTIONS_SEARCH_ROUTE"
         ):
@@ -1596,7 +1592,10 @@ class DatabaseLogic(BaseDatabaseLogic):
                 id=collection_id,
                 document=collection,
                 refresh=refresh,
+                op_type="create",
             )
+        except ESConflictError:
+            raise ConflictError(f"Collection {collection_id} already exists")
         except Exception as e:
             logger.error(
                 f"Error indexing collection {collection_id}: {e}", exc_info=True
