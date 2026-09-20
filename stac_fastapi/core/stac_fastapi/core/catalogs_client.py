@@ -871,7 +871,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
             raise ConflictError(
                 f"Collection {col_id} already exists. To link it to catalog "
                 f'{catalog_id}, POST {{"id": "{col_id}"}}; to update it, use '
-                f"PUT /catalogs/{catalog_id}/collections/{col_id}."
+                f"PUT /collections/{col_id}."
             )
 
         # Create new collection
