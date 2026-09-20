@@ -214,9 +214,9 @@ def run() -> None:
             port = 8000
         if not (0 < port <= 65535):
             port = 8000
-        reload = os.getenv("RELOAD", getattr(settings, "reload", "true"))
+        reload_value = os.getenv("RELOAD", str(getattr(settings, "reload", "true")))
         # Match get_bool_env's false values; missing or invalid values default to true.
-        reload = str(reload).lower() not in ("false", "0", "no", "n")
+        reload_enabled = str(reload_value).lower() not in ("false", "0", "no", "n")
 
         uvicorn.run(
             "stac_fastapi.opensearch.app:create_app",
@@ -224,7 +224,7 @@ def run() -> None:
             host=host,
             port=port,
             log_level="info",
-            reload=reload,
+            reload=reload_enabled,
         )
     except ImportError:
         raise RuntimeError("Uvicorn must be installed in order to use command")
