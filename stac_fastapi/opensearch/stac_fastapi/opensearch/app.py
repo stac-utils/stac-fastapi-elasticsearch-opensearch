@@ -205,11 +205,14 @@ def run() -> None:
         import uvicorn
 
         settings = OpensearchSettings()
-        host = os.getenv("APP_HOST", getattr(settings, "app_host", "0.0.0.0"))
-        port = os.getenv("APP_PORT", getattr(settings, "app_port", 8000))
+        host = os.getenv("APP_HOST") or getattr(settings, "app_host", None) or "0.0.0.0"
+        host = str(host).strip() or "0.0.0.0"
+        port = os.getenv("APP_PORT") or getattr(settings, "app_port", 8000) or 8000
         try:
             port = int(port)
         except (TypeError, ValueError):
+            port = 8000
+        if not (0 < port <= 65535):
             port = 8000
         reload = os.getenv("RELOAD", getattr(settings, "reload", True))
         # Match get_bool_env's false values; missing or invalid values default to true.
