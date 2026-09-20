@@ -56,6 +56,9 @@ from fastapi import FastAPI
             {"APP_PORT": "", "RELOAD": ""},
             ("0.0.0.0", 8000, True),
         ),
+        (None, {"APP_HOST": ""}, ("0.0.0.0", 8000, True)),
+        (None, {"APP_PORT": "0"}, ("0.0.0.0", 8000, True)),
+        (None, {"APP_PORT": "65536"}, ("0.0.0.0", 8000, True)),
         *[
             (f"RELOAD={value}\n", {}, ("0.0.0.0", 8000, expected))
             for value, expected in [
