@@ -664,43 +664,44 @@ async def test_patch_item_non_datetime_field_allowed(
 
 @pytest.mark.datetime_filtering
 @pytest.mark.asyncio
-async def test_patch_item_change_collection_creates_datetime_aliases(
-    mock_datetime_env, app_client, load_test_data, txn_client, ctx
-):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
-        pytest.skip("Datetime index filtering not enabled")
+async def test_patch_item_change_collection_is_rejected(app_client, txn_client, ctx):
+    from stac_fastapi.sfeos_helpers.database import (
+        index_alias_by_collection_id,
+        mk_item_id,
+    )
 
-    base_item = load_test_data("test_item.json")
-    original_collection_id = base_item["collection"]
-
-    test_collection = load_test_data("test_collection.json")
-    new_collection = deepcopy(test_collection)
+    document = dict(
+        index=index_alias_by_collection_id(ctx.item["collection"]),
+        id=mk_item_id(ctx.item["id"], ctx.item["collection"]),
+    )
+    before = await txn_client.database.client.get(**document)
+    new_collection = deepcopy(ctx.collection)
     new_collection["id"] = "test-collection-2"
     response = await app_client.post("/collections", json=new_collection)
     assert response.status_code == 201
-
-    patch_data = {"collection": new_collection["id"]}
+    aliases_before = await txn_client.database.client.indices.get_alias(
+        index=index_alias_by_collection_id(new_collection["id"]),
+        ignore_unavailable=True,
+    )
     response = await app_client.patch(
-        f"/collections/{original_collection_id}/items/{base_item['id']}",
-        json=patch_data,
+        f"/collections/{ctx.item['collection']}/items/{ctx.item['id']}",
+        json={"collection": new_collection["id"]},
     )
-    assert response.status_code == 200
-    assert response.json()["collection"] == new_collection["id"]
-
-    indices = await txn_client.database.client.indices.get_alias(
-        index=f"items_{new_collection['id']}"
+    assert response.status_code == 400
+    after = await txn_client.database.client.get(**document)
+    assert after["_source"] == before["_source"]
+    assert after["_version"] == before["_version"]
+    assert (
+        await txn_client.database.client.indices.get_alias(
+            index=index_alias_by_collection_id(new_collection["id"]),
+            ignore_unavailable=True,
+        )
+        == aliases_before
     )
-    expected_aliases = [
-        f"items_start_datetime_{new_collection['id']}_2020-02-08",
-        f"items_end_datetime_{new_collection['id']}_2020-02-16",
-    ]
-    all_aliases = set()
-    for index_info in indices.values():
-        all_aliases.update(index_info.get("aliases", {}).keys())
-
-    assert all(alias in all_aliases for alias in expected_aliases)
-
-    await app_client.delete(f"/collections/{new_collection['id']}")
+    assert not await txn_client.database.client.exists(
+        index=index_alias_by_collection_id(new_collection["id"]),
+        id=mk_item_id(ctx.item["id"], new_collection["id"]),
+    )
 
 
 @pytest.mark.datetime_filtering
