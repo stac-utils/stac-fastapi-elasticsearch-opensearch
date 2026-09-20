@@ -6,7 +6,7 @@ import os
 from datetime import datetime as datetime_type
 from datetime import timezone
 from enum import Enum
-from typing import Type, cast
+from typing import Any, Type, cast
 from urllib.parse import unquote_plus, urljoin
 
 import attr
@@ -80,6 +80,47 @@ logger = logging.getLogger(__name__)
 
 partialItemValidator = TypeAdapter(PartialItem)
 partialCollectionValidator = TypeAdapter(PartialCollection)
+_PATCH_PATH_TRANSLATION = str.maketrans("", "", "/.:[]")
+
+
+def _op_member(op: Any, name: str) -> Any:
+    """Read a patch operation member from a dict or patch operation model."""
+    if isinstance(op, dict):
+        return op.get(name)
+    return getattr(op, name, None)
+
+
+def _normalizes_to_field(path: str, field: str) -> bool:
+    """Match paths that the backend script parameter normalization aliases."""
+    return path.strip("/").translate(_PATCH_PATH_TRANSLATION) == field
+
+
+def patch_changes_field(patch: Any, field: str, expected: str) -> bool:
+    """Return whether a patch changes an identity or type field."""
+    if not isinstance(patch, list):
+        data = (
+            patch.model_dump(exclude_unset=True)
+            if hasattr(patch, "model_dump")
+            else patch
+        )
+        return field in data and data[field] != expected
+
+    for op in patch:
+        path = _op_member(op, "path") or ""
+        kind = _op_member(op, "op")
+        value = _op_member(op, "value")
+        if path == "":
+            if not isinstance(value, dict) or value.get(field) != expected:
+                return True
+            continue
+
+        source = _op_member(op, "from") or _op_member(op, "from_") or ""
+        touches = _normalizes_to_field(path, field) or (
+            kind == "move" and _normalizes_to_field(source, field)
+        )
+        if touches and not (kind in ("add", "replace", "test") and value == expected):
+            return True
+    return False
 
 
 @attr.s
@@ -1694,6 +1735,13 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         base_url = str(kwargs["request"].base_url)
         content_type = kwargs["request"].headers.get("content-type")
 
+        for field, expected in (("id", item_id), ("collection", collection_id)):
+            if patch_changes_field(patch, field, expected):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"A patch may not change the item {field}.",
+                )
+
         # When validation is DISABLED, delegate to database layer for direct execution
         if not get_bool_env("ENABLE_STAC_VALIDATOR"):
             item = None
@@ -1756,6 +1804,15 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         patched_dict = await self._apply_and_validate_patch(
             item_dict, patch, content_type, item_type="item"
         )
+
+        if (
+            patched_dict.get("id") != item_id
+            or patched_dict.get("collection") != collection_id
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="A patch may not change the item id or collection.",
+            )
 
         # 3. SAVE TO DB (Full replacement update)
         # Convert validated patched dict back to DB format and save
@@ -1902,8 +1959,27 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         content_type = kwargs["request"].headers.get("content-type")
         request = kwargs["request"]
 
+        changes_collection_alias = isinstance(patch, list) and any(
+            _op_member(op, "path") == "collection"
+            and _op_member(op, "op") in ("add", "replace")
+            and _op_member(op, "value") != collection_id
+            for op in patch
+        )
+        if patch_changes_field(patch, "id", collection_id) or changes_collection_alias:
+            raise HTTPException(
+                status_code=400,
+                detail="A patch may not change the collection id.",
+            )
+
+        if patch_changes_field(patch, "type", "Collection"):
+            raise HTTPException(
+                status_code=400,
+                detail="A patch may not change the collection type.",
+            )
+
         # When validation is DISABLED, delegate to database layer for direct execution
         if not get_bool_env("ENABLE_STAC_VALIDATOR"):
+            await self.database.find_collection(collection_id)
             collection = None
             if (
                 isinstance(patch, list)
@@ -1968,6 +2044,12 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         patched_dict = await self._apply_and_validate_patch(
             collection_dict, patch, content_type, item_type="collection"
         )
+
+        if patched_dict.get("id") != collection_id:
+            raise HTTPException(
+                status_code=400,
+                detail="A patch may not change the collection id.",
+            )
 
         # 3. SAVE TO DB (Full replacement update)
         # Convert validated patched dict back to DB format and save
