@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- Wholly conflicting ItemCollection transactions now return `409` in non-strict mode, while mixed or incomplete failures remain `400`; strict mode retains its existing conflict exception precedence. Bulk item errors are serialized with stable `id` and `msg` fields. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
+
 - The Elasticsearch and OpenSearch module entrypoints now start when `.env` does not supply `APP_HOST`, `APP_PORT`, and `RELOAD`. Launchers preserve `.env` settings with process environment overrides and defaults of `0.0.0.0`, `8000`, and `true`. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
 
 ### Updated
