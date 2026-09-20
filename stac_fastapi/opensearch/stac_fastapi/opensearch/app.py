@@ -207,7 +207,7 @@ def run() -> None:
         settings = OpensearchSettings()
         host = os.getenv("APP_HOST") or getattr(settings, "app_host", None) or "0.0.0.0"
         host = str(host).strip() or "0.0.0.0"
-        port = os.getenv("APP_PORT") or getattr(settings, "app_port", 8000) or 8000
+        port = os.getenv("APP_PORT") or getattr(settings, "app_port", "8000") or "8000"
         try:
             port = int(port)
         except (TypeError, ValueError):
