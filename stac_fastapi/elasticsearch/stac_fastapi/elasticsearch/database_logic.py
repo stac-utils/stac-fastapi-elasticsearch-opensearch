@@ -383,7 +383,9 @@ class DatabaseLogic(BaseDatabaseLogic):
         return collections, next_token, matched
 
     @retry_on_connection_error
-    async def get_one_item(self, collection_id: str, item_id: str) -> dict:
+    async def get_one_item(
+        self, collection_id: str, item_id: str, *, include_hidden: bool = False
+    ) -> dict:
         """Retrieve a single item from the database.
 
         Args:
@@ -406,7 +408,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
             HIDE_ITEM_PATH = os.getenv("HIDE_ITEM_PATH", None)
 
-            if HIDE_ITEM_PATH:
+            if HIDE_ITEM_PATH and not include_hidden:
                 query = add_hidden_filter(base_query, HIDE_ITEM_PATH)
             else:
                 query = base_query
@@ -1271,7 +1273,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         )
 
         if upsert and isinstance(self.async_index_inserter, DatetimeIndexInserter):
-            existing_item = await self.get_one_item(collection_id, item_id)
+            existing_item = await self.get_item_for_write(collection_id, item_id)
             primary_datetime_name = self.async_index_inserter.primary_datetime_name
 
             existing_primary_datetime = existing_item.get("properties", {}).get(
@@ -1428,7 +1430,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 status_code=400, detail=exc.info["error"]["caused_by"]
             ) from exc
 
-        item = await self.get_one_item(collection_id, item_id)
+        item = await self.get_item_for_write(collection_id, item_id)
 
         if new_collection_id:
             item["collection"] = new_collection_id

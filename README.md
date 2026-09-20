@@ -2373,7 +2373,9 @@ This prevents Elasticsearch from creating mappings for unused metadata fields, r
 
 ## Hidden Items Filtering
 
-SFEOS supports filtering out hidden items using the `HIDE_ITEM_PATH` environment variable. This feature is useful for temporarily removing items from search results without deleting them. To configure it, set `HIDE_ITEM_PATH` to the path of a boolean field in STAC items. Items where this field is `true` will be excluded from all results and counts.
+SFEOS supports filtering out hidden items using the `HIDE_ITEM_PATH` environment variable. This feature is useful for temporarily removing items from search results without deleting them. To configure it, set `HIDE_ITEM_PATH` to the path of a boolean field in STAC items. Items where this field is `true` will be excluded from all results and counts. The setting controls read visibility, not write authorization: PUT and PATCH can update a hidden item, and a write that clears the flag makes it visible again.
+
+Write target checks use the searchable index. With `DATABASE_REFRESH=false`, a newly created item may remain unavailable to a subsequent PUT until the index refreshes; use `DATABASE_REFRESH=true` or `wait_for` when an immediate follow-up write is required. Items still pending in the Redis queue likewise return `404` until indexed.
 
 To use this feature, set the environment variable:
   ```

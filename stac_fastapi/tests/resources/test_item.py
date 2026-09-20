@@ -133,8 +133,8 @@ async def test_update_item_already_exists(app_client, ctx, load_test_data):
 
 
 @pytest.mark.asyncio
-async def test_update_new_item(app_client, load_test_data):
-    """Test updating an item which does not exist (transactions extension)"""
+async def test_update_missing_item_with_missing_collection(app_client, load_test_data):
+    """Test missing-item PUT when its parent collection does not exist."""
     test_item = load_test_data("test_item.json")
     test_item["id"] = "a"
 
@@ -1268,10 +1268,10 @@ async def test_search_datetime_with_null_datetime_pagination(
 
 
 @pytest.mark.asyncio
-async def test_hidden_item_true(app_client, txn_client, load_test_data):
+async def test_hidden_item_true(app_client, txn_client, load_test_data, monkeypatch):
     """Test item with hidden=true is filtered out."""
 
-    os.environ["HIDE_ITEM_PATH"] = "properties._private.hidden"
+    monkeypatch.setenv("HIDE_ITEM_PATH", "properties._private.hidden")
 
     test_collection = load_test_data("test_collection.json")
     test_collection["id"] = "test-collection-hidden-true"
@@ -1298,7 +1298,7 @@ async def test_hidden_item_true(app_client, txn_client, load_test_data):
 async def test_hidden_item_false(app_client, txn_client, load_test_data, monkeypatch):
     """Test that item with hidden=false is not filtered out."""
 
-    os.environ["HIDE_ITEM_PATH"] = "properties._private.hidden"
+    monkeypatch.setenv("HIDE_ITEM_PATH", "properties._private.hidden")
 
     test_collection = load_test_data("test_collection.json")
     test_collection["id"] = "test-collection-hidden-false"
@@ -1324,10 +1324,12 @@ async def test_hidden_item_false(app_client, txn_client, load_test_data, monkeyp
 
 
 @pytest.mark.asyncio
-async def test_hidden_items_counter(app_client, txn_client, load_test_data):
+async def test_hidden_items_counter(
+    app_client, txn_client, load_test_data, monkeypatch
+):
     """Test numberReturned/numberMatched for hidden items."""
 
-    os.environ["HIDE_ITEM_PATH"] = "properties._private.hidden"
+    monkeypatch.setenv("HIDE_ITEM_PATH", "properties._private.hidden")
 
     test_collection = load_test_data("test_collection.json")
     test_collection["id"] = "test-collection-count"
