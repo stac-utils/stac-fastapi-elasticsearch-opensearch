@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- Isolate JSON Patch script parameters so distinct and repeated values are not overwritten during PATCH operations. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
+
 ### Updated
 
 ## [v7.2.0] - 2026-09-19
