@@ -1,5 +1,7 @@
 """Regression coverage for zero-success ItemCollection classifications."""
 
+import os
+import uuid
 from copy import deepcopy
 from unittest.mock import AsyncMock, Mock
 
@@ -9,8 +11,11 @@ from httpx import ASGITransport, AsyncClient
 
 from stac_fastapi.core.core import BulkTransactionsClient, TransactionsClient
 from stac_fastapi.sfeos_helpers.database import ItemAlreadyExistsError
+from stac_fastapi.sfeos_helpers.mappings import ITEMS_INDEX_PREFIX
 
 from ..conftest import SearchSettings, create_item, instantiate_api
+
+pytestmark = pytest.mark.datetime_filtering
 
 
 @pytest.fixture(autouse=True)
@@ -32,10 +37,12 @@ def _conflict(item_id):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("strict", ["false", "true"])
 @pytest.mark.parametrize("response_models", [False, True])
+@pytest.mark.parametrize("validator", ["false", "true"])
 async def test_all_conflict_post_returns_409_and_preserves_items(
-    ctx, app_client, txn_client, monkeypatch, strict, response_models
+    ctx, app_client, txn_client, monkeypatch, strict, response_models, validator
 ):
     monkeypatch.setenv("RAISE_ON_BULK_ERROR", strict)
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", validator)
     second = deepcopy(ctx.item)
     second["id"] += "-second"
     await create_item(txn_client, second)
@@ -60,6 +67,12 @@ async def test_all_conflict_post_returns_409_and_preserves_items(
         )
 
     assert response.status_code == 409
+    if strict == "false":
+        detail = response.json()["detail"]
+        assert detail["message"] == "No items were added to the database."
+        assert detail["summary"]["conflict_count"] == 2
+        assert detail["validation_errors"] == {}
+        assert set(detail["conflict_errors"]) == {item["id"] for item in items}
     assert [
         (await app_client.get(f"/collections/{i['collection']}/items/{i['id']}")).json()
         for i in items
@@ -144,3 +157,79 @@ async def test_zero_success_classification(monkeypatch, strict, scenario):
 
     if not strict_conflict:
         assert exc.value.status_code == (409 if scenario == "all_conflicts" else 400)
+
+    if strict and (validation_errors or not valid):
+        database.bulk_async.assert_not_awaited()
+    else:
+        database.bulk_async.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("strict", ["false", "true"])
+async def test_batch_missing_collection_remains_404(
+    app_client, load_test_data, monkeypatch, strict
+):
+    monkeypatch.setenv("RAISE_ON_BULK_ERROR", strict)
+    item = load_test_data("test_item.json")
+    item["collection"] = f"missing-{uuid.uuid4()}"
+    response = await app_client.post(
+        f"/collections/{item['collection']}/items",
+        json={"type": "FeatureCollection", "features": [item]},
+    )
+    assert response.status_code == 404
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("strict", ["false", "true"])
+@pytest.mark.parametrize("validator", ["false", "true"])
+@pytest.mark.parametrize("response_models", [False, True])
+async def test_bulk_items_serializes_conflicts_and_preserves_content(
+    ctx, app_client, txn_client, monkeypatch, strict, validator, response_models
+):
+    monkeypatch.setenv("RAISE_ON_BULK_ERROR", strict)
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", validator)
+    existing = deepcopy(ctx.item)
+    url = f"/collections/{existing['collection']}/items/{existing['id']}"
+    before = (await app_client.get(url)).json()
+    existing["properties"]["title"] = "must not replace"
+    new_item = deepcopy(existing)
+    new_item["id"] = str(uuid.uuid4())
+    api = instantiate_api(
+        settings=SearchSettings(enable_response_models=response_models)
+    )
+    async with AsyncClient(
+        transport=ASGITransport(app=api.app), base_url="http://test-server"
+    ) as client:
+        response = await client.post(
+            f"/collections/{existing['collection']}/bulk_items",
+            json={
+                "items": {item["id"]: item for item in (existing, new_item)},
+                "method": "insert",
+            },
+        )
+    if os.getenv("ENABLE_DATETIME_INDEX_FILTERING", "").lower() == "true":
+        assert response.status_code == 400
+        assert "bulk_items endpoint is invalid" in response.json()["detail"]
+        assert (await app_client.get(url)).json() == before
+        assert (
+            await app_client.get(
+                f"/collections/{new_item['collection']}/items/{new_item['id']}"
+            )
+        ).status_code == 404
+        return
+    assert response.status_code == (409 if strict == "true" else 200), response.text
+    if strict == "false":
+        body = response.json()
+        assert (body["received"], body["success"], body["skipped"]) == (2, 1, 1)
+        assert len(body["errors"]) == 1
+        error = body["errors"][0]
+        assert set(error) == {"id", "msg"}
+        assert error["id"] == existing["id"]
+        assert "already exists" in error["msg"]
+    await txn_client.database.client.indices.refresh(index=f"{ITEMS_INDEX_PREFIX}*")
+    assert (await app_client.get(url)).json() == before
+    created = await app_client.get(
+        f"/collections/{new_item['collection']}/items/{new_item['id']}"
+    )
+    assert created.status_code == 200
+    assert created.json()["properties"]["title"] == new_item["properties"]["title"]
