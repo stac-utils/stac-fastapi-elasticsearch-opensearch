@@ -54,7 +54,7 @@ def test_run_falls_back_to_safe_defaults(monkeypatch, module_name, settings_clas
     class DummySettings:
         app_host = ""
         app_port = "not-a-number"
-        reload = "invalid"
+        reload = True
 
     captured: dict[str, object] = {}
 
