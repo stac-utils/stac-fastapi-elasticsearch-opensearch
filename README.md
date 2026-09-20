@@ -527,11 +527,11 @@ This feature enables building user interfaces that provide organized, hierarchic
 
 This extension supports **Poly-Hierarchy**, meaning a single Catalog or Collection can belong to multiple parents simultaneously. This allows you to create "Virtual" views or "Playlists" of data without duplicating content.
 
-To link an **existing** Catalog or Collection to a new parent, simply `POST` it to the new parent's endpoint using its existing `id`. The API implements a **Link-or-Create** logic (a `POST` never updates an existing resource — use `PUT` for that):
+To link an **existing** Catalog or Collection to a new parent, `POST` a minimal `{"id": "..."}` payload to the new parent's endpoint. The API implements a **Link-or-Create** logic (a `POST` never updates an existing resource — use `PUT` for that):
 
 1. **Check:** Does a resource with this `id` already exist?
-2. **If YES (Link):** The API adds the new parent to the resource's `parent_ids` list and returns `200 OK`. No data is duplicated, and the posted body does not replace the stored document. When a full Catalog/Collection body was submitted for an existing `id`, a `Warning` response header is included noting that the posted content was not applied and pointing to the `PUT` endpoint for updates.
-3. **If NO (Create):** The API creates a new resource and returns `201 Created`.
+2. **If YES (Link):** A `{"id": "..."}` (ObjectUri) payload adds the new parent to the resource's `parent_ids` list and returns `200 OK`. No data is duplicated. A **full** Catalog/Collection body for an existing `id` is rejected with `409 Conflict` — the spec only defines linking via the minimal `{"id"}` payload, so the posted body is not applied and no link is created.
+3. **If NO (Create):** A full Catalog/Collection body creates a new resource and returns `201 Created`. A `{"id"}` payload for a nonexistent `id` returns `404 Not Found`.
 
 #### Important: Flat Catalog URL Structure
 
