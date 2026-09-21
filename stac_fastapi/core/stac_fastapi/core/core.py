@@ -86,8 +86,8 @@ partialCollectionValidator = TypeAdapter(PartialCollection)
 def bare_media_type(header: str | None) -> str:
     """Return a lower-case media type without parameters."""
     return (header or "").split(";", 1)[0].strip().lower()
-  
-  
+
+
 def _op_member(op: Any, name: str) -> Any:
     """Read a patch operation member from a dict or patch operation model."""
     if isinstance(op, dict):
