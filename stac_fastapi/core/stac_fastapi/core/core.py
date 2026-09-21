@@ -12,6 +12,7 @@ from urllib.parse import unquote_plus, urljoin
 import attr
 import orjson
 from fastapi import HTTPException, Request
+from lark.exceptions import UnexpectedInput
 from overrides import overrides
 from pydantic import TypeAdapter, ValidationError
 from pygeofilter.backends.cql2_json import to_cql2
@@ -792,15 +793,30 @@ class CoreClient(AsyncBaseCoreClient):
             "bbox": bbox,
             "limit": limit,
             "token": token,
-            "query": orjson.loads(query) if query else query,
+            "query": query,
             "q": q,
         }
+
+        if query:
+            try:
+                base_args["query"] = orjson.loads(query)
+            except orjson.JSONDecodeError:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid query parameter: expected valid JSON.",
+                )
 
         if datetime:
             base_args["datetime"] = format_datetime_range(date_str=datetime)
 
         if intersects:
-            base_args["intersects"] = orjson.loads(unquote_plus(intersects))
+            try:
+                base_args["intersects"] = orjson.loads(unquote_plus(intersects))
+            except orjson.JSONDecodeError:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid intersects parameter: expected valid JSON.",
+                )
 
         if sortby:
             parsed_sort = []
@@ -820,11 +836,23 @@ class CoreClient(AsyncBaseCoreClient):
             base_args["filter_lang"] = "cql2-json"
             # Already percent-decoded by Starlette; decoding again would corrupt
             # CQL2 LIKE patterns like "%banks%" ("%ba" is a valid escape).
-            base_args["filter"] = orjson.loads(
-                filter_expr
-                if filter_lang == "cql2-json"
-                else to_cql2(parse_cql2_text(filter_expr))
-            )
+            if filter_lang == "cql2-json":
+                try:
+                    base_args["filter"] = orjson.loads(filter_expr)
+                except orjson.JSONDecodeError:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Invalid filter parameter: expected valid CQL2 JSON.",
+                    )
+            else:
+                try:
+                    parsed_ast = parse_cql2_text(filter_expr)
+                except UnexpectedInput:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Invalid filter parameter: expected valid CQL2 text.",
+                    )
+                base_args["filter"] = orjson.loads(to_cql2(parsed_ast))
 
         if fields:
             includes, excludes = set(), set()
