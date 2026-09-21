@@ -472,6 +472,35 @@ async def test_json_patch_item_test(ctx, core_client, txn_client):
 
 
 @pytest.mark.asyncio
+async def test_json_patch_item_test_then_replace_same_path(
+    ctx, core_client, txn_client
+):
+    item = ctx.item
+    collection_id = item["collection"]
+    item_id = item["id"]
+    operations = [
+        PatchAddReplaceTest.model_validate(
+            {"op": "test", "path": "/properties/gsd", "value": 15}
+        ),
+        PatchAddReplaceTest.model_validate(
+            {"op": "replace", "path": "/properties/gsd", "value": 100}
+        ),
+    ]
+
+    await txn_client.patch_item(
+        collection_id=collection_id,
+        item_id=item_id,
+        patch=operations,
+        request=MockRequest(headers={"content-type": "application/json-patch+json"}),
+    )
+
+    updated_item = await core_client.get_item(
+        item_id, collection_id, request=MockRequest
+    )
+    assert updated_item["properties"]["gsd"] == 100
+
+
+@pytest.mark.asyncio
 async def test_json_patch_item_move(ctx, core_client, txn_client):
     item = ctx.item
     collection_id = item["collection"]
