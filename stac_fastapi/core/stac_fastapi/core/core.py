@@ -2050,6 +2050,11 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 detail="A patch may not change the collection id.",
             )
 
+        if patched_dict.get("type") != "Collection":
+            raise HTTPException(
+                status_code=400,
+                detail="A patch may not change the collection type.",
+            )
         # 3. SAVE TO DB (Full replacement update)
         # Convert validated patched dict back to DB format and save
         db_collection = self.database.collection_serializer.stac_to_db(
