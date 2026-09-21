@@ -1,11 +1,13 @@
 import uuid
 from copy import deepcopy
 from typing import Callable
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 from fastapi import HTTPException
 from stac_pydantic import Item, api
 
+import stac_fastapi.core.core
 from stac_fastapi.extensions.transaction.request import (
     PatchAddReplaceTest,
     PatchMoveCopy,
@@ -72,6 +74,31 @@ async def test_update_collection(
     assert item["collection"] == item_data["collection"]
 
     await txn_client.delete_collection(collection_data["id"])
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("validator_enabled", ["true", "false"])
+async def test_update_collection_id_mismatch_precedes_validation_and_database(
+    txn_client, load_test_data, monkeypatch, validator_enabled
+):
+    """Reject mismatched ids without invoking validators, serializers, or the DB."""
+    collection = api.Collection(**load_test_data("test_collection.json"))
+    database = Mock()
+    validate = AsyncMock()
+    monkeypatch.setattr(txn_client, "database", database)
+    monkeypatch.setattr(stac_fastapi.core.core, "async_validate_stac", validate)
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", validator_enabled)
+
+    with pytest.raises(HTTPException) as error:
+        await txn_client.update_collection(
+            collection_id=f"different-{collection.id}",
+            collection=collection,
+            request=MockRequest,
+        )
+
+    assert error.value.status_code == 400
+    validate.assert_not_awaited()
+    assert database.mock_calls == []
 
 
 @pytest.mark.skip(reason="Can not update collection id anymore?")
@@ -439,6 +466,35 @@ async def test_json_patch_item_test(ctx, core_client, txn_client):
     assert (
         updated_item["properties"]["eo:bands"][1] == item["properties"]["eo:bands"][1]
     )
+
+
+@pytest.mark.asyncio
+async def test_json_patch_item_test_then_replace_same_path(
+    ctx, core_client, txn_client
+):
+    item = ctx.item
+    collection_id = item["collection"]
+    item_id = item["id"]
+    operations = [
+        PatchAddReplaceTest.model_validate(
+            {"op": "test", "path": "/properties/gsd", "value": 15}
+        ),
+        PatchAddReplaceTest.model_validate(
+            {"op": "replace", "path": "/properties/gsd", "value": 100}
+        ),
+    ]
+
+    await txn_client.patch_item(
+        collection_id=collection_id,
+        item_id=item_id,
+        patch=operations,
+        request=MockRequest(headers={"content-type": "application/json-patch+json"}),
+    )
+
+    updated_item = await core_client.get_item(
+        item_id, collection_id, request=MockRequest
+    )
+    assert updated_item["properties"]["gsd"] == 100
 
 
 @pytest.mark.asyncio

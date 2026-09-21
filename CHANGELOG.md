@@ -12,12 +12,15 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Breaking Changes
 
 - `POST /catalogs/{catalog_id}/collections` and `POST /catalogs/{catalog_id}/catalogs` now return `409 Conflict` when a full Catalog or Collection body is submitted for an `id` that already exists (previously `200 OK` with a `Warning` header). Per the Multi-Tenant Catalogs spec, linking is only defined for a minimal `{"id"}` payload; the error message points clients to `POST {"id": ...}` to link or `PUT` to update. The `Warning` response header added in v7.2.0 for this case is removed. [#814](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/814)
+- `PUT /collections/{collection_id}` returns 400 when the body `id` differs from the URI, before database access, instead of renaming the collection and its items. Internal database rename methods remain available. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
 
 ### Changed
 
 ### Fixed
 
 - Make Collection creation atomic in Elasticsearch and OpenSearch: concurrent creations of the same ID return one `201 Created` and one `409 Conflict`, preserving the winner and provisioning its item index only once. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
+- Isolate JSON Patch script parameters so distinct and repeated values are not overwritten during PATCH operations. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
+- The Elasticsearch and OpenSearch module entrypoints now start when `.env` does not supply `APP_HOST`, `APP_PORT`, and `RELOAD`. Launchers preserve `.env` settings with process environment overrides and defaults of `0.0.0.0`, `8000`, and `true`. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
 
 ### Updated
 
