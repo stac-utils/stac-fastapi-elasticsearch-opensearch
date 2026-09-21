@@ -190,7 +190,9 @@ class BaseDatabaseLogic(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def create_catalog(self, catalog: dict, refresh: bool = False) -> None:
+    async def create_catalog(
+        self, catalog: dict, refresh: bool = False, upsert: bool = True
+    ) -> None:
         """Create a catalog in the database."""
         pass
 

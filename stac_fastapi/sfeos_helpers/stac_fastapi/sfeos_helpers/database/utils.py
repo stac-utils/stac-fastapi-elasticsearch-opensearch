@@ -424,6 +424,17 @@ def remove_commands(commands: ESCommandSet, path: ElasticPath) -> None:
     )
 
 
+def _allocate_script_param(params: dict, value: Any) -> str:
+    """Add a value to the script params under the next available local key."""
+    index = 0
+    while f"p{index}" in params:
+        index += 1
+
+    key = f"p{index}"
+    params[key] = value
+    return key
+
+
 def add_commands(
     commands: ESCommandSet,
     operation: PatchOperation,
@@ -447,8 +458,8 @@ def add_commands(
         )
 
     else:
-        value = f"params.{path.param_key}"
-        params[path.param_key] = operation.value
+        param_key = _allocate_script_param(params, operation.value)
+        value = f"params.{param_key}"
 
     if isinstance(path.key, int):
         commands.add(
@@ -471,8 +482,8 @@ def test_commands(
         operation (PatchOperation): operation to run
         path (ElasticPath): path for value to be tested
     """
-    value = f"params.{path.param_key}"
-    params[path.param_key] = operation.value
+    param_key = _allocate_script_param(params, operation.value)
+    value = f"params.{param_key}"
 
     if isinstance(path.key, int):
         commands.add(

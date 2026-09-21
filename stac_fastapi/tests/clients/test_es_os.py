@@ -32,9 +32,6 @@ async def test_create_collection(app_client, ctx, core_client, txn_client):
 async def test_create_collection_already_exists(app_client, ctx, txn_client):
     data = deepcopy(ctx.collection)
 
-    # change id to avoid elasticsearch duplicate key error
-    data["_id"] = str(uuid.uuid4())
-
     with pytest.raises(ConflictError):
         await txn_client.create_collection(api.Collection(**data), request=MockRequest)
 
@@ -469,6 +466,35 @@ async def test_json_patch_item_test(ctx, core_client, txn_client):
     assert (
         updated_item["properties"]["eo:bands"][1] == item["properties"]["eo:bands"][1]
     )
+
+
+@pytest.mark.asyncio
+async def test_json_patch_item_test_then_replace_same_path(
+    ctx, core_client, txn_client
+):
+    item = ctx.item
+    collection_id = item["collection"]
+    item_id = item["id"]
+    operations = [
+        PatchAddReplaceTest.model_validate(
+            {"op": "test", "path": "/properties/gsd", "value": 15}
+        ),
+        PatchAddReplaceTest.model_validate(
+            {"op": "replace", "path": "/properties/gsd", "value": 100}
+        ),
+    ]
+
+    await txn_client.patch_item(
+        collection_id=collection_id,
+        item_id=item_id,
+        patch=operations,
+        request=MockRequest(headers={"content-type": "application/json-patch+json"}),
+    )
+
+    updated_item = await core_client.get_item(
+        item_id, collection_id, request=MockRequest
+    )
+    assert updated_item["properties"]["gsd"] == 100
 
 
 @pytest.mark.asyncio

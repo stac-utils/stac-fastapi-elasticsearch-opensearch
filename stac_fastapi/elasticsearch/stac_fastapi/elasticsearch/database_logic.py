@@ -1579,10 +1579,6 @@ class DatabaseLogic(BaseDatabaseLogic):
         # Log the creation attempt
         logger.info(f"Creating collection {collection_id} with refresh={refresh}")
 
-        # Check if the collection already exists
-        if await self.client.exists(index=COLLECTIONS_INDEX, id=collection_id):
-            raise ConflictError(f"Collection {collection_id} already exists")
-
         if get_bool_env("ENABLE_COLLECTIONS_SEARCH") or get_bool_env(
             "ENABLE_COLLECTIONS_SEARCH_ROUTE"
         ):
@@ -1596,7 +1592,10 @@ class DatabaseLogic(BaseDatabaseLogic):
                 id=collection_id,
                 document=collection,
                 refresh=refresh,
+                op_type="create",
             )
+        except ESConflictError:
+            raise ConflictError(f"Collection {collection_id} already exists")
         except Exception as e:
             logger.error(
                 f"Error indexing collection {collection_id}: {e}", exc_info=True
@@ -2115,16 +2114,20 @@ class DatabaseLogic(BaseDatabaseLogic):
         return catalogs, next_token, matched
 
     @retry_on_connection_error
-    async def create_catalog(self, catalog: dict, refresh: bool = False) -> None:
+    async def create_catalog(
+        self, catalog: dict, refresh: bool = False, upsert: bool = True
+    ) -> None:
         """Create a catalog in Elasticsearch.
 
         Args:
             catalog (dict): The catalog document to create.
             refresh (bool): Whether to refresh the index after creation.
+            upsert (bool): Whether to overwrite an existing catalog. Updates,
+                links and unlinks use the default; new catalogs use False.
 
         Raises:
             ConflictError: If a non-Catalog document (e.g. a Collection) already
-                exists with the same id in the shared index.
+                exists with the same id, or if create-only indexing conflicts.
         """
         doc_id = catalog.get("id")
 
@@ -2146,6 +2149,11 @@ class DatabaseLogic(BaseDatabaseLogic):
                 id=doc_id,
                 body=catalog,
                 refresh=refresh,
+                **({} if upsert else {"op_type": "create"}),
+            )
+        except ESConflictError:
+            raise ConflictError(
+                f"A catalog or collection with id {catalog.get('id')} already exists"
             )
         except Exception as e:
             logger.error(
@@ -2201,6 +2209,8 @@ class DatabaseLogic(BaseDatabaseLogic):
                 id=catalog_id,
                 refresh=refresh,
             )
+        except ESNotFoundError:
+            raise NotFoundError(f"Catalog {catalog_id} not found")
         except Exception as e:
             logger.error(f"Error deleting catalog {catalog_id}: {e}", exc_info=True)
             raise
@@ -2353,7 +2363,9 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         try:
             await self.create_catalog(
-                catalog, refresh=self.async_settings.database_refresh
+                catalog,
+                refresh=self.async_settings.database_refresh,
+                upsert=False,
             )
         except Exception as e:
             logger.error(
