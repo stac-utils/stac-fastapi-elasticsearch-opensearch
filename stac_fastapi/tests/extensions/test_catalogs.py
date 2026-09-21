@@ -164,9 +164,10 @@ async def test_get_catalog_collections(catalogs_app_client, load_test_data, ctx)
 
     # Add the existing collection to the catalog
     add_resp = await catalogs_app_client.post(
-        f"/catalogs/{test_catalog['id']}/collections", json=ctx.collection
+        f"/catalogs/{test_catalog['id']}/collections",
+        json={"id": ctx.collection["id"]},
     )
-    assert add_resp.status_code == 201
+    assert add_resp.status_code == 200
 
     # Now get collections from the catalog
     resp = await catalogs_app_client.get(f"/catalogs/{test_catalog['id']}/collections")
@@ -348,9 +349,10 @@ async def test_get_catalog_collection(catalogs_app_client, load_test_data, ctx):
 
     # Add the existing collection to the catalog
     add_resp = await catalogs_app_client.post(
-        f"/catalogs/{test_catalog['id']}/collections", json=ctx.collection
+        f"/catalogs/{test_catalog['id']}/collections",
+        json={"id": ctx.collection["id"]},
     )
-    assert add_resp.status_code == 201
+    assert add_resp.status_code == 200
 
     # Get a specific collection through the catalog route
     resp = await catalogs_app_client.get(
@@ -406,7 +408,7 @@ async def test_get_catalog_collection_items(catalogs_app_client, load_test_data,
     link_resp = await catalogs_app_client.post(
         f"/catalogs/{test_catalog['id']}/collections", json={"id": ctx.collection["id"]}
     )
-    assert link_resp.status_code == 201
+    assert link_resp.status_code == 200
 
     # Get items from a collection through the catalog route
     resp = await catalogs_app_client.get(
@@ -466,7 +468,7 @@ async def test_get_catalog_collection_item(catalogs_app_client, load_test_data, 
     link_resp = await catalogs_app_client.post(
         f"/catalogs/{test_catalog['id']}/collections", json={"id": ctx.collection["id"]}
     )
-    assert link_resp.status_code == 201
+    assert link_resp.status_code == 200
 
     # Get a specific item through the catalog route
     resp = await catalogs_app_client.get(
@@ -723,7 +725,7 @@ async def test_link_existing_collection_by_id(catalogs_app_client, load_test_dat
     resp = await catalogs_app_client.post(
         f"/catalogs/{catalog_id}/collections", json=link_payload
     )
-    assert resp.status_code == 201
+    assert resp.status_code == 200
 
     linked_collection = resp.json()
     assert linked_collection["id"] == existing_collection_id
@@ -761,6 +763,49 @@ async def test_link_nonexistent_collection_by_id(catalogs_app_client, load_test_
 
 
 @pytest.mark.asyncio
+async def test_repost_existing_collection_returns_409_and_preserves_content(
+    catalogs_app_client, load_test_data
+):
+    """POSTing a full Collection body for an existing id returns 409 Conflict;
+    the stored document is not replaced (POST is not a replace)."""
+    # Create a catalog
+    test_catalog = load_test_data("test_catalog.json")
+    catalog_id = f"test-catalog-{uuid.uuid4()}"
+    test_catalog["id"] = catalog_id
+    create_resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert create_resp.status_code == 201
+
+    # Create the collection
+    test_collection = load_test_data("test_collection.json")
+    collection_id = f"test-collection-{uuid.uuid4()}"
+    test_collection["id"] = collection_id
+    original_description = test_collection["description"]
+
+    create_resp = await catalogs_app_client.post(
+        f"/catalogs/{catalog_id}/collections", json=test_collection
+    )
+    assert create_resp.status_code == 201
+
+    # Reposting a full body for an existing id conflicts - the spec only
+    # defines linking via a minimal {"id": ...} payload
+    repost = load_test_data("test_collection.json")
+    repost["id"] = collection_id
+    repost["description"] = "This content must not overwrite the stored collection"
+
+    repost_resp = await catalogs_app_client.post(
+        f"/catalogs/{catalog_id}/collections", json=repost
+    )
+    assert repost_resp.status_code == 409
+
+    # The stored document still has the original content and is not relinked
+    get_resp = await catalogs_app_client.get(
+        f"/catalogs/{catalog_id}/collections/{collection_id}"
+    )
+    assert get_resp.status_code == 200
+    assert get_resp.json()["description"] == original_description
+
+
+@pytest.mark.asyncio
 async def test_delete_catalog(catalogs_app_client, load_test_data):
     """Test deleting an empty catalog."""
     # Create a catalog
@@ -785,6 +830,57 @@ async def test_delete_catalog(catalogs_app_client, load_test_data):
     # Verify catalog is deleted
     get_resp = await catalogs_app_client.get(f"/catalogs/{catalog_id}")
     assert get_resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_catalog_with_collection_id_returns_404(catalogs_app_client, ctx):
+    """DELETE /catalogs/{id} with a Collection id returns 404 and preserves data.
+
+    Catalogs and Collections share the same index, so the delete must verify
+    the document type and never remove Collection data.
+    """
+    collection_id = ctx.collection["id"]
+
+    delete_resp = await catalogs_app_client.delete(f"/catalogs/{collection_id}")
+    assert delete_resp.status_code == 404
+
+    # The collection document is untouched
+    get_resp = await catalogs_app_client.get(f"/collections/{collection_id}")
+    assert get_resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_create_catalog_with_collection_id_returns_409(
+    catalogs_app_client, load_test_data, ctx
+):
+    """POST /catalogs with an existing Collection id returns 409 and preserves data.
+
+    Catalogs and Collections share the same index, so a catalog write must
+    never overwrite a Collection document.
+    """
+    collection_id = ctx.collection["id"]
+
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = collection_id
+    test_catalog["links"] = [
+        link for link in test_catalog.get("links", []) if link.get("rel") != "child"
+    ]
+
+    resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert resp.status_code == 409
+
+    # The collection document is untouched
+    get_resp = await catalogs_app_client.get(f"/collections/{collection_id}")
+    assert get_resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_delete_nonexistent_catalog_returns_404(catalogs_app_client):
+    """DELETE /catalogs/{id} with a nonexistent id returns 404."""
+    resp = await catalogs_app_client.delete(
+        f"/catalogs/nonexistent-catalog-{uuid.uuid4()}"
+    )
+    assert resp.status_code == 404
 
 
 @pytest.mark.asyncio
@@ -971,7 +1067,7 @@ async def test_update_catalog_collection_preserves_parent_ids(
     add_resp = await catalogs_app_client.post(
         f"/catalogs/{catalog_ids[1]}/collections", json={"id": collection_id}
     )
-    assert add_resp.status_code == 201
+    assert add_resp.status_code == 200
 
     # Verify collection has both parent_ids by getting it via first catalog endpoint
     get_resp = await catalogs_app_client.get(
@@ -1025,9 +1121,9 @@ async def test_add_existing_collection_to_catalog(
 
     # Add existing collection to the catalog
     add_resp = await catalogs_app_client.post(
-        f"/catalogs/{catalog_id}/collections", json=ctx.collection
+        f"/catalogs/{catalog_id}/collections", json={"id": ctx.collection["id"]}
     )
-    assert add_resp.status_code == 201
+    assert add_resp.status_code == 200
 
     # Verify we can get the collection through the catalog endpoint
     get_resp = await catalogs_app_client.get(
@@ -1064,9 +1160,9 @@ async def test_collection_with_multiple_parent_catalogs(
 
     # Add the same collection to the second catalog
     add_resp = await catalogs_app_client.post(
-        f"/catalogs/{catalog_ids[1]}/collections", json=test_collection
+        f"/catalogs/{catalog_ids[1]}/collections", json={"id": collection_id}
     )
-    assert add_resp.status_code == 201
+    assert add_resp.status_code == 200
 
     # Verify we can get the collection from both catalogs
     for catalog_id in catalog_ids:
@@ -1186,9 +1282,9 @@ async def test_delete_collection_from_catalog_multiple_parents(
 
     # Add the collection to the second catalog
     add_resp = await catalogs_app_client.post(
-        f"/catalogs/{catalog_ids[1]}/collections", json=test_collection
+        f"/catalogs/{catalog_ids[1]}/collections", json={"id": collection_id}
     )
-    assert add_resp.status_code == 201
+    assert add_resp.status_code == 200
 
     # Delete the collection from the first catalog
     delete_resp = await catalogs_app_client.delete(
@@ -1403,9 +1499,9 @@ async def test_delete_catalog_preserves_multi_parent_collections(
 
     # Add the collection to the second catalog
     add_resp = await catalogs_app_client.post(
-        f"/catalogs/{catalog_ids[1]}/collections", json=test_collection
+        f"/catalogs/{catalog_ids[1]}/collections", json={"id": collection_id}
     )
-    assert add_resp.status_code == 201
+    assert add_resp.status_code == 200
 
     # Delete the first catalog
     delete_resp = await catalogs_app_client.delete(f"/catalogs/{catalog_ids[0]}")
@@ -1529,6 +1625,21 @@ async def test_get_catalog_children(catalogs_app_client, load_test_data):
     assert "self" in link_rels
     assert "root" in link_rels
     assert "parent" in link_rels
+
+    # Per STAC API - Children v1.0.0, each child entity MUST include
+    # self, root, and parent link relations
+    for child in children_data["children"]:
+        child_links = child.get("links", [])
+        child_rels = [link["rel"] for link in child_links]
+        assert "self" in child_rels
+        assert "root" in child_rels
+        assert "parent" in child_rels
+
+        self_link = next(link for link in child_links if link["rel"] == "self")
+        assert child["id"] in self_link["href"]
+
+        parent_link = next(link for link in child_links if link["rel"] == "parent")
+        assert parent_link["href"].endswith(f"/catalogs/{catalog_id}")
 
 
 @pytest.mark.asyncio
@@ -1707,6 +1818,100 @@ async def test_create_sub_catalog(catalogs_app_client, load_test_data):
     assert created_sub["id"] == sub_id
     assert created_sub["type"] == "Catalog"
     assert "parent_ids" not in created_sub, "parent_ids should not be exposed"
+
+
+@pytest.mark.asyncio
+async def test_create_sub_catalog_nonexistent_parent(
+    catalogs_app_client, load_test_data
+):
+    """Creating a sub-catalog under a nonexistent parent returns 404."""
+    sub_catalog = load_test_data("test_catalog.json")
+    sub_catalog["id"] = f"sub-catalog-{uuid.uuid4()}"
+
+    resp = await catalogs_app_client.post(
+        "/catalogs/nonexistent-catalog/catalogs", json=sub_catalog
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_link_nonexistent_sub_catalog_by_id_returns_404(
+    catalogs_app_client, load_test_data
+):
+    """Linking a nonexistent catalog via ObjectUri returns 404 (Mode B)."""
+    parent_catalog = load_test_data("test_catalog.json")
+    parent_id = f"parent-catalog-{uuid.uuid4()}"
+    parent_catalog["id"] = parent_id
+
+    parent_resp = await catalogs_app_client.post("/catalogs", json=parent_catalog)
+    assert parent_resp.status_code == 201
+
+    resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_id}/catalogs",
+        json={"id": f"nonexistent-catalog-{uuid.uuid4()}"},
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_link_existing_sub_catalog_by_id_returns_200(
+    catalogs_app_client, load_test_data
+):
+    """Linking an existing catalog via ObjectUri returns 200 (Mode B)."""
+    parent_catalog = load_test_data("test_catalog.json")
+    parent_id = f"parent-catalog-{uuid.uuid4()}"
+    parent_catalog["id"] = parent_id
+
+    parent_resp = await catalogs_app_client.post("/catalogs", json=parent_catalog)
+    assert parent_resp.status_code == 201
+
+    child_catalog = load_test_data("test_catalog.json")
+    child_id = f"child-catalog-{uuid.uuid4()}"
+    child_catalog["id"] = child_id
+    child_resp = await catalogs_app_client.post("/catalogs", json=child_catalog)
+    assert child_resp.status_code == 201
+
+    link_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_id}/catalogs", json={"id": child_id}
+    )
+    assert link_resp.status_code == 200
+    assert link_resp.json()["id"] == child_id
+    # ObjectUri is explicit link intent, so no warning is emitted
+    assert "warning" not in link_resp.headers
+
+
+@pytest.mark.asyncio
+async def test_repost_existing_sub_catalog_returns_409(
+    catalogs_app_client, load_test_data
+):
+    """POSTing a full Catalog body for an existing id returns 409 Conflict.
+
+    The spec only defines linking via a minimal {"id": ...} payload.
+    """
+    parent_catalog = load_test_data("test_catalog.json")
+    parent_id = f"parent-catalog-{uuid.uuid4()}"
+    parent_catalog["id"] = parent_id
+
+    parent_resp = await catalogs_app_client.post("/catalogs", json=parent_catalog)
+    assert parent_resp.status_code == 201
+
+    child_catalog = load_test_data("test_catalog.json")
+    child_id = f"child-catalog-{uuid.uuid4()}"
+    child_catalog["id"] = child_id
+    child_resp = await catalogs_app_client.post("/catalogs", json=child_catalog)
+    assert child_resp.status_code == 201
+
+    repost_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_id}/catalogs", json=child_catalog
+    )
+    assert repost_resp.status_code == 409
+
+    # The catalog is not linked as a side effect of the rejected request
+    children_resp = await catalogs_app_client.get(f"/catalogs/{parent_id}/catalogs")
+    assert children_resp.status_code == 200
+    assert child_id not in [
+        cat["id"] for cat in children_resp.json().get("catalogs", [])
+    ]
 
 
 @pytest.mark.asyncio
@@ -2090,10 +2295,9 @@ async def test_catalog_poly_hierarchy(catalogs_app_client, load_test_data):
 
     # Link the same sub-catalog to second parent (poly-hierarchy)
     link_resp = await catalogs_app_client.post(
-        f"/catalogs/{parent_ids[1]}/catalogs",
-        json=load_test_data("test_catalog.json") | {"id": sub_id},
+        f"/catalogs/{parent_ids[1]}/catalogs", json={"id": sub_id}
     )
-    assert link_resp.status_code == 201
+    assert link_resp.status_code == 200
 
     # Verify sub-catalog appears in both parents' sub-catalogs lists
     for parent_id in parent_ids:
@@ -2354,12 +2558,16 @@ async def test_get_catalog_dynamic_parent_links_poly_hierarchy(
     child_id = f"child-catalog-{uuid.uuid4()}"
     child_catalog["id"] = child_id
 
-    # Link child to both parents
-    for parent_id in parent_ids:
-        link_resp = await catalogs_app_client.post(
-            f"/catalogs/{parent_id}/catalogs", json=child_catalog
-        )
-        assert link_resp.status_code == 201
+    # Link child to both parents (first POST creates -> 201,
+    # second links via {"id": ...} -> 200)
+    create_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_ids[0]}/catalogs", json=child_catalog
+    )
+    assert create_resp.status_code == 201
+    link_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_ids[1]}/catalogs", json={"id": child_id}
+    )
+    assert link_resp.status_code == 200
 
     # Get the child catalog and verify link structure
     resp = await catalogs_app_client.get(f"/catalogs/{child_id}")
@@ -2898,11 +3106,10 @@ async def test_collection_serializer_poly_hierarchy_parent_links(
     assert coll_resp.status_code == 201
 
     # Link the collection to the second parent as well
-    # POST the same collection to the second catalog to add it as a parent
     link_resp = await catalogs_app_client.post(
-        f"/catalogs/{parent_id_2}/collections", json=test_collection
+        f"/catalogs/{parent_id_2}/collections", json={"id": collection_id}
     )
-    assert link_resp.status_code == 201
+    assert link_resp.status_code == 200
 
     # Get the collection via the global /collections endpoint
     resp = await catalogs_app_client.get(f"/collections/{collection_id}")
@@ -3464,6 +3671,26 @@ async def test_children_endpoint_mixed_content_with_links(
             coll_in_children is not None
         ), f"Collection {coll_id} should be in /children"
 
+    # Per STAC API - Children v1.0.0, every child entity MUST include
+    # self, root, and parent link relations
+    for child in children:
+        child_rels = [link["rel"] for link in child.get("links", [])]
+        assert (
+            "self" in child_rels
+        ), f"Child {child.get('id')} missing required self link"
+        assert (
+            "root" in child_rels
+        ), f"Child {child.get('id')} missing required root link"
+        assert (
+            "parent" in child_rels
+        ), f"Child {child.get('id')} missing required parent link"
+
+        self_link = next(link for link in child["links"] if link["rel"] == "self")
+        assert child["id"] in self_link["href"]
+
+        parent_link = next(link for link in child["links"] if link["rel"] == "parent")
+        assert parent_link["href"].endswith(f"/catalogs/{parent_id}")
+
 
 @pytest.mark.asyncio
 async def test_scoped_collection_links_poly_hierarchy(
@@ -3505,9 +3732,9 @@ async def test_scoped_collection_links_poly_hierarchy(
 
     # Link the collection to the second parent as well (poly-hierarchy)
     link_resp = await catalogs_app_client.post(
-        f"/catalogs/{parent_id_2}/collections", json=test_collection
+        f"/catalogs/{parent_id_2}/collections", json={"id": collection_id}
     )
-    assert link_resp.status_code == 201
+    assert link_resp.status_code == 200
 
     # Get the collection via the SCOPED endpoint (through parent_id_1)
     resp = await catalogs_app_client.get(
@@ -3601,12 +3828,17 @@ async def test_duplicate_links_exclude_current_catalog_context(
     collection_id = f"multi-parent-collection-{uuid.uuid4()}"
     collection["id"] = collection_id
 
-    # Link collection to all three catalogs
-    for parent_id in parent_ids:
+    # Link collection to all three catalogs (first POST creates -> 201,
+    # subsequent POSTs link via {"id": ...} -> 200)
+    create_resp = await catalogs_app_client.post(
+        f"/catalogs/{parent_ids[0]}/collections", json=collection
+    )
+    assert create_resp.status_code == 201
+    for parent_id in parent_ids[1:]:
         link_resp = await catalogs_app_client.post(
-            f"/catalogs/{parent_id}/collections", json=collection
+            f"/catalogs/{parent_id}/collections", json={"id": collection_id}
         )
-        assert link_resp.status_code in [200, 201]
+        assert link_resp.status_code == 200
 
     # Access collection via first catalog's scoped endpoint
     resp = await catalogs_app_client.get(
@@ -3939,12 +4171,15 @@ async def test_catalog_conformance_endpoint(catalogs_app_client, load_test_data)
 
     # Check for required conformance classes
     assert "https://api.stacspec.org/v1.0.0/core" in conforms_to
-    assert "https://api.stacspec.org/v1.0.0-rc.1/multi-tenant-catalogs" in conforms_to
+    assert "https://api.stacspec.org/v1.0.0/multi-tenant-catalogs" in conforms_to
     assert (
-        "https://api.stacspec.org/v1.0.0-rc.1/multi-tenant-catalogs/transaction"
+        "https://api.stacspec.org/v1.0.0/multi-tenant-catalogs/transaction"
         in conforms_to
     )
-    assert "https://api.stacspec.org/v1.0.0-rc.2/children" in conforms_to
+    assert "https://api.stacspec.org/v1.0.0/children" in conforms_to
+    assert "https://api.stacspec.org/v1.0.0/children#type-filter" in conforms_to
+    assert "https://api.stacspec.org/v1.0.0/multi-tenant-catalogs/search" in conforms_to
+    assert "https://api.stacspec.org/v1.0.0/item-search" in conforms_to
 
 
 # ============================================================================
@@ -4003,7 +4238,12 @@ async def test_catalog_delete_logs_error_with_traceback(txn_client, caplog):
     async def mock_delete_error(*args, **kwargs):
         raise Exception("Simulated deletion error")
 
+    # find_catalog must succeed so delete_catalog reaches the mocked delete
     with patch.object(
+        txn_client.database,
+        "find_catalog",
+        return_value={"id": "test-catalog", "type": "Catalog"},
+    ), patch.object(
         txn_client.database.client, "delete", side_effect=mock_delete_error
     ):
         try:
@@ -4058,9 +4298,9 @@ async def test_hide_alternate_parents_suppresses_related_links_on_global_collect
     assert coll_resp.status_code == 201
 
     link_resp = await catalogs_app_client.post(
-        f"/catalogs/{parent_id_2}/collections", json=test_collection
+        f"/catalogs/{parent_id_2}/collections", json={"id": collection_id}
     )
-    assert link_resp.status_code == 201
+    assert link_resp.status_code == 200
 
     resp = await catalogs_app_client.get(f"/collections/{collection_id}")
     assert resp.status_code == 200
@@ -4116,9 +4356,9 @@ async def test_hide_alternate_parents_suppresses_related_links_on_scoped_collect
     assert coll_resp.status_code == 201
 
     link_resp = await catalogs_app_client.post(
-        f"/catalogs/{parent_id_2}/collections", json=test_collection
+        f"/catalogs/{parent_id_2}/collections", json={"id": collection_id}
     )
-    assert link_resp.status_code == 201
+    assert link_resp.status_code == 200
 
     resp = await catalogs_app_client.get(
         f"/catalogs/{parent_id_1}/collections/{collection_id}"
@@ -4288,9 +4528,9 @@ async def test_hide_alternate_parents_false_shows_related_links(
     assert coll_resp.status_code == 201
 
     link_resp = await catalogs_app_client.post(
-        f"/catalogs/{parent_id_2}/collections", json=test_collection
+        f"/catalogs/{parent_id_2}/collections", json={"id": collection_id}
     )
-    assert link_resp.status_code == 201
+    assert link_resp.status_code == 200
 
     resp = await catalogs_app_client.get(f"/collections/{collection_id}")
     assert resp.status_code == 200

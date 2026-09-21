@@ -1828,12 +1828,10 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         """
         Update a collection.
 
-        This method updates an existing collection in the database by first finding
-        the collection by the id given in the keyword argument `collection_id`.
-        If no `collection_id` is given the id of the given collection object is used.
-        If the object and keyword collection ids don't match the sub items
-        collection id is updated else the items are left unchanged.
-        The updated collection is then returned.
+        The body id must match the collection_id from the request URI. A mismatch
+        is rejected before validation, serialization, or database access, including
+        when the URI collection does not exist. Matching ids update the existing
+        collection without changing item memberships.
 
         Args:
             collection_id: id of the existing collection to be updated
@@ -1843,7 +1841,16 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         Returns:
             A STAC collection that has been updated in the database.
 
+        Raises:
+            HTTPException: If the body id differs from the request URI id.
+
         """
+        if collection.id != collection_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Collection id in the body must match the request URI.",
+            )
+
         # Validate collection
         if get_bool_env("ENABLE_STAC_VALIDATOR"):
             try:

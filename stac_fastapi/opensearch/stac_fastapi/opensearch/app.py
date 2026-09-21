@@ -119,7 +119,7 @@ def instantiate_api(
 
     title = os.getenv("STAC_FASTAPI_TITLE", "stac-fastapi-opensearch")
     description = os.getenv("STAC_FASTAPI_DESCRIPTION", "stac-fastapi-opensearch")
-    api_version = os.getenv("STAC_FASTAPI_VERSION", "7.0.0")
+    api_version = os.getenv("STAC_FASTAPI_VERSION", "7.2.0")
 
     app_config_local = {
         "title": title,
@@ -205,14 +205,26 @@ def run() -> None:
         import uvicorn
 
         settings = OpensearchSettings()
+        host = os.getenv("APP_HOST", getattr(settings, "app_host", None)) or "0.0.0.0"
+        host = str(host).strip() or "0.0.0.0"
+        port = os.getenv("APP_PORT", getattr(settings, "app_port", "8000")) or "8000"
+        try:
+            port = int(port)
+        except (TypeError, ValueError):
+            port = 8000
+        if not (0 < port <= 65535):
+            port = 8000
+        reload = os.getenv("RELOAD", getattr(settings, "reload", True))
+        # Match get_bool_env's false values; missing or invalid values default to true.
+        reload = str(reload).lower() not in ("false", "0", "no", "n")
 
         uvicorn.run(
             "stac_fastapi.opensearch.app:create_app",
             factory=True,
-            host=settings.app_host,
-            port=settings.app_port,
+            host=host,
+            port=port,
             log_level="info",
-            reload=settings.reload,
+            reload=reload,
         )
     except ImportError:
         raise RuntimeError("Uvicorn must be installed in order to use command")

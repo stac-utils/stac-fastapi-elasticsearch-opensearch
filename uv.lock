@@ -2371,7 +2371,7 @@ wheels = [
 
 [[package]]
 name = "sfeos"
-version = "7.0.0"
+version = "7.2.0"
 source = { virtual = "." }
 dependencies = [
     { name = "sfeos-helpers" },
@@ -2482,7 +2482,7 @@ wheels = [
 
 [[package]]
 name = "stac-fastapi-catalogs-extension"
-version = "0.5.0"
+version = "1.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "attrs" },
@@ -2494,9 +2494,9 @@ dependencies = [
     { name = "starlette" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d9/d7/80320a228201e8f6c0c9678644652d5ff861aa7a714c88c72455a2ba39fe/stac_fastapi_catalogs_extension-0.5.0.tar.gz", hash = "sha256:893c6539eb484c91571befd95a722ba071ad55f04a4b81e69727fb3c3aacfffb", size = 22885, upload-time = "2026-06-17T07:05:20.415Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7a/03/cb661eb6531b4c0017c0bb8c4002eb5a3ad0db24136339535f184b492b61/stac_fastapi_catalogs_extension-1.0.0.tar.gz", hash = "sha256:66d38be5cf842a211c97deb4b73641821f4908b54a0d40dd0a75d152eb3b75fc", size = 26617, upload-time = "2026-09-17T06:26:14.304Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5b/dc/7948cb8fdcf13ee1496c1e1b37d6fefe9e0b2fd288bdcf964240336a1723/stac_fastapi_catalogs_extension-0.5.0-py3-none-any.whl", hash = "sha256:35dbf9fdb26325d51f03927a93e8278d7079db43ac76d35f4280fd94269582d9", size = 16315, upload-time = "2026-06-17T07:05:19.435Z" },
+    { url = "https://files.pythonhosted.org/packages/8c/ac/e743fbb8fbf1c7afefd9c31f3c3e1f5ca0bb5aa66dc880a9999775984f39/stac_fastapi_catalogs_extension-1.0.0-py3-none-any.whl", hash = "sha256:71e5b051c9fc33b45559c263b020628682f6ca95a02ca2a4e40e4b907d4f6eae", size = 18130, upload-time = "2026-09-17T06:26:13.251Z" },
 ]
 
 [[package]]
@@ -2547,10 +2547,10 @@ requires-dist = [
     { name = "pygeofilter", specifier = ">=0.3.1,<0.5.0" },
     { name = "redis", marker = "extra == 'redis'", specifier = ">=6.4,<8.2" },
     { name = "retry", marker = "extra == 'redis'", specifier = "~=0.9.2" },
-    { name = "sentry-sdk", marker = "extra == 'sentry'", specifier = ">=2.49,<2.69" },
+    { name = "sentry-sdk", marker = "extra == 'sentry'", specifier = ">=2.49,<2.70" },
     { name = "slowapi", specifier = "~=0.1.9" },
     { name = "stac-fastapi-api", specifier = "==7.0.0" },
-    { name = "stac-fastapi-catalogs-extension", marker = "extra == 'catalogs'", specifier = "==0.5.0" },
+    { name = "stac-fastapi-catalogs-extension", marker = "extra == 'catalogs'", specifier = "==1.0.0" },
     { name = "stac-fastapi-extensions", specifier = "==7.0.0" },
     { name = "stac-fastapi-types", specifier = "==7.0.0" },
     { name = "stac-pydantic", specifier = ">=3.3,<3.7" },

@@ -190,7 +190,9 @@ class BaseDatabaseLogic(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def create_catalog(self, catalog: dict, refresh: bool = False) -> None:
+    async def create_catalog(
+        self, catalog: dict, refresh: bool = False, upsert: bool = True
+    ) -> None:
         """Create a catalog in the database."""
         pass
 
@@ -201,7 +203,12 @@ class BaseDatabaseLogic(abc.ABC):
 
     @abc.abstractmethod
     async def delete_catalog(self, catalog_id: str, refresh: bool = False) -> None:
-        """Delete a catalog from the database."""
+        """Delete a catalog from the database.
+
+        Implementations MUST verify the document exists and is a Catalog
+        before deleting, raising NotFoundError otherwise; deleting a catalog
+        must never remove Collection or Item data.
+        """
         pass
 
     @abc.abstractmethod

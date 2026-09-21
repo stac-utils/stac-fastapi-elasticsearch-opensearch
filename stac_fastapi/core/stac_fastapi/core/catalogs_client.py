@@ -25,7 +25,7 @@ from stac_fastapi.core.serializers import (
     ItemSerializer,
 )
 from stac_fastapi.sfeos_helpers.mappings import COLLECTIONS_INDEX
-from stac_fastapi.types.errors import NotFoundError
+from stac_fastapi.types.errors import ConflictError, NotFoundError
 from stac_fastapi.types.search import BaseSearchPostRequest
 
 logger = logging.getLogger(__name__)
@@ -298,7 +298,9 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
             ]
 
         try:
-            await self.database.create_catalog(db_catalog_dict, refresh=True)
+            await self.database.create_catalog(
+                db_catalog_dict, refresh=True, upsert=False
+            )
         except Exception as e:
             logger.error(
                 f"Error creating catalog {db_catalog_dict.get('id')}: {e}",
@@ -730,30 +732,25 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         **kwargs,
     ) -> Catalog | Response:
         """Create a new catalog or link an existing catalog as a sub-catalog."""
+        # Verify the parent catalog exists
+        await self.database.find_catalog(catalog_id)
+
         # Check if it's an existing catalog or a new one
         cat_id = catalog.id if hasattr(catalog, "id") else catalog.get("id")
 
+        # Detect an ObjectUri payload ({"id": ...} only) vs a full Catalog body
+        if isinstance(catalog, dict):
+            is_object_uri = len(catalog) == 1 and "id" in catalog
+        else:
+            is_object_uri = isinstance(catalog, ObjectUri)
+
         try:
             existing = await self.database.find_catalog(cat_id)
-            # Link existing catalog
-            self._add_parent_id(existing, catalog_id)
-            try:
-                await self.database.create_catalog(existing, refresh=True)
-            except Exception as e:
-                logger.error(
-                    f"Error linking existing catalog {cat_id} to catalog {catalog_id}: {e}",
-                    exc_info=True,
-                )
-                raise
-            existing_obj = self.catalog_serializer.db_to_stac(
-                existing, request, extensions=["CatalogsExtension"]
-            )
-            existing_dict = self._to_dict(existing_obj)
-            existing_dict["links"] = [
-                self._link_to_dict(link) for link in existing_dict.get("links", [])
-            ]
-            return JSONResponse(content=existing_dict, status_code=201)
         except NotFoundError:
+            # An ObjectUri payload must reference an existing catalog
+            if is_object_uri:
+                raise NotFoundError(f"Catalog {cat_id} not found")
+
             # Create new catalog
             db_catalog_dict = self._to_dict(catalog)
             db_catalog_dict["type"] = "Catalog"
@@ -769,7 +766,9 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 ]
 
             try:
-                await self.database.create_catalog(db_catalog_dict, refresh=True)
+                await self.database.create_catalog(
+                    db_catalog_dict, refresh=True, upsert=False
+                )
             except Exception as e:
                 logger.error(
                     f"Error creating sub-catalog {db_catalog_dict.get('id')} under catalog {catalog_id}: {e}",
@@ -784,6 +783,36 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 self._link_to_dict(link) for link in new_dict.get("links", [])
             ]
             return JSONResponse(content=new_dict, status_code=201)
+
+        # The spec defines linking only via a minimal {"id"} payload; a full
+        # Catalog body for an existing id is a conflict.
+        if not is_object_uri:
+            raise ConflictError(
+                f"Catalog {cat_id} already exists. To link it to catalog "
+                f'{catalog_id}, POST {{"id": "{cat_id}"}}; to update it, use '
+                f"PUT /catalogs/{cat_id}."
+            )
+
+        # Link existing catalog
+        self._add_parent_id(existing, catalog_id)
+        try:
+            await self.database.create_catalog(existing, refresh=True)
+        except Exception as e:
+            logger.error(
+                f"Error linking existing catalog {cat_id} to catalog {catalog_id}: {e}",
+                exc_info=True,
+            )
+            raise
+        existing_obj = self.catalog_serializer.db_to_stac(
+            existing, request, extensions=["CatalogsExtension"]
+        )
+        existing_dict = self._to_dict(existing_obj)
+        existing_dict["links"] = [
+            self._link_to_dict(link) for link in existing_dict.get("links", [])
+        ]
+        # Linking an existing catalog returns 200 OK (Mode B);
+        # 201 Created is reserved for newly created catalogs
+        return JSONResponse(content=existing_dict, status_code=200)
 
     async def create_catalog_collection(
         self,
@@ -805,10 +834,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         else:
             col_id = collection.id
             # Check if this is an ObjectUri (only has id field)
-            is_object_uri = (
-                hasattr(collection, "__class__")
-                and collection.__class__.__name__ == "ObjectUri"
-            )
+            is_object_uri = isinstance(collection, ObjectUri)
 
         # If only an ID was provided (ObjectUri), the collection must already exist
         if is_object_uri:
@@ -833,37 +859,24 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 catalog_id=catalog_id,
                 extensions=["CatalogsExtension"],
             )
-            # Return 201 Created for all collection operations
+            # Linking an existing collection returns 200 OK (Mode B);
+            # 201 Created is reserved for newly created collections
             content = self._to_dict(collection_obj)
-            return JSONResponse(content=content, status_code=201)
+            return JSONResponse(content=content, status_code=200)
 
-        # Full collection data provided - try to link existing or create new
+        # The spec defines linking only via a minimal {"id"} payload; a full
+        # Collection body for an existing id is a conflict.
         try:
-            existing = await self.database.find_collection(col_id)
-            self._add_parent_id(existing, catalog_id)
+            await self.database.find_collection(col_id)
         except NotFoundError:
             # Collection doesn't exist, will create new one below
             pass
         else:
-            # Collection exists, link it
-            try:
-                await self.database.update_collection(col_id, existing, refresh=True)
-            except Exception as e:
-                logger.error(
-                    f"Error linking existing collection {col_id} to catalog {catalog_id}: {e}",
-                    exc_info=True,
-                )
-                raise
-
-            collection_obj = self.collection_serializer.db_to_stac_in_catalog(
-                existing,
-                request,
-                catalog_id=catalog_id,
-                extensions=["CatalogsExtension"],
+            raise ConflictError(
+                f"Collection {col_id} already exists. To link it to catalog "
+                f'{catalog_id}, POST {{"id": "{col_id}"}}; to update it, use '
+                f"PUT /collections/{col_id}."
             )
-            # Return 201 Created for full collection data (even if linking existing)
-            content = self._to_dict(collection_obj)
-            return JSONResponse(content=content, status_code=201)
 
         # Create new collection
         col_dict = self._to_dict(collection)
@@ -1410,6 +1423,44 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         filtered_links = [self._link_to_dict(link) for link in links]
         children_dicts = [self._to_dict(child) for child in children]
 
+        # Per STAC API - Children v1.0.0, every child entity MUST include
+        # self, root, and parent link relations
+        for child_dict, raw_child in zip(children_dicts, children_list):
+            child_id = raw_child.get("id")
+            if raw_child.get("type") == "Catalog":
+                self_href = f"{base_url}/catalogs/{child_id}"
+            else:
+                self_href = f"{base_url}/catalogs/{catalog_id}/collections/{child_id}"
+
+            child_links = [
+                link
+                for link in child_dict.get("links", [])
+                if link.get("rel") not in ("self", "root", "parent")
+            ]
+            child_dict["links"] = [
+                self._link_to_dict(link)
+                for link in [
+                    {
+                        "rel": "self",
+                        "type": "application/json",
+                        "href": self_href,
+                    },
+                    {
+                        "rel": "parent",
+                        "type": "application/json",
+                        "href": f"{base_url}/catalogs/{catalog_id}",
+                        "title": "Parent Catalog",
+                    },
+                    {
+                        "rel": "root",
+                        "type": "application/json",
+                        "href": base_url,
+                        "title": "Root Catalog",
+                    },
+                    *child_links,
+                ]
+            ]
+
         return JSONResponse(
             content={
                 "children": children_dicts,
@@ -1422,14 +1473,24 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
     async def get_catalog_conformance(
         self, catalog_id: str, request: Request | None = None, **kwargs
     ) -> dict | Response:
-        """Get conformance classes specific to this sub-catalog."""
-        # Return standard conformance classes for now
+        """Get conformance classes specific to this sub-catalog.
+
+        SFEOS always enables the transaction and scoped search extensions
+        alongside the catalogs extension, so their conformance classes are
+        advertised here. The extension also merges in the conformance classes
+        of registered catalog extensions via
+        ``app.state.catalogs_conformance_classes``.
+        """
+        await self.database.find_catalog(catalog_id)
         return {
             "conformsTo": [
                 "https://api.stacspec.org/v1.0.0/core",
-                "https://api.stacspec.org/v1.0.0-rc.1/multi-tenant-catalogs",
-                "https://api.stacspec.org/v1.0.0-rc.1/multi-tenant-catalogs/transaction",
-                "https://api.stacspec.org/v1.0.0-rc.2/children",
+                "https://api.stacspec.org/v1.0.0/multi-tenant-catalogs",
+                "https://api.stacspec.org/v1.0.0/multi-tenant-catalogs/transaction",
+                "https://api.stacspec.org/v1.0.0/multi-tenant-catalogs/search",
+                "https://api.stacspec.org/v1.0.0/children",
+                "https://api.stacspec.org/v1.0.0/children#type-filter",
+                "https://api.stacspec.org/v1.0.0/item-search",
             ]
         }
 
@@ -1437,6 +1498,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         self, catalog_id: str, request: Request | None = None, **kwargs
     ) -> dict | Response:
         """Get queryable fields available for filtering in this sub-catalog."""
+        await self.database.find_catalog(catalog_id)
         # Delegate to database for queryables
         return await self.database.get_queryables_mapping(collection_id="*")
 
@@ -1448,6 +1510,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         **kwargs,
     ) -> None:
         """Unlink a sub-catalog from its parent."""
+        await self.database.find_catalog(catalog_id)
         sub_catalog = await self.database.find_catalog(sub_catalog_id)
 
         self._remove_parent_id(sub_catalog, catalog_id)

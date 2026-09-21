@@ -289,7 +289,7 @@ This ensures you have the `stac-fastapi-catalogs-extension` dependency required 
 
 ### DAG Specification & Dynamic Link Generation
 
-SFEOS implements the [STAC API - Multi-Tenant Catalogs Endpoint Extension](https://github.com/stac-api-extensions/multi-tenant-catalogs) (v1.0.0-beta.4) with full support for Directed Acyclic Graph (DAG) structures and strict STAC core compliance:
+SFEOS implements the [STAC API - Multi-Tenant Catalogs Endpoint Extension](https://github.com/stac-api-extensions/multi-tenant-catalogs) (v1.0.0) with full support for Directed Acyclic Graph (DAG) structures and strict STAC core compliance:
 
 #### Link Relations
 
@@ -527,11 +527,11 @@ This feature enables building user interfaces that provide organized, hierarchic
 
 This extension supports **Poly-Hierarchy**, meaning a single Catalog or Collection can belong to multiple parents simultaneously. This allows you to create "Virtual" views or "Playlists" of data without duplicating content.
 
-To link an **existing** Catalog or Collection to a new parent, simply `POST` it to the new parent's endpoint using its existing `id`. The API implements an **Upsert** (Update or Insert) logic:
+To link an **existing** Catalog or Collection to a new parent, `POST` a minimal `{"id": "..."}` payload to the new parent's endpoint. The API implements a **Link-or-Create** logic (a `POST` never updates an existing resource — use `PUT` for that):
 
 1. **Check:** Does a resource with this `id` already exist?
-2. **If YES (Link):** The API adds the new parent to the resource's `parent_ids` list. No data is duplicated.
-3. **If NO (Create):** The API creates a new resource.
+2. **If YES (Link):** A `{"id": "..."}` (ObjectUri) payload adds the new parent to the resource's `parent_ids` list and returns `200 OK`. No data is duplicated. A **full** Catalog/Collection body for an existing `id` is rejected with `409 Conflict` — the spec only defines linking via the minimal `{"id"}` payload, so the posted body is not applied and no link is created.
+3. **If NO (Create):** A full Catalog/Collection body creates a new resource and returns `201 Created`. A `{"id"}` payload for a nonexistent `id` returns `404 Not Found`.
 
 #### Important: Flat Catalog URL Structure
 
@@ -821,7 +821,7 @@ curl "http://localhost:8081/catalogs/earth-observation/search?collections=landsa
 
 When the catalogs search extension is enabled, SFEOS advertises the following conformance class:
 
-- **`https://api.stacspec.org/v1.0.0-rc.2/multi-tenant-catalogs/search`** - Indicates support for scoped search endpoints with recursive traversal through catalog hierarchies
+- **`https://api.stacspec.org/v1.0.0/multi-tenant-catalogs/search`** - Indicates support for scoped search endpoints with recursive traversal through catalog hierarchies
 
 This conformance class is automatically advertised in the API's `/conformance` endpoint when `ENABLE_CATALOGS_ROUTE=true`.
 

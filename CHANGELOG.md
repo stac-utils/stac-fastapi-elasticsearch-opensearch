@@ -9,26 +9,57 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Added
 
-- Added configurable sort field remapping via `STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS` (items) and `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS` (collections).
-- Added file-based sort remap configuration via `STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS_FILE` and `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS_FILE`.
-- Added automatic keyword-sort remap detection for explicitly declared text fields with keyword subfields, including collection `title` mappings.
-
 ### Breaking Changes
-
-- **stac-fastapi v7.0.0 Upgrade:** The `bulk_item_insert` method now returns a structured `BulkTransaction` dictionary with `received`, `success`, `skipped`, and `errors` fields instead of a string message. Code that expects a string response will need to be updated to access the dictionary fields instead.
 
 ### Changed
 
 - Updated `stac-validator` from v4.5.x to v4.6.1. Removed obsolete global `QUIET_MODE` flag in favor of passing `quiet=True` directly to `get_validator()`. Enhanced error handling to unpack multi-error accumulation exceptions (`FastSTACMultiValidationError` and `FastSTACValidationError`) to surface all field failures per item during batch ingestion, providing more comprehensive validation feedback. [#853](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/853)
-- Updated stac-fastapi dependencies to v7.0.0 (`stac-fastapi.types`, `stac-fastapi.api`, `stac-fastapi.extensions`).
-- Default collection title mappings now index `title` as `text` with a `title.keyword` subfield so collection titles are sortable without custom mapping.
 
 ### Fixed
 
-### Removed
+- Catalog creation uses atomic create-only indexing, and catalog conformance, queryables, unlink and deletion-race paths return `404` for missing catalog resources without overwriting existing documents. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
+- Make Collection creation atomic in Elasticsearch and OpenSearch: concurrent creations of the same ID return one `201 Created` and one `409 Conflict`, preserving the winner and provisioning its item index only once. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
+- Isolate JSON Patch script parameters so distinct and repeated values are not overwritten during PATCH operations. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
+- The Elasticsearch and OpenSearch module entrypoints now start when `.env` does not supply `APP_HOST`, `APP_PORT`, and `RELOAD`. Launchers preserve `.env` settings with process environment overrides and defaults of `0.0.0.0`, `8000`, and `true`. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
 
 ### Updated
 
+## [v7.2.0] - 2026-09-19
+
+### Added
+
+- A `Warning` response header is now returned when a full Catalog or Collection body is POSTed to `POST /catalogs/{catalog_id}/collections` or `POST /catalogs/{catalog_id}/catalogs` for an existing `id`. The header indicates that the resource was linked but the posted content was not applied, and points to the `PUT` endpoint for updates. [#814](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/814)
+
+### Breaking Changes
+
+- `POST /catalogs/{catalog_id}/collections` and `POST /catalogs/{catalog_id}/catalogs` now return `200 OK` instead of `201 Created` when linking an existing `id`, and `404 Not Found` when the parent or referenced resource does not exist. `DELETE /catalogs/{id}` returns `404` (instead of `204`) when `id` is not a Catalog, and core `/collections` endpoints return `404` when `id` belongs to a Catalog. [#814](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/814) [#866](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/866)
+
+### Fixed
+
+- `POST /catalogs/{catalog_id}/collections` and `POST /catalogs/{catalog_id}/catalogs` now return `200 OK` when linking an existing resource (previously `201 Created`), per the Multi-Tenant Catalogs spec. `201 Created` is reserved for newly created documents, so clients can distinguish "created" from "linked" responses; a full body POSTed for an existing `id` links the resource without replacing the stored document. [#814](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/814)
+- `POST /catalogs/{catalog_id}/catalogs` now returns `404 Not Found` when the parent catalog does not exist, and an `{"id"}` (ObjectUri) payload referencing a nonexistent catalog returns `404` instead of silently creating a stub catalog. [#814](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/814)
+- `DELETE /catalogs/{catalog_id}` now verifies the document exists and is a Catalog before deleting, returning `404 Not Found` otherwise. Previously, deleting a catalog whose `id` matched a Collection document silently deleted the Collection, since catalogs and collections share the same index. Catalog writes (`POST /catalogs` and internal catalog updates) now also reject ids that collide with a non-Catalog document with `409 Conflict`, so a catalog operation can never overwrite Collection data. Symmetrically, `find_collection` now verifies `type == "Collection"`, so core `/collections` endpoints no longer return, update, or delete Catalog documents when a catalog's `id` is passed. [#866](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/866)
+
+### Updated
+
+- Updated `stac-fastapi-catalogs-extension` to `v1.0.0`. Conformance classes now advertise `v1.0.0` URIs (replacing `v1.0.0-rc.*`), and every entity in the `/catalogs/{catalog_id}/children` response now includes `root`, `self`, and `parent` links per STAC API - Children v1.0.0. [#863](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/863)
+
+## [v7.1.0] - 2026-09-10
+
+### Added
+
+- Added configurable sort field remapping via `STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS` (items) and `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS` (collections).
+- Added file-based sort remap configuration via `STAC_FASTAPI_ITEMS_SORT_FIELD_REMAPS_FILE` and `STAC_FASTAPI_COLLECTIONS_SORT_FIELD_REMAPS_FILE`.
+- Added automatic keyword-sort remap detection for explicitly declared text fields with keyword subfields, including collection `title` mappings. [#854](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/854)
+
+### Breaking Changes
+
+- **stac-fastapi v7.0.0 Upgrade:** The `bulk_item_insert` method now returns a structured `BulkTransaction` dictionary with `received`, `success`, `skipped`, and `errors` fields instead of a string message. Code that expects a string response will need to be updated to access the dictionary fields instead. [#858](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/858)
+
+### Changed
+
+- Updated stac-fastapi dependencies to v7.0.0 (`stac-fastapi.types`, `stac-fastapi.api`, `stac-fastapi.extensions`). [#858](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/858)
+- Default collection title mappings now index `title` as `text` with a `title.keyword` subfield so collection titles are sortable without custom mapping. [#854](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/854)
 
 ## [v7.0.0] - 2026-08-27
 
@@ -993,7 +1024,9 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Use genexp in execute_search and get_all_collections to return results.
 - Added db_to_stac serializer to item_collection method in core.py.
 
-[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v7.0.0...main
+[Unreleased]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v7.2.0...main
+[v7.2.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v7.1.0...v7.2.0
+[v7.1.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v7.0.0...v7.1.0
 [v7.0.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.19.0...v7.0.0
 [v6.19.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.18.0...v6.19.0
 [v6.18.0]: https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/compare/v6.17.2...v6.18.0
