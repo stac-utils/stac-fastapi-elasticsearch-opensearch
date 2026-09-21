@@ -21,12 +21,13 @@ async def _stored_document(txn_client, resource, collection_id):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("validator", ["false", "true"])
 @pytest.mark.parametrize("resource", ["item", "collection"])
 @pytest.mark.parametrize("patch_kind", ["json", "merge"])
 async def test_http_patch_preserves_colliding_values(
-    app_client, ctx, txn_client, monkeypatch, resource, patch_kind
+    app_client, ctx, txn_client, monkeypatch, validator, resource, patch_kind
 ):
-    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "false")
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", validator)
     collection_id = ctx.collection["id"]
     path = f"/collections/{collection_id}"
     expected_type = "Feature" if resource == "item" else "Collection"
@@ -52,7 +53,9 @@ async def test_http_patch_preserves_colliding_values(
         pairs = [(f"/{key}", value) for key, value in fields.items()]
     if patch_kind == "merge":
         nest = "properties" if resource == "item" else "summaries"
-        fields[nest] = {"name": "plain", "n:ame": "colon"}
+        fields[nest] = {"name": ["plain"], "n:ame": ["colon"]}
+        if resource == "item":
+            fields[nest].update(ctx.item["properties"])
     patch = (
         [{"op": "add", "path": key, "value": value} for key, value in pairs]
         if patch_kind == "json"
@@ -72,8 +75,8 @@ async def test_http_patch_preserves_colliding_values(
     if patch_kind == "json":
         assert source["t:ype"] == "distinct-type"
     ordinary = source[nest] if patch_kind == "merge" else source
-    assert ordinary["name"] == "plain"
-    assert ordinary["n:ame"] == "colon"
+    assert ordinary["name"] == (["plain"] if patch_kind == "merge" else "plain")
+    assert ordinary["n:ame"] == (["colon"] if patch_kind == "merge" else "colon")
     if resource == "collection":
         assert source["id"] == collection_id
         if patch_kind == "json":

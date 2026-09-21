@@ -207,9 +207,9 @@ async def test_collection_metadata_is_not_a_rename(
 @pytest.mark.parametrize("validator", ["false", "true"])
 @pytest.mark.parametrize(
     "operation,path",
-    [("add", "collection"), ("replace", "collection"), ("replace", "/t:ype")],
+    [("add", "collection"), ("replace", "collection")],
 )
-async def test_patch_rejects_backend_aliases(
+async def test_patch_rejects_malformed_paths(
     app_client, ctx, txn_client, monkeypatch, validator, operation, path
 ):
     monkeypatch.setenv("ENABLE_STAC_VALIDATOR", validator)
@@ -224,9 +224,15 @@ async def test_patch_rejects_backend_aliases(
     after = await txn_client.database.client.get(**document)
     assert after["_source"] == before["_source"]
     assert after["_version"] == before["_version"]
-    assert patch_changes_field(
-        [{"op": "replace", "path": "/t:ype", "value": "Catalog"}], "type", "Collection"
-    )
+
+
+@pytest.mark.parametrize("field,path", [("id", "/i:d"), ("type", "/t:ype")])
+@pytest.mark.parametrize("operation", ["add", "replace", "move"])
+async def test_patch_metadata_paths_are_distinct(field, path, operation):
+    patch = {"op": operation, "path": path, "value": "metadata"}
+    if operation == "move":
+        patch.update({"from": path, "path": "/title"})
+    assert not patch_changes_field([patch], field, "protected")
 
 
 @pytest.mark.parametrize("validator", ["false", "true"])

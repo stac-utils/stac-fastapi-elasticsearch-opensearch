@@ -80,7 +80,6 @@ logger = logging.getLogger(__name__)
 
 partialItemValidator = TypeAdapter(PartialItem)
 partialCollectionValidator = TypeAdapter(PartialCollection)
-_PATCH_PATH_TRANSLATION = str.maketrans("", "", "/.:[]")
 
 
 def _op_member(op: Any, name: str) -> Any:
@@ -90,9 +89,9 @@ def _op_member(op: Any, name: str) -> Any:
     return getattr(op, name, None)
 
 
-def _normalizes_to_field(path: str, field: str) -> bool:
-    """Match paths that the backend script parameter normalization aliases."""
-    return path.strip("/").translate(_PATCH_PATH_TRANSLATION) == field
+def _targets_field(path: str, field: str) -> bool:
+    """Match a JSON Patch pointer that addresses a top-level field."""
+    return path.strip("/") == field
 
 
 def patch_changes_field(patch: Any, field: str, expected: str) -> bool:
@@ -115,8 +114,8 @@ def patch_changes_field(patch: Any, field: str, expected: str) -> bool:
             continue
 
         source = _op_member(op, "from") or _op_member(op, "from_") or ""
-        touches = _normalizes_to_field(path, field) or (
-            kind == "move" and _normalizes_to_field(source, field)
+        touches = _targets_field(path, field) or (
+            kind == "move" and _targets_field(source, field)
         )
         if touches and not (kind in ("add", "replace", "test") and value == expected):
             return True
