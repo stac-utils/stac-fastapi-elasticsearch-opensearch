@@ -85,6 +85,7 @@ async def test_root_queryables_union(
     item_2["id"] = f"item-2-{uuid.uuid4()}"
     item_2["collection"] = collection_2["id"]
     item_2["properties"]["field2"] = 42
+    item_2["properties"]["platform"] = "landsat-9"
     r = await app_client.post(f"/collections/{collection_2['id']}/items", json=item_2)
     r.raise_for_status()
 
@@ -101,6 +102,10 @@ async def test_root_queryables_union(
     assert "field2" in properties
     assert properties["field1"]["type"] == "string"
     assert properties["field2"]["type"] == "number"
+
+    # The platform field should be present and have the correct enum values from both items
+    assert properties["platform"]["type"] == "string"
+    assert set(properties["platform"]["enum"]) == {"landsat-8", "landsat-9"}
 
     # Baseline queryable id should also be there
     assert "id" in properties
