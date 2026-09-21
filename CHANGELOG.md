@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Fixed
 
+- PATCH media types are normalized case-insensitively, merge patches follow RFC 7386 recursion, literal object-member names, empty-object handling and null removal with or without validation, and invalid JSON Patch operations return `400` without leaking a `TypeError`. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
 - Item and collection PATCH now reject identity, collection-type, and legacy rename changes before direct writes, including missing collection targets. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
 - Catalog creation uses atomic create-only indexing, and catalog conformance, queryables, unlink and deletion-race paths return `404` for missing catalog resources without overwriting existing documents. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
 - Make Collection creation atomic in Elasticsearch and OpenSearch: concurrent creations of the same ID return one `201 Created` and one `409 Conflict`, preserving the winner and provisioning its item index only once. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)

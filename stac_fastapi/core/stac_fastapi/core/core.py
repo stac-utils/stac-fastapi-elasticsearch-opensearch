@@ -44,6 +44,7 @@ from stac_fastapi.core.utilities import (
     format_conflict_errors,
     get_bool_env,
     get_int_env,
+    json_merge_patch,
 )
 from stac_fastapi.core.validate import (
     async_validate_batch_with_stac_validator,
@@ -80,6 +81,11 @@ logger = logging.getLogger(__name__)
 
 partialItemValidator = TypeAdapter(PartialItem)
 partialCollectionValidator = TypeAdapter(PartialCollection)
+
+
+def bare_media_type(header: str | None) -> str:
+    """Return a lower-case media type without parameters."""
+    return (header or "").split(";", 1)[0].strip().lower()
 
 
 def _op_member(op: Any, name: str) -> Any:
@@ -1139,7 +1145,16 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
             patched_dict = deepcopy(existing_dict)
             if ops_dicts:
-                patched_dict = jsonpatch.apply_patch(patched_dict, ops_dicts)
+                try:
+                    patched_dict = jsonpatch.apply_patch(patched_dict, ops_dicts)
+                except (
+                    TypeError,
+                    jsonpatch.JsonPatchException,
+                    jsonpatch.JsonPointerException,
+                ) as e:
+                    raise HTTPException(
+                        status_code=400, detail=f"Invalid JSON Patch: {e}"
+                    )
 
         # Handle Merge Patch or JSON
         elif isinstance(
@@ -1153,8 +1168,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 if hasattr(patch, "model_dump")
                 else patch
             )
-            patched_dict = deepcopy(existing_dict)
-            patched_dict.update(patch_dict)
+            patched_dict = json_merge_patch(deepcopy(existing_dict), patch_dict)
 
         else:
             raise HTTPException(
@@ -1732,7 +1746,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         """
         base_url = str(kwargs["request"].base_url)
-        content_type = kwargs["request"].headers.get("content-type")
+        content_type = bare_media_type(kwargs["request"].headers.get("content-type"))
 
         for field, expected in (("id", item_id), ("collection", collection_id)):
             if patch_changes_field(patch, field, expected):
@@ -1955,7 +1969,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             The patched collection.
         """
         base_url = str(kwargs["request"].base_url)
-        content_type = kwargs["request"].headers.get("content-type")
+        content_type = bare_media_type(kwargs["request"].headers.get("content-type"))
         request = kwargs["request"]
 
         changes_collection_alias = isinstance(patch, list) and any(
