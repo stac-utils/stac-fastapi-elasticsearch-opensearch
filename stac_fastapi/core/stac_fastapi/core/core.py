@@ -41,6 +41,7 @@ from stac_fastapi.core.utilities import (
     build_bulk_summary,
     count_validation_errors,
     filter_fields,
+    format_bulk_errors,
     format_conflict_errors,
     get_bool_env,
     get_int_env,
@@ -1608,8 +1609,16 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         # Fix Spot 3: Database writes failed completely
         if success == 0:
+            all_conflicts = (
+                bool(conflict_errors)
+                and len(conflict_errors) == len(valid_items)
+                and not other_errors
+                and not validation_errors
+                and not skipped_db_duplicates
+                and not skipped_batch_duplicates
+            )
             raise HTTPException(
-                status_code=400,
+                status_code=409 if all_conflicts else 400,
                 detail={
                     "message": "No items were added to the database.",
                     "summary": build_bulk_summary(
@@ -2275,6 +2284,6 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
                 "received": len(raw_items),
                 "success": success,
                 "skipped": total_skipped,
-                "errors": all_errors if all_errors else [],
+                "errors": format_bulk_errors(all_errors),
             },
         )
