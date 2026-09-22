@@ -2,6 +2,8 @@ import uuid
 
 import pytest
 
+from stac_fastapi.sfeos_helpers.mappings import COLLECTIONS_INDEX
+
 
 @pytest.mark.asyncio
 async def test_get_root_catalog(catalogs_app_client, load_test_data):
@@ -935,7 +937,7 @@ async def test_delete_catalog_no_cascade(catalogs_app_client, load_test_data):
 
 @pytest.mark.asyncio
 async def test_delete_catalog_removes_parent_ids_from_collections(
-    catalogs_app_client, load_test_data
+    catalogs_app_client, load_test_data, txn_client
 ):
     """Test that deleting a catalog removes its ID from child collections' parent_ids."""
     # Create a catalog
@@ -982,8 +984,14 @@ async def test_delete_catalog_removes_parent_ids_from_collections(
         get_resp = await catalogs_app_client.get(f"/collections/{collection_id}")
         assert get_resp.status_code == 200
 
-    # Verify collections are no longer accessible via the deleted catalog
-    # (This indirectly verifies parent_ids was updated)
+    # Read storage directly: a missing parent route does not prove edge cleanup.
+    for collection_id in collection_ids:
+        stored = await txn_client.database.client.get(
+            index=COLLECTIONS_INDEX, id=collection_id
+        )
+        assert stored["_source"]["parent_ids"] == []
+
+    # The deleted parent route remains inaccessible.
     for collection_id in collection_ids:
         get_from_catalog_resp = await catalogs_app_client.get(
             f"/catalogs/{catalog_id}/collections/{collection_id}"
@@ -1417,7 +1425,9 @@ async def test_catalog_links_contain_all_collections(
 
 
 @pytest.mark.asyncio
-async def test_delete_catalog_orphans_collections(catalogs_app_client, load_test_data):
+async def test_delete_catalog_orphans_collections(
+    catalogs_app_client, load_test_data, txn_client
+):
     """Test that deleting a catalog makes orphaned collections adopt root as parent."""
     # Create a catalog
     test_catalog = load_test_data("test_catalog.json")
@@ -1457,23 +1467,19 @@ async def test_delete_catalog_orphans_collections(catalogs_app_client, load_test
         collection_id in collection_ids
     ), "Orphaned collection should appear in root /collections endpoint"
 
-    # Verify the collection no longer has a catalog link to the deleted catalog
-    collection_data = get_resp.json()
-    collection_links = collection_data.get("links", [])
-    catalog_link = None
-    for link in collection_links:
-        if link.get("rel") == "catalog" and catalog_id in link.get("href", ""):
-            catalog_link = link
-            break
-
-    assert (
-        catalog_link is None
-    ), "Orphaned collection should not have link to deleted catalog"
+    stored = await txn_client.database.client.get(
+        index=COLLECTIONS_INDEX, id=collection_id
+    )
+    assert stored["_source"]["parent_ids"] == []
+    assert any(
+        link["rel"] == "parent" and link["href"].rstrip("/") == "http://test-server"
+        for link in get_resp.json()["links"]
+    )
 
 
 @pytest.mark.asyncio
 async def test_delete_catalog_preserves_multi_parent_collections(
-    catalogs_app_client, load_test_data
+    catalogs_app_client, load_test_data, txn_client
 ):
     """Test that deleting a catalog preserves collections with other parents."""
     # Create two catalogs
@@ -1522,6 +1528,11 @@ async def test_delete_catalog_preserves_multi_parent_collections(
         f"/catalogs/{catalog_ids[0]}/collections/{collection_id}"
     )
     assert get_from_deleted_resp.status_code == 404
+
+    stored = await txn_client.database.client.get(
+        index=COLLECTIONS_INDEX, id=collection_id
+    )
+    assert stored["_source"]["parent_ids"] == [catalog_ids[1]]
 
 
 @pytest.mark.asyncio
@@ -2223,7 +2234,7 @@ async def test_catalog_parent_ids_not_exposed(catalogs_app_client, load_test_dat
 
 @pytest.mark.asyncio
 async def test_delete_sub_catalog_becomes_root_level(
-    catalogs_app_client, load_test_data
+    catalogs_app_client, load_test_data, txn_client
 ):
     """Test that deleting a parent catalog makes sub-catalogs root-level."""
     # Create parent catalog
@@ -2263,6 +2274,14 @@ async def test_delete_sub_catalog_becomes_root_level(
     for sub_id in sub_ids:
         get_resp = await catalogs_app_client.get(f"/catalogs/{sub_id}")
         assert get_resp.status_code == 200
+        stored = await txn_client.database.client.get(
+            index=COLLECTIONS_INDEX, id=sub_id
+        )
+        assert stored["_source"]["parent_ids"] == []
+        assert any(
+            link["rel"] == "parent" and link["href"].rstrip("/") == "http://test-server"
+            for link in get_resp.json()["links"]
+        )
 
     # Verify parent is deleted
     parent_get_resp = await catalogs_app_client.get(f"/catalogs/{parent_id}")
@@ -4230,7 +4249,7 @@ async def test_catalog_create_logs_error_with_traceback(txn_client, caplog):
 async def test_catalog_delete_logs_error_with_traceback(txn_client, caplog):
     """Test that catalog deletion failures log errors with full stack traces."""
     import logging
-    from unittest.mock import patch
+    from unittest.mock import AsyncMock, patch
 
     caplog.set_level(logging.ERROR)
 
@@ -4238,18 +4257,20 @@ async def test_catalog_delete_logs_error_with_traceback(txn_client, caplog):
     async def mock_delete_error(*args, **kwargs):
         raise Exception("Simulated deletion error")
 
-    # find_catalog must succeed so delete_catalog reaches the mocked delete
+    # A validated Catalog and successful cleanup must reach the final delete.
     with patch.object(
         txn_client.database,
         "find_catalog",
         return_value={"id": "test-catalog", "type": "Catalog"},
-    ), patch.object(
+    ), patch(
+        f"{type(txn_client.database).__module__}.unlink_catalog_children_shared",
+        new_callable=AsyncMock,
+    ) as cleanup, patch.object(
         txn_client.database.client, "delete", side_effect=mock_delete_error
     ):
-        try:
+        with pytest.raises(Exception, match="Simulated deletion error"):
             await txn_client.database.delete_catalog("test-catalog", refresh=True)
-        except Exception:
-            pass  # Expected to fail
+        cleanup.assert_awaited_once_with(txn_client.database.client, "test-catalog")
 
     # Verify error was logged with stack trace
     error_records = [r for r in caplog.records if r.levelname == "ERROR"]

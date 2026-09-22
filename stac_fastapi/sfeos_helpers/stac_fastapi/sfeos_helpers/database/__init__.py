@@ -35,6 +35,7 @@ from .catalogs import (
     search_collections_by_parent_id_shared,
     search_collections_by_parent_id_with_pagination_shared,
     search_sub_catalogs_with_pagination_shared,
+    unlink_catalog_children_shared,
     update_catalog_in_index_shared,
 )
 from .datetime import (
@@ -78,6 +79,7 @@ from .utils import (
 
 __all__ = [
     # Catalog operations
+    "unlink_catalog_children_shared",
     "search_collections_by_parent_id_shared",
     "search_collections_by_parent_id_with_pagination_shared",
     "search_sub_catalogs_with_pagination_shared",

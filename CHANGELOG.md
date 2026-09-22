@@ -17,9 +17,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 
+- Updated `stac-validator` from v4.5.x to v4.6.1. Removed obsolete global `QUIET_MODE` flag in favor of passing `quiet=True` directly to `get_validator()`. Enhanced error handling to unpack multi-error accumulation exceptions (`FastSTACMultiValidationError` and `FastSTACValidationError`) to surface all field failures per item during batch ingestion, providing more comprehensive validation feedback. [#853](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/853)
+
 ### Fixed
 
 - Aggregation GET requests now return `400` for malformed CQL2 JSON/text filters, malformed intersects JSON, and invalid combinations such as bbox with intersects. POST validation and valid aggregation behavior are preserved. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
+- Deleting a Catalog now removes its ID from direct child Catalog and Collection parent lists before deleting the Catalog, preserving other parents and resource data. Cleanup is prospective only and requires callers to serialize graph mutations; it does not repair historical orphans or fence concurrent writes. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
 - GET item search, catalog search and collection item listing now return `400` for malformed JSON query/filter parameters and CQL2 text syntax; search also rejects malformed intersects JSON. Unrelated server failures retain their existing behavior. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
 - PATCH media types are normalized case-insensitively, merge patches follow RFC 7386 recursion, literal object-member names, empty-object handling and null removal with or without validation, and invalid JSON Patch operations return `400` without leaking a `TypeError`. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
 - Item and collection PATCH now reject identity, collection-type, and legacy rename changes before direct writes, including missing collection targets. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
