@@ -13,12 +13,14 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 - `POST /catalogs/{catalog_id}/collections` and `POST /catalogs/{catalog_id}/catalogs` now return `409 Conflict` when a full Catalog or Collection body is submitted for an `id` that already exists (previously `200 OK` with a `Warning` header). Per the Multi-Tenant Catalogs spec, linking is only defined for a minimal `{"id"}` payload; the error message points clients to `POST {"id": ...}` to link or `PUT` to update. The `Warning` response header added in v7.2.0 for this case is removed. [#814](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/814)
 - `PUT /collections/{collection_id}` returns 400 when the body `id` differs from the URI, before database access, instead of renaming the collection and its items. Internal database rename methods remain available. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
+- Wholly conflicting ItemCollection transactions now return `409` in non-strict mode, while mixed or incomplete failures remain `400`; strict mode retains its existing conflict exception precedence. Bulk item errors are serialized with stable `id` and `msg` fields. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
 
 ### Changed
 
 ### Fixed
 
 - Aggregation GET requests now return `400` for malformed CQL2 JSON/text filters, malformed intersects JSON, and invalid combinations such as bbox with intersects. POST validation and valid aggregation behavior are preserved. [#814](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/814)
+- GET item search, catalog search and collection item listing now return `400` for malformed JSON query/filter parameters and CQL2 text syntax; search also rejects malformed intersects JSON. Unrelated server failures retain their existing behavior. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
 - PATCH media types are normalized case-insensitively, merge patches follow RFC 7386 recursion, literal object-member names, empty-object handling and null removal with or without validation, and invalid JSON Patch operations return `400` without leaking a `TypeError`. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
 - Item and collection PATCH now reject identity, collection-type, and legacy rename changes before direct writes, including missing collection targets. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
 - Catalog creation uses atomic create-only indexing, and catalog conformance, queryables, unlink and deletion-race paths return `404` for missing catalog resources without overwriting existing documents. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)

@@ -12,6 +12,7 @@ from urllib.parse import unquote_plus, urljoin
 import attr
 import orjson
 from fastapi import HTTPException, Request
+from lark.exceptions import UnexpectedInput
 from overrides import overrides
 from pydantic import TypeAdapter, ValidationError
 from pygeofilter.backends.cql2_json import to_cql2
@@ -41,6 +42,7 @@ from stac_fastapi.core.utilities import (
     build_bulk_summary,
     count_validation_errors,
     filter_fields,
+    format_bulk_errors,
     format_conflict_errors,
     get_bool_env,
     get_int_env,
@@ -792,15 +794,30 @@ class CoreClient(AsyncBaseCoreClient):
             "bbox": bbox,
             "limit": limit,
             "token": token,
-            "query": orjson.loads(query) if query else query,
+            "query": query,
             "q": q,
         }
+
+        if query:
+            try:
+                base_args["query"] = orjson.loads(query)
+            except orjson.JSONDecodeError:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid query parameter: expected valid JSON.",
+                )
 
         if datetime:
             base_args["datetime"] = format_datetime_range(date_str=datetime)
 
         if intersects:
-            base_args["intersects"] = orjson.loads(unquote_plus(intersects))
+            try:
+                base_args["intersects"] = orjson.loads(unquote_plus(intersects))
+            except orjson.JSONDecodeError:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid intersects parameter: expected valid JSON.",
+                )
 
         if sortby:
             parsed_sort = []
@@ -820,11 +837,23 @@ class CoreClient(AsyncBaseCoreClient):
             base_args["filter_lang"] = "cql2-json"
             # Already percent-decoded by Starlette; decoding again would corrupt
             # CQL2 LIKE patterns like "%banks%" ("%ba" is a valid escape).
-            base_args["filter"] = orjson.loads(
-                filter_expr
-                if filter_lang == "cql2-json"
-                else to_cql2(parse_cql2_text(filter_expr))
-            )
+            if filter_lang == "cql2-json":
+                try:
+                    base_args["filter"] = orjson.loads(filter_expr)
+                except orjson.JSONDecodeError:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Invalid filter parameter: expected valid CQL2 JSON.",
+                    )
+            else:
+                try:
+                    parsed_ast = parse_cql2_text(filter_expr)
+                except UnexpectedInput:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Invalid filter parameter: expected valid CQL2 text.",
+                    )
+                base_args["filter"] = orjson.loads(to_cql2(parsed_ast))
 
         if fields:
             includes, excludes = set(), set()
@@ -1608,8 +1637,16 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         # Fix Spot 3: Database writes failed completely
         if success == 0:
+            all_conflicts = (
+                bool(conflict_errors)
+                and len(conflict_errors) == len(valid_items)
+                and not other_errors
+                and not validation_errors
+                and not skipped_db_duplicates
+                and not skipped_batch_duplicates
+            )
             raise HTTPException(
-                status_code=400,
+                status_code=409 if all_conflicts else 400,
                 detail={
                     "message": "No items were added to the database.",
                     "summary": build_bulk_summary(
@@ -2275,6 +2312,6 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
                 "received": len(raw_items),
                 "success": success,
                 "skipped": total_skipped,
-                "errors": all_errors if all_errors else [],
+                "errors": format_bulk_errors(all_errors),
             },
         )
