@@ -94,7 +94,7 @@ def populate_from_uri(obj: dict, field: str, value: str) -> None:
     if obj.get(field) is not None and obj[field] != value:
         raise HTTPException(
             status_code=400,
-            detail=f"{label} from path does not match {label} from Item.",
+            detail=f"{label} from path does not match {label} from request body.",
         )
     obj[field] = value
 
@@ -1714,7 +1714,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             stac_types.Item: The updated item object.
 
         Raises:
-            NotFound: If the specified collection is not found in the database.
+            NotFound: If the specified collection or item is not found in the database.
 
         """
         item_dict = item.model_dump(mode="json")
