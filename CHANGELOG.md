@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 
+- Updated `stac-validator` from v4.5.x to v4.6.1. Removed obsolete global `QUIET_MODE` flag in favor of passing `quiet=True` directly to `get_validator()`. Enhanced error handling to unpack multi-error accumulation exceptions (`FastSTACMultiValidationError` and `FastSTACValidationError`) to surface all field failures per item during batch ingestion, providing more comprehensive validation feedback. [#853](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/853)
+
 ### Fixed
 
 - GET item search, catalog search and collection item listing now return `400` for malformed JSON query/filter parameters and CQL2 text syntax; search also rejects malformed intersects JSON. Unrelated server failures retain their existing behavior. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
