@@ -13,13 +13,18 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 - `POST /catalogs/{catalog_id}/collections` and `POST /catalogs/{catalog_id}/catalogs` now return `409 Conflict` when a full Catalog or Collection body is submitted for an `id` that already exists (previously `200 OK` with a `Warning` header). Per the Multi-Tenant Catalogs spec, linking is only defined for a minimal `{"id"}` payload; the error message points clients to `POST {"id": ...}` to link or `PUT` to update. The `Warning` response header added in v7.2.0 for this case is removed. [#814](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/814)
 - `PUT /collections/{collection_id}` returns 400 when the body `id` differs from the URI, before database access, instead of renaming the collection and its items. Internal database rename methods remain available. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
+- Wholly conflicting ItemCollection transactions now return `409` in non-strict mode, while mixed or incomplete failures remain `400`; strict mode retains its existing conflict exception precedence. Bulk item errors are serialized with stable `id` and `msg` fields. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
 
 ### Changed
 
 ### Fixed
 
 - Item writes now validate URI identities and require an indexed target for PUT. Queued PUT and direct JSON Patch operations also reject changes to protected datetime index fields including JSON Patch copy/move and whole-properties changes before enqueueing or updating. Hidden items remain writable through explicit write lookups; `HIDE_ITEM_PATH` controls read visibility only. The searchable-index consistency boundary remains governed by `DATABASE_REFRESH` (use `true` or `wait_for` when an immediate follow-up PUT is required). [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
-
+- PATCH media types are normalized case-insensitively, merge patches follow RFC 7386 recursion, literal object-member names, empty-object handling and null removal with or without validation, and invalid JSON Patch operations return `400` without leaking a `TypeError`. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
+- Item and collection PATCH now reject identity, collection-type, and legacy rename changes before direct writes, including missing collection targets. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
+- Catalog creation uses atomic create-only indexing, and catalog conformance, queryables, unlink and deletion-race paths return `404` for missing catalog resources without overwriting existing documents. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
+- Make Collection creation atomic in Elasticsearch and OpenSearch: concurrent creations of the same ID return one `201 Created` and one `409 Conflict`, preserving the winner and provisioning its item index only once. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
+- Isolate JSON Patch script parameters so distinct and repeated values are not overwritten during PATCH operations. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
 - The Elasticsearch and OpenSearch module entrypoints now start when `.env` does not supply `APP_HOST`, `APP_PORT`, and `RELOAD`. Launchers preserve `.env` settings with process environment overrides and defaults of `0.0.0.0`, `8000`, and `true`. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
 
 ### Updated

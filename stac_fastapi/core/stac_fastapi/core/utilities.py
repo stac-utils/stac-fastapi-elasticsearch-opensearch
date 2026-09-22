@@ -282,6 +282,21 @@ def dict_deep_update(merge_to: dict[str, Any], merge_from: dict[str, Any]) -> No
             merge_to[k] = v
 
 
+def json_merge_patch(target: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
+    """Apply an RFC 7386 JSON Merge Patch to target in place and return it."""
+    for key, value in patch.items():
+        if isinstance(value, dict):
+            current = target.get(key)
+            target[key] = json_merge_patch(
+                current if isinstance(current, dict) else {}, value
+            )
+        elif value is None:
+            target.pop(key, None)
+        else:
+            target[key] = value
+    return target
+
+
 def get_excluded_from_items(obj: dict, field_path: str) -> None:
     """Remove a field from items.
 
@@ -403,6 +418,18 @@ def build_bulk_summary(
         "conflict_count": conflict_count,
         "database_error_count": database_error_count,
     }
+
+
+def format_bulk_errors(errors: list[dict]) -> list[dict[str, str]]:
+    """Format raw bulk action errors into transaction error objects."""
+    formatted = []
+    for action in errors:
+        detail = next(iter(action.values()))
+        doc_id = detail.get("_id", "")
+        error = detail.get("error", {})
+        reason = error.get("reason") if isinstance(error, dict) else None
+        formatted.append({"id": doc_id.split("|", 1)[0], "msg": reason or str(error)})
+    return formatted
 
 
 def format_conflict_errors(conflicts: list[dict]) -> dict[str, str]:
