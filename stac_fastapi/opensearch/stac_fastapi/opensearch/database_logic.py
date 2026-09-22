@@ -52,6 +52,7 @@ from stac_fastapi.sfeos_helpers.database import (
     search_children_with_pagination_shared,
     search_collections_by_parent_id_with_pagination_shared,
     search_sub_catalogs_with_pagination_shared,
+    unlink_catalog_children_shared,
     update_catalog_in_index_shared,
     validate_refresh,
 )
@@ -2181,6 +2182,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         await self.find_catalog(catalog_id)
 
         try:
+            await unlink_catalog_children_shared(self.client, catalog_id)
             await self.client.delete(
                 index=COLLECTIONS_INDEX,
                 id=catalog_id,
@@ -2188,6 +2190,8 @@ class DatabaseLogic(BaseDatabaseLogic):
             )
         except OSNotFoundError:
             raise NotFoundError(f"Catalog {catalog_id} not found")
+        except ConflictError:
+            raise
         except Exception as e:
             logger.error(f"Error deleting catalog {catalog_id}: {e}", exc_info=True)
             raise
