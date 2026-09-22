@@ -54,10 +54,10 @@ CASES = [
 
 
 @pytest.fixture
-def test_item(test_item):
-    test_item["id"] = "river-banks-test-item"
-    return test_item
-
+def test_item(load_test_data):
+    item = load_test_data("test_item.json")
+    item["id"] = "river-banks-test-item"
+    return item
 
 @pytest_asyncio.fixture(scope="session")
 async def aggregation_http(app):
