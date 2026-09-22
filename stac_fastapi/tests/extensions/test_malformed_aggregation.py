@@ -59,6 +59,7 @@ def test_item(load_test_data):
     item["id"] = "river-banks-test-item"
     return item
 
+
 @pytest_asyncio.fixture(scope="session")
 async def aggregation_http(app):
     """Use a dedicated client that exposes server error responses."""
