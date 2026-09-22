@@ -420,6 +420,18 @@ def build_bulk_summary(
     }
 
 
+def format_bulk_errors(errors: list[dict]) -> list[dict[str, str]]:
+    """Format raw bulk action errors into transaction error objects."""
+    formatted = []
+    for action in errors:
+        detail = next(iter(action.values()))
+        doc_id = detail.get("_id", "")
+        error = detail.get("error", {})
+        reason = error.get("reason") if isinstance(error, dict) else None
+        formatted.append({"id": doc_id.split("|", 1)[0], "msg": reason or str(error)})
+    return formatted
+
+
 def format_conflict_errors(conflicts: list[dict]) -> dict[str, str]:
     """Format database conflict errors into a clean dictionary.
 

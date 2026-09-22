@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 - `POST /catalogs/{catalog_id}/collections` and `POST /catalogs/{catalog_id}/catalogs` now return `409 Conflict` when a full Catalog or Collection body is submitted for an `id` that already exists (previously `200 OK` with a `Warning` header). Per the Multi-Tenant Catalogs spec, linking is only defined for a minimal `{"id"}` payload; the error message points clients to `POST {"id": ...}` to link or `PUT` to update. The `Warning` response header added in v7.2.0 for this case is removed. [#814](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/814)
 - `PUT /collections/{collection_id}` returns 400 when the body `id` differs from the URI, before database access, instead of renaming the collection and its items. Internal database rename methods remain available. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
+- Wholly conflicting ItemCollection transactions now return `409` in non-strict mode, while mixed or incomplete failures remain `400`; strict mode retains its existing conflict exception precedence. Bulk item errors are serialized with stable `id` and `msg` fields. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
 
 ### Changed
 

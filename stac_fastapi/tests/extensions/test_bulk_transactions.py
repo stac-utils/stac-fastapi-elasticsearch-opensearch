@@ -475,7 +475,10 @@ async def test_bulk_non_conflict_errors_not_raised_in_permissive_mode(
     assert result["received"] == 3
     assert result["success"] == 1
     assert result["skipped"] == 0
-    assert len(result["errors"]) == 2
+    assert result["errors"] == [
+        {"id": list(items)[0], "msg": "rejected execution"},
+        {"id": list(items)[1], "msg": "failed to parse"},
+    ]
 
 
 @pytest.mark.asyncio
