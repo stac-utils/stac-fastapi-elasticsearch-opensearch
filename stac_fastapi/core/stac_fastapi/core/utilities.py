@@ -282,6 +282,21 @@ def dict_deep_update(merge_to: dict[str, Any], merge_from: dict[str, Any]) -> No
             merge_to[k] = v
 
 
+def json_merge_patch(target: dict[str, Any], patch: dict[str, Any]) -> dict[str, Any]:
+    """Apply an RFC 7386 JSON Merge Patch to target in place and return it."""
+    for key, value in patch.items():
+        if isinstance(value, dict):
+            current = target.get(key)
+            target[key] = json_merge_patch(
+                current if isinstance(current, dict) else {}, value
+            )
+        elif value is None:
+            target.pop(key, None)
+        else:
+            target[key] = value
+    return target
+
+
 def get_excluded_from_items(obj: dict, field_path: str) -> None:
     """Remove a field from items.
 
