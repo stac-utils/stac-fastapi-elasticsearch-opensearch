@@ -2213,6 +2213,8 @@ class DatabaseLogic(BaseDatabaseLogic):
             )
         except ESNotFoundError:
             raise NotFoundError(f"Catalog {catalog_id} not found")
+        except ConflictError:
+            raise
         except Exception as e:
             logger.error(f"Error deleting catalog {catalog_id}: {e}", exc_info=True)
             raise

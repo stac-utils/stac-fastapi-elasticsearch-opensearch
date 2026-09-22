@@ -276,6 +276,10 @@ async def test_delete_cleans_direct_edges_without_data_loss(
     )["_source"]
     originals[ctx.collection["id"]] = collection_before | {"parent_ids": [parent_id]}
     expected[ctx.collection["id"]] = collection_before | {"parent_ids": []}
+    settings = await client.indices.get_settings(index=COLLECTIONS_INDEX)
+    settings_body = dict(getattr(settings, "body", settings))
+    index_settings = next(iter(settings_body.values()))["settings"]["index"]
+    original_refresh = index_settings.get("refresh_interval")
     # Disable periodic refresh so the pre-selection refresh must expose acknowledged writes.
     await client.indices.put_settings(
         index=COLLECTIONS_INDEX, body={"index": {"refresh_interval": "-1"}}
@@ -332,7 +336,8 @@ async def test_delete_cleans_direct_edges_without_data_loss(
             assert response.json()[path] == []
     finally:
         await client.indices.put_settings(
-            index=COLLECTIONS_INDEX, body={"index": {"refresh_interval": "1s"}}
+            index=COLLECTIONS_INDEX,
+            body={"index": {"refresh_interval": original_refresh}},
         )
 
 
@@ -415,7 +420,7 @@ async def test_failed_cleanup_retains_parent_and_retry_preserves_updates(
     ] == [parent_id, "other"]
     assert any(
         "Error deleting catalog" in r.message and r.exc_info for r in caplog.records
-    )
+    ) is (failure not in ["conflict", "remaining"])
     await client.update(
         index=COLLECTIONS_INDEX,
         id=children[0],
