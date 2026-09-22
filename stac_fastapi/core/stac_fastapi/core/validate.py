@@ -12,15 +12,16 @@ from dateutil import parser
 
 try:
     import fastjsonschema
-    import stac_validator.fast_validator as fv_module
-    from stac_validator.fast_validator import get_validator
-
-    # Permanently mute the validator's CLI output for the SFEOS server
-    fv_module.QUIET_MODE = True
+    from stac_validator.fast_validator import (
+        FastSTACMultiValidationError,
+        FastSTACValidationError,
+        get_validator,
+    )
 except ImportError:
     fastjsonschema = None
-    fv_module = None
     get_validator = None
+    FastSTACValidationError = None
+    FastSTACMultiValidationError = None
 
 from stac_pydantic import Collection, Item
 
@@ -68,18 +69,29 @@ def validate_batch_with_stac_validator(
         extensions = item.get("stac_extensions", [])
 
         try:
-            # get_validator uses internal caching, so this compiles instantly for repeated schemas
-            validator, _ = get_validator(stac_type, stac_version, extensions)
+            # v4.6.0: Pass quiet=True directly to get_validator
+            validator, _ = get_validator(
+                stac_type, stac_version, extensions, quiet=True
+            )
             validator(item)
             valid_items.append(item)
 
-        except fastjsonschema.JsonSchemaValueException as e:
-            err_msg = f"{e.name} {e.message.replace(e.name, '').strip()}"
-            if "disallowed definition" in err_msg and "collection" in err_msg:
-                err_msg = (
-                    "STAC Spec Violation: Missing {'rel': 'collection'} in links array."
-                )
+        except FastSTACMultiValidationError as e:
+            # v4.6.0: Register every accumulated field error for this item
+            for single_err in e.errors:
+                err_msg = str(single_err)
+                if err_msg not in invalid_items:
+                    invalid_items[err_msg] = []
+                invalid_items[err_msg].append(item_id)
 
+        except FastSTACValidationError as e:
+            err_msg = str(e)
+            if err_msg not in invalid_items:
+                invalid_items[err_msg] = []
+            invalid_items[err_msg].append(item_id)
+
+        except fastjsonschema.JsonSchemaValueException as e:
+            err_msg = str(e)
             if err_msg not in invalid_items:
                 invalid_items[err_msg] = []
             invalid_items[err_msg].append(item_id)
@@ -122,11 +134,11 @@ def validate_stac(
     if get_bool_env("ENABLE_STAC_VALIDATOR"):
         try:
             import fastjsonschema
-            import stac_validator.fast_validator as fv_module
-            from stac_validator.fast_validator import get_validator
-
-            # Permanently mute the validator's CLI output for the SFEOS server
-            fv_module.QUIET_MODE = True
+            from stac_validator.fast_validator import (
+                FastSTACMultiValidationError,
+                FastSTACValidationError,
+                get_validator,
+            )
         except ImportError as e:
             raise ImportError("stac_validator not installed.") from e
 
@@ -139,17 +151,24 @@ def validate_stac(
         extensions = stac_dict.get("stac_extensions", [])
 
         try:
-            validator, _ = get_validator(stac_type, stac_version, extensions)
+            # v4.6.0: Pass quiet=True directly to get_validator
+            validator, _ = get_validator(
+                stac_type, stac_version, extensions, quiet=True
+            )
             validator(stac_dict)
+
+        except FastSTACMultiValidationError as e:
+            item_id = stac_dict.get("id", "unknown_id")
+            err_msg = "; ".join(str(err) for err in e.errors)
+            raise ValueError(f"STAC validation failed for '{item_id}': {err_msg}")
+
+        except FastSTACValidationError as e:
+            item_id = stac_dict.get("id", "unknown_id")
+            raise ValueError(f"STAC validation failed for '{item_id}': {str(e)}")
 
         except fastjsonschema.JsonSchemaValueException as e:
             item_id = stac_dict.get("id", "unknown_id")
-            err_msg = f"{e.name} {e.message.replace(e.name, '').strip()}"
-            if "disallowed definition" in err_msg and "collection" in err_msg:
-                err_msg = (
-                    "STAC Spec Violation: Missing {'rel': 'collection'} in links array."
-                )
-            raise ValueError(f"STAC validation failed for '{item_id}': {err_msg}")
+            raise ValueError(f"STAC validation failed for '{item_id}': {str(e)}")
 
         except Exception as e:
             item_id = stac_dict.get("id", "unknown_id")

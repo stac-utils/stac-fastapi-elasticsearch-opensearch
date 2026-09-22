@@ -17,9 +17,12 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ### Changed
 
+- Updated `stac-validator` from v4.5.x to v4.6.1. Removed obsolete global `QUIET_MODE` flag in favor of passing `quiet=True` directly to `get_validator()`. Enhanced error handling to unpack multi-error accumulation exceptions (`FastSTACMultiValidationError` and `FastSTACValidationError`) to surface all field failures per item during batch ingestion, providing more comprehensive validation feedback. [#853](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/pull/853)
+
 ### Fixed
 
 - Item writes now validate URI identities and require an indexed target for PUT. Queued PUT and direct JSON Patch operations also reject changes to protected datetime index fields including JSON Patch copy/move and whole-properties changes before enqueueing or updating. Hidden items remain writable through explicit write lookups; `HIDE_ITEM_PATH` controls read visibility only. The searchable-index consistency boundary remains governed by `DATABASE_REFRESH` (use `true` or `wait_for` when an immediate follow-up PUT is required). [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
+- GET item search, catalog search and collection item listing now return `400` for malformed JSON query/filter parameters and CQL2 text syntax; search also rejects malformed intersects JSON. Unrelated server failures retain their existing behavior. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
 - PATCH media types are normalized case-insensitively, merge patches follow RFC 7386 recursion, literal object-member names, empty-object handling and null removal with or without validation, and invalid JSON Patch operations return `400` without leaking a `TypeError`. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
 - Item and collection PATCH now reject identity, collection-type, and legacy rename changes before direct writes, including missing collection targets. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
 - Catalog creation uses atomic create-only indexing, and catalog conformance, queryables, unlink and deletion-race paths return `404` for missing catalog resources without overwriting existing documents. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
