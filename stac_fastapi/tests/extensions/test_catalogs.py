@@ -4807,3 +4807,160 @@ async def test_core_put_collection_retries_on_concurrent_membership_change(
     await _assert_memberships(
         catalogs_app_client, collection["id"], [*catalog_ids, third["id"]]
     )
+
+
+async def _stored_collection(collection_id):
+    from ..conftest import database
+
+    stored = await database.client.get(index=COLLECTIONS_INDEX, id=collection_id)
+    return stored["_source"]
+
+
+def _put_after_first_collection_read(monkeypatch, client, collection, title):
+    """Send a PUT setting `title` right after the next read of the collection."""
+    from ..conftest import database
+
+    client_cls = type(database.client)
+    original_get = client_cls.get
+    fired = []
+
+    async def racing_get(self, *args, **kwargs):
+        resp = await original_get(self, *args, **kwargs)
+        if kwargs.get("id") == collection["id"] and not fired:
+            fired.append(True)
+            monkeypatch.setattr(client_cls, "get", original_get)
+            put = await client.put(
+                f"/collections/{collection['id']}",
+                json={**collection, "title": title},
+            )
+            assert put.status_code == 200
+        return resp
+
+    monkeypatch.setattr(client_cls, "get", racing_get)
+    return fired
+
+
+@pytest.mark.asyncio
+async def test_link_collection_keeps_concurrent_put_metadata(
+    catalogs_app_client, load_test_data, monkeypatch
+):
+    """A PUT landing between the link's read and write must not be reverted."""
+    catalog_ids, collection = await _collection_in_two_catalogs(
+        catalogs_app_client, load_test_data
+    )
+    third = load_test_data("test_catalog.json")
+    third["id"] = f"test-catalog-{uuid.uuid4()}-2"
+    resp = await catalogs_app_client.post("/catalogs", json=third)
+    assert resp.status_code == 201
+
+    fired = _put_after_first_collection_read(
+        monkeypatch, catalogs_app_client, collection, "Updated during link"
+    )
+    resp = await catalogs_app_client.post(
+        f"/catalogs/{third['id']}/collections", json={"id": collection["id"]}
+    )
+    assert resp.status_code == 200
+    assert fired == [True]
+
+    stored = await _stored_collection(collection["id"])
+    assert stored["title"] == "Updated during link"
+    await _assert_memberships(
+        catalogs_app_client, collection["id"], [*catalog_ids, third["id"]]
+    )
+
+
+@pytest.mark.asyncio
+async def test_unlink_collection_keeps_concurrent_put_metadata(
+    catalogs_app_client, load_test_data, monkeypatch
+):
+    """A PUT landing between the unlink's read and write must not be reverted."""
+    catalog_ids, collection = await _collection_in_two_catalogs(
+        catalogs_app_client, load_test_data
+    )
+
+    fired = _put_after_first_collection_read(
+        monkeypatch, catalogs_app_client, collection, "Updated during unlink"
+    )
+    resp = await catalogs_app_client.delete(
+        f"/catalogs/{catalog_ids[0]}/collections/{collection['id']}"
+    )
+    assert resp.status_code == 204
+    assert fired == [True]
+
+    stored = await _stored_collection(collection["id"])
+    assert stored["title"] == "Updated during unlink"
+    assert stored["parent_ids"] == [catalog_ids[1]]
+
+
+@pytest.mark.asyncio
+async def test_link_collection_twice_does_not_duplicate_parent_ids(
+    catalogs_app_client, load_test_data
+):
+    """Re-linking an already linked collection is idempotent."""
+    catalog_ids, collection = await _collection_in_two_catalogs(
+        catalogs_app_client, load_test_data
+    )
+
+    resp = await catalogs_app_client.post(
+        f"/catalogs/{catalog_ids[1]}/collections", json={"id": collection["id"]}
+    )
+    assert resp.status_code == 200
+
+    parent_ids = (await _stored_collection(collection["id"]))["parent_ids"]
+    assert sorted(parent_ids) == sorted(catalog_ids)
+
+
+@pytest.mark.asyncio
+async def test_unlink_collection_twice_returns_404(catalogs_app_client, load_test_data):
+    """A second unlink of the same edge is a 404 and changes nothing."""
+    catalog_ids, collection = await _collection_in_two_catalogs(
+        catalogs_app_client, load_test_data
+    )
+    path = f"/catalogs/{catalog_ids[0]}/collections/{collection['id']}"
+
+    resp = await catalogs_app_client.delete(path)
+    assert resp.status_code == 204
+    resp = await catalogs_app_client.delete(path)
+    assert resp.status_code == 404
+
+    stored = await _stored_collection(collection["id"])
+    assert stored["parent_ids"] == [catalog_ids[1]]
+
+
+@pytest.mark.asyncio
+async def test_link_collection_returns_409_when_conflict_retries_exhausted(
+    catalogs_app_client, load_test_data, monkeypatch
+):
+    """A link whose scripted update keeps conflicting surfaces 409, unchanged."""
+    from ..conftest import database
+
+    catalog_ids, collection = await _collection_in_two_catalogs(
+        catalogs_app_client, load_test_data
+    )
+    third = load_test_data("test_catalog.json")
+    third["id"] = f"test-catalog-{uuid.uuid4()}-2"
+    resp = await catalogs_app_client.post("/catalogs", json=third)
+    assert resp.status_code == 201
+
+    # A stale compare-and-write version forces a real backend version conflict;
+    # the backend rejects it combined with retry_on_conflict, so record and drop it.
+    client_cls = type(database.client)
+    original_update = client_cls.update
+    retries = []
+
+    async def conflicting_update(self, *args, **kwargs):
+        retries.append(kwargs.pop("retry_on_conflict", None))
+        return await original_update(
+            self, *args, **kwargs, if_seq_no=0, if_primary_term=1
+        )
+
+    monkeypatch.setattr(client_cls, "update", conflicting_update)
+    resp = await catalogs_app_client.post(
+        f"/catalogs/{third['id']}/collections", json={"id": collection["id"]}
+    )
+    monkeypatch.undo()
+
+    assert resp.status_code == 409
+    assert retries == [3]
+    parent_ids = (await _stored_collection(collection["id"]))["parent_ids"]
+    assert sorted(parent_ids) == sorted(catalog_ids)

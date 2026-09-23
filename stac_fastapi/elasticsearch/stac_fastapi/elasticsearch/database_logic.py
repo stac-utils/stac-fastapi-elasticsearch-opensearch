@@ -34,6 +34,7 @@ from stac_fastapi.extensions.transaction.request import (
     PatchOperation,
 )
 from stac_fastapi.sfeos_helpers.database import (
+    COLLECTION_PARENT_ID_SCRIPT,
     ItemAlreadyExistsError,
     add_bbox_shape_to_collection,
     apply_collections_bbox_filter_shared,
@@ -1768,6 +1769,47 @@ class DatabaseLogic(BaseDatabaseLogic):
             raise ConflictError(
                 f"Collection {collection_id} was modified concurrently; retry the update"
             )
+
+    @retry_on_connection_error
+    async def update_collection_parent_ids(
+        self,
+        collection_id: str,
+        catalog_id: str,
+        add: bool,
+        refresh: bool | str = False,
+    ) -> dict:
+        """Atomically add or remove one catalog id in a collection's parent_ids.
+
+        Raises:
+            NotFoundError: If the collection does not exist.
+            ConflictError: If concurrent writes exhaust the update's retries.
+        """
+        try:
+            resp = await self.client.update(
+                index=COLLECTIONS_INDEX,
+                id=collection_id,
+                script={
+                    "lang": "painless",
+                    "source": COLLECTION_PARENT_ID_SCRIPT,
+                    "params": {"parent_id": catalog_id, "add": add},
+                },
+                source=True,
+                retry_on_conflict=3,
+                refresh=validate_refresh(refresh),
+            )
+        except ESNotFoundError:
+            raise NotFoundError(f"Collection {collection_id} not found")
+        except ESConflictError:
+            raise ConflictError(
+                f"Collection {collection_id} was modified concurrently; retry the request"
+            )
+
+        source = resp["get"].get("_source") if "get" in resp else None
+        if source is None:
+            return await self.find_collection(collection_id)
+        if source.get("type") != "Collection":
+            raise NotFoundError(f"Collection {collection_id} not found")
+        return source
 
     @retry_on_connection_error
     async def merge_patch_collection(
