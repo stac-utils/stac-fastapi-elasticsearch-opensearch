@@ -1642,13 +1642,20 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     @retry_on_connection_error
     async def update_collection(
-        self, collection_id: str, collection: Collection, **kwargs: Any
+        self,
+        collection_id: str,
+        collection: Collection,
+        preserve_parent_ids: bool = False,
+        **kwargs: Any,
     ) -> None:
         """Update a collection in the database.
 
         Args:
             collection_id (str): The ID of the collection to be updated.
             collection (Collection): The Collection object to be used for the update.
+            preserve_parent_ids (bool): Keep the stored catalog memberships
+                (`parent_ids`) instead of taking them from `collection`. The
+                write is conditional on the version read, retried on conflict.
             **kwargs: Additional keyword arguments.
                 - refresh (str): Whether to refresh the index after the operation. Can be "true", "false", or "wait_for".
                 - refresh (bool): Whether to refresh the index after the operation. Defaults to the value in `self.async_settings.database_refresh`.
@@ -1722,12 +1729,44 @@ class DatabaseLogic(BaseDatabaseLogic):
                 # Convert bbox to bbox_shape for geospatial queries (ES/OS specific)
                 add_bbox_shape_to_collection(collection_dict)
 
-            # Update the existing collection
-            await self.client.index(
-                index=COLLECTIONS_INDEX,
-                id=collection_id,
-                document=collection_dict,
-                refresh=refresh,
+            if not preserve_parent_ids:
+                await self.client.index(
+                    index=COLLECTIONS_INDEX,
+                    id=collection_id,
+                    document=collection_dict,
+                    refresh=refresh,
+                )
+                return
+
+            # parent_ids is backend-owned; a concurrent link/unlink must not be lost.
+            for _ in range(3):
+                try:
+                    existing = await self.client.get(
+                        index=COLLECTIONS_INDEX, id=collection_id
+                    )
+                except ESNotFoundError:
+                    raise NotFoundError(f"Collection {collection_id} not found")
+                if existing["_source"].get("type") != "Collection":
+                    raise NotFoundError(f"Collection {collection_id} not found")
+
+                collection_dict.pop("parent_ids", None)
+                if "parent_ids" in existing["_source"]:
+                    collection_dict["parent_ids"] = existing["_source"]["parent_ids"]
+                try:
+                    await self.client.index(
+                        index=COLLECTIONS_INDEX,
+                        id=collection_id,
+                        document=collection_dict,
+                        refresh=refresh,
+                        if_seq_no=existing["_seq_no"],
+                        if_primary_term=existing["_primary_term"],
+                    )
+                    return
+                except ESConflictError:
+                    continue
+
+            raise ConflictError(
+                f"Collection {collection_id} was modified concurrently; retry the update"
             )
 
     @retry_on_connection_error

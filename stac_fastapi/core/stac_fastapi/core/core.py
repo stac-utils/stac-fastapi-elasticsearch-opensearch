@@ -1971,7 +1971,10 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         collection = self.database.collection_serializer.stac_to_db(collection, request)
         await self.database.update_collection(
-            collection_id=collection_id, collection=collection, **kwargs
+            collection_id=collection_id,
+            collection=collection,
+            preserve_parent_ids=True,
+            **kwargs,
         )
 
         return CollectionSerializer.db_to_stac(
@@ -2116,6 +2119,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         await self.database.update_collection(
             collection_id=collection_id,
             collection=db_collection,
+            preserve_parent_ids=True,
             refresh=True,
         )
 

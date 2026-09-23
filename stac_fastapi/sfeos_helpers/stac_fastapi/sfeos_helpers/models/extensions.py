@@ -360,6 +360,11 @@ class Extensions:
         catalogs_client = CatalogsClient(
             database=self.database_logic,
             core_client=core_client,
+            transactions_client=TransactionsClient(
+                database=self.database_logic,
+                session=self.session,
+                settings=self.settings,
+            ),
         )
 
         hide_parents = self._flag(
