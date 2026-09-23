@@ -50,9 +50,7 @@ async def collections_http(app, app_client):
 
 
 @pytest.mark.parametrize("body", MALFORMED)
-async def test_malformed_post(
-    collections_http, app_client, app, ctx, monkeypatch, body
-):
+async def test_malformed_post(collections_http, app_client, monkeypatch, body):
     forward = AsyncMock(side_effect=AssertionError("must reject before forwarding"))
     monkeypatch.setattr(CoreClient, "post_all_collections", forward)
     response = await collections_http.post(URL, json=body)
@@ -70,7 +68,7 @@ async def test_malformed_post(
 
 
 @pytest.mark.parametrize("body", ["bad", 5, []])
-async def test_top_level_admission(collections_http, app_client, ctx, body):
+async def test_top_level_admission(collections_http, app_client, body):
     expected = {
         "detail": [
             {
@@ -89,7 +87,7 @@ async def test_top_level_admission(collections_http, app_client, ctx, body):
 
 
 @pytest.mark.parametrize("content", [None, b"", b"null"])
-async def test_missing_body(collections_http, app_client, ctx, content):
+async def test_missing_body(collections_http, app_client, content):
     expected = {
         "detail": [
             {"type": "missing", "loc": ["body"], "msg": "Field required", "input": None}
@@ -186,7 +184,7 @@ async def test_populated_controls(collections_http, ctx, kind):
         (None, AttributeError),
     ],
 )
-async def test_later_field_errors(collections_http, app_client, ctx, fields, error):
+async def test_later_field_errors(collections_http, app_client, fields, error):
     body = {"fields": fields}
     CollectionsSearchRequest.model_validate(body)
     response = await collections_http.post(URL, json=body)
@@ -199,7 +197,7 @@ async def test_later_field_errors(collections_http, app_client, ctx, fields, err
     "stage", ["model-runtime", "validation", "value", "json", "runtime"]
 )
 async def test_unrelated_failures_propagate(
-    collections_http, app_client, app, ctx, monkeypatch, stage
+    collections_http, app_client, monkeypatch, stage
 ):
     error = RuntimeError("injected collections search failure")
     if stage == "validation":
