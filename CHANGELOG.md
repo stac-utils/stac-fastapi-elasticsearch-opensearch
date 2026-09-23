@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Make Collection creation atomic in Elasticsearch and OpenSearch: concurrent creations of the same ID return one `201 Created` and one `409 Conflict`, preserving the winner and provisioning its item index only once. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
 - Isolate JSON Patch script parameters so distinct and repeated values are not overwritten during PATCH operations. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
 - The Elasticsearch and OpenSearch module entrypoints now start when `.env` does not supply `APP_HOST`, `APP_PORT`, and `RELOAD`. Launchers preserve `.env` settings with process environment overrides and defaults of `0.0.0.0`, `8000`, and `true`. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
+- Fixed `make image-es-os` not rebuilding the dev image (recipe indented with spaces) and disabled the compose rate limit for OpenSearch `make test-*` targets so local catalogs tests don't fail with 429.
 
 ### Updated
 

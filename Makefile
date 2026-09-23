@@ -22,11 +22,15 @@ run_os = docker compose \
 	-e PY_IGNORE_IMPORTMISMATCH=1 \
 	-e APP_HOST=${APP_HOST} \
 	-e APP_PORT=${OS_APP_PORT} \
+	$(OS_TEST_ARGS) \
 	app-opensearch
+
+# Disable the compose.yml rate limit for test runs; the session-scoped test app shares one limiter.
+test test-opensearch test-opensearch-catalogs test-opensearch-validation test-datetime-filtering-os: OS_TEST_ARGS = -e STAC_FASTAPI_RATE_LIMIT=
 
 .PHONY: image-es-os
 image-es-os:
-    docker build -f dockerfiles/Dockerfile.dev.es-os -t stac-utils/stac-fastapi-es-os:latest .
+	docker build -f dockerfiles/Dockerfile.dev.es-os -t stac-utils/stac-fastapi-es-os:latest .
 
 .PHONY: image-deploy-es
 image-deploy-es:
