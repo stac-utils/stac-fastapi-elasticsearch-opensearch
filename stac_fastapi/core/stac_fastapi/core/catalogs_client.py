@@ -44,6 +44,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
     collection_serializer: CollectionSerializer = attr.ib(default=CollectionSerializer)
     item_serializer: ItemSerializer = attr.ib(default=ItemSerializer)
     core_client: Any = attr.ib(default=None)
+    transactions_client: Any = attr.ib(default=None)
 
     def _get_base_url(self, request: Request | None) -> str:
         """Extract base URL from request with sensible default.
@@ -839,13 +840,14 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         # If only an ID was provided (ObjectUri), the collection must already exist
         if is_object_uri:
             try:
-                existing = await self.database.find_collection(col_id)
-                self._add_parent_id(existing, catalog_id)
+                await self.database.find_collection(col_id)
             except NotFoundError:
                 raise NotFoundError(f"Collection {col_id} not found")
 
             try:
-                await self.database.update_collection(col_id, existing, refresh=True)
+                existing = await self.database.update_collection_parent_ids(
+                    col_id, catalog_id, add=True, refresh=True
+                )
             except Exception as e:
                 logger.error(
                     f"Error linking existing collection {col_id} to catalog {catalog_id} (ObjectUri): {e}",
@@ -958,9 +960,9 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
     ) -> Collection | Response:
         """Update a collection's metadata within a catalog context (Scoped Route).
 
-        This method updates collection metadata while ensuring the collection
-        remains linked to the specified catalog. This provides DAG safety by
-        operating within a specific catalog context.
+        After checking that the collection is linked to the catalog, this
+        delegates to the core collection update, which keeps every catalog
+        membership and applies the core id check and validation.
 
         Args:
             catalog_id: The ID of the catalog.
@@ -975,6 +977,8 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         Raises:
             NotFoundError: If the catalog or collection is not found, or if the
                 collection is not linked to the catalog.
+            HTTPException: If the body id differs from the URI id or the
+                collection fails validation.
         """
         # Validate catalog exists
         catalog = await self.database.find_catalog(catalog_id)
@@ -995,30 +999,20 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 f"Collection {collection_id} not linked to catalog {catalog_id}"
             )
 
-        # Update collection with new data, preserving parent_ids
-        updated_dict = self._to_dict(collection)
-        updated_dict["id"] = collection_id
-        updated_dict["parent_ids"] = parent_ids  # Preserve catalog linkage
+        # Dynamic child links are rendered per request, never stored.
+        links = [
+            link
+            for link in collection.links.root
+            if link.rel not in ("parent", "child", "children")
+        ]
+        collection = collection.model_copy(
+            update={"links": type(collection.links)(links)}
+        )
 
-        # Filter out dynamic links
-        if "links" in updated_dict:
-            updated_dict["links"] = [
-                link
-                for link in updated_dict["links"]
-                if isinstance(link, dict)
-                and link.get("rel") not in ("parent", "child", "children")
-            ]
-
-        try:
-            await self.database.update_collection(
-                collection_id, updated_dict, refresh=True
-            )
-        except Exception as e:
-            logger.error(
-                f"Error updating collection {collection_id} in catalog {catalog_id}: {e}",
-                exc_info=True,
-            )
-            raise
+        # Core update keeps parent_ids and applies validation and id checks.
+        await self.transactions_client.update_collection(
+            collection_id, collection, request=request, refresh=True
+        )
 
         # Fetch updated collection
         updated_collection = await self.database.get_catalog_collection(
@@ -1066,11 +1060,9 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 f"Collection {collection_id} not linked to catalog {catalog_id}"
             )
 
-        # Remove this catalog from parent_ids
-        self._remove_parent_id(collection_dict, catalog_id)
         try:
-            await self.database.update_collection(
-                collection_id, collection_dict, refresh=True
+            await self.database.update_collection_parent_ids(
+                collection_id, catalog_id, add=False, refresh=True
             )
         except Exception as e:
             logger.error(
