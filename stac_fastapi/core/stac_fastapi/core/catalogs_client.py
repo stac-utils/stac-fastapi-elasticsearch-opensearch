@@ -1002,7 +1002,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         links = [
             link
             for link in collection.links.root
-            if link.rel not in ("child", "children")
+            if link.rel not in ("parent", "child", "children")
         ]
         collection = collection.model_copy(
             update={"links": type(collection.links)(links)}
