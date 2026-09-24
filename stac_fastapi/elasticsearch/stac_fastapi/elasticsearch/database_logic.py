@@ -1,4 +1,5 @@
 """Database logic."""
+
 import asyncio
 import logging
 import os
@@ -24,7 +25,9 @@ from stac_fastapi.core.serializers import (
     ItemSerializer,
 )
 from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon, get_bool_env
-from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
+from stac_fastapi.elasticsearch.config import (
+    AsyncElasticsearchSettings,
+)
 from stac_fastapi.elasticsearch.config import (
     ElasticsearchSettings as SyncElasticsearchSettings,
 )
@@ -369,7 +372,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         )
 
         # If count task is done, use its result
-        if count_task.done():
+        if count_task.done() and not count_task.cancelled():
             try:
                 matched = count_task.result().get("count")
             except Exception as e:
@@ -1007,7 +1010,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             if es_response["hits"]["total"]["relation"] == "eq"
             else None
         )
-        if count_task.done():
+        if count_task.done() and not count_task.cancelled():
             try:
                 matched = count_task.result().get("count")
             except Exception as e:
@@ -1657,9 +1660,11 @@ class DatabaseLogic(BaseDatabaseLogic):
         collection_dict = (
             collection
             if isinstance(collection, dict)
-            else collection.model_dump()
-            if hasattr(collection, "model_dump")
-            else dict(collection)
+            else (
+                collection.model_dump()
+                if hasattr(collection, "model_dump")
+                else dict(collection)
+            )
         )
 
         # Handle collection ID change
