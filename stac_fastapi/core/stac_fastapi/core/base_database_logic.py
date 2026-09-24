@@ -143,7 +143,11 @@ class BaseDatabaseLogic(abc.ABC):
 
     @abc.abstractmethod
     async def update_collection(
-        self, collection_id: str, collection: Collection, **kwargs: Any
+        self,
+        collection_id: str,
+        collection: Collection,
+        preserve_parent_ids: bool = False,
+        **kwargs: Any,
     ) -> None:
         """Update a collection in the database."""
         pass
