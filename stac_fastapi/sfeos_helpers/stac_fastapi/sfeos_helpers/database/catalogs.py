@@ -199,28 +199,6 @@ async def search_sub_catalogs_with_pagination_shared(
     return catalogs, total_hits, next_search_after
 
 
-async def update_catalog_in_index_shared(
-    es_client: Any, catalog_id: str, catalog_data: dict[str, Any]
-) -> None:
-    """Update a catalog document in the index.
-
-    Args:
-        es_client: Elasticsearch/OpenSearch client instance.
-        catalog_id: The catalog ID.
-        catalog_data: The catalog document to update.
-    """
-    try:
-        await es_client.index(
-            index=COLLECTIONS_INDEX,
-            id=catalog_id,
-            body=catalog_data,
-            refresh=True,
-        )
-    except Exception as e:
-        logger.error(f"Error updating catalog {catalog_id} in index: {e}")
-        raise
-
-
 async def search_children_with_pagination_shared(
     es_client: Any,
     catalog_id: str,
@@ -272,10 +250,11 @@ async def search_children_with_pagination_shared(
 _PARENT_CLEANUP_BATCH_SIZE = 500
 _PARENT_CLEANUP_MAX_PASSES = 3
 
-# Adds (params.add) or removes params.parent_id in one Collection's parent_ids,
-# so a link/unlink never rewrites the rest of the document.
-COLLECTION_PARENT_ID_SCRIPT = """
-    if (!'Collection'.equals(ctx._source.type)) {
+# Adds (params.add) or removes params.parent_id in the parent_ids of one document
+# of type params.type (Collection or Catalog), so a link/unlink never rewrites the
+# rest of the document.
+PARENT_ID_SCRIPT = """
+    if (!params.type.equals(ctx._source.type)) {
         ctx.op = 'noop';
     } else if (params.add) {
         if (ctx._source.parent_ids == null) {
