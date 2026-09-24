@@ -176,16 +176,6 @@ class DatetimeIndexManager:
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Both 'start_datetime' and 'end_datetime' fields are required",
                 )
-            if not (start <= end):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="'start_datetime' must be <= 'end_datetime'",
-                )
-            if dt and not (start <= dt <= end):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="'start_datetime' <= 'datetime' <= 'end_datetime' is required",
-                )
 
         return ProductDatetimes(
             start_datetime=start_str,

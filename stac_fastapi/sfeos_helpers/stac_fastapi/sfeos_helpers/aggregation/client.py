@@ -6,6 +6,8 @@ from urllib.parse import unquote_plus, urljoin
 import attr
 import orjson
 from fastapi import HTTPException, Path, Request
+from lark.exceptions import UnexpectedInput
+from pydantic import ValidationError
 from pygeofilter.backends.cql2_json import to_cql2
 from pygeofilter.parsers.cql2_text import parse as parse_cql2_text
 from stac_pydantic.shared import BBox
@@ -16,11 +18,8 @@ from stac_fastapi.core.base_settings import ApiBaseSettings
 from stac_fastapi.core.datetime_utils import format_datetime_range
 from stac_fastapi.core.extensions.aggregation import EsAggregationExtensionPostRequest
 from stac_fastapi.core.session import Session
-from stac_fastapi.extensions.core.aggregation.client import AsyncBaseAggregationClient
-from stac_fastapi.extensions.core.aggregation.types import (
-    Aggregation,
-    AggregationCollection,
-)
+from stac_fastapi.extensions.aggregation.client import AsyncBaseAggregationClient
+from stac_fastapi.extensions.aggregation.types import Aggregation, AggregationCollection
 from stac_fastapi.types.rfc3339 import DateTimeType
 
 from .format import frequency_agg, metric_agg
@@ -211,10 +210,25 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
             HTTPException: If the filter language is not supported
         """
         if filter_lang == "cql2-text":
-            return orjson.loads(to_cql2(parse_cql2_text(filter)))
+            try:
+                parsed_filter = parse_cql2_text(filter)
+            except UnexpectedInput:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid filter parameter: expected valid CQL2 text.",
+                )
+            return orjson.loads(to_cql2(parsed_filter))
         elif filter_lang == "cql2-json":
             if isinstance(filter, str):
-                return orjson.loads(unquote_plus(filter))
+                # Already percent-decoded by Starlette; decoding again would corrupt
+                # CQL2 LIKE patterns like "%banks%" ("%ba" is a valid escape).
+                try:
+                    return orjson.loads(filter)
+                except orjson.JSONDecodeError:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Invalid filter parameter: expected valid CQL2 JSON.",
+                    )
             else:
                 return filter
         else:
@@ -268,14 +282,25 @@ class EsAsyncBaseAggregationClient(AsyncBaseAggregationClient):
                 collections = [str(collection_id)]
 
             if intersects:
-                base_args["intersects"] = orjson.loads(unquote_plus(intersects))
+                try:
+                    base_args["intersects"] = orjson.loads(unquote_plus(intersects))
+                except orjson.JSONDecodeError:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Invalid intersects parameter: expected valid JSON.",
+                    )
 
             if datetime:
                 base_args["datetime"] = format_datetime_range(datetime)
 
             if filter_expr:
                 base_args["filter"] = self.get_filter(filter_expr, filter_lang)
-            aggregate_request = EsAggregationExtensionPostRequest(**base_args)
+            try:
+                aggregate_request = EsAggregationExtensionPostRequest(**base_args)
+            except ValidationError:
+                raise HTTPException(
+                    status_code=400, detail="Invalid aggregation parameters."
+                )
         else:
             # Workaround for optional path param in POST requests
             if "collections" in path:

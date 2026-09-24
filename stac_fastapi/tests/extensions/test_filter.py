@@ -10,6 +10,8 @@ from typing import Callable, Dict
 import pytest
 from httpx import AsyncClient
 
+from ..conftest import create_collection, create_item, refresh_indices
+
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 
 
@@ -40,6 +42,73 @@ async def test_filter_extension_collection_link(app_client, load_test_data):
 
     resp = await app_client.delete(f"/collections/{test_collection['id']}")
     assert resp.status_code == 204
+
+
+@pytest.mark.asyncio
+async def test_collections_search_collection_mapping(
+    app_client, txn_client, load_test_data
+):
+    """Ensure collections filter resolves fields against the collections index mapping.
+
+    Uses 'license' (a root-level collection field mapped as keyword) to create a
+    collision: the non-matching collection has an item whose properties.license equals
+    the target collection's license value. If the filter mistakenly used the items index
+    mapping, it would resolve 'license' to 'properties.license' and could return the
+    wrong collection. With the correct collections mapping, it resolves to the root-level
+    'license' field and returns only the matching collection.
+    """
+    unique_suffix = uuid.uuid4().hex[:8]
+    matching_collection_id = f"filter-license-match-{unique_suffix}"
+    other_collection_id = f"filter-license-other-{unique_suffix}"
+    target_license = f"proprietary-{unique_suffix}"
+
+    matching_collection = copy.deepcopy(load_test_data("test_collection.json"))
+    matching_collection["id"] = matching_collection_id
+    matching_collection["license"] = target_license
+
+    other_collection = copy.deepcopy(load_test_data("test_collection.json"))
+    other_collection["id"] = other_collection_id
+    other_collection["license"] = f"other-license-{unique_suffix}"
+
+    matching_item = copy.deepcopy(load_test_data("test_item.json"))
+    matching_item["id"] = f"filter-license-item-match-{unique_suffix}"
+    matching_item["collection"] = matching_collection_id
+    matching_item["properties"]["license"] = "item-side-license-value"
+
+    other_item = copy.deepcopy(load_test_data("test_item.json"))
+    other_item["id"] = f"filter-license-item-other-{unique_suffix}"
+    other_item["collection"] = other_collection_id
+    other_item["properties"][
+        "license"
+    ] = target_license  # collision: same value as matching collection's license
+
+    await create_collection(txn_client, matching_collection)
+    await create_collection(txn_client, other_collection)
+    await create_item(txn_client, matching_item)
+    await create_item(txn_client, other_item)
+    await refresh_indices(txn_client)
+
+    resp = await app_client.get(
+        "/collections",
+        params={
+            "filter-lang": "cql2-json",
+            "filter": json.dumps(
+                {
+                    "op": "=",
+                    "args": [{"property": "license"}, target_license],
+                }
+            ),
+        },
+    )
+    resp_json = resp.json()
+
+    assert resp.status_code == 200
+    returned_ids = [collection["id"] for collection in resp_json["collections"]]
+    assert matching_collection_id in returned_ids
+    assert other_collection_id not in returned_ids
+
+    await app_client.delete(f"/collections/{matching_collection_id}")
+    await app_client.delete(f"/collections/{other_collection_id}")
 
 
 @pytest.mark.asyncio
@@ -1793,3 +1862,108 @@ async def test_queryables_excluded_fields(
     # Clean up
     r = await app_client.delete(f"/collections/{collection_id}")
     r.raise_for_status()
+
+
+# LIKE terms whose first two characters form a valid percent-escape, so a
+# double URL-decode corrupted them ("%banks%" -> "%ba" -> byte 0xBA). Terms
+# like "garden"/"ocean" were unaffected, which made the bug look term-dependent.
+HEX_PREFIX_LIKE_TERMS = ["banks", "bank", "data", "beach", "feed"]
+
+
+@pytest.mark.asyncio
+async def test_get_search_cql2_like_not_double_url_decoded(app_client, ctx):
+    """GET /search must not re-percent-decode the ``filter`` query parameter.
+
+    Starlette already decodes query params once; a second decode corrupted
+    LIKE terms with a hex-pair prefix, so GET returned 0 hits while POST (dict
+    body) worked. Asserts GET agrees with POST on first page and numberMatched.
+    """
+    collection_id = ctx.item["collection"]
+    item = copy.deepcopy(ctx.item)
+    item["id"] = "banks-bank-data-beach-feed"
+    resp = await app_client.post(f"/collections/{collection_id}/items", json=item)
+    assert resp.status_code == 201
+
+    for term in HEX_PREFIX_LIKE_TERMS:
+        cql2 = {"op": "like", "args": [{"property": "id"}, f"%{term}%"]}
+        get_resp = await app_client.get(
+            "/search",
+            params={"filter-lang": "cql2-json", "filter": json.dumps(cql2)},
+        )
+        post_resp = await app_client.post(
+            "/search", json={"filter-lang": "cql2-json", "filter": cql2}
+        )
+        assert get_resp.status_code == 200, term
+        get_json, post_json = get_resp.json(), post_resp.json()
+        get_ids = {f["id"] for f in get_json["features"]}
+        post_ids = {f["id"] for f in post_json["features"]}
+
+        assert item["id"] in get_ids, f"GET /search dropped LIKE %{term}%"
+        assert get_ids == post_ids, f"GET vs POST first page diverged for %{term}%"
+        assert (
+            get_json["numberMatched"] == post_json["numberMatched"]
+        ), f"GET vs POST count diverged for %{term}%"
+
+    # Multi-condition AND filter (the shape originally blamed in issue #368),
+    # combining several hex-prefixed terms in a single GET request.
+    multi = {
+        "op": "and",
+        "args": [
+            {"op": "like", "args": [{"property": "id"}, "%banks%"]},
+            {"op": "like", "args": [{"property": "id"}, "%data%"]},
+            {"op": "like", "args": [{"property": "id"}, "%beach%"]},
+        ],
+    }
+    get_resp = await app_client.get(
+        "/search", params={"filter-lang": "cql2-json", "filter": json.dumps(multi)}
+    )
+    post_resp = await app_client.post(
+        "/search", json={"filter-lang": "cql2-json", "filter": multi}
+    )
+    assert get_resp.status_code == 200
+    assert {f["id"] for f in get_resp.json()["features"]} == {item["id"]}
+    assert get_resp.json()["numberMatched"] == post_resp.json()["numberMatched"]
+
+
+@pytest.mark.asyncio
+async def test_get_aggregate_cql2_like_not_double_url_decoded(app_client, ctx):
+    """GET /aggregate must agree with POST /aggregate for hex-prefixed LIKE terms.
+
+    The aggregation client had the same double-decode on a str ``filter``, so
+    GET /aggregate undercounted the same terms GET /search dropped.
+    """
+    collection_id = ctx.item["collection"]
+    item = copy.deepcopy(ctx.item)
+    item["id"] = "banks-bank-data-beach-feed"
+    resp = await app_client.post(f"/collections/{collection_id}/items", json=item)
+    assert resp.status_code == 201
+
+    def total_count(payload):
+        for agg in payload["aggregations"]:
+            if agg["name"] == "total_count":
+                return agg["value"]
+        return None
+
+    for term in HEX_PREFIX_LIKE_TERMS:
+        cql2 = {"op": "like", "args": [{"property": "id"}, f"%{term}%"]}
+        get_resp = await app_client.get(
+            "/aggregate",
+            params={
+                "aggregations": "total_count",
+                "filter-lang": "cql2-json",
+                "filter": json.dumps(cql2),
+            },
+        )
+        post_resp = await app_client.post(
+            "/aggregate",
+            json={
+                "aggregations": ["total_count"],
+                "filter-lang": "cql2-json",
+                "filter": cql2,
+            },
+        )
+        assert get_resp.status_code == 200, term
+        get_total = total_count(get_resp.json())
+        post_total = total_count(post_resp.json())
+        assert get_total == post_total, f"GET vs POST /aggregate diverged for %{term}%"
+        assert get_total >= 1, f"GET /aggregate missed item for %{term}%"

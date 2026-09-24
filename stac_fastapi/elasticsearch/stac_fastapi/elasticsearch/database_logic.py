@@ -29,12 +29,13 @@ from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
 from stac_fastapi.elasticsearch.config import (
     ElasticsearchSettings as SyncElasticsearchSettings,
 )
-from stac_fastapi.extensions.core.transaction.request import (
+from stac_fastapi.extensions.transaction.request import (
     PartialCollection,
     PartialItem,
     PatchOperation,
 )
 from stac_fastapi.sfeos_helpers.database import (
+    COLLECTION_PARENT_ID_SCRIPT,
     ItemAlreadyExistsError,
     add_bbox_shape_to_collection,
     apply_collections_bbox_filter_shared,
@@ -57,6 +58,7 @@ from stac_fastapi.sfeos_helpers.database import (
     search_children_with_pagination_shared,
     search_collections_by_parent_id_with_pagination_shared,
     search_sub_catalogs_with_pagination_shared,
+    unlink_catalog_children_shared,
     update_catalog_in_index_shared,
     validate_refresh,
 )
@@ -68,6 +70,7 @@ from stac_fastapi.sfeos_helpers.database.index import index_by_collection_id
 from stac_fastapi.sfeos_helpers.database.query import (
     ES_MAX_URL_LENGTH,
     add_collections_to_body,
+    remap_sort_field_shared,
 )
 from stac_fastapi.sfeos_helpers.database.utils import (
     add_hidden_filter,
@@ -230,7 +233,9 @@ class DatabaseLogic(BaseDatabaseLogic):
         formatted_sort = []
         if sort:
             for item in sort:
-                field = item.get("field")
+                field = remap_sort_field_shared(
+                    item.get("field", ""), is_collection=True
+                )
                 direction = item.get("direction", "asc")
                 if field:
                     formatted_sort.append({field: {"order": direction}})
@@ -276,7 +281,9 @@ class DatabaseLogic(BaseDatabaseLogic):
             if isinstance(filter, str):
                 filter = orjson.loads(filter)
             # Convert the filter to an Elasticsearch query using the filter module
-            es_query = filter_module.to_es(await self.get_queryables_mapping(), filter)
+            es_query = filter_module.to_es(
+                await self.get_collections_queryables_mapping(), filter
+            )
             query_parts.append(es_query)
 
         # Apply query extension if provided
@@ -442,6 +449,20 @@ class DatabaseLogic(BaseDatabaseLogic):
             collection_id=collection_id, mappings=mappings
         )
 
+    async def get_collections_queryables_mapping(self) -> dict:
+        """Retrieve mapping of Queryables for collection search.
+
+        Used when translating CQL2 filters applied to collection search so that field
+        paths are resolved against the collections index rather than the items index.
+
+        Returns:
+            dict: A dictionary containing the Collection Queryables mappings.
+        """
+        mappings = await self.client.indices.get_mapping(index=COLLECTIONS_INDEX)
+        return await get_queryables_mapping_shared(
+            collection_id=COLLECTIONS_INDEX, mappings=mappings
+        )
+
     async def get_all_collection_queryables(self) -> list[dict]:
         """Retrieve all queryables from all collections safely.
 
@@ -460,8 +481,8 @@ class DatabaseLogic(BaseDatabaseLogic):
             response = await self.client.search(
                 index=COLLECTIONS_INDEX,
                 scroll="2m",  # Keep the search context alive for 2 minutes
-                size=1000,  # Fetch in memory-safe chunks of 1000
                 body={
+                    "size": 1000,  # Fetch in memory-safe chunks of 1000
                     "_source": ["id"],
                     "query": {"term": {"type": "Collection"}},
                 },
@@ -1389,6 +1410,7 @@ class DatabaseLogic(BaseDatabaseLogic):
                 self.async_index_inserter.validate_datetime_field_update,
             )
 
+            # Write to database using script operations
             if script_operations:
                 script = operations_to_script(
                     script_operations, create_nest=create_nest
@@ -1560,10 +1582,6 @@ class DatabaseLogic(BaseDatabaseLogic):
         # Log the creation attempt
         logger.info(f"Creating collection {collection_id} with refresh={refresh}")
 
-        # Check if the collection already exists
-        if await self.client.exists(index=COLLECTIONS_INDEX, id=collection_id):
-            raise ConflictError(f"Collection {collection_id} already exists")
-
         if get_bool_env("ENABLE_COLLECTIONS_SEARCH") or get_bool_env(
             "ENABLE_COLLECTIONS_SEARCH_ROUTE"
         ):
@@ -1571,12 +1589,21 @@ class DatabaseLogic(BaseDatabaseLogic):
             add_bbox_shape_to_collection(collection)
 
         # Index the collection in the database
-        await self.client.index(
-            index=COLLECTIONS_INDEX,
-            id=collection_id,
-            document=collection,
-            refresh=refresh,
-        )
+        try:
+            await self.client.index(
+                index=COLLECTIONS_INDEX,
+                id=collection_id,
+                document=collection,
+                refresh=refresh,
+                op_type="create",
+            )
+        except ESConflictError:
+            raise ConflictError(f"Collection {collection_id} already exists")
+        except Exception as e:
+            logger.error(
+                f"Error indexing collection {collection_id}: {e}", exc_info=True
+            )
+            raise
 
         if self.async_index_inserter.should_create_collection_index():
             await self.async_index_inserter.create_simple_index(
@@ -1608,17 +1635,29 @@ class DatabaseLogic(BaseDatabaseLogic):
         except ESNotFoundError:
             raise NotFoundError(f"Collection {collection_id} not found")
 
+        # The collections index is shared with Catalog documents; verify
+        # the document is actually a Collection.
+        if collection["_source"].get("type") != "Collection":
+            raise NotFoundError(f"Collection {collection_id} not found")
+
         return collection["_source"]
 
     @retry_on_connection_error
     async def update_collection(
-        self, collection_id: str, collection: Collection, **kwargs: Any
+        self,
+        collection_id: str,
+        collection: Collection,
+        preserve_parent_ids: bool = False,
+        **kwargs: Any,
     ) -> None:
         """Update a collection in the database.
 
         Args:
             collection_id (str): The ID of the collection to be updated.
             collection (Collection): The Collection object to be used for the update.
+            preserve_parent_ids (bool): Keep the stored catalog memberships
+                (`parent_ids`) instead of taking them from `collection`. The
+                write is conditional on the version read, retried on conflict.
             **kwargs: Additional keyword arguments.
                 - refresh (str): Whether to refresh the index after the operation. Can be "true", "false", or "wait_for".
                 - refresh (bool): Whether to refresh the index after the operation. Defaults to the value in `self.async_settings.database_refresh`.
@@ -1717,13 +1756,86 @@ class DatabaseLogic(BaseDatabaseLogic):
                 # Convert bbox to bbox_shape for geospatial queries (ES/OS specific)
                 add_bbox_shape_to_collection(collection_dict)
 
-            # Update the existing collection
-            await self.client.index(
+            if not preserve_parent_ids:
+                await self.client.index(
+                    index=COLLECTIONS_INDEX,
+                    id=collection_id,
+                    document=collection_dict,
+                    refresh=refresh,
+                )
+                return
+
+            # parent_ids is backend-owned; a concurrent link/unlink must not be lost.
+            for _ in range(3):
+                try:
+                    existing = await self.client.get(
+                        index=COLLECTIONS_INDEX, id=collection_id
+                    )
+                except ESNotFoundError:
+                    raise NotFoundError(f"Collection {collection_id} not found")
+                if existing["_source"].get("type") != "Collection":
+                    raise NotFoundError(f"Collection {collection_id} not found")
+
+                collection_dict.pop("parent_ids", None)
+                if "parent_ids" in existing["_source"]:
+                    collection_dict["parent_ids"] = existing["_source"]["parent_ids"]
+                try:
+                    await self.client.index(
+                        index=COLLECTIONS_INDEX,
+                        id=collection_id,
+                        document=collection_dict,
+                        refresh=refresh,
+                        if_seq_no=existing["_seq_no"],
+                        if_primary_term=existing["_primary_term"],
+                    )
+                    return
+                except ESConflictError:
+                    continue
+
+            raise ConflictError(
+                f"Collection {collection_id} was modified concurrently; retry the update"
+            )
+
+    @retry_on_connection_error
+    async def update_collection_parent_ids(
+        self,
+        collection_id: str,
+        catalog_id: str,
+        add: bool,
+        refresh: bool | str = False,
+    ) -> dict:
+        """Atomically add or remove one catalog id in a collection's parent_ids.
+
+        Raises:
+            NotFoundError: If the collection does not exist.
+            ConflictError: If concurrent writes exhaust the update's retries.
+        """
+        try:
+            resp = await self.client.update(
                 index=COLLECTIONS_INDEX,
                 id=collection_id,
-                document=collection_dict,
-                refresh=refresh,
+                script={
+                    "lang": "painless",
+                    "source": COLLECTION_PARENT_ID_SCRIPT,
+                    "params": {"parent_id": catalog_id, "add": add},
+                },
+                source=True,
+                retry_on_conflict=3,
+                refresh=validate_refresh(refresh),
             )
+        except ESNotFoundError:
+            raise NotFoundError(f"Collection {collection_id} not found")
+        except ESConflictError:
+            raise ConflictError(
+                f"Collection {collection_id} was modified concurrently; retry the request"
+            )
+
+        source = resp["get"].get("_source") if "get" in resp else None
+        if source is None:
+            return await self.find_collection(collection_id)
+        if source.get("type") != "Collection":
+            raise NotFoundError(f"Collection {collection_id} not found")
+        return source
 
     @retry_on_connection_error
     async def merge_patch_collection(
@@ -2110,19 +2222,52 @@ class DatabaseLogic(BaseDatabaseLogic):
         return catalogs, next_token, matched
 
     @retry_on_connection_error
-    async def create_catalog(self, catalog: dict, refresh: bool = False) -> None:
+    async def create_catalog(
+        self, catalog: dict, refresh: bool = False, upsert: bool = True
+    ) -> None:
         """Create a catalog in Elasticsearch.
 
         Args:
             catalog (dict): The catalog document to create.
             refresh (bool): Whether to refresh the index after creation.
+            upsert (bool): Whether to overwrite an existing catalog. Updates,
+                links and unlinks use the default; new catalogs use False.
+
+        Raises:
+            ConflictError: If a non-Catalog document (e.g. a Collection) already
+                exists with the same id, or if create-only indexing conflicts.
         """
-        await self.client.index(
-            index=COLLECTIONS_INDEX,
-            id=catalog.get("id"),
-            body=catalog,
-            refresh=refresh,
-        )
+        doc_id = catalog.get("id")
+
+        # The collections index is shared with Collection documents; a catalog
+        # write must never overwrite a Collection.
+        try:
+            existing = await self.client.get(index=COLLECTIONS_INDEX, id=doc_id)
+        except ESNotFoundError:
+            existing = None
+        if existing and existing["_source"].get("type") != "Catalog":
+            raise ConflictError(
+                f"Cannot create catalog {doc_id}: a non-Catalog document "
+                "with this id already exists"
+            )
+
+        try:
+            await self.client.index(
+                index=COLLECTIONS_INDEX,
+                id=doc_id,
+                body=catalog,
+                refresh=refresh,
+                **({} if upsert else {"op_type": "create"}),
+            )
+        except ESConflictError:
+            raise ConflictError(
+                f"A catalog or collection with id {catalog.get('id')} already exists"
+            )
+        except Exception as e:
+            logger.error(
+                f"Error creating catalog {catalog.get('id')}: {e}", exc_info=True
+            )
+            raise
 
     @retry_on_connection_error
     async def find_catalog(self, catalog_id: str) -> dict:
@@ -2156,12 +2301,30 @@ class DatabaseLogic(BaseDatabaseLogic):
         Args:
             catalog_id (str): The ID of the catalog to delete.
             refresh (bool): Whether to refresh the index after deletion.
+
+        Raises:
+            NotFoundError: If the document does not exist or is not a Catalog
+                (e.g. a Collection sharing the same index). Deleting a catalog
+                must never remove Collection or Item data.
         """
-        await self.client.delete(
-            index=COLLECTIONS_INDEX,
-            id=catalog_id,
-            refresh=refresh,
-        )
+        # Verify the document exists and is a Catalog before deleting; the
+        # collections index is shared with Collection documents.
+        await self.find_catalog(catalog_id)
+
+        try:
+            await unlink_catalog_children_shared(self.client, catalog_id)
+            await self.client.delete(
+                index=COLLECTIONS_INDEX,
+                id=catalog_id,
+                refresh=refresh,
+            )
+        except ESNotFoundError:
+            raise NotFoundError(f"Catalog {catalog_id} not found")
+        except ConflictError:
+            raise
+        except Exception as e:
+            logger.error(f"Error deleting catalog {catalog_id}: {e}", exc_info=True)
+            raise
 
     @retry_on_connection_error
     async def get_catalog_children(
@@ -2309,7 +2472,18 @@ class DatabaseLogic(BaseDatabaseLogic):
         if catalog_id not in catalog["parent_ids"]:
             catalog["parent_ids"].append(catalog_id)
 
-        await self.create_catalog(catalog, refresh=self.async_settings.database_refresh)
+        try:
+            await self.create_catalog(
+                catalog,
+                refresh=self.async_settings.database_refresh,
+                upsert=False,
+            )
+        except Exception as e:
+            logger.error(
+                f"Error creating sub-catalog {catalog.get('id')} under catalog {catalog_id}: {e}",
+                exc_info=True,
+            )
+            raise
         return catalog
 
     @retry_on_connection_error
@@ -2342,9 +2516,16 @@ class DatabaseLogic(BaseDatabaseLogic):
         if catalog_id not in collection["parent_ids"]:
             collection["parent_ids"].append(catalog_id)
 
-        await self.create_collection(
-            collection, refresh=self.async_settings.database_refresh
-        )
+        try:
+            await self.create_collection(
+                collection, refresh=self.async_settings.database_refresh
+            )
+        except Exception as e:
+            logger.error(
+                f"Error creating collection {collection.get('id')} in catalog {catalog_id}: {e}",
+                exc_info=True,
+            )
+            raise
         return collection
 
     @retry_on_connection_error
@@ -2356,31 +2537,10 @@ class DatabaseLogic(BaseDatabaseLogic):
     ) -> Any:
         """Get a specific collection within a catalog.
 
-        Args:
-            catalog_id (str): The ID of the parent catalog.
-            collection_id (str): The ID of the collection.
-            request (Any): The request object.
-
-        Returns:
-            The collection object.
-
-        Raises:
-            NotFoundError: If the collection or catalog does not exist or are not related.
+        Validation is now handled securely by CatalogsClient.
+        Just return the collection.
         """
-        # Ensure parent catalog exists
-        await self.find_catalog(catalog_id)
-
-        # Get collection
-        collection = await self.find_collection(collection_id)
-
-        # Verify relationship: catalog_id must be in parent_ids
-        parent_ids = collection.get("parent_ids", [])
-        if catalog_id not in parent_ids:
-            raise NotFoundError(
-                f"Collection {collection_id} is not linked to catalog {catalog_id}"
-            )
-
-        return collection
+        return await self.find_collection(collection_id)
 
     @retry_on_connection_error
     async def get_catalog_collection_items(
@@ -2400,12 +2560,9 @@ class DatabaseLogic(BaseDatabaseLogic):
     ) -> Any:
         """Get items for a collection within a catalog.
 
-        Currently, this just proxies to the standard get_items functionality.
-        The relationship check is performed by `get_catalog_collection`.
+        Hierarchy validation is already performed by CatalogsClient.
+        Skip the redundant DB checks and go straight to the search.
         """
-        # Verify strict hierarchy access if needed
-        await self.get_catalog_collection(catalog_id, collection_id, request)
-
         # Build a Search object scoped to this collection
         search = self.make_search()
         search = self.apply_collections_filter(search, [collection_id])
@@ -2417,10 +2574,8 @@ class DatabaseLogic(BaseDatabaseLogic):
         if datetime:
             search, datetime_search = self.apply_datetime_filter(search, datetime)
 
-        # Sorting for scoped items currently mirrors the global items behavior; the
-        # API layer typically parses sortby, so we leave sort_param as None here.
         sort_param = None
-        # ...existing code...
+
         return await self.execute_search(
             search=search,
             limit=limit or 10,
@@ -2438,10 +2593,10 @@ class DatabaseLogic(BaseDatabaseLogic):
         item_id: str,
         request: Any,
     ) -> Any:
-        """Get a specific item from a collection within a catalog."""
-        # Check hierarchy
-        await self.get_catalog_collection(catalog_id, collection_id, request)
+        """Get a specific item from a collection within a catalog.
 
+        Hierarchy validation is already performed by CatalogsClient.
+        """
         return await self.get_one_item(collection_id, item_id)
 
     @retry_on_connection_error
@@ -2452,12 +2607,16 @@ class DatabaseLogic(BaseDatabaseLogic):
         request: Any,
     ) -> Any:
         """Update a catalog."""
-        return await update_catalog_in_index_shared(
-            es_client=self.client,
-            catalog_id=catalog_id,
-            catalog=catalog,
-            refresh=self.async_settings.database_refresh,
-        )
+        try:
+            return await update_catalog_in_index_shared(
+                es_client=self.client,
+                catalog_id=catalog_id,
+                catalog=catalog,
+                refresh=self.async_settings.database_refresh,
+            )
+        except Exception as e:
+            logger.error(f"Error updating catalog {catalog_id}: {e}", exc_info=True)
+            raise
 
     @retry_on_connection_error
     async def get_catalog(

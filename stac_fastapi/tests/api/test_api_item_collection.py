@@ -303,3 +303,112 @@ async def test_item_collection_fields_extension_return_all_properties(
             assert feature["properties"][expected_prop][0:19] == expected_value[0:19]
         else:
             assert feature["properties"][expected_prop] == expected_value
+
+
+@pytest.mark.asyncio
+async def test_create_item_nonexistent_collection_fails_fast(
+    app_client, txn_client, load_test_data
+):
+    """Test that creating an item in a non-existent collection fails immediately with 404.
+
+    This verifies the router-level fail-fast check prevents wasted preprocessing/validation.
+    """
+    item = load_test_data("test_item.json")
+    item["collection"] = "nonexistent-collection"
+    item["id"] = "test-item-fail-fast"
+
+    # POST single item to non-existent collection
+    resp = await app_client.post(
+        "/collections/nonexistent-collection/items",
+        json=item,
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_create_feature_collection_nonexistent_collection_fails_fast(
+    app_client, txn_client, load_test_data
+):
+    """Test that creating a FeatureCollection in a non-existent collection fails immediately with 404.
+
+    This verifies the router-level fail-fast check prevents wasted preprocessing/validation.
+    """
+    item = load_test_data("test_item.json")
+    item["id"] = "test-item-1"
+
+    feature_collection = {
+        "type": "FeatureCollection",
+        "features": [item],
+    }
+
+    # POST FeatureCollection to non-existent collection
+    resp = await app_client.post(
+        "/collections/nonexistent-collection/items",
+        json=feature_collection,
+    )
+    assert resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_create_item_collection_mismatch_rejected(
+    app_client, txn_client, load_test_data
+):
+    """Test that single items with mismatched collection IDs are rejected.
+
+    Verifies that an item claiming to belong to collection A cannot be uploaded
+    to the /collections/B/items endpoint.
+    """
+    test_collection = load_test_data("test_collection.json")
+    test_collection_id = "test-collection-mismatch"
+    test_collection["id"] = test_collection_id
+    await create_collection(txn_client, test_collection)
+
+    item = load_test_data("test_item.json")
+    item["id"] = "test-item-mismatch"
+    item["collection"] = "different-collection"  # Mismatch!
+
+    # POST item with mismatched collection ID
+    resp = await app_client.post(
+        f"/collections/{test_collection_id}/items",
+        json=item,
+    )
+    assert resp.status_code == 400
+    resp_json = resp.json()
+    assert (
+        "Collection ID from path does not match Collection ID from Item"
+        in resp_json["detail"]
+    )
+
+
+@pytest.mark.asyncio
+async def test_create_item_collection_auto_filled_when_missing(
+    app_client, txn_client, load_test_data
+):
+    """Test that single items without a collection field get it auto-filled from the URL path.
+
+    Verifies that the router automatically fills item.collection = collection_id from the URL
+    when the field is missing. Note: mismatched values are rejected, not auto-corrected.
+    """
+    test_collection = load_test_data("test_collection.json")
+    test_collection_id = "test-collection-auto-correct"
+    test_collection["id"] = test_collection_id
+    await create_collection(txn_client, test_collection)
+
+    item = load_test_data("test_item.json")
+    item["id"] = "test-item-auto-correct"
+    del item["collection"]  # Remove collection field
+
+    # POST item without collection field
+    resp = await app_client.post(
+        f"/collections/{test_collection_id}/items",
+        json=item,
+    )
+    assert resp.status_code == 201
+
+    # Verify the item was created with the correct collection
+    resp = await app_client.get(
+        f"/collections/{test_collection_id}/items/test-item-auto-correct"
+    )
+    assert resp.status_code == 200
+    resp_json = resp.json()
+    assert resp_json["collection"] == test_collection_id

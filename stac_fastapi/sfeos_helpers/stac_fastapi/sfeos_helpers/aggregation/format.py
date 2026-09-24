@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 
 from stac_fastapi.core.datetime_utils import datetime_to_str
-from stac_fastapi.extensions.core.aggregation.types import Aggregation
+from stac_fastapi.extensions.aggregation.types import Aggregation
 
 
 def frequency_agg(es_aggs: dict[str, Any], name: str, data_type: str) -> Aggregation:

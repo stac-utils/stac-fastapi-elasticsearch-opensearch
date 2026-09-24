@@ -6,11 +6,11 @@ import attr
 from fastapi import Path
 from typing_extensions import Annotated
 
-from stac_fastapi.extensions.core.aggregation.request import (
+from stac_fastapi.extensions.aggregation.request import (
     AggregationExtensionGetRequest,
     AggregationExtensionPostRequest,
 )
-from stac_fastapi.extensions.core.filter.request import (
+from stac_fastapi.extensions.filter.request import (
     FilterExtensionGetRequest,
     FilterExtensionPostRequest,
 )

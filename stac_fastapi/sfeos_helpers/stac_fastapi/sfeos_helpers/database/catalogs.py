@@ -8,9 +8,11 @@ the CatalogsExtension to maintain database-agnostic code in the core module.
 import base64
 import json
 import logging
+from collections.abc import Mapping
 from typing import Any
 
 from stac_fastapi.sfeos_helpers.mappings import COLLECTIONS_INDEX
+from stac_fastapi.types.errors import ConflictError
 
 logger = logging.getLogger(__name__)
 
@@ -265,3 +267,175 @@ async def search_children_with_pagination_shared(
     next_search_after = hits[-1].get("sort") if len(hits) == limit else None
 
     return children, total_hits, next_search_after
+
+
+_PARENT_CLEANUP_BATCH_SIZE = 500
+_PARENT_CLEANUP_MAX_PASSES = 3
+
+# Adds (params.add) or removes params.parent_id in one Collection's parent_ids,
+# so a link/unlink never rewrites the rest of the document.
+COLLECTION_PARENT_ID_SCRIPT = """
+    if (!'Collection'.equals(ctx._source.type)) {
+        ctx.op = 'noop';
+    } else if (params.add) {
+        if (ctx._source.parent_ids == null) {
+            ctx._source.parent_ids = new ArrayList();
+        }
+        if (ctx._source.parent_ids.contains(params.parent_id)) {
+            ctx.op = 'noop';
+        } else {
+            ctx._source.parent_ids.add(params.parent_id);
+        }
+    } else {
+        boolean removed = false;
+        if (ctx._source.parent_ids instanceof List) {
+            for (int i = ctx._source.parent_ids.size() - 1; i >= 0; i--) {
+                if (params.parent_id.equals(ctx._source.parent_ids.get(i))) {
+                    ctx._source.parent_ids.remove(i);
+                    removed = true;
+                }
+            }
+        }
+        if (!removed) {
+            ctx.op = 'noop';
+        }
+    }
+"""
+
+
+def _cleanup_response(response: Any) -> Mapping:
+    """Unwrap Elasticsearch responses and reject incomplete response objects."""
+    body = getattr(response, "body", response)
+    if not isinstance(body, Mapping):
+        raise RuntimeError("Malformed catalog parent cleanup response")
+    return body
+
+
+def _cleanup_counter(body: Mapping, key: str) -> int:
+    """Require explicit nonnegative integer counters, excluding booleans."""
+    value = body.get(key)
+    if type(value) is not int or value < 0:
+        raise RuntimeError(f"Invalid catalog parent cleanup counter: {key}")
+    return value
+
+
+def _check_cleanup_shards(response: Any, *, refresh: bool = False) -> Mapping:
+    """Require complete successful shards for refresh and edge verification."""
+    body = _cleanup_response(response)
+    shards = _cleanup_response(body.get("_shards"))
+    total = _cleanup_counter(shards, "total")
+    successful = _cleanup_counter(shards, "successful")
+    failed = _cleanup_counter(shards, "failed")
+    if (
+        not total
+        or not successful
+        or failed
+        or successful > total
+        or (not refresh and successful != total)
+        or shards.get("failures")
+    ):
+        raise RuntimeError("Incomplete catalog parent cleanup shard response")
+    return body
+
+
+def _check_parent_cleanup_update(response: Any) -> int:
+    """Reject failed or partial updates and return the version conflict count."""
+    body = _cleanup_response(response)
+    if body.get("timed_out") is not False:
+        raise RuntimeError("Catalog parent cleanup timed out or omitted timeout status")
+    counters = {
+        key: _cleanup_counter(body, key)
+        for key in (
+            "total",
+            "updated",
+            "deleted",
+            "noops",
+            "version_conflicts",
+            "batches",
+        )
+    }
+    failures = body.get("failures")
+    if not isinstance(failures, list):
+        raise RuntimeError("Malformed catalog parent cleanup failures")
+    for failure in failures:
+        if (
+            not isinstance(failure, Mapping)
+            or failure.get("status") != 409
+            or not isinstance(failure.get("cause"), Mapping)
+            or failure["cause"].get("type") != "version_conflict_engine_exception"
+        ):
+            raise RuntimeError("Catalog parent cleanup update failed")
+    conflicts = counters["version_conflicts"]
+    if (
+        counters["deleted"]
+        or counters["total"] != counters["updated"] + counters["noops"] + conflicts
+        or (counters["total"] and not counters["batches"])
+        or len(failures) > conflicts
+        or body.get("terminated_early", False) is not False
+    ):
+        raise RuntimeError("Incomplete catalog parent cleanup update")
+    return conflicts
+
+
+async def unlink_catalog_children_shared(es_client: Any, catalog_id: str) -> None:
+    """Unlink a catalog's direct children before deletion, without deleting data.
+
+    Successful updates are retained on failure, so retrying is idempotent. Callers
+    must serialize graph mutations: verification cannot fence concurrent writers.
+    This only cleans edges to the catalog being deleted, not historical orphans.
+
+    Raises:
+        ConflictError: Edges or version conflicts remain after three passes.
+        RuntimeError: Cleanup or verification returned an incomplete/failed response.
+    """
+    query = {
+        "bool": {
+            "filter": [
+                {"term": {"parent_ids": catalog_id}},
+                {"terms": {"type": ["Catalog", "Collection"]}},
+            ]
+        }
+    }
+    script = {
+        "lang": "painless",
+        "source": """
+            if (!(ctx._source.parent_ids instanceof List)) {
+                throw new IllegalArgumentException('parent_ids must be a list');
+            }
+            for (int i = ctx._source.parent_ids.size() - 1; i >= 0; i--) {
+                if (params.parent_id.equals(ctx._source.parent_ids.get(i))) {
+                    ctx._source.parent_ids.remove(i);
+                }
+            }
+        """,
+        "params": {"parent_id": catalog_id},
+    }
+    for _ in range(_PARENT_CLEANUP_MAX_PASSES):
+        # Refresh counts unassigned replicas in total; count verification below
+        # requires every queried primary shard to succeed.
+        _check_cleanup_shards(
+            await es_client.indices.refresh(index=COLLECTIONS_INDEX), refresh=True
+        )
+        response = await es_client.update_by_query(
+            index=COLLECTIONS_INDEX,
+            body={"query": query, "script": script},
+            scroll_size=_PARENT_CLEANUP_BATCH_SIZE,
+            conflicts="proceed",
+            wait_for_completion=True,
+            refresh=True,
+        )
+        conflicts = _check_parent_cleanup_update(response)
+        verification = _check_cleanup_shards(
+            await es_client.count(index=COLLECTIONS_INDEX, body={"query": query})
+        )
+        if (
+            verification.get("timed_out", False) is not False
+            or verification.get("terminated_early", False) is not False
+        ):
+            raise RuntimeError("Incomplete catalog parent cleanup verification")
+        remaining = _cleanup_counter(verification, "count")
+        if not conflicts and not remaining:
+            return
+    raise ConflictError(
+        f"Catalog {catalog_id} still has child relationships; retry deletion"
+    )

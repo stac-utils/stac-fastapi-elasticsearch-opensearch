@@ -23,6 +23,8 @@ app:
     pullPolicy: IfNotPresent
     # Overrides the image tag whose default is the chart appVersion
     tag: ""
+    # Automatically add -os for Opensearch and -es for Elasticsearch to the repository
+    addSuffix: true
 
   # Image pull secrets
   imagePullSecrets: []
@@ -172,9 +174,22 @@ app:
     ES_USE_SSL: "false"
     ES_VERIFY_CERTS: "false"
 
+  # Additional volumes and volume mounts for the application container
+  extraVolumeMounts: []
+  extraVolumes: []
+
+  # Additional containers to add to deployment
+  extraContainers: []
+
   # Additional environment variables from secrets
   envFromSecret: {}
     # ES_API_KEY: "es-api-key-secret"
+
+  # Extra environment variable
+  extraEnv: []
+
+  # Load environment variables using envFrom
+  envFrom: []
 
   # Database authentication configuration for bundled backends
   databaseAuth:
@@ -365,7 +380,7 @@ redis:
   # Optional override for the generated Redis fullname
   fullnameOverride: ""
   # Default Redis database index used by the application
-  database: 0
+  # database:
   architecture: standalone
   master:
     service:
@@ -381,6 +396,7 @@ redis:
     enabled: false
     host: ""
     port: 6379
+    # database:
     # Optional secret that stores the Redis password for the external instance
     passwordSecret: ""
     passwordKey: "redis-password"

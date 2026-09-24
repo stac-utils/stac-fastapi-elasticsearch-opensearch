@@ -22,6 +22,7 @@ else:
         database_logic as backend_database_logic_module,
     )
 
+from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.sfeos_helpers.database import (
     filter_indexes_by_datetime,
     filter_indexes_by_datetime_range,
@@ -829,7 +830,7 @@ async def test_apply_cql2_filter_checks_search_and_metadata(
     collection_ids,
     expected_metadata,
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+    if not get_bool_env("ENABLE_DATETIME_INDEX_FILTERING"):
         pytest.skip()
 
     queryables_mapping = {
@@ -921,7 +922,7 @@ async def test_resolve_cql2_indexes_with_collections_datetime(
     expected_index_param,
     expected_collection_ids,
 ):
-    if not os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+    if not get_bool_env("ENABLE_DATETIME_INDEX_FILTERING"):
         pytest.skip()
 
     index_selector = _make_selector(monkeypatch)
@@ -951,7 +952,7 @@ async def test_index_mapping_collections(ctx):
 
 @pytest.mark.asyncio
 async def test_index_mapping_items(txn_client, load_test_data):
-    if os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+    if get_bool_env("ENABLE_DATETIME_INDEX_FILTERING"):
         pytest.skip()
 
     collection = load_test_data("test_collection.json")

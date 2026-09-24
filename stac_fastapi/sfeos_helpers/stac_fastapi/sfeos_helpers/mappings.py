@@ -296,7 +296,14 @@ _ES_INDEX_NAME_UNSUPPORTED_CHARS_TABLE = str.maketrans(
 ITEM_INDICES = f"{ITEMS_ALIAS_PREFIX}*"
 
 DEFAULT_SORT = {
-    "properties.datetime": {"order": "desc"},
+    "properties.datetime": {
+        "order": "desc",
+        "missing": 0,
+    },
+    "properties.start_datetime": {
+        "order": "desc",
+        "missing": 0,
+    },
     "id": {"order": "desc"},
     "collection": {"order": "desc"},
 }
@@ -304,7 +311,7 @@ DEFAULT_SORT = {
 ES_ITEMS_SETTINGS = {
     "index": {
         "sort.field": list(DEFAULT_SORT.keys()),
-        "sort.order": [v["order"] for v in DEFAULT_SORT.values()],
+        "sort.order": [v["order"] for v in DEFAULT_SORT.values()],  # type: ignore
         "mapping.coerce": COERCE_GLOBAL,
     }
 }
@@ -403,6 +410,10 @@ _BASE_ES_COLLECTIONS_MAPPINGS = {
     "dynamic_templates": ES_MAPPINGS_DYNAMIC_TEMPLATES,
     "properties": {
         "id": {"type": "keyword"},
+        "title": {
+            "type": "text",
+            "fields": {"keyword": {"type": "keyword"}},
+        },
         "parent_ids": {"type": "keyword"},
         "bbox_shape": {"type": "geo_shape"},
         "extent.temporal.interval": {

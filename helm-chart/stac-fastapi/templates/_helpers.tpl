@@ -213,11 +213,16 @@ Create the image repository with tag
 {{- define "stac-fastapi.image" -}}
 {{- $registry := .Values.global.imageRegistry | default .Values.app.image.repository }}
 {{- $tag := .Values.app.image.tag | default .Chart.AppVersion }}
-{{- if eq .Values.backend "elasticsearch" }}
-{{- printf "%s-es:%s" $registry $tag }}
-{{- else if eq .Values.backend "opensearch" }}
-{{- printf "%s-os:%s" $registry $tag }}
+{{- $backend := .Values.backend }}
+{{- $suffix := "" }}
+{{- if .Values.app.image.addSuffix }}
+  {{- if eq $backend "elasticsearch" }}
+    {{- $suffix = "-es" }}
+  {{- else if eq $backend "opensearch" }}
+    {{- $suffix = "-os" }}
+  {{- end }}
 {{- end }}
+{{- printf "%s%s:%s" $registry $suffix $tag }}
 {{- end }}
 
 {{/*
@@ -226,9 +231,11 @@ Create environment variables for the application
 {{- define "stac-fastapi.environment" -}}
 {{- $env := default (dict) .Values.app.env -}}
 {{- $envFromSecret := default (dict) .Values.app.envFromSecret -}}
+{{- $extraEnv := default (dict) .Values.app.extraEnv -}}
 {{- $dbAuth := deepCopy (default (dict) .Values.app.databaseAuth) -}}
 {{- $opensearchSecurity := default (dict) .Values.opensearchSecurity -}}
 {{- $redisConfig := default (dict) .Values.redis -}}
+{{- $redisAuth := default (dict) (get $redisConfig "auth") -}}
 {{- $redisExternal := default (dict) (get $redisConfig "external") -}}
 {{- $redisEnabled := or ($redisConfig.enabled) (and $redisExternal ($redisExternal.enabled)) -}}
 {{- if and (eq .Values.backend "opensearch") (get $opensearchSecurity "generateAdminPassword") }}
@@ -301,6 +308,51 @@ Create environment variables for the application
     secretKeyRef:
       name: {{ $secretName }}
       key: {{ $key }}
+{{- end }}
+{{- range $i, $val := $extraEnv }}
+- {{ $val | toYaml | nindent 2 }}
+{{- end }}
+{{- if $redisEnabled }}
+{{- if not (hasKey $env "REDIS_ENABLE") }}
+- name: REDIS_ENABLE
+  value: "true"
+{{- end }}
+{{- if not (hasKey $env "REDIS_HOST") }}
+- name: REDIS_HOST
+  value: {{ include "stac-fastapi.redisHost" . | quote }}
+{{- end }}
+{{- if not (hasKey $env "REDIS_PORT") }}
+- name: REDIS_PORT
+  value: {{ include "stac-fastapi.redisPort" . | quote }}
+{{- end }}
+{{- if not (hasKey $env "REDIS_DB") }}
+{{- if and (.Values.redis.enabled) (not (and .Values.redis.external .Values.redis.external.enabled)) }}
+{{- if ne .Values.redis.database nil }}
+- name: REDIS_DB
+  value: {{ .Values.redis.database | quote }}
+{{- end }}
+{{- else if and .Values.redis.external .Values.redis.external.enabled }}
+{{- if ne .Values.redis.external.database nil }}
+- name: REDIS_DB
+  value: {{ (.Values.redis.external.database | default 0) | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- if not (or (hasKey $env "REDIS_PASSWORD") (hasKey $envFromSecret "REDIS_PASSWORD")) }}
+{{- if $redisAuth.enabled }}
+- name: REDIS_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ $redisAuth.existingSecret }}
+      key: {{ $redisAuth.existingSecretPasswordKey }}
+{{- else if and $redisExternal.passwordSecret $redisExternal.passwordKey }}
+- name: REDIS_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ $redisExternal.passwordSecret }}
+      key: {{ $redisExternal.passwordKey }}
+{{- end }}
+{{- end }}
 {{- end }}
 {{- end }}
 

@@ -13,6 +13,7 @@ from stac_pydantic import api
 
 from stac_fastapi.core.core import CoreClient
 from stac_fastapi.core.datetime_utils import datetime_to_str, now_to_rfc3339_str
+from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.types.core import LandingPageMixin
 
 from ..conftest import create_collection, create_item, refresh_indices
@@ -1002,10 +1003,160 @@ async def _search_and_get_ids(
 async def test_search_datetime_with_null_datetime(
     app_client, txn_client, load_test_data
 ):
-    if os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+    if get_bool_env("ENABLE_DATETIME_INDEX_FILTERING"):
         pytest.skip()
 
-    """Test datetime filtering when properties.datetime is null or set, ensuring start_datetime and end_datetime are set when datetime is null."""
+    # Disable STAC validator for this test as test data may have schema violations
+    original_validator_setting = os.getenv("ENABLE_STAC_VALIDATOR")
+    os.environ.pop("ENABLE_STAC_VALIDATOR", None)
+
+    try:
+        """Test datetime filtering when properties.datetime is null or set, ensuring start_datetime and end_datetime are set when datetime is null."""
+        # Setup: Create test collection
+        test_collection = load_test_data("test_collection.json")
+        try:
+            await create_collection(txn_client, collection=test_collection)
+        except Exception as e:
+            logger.error(f"Failed to create collection: {e}")
+            pytest.fail(f"Collection creation failed: {e}")
+
+        base_item = load_test_data("test_item.json")
+        collection_id = base_item["collection"]
+
+        # Item 1: Null datetime, valid start/end datetimes
+        null_dt_item = deepcopy(base_item)
+        null_dt_item["id"] = "null-datetime-item"
+        null_dt_item["properties"]["datetime"] = None
+        null_dt_item["properties"]["start_datetime"] = "2020-01-01T00:00:00Z"
+        null_dt_item["properties"]["end_datetime"] = "2020-01-02T00:00:00Z"
+
+        # Item 2: Valid datetime, no start/end datetimes
+        valid_dt_item = deepcopy(base_item)
+        valid_dt_item["id"] = "valid-datetime-item"
+        valid_dt_item["properties"]["datetime"] = "2020-01-01T11:00:00Z"
+        valid_dt_item["properties"]["start_datetime"] = None
+        valid_dt_item["properties"]["end_datetime"] = None
+
+        # Item 3: Valid datetime outside range, valid start/end datetimes
+        range_item = deepcopy(base_item)
+        range_item["id"] = "range-item"
+        range_item["properties"]["datetime"] = "2020-01-03T00:00:00Z"
+        range_item["properties"]["start_datetime"] = "2020-01-01T00:00:00Z"
+        range_item["properties"]["end_datetime"] = "2020-01-02T00:00:00Z"
+
+        # Create valid items
+        items = [null_dt_item, valid_dt_item, range_item]
+        for item in items:
+            try:
+                await create_item(txn_client, item)
+            except Exception as e:
+                logger.error(f"Failed to create item {item['id']}: {e}")
+                pytest.fail(f"Item creation failed: {e}")
+
+        # Refresh indices once
+        try:
+            await refresh_indices(txn_client)
+        except Exception as e:
+            logger.error(f"Failed to refresh indices: {e}")
+            pytest.fail(f"Index refresh failed: {e}")
+
+        # Refresh indices once
+        try:
+            await refresh_indices(txn_client)
+        except Exception as e:
+            logger.error(f"Failed to refresh indices: {e}")
+            pytest.fail(f"Index refresh failed: {e}")
+
+        # Test 1: Exact datetime matching valid-datetime-item and null-datetime-item
+        feature_ids = await _search_and_get_ids(
+            app_client,
+            params={
+                "datetime": "2020-01-01T11:00:00Z",
+                "collections": [collection_id],
+            },
+        )
+        assert feature_ids == {
+            "valid-datetime-item",  # Matches properties__datetime
+            "null-datetime-item",  # Matches start_datetime <= datetime <= end_datetime
+        }, "Exact datetime search failed"
+
+        # Test 2: Range including valid-datetime-item, null-datetime-item, and range-item
+        feature_ids = await _search_and_get_ids(
+            app_client,
+            params={
+                "datetime": "2020-01-01T00:00:00Z/2020-01-03T00:00:00Z",
+                "collections": [collection_id],
+            },
+        )
+        assert feature_ids == {
+            "valid-datetime-item",  # Matches properties__datetime in range
+            "null-datetime-item",  # Matches start_datetime <= lte, end_datetime >= gte
+            "range-item",  # Matches properties__datetime in range
+        }, "Range search failed"
+
+        # Test 3: POST request for range matching null-datetime-item and valid-datetime-item
+        feature_ids = await _search_and_get_ids(
+            app_client,
+            method="post",
+            json={
+                "datetime": "2020-01-01T00:00:00Z/2020-01-02T00:00:00Z",
+                "collections": [collection_id],
+            },
+        )
+        assert feature_ids == {
+            "null-datetime-item",  # Matches start_datetime <= lte, end_datetime >= gte
+            "valid-datetime-item",  # Matches properties__datetime in range
+        }, "POST range search failed"
+
+        # Test 4: Exact datetime matching only range-item's datetime
+        feature_ids = await _search_and_get_ids(
+            app_client,
+            params={
+                "datetime": "2020-01-03T00:00:00Z",
+                "collections": [collection_id],
+            },
+        )
+        assert feature_ids == {
+            "range-item",  # Matches properties__datetime
+        }, "Exact datetime for range-item failed"
+
+        # Test 5: Range matching null-datetime-item but not range-item's datetime
+        feature_ids = await _search_and_get_ids(
+            app_client,
+            params={
+                "datetime": "2020-01-01T12:00:00Z/2020-01-02T12:00:00Z",
+                "collections": [collection_id],
+            },
+        )
+        assert feature_ids == {
+            "null-datetime-item",  # Overlaps: search range [12:00-01-01 to 12:00-02-01] overlaps item range [00:00-01-01 to 00:00-02-01]
+        }, "Range search excluding range-item datetime failed"
+
+        # Cleanup
+        try:
+            await txn_client.delete_collection(test_collection["id"])
+        except Exception as e:
+            logger.warning(f"Failed to delete collection: {e}")
+    finally:
+        # Restore original STAC validator setting
+        if original_validator_setting:
+            os.environ["ENABLE_STAC_VALIDATOR"] = original_validator_setting
+
+
+@pytest.mark.asyncio
+async def test_search_datetime_with_null_datetime_pagination(
+    app_client, txn_client, load_test_data
+):
+    if get_bool_env("ENABLE_DATETIME_INDEX_FILTERING"):
+        pytest.skip()
+
+    """Test pagination when properties.datetime is null.
+
+    This test verifies that:
+    1. Single-snapshot items (with datetime) appear first in descending sort
+    2. Time-range items (with datetime: null) are pushed to the end via fallback
+    3. Pagination correctly separates them across pages
+    """
     # Setup: Create test collection
     test_collection = load_test_data("test_collection.json")
     try:
@@ -1017,29 +1168,26 @@ async def test_search_datetime_with_null_datetime(
     base_item = load_test_data("test_item.json")
     collection_id = base_item["collection"]
 
-    # Item 1: Null datetime, valid start/end datetimes
-    null_dt_item = deepcopy(base_item)
-    null_dt_item["id"] = "null-datetime-item"
-    null_dt_item["properties"]["datetime"] = None
-    null_dt_item["properties"]["start_datetime"] = "2020-01-01T00:00:00Z"
-    null_dt_item["properties"]["end_datetime"] = "2020-01-02T00:00:00Z"
+    # Create a recent single-snapshot item (should appear first in desc sort)
+    snapshot_item = deepcopy(base_item)
+    snapshot_item["id"] = "test-snapshot-item-2026"
+    snapshot_item["properties"]["datetime"] = "2026-01-15T12:00:00Z"
 
-    # Item 2: Valid datetime, no start/end datetimes
-    valid_dt_item = deepcopy(base_item)
-    valid_dt_item["id"] = "valid-datetime-item"
-    valid_dt_item["properties"]["datetime"] = "2020-01-01T11:00:00Z"
-    valid_dt_item["properties"]["start_datetime"] = None
-    valid_dt_item["properties"]["end_datetime"] = None
+    # Create time-range items with null datetime (should be pushed to end)
+    null_dt_item1 = deepcopy(base_item)
+    null_dt_item1["id"] = "test-time-range-item-2020-01"
+    null_dt_item1["properties"]["datetime"] = None
+    null_dt_item1["properties"]["start_datetime"] = "2020-01-01T00:00:00Z"
+    null_dt_item1["properties"]["end_datetime"] = "2020-01-02T00:00:00Z"
 
-    # Item 3: Valid datetime outside range, valid start/end datetimes
-    range_item = deepcopy(base_item)
-    range_item["id"] = "range-item"
-    range_item["properties"]["datetime"] = "2020-01-03T00:00:00Z"
-    range_item["properties"]["start_datetime"] = "2020-01-01T00:00:00Z"
-    range_item["properties"]["end_datetime"] = "2020-01-02T00:00:00Z"
+    null_dt_item2 = deepcopy(base_item)
+    null_dt_item2["id"] = "test-time-range-item-2020-02"
+    null_dt_item2["properties"]["datetime"] = None
+    null_dt_item2["properties"]["start_datetime"] = "2020-01-02T00:00:00Z"
+    null_dt_item2["properties"]["end_datetime"] = "2020-01-03T00:00:00Z"
 
-    # Create valid items
-    items = [null_dt_item, valid_dt_item, range_item]
+    # Create all items
+    items = [snapshot_item, null_dt_item1, null_dt_item2]
     for item in items:
         try:
             await create_item(txn_client, item)
@@ -1054,77 +1202,63 @@ async def test_search_datetime_with_null_datetime(
         logger.error(f"Failed to refresh indices: {e}")
         pytest.fail(f"Index refresh failed: {e}")
 
-    # Refresh indices once
-    try:
-        await refresh_indices(txn_client)
-    except Exception as e:
-        logger.error(f"Failed to refresh indices: {e}")
-        pytest.fail(f"Index refresh failed: {e}")
-
-    # Test 1: Exact datetime matching valid-datetime-item and null-datetime-item
-    feature_ids = await _search_and_get_ids(
-        app_client,
+    # PAGE 1: Fetch with limit=1, should get the snapshot item (newest first)
+    response = await app_client.get(
+        "/search",
         params={
-            "datetime": "2020-01-01T11:00:00Z",
-            "collections": [collection_id],
+            "limit": 1,
+            "collections": collection_id,
         },
     )
-    assert feature_ids == {
-        "valid-datetime-item",  # Matches properties__datetime
-        "null-datetime-item",  # Matches start_datetime <= datetime <= end_datetime
-    }, "Exact datetime search failed"
+    assert response.status_code == 200
+    page1_data = response.json()
+    assert len(page1_data["features"]) == 1
 
-    # Test 2: Range including valid-datetime-item, null-datetime-item, and range-item
-    feature_ids = await _search_and_get_ids(
-        app_client,
+    # ASSERTION: The 2026 single-snapshot item MUST be first
+    assert (
+        page1_data["features"][0]["id"] == "test-snapshot-item-2026"
+    ), "Snapshot item with datetime should appear first in descending sort"
+
+    # Get pagination token for next page
+    next_token = None
+    for link in page1_data.get("links", []):
+        if link.get("rel") == "next":
+            # For GET requests, token is in the href URL
+            if link.get("method") == "GET" or "href" in link:
+                from urllib.parse import parse_qs, urlparse
+
+                parsed_url = urlparse(link.get("href", ""))
+                query_params = parse_qs(parsed_url.query)
+                next_token = query_params.get("token", [None])[0]
+            # For POST requests, token is in the body
+            else:
+                next_token = link.get("body", {}).get("token")
+            break
+
+    assert next_token is not None, "Expected next token for pagination"
+
+    # PAGE 2: Fetch next page with token
+    page2_response = await app_client.get(
+        "/search",
         params={
-            "datetime": "2020-01-01T00:00:00Z/2020-01-03T00:00:00Z",
-            "collections": [collection_id],
+            "limit": 1,
+            "collections": collection_id,
+            "token": next_token,
         },
     )
-    assert feature_ids == {
-        "valid-datetime-item",  # Matches properties__datetime in range
-        "null-datetime-item",  # Matches start_datetime <= lte, end_datetime >= gte
-        "range-item",  # Matches properties__datetime in range
-    }, "Range search failed"
+    assert page2_response.status_code == 200
+    page2_data = page2_response.json()
+    assert len(page2_data["features"]) == 1
 
-    # Test 3: POST request for range matching null-datetime-item and valid-datetime-item
-    feature_ids = await _search_and_get_ids(
-        app_client,
-        method="post",
-        json={
-            "datetime": "2020-01-01T00:00:00Z/2020-01-02T00:00:00Z",
-            "collections": [collection_id],
-        },
+    # ASSERTION: A time-range item was successfully pushed to page 2
+    page2_item_id = page2_data["features"][0]["id"]
+    assert page2_item_id in [
+        "test-time-range-item-2020-01",
+        "test-time-range-item-2020-02",
+    ], (
+        "Time-range item with datetime: null should appear on page 2 "
+        "due to fallback to epoch 0 (ancient past)"
     )
-    assert feature_ids == {
-        "null-datetime-item",  # Matches start_datetime <= lte, end_datetime >= gte
-        "valid-datetime-item",  # Matches properties__datetime in range
-    }, "POST range search failed"
-
-    # Test 4: Exact datetime matching only range-item's datetime
-    feature_ids = await _search_and_get_ids(
-        app_client,
-        params={
-            "datetime": "2020-01-03T00:00:00Z",
-            "collections": [collection_id],
-        },
-    )
-    assert feature_ids == {
-        "range-item",  # Matches properties__datetime
-    }, "Exact datetime for range-item failed"
-
-    # Test 5: Range matching null-datetime-item but not range-item's datetime
-    feature_ids = await _search_and_get_ids(
-        app_client,
-        params={
-            "datetime": "2020-01-01T12:00:00Z/2020-01-02T12:00:00Z",
-            "collections": [collection_id],
-        },
-    )
-    assert feature_ids == {
-        "null-datetime-item",  # Overlaps: search range [12:00-01-01 to 12:00-02-01] overlaps item range [00:00-01-01 to 00:00-02-01]
-    }, "Range search excluding range-item datetime failed"
 
     # Cleanup
     try:

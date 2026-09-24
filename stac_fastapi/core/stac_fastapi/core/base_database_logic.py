@@ -143,9 +143,28 @@ class BaseDatabaseLogic(abc.ABC):
 
     @abc.abstractmethod
     async def update_collection(
-        self, collection_id: str, collection: Collection, **kwargs: Any
+        self,
+        collection_id: str,
+        collection: Collection,
+        preserve_parent_ids: bool = False,
+        **kwargs: Any,
     ) -> None:
         """Update a collection in the database."""
+        pass
+
+    @abc.abstractmethod
+    async def update_collection_parent_ids(
+        self,
+        collection_id: str,
+        catalog_id: str,
+        add: bool,
+        refresh: bool | str = False,
+    ) -> dict:
+        """Atomically add or remove one catalog id in a collection's parent_ids.
+
+        Returns:
+            The stored collection after the update.
+        """
         pass
 
     @abc.abstractmethod
@@ -190,7 +209,9 @@ class BaseDatabaseLogic(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def create_catalog(self, catalog: dict, refresh: bool = False) -> None:
+    async def create_catalog(
+        self, catalog: dict, refresh: bool = False, upsert: bool = True
+    ) -> None:
         """Create a catalog in the database."""
         pass
 
@@ -201,7 +222,12 @@ class BaseDatabaseLogic(abc.ABC):
 
     @abc.abstractmethod
     async def delete_catalog(self, catalog_id: str, refresh: bool = False) -> None:
-        """Delete a catalog from the database."""
+        """Delete a catalog from the database.
+
+        Implementations MUST verify the document exists and is a Catalog
+        before deleting, raising NotFoundError otherwise; deleting a catalog
+        must never remove Collection or Item data.
+        """
         pass
 
     @abc.abstractmethod

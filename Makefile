@@ -22,11 +22,15 @@ run_os = docker compose \
 	-e PY_IGNORE_IMPORTMISMATCH=1 \
 	-e APP_HOST=${APP_HOST} \
 	-e APP_PORT=${OS_APP_PORT} \
+	$(OS_TEST_ARGS) \
 	app-opensearch
+
+# Disable the compose.yml rate limit for test runs; the session-scoped test app shares one limiter.
+test test-opensearch test-opensearch-catalogs test-opensearch-validation test-datetime-filtering-os: OS_TEST_ARGS = -e STAC_FASTAPI_RATE_LIMIT=
 
 .PHONY: image-es-os
 image-es-os:
-    docker build -f dockerfiles/Dockerfile.dev.es-os -t stac-utils/stac-fastapi-es-os:latest .
+	docker build -f dockerfiles/Dockerfile.dev.es-os -t stac-utils/stac-fastapi-es-os:latest .
 
 .PHONY: image-deploy-es
 image-deploy-es:
@@ -72,7 +76,12 @@ test-elasticsearch: image-es-os
 
 .PHONY: test-elasticsearch-catalogs
 test-elasticsearch-catalogs: image-es-os
-	-$(run_es) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd stac_fastapi/tests/ && pytest extensions/test_catalogs.py -v'
+	-$(run_es) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd stac_fastapi/tests/ && pytest extensions/test_catalogs.py -v && pytest extensions/test_catalogs_search.py -v'
+	docker compose down
+
+.PHONY: test-elasticsearch-validation
+test-elasticsearch-validation: image-es-os
+	-$(run_es) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh elasticsearch:9200 && cd stac_fastapi/tests/ && pytest api/test_api_stac_validator.py -v'
 	docker compose down
 
 .PHONY: test-opensearch
@@ -83,6 +92,11 @@ test-opensearch: image-es-os
 .PHONY: test-opensearch-catalogs
 test-opensearch-catalogs: image-es-os
 	-$(run_os) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh opensearch:9202 && cd stac_fastapi/tests/ && pytest extensions/test_catalogs.py -v'
+	docker compose down
+
+.PHONY: test-opensearch-validation
+test-opensearch-validation: image-es-os
+	-$(run_os) /bin/bash -c 'export && ./scripts/wait-for-it-es.sh opensearch:9202 && cd stac_fastapi/tests/ && pytest api/test_api_stac_validator.py -v'
 	docker compose down
 
 .PHONY: test-datetime-filtering-es

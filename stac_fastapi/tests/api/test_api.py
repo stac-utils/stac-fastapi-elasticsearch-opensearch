@@ -10,11 +10,14 @@ import pytest
 
 from stac_fastapi.sfeos_helpers.search_engine import DatetimeIndexInserter
 
+from ..conftest import get_flattened_routes
+
 try:
     from opensearchpy import exceptions
 except ImportError:
     from elasticsearch import exceptions
 
+from stac_fastapi.core.utilities import get_bool_env
 from stac_fastapi.sfeos_helpers.database import (
     retry_on_connection_error,
     retry_on_datetime_not_found,
@@ -71,15 +74,21 @@ ROUTES = {
     "DELETE /catalogs/{catalog_id}",
     "GET /catalogs/{catalog_id}/catalogs",
     "POST /catalogs/{catalog_id}/catalogs",
+    "GET /catalogs/{catalog_id}/catalogs/{sub_catalog_id}",
+    "PUT /catalogs/{catalog_id}/catalogs/{sub_catalog_id}",
     "DELETE /catalogs/{catalog_id}/catalogs/{sub_catalog_id}",
     "GET /catalogs/{catalog_id}/children",
+    "GET /catalogs/{catalog_id}/conformance",
+    "GET /catalogs/{catalog_id}/queryables",
     "GET /catalogs/{catalog_id}/collections",
     "POST /catalogs/{catalog_id}/collections",
     "GET /catalogs/{catalog_id}/collections/{collection_id}",
+    "PUT /catalogs/{catalog_id}/collections/{collection_id}",
     "DELETE /catalogs/{catalog_id}/collections/{collection_id}",
     "GET /catalogs/{catalog_id}/collections/{collection_id}/items",
     "GET /catalogs/{catalog_id}/collections/{collection_id}/items/{item_id}",
-    "",
+    "GET /catalogs/{catalog_id}/search",
+    "POST /catalogs/{catalog_id}/search",
 }
 
 
@@ -107,7 +116,7 @@ async def test_api_headers(app_client):
 
 @pytest.mark.asyncio
 async def test_router(app):
-    api_routes = set([f"{list(route.methods)[0]} {route.path}" for route in app.routes])
+    api_routes = get_flattened_routes(app)
     print(api_routes)
     assert len(api_routes - ROUTES) == 0
 
@@ -534,7 +543,7 @@ async def test_search_point_does_not_intersect(app_client, ctx):
 
 @pytest.mark.asyncio
 async def test_datetime_response_format(app_client, txn_client, ctx):
-    if os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+    if get_bool_env("ENABLE_DATETIME_INDEX_FILTERING"):
         pytest.skip()
 
     first_item = dict(ctx.item)
@@ -574,7 +583,7 @@ async def test_datetime_response_format(app_client, txn_client, ctx):
 
 @pytest.mark.asyncio
 async def test_datetime_non_interval(app_client, txn_client, ctx):
-    if os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+    if get_bool_env("ENABLE_DATETIME_INDEX_FILTERING"):
         pytest.skip()
 
     first_item = dict(ctx.item)
@@ -613,7 +622,7 @@ async def test_datetime_non_interval(app_client, txn_client, ctx):
 
 @pytest.mark.asyncio
 async def test_datetime_interval(app_client, txn_client, ctx):
-    if os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+    if get_bool_env("ENABLE_DATETIME_INDEX_FILTERING"):
         pytest.skip()
 
     first_item = dict(ctx.item)
@@ -652,7 +661,7 @@ async def test_datetime_interval(app_client, txn_client, ctx):
 
 @pytest.mark.asyncio
 async def test_datetime_bad_non_interval(app_client, txn_client, ctx):
-    if os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+    if get_bool_env("ENABLE_DATETIME_INDEX_FILTERING"):
         pytest.skip()
 
     first_item = dict(ctx.item)
@@ -691,7 +700,7 @@ async def test_datetime_bad_non_interval(app_client, txn_client, ctx):
 
 @pytest.mark.asyncio
 async def test_datetime_bad_interval(app_client, txn_client, ctx):
-    if os.getenv("ENABLE_DATETIME_INDEX_FILTERING"):
+    if get_bool_env("ENABLE_DATETIME_INDEX_FILTERING"):
         pytest.skip()
 
     first_item = dict(ctx.item)
@@ -893,58 +902,67 @@ async def test_search_line_string_intersects(app_client, ctx):
 async def test_big_int_eo_search(
     app_client, txn_client, test_item, test_collection, value, expected
 ):
-    random_str = "".join(random.choice("abcdef") for _ in range(5))
-    collection_id = f"test-collection-eo-{random_str}"
-
-    test_collection["id"] = collection_id
-    test_collection["stac_extensions"] = [
-        "https://stac-extensions.github.io/eo/v2.0.0/schema.json"
-    ]
-
-    test_item["collection"] = collection_id
-    test_item["stac_extensions"] = test_collection["stac_extensions"]
-
-    # Remove "eo:bands" to simplify the test
-    del test_item["properties"]["eo:bands"]
-
-    # Attribute to test
-    attr = "eo:full_width_half_max"
+    # Disable STAC validator for this test as test data may have schema violations
+    original_validator_setting = os.getenv("ENABLE_STAC_VALIDATOR")
+    os.environ.pop("ENABLE_STAC_VALIDATOR", None)
 
     try:
-        await create_collection(txn_client, test_collection)
-    except ConflictError:
-        pass
+        random_str = "".join(random.choice("abcdef") for _ in range(5))
+        collection_id = f"test-collection-eo-{random_str}"
 
-    # Create items with deterministic offsets
-    for val in [value, value + 100, value - 100]:
-        item = deepcopy(test_item)
-        item["id"] = str(uuid.uuid4())
-        item["properties"][attr] = val
-        await create_item(txn_client, item)
+        test_collection["id"] = collection_id
+        test_collection["stac_extensions"] = [
+            "https://stac-extensions.github.io/eo/v2.0.0/schema.json"
+        ]
 
-    # Search for the exact value
-    params = {
-        "collections": [collection_id],
-        "filter": {
-            "args": [
-                {
-                    "args": [
-                        {"property": f"properties.{attr}"},
-                        value,
-                    ],
-                    "op": "=",
-                }
-            ],
-            "op": "and",
-        },
-    }
-    resp = await app_client.post("/search", json=params)
-    resp_json = resp.json()
+        test_item["collection"] = collection_id
+        test_item["stac_extensions"] = test_collection["stac_extensions"]
 
-    # Validate results
-    results = {x["properties"][attr] for x in resp_json["features"]}
-    assert len(results) == expected
-    assert results == {value}
+        # Remove "eo:bands" to simplify the test
+        del test_item["properties"]["eo:bands"]
+
+        # Attribute to test
+        attr = "eo:full_width_half_max"
+
+        try:
+            await create_collection(txn_client, test_collection)
+        except ConflictError:
+            pass
+
+        # Create items with deterministic offsets
+        for val in [value, value + 100, value - 100]:
+            item = deepcopy(test_item)
+            item["id"] = str(uuid.uuid4())
+            item["properties"][attr] = val
+            await create_item(txn_client, item)
+
+        # Search for the exact value
+        params = {
+            "collections": [collection_id],
+            "filter": {
+                "args": [
+                    {
+                        "args": [
+                            {"property": f"properties.{attr}"},
+                            value,
+                        ],
+                        "op": "=",
+                    }
+                ],
+                "op": "and",
+            },
+        }
+        resp = await app_client.post("/search", json=params)
+        resp_json = resp.json()
+
+        # Validate results
+        results = {x["properties"][attr] for x in resp_json["features"]}
+        assert len(results) == expected
+        assert results == {value}
+    finally:
+        # Restore original STAC validator setting
+        if original_validator_setting:
+            os.environ["ENABLE_STAC_VALIDATOR"] = original_validator_setting
 
 
 @pytest.mark.asyncio
@@ -1089,6 +1107,7 @@ async def test_use_datetime_true(app_client, load_test_data, txn_client, monkeyp
 @pytest.mark.asyncio
 async def test_use_datetime_false(app_client, load_test_data, txn_client, monkeypatch):
     monkeypatch.setenv("USE_DATETIME", "false")
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "false")
 
     test_collection = load_test_data("test_collection.json")
     test_collection["id"] = "test-collection-datetime-false"

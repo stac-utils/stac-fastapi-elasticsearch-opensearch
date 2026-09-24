@@ -115,6 +115,58 @@ async def test_update_new_collection(app_client, load_test_data):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("validator_enabled", ["true", "false"])
+@pytest.mark.parametrize("target_exists", [True, False])
+async def test_collection_put_rejects_id_mismatch_without_changes(
+    app_client, ctx, monkeypatch, validator_enabled, target_exists
+):
+    """Reject mismatched ids before changing collections or item membership."""
+    collection_id = ctx.collection["id"]
+    item_url = f"/collections/{collection_id}/items/{ctx.item['id']}"
+    collection_before = await app_client.get(f"/collections/{collection_id}")
+    item_before = await app_client.get(item_url)
+    assert collection_before.status_code == item_before.status_code == 200
+
+    new_id = f"renamed-{uuid.uuid4()}"
+    uri_id = collection_id if target_exists else f"missing-{uuid.uuid4()}"
+    body = ctx.collection | {"id": new_id, "description": "Must not be saved"}
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", validator_enabled)
+
+    response = await app_client.put(f"/collections/{uri_id}", json=body)
+
+    assert response.status_code == 400
+    assert (await app_client.get(f"/collections/{new_id}")).status_code == 404
+    assert (
+        await app_client.get(f"/collections/{collection_id}")
+    ).json() == collection_before.json()
+    assert (await app_client.get(item_url)).json() == item_before.json()
+    if not target_exists:
+        assert (await app_client.get(f"/collections/{uri_id}")).status_code == 404
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("validator_enabled", ["true", "false"])
+async def test_collection_put_matching_id_preserves_item_membership(
+    app_client, ctx, monkeypatch, validator_enabled
+):
+    """Matching ids continue to update metadata without moving existing items."""
+    collection_id = ctx.collection["id"]
+    item_url = f"/collections/{collection_id}/items/{ctx.item['id']}"
+    item_before = await app_client.get(item_url)
+    assert item_before.status_code == 200
+    body = ctx.collection | {"description": "Updated description"}
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", validator_enabled)
+
+    response = await app_client.put(f"/collections/{collection_id}", json=body)
+
+    assert response.status_code == 200
+    stored = await app_client.get(f"/collections/{collection_id}")
+    assert stored.json()["id"] == collection_id
+    assert stored.json()["description"] == "Updated description"
+    assert (await app_client.get(item_url)).json() == item_before.json()
+
+
+@pytest.mark.asyncio
 async def test_collection_not_found(app_client):
     """Test read a collection which does not exist"""
     resp = await app_client.get("/collections/does-not-exist")
