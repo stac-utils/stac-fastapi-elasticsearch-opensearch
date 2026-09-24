@@ -272,6 +272,36 @@ async def search_children_with_pagination_shared(
 _PARENT_CLEANUP_BATCH_SIZE = 500
 _PARENT_CLEANUP_MAX_PASSES = 3
 
+# Adds (params.add) or removes params.parent_id in one Collection's parent_ids,
+# so a link/unlink never rewrites the rest of the document.
+COLLECTION_PARENT_ID_SCRIPT = """
+    if (!'Collection'.equals(ctx._source.type)) {
+        ctx.op = 'noop';
+    } else if (params.add) {
+        if (ctx._source.parent_ids == null) {
+            ctx._source.parent_ids = new ArrayList();
+        }
+        if (ctx._source.parent_ids.contains(params.parent_id)) {
+            ctx.op = 'noop';
+        } else {
+            ctx._source.parent_ids.add(params.parent_id);
+        }
+    } else {
+        boolean removed = false;
+        if (ctx._source.parent_ids instanceof List) {
+            for (int i = ctx._source.parent_ids.size() - 1; i >= 0; i--) {
+                if (params.parent_id.equals(ctx._source.parent_ids.get(i))) {
+                    ctx._source.parent_ids.remove(i);
+                    removed = true;
+                }
+            }
+        }
+        if (!removed) {
+            ctx.op = 'noop';
+        }
+    }
+"""
+
 
 def _cleanup_response(response: Any) -> Mapping:
     """Unwrap Elasticsearch responses and reject incomplete response objects."""

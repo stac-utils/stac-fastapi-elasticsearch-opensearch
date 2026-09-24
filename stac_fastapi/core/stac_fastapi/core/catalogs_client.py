@@ -840,13 +840,14 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         # If only an ID was provided (ObjectUri), the collection must already exist
         if is_object_uri:
             try:
-                existing = await self.database.find_collection(col_id)
-                self._add_parent_id(existing, catalog_id)
+                await self.database.find_collection(col_id)
             except NotFoundError:
                 raise NotFoundError(f"Collection {col_id} not found")
 
             try:
-                await self.database.update_collection(col_id, existing, refresh=True)
+                existing = await self.database.update_collection_parent_ids(
+                    col_id, catalog_id, add=True, refresh=True
+                )
             except Exception as e:
                 logger.error(
                     f"Error linking existing collection {col_id} to catalog {catalog_id} (ObjectUri): {e}",
@@ -1002,7 +1003,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
         links = [
             link
             for link in collection.links.root
-            if link.rel not in ("child", "children")
+            if link.rel not in ("parent", "child", "children")
         ]
         collection = collection.model_copy(
             update={"links": type(collection.links)(links)}
@@ -1059,11 +1060,9 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                 f"Collection {collection_id} not linked to catalog {catalog_id}"
             )
 
-        # Remove this catalog from parent_ids
-        self._remove_parent_id(collection_dict, catalog_id)
         try:
-            await self.database.update_collection(
-                collection_id, collection_dict, refresh=True
+            await self.database.update_collection_parent_ids(
+                collection_id, catalog_id, add=False, refresh=True
             )
         except Exception as e:
             logger.error(
