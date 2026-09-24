@@ -4809,6 +4809,36 @@ async def test_core_put_collection_retries_on_concurrent_membership_change(
     )
 
 
+def _links(body):
+    return sorted((link["rel"], link["href"]) for link in body["links"])
+
+
+def _related_hrefs(body):
+    return sorted(link["href"] for link in body["links"] if link["rel"] == "related")
+
+
+@pytest.mark.asyncio
+async def test_core_put_collection_response_links_match_get(
+    catalogs_app_client, load_test_data
+):
+    """The PUT response carries the same catalog links as a subsequent GET."""
+    catalog_ids, collection = await _collection_in_two_catalogs(
+        catalogs_app_client, load_test_data
+    )
+    collection["title"] = "Updated via core PUT"
+
+    put = await catalogs_app_client.put(
+        f"/collections/{collection['id']}", json=collection
+    )
+    assert put.status_code == 200
+    get = await catalogs_app_client.get(f"/collections/{collection['id']}")
+
+    assert _links(put.json()) == _links(get.json())
+    assert _related_hrefs(put.json()) == sorted(
+        f"http://test-server/catalogs/{cid}" for cid in catalog_ids
+    )
+
+
 async def _stored_collection(collection_id):
     from ..conftest import database
 
@@ -4870,6 +4900,47 @@ async def test_link_collection_keeps_concurrent_put_metadata(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("validator", ["true", "false"])
+async def test_patch_collection_response_links_match_get(
+    catalogs_app_client, load_test_data, monkeypatch, validator
+):
+    """Both PATCH paths return GET's links and store no derived links."""
+    catalog_ids, collection = await _collection_in_two_catalogs(
+        catalogs_app_client, load_test_data
+    )
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", validator)
+    patch = await catalogs_app_client.patch(
+        f"/collections/{collection['id']}",
+        json={"title": "Updated via PATCH"},
+        headers={"Content-Type": "application/merge-patch+json"},
+    )
+    assert patch.status_code == 200
+    get = await catalogs_app_client.get(f"/collections/{collection['id']}")
+
+    assert _links(patch.json()) == _links(get.json())
+    assert _related_hrefs(get.json()) == sorted(
+        f"http://test-server/catalogs/{cid}" for cid in catalog_ids
+    )
+
+
+@pytest.mark.asyncio
+async def test_core_post_collection_response_links_match_get(
+    catalogs_app_client, load_test_data
+):
+    """The POST response carries the same extension links as a subsequent GET."""
+    collection = load_test_data("test_collection.json")
+    collection["id"] = f"test-collection-{uuid.uuid4()}"
+
+    post = await catalogs_app_client.post("/collections", json=collection)
+    assert post.status_code == 201
+    get = await catalogs_app_client.get(f"/collections/{collection['id']}")
+
+    assert _links(post.json()) == _links(get.json())
+    assert "queryables" in {link["rel"] for link in post.json()["links"]}
+    assert _related_hrefs(post.json()) == []
+
+
+@pytest.mark.asyncio
 async def test_unlink_collection_keeps_concurrent_put_metadata(
     catalogs_app_client, load_test_data, monkeypatch
 ):
@@ -4877,7 +4948,6 @@ async def test_unlink_collection_keeps_concurrent_put_metadata(
     catalog_ids, collection = await _collection_in_two_catalogs(
         catalogs_app_client, load_test_data
     )
-
     fired = _put_after_first_collection_read(
         monkeypatch, catalogs_app_client, collection, "Updated during unlink"
     )

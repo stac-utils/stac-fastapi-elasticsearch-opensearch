@@ -1925,7 +1925,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         return CollectionSerializer.db_to_stac(
             collection,
             request,
-            extensions=[type(ext).__name__ for ext in self.database.extensions],
+            extensions=self.database.extensions,
         )
 
     @overrides
@@ -1980,7 +1980,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         return CollectionSerializer.db_to_stac(
             collection,
             request,
-            extensions=[type(ext).__name__ for ext in self.database.extensions],
+            extensions=self.database.extensions,
         )
 
     @overrides
@@ -2063,7 +2063,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
                 return CollectionSerializer.db_to_stac(
                     collection,
                     request,
-                    extensions=[type(ext).__name__ for ext in self.database.extensions],
+                    extensions=self.database.extensions,
                 )
 
             raise HTTPException(
@@ -2081,11 +2081,8 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             )
 
         # Convert DB collection to STAC dictionary for patching
-        stac_collection = CollectionSerializer.db_to_stac(
-            existing_collection,
-            request,
-            extensions=[type(ext).__name__ for ext in self.database.extensions],
-        )
+        # No extension names: this output is written back, so derived links must not be generated.
+        stac_collection = CollectionSerializer.db_to_stac(existing_collection, request)
         collection_dict = (
             stac_collection.model_dump(mode="json")
             if hasattr(stac_collection, "model_dump")
@@ -2126,7 +2123,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         return CollectionSerializer.db_to_stac(
             db_collection,
             request,
-            extensions=[type(ext).__name__ for ext in self.database.extensions],
+            extensions=self.database.extensions,
         )
 
     @overrides
