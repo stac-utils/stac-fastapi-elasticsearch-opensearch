@@ -4837,7 +4837,8 @@ async def test_core_put_collection_response_links_match_get(
     assert _related_hrefs(put.json()) == sorted(
         f"http://test-server/catalogs/{cid}" for cid in catalog_ids
     )
-        
+
+
 async def _stored_collection(collection_id):
     from ..conftest import database
 
