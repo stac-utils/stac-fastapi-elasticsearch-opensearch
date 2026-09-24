@@ -503,8 +503,13 @@ def operations_to_script(operations: list, create_nest: bool = False) -> dict:
     params: dict = {}
 
     for operation in operations:
-        path, value = ElasticPath(path=operation.path, value=operation.value)
-        operation.value = value
+        path = ElasticPath(path=operation.path, value=operation.value)
+
+        if es_key := path.asset_key:
+            operation.value["es_key"] = es_key
+
+        if alternate_key := path.alternate_key:
+            operation.value["alternate_key"] = alternate_key
 
         from_path, _ = (
             ElasticPath(path=operation.from_) if hasattr(operation, "from_") else None,

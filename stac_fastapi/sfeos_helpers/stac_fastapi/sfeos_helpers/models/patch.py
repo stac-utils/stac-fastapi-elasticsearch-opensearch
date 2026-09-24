@@ -84,11 +84,14 @@ class ElasticPath(BaseModel):
     variable_name: str | None = None
     param_key: str | None = None
 
+    asset_key: str | None = None
+    alternate_key: str | None = None
+
     model_config = ConfigDict(frozen=True)
 
     @model_validator(mode="before")
     @classmethod
-    def validate_model(cls, data: Any, value: Any):
+    def validate_model(cls, data: Any):
         """Set optional fields from JSON path.
 
         Args:
@@ -100,11 +103,11 @@ class ElasticPath(BaseModel):
         data["nest"] = "/".join(data["parts"])
 
         if data["nest"].strip("/") == "assets":
-            value["es_key"] = data["key"]
+            data["asset_key"] = data["key"]
             data["key"] = "-"
 
         if data["parts"][0] == "assets" and data["parts"][-1] == "alternate":
-            value["alternate_key"] = data["key"]
+            data["alternate_key"] = data["key"]
             data["key"] = "-"
 
         data["es_key"] = data["key"]
@@ -127,4 +130,4 @@ class ElasticPath(BaseModel):
         data["path"] = data["nest"] + "/" + "end" if data["key"] == -1 else data["key"]
         data["param_key"] = data["path"].translate(replacements)
 
-        return data, value
+        return data
