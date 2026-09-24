@@ -153,6 +153,21 @@ class BaseDatabaseLogic(abc.ABC):
         pass
 
     @abc.abstractmethod
+    async def update_collection_parent_ids(
+        self,
+        collection_id: str,
+        catalog_id: str,
+        add: bool,
+        refresh: bool | str = False,
+    ) -> dict:
+        """Atomically add or remove one catalog id in a collection's parent_ids.
+
+        Returns:
+            The stored collection after the update.
+        """
+        pass
+
+    @abc.abstractmethod
     async def delete_collection(
         self, collection_id: str, refresh: bool = False
     ) -> None:
