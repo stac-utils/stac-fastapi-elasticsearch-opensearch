@@ -4836,6 +4836,8 @@ async def test_core_put_collection_response_links_match_get(
     assert _links(put.json()) == _links(get.json())
     assert _related_hrefs(put.json()) == sorted(
         f"http://test-server/catalogs/{cid}" for cid in catalog_ids
+    )
+        
 async def _stored_collection(collection_id):
     from ..conftest import database
 
@@ -4902,6 +4904,9 @@ async def test_patch_collection_response_links_match_get(
     catalogs_app_client, load_test_data, monkeypatch, validator
 ):
     """Both PATCH paths return GET's links and store no derived links."""
+    catalog_ids, collection = await _collection_in_two_catalogs(
+        catalogs_app_client, load_test_data
+    )
     monkeypatch.setenv("ENABLE_STAC_VALIDATOR", validator)
     patch = await catalogs_app_client.patch(
         f"/collections/{collection['id']}",
@@ -4932,8 +4937,9 @@ async def test_core_post_collection_response_links_match_get(
     assert _links(post.json()) == _links(get.json())
     assert "queryables" in {link["rel"] for link in post.json()["links"]}
     assert _related_hrefs(post.json()) == []
-      
-      
+
+
+@pytest.mark.asyncio
 async def test_unlink_collection_keeps_concurrent_put_metadata(
     catalogs_app_client, load_test_data, monkeypatch
 ):
