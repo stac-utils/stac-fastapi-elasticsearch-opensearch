@@ -88,7 +88,7 @@ class ElasticPath(BaseModel):
 
     @model_validator(mode="before")
     @classmethod
-    def validate_model(cls, data: Any):
+    def validate_model(cls, data: Any, value: Any):
         """Set optional fields from JSON path.
 
         Args:
@@ -100,7 +100,11 @@ class ElasticPath(BaseModel):
         data["nest"] = "/".join(data["parts"])
 
         if data["nest"].strip("/") == "assets":
-            data["value"]["es_key"] = data["key"]
+            value["es_key"] = data["key"]
+            data["key"] = "-"
+
+        if data["parts"][0] == "assets" and data["parts"][-1] == "alternate":
+            value["alternate_key"] = data["key"]
             data["key"] = "-"
 
         data["es_key"] = data["key"]
@@ -123,4 +127,4 @@ class ElasticPath(BaseModel):
         data["path"] = data["nest"] + "/" + "end" if data["key"] == -1 else data["key"]
         data["param_key"] = data["path"].translate(replacements)
 
-        return data
+        return data, value
