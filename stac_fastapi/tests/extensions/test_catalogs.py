@@ -4680,7 +4680,7 @@ async def test_core_put_collection_ignores_body_parent_ids(
 
     await _assert_memberships(catalogs_app_client, collection["id"], catalog_ids)
     resp = await catalogs_app_client.get("/catalogs/bogus-catalog/collections")
-    assert collection["id"] not in {c["id"] for c in resp.json().get("collections", [])}
+    assert resp.status_code == 404
 
 
 @pytest.mark.asyncio
