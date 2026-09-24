@@ -34,7 +34,8 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 - Linking a collection to a catalog (`POST /catalogs/{catalog_id}/collections` with `{"id"}`) and unlinking it (`DELETE /catalogs/{catalog_id}/collections/{collection_id}`) now update only `parent_ids` in one atomic scripted update, so a concurrent collection `PUT` is no longer overwritten. The update retries on version conflicts and returns `409` if they persist. [#813](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/813)
 - Isolate JSON Patch script parameters so distinct and repeated values are not overwritten during PATCH operations. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
 - The Elasticsearch and OpenSearch module entrypoints now start when `.env` does not supply `APP_HOST`, `APP_PORT`, and `RELOAD`. Launchers preserve `.env` settings with process environment overrides and defaults of `0.0.0.0`, `8000`, and `true`. [#865](https://github.com/stac-utils/stac-fastapi-elasticsearch-opensearch/issues/865)
-- Fixed `make image-es-os` not rebuilding the dev image (recipe indented with spaces) and disabled the compose rate limit for OpenSearch `make test-*` targets so local catalogs tests don't fail with 429.
+- Fixed `make image-es-os` not rebuilding the dev image (recipe indented with spaces) and disabled the compose rate limit for OpenSearch `make test-*` targets so local catalogs tests don't fail with 429. ([#893](https://github.com/stac-utils/stac-fastapi/pull/893))
+
 
 ### Updated
 
