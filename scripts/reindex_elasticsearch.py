@@ -3,7 +3,7 @@ import time
 
 from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
 from stac_fastapi.elasticsearch.database_logic import create_index_templates
-from stac_fastapi.sfeos_helpers.mappings import COLLECTIONS_INDEX, ITEMS_INDEX_PREFIX
+from stac_fastapi.sfeos_helpers.mappings import COLLECTIONS_INDEX, ITEMS_ALIAS_PREFIX
 
 
 async def reindex(client, index, new_index, aliases):
@@ -68,7 +68,7 @@ async def run():
     for collection in collections["hits"]["hits"]:
 
         item_indexes = await client.indices.get_alias(
-            name=f"{ITEMS_INDEX_PREFIX}{collection['_id']}*"
+            name=f"{ITEMS_ALIAS_PREFIX}{collection['_id']}*"
         )
 
         for item_index, aliases in item_indexes.items():

@@ -190,6 +190,7 @@ def apply_free_text_filter_shared(
             fields=fields,
             type="best_fields",
             fuzziness="AUTO",
+            lenient=True,
             operator="or",
         )
 
