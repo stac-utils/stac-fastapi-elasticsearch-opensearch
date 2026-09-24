@@ -99,6 +99,10 @@ class ElasticPath(BaseModel):
         data["key"] = data["parts"].pop(-1)
         data["nest"] = "/".join(data["parts"])
 
+        if data["nest"].strip("/") == "assets":
+            data["value"]["es_key"] = data["key"]
+            data["key"] = "-"
+
         data["es_key"] = data["key"]
         data["es_nest"] = "".join([f"['{part}']" for part in data["parts"]])
         data["es_path"] = data["es_nest"] + f"['{data['es_key']}']"
