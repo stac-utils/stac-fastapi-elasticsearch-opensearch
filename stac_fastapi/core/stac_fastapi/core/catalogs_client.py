@@ -1436,18 +1436,18 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
     ) -> dict | Response:
         """Get conformance classes specific to this sub-catalog.
 
-        SFEOS always enables the transaction and scoped search extensions
-        alongside the catalogs extension, so their conformance classes are
-        advertised here. The extension also merges in the conformance classes
-        of registered catalog extensions via
-        ``app.state.catalogs_conformance_classes``.
+        SFEOS always enables the scoped search extension alongside the
+        catalogs extension, so its conformance classes are advertised here.
+        The transaction class is not: the catalogs extension merges in the
+        conformance classes of registered catalog extensions via
+        ``app.state.catalogs_conformance_classes``, and the transaction
+        extension is only registered when transactions are enabled.
         """
         await self.database.find_catalog(catalog_id)
         return {
             "conformsTo": [
                 "https://api.stacspec.org/v1.0.0/core",
                 "https://api.stacspec.org/v1.0.0/multi-tenant-catalogs",
-                "https://api.stacspec.org/v1.0.0/multi-tenant-catalogs/transaction",
                 "https://api.stacspec.org/v1.0.0/multi-tenant-catalogs/search",
                 "https://api.stacspec.org/v1.0.0/children",
                 "https://api.stacspec.org/v1.0.0/children#type-filter",

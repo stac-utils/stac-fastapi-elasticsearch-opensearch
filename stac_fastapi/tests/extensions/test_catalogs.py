@@ -1,8 +1,12 @@
 import uuid
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from stac_fastapi.core.catalogs_client import CatalogsClient
 from stac_fastapi.sfeos_helpers.mappings import COLLECTIONS_INDEX
+
+from ..conftest import build_test_app_with_catalogs, get_flattened_routes
 
 
 @pytest.mark.asyncio
@@ -5219,3 +5223,64 @@ async def test_put_catalog_returns_409_when_conflict_retries_exhausted(
     assert resp.status_code == 409
     assert len(conditional_calls) == 3
     assert (await _stored_document(child["id"]))["title"] == child["title"]
+
+
+# ============================================================================
+# Transaction Extension Gating Tests
+# ============================================================================
+
+CATALOGS_TRANSACTION_CONFORMANCE = (
+    "https://api.stacspec.org/v1.0.0/multi-tenant-catalogs/transaction"
+)
+CATALOG_WRITE_ROUTES = {
+    "POST /catalogs",
+    "PUT /catalogs/{catalog_id}",
+    "DELETE /catalogs/{catalog_id}",
+    "POST /catalogs/{catalog_id}/collections",
+    "PUT /catalogs/{catalog_id}/collections/{collection_id}",
+    "DELETE /catalogs/{catalog_id}/collections/{collection_id}",
+    "POST /catalogs/{catalog_id}/catalogs",
+    "DELETE /catalogs/{catalog_id}/catalogs/{sub_catalog_id}",
+}
+CATALOG_READ_ROUTES = {
+    "GET /catalogs",
+    "GET /catalogs/{catalog_id}",
+    "GET /catalogs/{catalog_id}/search",
+    "POST /catalogs/{catalog_id}/search",
+}
+
+
+def test_catalog_transaction_routes_absent_when_transactions_disabled():
+    """Catalog write routes are only mounted with the Transaction extension."""
+    app = build_test_app_with_catalogs(transactions_enabled=False)
+
+    routes = get_flattened_routes(app)
+
+    assert not CATALOG_WRITE_ROUTES & routes
+    assert CATALOG_READ_ROUTES <= routes
+    assert (
+        CATALOGS_TRANSACTION_CONFORMANCE not in app.state.catalogs_conformance_classes
+    )
+
+
+def test_catalog_transaction_routes_present_by_default():
+    """The default settings keep the catalog write routes and conformance class."""
+    app = build_test_app_with_catalogs()
+
+    routes = get_flattened_routes(app)
+
+    assert CATALOG_WRITE_ROUTES | CATALOG_READ_ROUTES <= routes
+    assert CATALOGS_TRANSACTION_CONFORMANCE in app.state.catalogs_conformance_classes
+
+
+@pytest.mark.asyncio
+async def test_catalog_conformance_omits_transaction_uri_from_client():
+    """The client leaves the transaction class to the mounted extension."""
+    database = MagicMock()
+    database.find_catalog = AsyncMock()
+    client = CatalogsClient(database=database)
+
+    conformance = await client.get_catalog_conformance("c")
+
+    database.find_catalog.assert_awaited_once_with("c")
+    assert CATALOGS_TRANSACTION_CONFORMANCE not in conformance["conformsTo"]
