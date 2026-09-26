@@ -62,6 +62,7 @@ from .query import (
     apply_collections_free_text_filter_shared,
     apply_free_text_filter_shared,
     apply_intersects_filter_shared,
+    decode_search_after_token_shared,
     populate_sort_shared,
 )
 from .utils import (
@@ -99,6 +100,7 @@ __all__ = [
     "apply_collections_bbox_filter_shared",
     "apply_collections_datetime_filter_shared",
     "apply_collections_free_text_filter_shared",
+    "decode_search_after_token_shared",
     "populate_sort_shared",
     # Mapping operations
     "get_queryables_mapping_shared",
