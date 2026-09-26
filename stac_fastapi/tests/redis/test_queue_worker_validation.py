@@ -12,8 +12,9 @@ import pytest
 from scripts.item_queue_worker import ItemQueueWorker  # noqa: E402
 from stac_fastapi.core.exceptions import QueuedSuccess
 from stac_fastapi.core.redis_utils import AsyncRedisQueueManager
+from stac_fastapi.types.errors import NotFoundError
 
-from ..conftest import MockRequest
+from ..conftest import MockRequest, create_item, refresh_indices
 
 
 @pytest.mark.asyncio
@@ -490,6 +491,7 @@ async def test_performance_mode_deferred_validation(
             pass
 
 
+@pytest.mark.datetime_filtering
 @pytest.mark.asyncio
 async def test_update_item_with_queue_returns_queued_response(
     txn_client, core_client, load_test_data, monkeypatch: pytest.MonkeyPatch
@@ -512,12 +514,10 @@ async def test_update_item_with_queue_returns_queued_response(
     if "datetime" not in base_item.get("properties", {}):
         base_item["properties"]["datetime"] = "2020-01-01T00:00:00Z"
 
-    with pytest.raises(QueuedSuccess):
-        await txn_client.create_item(
-            collection_id=test_collection["id"],
-            item=api.Item(**base_item),
-            request=MockRequest(),
-        )
+    monkeypatch.setenv("ENABLE_REDIS_QUEUE", "false")
+    await create_item(txn_client, base_item)
+    await refresh_indices(txn_client)
+    monkeypatch.setenv("ENABLE_REDIS_QUEUE", "true")
 
     # 2. Update the item with queue enabled
     updated_item = deepcopy(base_item)
@@ -542,5 +542,31 @@ async def test_update_item_with_queue_returns_queued_response(
         pending_items = await queue_manager.get_pending_items(test_collection["id"])
         pending_ids = {item["id"] for item in pending_items}
         assert "update-queue-item" in pending_ids
+
+        pending_item = deepcopy(base_item)
+        pending_item["id"] = "pending-only-item"
+        with pytest.raises(QueuedSuccess):
+            await create_item(txn_client, pending_item)
+
+        pending_before = await queue_manager.get_pending_items(test_collection["id"])
+        pending_update = deepcopy(pending_item)
+        pending_update["properties"]["foo"] = "must not queue"
+        with pytest.raises(NotFoundError):
+            await txn_client.update_item(
+                collection_id=test_collection["id"],
+                item_id=pending_item["id"],
+                item=api.Item(**pending_update),
+                request=MockRequest(),
+            )
+
+        assert (
+            await queue_manager.get_pending_items(test_collection["id"])
+            == pending_before
+        )
+        pending_ids = await queue_manager.get_pending_item_ids(test_collection["id"])
+        assert pending_item["id"] in pending_ids
+        assert pending_ids.count(pending_item["id"]) == 1
     finally:
+        await queue_manager.remove_item(test_collection["id"], "update-queue-item")
+        await queue_manager.remove_item(test_collection["id"], "pending-only-item")
         await queue_manager.close()

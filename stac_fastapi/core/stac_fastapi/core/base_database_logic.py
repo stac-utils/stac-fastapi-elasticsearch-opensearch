@@ -48,9 +48,15 @@ class BaseDatabaseLogic(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def get_one_item(self, collection_id: str, item_id: str) -> dict:
+    async def get_one_item(
+        self, collection_id: str, item_id: str, *, include_hidden: bool = False
+    ) -> dict:
         """Retrieve a single item from the database."""
         pass
+
+    async def get_item_for_write(self, collection_id: str, item_id: str) -> dict:
+        """Retrieve an item for a write without applying read visibility filters."""
+        return await self.get_one_item(collection_id, item_id, include_hidden=True)
 
     @abc.abstractmethod
     async def create_item(self, item: dict, refresh: bool = False) -> None:

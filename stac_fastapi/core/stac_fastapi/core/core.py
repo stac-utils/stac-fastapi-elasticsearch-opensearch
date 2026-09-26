@@ -72,6 +72,7 @@ from stac_fastapi.sfeos_helpers.database import (
     ItemAlreadyExistsError,
     separate_bulk_conflict_errors,
 )
+from stac_fastapi.sfeos_helpers.search_engine import DatetimeIndexInserter
 from stac_fastapi.types import stac as stac_types
 from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
 from stac_fastapi.types.core import AsyncBaseCoreClient
@@ -83,6 +84,19 @@ logger = logging.getLogger(__name__)
 
 partialItemValidator = TypeAdapter(PartialItem)
 partialCollectionValidator = TypeAdapter(PartialCollection)
+
+FIELD_LABELS = {"id": "Item ID", "collection": "Collection ID"}
+
+
+def populate_from_uri(obj: dict, field: str, value: str) -> None:
+    """Set a body field from the request URI, rejecting conflicting values."""
+    label = FIELD_LABELS.get(field, field)
+    if obj.get(field) is not None and obj[field] != value:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{label} from path does not match {label} from request body.",
+        )
+    obj[field] = value
 
 
 def bare_media_type(header: str | None) -> str:
@@ -1324,18 +1338,14 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         # Route the request to the dedicated handler
         item_type = item_dict.get("type")
         if item_type == "FeatureCollection":
+            for feature in item_dict.get("features", []):
+                populate_from_uri(feature, "collection", collection_id)
             return await self._create_feature_collection(
                 collection_id, item_dict, base_url, use_queue, **kwargs
             )
         elif item_type == "Feature":
             # 2. SAFETY CHECK: Ensure item collection matches URL path
-            if item_dict.get("collection") and item_dict["collection"] != collection_id:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Collection ID from path does not match Collection ID from Item.",
-                )
-            # Guarantee the collection field is set correctly
-            item_dict["collection"] = collection_id
+            populate_from_uri(item_dict, "collection", collection_id)
 
             return await self._create_single_item(
                 collection_id, item_dict, base_url, use_queue, **kwargs
@@ -1704,11 +1714,15 @@ class TransactionsClient(AsyncBaseTransactionsClient):
             stac_types.Item: The updated item object.
 
         Raises:
-            NotFound: If the specified collection is not found in the database.
+            NotFound: If the specified collection or item is not found in the database.
 
         """
         item_dict = item.model_dump(mode="json")
+        populate_from_uri(item_dict, "id", item_id)
+        populate_from_uri(item_dict, "collection", collection_id)
         base_url = str(kwargs["request"].base_url)
+
+        existing_item = await self.database.get_item_for_write(collection_id, item_id)
 
         now = datetime_type.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
         item_dict["properties"]["updated"] = now
@@ -1737,6 +1751,18 @@ class TransactionsClient(AsyncBaseTransactionsClient):
         # 3. ROUTING LAYER (Queue)
         if use_queue:
             from stac_fastapi.core.utilities import queue_items_if_enabled
+
+            # Queued PUT must enforce the same index immutability as direct writes.
+            inserter = self.database.async_index_inserter
+            if isinstance(inserter, DatetimeIndexInserter):
+                fields = [inserter.primary_datetime_name]
+                if inserter.primary_datetime_name == "start_datetime":
+                    fields.append("end_datetime")
+                for field in fields:
+                    if existing_item.get("properties", {}).get(field) != processed_item[
+                        "properties"
+                    ].get(field):
+                        inserter.validate_datetime_field_update(f"properties/{field}")
 
             result = await queue_items_if_enabled(collection_id, processed_item)
             if result:
@@ -1832,7 +1858,7 @@ class TransactionsClient(AsyncBaseTransactionsClient):
 
         # When validation is ENABLED, do all logic in core.py
         # 1. FETCH current item state from DB
-        existing_item = await self.database.get_one_item(
+        existing_item = await self.database.get_item_for_write(
             item_id=item_id, collection_id=collection_id
         )
         if not existing_item:
