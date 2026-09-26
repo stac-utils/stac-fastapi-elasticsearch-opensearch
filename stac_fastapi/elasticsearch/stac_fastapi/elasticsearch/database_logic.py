@@ -34,6 +34,7 @@ from stac_fastapi.extensions.transaction.request import (
     PatchOperation,
 )
 from stac_fastapi.sfeos_helpers.database import (
+    PARENT_ID_SCRIPT,
     ItemAlreadyExistsError,
     add_bbox_shape_to_collection,
     apply_collections_bbox_filter_shared,
@@ -57,7 +58,6 @@ from stac_fastapi.sfeos_helpers.database import (
     search_collections_by_parent_id_with_pagination_shared,
     search_sub_catalogs_with_pagination_shared,
     unlink_catalog_children_shared,
-    update_catalog_in_index_shared,
     validate_refresh,
 )
 from stac_fastapi.sfeos_helpers.database.catalogs import (
@@ -1649,13 +1649,20 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     @retry_on_connection_error
     async def update_collection(
-        self, collection_id: str, collection: Collection, **kwargs: Any
+        self,
+        collection_id: str,
+        collection: Collection,
+        preserve_parent_ids: bool = False,
+        **kwargs: Any,
     ) -> None:
         """Update a collection in the database.
 
         Args:
             collection_id (str): The ID of the collection to be updated.
             collection (Collection): The Collection object to be used for the update.
+            preserve_parent_ids (bool): Keep the stored catalog memberships
+                (`parent_ids`) instead of taking them from `collection`. The
+                write is conditional on the version read, retried on conflict.
             **kwargs: Additional keyword arguments.
                 - refresh (str): Whether to refresh the index after the operation. Can be "true", "false", or "wait_for".
                 - refresh (bool): Whether to refresh the index after the operation. Defaults to the value in `self.async_settings.database_refresh`.
@@ -1729,13 +1736,99 @@ class DatabaseLogic(BaseDatabaseLogic):
                 # Convert bbox to bbox_shape for geospatial queries (ES/OS specific)
                 add_bbox_shape_to_collection(collection_dict)
 
-            # Update the existing collection
-            await self.client.index(
-                index=COLLECTIONS_INDEX,
-                id=collection_id,
-                document=collection_dict,
-                refresh=refresh,
+            if not preserve_parent_ids:
+                await self.client.index(
+                    index=COLLECTIONS_INDEX,
+                    id=collection_id,
+                    document=collection_dict,
+                    refresh=refresh,
+                )
+                return
+
+            # parent_ids is backend-owned; a concurrent link/unlink must not be lost.
+            for _ in range(3):
+                try:
+                    existing = await self.client.get(
+                        index=COLLECTIONS_INDEX, id=collection_id
+                    )
+                except ESNotFoundError:
+                    raise NotFoundError(f"Collection {collection_id} not found")
+                if existing["_source"].get("type") != "Collection":
+                    raise NotFoundError(f"Collection {collection_id} not found")
+
+                collection_dict.pop("parent_ids", None)
+                if "parent_ids" in existing["_source"]:
+                    collection_dict["parent_ids"] = existing["_source"]["parent_ids"]
+                try:
+                    await self.client.index(
+                        index=COLLECTIONS_INDEX,
+                        id=collection_id,
+                        document=collection_dict,
+                        refresh=refresh,
+                        if_seq_no=existing["_seq_no"],
+                        if_primary_term=existing["_primary_term"],
+                    )
+                    return
+                except ESConflictError:
+                    continue
+
+            raise ConflictError(
+                f"Collection {collection_id} was modified concurrently; retry the update"
             )
+
+    @retry_on_connection_error
+    async def update_parent_ids(
+        self,
+        doc_id: str,
+        doc_type: str,
+        parent_id: str,
+        add: bool,
+        refresh: bool | str = False,
+    ) -> dict:
+        """Atomically add or remove one parent id in a document's parent_ids.
+
+        Args:
+            doc_id: The id of the Collection or Catalog to update.
+            doc_type: "Collection" or "Catalog"; the stored type must match.
+            parent_id: The parent catalog id to add or remove.
+            add: Add `parent_id` if True, remove it if False.
+            refresh: Whether to refresh the index after the update.
+
+        Raises:
+            NotFoundError: If no `doc_type` document with this id exists.
+            ConflictError: If concurrent writes exhaust the update's retries.
+        """
+        try:
+            resp = await self.client.update(
+                index=COLLECTIONS_INDEX,
+                id=doc_id,
+                script={
+                    "lang": "painless",
+                    "source": PARENT_ID_SCRIPT,
+                    "params": {
+                        "parent_id": parent_id,
+                        "add": add,
+                        "type": doc_type,
+                    },
+                },
+                source=True,
+                retry_on_conflict=3,
+                refresh=validate_refresh(refresh),
+            )
+        except ESNotFoundError:
+            raise NotFoundError(f"{doc_type} {doc_id} not found")
+        except ESConflictError:
+            raise ConflictError(
+                f"{doc_type} {doc_id} was modified concurrently; retry the request"
+            )
+
+        source = resp["get"].get("_source") if "get" in resp else None
+        if source is None:
+            find = self.find_catalog if doc_type == "Catalog" else self.find_collection
+            return await find(doc_id)
+        if source.get("type") != doc_type:
+            raise NotFoundError(f"{doc_type} {doc_id} not found")
+        return source
 
     @retry_on_connection_error
     async def merge_patch_collection(
@@ -2122,42 +2215,24 @@ class DatabaseLogic(BaseDatabaseLogic):
         return catalogs, next_token, matched
 
     @retry_on_connection_error
-    async def create_catalog(
-        self, catalog: dict, refresh: bool = False, upsert: bool = True
-    ) -> None:
+    async def create_catalog(self, catalog: dict, refresh: bool = False) -> None:
         """Create a catalog in Elasticsearch.
 
         Args:
             catalog (dict): The catalog document to create.
             refresh (bool): Whether to refresh the index after creation.
-            upsert (bool): Whether to overwrite an existing catalog. Updates,
-                links and unlinks use the default; new catalogs use False.
 
         Raises:
-            ConflictError: If a non-Catalog document (e.g. a Collection) already
-                exists with the same id, or if create-only indexing conflicts.
+            ConflictError: If any document (Catalog or Collection) already
+                exists with the same id.
         """
-        doc_id = catalog.get("id")
-
-        # The collections index is shared with Collection documents; a catalog
-        # write must never overwrite a Collection.
-        try:
-            existing = await self.client.get(index=COLLECTIONS_INDEX, id=doc_id)
-        except ESNotFoundError:
-            existing = None
-        if existing and existing["_source"].get("type") != "Catalog":
-            raise ConflictError(
-                f"Cannot create catalog {doc_id}: a non-Catalog document "
-                "with this id already exists"
-            )
-
         try:
             await self.client.index(
                 index=COLLECTIONS_INDEX,
-                id=doc_id,
+                id=catalog.get("id"),
                 body=catalog,
                 refresh=refresh,
-                **({} if upsert else {"op_type": "create"}),
+                op_type="create",
             )
         except ESConflictError:
             raise ConflictError(
@@ -2376,7 +2451,6 @@ class DatabaseLogic(BaseDatabaseLogic):
             await self.create_catalog(
                 catalog,
                 refresh=self.async_settings.database_refresh,
-                upsert=False,
             )
         except Exception as e:
             logger.error(
@@ -2501,22 +2575,45 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     @retry_on_connection_error
     async def update_catalog(
-        self,
-        catalog_id: str,
-        catalog: Any,
-        request: Any,
-    ) -> Any:
-        """Update a catalog."""
-        try:
-            return await update_catalog_in_index_shared(
-                es_client=self.client,
-                catalog_id=catalog_id,
-                catalog=catalog,
-                refresh=self.async_settings.database_refresh,
-            )
-        except Exception as e:
-            logger.error(f"Error updating catalog {catalog_id}: {e}", exc_info=True)
-            raise
+        self, catalog_id: str, catalog: dict, refresh: bool | str = False
+    ) -> None:
+        """Replace a catalog, keeping its stored parent_ids.
+
+        parent_ids is backend-owned: the write is conditional on the version
+        read and retried, so a concurrent link or unlink is not lost.
+
+        Raises:
+            NotFoundError: If the catalog does not exist.
+            ConflictError: If concurrent writes exhaust the retries.
+        """
+        refresh = validate_refresh(refresh)
+        for _ in range(3):
+            try:
+                existing = await self.client.get(index=COLLECTIONS_INDEX, id=catalog_id)
+            except ESNotFoundError:
+                raise NotFoundError(f"Catalog {catalog_id} not found")
+            if existing["_source"].get("type") != "Catalog":
+                raise NotFoundError(f"Catalog {catalog_id} not found")
+
+            catalog.pop("parent_ids", None)
+            if "parent_ids" in existing["_source"]:
+                catalog["parent_ids"] = existing["_source"]["parent_ids"]
+            try:
+                await self.client.index(
+                    index=COLLECTIONS_INDEX,
+                    id=catalog_id,
+                    document=catalog,
+                    refresh=refresh,
+                    if_seq_no=existing["_seq_no"],
+                    if_primary_term=existing["_primary_term"],
+                )
+                return
+            except ESConflictError:
+                continue
+
+        raise ConflictError(
+            f"Catalog {catalog_id} was modified concurrently; retry the update"
+        )
 
     @retry_on_connection_error
     async def get_catalog(

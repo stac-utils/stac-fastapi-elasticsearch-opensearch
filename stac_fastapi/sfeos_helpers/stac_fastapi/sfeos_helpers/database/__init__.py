@@ -31,12 +31,12 @@ Function Naming Conventions:
 
 # Re-export all functions for backward compatibility
 from .catalogs import (
+    PARENT_ID_SCRIPT,
     search_children_with_pagination_shared,
     search_collections_by_parent_id_shared,
     search_collections_by_parent_id_with_pagination_shared,
     search_sub_catalogs_with_pagination_shared,
     unlink_catalog_children_shared,
-    update_catalog_in_index_shared,
 )
 from .datetime import (
     extract_date,
@@ -79,11 +79,11 @@ from .utils import (
 
 __all__ = [
     # Catalog operations
+    "PARENT_ID_SCRIPT",
     "unlink_catalog_children_shared",
     "search_collections_by_parent_id_shared",
     "search_collections_by_parent_id_with_pagination_shared",
     "search_sub_catalogs_with_pagination_shared",
-    "update_catalog_in_index_shared",
     "search_children_with_pagination_shared",
     # Index operations
     "create_index_templates_shared",

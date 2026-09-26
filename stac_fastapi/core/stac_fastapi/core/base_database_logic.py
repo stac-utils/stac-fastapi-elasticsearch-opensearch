@@ -149,9 +149,29 @@ class BaseDatabaseLogic(abc.ABC):
 
     @abc.abstractmethod
     async def update_collection(
-        self, collection_id: str, collection: Collection, **kwargs: Any
+        self,
+        collection_id: str,
+        collection: Collection,
+        preserve_parent_ids: bool = False,
+        **kwargs: Any,
     ) -> None:
         """Update a collection in the database."""
+        pass
+
+    @abc.abstractmethod
+    async def update_parent_ids(
+        self,
+        doc_id: str,
+        doc_type: str,
+        parent_id: str,
+        add: bool,
+        refresh: bool | str = False,
+    ) -> dict:
+        """Atomically add or remove one parent id in a Collection's or Catalog's parent_ids.
+
+        Returns:
+            The stored document after the update.
+        """
         pass
 
     @abc.abstractmethod
@@ -196,10 +216,8 @@ class BaseDatabaseLogic(abc.ABC):
         pass
 
     @abc.abstractmethod
-    async def create_catalog(
-        self, catalog: dict, refresh: bool = False, upsert: bool = True
-    ) -> None:
-        """Create a catalog in the database."""
+    async def create_catalog(self, catalog: dict, refresh: bool = False) -> None:
+        """Create a catalog; reject an id already used by any document."""
         pass
 
     @abc.abstractmethod
@@ -325,12 +343,9 @@ class BaseDatabaseLogic(abc.ABC):
 
     @abc.abstractmethod
     async def update_catalog(
-        self,
-        catalog_id: str,
-        catalog: Any,
-        request: Any,
-    ) -> Any:
-        """Update a catalog."""
+        self, catalog_id: str, catalog: dict, refresh: bool | str = False
+    ) -> None:
+        """Replace a catalog, keeping its stored parent_ids."""
         pass
 
     @abc.abstractmethod

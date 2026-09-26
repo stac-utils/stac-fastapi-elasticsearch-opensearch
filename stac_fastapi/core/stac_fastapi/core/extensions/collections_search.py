@@ -2,9 +2,9 @@
 
 from typing import Any, Type
 
-from fastapi import APIRouter, Body, FastAPI, Query, Request
+from fastapi import APIRouter, Body, FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
-from pydantic import AliasChoices, BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field, ValidationError
 from stac_pydantic.api.search import ExtendedSearch
 from starlette.responses import Response
 
@@ -347,7 +347,12 @@ class CollectionsSearchEndpointExtension(ApiExtension):
             Collections: Collections object.
         """
         # Convert the dict to an ExtendedSearch model
-        search_request = CollectionsSearchRequest.model_validate(body)
+        try:
+            search_request = CollectionsSearchRequest.model_validate(body)
+        except ValidationError:
+            raise HTTPException(
+                status_code=400, detail="Invalid collections search parameters."
+            )
 
         # Check if fields are present in the body
         if "fields" in body:

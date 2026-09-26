@@ -109,11 +109,9 @@ async def test_concurrent_catalog_create_has_one_winner(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "kind,upsert", [("Catalog", False), ("Collection", False), ("Collection", True)]
-)
+@pytest.mark.parametrize("kind", ["Catalog", "Collection"])
 async def test_backend_catalog_conflict_preserves_document(
-    catalogs_app_client, txn_client, load_test_data, kind, upsert
+    catalogs_app_client, txn_client, load_test_data, kind
 ):
     document = load_test_data(
         "test_catalog.json" if kind == "Catalog" else "test_collection.json"
@@ -126,8 +124,7 @@ async def test_backend_catalog_conflict_preserves_document(
     before = await database.client.get(index=COLLECTIONS_INDEX, id=document["id"])
     with pytest.raises(ConflictError):
         await database.create_catalog(
-            {**document, "type": "Catalog", "description": "must not replace"},
-            upsert=upsert,
+            {**document, "type": "Catalog", "description": "must not replace"}
         )
     after = await database.client.get(index=COLLECTIONS_INDEX, id=document["id"])
     assert after["_source"] == before["_source"]
