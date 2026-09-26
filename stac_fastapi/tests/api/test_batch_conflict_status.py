@@ -233,3 +233,120 @@ async def test_bulk_items_serializes_conflicts_and_preserves_content(
     )
     assert created.status_code == 200
     assert created.json()["properties"]["title"] == new_item["properties"]["title"]
+
+
+async def _post_bulk_items(collection_id, items):
+    api = instantiate_api()
+    async with AsyncClient(
+        transport=ASGITransport(app=api.app, raise_app_exceptions=False),
+        base_url="http://test-server",
+    ) as client:
+        return await client.post(
+            f"/collections/{collection_id}/bulk_items",
+            json={"items": items, "method": "insert"},
+        )
+
+
+def _without_id(item):
+    item = deepcopy(item)
+    del item["id"]
+    return item
+
+
+def _with_id(item_id):
+    def make(item):
+        return {**item, "id": item_id}
+
+    return make
+
+
+MALFORMED_ENTRIES = [
+    pytest.param(lambda item: "x", id="string"),
+    pytest.param(lambda item: None, id="null"),
+    pytest.param(lambda item: 5, id="number"),
+    pytest.param(lambda item: [1], id="array"),
+    pytest.param(_without_id, id="id-missing"),
+    pytest.param(_with_id(None), id="id-null"),
+    pytest.param(_with_id(""), id="id-empty"),
+    pytest.param(_with_id(5), id="id-number"),
+    pytest.param(_with_id([]), id="id-array"),
+    pytest.param(_with_id({}), id="id-object"),
+]
+
+
+def _mixed_batch(item, make_bad):
+    valid = deepcopy(item)
+    valid["id"] = str(uuid.uuid4())
+    return valid, {valid["id"]: valid, "bad": make_bad(item)}
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("make_bad", MALFORMED_ENTRIES)
+async def test_bulk_items_reports_malformed_entry_and_writes_valid_sibling(
+    ctx, app_client, monkeypatch, make_bad
+):
+    monkeypatch.setenv("ENABLE_DATETIME_INDEX_FILTERING", "false")
+    monkeypatch.setenv("RAISE_ON_BULK_ERROR", "false")
+    valid, items = _mixed_batch(ctx.item, make_bad)
+    response = await _post_bulk_items(valid["collection"], items)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert (body["received"], body["success"], body["skipped"]) == (2, 1, 0)
+    assert [error["id"] for error in body["errors"]] == ["bad"]
+    created = await app_client.get(
+        f"/collections/{valid['collection']}/items/{valid['id']}"
+    )
+    assert created.status_code == 200
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("make_bad", MALFORMED_ENTRIES)
+async def test_bulk_items_strict_rejects_malformed_batch_without_writing(
+    ctx, app_client, monkeypatch, make_bad
+):
+    monkeypatch.setenv("ENABLE_DATETIME_INDEX_FILTERING", "false")
+    monkeypatch.setenv("RAISE_ON_BULK_ERROR", "true")
+    valid, items = _mixed_batch(ctx.item, make_bad)
+    response = await _post_bulk_items(valid["collection"], items)
+    assert response.status_code == 400, response.text
+    detail = response.json()["detail"]
+    assert [error["id"] for error in detail["errors"]] == ["bad"]
+    missing = await app_client.get(
+        f"/collections/{valid['collection']}/items/{valid['id']}"
+    )
+    assert missing.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_bulk_items_validator_reports_missing_id_instead_of_skipping(
+    ctx, app_client, monkeypatch
+):
+    monkeypatch.setenv("ENABLE_DATETIME_INDEX_FILTERING", "false")
+    monkeypatch.setenv("RAISE_ON_BULK_ERROR", "false")
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
+    valid, items = _mixed_batch(ctx.item, _without_id)
+    response = await _post_bulk_items(valid["collection"], items)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert (body["success"], body["skipped"]) == (1, 0)
+    assert [error["id"] for error in body["errors"]] == ["bad"]
+
+
+@pytest.mark.asyncio
+async def test_bulk_items_validator_rejection_reports_malformed_entries(
+    ctx, monkeypatch
+):
+    monkeypatch.setenv("ENABLE_DATETIME_INDEX_FILTERING", "false")
+    monkeypatch.setenv("RAISE_ON_BULK_ERROR", "false")
+    monkeypatch.setenv("ENABLE_STAC_VALIDATOR", "true")
+    invalid = deepcopy(ctx.item)
+    invalid["id"] = str(uuid.uuid4())
+    invalid["type"] = "NotAFeature"
+    response = await _post_bulk_items(
+        invalid["collection"], {invalid["id"]: invalid, "bad": "x"}
+    )
+    assert response.status_code == 400, response.text
+    detail = response.json()["detail"]
+    assert [error["id"] for error in detail["malformed"]] == ["bad"]
+    summary = detail["summary"]
+    assert summary["skipped_total"] == summary["validation_error_count"]
