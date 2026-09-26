@@ -3,13 +3,19 @@
 This module provides functions for building and manipulating Elasticsearch/OpenSearch queries.
 """
 
+import binascii
 import json
 import logging
 import os
+from base64 import urlsafe_b64decode
 from typing import Any
+
+import orjson
+from fastapi import HTTPException
 
 from stac_fastapi.core.utilities import bbox2polygon
 from stac_fastapi.sfeos_helpers.mappings import (
+    DEFAULT_SORT,
     ES_COLLECTIONS_MAPPINGS,
     ES_ITEMS_MAPPINGS,
     Geometry,
@@ -482,6 +488,36 @@ def populate_sort_shared(
         return sort_config
     else:
         return {"id": {"order": "asc"}}
+
+
+def decode_search_after_token_shared(
+    token: str | None, sort: dict[str, dict[str, Any]] | None
+) -> list[Any] | None:
+    """Decode an item search pagination token into search_after values.
+
+    Args:
+        token (str | None): Base64-encoded JSON list issued as the next-page token.
+        sort (dict[str, dict[str, Any]] | None): The sort used for the search, or None for
+            the default sort.
+
+    Returns:
+        list[Any] | None: The search_after values, or None if no token was given.
+
+    Raises:
+        HTTPException: 400 if the token is not a base64-encoded JSON list with one value
+            per sort field.
+    """
+    if not token:
+        return None
+    try:
+        search_after = orjson.loads(urlsafe_b64decode(token))
+    except (binascii.Error, ValueError, UnicodeDecodeError):
+        search_after = None
+    if not isinstance(search_after, list) or len(search_after) != len(
+        sort or DEFAULT_SORT
+    ):
+        raise HTTPException(status_code=400, detail="Invalid pagination token.")
+    return search_after
 
 
 def add_collections_to_body(
