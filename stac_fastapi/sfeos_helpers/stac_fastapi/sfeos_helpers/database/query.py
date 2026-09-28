@@ -507,7 +507,7 @@ def decode_search_after_token_shared(
         HTTPException: 400 if the token is not a base64-encoded JSON list with one value
             per sort field.
     """
-    if not token:
+    if token is None:
         return None
     try:
         search_after = orjson.loads(urlsafe_b64decode(token))
