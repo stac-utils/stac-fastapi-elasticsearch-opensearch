@@ -2,7 +2,7 @@
 import asyncio
 import logging
 import os
-from base64 import urlsafe_b64decode, urlsafe_b64encode
+from base64 import urlsafe_b64encode
 from copy import deepcopy
 from typing import Any, Iterable, Type
 
@@ -41,6 +41,7 @@ from stac_fastapi.sfeos_helpers.database import (
     check_item_exists_in_alias,
     check_item_exists_in_alias_sync,
     create_index_templates_shared,
+    decode_search_after_token_shared,
     delete_item_index_shared,
     get_queryables_mapping_shared,
     index_alias_by_collection_id,
@@ -944,6 +945,8 @@ class DatabaseLogic(BaseDatabaseLogic):
         Raises:
             NotFoundError: If the collections specified in `collection_ids` do not exist.
         """
+        search_after = decode_search_after_token_shared(token, sort)
+
         search_body: dict[str, Any] = {}
         query = search.query.to_dict() if search.query else None
 
@@ -970,10 +973,6 @@ class DatabaseLogic(BaseDatabaseLogic):
         elif query:
             search_body["query"] = query
 
-        search_after = None
-
-        if token:
-            search_after = orjson.loads(urlsafe_b64decode(token))
         if search_after:
             search_body["search_after"] = search_after
 
