@@ -383,6 +383,8 @@ The catalogs extension implements a **safety-first design** that protects collec
 - **GET `/catalogs/{catalog_id}/collections/{collection_id}/items`**: Retrieve items within a collection in a catalog context
 - **GET `/catalogs/{catalog_id}/collections/{collection_id}/items/{item_id}`**: Retrieve a specific item within a catalog context
 
+**Filtering listings:** when the filter extension is enabled, the `GET` listing routes above (`/catalogs`, `/catalogs/{catalog_id}/catalogs`, `/catalogs/{catalog_id}/children`, `/catalogs/{catalog_id}/collections` and `/catalogs/{catalog_id}/collections/{collection_id}/items`) accept `filter`, `filter-lang` and `filter-crs` like `/collections` and `/collections/{collection_id}/items`, for example `/catalogs/earth-observation/collections?filter=id LIKE 'sentinel%'&filter-lang=cql2-text`.
+
 ### Usage Examples
 
 ```bash

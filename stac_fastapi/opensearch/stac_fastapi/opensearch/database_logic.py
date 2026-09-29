@@ -2097,6 +2097,16 @@ class DatabaseLogic(BaseDatabaseLogic):
 
     """CATALOGS LOGIC"""
 
+    async def _collections_filter_query(
+        self, filter: dict[str, Any] | None
+    ) -> dict[str, Any] | None:
+        """Translate a CQL2 JSON filter on catalog or collection documents to a query."""
+        if not filter:
+            return None
+        return filter_module.to_es(
+            await self.get_collections_queryables_mapping(), filter
+        )
+
     @retry_on_connection_error
     async def get_all_catalogs(
         self,
@@ -2104,6 +2114,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         limit: int,
         request: Any = None,
         sort: list[dict[str, Any]] | None = None,
+        filter: dict[str, Any] | None = None,
     ) -> tuple[list[dict[str, Any]], str | None, int | None]:
         """Retrieve a list of catalogs from OpenSearch, supporting pagination.
 
@@ -2112,6 +2123,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             limit (int): The number of results to return.
             request (Any, optional): The FastAPI request object. Defaults to None.
             sort (list[dict[str, Any]] | None, optional): Optional sort parameter. Defaults to None.
+            filter (dict[str, Any] | None, optional): A CQL2 JSON filter the catalogs must match. Defaults to None.
 
         Returns:
             A tuple of (catalogs, next pagination token if any, optional count).
@@ -2137,6 +2149,9 @@ class DatabaseLogic(BaseDatabaseLogic):
             "query": {"term": {"type": "Catalog"}},
             "_source": True,  # Ensure all fields including parent_ids are returned
         }
+        filter_query = await self._collections_filter_query(filter)
+        if filter_query:
+            body["query"] = {"bool": {"must": [body["query"], filter_query]}}
 
         # Handle search_after token
         search_after = None
@@ -2277,6 +2292,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         token: str | None,
         request: Any = None,
         resource_type: str | None = None,
+        filter: dict[str, Any] | None = None,
     ) -> tuple[list[dict[str, Any]], int | None, str | None]:
         """Get children of a catalog (both sub-catalogs and collections)."""
         # Decode token to search_after
@@ -2292,6 +2308,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             limit=limit,
             search_after=search_after,
             resource_type=resource_type,
+            filter_query=await self._collections_filter_query(filter),
         )
 
         # Encode next_search_after to token
@@ -2306,6 +2323,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         limit: int,
         token: str | None,
         request: Any = None,
+        filter: dict[str, Any] | None = None,
     ) -> tuple[list[dict[str, Any]], int | None, str | None]:
         """Get collections within a catalog."""
         # Decode token to search_after
@@ -2320,6 +2338,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             catalog_id=catalog_id,
             limit=limit,
             search_after=search_after,
+            filter_query=await self._collections_filter_query(filter),
         )
 
         # Encode next_search_after to token
@@ -2334,6 +2353,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         limit: int,
         token: str | None,
         request: Any = None,
+        filter: dict[str, Any] | None = None,
     ) -> tuple[list[dict[str, Any]], int | None, str | None]:
         """Get sub-catalogs within a catalog."""
         # Decode token to search_after
@@ -2348,6 +2368,7 @@ class DatabaseLogic(BaseDatabaseLogic):
             catalog_id=catalog_id,
             limit=limit,
             search_after=search_after,
+            filter_query=await self._collections_filter_query(filter),
         )
 
         # Encode next_search_after to token
@@ -2438,7 +2459,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         datetime: str | None = None,
         limit: int = 10,
         sortby: str | None = None,
-        filter_expr: str | None = None,
+        filter_expr: str | dict[str, Any] | None = None,
         filter_lang: str | None = None,
         token: str | None = None,
         query: str | None = None,
@@ -2459,6 +2480,14 @@ class DatabaseLogic(BaseDatabaseLogic):
         datetime_search = None
         if datetime:
             search, datetime_search = self.apply_datetime_filter(search, datetime)
+
+        if filter_expr:
+            cql2_filter = (
+                orjson.loads(filter_expr)
+                if isinstance(filter_expr, str)
+                else filter_expr
+            )
+            search, _ = await self.apply_cql2_filter(search, cql2_filter)
 
         sort_param = None
 
