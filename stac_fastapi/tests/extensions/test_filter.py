@@ -157,9 +157,11 @@ async def datetime_collection_id(app_client, load_test_data):
     """Create the CQL2 datetime tests' collection and delete it even if the test fails."""
     collection = load_test_data("test_collection.json")
     collection["id"] = "test-collection-1"
-    await app_client.post("/collections", json=collection)
+    resp = await app_client.post("/collections", json=collection)
+    assert resp.status_code == 201, resp.text
     yield collection["id"]
-    await app_client.delete(f"/collections/{collection['id']}")
+    resp = await app_client.delete(f"/collections/{collection['id']}")
+    assert resp.status_code == 204, resp.text
 
 
 @pytest.mark.datetime_filtering
