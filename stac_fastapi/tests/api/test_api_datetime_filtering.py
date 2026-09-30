@@ -5,6 +5,9 @@ from unittest.mock import patch
 
 import pytest
 
+from stac_fastapi.sfeos_helpers.database import index_alias_by_collection_id
+from stac_fastapi.sfeos_helpers.mappings import ITEMS_INDEX_PREFIX
+
 
 @pytest.mark.datetime_filtering
 @pytest.mark.asyncio
@@ -23,11 +26,11 @@ async def test_create_item_in_past_date_change_alias_name_for_datetime_index(
     )
     assert response.status_code == 201
     indices = await txn_client.database.client.indices.get_alias(
-        index="items_test-collection"
+        index=index_alias_by_collection_id("test-collection")
     )
     expected_aliases = [
-        "items_start_datetime_test-collection_2012-02-12",
-        "items_end_datetime_test-collection_2020-02-16",
+        f"{ITEMS_INDEX_PREFIX}start_datetime_test-collection_2012-02-12",
+        f"{ITEMS_INDEX_PREFIX}end_datetime_test-collection_2020-02-16",
     ]
     all_aliases = set()
     for index_info in indices.values():
@@ -54,11 +57,11 @@ async def test_create_item_uses_existing_datetime_index_for_datetime_index(
     assert response.status_code == 201
 
     indices = await txn_client.database.client.indices.get_alias(
-        index="items_test-collection"
+        index=index_alias_by_collection_id("test-collection")
     )
     expected_aliases = [
-        "items_start_datetime_test-collection_2020-02-08",
-        "items_end_datetime_test-collection_2020-02-16",
+        f"{ITEMS_INDEX_PREFIX}start_datetime_test-collection_2020-02-08",
+        f"{ITEMS_INDEX_PREFIX}end_datetime_test-collection_2020-02-16",
     ]
     all_aliases = set()
     for index_info in indices.values():
@@ -89,11 +92,11 @@ async def test_create_item_with_different_date_same_index_for_datetime_index(
     assert response.status_code == 201
 
     indices = await txn_client.database.client.indices.get_alias(
-        index="items_test-collection"
+        index=index_alias_by_collection_id("test-collection")
     )
     expected_aliases = [
-        "items_start_datetime_test-collection_2020-02-08",
-        "items_end_datetime_test-collection_2020-02-16",
+        f"{ITEMS_INDEX_PREFIX}start_datetime_test-collection_2020-02-08",
+        f"{ITEMS_INDEX_PREFIX}end_datetime_test-collection_2020-02-16",
     ]
     all_aliases = set()
     for index_info in indices.values():
@@ -125,9 +128,9 @@ async def test_create_new_index_when_size_limit_exceeded_for_datetime_index(
 
     indices = await txn_client.database.client.indices.get_alias(index="*")
     expected_aliases = [
-        "items_start_datetime_test-collection_2020-02-08-2020-02-08",
-        "items_start_datetime_test-collection_1970-01-11-2020-02-07",
-        "items_end_datetime_test-collection_1970-01-11",
+        f"{ITEMS_INDEX_PREFIX}start_datetime_test-collection_2020-02-08-2020-02-08",
+        f"{ITEMS_INDEX_PREFIX}start_datetime_test-collection_1970-01-11-2020-02-07",
+        f"{ITEMS_INDEX_PREFIX}end_datetime_test-collection_1970-01-11",
     ]
     all_aliases = set()
 
@@ -189,7 +192,7 @@ async def test_bulk_create_items_with_same_date_range_for_datetime_index(
 
     indices = await txn_client.database.client.indices.get_alias(index="*")
     expected_aliases = [
-        "items_start_datetime_test-collection_2020-02-12",
+        f"{ITEMS_INDEX_PREFIX}start_datetime_test-collection_2020-02-12",
     ]
     all_aliases = set()
     for index_info in indices.values():
@@ -233,7 +236,9 @@ async def test_bulk_create_items_with_different_date_ranges_for_datetime_index(
     assert response.status_code == 201
     indices = await txn_client.database.client.indices.get_alias(index="*")
 
-    expected_aliases = ["items_start_datetime_test-collection_2010-02-10"]
+    expected_aliases = [
+        f"{ITEMS_INDEX_PREFIX}start_datetime_test-collection_2010-02-10"
+    ]
     all_aliases = set()
     for index_info in indices.values():
         all_aliases.update(index_info.get("aliases", {}).keys())
@@ -291,8 +296,8 @@ async def test_bulk_create_items_with_size_limit_exceeded_for_datetime_index(
 
     indices = await txn_client.database.client.indices.get_alias(index="*")
     expected_aliases = [
-        "items_start_datetime_test-collection_2010-02-10-2020-02-08",
-        "items_start_datetime_test-collection_2020-02-09",
+        f"{ITEMS_INDEX_PREFIX}start_datetime_test-collection_2010-02-10-2020-02-08",
+        f"{ITEMS_INDEX_PREFIX}start_datetime_test-collection_2020-02-09",
     ]
     all_aliases = set()
     for index_info in indices.values():
@@ -351,7 +356,7 @@ async def test_bulk_create_items_with_early_date_in_second_batch_for_datetime_in
 
     indices = await txn_client.database.client.indices.get_alias(index="*")
     expected_aliases = [
-        "items_start_datetime_test-collection_2008-01-15",
+        f"{ITEMS_INDEX_PREFIX}start_datetime_test-collection_2008-01-15",
     ]
 
     all_aliases = set()
@@ -665,10 +670,7 @@ async def test_patch_item_non_datetime_field_allowed(
 @pytest.mark.datetime_filtering
 @pytest.mark.asyncio
 async def test_patch_item_change_collection_is_rejected(app_client, txn_client, ctx):
-    from stac_fastapi.sfeos_helpers.database import (
-        index_alias_by_collection_id,
-        mk_item_id,
-    )
+    from stac_fastapi.sfeos_helpers.database import mk_item_id
 
     document = dict(
         index=index_alias_by_collection_id(ctx.item["collection"]),
@@ -784,11 +786,11 @@ async def test_create_new_item_in_new_collection_for_datetime_index(
     assert response.status_code == 201
 
     indices = await txn_client.database.client.indices.get_alias(
-        index="items_new-collection"
+        index=index_alias_by_collection_id("new-collection")
     )
     expected_aliases = [
-        "items_end_datetime_new-collection_2020-02-16",
-        "items_start_datetime_new-collection_2020-02-08",
+        f"{ITEMS_INDEX_PREFIX}end_datetime_new-collection_2020-02-16",
+        f"{ITEMS_INDEX_PREFIX}start_datetime_new-collection_2020-02-08",
     ]
     all_aliases = set()
     for index_info in indices.values():
@@ -875,11 +877,11 @@ async def test_update_item_with_changed_datetime(
     assert response.status_code == 200
 
     indices = await txn_client.database.client.indices.get_alias(
-        index="items_new-collection"
+        index=index_alias_by_collection_id("new-collection")
     )
     expected_aliases = [
-        "items_end_datetime_new-collection_2020-02-16",
-        "items_start_datetime_new-collection_2020-02-08",
+        f"{ITEMS_INDEX_PREFIX}end_datetime_new-collection_2020-02-16",
+        f"{ITEMS_INDEX_PREFIX}start_datetime_new-collection_2020-02-08",
     ]
     all_aliases = set()
     for index_info in indices.values():
@@ -1058,11 +1060,11 @@ async def test_create_item_with_the_same_date_change_alias_name_for_datetime_ind
     )
     assert response.status_code == 201
     indices = await txn_client.database.client.indices.get_alias(
-        index="items_test-collection"
+        index=index_alias_by_collection_id("test-collection")
     )
     expected_aliases = [
-        "items_start_datetime_test-collection_2020-02-08",
-        "items_end_datetime_test-collection_2020-02-16",
+        f"{ITEMS_INDEX_PREFIX}start_datetime_test-collection_2020-02-08",
+        f"{ITEMS_INDEX_PREFIX}end_datetime_test-collection_2020-02-16",
     ]
     all_aliases = set()
     for index_info in indices.values():
@@ -1094,10 +1096,10 @@ async def test_create_item_with_datetime_field_creates_single_alias(
     assert response.status_code == 201
 
     indices = await txn_client.database.client.indices.get_alias(
-        index="items_test-collection"
+        index=index_alias_by_collection_id("test-collection")
     )
     expected_aliases = [
-        "items_datetime_test-collection_2020-02-12",
+        f"{ITEMS_INDEX_PREFIX}datetime_test-collection_2020-02-12",
     ]
     all_aliases = set()
     for index_info in indices.values():
@@ -1124,10 +1126,10 @@ async def test_datetime_index_alias_created_for_past_date(
     )
     assert response.status_code == 201
     indices = await txn_client.database.client.indices.get_alias(
-        index="items_test-collection"
+        index=index_alias_by_collection_id("test-collection")
     )
     expected_aliases = [
-        "items_datetime_test-collection_2012-02-12",
+        f"{ITEMS_INDEX_PREFIX}datetime_test-collection_2012-02-12",
     ]
     all_aliases = set()
     for index_info in indices.values():
@@ -1154,10 +1156,10 @@ async def test_datetime_index_reuses_existing_index_for_default_date(
     assert response.status_code == 201
 
     indices = await txn_client.database.client.indices.get_alias(
-        index="items_test-collection"
+        index=index_alias_by_collection_id("test-collection")
     )
     expected_aliases = [
-        "items_datetime_test-collection_2020-02-12",
+        f"{ITEMS_INDEX_PREFIX}datetime_test-collection_2020-02-12",
     ]
     all_aliases = set()
     for index_info in indices.values():
@@ -1184,10 +1186,10 @@ async def test_datetime_index_groups_same_year_dates_in_single_index(
     assert response.status_code == 201
 
     indices = await txn_client.database.client.indices.get_alias(
-        index="items_test-collection"
+        index=index_alias_by_collection_id("test-collection")
     )
     expected_aliases = [
-        "items_datetime_test-collection_2020-02-12",
+        f"{ITEMS_INDEX_PREFIX}datetime_test-collection_2020-02-12",
     ]
     all_aliases = set()
     for index_info in indices.values():
@@ -1238,7 +1240,7 @@ async def test_datetime_index_bulk_insert_with_same_date_range(
 
     indices = await txn_client.database.client.indices.get_alias(index="*")
     expected_aliases = [
-        "items_datetime_test-collection_2020-02-12",
+        f"{ITEMS_INDEX_PREFIX}datetime_test-collection_2020-02-12",
     ]
     all_aliases = set()
     for index_info in indices.values():
@@ -1278,7 +1280,7 @@ async def test_datetime_index_bulk_insert_with_different_date_ranges(
     assert response.status_code == 201
     indices = await txn_client.database.client.indices.get_alias(index="*")
 
-    expected_aliases = ["items_datetime_test-collection_2010-02-10"]
+    expected_aliases = [f"{ITEMS_INDEX_PREFIX}datetime_test-collection_2010-02-10"]
     all_aliases = set()
     for index_info in indices.values():
         all_aliases.update(index_info.get("aliases", {}).keys())
