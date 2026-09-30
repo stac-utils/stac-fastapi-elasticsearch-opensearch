@@ -23,6 +23,7 @@ from stac_pydantic.item_collection import ItemCollection
 from starlette.responses import JSONResponse, Response
 
 from stac_fastapi.core.base_database_logic import BaseDatabaseLogic
+from stac_fastapi.core.queryables import get_properties_from_cql2_filter
 from stac_fastapi.core.serializers import (
     CatalogSerializer,
     CollectionSerializer,
@@ -1144,13 +1145,20 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
             else:
                 datetime_str = datetime.isoformat()
 
+        parsed_filter = _parse_cql2_filter(filter_expr, filter_lang)
+        if parsed_filter and self.core_client:
+            # Same check as /search when VALIDATE_QUERYABLES is on.
+            await self.core_client.queryables_cache.validate(
+                get_properties_from_cql2_filter(parsed_filter)
+            )
+
         items, total, next_token = await self.database.get_catalog_collection_items(
             catalog_id=catalog_id,
             collection_id=collection_id,
             bbox=bbox,
             datetime=datetime_str,
             limit=limit or 10,
-            filter_expr=_parse_cql2_filter(filter_expr, filter_lang),
+            filter_expr=parsed_filter,
             filter_lang="cql2-json",
             token=token,
             request=request,

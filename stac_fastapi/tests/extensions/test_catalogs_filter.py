@@ -8,10 +8,15 @@ collection filters on `/catalogs`, `/catalogs/{id}/collections`,
 """
 
 import json
+import os
 import uuid
+from unittest import mock
 from urllib.parse import parse_qs, urlparse
 
 import pytest
+from httpx import ASGITransport, AsyncClient
+
+from ..conftest import build_test_app_with_catalogs
 
 
 def _uid(prefix: str) -> str:
@@ -252,6 +257,35 @@ async def test_filter_that_fails_translation_is_rejected(
     )
     assert resp.status_code == 400, resp.text
     assert "Error with cql2 filter" in resp.text
+
+
+@pytest.mark.asyncio
+async def test_item_filter_checks_the_queryables(
+    catalogs_app_client, load_test_data, ctx
+):
+    """With VALIDATE_QUERYABLES, an item filter on a field that is not queryable is a 400, as on /search."""
+    # The queryables cache reads the setting when the app is built.
+    with mock.patch.dict(os.environ, {"VALIDATE_QUERYABLES": "true"}):
+        app = build_test_app_with_catalogs()
+    cat = _uid("cat")
+    await _catalog(catalogs_app_client, load_test_data, cat)
+    resp = await catalogs_app_client.post(
+        f"/catalogs/{cat}/collections", json={"id": ctx.collection["id"]}
+    )
+    assert resp.status_code == 200, resp.text
+    path = f"/catalogs/{cat}/collections/{ctx.collection['id']}/items"
+
+    async with AsyncClient(
+        transport=ASGITransport(app=app), base_url="http://test-server"
+    ) as client:
+        queryable = await client.get(
+            path, params={"filter": f"id = '{ctx.item['id']}'"}
+        )
+        not_queryable = await client.get(path, params={"filter": "invalid_param = 'x'"})
+
+    assert _ids(queryable, "features") == [ctx.item["id"]]
+    assert not_queryable.status_code == 400, not_queryable.text
+    assert "Invalid query fields: invalid_param" in not_queryable.json()["detail"]
 
 
 @pytest.mark.asyncio
