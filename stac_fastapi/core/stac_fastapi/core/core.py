@@ -1,6 +1,7 @@
 """Core client."""
 
 import asyncio
+import json
 import logging
 import os
 from datetime import datetime as datetime_type
@@ -2181,6 +2182,13 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
     ) -> BulkTransaction | Response:
         """Perform a bulk insertion of items into the database using Elasticsearch.
 
+        The path collection is authoritative: every item is written to its index.
+        An item whose `collection` is absent, `null` or `""` is written with the path
+        collection; any other value that differs is reported per item in `errors`, or
+        rejects the batch with `400` under `RAISE_ON_BULK_ERROR`. Without a path
+        collection (direct calls), the first entry with a non-empty string `id` and
+        `collection` sets the batch collection.
+
         Args:
             items: The items to insert.
             chunk_size: The size of each chunk for bulk processing.
@@ -2188,6 +2196,9 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
 
         Returns:
             A string indicating the number of items successfully added.
+
+        Raises:
+            NotFoundError: If the batch collection does not exist.
         """
         request = kwargs.get("request")
 
@@ -2211,6 +2222,24 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
             for item in items.items.values()
         ]
 
+        collection_id = getattr(request, "path_params", {}).get("collection_id")
+        if collection_id is None:
+            # Direct call without a path: the first admissible entry naming a collection sets it.
+            collection_id = next(
+                (
+                    item["collection"]
+                    for item in raw_items
+                    if isinstance(item, dict)
+                    and isinstance(item.get("id"), str)
+                    and item["id"]
+                    and isinstance(item.get("collection"), str)
+                    and item["collection"]
+                ),
+                None,
+            )
+        if collection_id is not None:
+            self.database.check_collection_exists_sync(collection_id)
+
         admitted_items = []
         admission_errors = []
         for key, item in zip(items.items, raw_items):
@@ -2222,6 +2251,21 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
                 admission_errors.append(
                     {"id": key, "msg": "Item must have a non-empty string id."}
                 )
+            elif collection_id is not None and item.get("collection") not in (
+                None,
+                "",
+                collection_id,
+            ):
+                value = item["collection"]
+                shown = f"'{value}'" if isinstance(value, str) else json.dumps(value)
+                admission_errors.append(
+                    {
+                        "id": key,
+                        "msg": f"Item collection {shown} does not match path collection '{collection_id}'",
+                    }
+                )
+            elif collection_id is not None:
+                admitted_items.append({**item, "collection": collection_id})
             else:
                 admitted_items.append(item)
 
@@ -2300,7 +2344,7 @@ class BulkTransactionsClient(BaseBulkTransactionsClient):
             )
 
         # 4. DATABASE INSERTION LAYER
-        collection_id = processed_items[0]["collection"]
+        collection_id = collection_id or processed_items[0]["collection"]
         success, errors = self.database.bulk_sync(
             collection_id,
             processed_items,
