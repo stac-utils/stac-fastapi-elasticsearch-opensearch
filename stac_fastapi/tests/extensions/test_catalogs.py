@@ -633,9 +633,10 @@ async def test_catalogs_pagination_next_link(catalogs_app_client, load_test_data
     total = resp.json()["numberMatched"]
 
     # Other tests leave catalogs behind, so size the pages from the total:
-    # at least two pages, whatever the total is.
+    # at least two pages, whatever the total is. Any other query parameter
+    # is carried to the next page.
     limit = min(total - 1, 1000)
-    url = f"/catalogs?limit={limit}"
+    url = f"/catalogs?limit={limit}&unrelated=kept"
     seen = []
     for _ in range(total):
         resp = await catalogs_app_client.get(url)
@@ -647,11 +648,40 @@ async def test_catalogs_pagination_next_link(catalogs_app_client, load_test_data
             break
         assert len(next_links) == 1
         assert f"limit={limit}" in next_links[0]["href"]
+        assert "unrelated=kept" in next_links[0]["href"]
         url = next_links[0]["href"]
 
     assert len(seen) > limit, "The first page should link to a second page"
     assert len(seen) == len(set(seen)) == total
     assert created <= set(seen)
+
+
+@pytest.mark.asyncio
+async def test_catalogs_next_link_escapes_the_token(
+    catalogs_app_client, load_test_data
+):
+    """Test that the /catalogs next link escapes its token, a catalog id here."""
+    # A leading "0" sorts the catalog near the start of the id-ordered list.
+    test_catalog = load_test_data("test_catalog.json")
+    test_catalog["id"] = f"0-test-catalog-{uuid.uuid4()}+plus"
+    resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+    assert resp.status_code == 201
+
+    resp = await catalogs_app_client.get("/catalogs?limit=1000")
+    assert resp.status_code == 200
+    ids = [catalog["id"] for catalog in resp.json()["catalogs"]]
+    position = ids.index(test_catalog["id"])
+
+    # End the first page on that catalog, so its id is the next token. An
+    # unescaped "+" would come back as a space and repeat the catalog.
+    limit = position + 1
+    resp = await catalogs_app_client.get(f"/catalogs?limit={limit}")
+    next_links = [link for link in resp.json()["links"] if link["rel"] == "next"]
+    assert len(next_links) == 1
+    resp = await catalogs_app_client.get(next_links[0]["href"])
+    assert resp.status_code == 200
+    next_ids = [catalog["id"] for catalog in resp.json()["catalogs"]]
+    assert next_ids == ids[limit : 2 * limit]
 
 
 @pytest.mark.asyncio
