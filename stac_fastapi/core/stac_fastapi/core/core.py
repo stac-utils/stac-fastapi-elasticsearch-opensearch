@@ -78,12 +78,24 @@ from stac_fastapi.types.conformance import BASE_CONFORMANCE_CLASSES
 from stac_fastapi.types.core import AsyncBaseCoreClient
 from stac_fastapi.types.extension import ApiExtension
 from stac_fastapi.types.requests import get_base_url
-from stac_fastapi.types.search import BaseSearchPostRequest
+from stac_fastapi.types.search import BaseSearchPostRequest, Limit
 
 logger = logging.getLogger(__name__)
 
 partialItemValidator = TypeAdapter(PartialItem)
 partialCollectionValidator = TypeAdapter(PartialCollection)
+limitValidator = TypeAdapter(Limit)
+
+
+def validate_limit(value: Any) -> int:
+    """Validate a client limit as a positive integer cropped to 10000."""
+    try:
+        return limitValidator.validate_python(value)
+    except ValidationError:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid limit parameter: must be a positive integer",
+        )
 
 
 def bare_media_type(header: str | None) -> str:
@@ -394,9 +406,13 @@ class CoreClient(AsyncBaseCoreClient):
             pass
 
         if body_limit is not None:
-            limit = int(body_limit)
+            limit = validate_limit(body_limit)
         elif query_limit:
-            limit = int(query_limit)
+            limit = (
+                validate_limit(query_limit)
+                if request.method == "POST"
+                else int(query_limit)
+            )
         else:
             limit = default_limit
 
@@ -909,9 +925,13 @@ class CoreClient(AsyncBaseCoreClient):
             pass
 
         if body_limit is not None:
-            limit = int(body_limit)
+            limit = validate_limit(body_limit)
         elif query_limit:
-            limit = int(query_limit)
+            limit = (
+                validate_limit(query_limit)
+                if request.method == "POST"
+                else int(query_limit)
+            )
         else:
             limit = default_limit
 
