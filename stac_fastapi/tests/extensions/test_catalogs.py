@@ -618,6 +618,43 @@ async def test_catalogs_pagination_token_parameter(catalogs_app_client, load_tes
 
 
 @pytest.mark.asyncio
+async def test_catalogs_pagination_next_link(catalogs_app_client, load_test_data):
+    """Test that /catalogs links to the next page while more catalogs match."""
+    created = set()
+    for i in range(3):
+        test_catalog = load_test_data("test_catalog.json")
+        test_catalog["id"] = f"test-catalog-{uuid.uuid4()}-{i}"
+        resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+        assert resp.status_code == 201
+        created.add(test_catalog["id"])
+
+    resp = await catalogs_app_client.get("/catalogs?limit=1")
+    assert resp.status_code == 200
+    total = resp.json()["numberMatched"]
+
+    # Other tests leave catalogs behind, so size the pages from the total:
+    # at least two pages, whatever the total is.
+    limit = min(total - 1, 1000)
+    url = f"/catalogs?limit={limit}"
+    seen = []
+    for _ in range(total):
+        resp = await catalogs_app_client.get(url)
+        assert resp.status_code == 200
+        page = resp.json()
+        seen += [catalog["id"] for catalog in page["catalogs"]]
+        next_links = [link for link in page["links"] if link["rel"] == "next"]
+        if not next_links:
+            break
+        assert len(next_links) == 1
+        assert f"limit={limit}" in next_links[0]["href"]
+        url = next_links[0]["href"]
+
+    assert len(seen) > limit, "The first page should link to a second page"
+    assert len(seen) == len(set(seen)) == total
+    assert created <= set(seen)
+
+
+@pytest.mark.asyncio
 async def test_create_catalog_collection(catalogs_app_client, load_test_data, ctx):
     """Test creating a collection within a catalog."""
     # First create a catalog
