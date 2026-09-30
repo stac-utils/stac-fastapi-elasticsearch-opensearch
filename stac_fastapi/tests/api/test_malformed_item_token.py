@@ -28,6 +28,7 @@ def encode(value):
 
 
 MALFORMED_TOKENS = {
+    "empty": "",
     "base64": "!!!!",
     "padding": "a",
     "not-json": "bm90LWpzb24=",
@@ -220,6 +221,33 @@ async def test_valid_token_round_trips(catalogs_app_client, token_scope, route, 
     second_ids = [f["id"] for f in second.json()["features"]]
     assert len(first_ids) == len(second_ids) == 1
     assert first_ids != second_ids
+
+
+@pytest.mark.parametrize(
+    "body_token,status",
+    (({"token": ""}, 400), ({}, 200), ({"token": None}, 200)),
+    ids=("empty", "absent", "null"),
+)
+async def test_query_token_used_only_when_body_token_is_absent(
+    catalogs_app_client, token_scope, body_token, status
+):
+    """POST reads the query-string token only when the body has none; an empty body token is rejected."""
+    routes, collection_id = token_scope
+    body = {"limit": 1, "collections": [collection_id]}
+    first = await catalogs_app_client.post(routes["global"], json=body)
+    assert first.status_code == 200, first.text
+    response = await catalogs_app_client.post(
+        routes["global"],
+        params={"token": next_token(first.json())},
+        json={**body, **body_token},
+    )
+    assert response.status_code == status, response.text
+    if status == 400:
+        assert response.json() == INVALID
+    else:
+        assert [f["id"] for f in response.json()["features"]] != [
+            f["id"] for f in first.json()["features"]
+        ]
 
 
 async def test_collection_cursor_contract_preserved(catalogs_app_client):
