@@ -1015,10 +1015,10 @@ class CoreClient(AsyncBaseCoreClient):
         if search_request.limit:
             limit = search_request.limit
 
-        # Use token from the request if the model doesn't define it
-        token_param = getattr(
-            search_request, "token", None
-        ) or request.query_params.get("token")
+        # Use the query-string token only if the model doesn't define one
+        token_param = getattr(search_request, "token", None)
+        if token_param is None:
+            token_param = request.query_params.get("token")
         items, maybe_count, next_token = await self.database.execute_search(
             search=search,
             limit=limit,
