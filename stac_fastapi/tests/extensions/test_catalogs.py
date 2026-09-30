@@ -85,6 +85,60 @@ async def test_create_catalog(catalogs_app_client, load_test_data):
 
 
 @pytest.mark.asyncio
+async def test_create_catalog_ignores_parent_ids_in_body(
+    catalogs_app_client, txn_client, load_test_data
+):
+    """Test that POST /catalogs creates a top-level catalog whatever parent_ids says."""
+    parent = load_test_data("test_catalog.json")
+    parent["id"] = f"test-parent-{uuid.uuid4()}"
+    resp = await catalogs_app_client.post("/catalogs", json=parent)
+    assert resp.status_code == 201
+
+    child = load_test_data("test_catalog.json")
+    child["id"] = f"test-catalog-{uuid.uuid4()}"
+    child["parent_ids"] = [parent["id"]]
+    resp = await catalogs_app_client.post("/catalogs", json=child)
+    assert resp.status_code == 201
+
+    stored = await txn_client.database.client.get(
+        index=COLLECTIONS_INDEX, id=child["id"]
+    )
+    assert stored["_source"]["parent_ids"] == []
+
+    sub_resp = await catalogs_app_client.get(f"/catalogs/{parent['id']}/catalogs")
+    assert sub_resp.status_code == 200
+    sub_ids = [c["id"] for c in sub_resp.json()["catalogs"]]
+    assert child["id"] not in sub_ids
+
+
+@pytest.mark.asyncio
+async def test_create_collection_ignores_parent_ids_in_body(
+    catalogs_app_client, txn_client, load_test_data
+):
+    """Test that POST /collections does not add a collection to the catalogs in parent_ids."""
+    catalog = load_test_data("test_catalog.json")
+    catalog["id"] = f"test-catalog-{uuid.uuid4()}"
+    resp = await catalogs_app_client.post("/catalogs", json=catalog)
+    assert resp.status_code == 201
+
+    collection = load_test_data("test_collection.json")
+    collection["id"] = f"test-collection-{uuid.uuid4()}"
+    collection["parent_ids"] = [catalog["id"]]
+    resp = await catalogs_app_client.post("/collections", json=collection)
+    assert resp.status_code == 201
+
+    stored = await txn_client.database.client.get(
+        index=COLLECTIONS_INDEX, id=collection["id"]
+    )
+    assert stored["_source"].get("parent_ids", []) == []
+
+    list_resp = await catalogs_app_client.get(f"/catalogs/{catalog['id']}/collections")
+    assert list_resp.status_code == 200
+    listed_ids = [c["id"] for c in list_resp.json()["collections"]]
+    assert collection["id"] not in listed_ids
+
+
+@pytest.mark.asyncio
 async def test_update_catalog(catalogs_app_client, load_test_data):
     """Test updating an existing catalog."""
     # First create a catalog
