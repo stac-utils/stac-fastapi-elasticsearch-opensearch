@@ -1,5 +1,7 @@
+import base64
 import uuid
 from unittest.mock import AsyncMock, MagicMock
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 
@@ -647,8 +649,9 @@ async def test_catalogs_pagination_next_link(catalogs_app_client, load_test_data
         if not next_links:
             break
         assert len(next_links) == 1
-        assert f"limit={limit}" in next_links[0]["href"]
-        assert "unrelated=kept" in next_links[0]["href"]
+        query = parse_qs(urlparse(next_links[0]["href"]).query)
+        assert query["limit"] == [str(limit)]
+        assert query["unrelated"] == ["kept"]
         url = next_links[0]["href"]
 
     assert len(seen) > limit, "The first page should link to a second page"
@@ -657,31 +660,67 @@ async def test_catalogs_pagination_next_link(catalogs_app_client, load_test_data
 
 
 @pytest.mark.asyncio
-async def test_catalogs_next_link_escapes_the_token(
+async def test_catalogs_next_link_pages_through_tricky_ids(
     catalogs_app_client, load_test_data
 ):
-    """Test that the /catalogs next link escapes its token, a catalog id here."""
-    # A leading "0" sorts the catalog near the start of the id-ordered list.
+    """Paging /catalogs one at a time terminates and returns each id once.
+
+    The old raw token split on ``|``, so a catalog id containing ``|`` sent the
+    ``next`` link back to page 1 forever. The token is now opaque base64, so
+    following ``next`` terminates. ``+`` and ``=`` check that the link still
+    escapes the token.
+    """
+    created = set()
+    for suffix in ("a|b", "c+d", "e=f"):
+        test_catalog = load_test_data("test_catalog.json")
+        test_catalog["id"] = f"test-catalog-{uuid.uuid4()}-{suffix}"
+        resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
+        assert resp.status_code == 201
+        created.add(test_catalog["id"])
+
+    total = (await catalogs_app_client.get("/catalogs?limit=1")).json()["numberMatched"]
+
+    seen = []
+    tokens_seen = set()
+    url = "/catalogs?limit=1"
+    for _ in range(total + 5):  # bounded, so a looping token fails instead of hanging
+        resp = await catalogs_app_client.get(url)
+        assert resp.status_code == 200
+        page = resp.json()
+        seen += [catalog["id"] for catalog in page["catalogs"]]
+        next_links = [link for link in page["links"] if link["rel"] == "next"]
+        if not next_links:
+            break
+        token = parse_qs(urlparse(next_links[0]["href"]).query)["token"][0]
+        assert token not in tokens_seen, "next repeated a token: paging is looping"
+        tokens_seen.add(token)
+        url = next_links[0]["href"]
+    else:
+        raise AssertionError("paging did not terminate")
+
+    assert len(seen) == len(set(seen)) == total
+    assert created <= set(seen)
+
+
+@pytest.mark.asyncio
+async def test_catalogs_pagination_non_list_token_is_page_one(
+    catalogs_app_client, load_test_data
+):
+    """A base64 token that is not a list of sort values is ignored: page 1, not a 500."""
     test_catalog = load_test_data("test_catalog.json")
-    test_catalog["id"] = f"0-test-catalog-{uuid.uuid4()}+plus"
+    test_catalog["id"] = f"test-catalog-{uuid.uuid4()}"
     resp = await catalogs_app_client.post("/catalogs", json=test_catalog)
     assert resp.status_code == 201
 
-    resp = await catalogs_app_client.get("/catalogs?limit=1000")
-    assert resp.status_code == 200
-    ids = [catalog["id"] for catalog in resp.json()["catalogs"]]
-    position = ids.index(test_catalog["id"])
+    first = await catalogs_app_client.get("/catalogs?limit=1000")
+    assert first.status_code == 200
+    page_one = [catalog["id"] for catalog in first.json()["catalogs"]]
 
-    # End the first page on that catalog, so its id is the next token. An
-    # unescaped "+" would come back as a space and repeat the catalog.
-    limit = position + 1
-    resp = await catalogs_app_client.get(f"/catalogs?limit={limit}")
-    next_links = [link for link in resp.json()["links"] if link["rel"] == "next"]
-    assert len(next_links) == 1
-    resp = await catalogs_app_client.get(next_links[0]["href"])
-    assert resp.status_code == 200
-    next_ids = [catalog["id"] for catalog in resp.json()["catalogs"]]
-    assert next_ids == ids[limit : 2 * limit]
+    for payload in (b'{"x": 1}', b'"x"'):  # valid base64 JSON, but not a list
+        token = base64.urlsafe_b64encode(payload).decode()
+        resp = await catalogs_app_client.get(f"/catalogs?limit=1000&token={token}")
+        assert resp.status_code == 200, resp.text
+        assert [catalog["id"] for catalog in resp.json()["catalogs"]] == page_one
 
 
 @pytest.mark.asyncio

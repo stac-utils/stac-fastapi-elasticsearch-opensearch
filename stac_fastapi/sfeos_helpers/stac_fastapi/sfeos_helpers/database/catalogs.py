@@ -29,9 +29,16 @@ def decode_token_to_search_after(token: str | None) -> list | None:
     if not token:
         return None
     try:
-        return json.loads(base64.urlsafe_b64decode(token.encode()).decode())
+        search_after = json.loads(base64.urlsafe_b64decode(token.encode()).decode())
     except Exception:
         return None
+    # A token must decode to a list of non-empty scalars. Any other shape (a bare
+    # string, an object, a null) is treated as an invalid token: page 1, not a 500.
+    if not isinstance(search_after, list) or not all(
+        isinstance(v, (str, int, float)) and v != "" for v in search_after
+    ):
+        return None
+    return search_after
 
 
 def encode_search_after_to_token(search_after: list | None) -> str | None:
