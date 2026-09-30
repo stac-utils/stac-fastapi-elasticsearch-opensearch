@@ -89,6 +89,7 @@ limitValidator = TypeAdapter(Limit)
 
 def validate_limit(value: Any) -> int:
     """Validate a client limit as a positive integer cropped to 10000."""
+    # OGC API - Features Req. 22 C: crop above the maximum, don't reject.
     try:
         return limitValidator.validate_python(value)
     except ValidationError:
@@ -408,11 +409,7 @@ class CoreClient(AsyncBaseCoreClient):
         if body_limit is not None:
             limit = validate_limit(body_limit)
         elif query_limit:
-            limit = (
-                validate_limit(query_limit)
-                if request.method == "POST"
-                else int(query_limit)
-            )
+            limit = validate_limit(query_limit)
         else:
             limit = default_limit
 
@@ -927,11 +924,7 @@ class CoreClient(AsyncBaseCoreClient):
         if body_limit is not None:
             limit = validate_limit(body_limit)
         elif query_limit:
-            limit = (
-                validate_limit(query_limit)
-                if request.method == "POST"
-                else int(query_limit)
-            )
+            limit = validate_limit(query_limit)
         else:
             limit = default_limit
 

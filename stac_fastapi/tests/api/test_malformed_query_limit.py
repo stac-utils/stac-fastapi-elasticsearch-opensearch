@@ -1,4 +1,4 @@
-"""HTTP regressions for the ``limit`` chosen by POST search routes."""
+"""HTTP regressions for the ``limit`` chosen by search routes."""
 
 import asyncio
 import uuid
@@ -141,13 +141,22 @@ async def test_forwarded_limit(
     assert forwarded_limit(route) == expected
 
 
-async def test_get_collections_search_limit_is_not_cropped(
-    client, forwarded_limit, monkeypatch
+@pytest.mark.parametrize(
+    "route,path",
+    [
+        ("collections", "/collections-search"),
+        ("collections", "/collections"),
+        ("global", "/search"),
+    ],
+)
+async def test_get_limit_above_maximum_is_cropped(
+    client, forwarded_limit, monkeypatch, route, path
 ):
-    monkeypatch.delenv("STAC_GLOBAL_COLLECTION_MAX_LIMIT", raising=False)
-    response = await client.get("/collections-search", params={"limit": "20000"})
+    for name in ("STAC_GLOBAL_ITEM_MAX_LIMIT", "STAC_GLOBAL_COLLECTION_MAX_LIMIT"):
+        monkeypatch.delenv(name, raising=False)
+    response = await client.get(path, params={"limit": "20000"})
     assert response.status_code == 200, response.text
-    assert forwarded_limit("collections") == 20000
+    assert forwarded_limit(route) == 10000
 
 
 async def test_catalog_scope_precedes_limit_parsing(client, load_test_data):
