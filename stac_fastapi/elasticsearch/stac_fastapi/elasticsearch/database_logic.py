@@ -1109,6 +1109,11 @@ class DatabaseLogic(BaseDatabaseLogic):
         if not await self.client.exists(index=COLLECTIONS_INDEX, id=collection_id):
             raise NotFoundError(f"Collection {collection_id} does not exist")
 
+    def check_collection_exists_sync(self, collection_id: str):
+        """Database logic to check if a collection exists, using the sync client."""
+        if not self.sync_client.exists(index=COLLECTIONS_INDEX, id=collection_id):
+            raise NotFoundError(f"Collection {collection_id} does not exist")
+
     async def _check_item_exists_in_collection(
         self, collection_id: str, item_id: str
     ) -> bool:
@@ -1219,9 +1224,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         """
         logger.debug(f"Preparing item {item['id']} in collection {item['collection']}.")
 
-        # Check if the collection exists
-        if not self.sync_client.exists(index=COLLECTIONS_INDEX, id=item["collection"]):
-            raise NotFoundError(f"Collection {item['collection']} does not exist")
+        self.check_collection_exists_sync(item["collection"])
 
         # Serialize the item into a database-compatible format
         prepped_item = self.item_serializer.stac_to_db(item, base_url)

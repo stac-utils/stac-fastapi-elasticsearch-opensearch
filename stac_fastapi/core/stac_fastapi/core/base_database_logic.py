@@ -482,6 +482,11 @@ class BaseDatabaseLogic(abc.ABC):
         pass
 
     @abc.abstractmethod
+    def check_collection_exists_sync(self, collection_id: str) -> None:
+        """Check if a collection exists, using the synchronous client."""
+        pass
+
+    @abc.abstractmethod
     async def delete_items(self) -> None:
         """Delete all items."""
         pass
