@@ -12,6 +12,8 @@ import orjson
 from fastapi import HTTPException
 from opensearchpy import Q, Search
 from opensearchpy.exceptions import ConflictError as OSConflictError
+from opensearchpy.exceptions import ConnectionError as OSConnectionError
+from opensearchpy.exceptions import ConnectionTimeout as OSConnectionTimeout
 from opensearchpy.exceptions import NotFoundError as OSNotFoundError
 from opensearchpy.exceptions import RequestError
 from starlette.requests import Request
@@ -2103,9 +2105,11 @@ class DatabaseLogic(BaseDatabaseLogic):
         """Translate a CQL2 JSON filter on catalog or collection documents to a query."""
         if not filter:
             return None
-        return filter_module.to_es(
-            await self.get_collections_queryables_mapping(), filter
-        )
+        queryables_mapping = await self.get_collections_queryables_mapping()
+        try:
+            return filter_module.to_es(queryables_mapping, filter)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Error with cql2 filter: {e}")
 
     @retry_on_connection_error
     async def get_all_catalogs(
@@ -2487,7 +2491,14 @@ class DatabaseLogic(BaseDatabaseLogic):
                 if isinstance(filter_expr, str)
                 else filter_expr
             )
-            search, _ = await self.apply_cql2_filter(search, cql2_filter)
+            try:
+                search, _ = await self.apply_cql2_filter(search, cql2_filter)
+            except (OSConnectionError, OSConnectionTimeout):
+                raise
+            except Exception as e:
+                raise HTTPException(
+                    status_code=400, detail=f"Error with cql2 filter: {e}"
+                )
 
         sort_param = None
 

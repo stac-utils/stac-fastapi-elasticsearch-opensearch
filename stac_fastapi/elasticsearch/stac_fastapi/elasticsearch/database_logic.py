@@ -12,6 +12,8 @@ import orjson
 from elasticsearch.dsl import Q, Search
 from elasticsearch.exceptions import BadRequestError
 from elasticsearch.exceptions import ConflictError as ESConflictError
+from elasticsearch.exceptions import ConnectionError as ESConnectionError
+from elasticsearch.exceptions import ConnectionTimeout as ESConnectionTimeout
 from elasticsearch.exceptions import NotFoundError as ESNotFoundError
 from fastapi import HTTPException
 from starlette.requests import Request
@@ -2129,9 +2131,11 @@ class DatabaseLogic(BaseDatabaseLogic):
         """Translate a CQL2 JSON filter on catalog or collection documents to a query."""
         if not filter:
             return None
-        return filter_module.to_es(
-            await self.get_collections_queryables_mapping(), filter
-        )
+        queryables_mapping = await self.get_collections_queryables_mapping()
+        try:
+            return filter_module.to_es(queryables_mapping, filter)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f"Error with cql2 filter: {e}")
 
     @retry_on_connection_error
     async def get_all_catalogs(
@@ -2572,7 +2576,14 @@ class DatabaseLogic(BaseDatabaseLogic):
                 if isinstance(filter_expr, str)
                 else filter_expr
             )
-            search, _ = await self.apply_cql2_filter(search, cql2_filter)
+            try:
+                search, _ = await self.apply_cql2_filter(search, cql2_filter)
+            except (ESConnectionError, ESConnectionTimeout):
+                raise
+            except Exception as e:
+                raise HTTPException(
+                    status_code=400, detail=f"Error with cql2 filter: {e}"
+                )
 
         sort_param = None
 

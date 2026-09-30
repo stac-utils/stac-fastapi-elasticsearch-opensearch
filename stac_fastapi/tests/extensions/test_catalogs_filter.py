@@ -219,6 +219,43 @@ async def test_invalid_filter_is_rejected(catalogs_app_client, load_test_data):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
+    "cql2_json",
+    [
+        {"op": "in", "args": [{"property": "id"}, "not-a-list"]},
+        {"op": "between", "args": [{"property": "id"}, 1]},
+    ],
+)
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/catalogs",
+        "/catalogs/{catalog_id}/collections",
+        "/catalogs/{catalog_id}/catalogs",
+        "/catalogs/{catalog_id}/children",
+        "/catalogs/{catalog_id}/collections/{collection_id}/items",
+    ],
+)
+async def test_filter_that_fails_translation_is_rejected(
+    catalogs_app_client, load_test_data, ctx, path, cql2_json
+):
+    """A filter that parses but can't be translated to a query is a 400, as on /search."""
+    cat = _uid("cat")
+    await _catalog(catalogs_app_client, load_test_data, cat)
+    resp = await catalogs_app_client.post(
+        f"/catalogs/{cat}/collections", json={"id": ctx.collection["id"]}
+    )
+    assert resp.status_code == 200, resp.text
+
+    resp = await catalogs_app_client.get(
+        path.format(catalog_id=cat, collection_id=ctx.collection["id"]),
+        params={"filter": json.dumps(cql2_json), "filter-lang": "cql2-json"},
+    )
+    assert resp.status_code == 400, resp.text
+    assert "Error with cql2 filter" in resp.text
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
     "path",
     [
         "/catalogs",
