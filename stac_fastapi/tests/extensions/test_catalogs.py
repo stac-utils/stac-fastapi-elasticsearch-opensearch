@@ -84,11 +84,24 @@ async def test_create_catalog(catalogs_app_client, load_test_data):
     assert created_catalog["title"] == test_catalog["title"]
 
 
+# Stands in for the id of a catalog the test creates, in the parametrized cases below.
+EXISTING_PARENT = object()
+
+
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "parent_ids",
+    [EXISTING_PARENT, None, "x", ["missing-catalog"]],
+    ids=["existing", "null", "string", "missing"],
+)
 async def test_create_catalog_ignores_parent_ids_in_body(
-    catalogs_app_client, txn_client, load_test_data
+    catalogs_app_client, txn_client, load_test_data, parent_ids
 ):
-    """Test that POST /catalogs creates a top-level catalog whatever parent_ids says."""
+    """Test that POST /catalogs creates a top-level catalog whatever parent_ids says.
+
+    The body may name an existing catalog, null, a bare string or a catalog that
+    does not exist; in each case the new catalog is top-level and can be read back.
+    """
     parent = load_test_data("test_catalog.json")
     parent["id"] = f"test-parent-{uuid.uuid4()}"
     resp = await catalogs_app_client.post("/catalogs", json=parent)
@@ -96,14 +109,19 @@ async def test_create_catalog_ignores_parent_ids_in_body(
 
     child = load_test_data("test_catalog.json")
     child["id"] = f"test-catalog-{uuid.uuid4()}"
-    child["parent_ids"] = [parent["id"]]
+    child["parent_ids"] = (
+        [parent["id"]] if parent_ids is EXISTING_PARENT else parent_ids
+    )
     resp = await catalogs_app_client.post("/catalogs", json=child)
-    assert resp.status_code == 201
+    assert resp.status_code == 201, resp.text
 
     stored = await txn_client.database.client.get(
         index=COLLECTIONS_INDEX, id=child["id"]
     )
     assert stored["_source"]["parent_ids"] == []
+
+    get_resp = await catalogs_app_client.get(f"/catalogs/{child['id']}")
+    assert get_resp.status_code == 200, get_resp.text
 
     sub_resp = await catalogs_app_client.get(f"/catalogs/{parent['id']}/catalogs")
     assert sub_resp.status_code == 200
@@ -112,8 +130,13 @@ async def test_create_catalog_ignores_parent_ids_in_body(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "parent_ids",
+    [EXISTING_PARENT, None, "x", ["missing-catalog"]],
+    ids=["existing", "null", "string", "missing"],
+)
 async def test_create_collection_ignores_parent_ids_in_body(
-    catalogs_app_client, txn_client, load_test_data
+    catalogs_app_client, txn_client, load_test_data, parent_ids
 ):
     """Test that POST /collections does not add a collection to the catalogs in parent_ids."""
     catalog = load_test_data("test_catalog.json")
@@ -123,14 +146,19 @@ async def test_create_collection_ignores_parent_ids_in_body(
 
     collection = load_test_data("test_collection.json")
     collection["id"] = f"test-collection-{uuid.uuid4()}"
-    collection["parent_ids"] = [catalog["id"]]
+    collection["parent_ids"] = (
+        [catalog["id"]] if parent_ids is EXISTING_PARENT else parent_ids
+    )
     resp = await catalogs_app_client.post("/collections", json=collection)
-    assert resp.status_code == 201
+    assert resp.status_code == 201, resp.text
 
     stored = await txn_client.database.client.get(
         index=COLLECTIONS_INDEX, id=collection["id"]
     )
     assert stored["_source"].get("parent_ids", []) == []
+
+    get_resp = await catalogs_app_client.get(f"/collections/{collection['id']}")
+    assert get_resp.status_code == 200, get_resp.text
 
     list_resp = await catalogs_app_client.get(f"/catalogs/{catalog['id']}/collections")
     assert list_resp.status_code == 200
