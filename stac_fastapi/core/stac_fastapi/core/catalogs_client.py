@@ -37,17 +37,15 @@ logger = logging.getLogger(__name__)
 
 
 def _parse_cql2_filter(
-    filter_expr: str | dict[str, Any] | None, filter_lang: str | None
+    filter_expr: str | None, filter_lang: str | None
 ) -> dict[str, Any] | None:
     """Parse a `filter` parameter into CQL2 JSON, as the collections route does.
 
     Raises:
         HTTPException: 400 if the language is not supported or the filter does not parse.
     """
-    if filter_expr is None or filter_expr == "":
+    if not filter_expr:
         return None
-    if isinstance(filter_expr, dict):
-        return filter_expr
     if filter_lang not in (None, "cql2-text", "cql2-json"):
         raise HTTPException(
             status_code=400,
@@ -1158,8 +1156,7 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
             bbox=bbox,
             datetime=datetime_str,
             limit=limit or 10,
-            filter_expr=parsed_filter,
-            filter_lang="cql2-json",
+            filter=parsed_filter,
             token=token,
             request=request,
         )

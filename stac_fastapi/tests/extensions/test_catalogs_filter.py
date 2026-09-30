@@ -203,7 +203,7 @@ async def test_next_link_keeps_other_parameters(
 
 
 @pytest.mark.asyncio
-async def test_unsupported_filter_lang_is_rejected(catalogs_app_client, load_test_data):
+async def test_unsupported_filter_lang_is_rejected(catalogs_app_client):
     """A filter language other than CQL2 text or JSON is a 400."""
     resp = await catalogs_app_client.get(
         "/catalogs", params={"filter": "id = 'x'", "filter-lang": "ecql"}

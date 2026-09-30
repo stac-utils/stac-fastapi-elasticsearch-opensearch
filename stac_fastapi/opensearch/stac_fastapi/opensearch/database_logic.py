@@ -2463,8 +2463,7 @@ class DatabaseLogic(BaseDatabaseLogic):
         datetime: str | None = None,
         limit: int = 10,
         sortby: str | None = None,
-        filter_expr: str | dict[str, Any] | None = None,
-        filter_lang: str | None = None,
+        filter: dict[str, Any] | None = None,
         token: str | None = None,
         query: str | None = None,
         fields: list[str] | None = None,
@@ -2485,14 +2484,9 @@ class DatabaseLogic(BaseDatabaseLogic):
         if datetime:
             search, datetime_search = self.apply_datetime_filter(search, datetime)
 
-        if filter_expr:
-            cql2_filter = (
-                orjson.loads(filter_expr)
-                if isinstance(filter_expr, str)
-                else filter_expr
-            )
+        if filter:
             try:
-                search, _ = await self.apply_cql2_filter(search, cql2_filter)
+                search, _ = await self.apply_cql2_filter(search, filter)
             except (OSConnectionError, OSConnectionTimeout):
                 raise
             except Exception as e:

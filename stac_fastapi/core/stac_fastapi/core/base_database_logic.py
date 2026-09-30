@@ -320,13 +320,12 @@ class BaseDatabaseLogic(abc.ABC):
         datetime: str | None = None,
         limit: int = 10,
         sortby: str | None = None,
-        filter_expr: str | dict[str, Any] | None = None,
-        filter_lang: str | None = None,
+        filter: dict[str, Any] | None = None,
         token: str | None = None,
         query: str | None = None,
         fields: list[str] | None = None,
     ) -> Any:
-        """Get items from a collection in a catalog, optionally matching a CQL2 filter."""
+        """Get items from a collection in a catalog, optionally matching a CQL2 JSON filter."""
         pass
 
     @abc.abstractmethod
