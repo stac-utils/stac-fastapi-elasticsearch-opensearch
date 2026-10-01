@@ -145,6 +145,18 @@ class CatalogsClient(AsyncBaseCatalogsClient, AsyncCatalogsSearchClient):
                     "title": "Catalogs",
                 }
             )
+            if next_token:
+                links.append(
+                    {
+                        "rel": "next",
+                        "type": "application/json",
+                        "href": str(
+                            request.url.include_query_params(
+                                limit=limit, token=next_token
+                            )
+                        ),
+                    }
+                )
 
         # Filter links to remove unwanted fields
         filtered_links = [self._link_to_dict(link) for link in links]

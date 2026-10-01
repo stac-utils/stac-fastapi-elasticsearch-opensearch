@@ -2164,24 +2164,12 @@ class DatabaseLogic(BaseDatabaseLogic):
             "_source": True,  # Ensure all fields including parent_ids are returned
         }
 
-        # Handle search_after token
-        search_after = None
-        if token:
-            try:
-                search_after = token.split("|")
-                # Validate token format: must have correct number of values and be non-empty
-                if len(search_after) != len(formatted_sort):
-                    search_after = None
-                else:
-                    # Validate each value is non-empty (check for patterns like "id||date")
-                    for val in search_after:
-                        if not val:
-                            search_after = None
-                            break
-            except Exception:
-                search_after = None
-
-            if search_after is not None:
+        # Handle search_after token (opaque base64, like the other catalog routes)
+        search_after = decode_token_to_search_after(token)
+        if search_after is not None:
+            if len(search_after) != len(formatted_sort):
+                search_after = None  # a token from a different sort: start at page 1
+            else:
                 body["search_after"] = search_after
 
         # Search for catalogs in collections index
@@ -2195,9 +2183,7 @@ class DatabaseLogic(BaseDatabaseLogic):
 
         next_token = None
         if len(hits) == limit:
-            next_token_values = hits[-1].get("sort")
-            if next_token_values:
-                next_token = "|".join(str(val) for val in next_token_values)
+            next_token = encode_search_after_to_token(hits[-1].get("sort"))
 
         # Get the total count
         matched = (
