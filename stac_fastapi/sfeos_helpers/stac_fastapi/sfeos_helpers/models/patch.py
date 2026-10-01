@@ -106,7 +106,11 @@ class ElasticPath(BaseModel):
             data["asset_key"] = data["key"]
             data["key"] = "-"
 
-        if data["parts"][0] == "assets" and data["parts"][-1] == "alternate":
+        if (
+            data["parts"]
+            and data["parts"][0] == "assets"
+            and data["parts"][-1] == "alternate"
+        ):
             data["alternate_key"] = data["key"]
             data["key"] = "-"
 
