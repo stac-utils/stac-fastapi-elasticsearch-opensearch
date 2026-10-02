@@ -25,9 +25,7 @@ from stac_fastapi.core.serializers import (
     ItemSerializer,
 )
 from stac_fastapi.core.utilities import MAX_LIMIT, bbox2polygon, get_bool_env
-from stac_fastapi.elasticsearch.config import (
-    AsyncElasticsearchSettings,
-)
+from stac_fastapi.elasticsearch.config import AsyncElasticsearchSettings
 from stac_fastapi.elasticsearch.config import (
     ElasticsearchSettings as SyncElasticsearchSettings,
 )
@@ -1709,18 +1707,14 @@ class DatabaseLogic(BaseDatabaseLogic):
             # Create the new collection
             await self.create_collection(collection_dict, refresh=refresh)
 
-            source_index = next(
-                iter(
-                    self.client.indices.get_alias(
-                        index_alias_by_collection_id(collection_id)
-                    )
-                )
-            )
+            source_index = self.client.indices.get(
+                f"{index_by_collection_id(collection_id)}-*"
+            ).keys()[0]
             source_alias = index_alias_by_collection_id(collection_id)
 
-            destination_index = (
-                f"{index_by_collection_id(collection_dict.get('id'))}-000001"
-            )
+            destination_index = self.client.indices.get(
+                index=f"{index_by_collection_id(collection_dict.get('id'))}-*"
+            ).keys()[0]
             destination_alias = index_alias_by_collection_id(collection_dict.get("id"))
 
             # Reindex items from the old collection to the new collection

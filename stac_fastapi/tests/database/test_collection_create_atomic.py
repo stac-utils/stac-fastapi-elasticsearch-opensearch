@@ -54,7 +54,7 @@ async def owned_collection_app(request, monkeypatch):
                 refresh=True,
             )
             await database.client.indices.delete(
-                index=f"{ITEMS_ALIAS_PREFIX}{prefix}*", ignore_unavailable=True
+                index=f"{ITEMS_INDEX_PREFIX}{prefix}*", ignore_unavailable=True
             )
             if datetime:
                 cache = database.async_index_selector.cache_manager
