@@ -1710,13 +1710,13 @@ class DatabaseLogic(BaseDatabaseLogic):
             source_indices = await self.client.indices.get(
                 index=f"{index_by_collection_id(collection_id)}-*"
             )
-            source_index = source_indices.keys()[0]
+            source_index = next(iter(source_indices.keys()))
             source_alias = index_alias_by_collection_id(collection_id)
 
             destination_indices = await self.client.indices.get(
                 index=f"{index_by_collection_id(collection_dict.get('id'))}-*"
             )
-            destination_index = destination_indices.keys()[0]
+            destination_index = next(iter(destination_indices.keys()))
             destination_alias = index_alias_by_collection_id(collection_dict.get("id"))
 
             # Reindex items from the old collection to the new collection
